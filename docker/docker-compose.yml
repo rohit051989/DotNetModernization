@@ -1,0 +1,21 @@
+services:
+  catalog-db:
+    image: postgres:16
+    container_name: modernization-catalog-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: catalog
+      POSTGRES_PASSWORD: catalog_dev_pw
+      POSTGRES_DB: modernization_catalog
+    ports:
+      - "5433:5432"
+    volumes:
+      - catalog_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U catalog -d modernization_catalog"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  catalog_pgdata:
