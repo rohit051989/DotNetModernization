@@ -128,8 +128,8 @@ contents for local dev):
 ```
 DATABASE_URL=postgresql+psycopg://catalog:catalog_dev_pw@localhost:5433/modernization_catalog
 API_HOST=127.0.0.1
-API_PORT=8000
-CORS_ORIGINS=http://localhost:5173
+API_PORT=8001
+CORS_ORIGINS=http://localhost:5174
 ```
 
 ## 4. Alembic
@@ -164,7 +164,7 @@ runs before writing application code.
 Create `frontend/.env`:
 
 ```
-VITE_API_BASE_URL=http://127.0.0.1:8000
+VITE_API_BASE_URL=http://127.0.0.1:8001
 ```
 
 ## 6. Run commands
@@ -176,13 +176,18 @@ Three terminals. Document these in the root `README.md`.
 cd docker; docker compose up
 
 # Terminal 2 — backend
-cd backend; .\.venv\Scripts\Activate.ps1; uvicorn app.main:app --reload --port 8000
+cd backend; .\.venv\Scripts\Activate.ps1; uvicorn app.main:app --reload --port 8001
 
 # Terminal 3 — frontend
 cd frontend; npm run dev
 ```
 
-Expected: API docs at `http://127.0.0.1:8000/docs`, UI at `http://localhost:5173`.
+Expected: API docs at `http://127.0.0.1:8001/docs`, UI at `http://localhost:5174`.
+
+Ports **8001** and **5174** are deliberate — 8000 and 5173 are both occupied by
+unrelated processes on the dev machine, so the backend binds 8001 and the
+frontend binds 5174 instead. Run the frontend with
+`npm run dev -- --port 5174 --strictPort`.
 
 ## 7. Verification checklist
 
@@ -190,6 +195,6 @@ Before moving on, confirm all of these:
 
 - [ ] `docker compose ps` shows `catalog-db` healthy
 - [ ] `alembic upgrade head` completes without error
-- [ ] `GET http://127.0.0.1:8000/api/health` returns `{"status":"ok","database":"connected"}`
+- [ ] `GET http://127.0.0.1:8001/api/health` returns `{"status":"ok","database":"connected"}`
 - [ ] Vite dev server serves the UI shell
 - [ ] The UI can reach the API without CORS errors
