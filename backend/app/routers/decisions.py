@@ -1,7 +1,7 @@
 import datetime
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app import models, schemas
@@ -35,6 +35,8 @@ def _decision_response(db: Session, decision: models.DecisionRecord) -> schemas.
         status=decision.status,
         created_at=decision.created_at,
         updated_at=decision.updated_at,
+        deleted_at=decision.deleted_at,
+        deleted_by=decision.deleted_by,
     )
 
 
@@ -132,17 +134,19 @@ def _validate_decision(
 @router.get(
     "/engagements/{engagement_id}/decisions", response_model=list[schemas.DecisionRecord]
 )
-def list_decisions(engagement_id: str, db: Session = Depends(get_db)):
+def list_decisions(
+    engagement_id: str, include_deleted: bool = Query(False), db: Session = Depends(get_db)
+):
     engagement = db.get(models.Engagement, engagement_id)
     if engagement is None:
         raise HTTPException(status_code=404, detail=f"Engagement '{engagement_id}' not found")
 
-    decisions = (
-        db.query(models.DecisionRecord)
-        .filter(models.DecisionRecord.engagement_id == engagement_id)
-        .order_by(models.DecisionRecord.created_at)
-        .all()
+    query = db.query(models.DecisionRecord).filter(
+        models.DecisionRecord.engagement_id == engagement_id
     )
+    if not include_deleted:
+        query = query.filter(models.DecisionRecord.deleted_at.is_(None))
+    decisions = query.order_by(models.DecisionRecord.created_at).all()
     return [_decision_response(db, d) for d in decisions]
 
 
@@ -213,9 +217,11 @@ def create_decision(
 
 
 @router.get("/decisions/{decision_id}", response_model=schemas.DecisionRecord)
-def get_decision(decision_id: uuid.UUID, db: Session = Depends(get_db)):
+def get_decision(
+    decision_id: uuid.UUID, include_deleted: bool = Query(False), db: Session = Depends(get_db)
+):
     decision = db.get(models.DecisionRecord, decision_id)
-    if decision is None:
+    if decision is None or (decision.deleted_at is not None and not include_deleted):
         raise HTTPException(status_code=404, detail=f"Decision record '{decision_id}' not found")
     return _decision_response(db, decision)
 

@@ -69,10 +69,16 @@ Two-column layout. Left column fixed ~380px, right column fills.
 - Selected row visibly highlighted
 - Empty state when filters match nothing, with a clear-filters action
 
+Soft-deleted patterns are never fetched (the API excludes them by default) and so
+never appear here under any filter combination, including the status filter — the
+status filter only ever toggles between lifecycle states of records that still
+exist. Deletion is not a fourth status; do not add a "deleted" option to the status
+filter chips.
+
 ### Right — pattern detail
 
 Header block: pattern name, `id` in monospace, category and status badges,
-**Edit** and **Deprecate** buttons.
+**Edit**, **Deprecate** and **Delete** buttons.
 
 Then three stacked sections:
 
@@ -176,6 +182,18 @@ warning exists to make the governance rule visible during the demo.
 - **Deprecate** — always via `ConfirmDialog`, wording: "Deprecate this pattern? It
   stays in the catalog and existing decision records remain valid, but it will be
   hidden from the default list."
+- **Delete** — always via `ConfirmDialog`, wording: "Delete this pattern? It will
+  be removed from the catalog and can only be restored by an administrator."
+  Distinct from Deprecate: this calls the soft-delete endpoint (`DELETE`), not
+  `POST .../deprecate`, and the record disappears from the UI entirely rather than
+  moving behind the status filter.
+
+  Delete is intended to become a role-gated action once authentication and roles
+  exist — non-admins should not see or be able to trigger it. No such check exists
+  yet anywhere in this build (see `CLAUDE.md`'s out-of-scope list), so the button
+  is currently reachable by anyone. Leave a clear `// TODO: gate behind admin role
+  once auth exists` marker directly on the Delete button/handler in the component,
+  so the gap is visible in the code and not just in this document.
 
 ## Visual direction
 

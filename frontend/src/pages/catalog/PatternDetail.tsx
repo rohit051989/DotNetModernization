@@ -1,12 +1,20 @@
 import { useEffect, useState } from 'react'
-import { getPattern, listTargetStates } from '../../api/catalog'
+import { deletePattern, deprecatePattern, getPattern, listTargetStates } from '../../api/catalog'
+import { ApiError } from '../../api/client'
 import type { DetectionRules, PatternDetail as PatternDetailModel, TargetStateDetail } from '../../types/catalog'
 import { CategoryBadge, StatusBadge } from '../../components/Badge'
+import { ConfirmDialog } from '../../components/ConfirmDialog'
 import { Markdown } from '../../components/Markdown'
+import { useToast } from '../../components/Toast'
+import { PatternForm } from './PatternForm'
 import { TargetStateCard } from './TargetStateCard'
+import { TargetStateForm } from './TargetStateForm'
 
 interface PatternDetailProps {
   patternId: string
+  refreshToken: number
+  onCatalogChanged: () => void
+  onDeleted: () => void
 }
 
 const DETECTION_RULE_LIST_FIELDS: { key: keyof DetectionRules; label: string }[] = [
@@ -19,12 +27,22 @@ const DETECTION_RULE_LIST_FIELDS: { key: keyof DetectionRules; label: string }[]
   { key: 'config_markers', label: 'Config markers' },
 ]
 
-export function PatternDetail({ patternId }: PatternDetailProps) {
+type TargetStateFormMode = { kind: 'create' } | { kind: 'edit'; option: TargetStateDetail } | null
+
+export function PatternDetail({ patternId, refreshToken, onCatalogChanged, onDeleted }: PatternDetailProps) {
+  const { showToast } = useToast()
   const [pattern, setPattern] = useState<PatternDetailModel | null>(null)
   const [targetStates, setTargetStates] = useState<TargetStateDetail[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [showRawJson, setShowRawJson] = useState(false)
+
+  const [showEditForm, setShowEditForm] = useState(false)
+  const [showDeprecateConfirm, setShowDeprecateConfirm] = useState(false)
+  const [deprecating, setDeprecating] = useState(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [targetStateForm, setTargetStateForm] = useState<TargetStateFormMode>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -48,7 +66,45 @@ export function PatternDetail({ patternId }: PatternDetailProps) {
     return () => {
       cancelled = true
     }
-  }, [patternId])
+  }, [patternId, refreshToken])
+
+  async function handleDeprecate() {
+    setDeprecating(true)
+    try {
+      const result = await deprecatePattern(patternId)
+      showToast(
+        'success',
+        result.referenced_by_decisions > 0
+          ? `Pattern deprecated. Referenced by ${result.referenced_by_decisions} decision record${
+              result.referenced_by_decisions === 1 ? '' : 's'
+            }.`
+          : 'Pattern deprecated.',
+      )
+      setShowDeprecateConfirm(false)
+      onCatalogChanged()
+    } catch (err) {
+      showToast('error', err instanceof ApiError ? err.message : 'Could not deprecate this pattern.')
+    } finally {
+      setDeprecating(false)
+    }
+  }
+
+  async function handleDelete() {
+    // TODO: gate behind an admin role once auth exists. This action is currently
+    // reachable by anyone, matching the rest of this build (no auth system yet),
+    // but it is intended to become admin-only — see 04-FRONTEND-SPEC.md.
+    setDeleting(true)
+    try {
+      await deletePattern(patternId)
+      showToast('success', 'Pattern deleted.')
+      setShowDeleteConfirm(false)
+      onDeleted()
+    } catch (err) {
+      showToast('error', err instanceof ApiError ? err.message : 'Could not delete this pattern.')
+    } finally {
+      setDeleting(false)
+    }
+  }
 
   if (loading) {
     return (
@@ -78,19 +134,25 @@ export function PatternDetail({ patternId }: PatternDetailProps) {
         <div className="flex shrink-0 gap-2">
           <button
             type="button"
-            disabled
-            title="Coming soon"
-            className="cursor-not-allowed rounded border border-neutral-200 px-3 py-1.5 text-sm text-neutral-400"
+            onClick={() => setShowEditForm(true)}
+            className="rounded border border-neutral-300 px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50"
           >
             Edit
           </button>
           <button
             type="button"
-            disabled
-            title="Coming soon"
-            className="cursor-not-allowed rounded border border-neutral-200 px-3 py-1.5 text-sm text-neutral-400"
+            onClick={() => setShowDeprecateConfirm(true)}
+            disabled={pattern.status === 'deprecated'}
+            className="rounded border border-neutral-300 px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50 disabled:cursor-not-allowed disabled:text-neutral-300"
           >
             Deprecate
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowDeleteConfirm(true)}
+            className="rounded border border-red-200 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50"
+          >
+            Delete
           </button>
         </div>
       </div>
@@ -174,18 +236,67 @@ export function PatternDetail({ patternId }: PatternDetailProps) {
         </h3>
         <div className="space-y-3">
           {targetStates.map((option, index) => (
-            <TargetStateCard key={option.id} option={option} isPresumptive={index === 0} />
+            <TargetStateCard
+              key={option.id}
+              option={option}
+              isPresumptive={index === 0}
+              onEdit={() => setTargetStateForm({ kind: 'edit', option })}
+            />
           ))}
         </div>
         <button
           type="button"
-          disabled
-          title="Coming soon"
-          className="mt-3 w-full cursor-not-allowed rounded border border-dashed border-neutral-300 py-2 text-sm font-medium text-neutral-400"
+          onClick={() => setTargetStateForm({ kind: 'create' })}
+          className="mt-3 w-full rounded border border-dashed border-violet-300 py-2 text-sm font-medium text-violet-600 hover:border-violet-400 hover:bg-violet-50"
         >
           + Add target state option
         </button>
       </section>
+
+      {showEditForm && (
+        <PatternForm
+          mode="edit"
+          pattern={pattern}
+          onClose={() => setShowEditForm(false)}
+          onSaved={() => {
+            setShowEditForm(false)
+            onCatalogChanged()
+          }}
+        />
+      )}
+
+      {targetStateForm && (
+        <TargetStateForm
+          mode={targetStateForm.kind}
+          patternId={patternId}
+          option={targetStateForm.kind === 'edit' ? targetStateForm.option : undefined}
+          onClose={() => setTargetStateForm(null)}
+          onSaved={() => {
+            setTargetStateForm(null)
+            onCatalogChanged()
+          }}
+        />
+      )}
+
+      <ConfirmDialog
+        open={showDeprecateConfirm}
+        title="Deprecate pattern"
+        message="Deprecate this pattern? It stays in the catalog and existing decision records remain valid, but it will be hidden from the default list."
+        confirmLabel={deprecating ? 'Deprecating…' : 'Deprecate'}
+        destructive
+        onConfirm={handleDeprecate}
+        onCancel={() => setShowDeprecateConfirm(false)}
+      />
+
+      <ConfirmDialog
+        open={showDeleteConfirm}
+        title="Delete pattern"
+        message="Delete this pattern? It will be removed from the catalog and can only be restored by an administrator."
+        confirmLabel={deleting ? 'Deleting…' : 'Delete'}
+        destructive
+        onConfirm={handleDelete}
+        onCancel={() => setShowDeleteConfirm(false)}
+      />
     </div>
   )
 }

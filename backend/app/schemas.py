@@ -109,6 +109,8 @@ class PatternSummary(BaseModel):
     version: int
     target_state_count: int
     updated_at: datetime.datetime
+    deleted_at: datetime.datetime | None
+    deleted_by: str | None
 
 
 class PatternDetail(BaseModel):
@@ -127,13 +129,20 @@ class PatternDetail(BaseModel):
     version: int
     created_at: datetime.datetime
     updated_at: datetime.datetime
+    deleted_at: datetime.datetime | None
+    deleted_by: str | None
     target_state_options: list[TargetStateSummary]
 
 
-class PatternDeleteResponse(BaseModel):
+class PatternDeprecateResponse(BaseModel):
     id: str
     status: LifecycleStatus
     referenced_by_decisions: int
+
+
+class PatternSoftDeleteResponse(BaseModel):
+    id: str
+    deleted_at: datetime.datetime | None
 
 
 # ---------- Target state options ----------
@@ -189,11 +198,18 @@ class TargetStateDetail(BaseModel):
     version: int
     created_at: datetime.datetime
     updated_at: datetime.datetime
+    deleted_at: datetime.datetime | None
+    deleted_by: str | None
 
 
-class TargetStateDeleteResponse(BaseModel):
+class TargetStateDeprecateResponse(BaseModel):
     id: str
     status: LifecycleStatus
+
+
+class TargetStateSoftDeleteResponse(BaseModel):
+    id: str
+    deleted_at: datetime.datetime | None
 
 
 # ---------- Engagements ----------
@@ -225,6 +241,8 @@ class Engagement(BaseModel):
     status: LifecycleStatus
     created_at: datetime.datetime
     updated_at: datetime.datetime
+    deleted_at: datetime.datetime | None
+    deleted_by: str | None
 
 
 class CoverageSummary(BaseModel):
@@ -283,6 +301,8 @@ class DecisionRecord(BaseModel):
     status: DecisionStatus
     created_at: datetime.datetime
     updated_at: datetime.datetime
+    deleted_at: datetime.datetime | None
+    deleted_by: str | None
 
 
 # ---------- Catalog export / import ----------

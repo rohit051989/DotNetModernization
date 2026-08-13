@@ -6,9 +6,10 @@ import { Markdown } from '../../components/Markdown'
 interface TargetStateCardProps {
   option: TargetStateDetail
   isPresumptive: boolean
+  onEdit: () => void
 }
 
-export function TargetStateCard({ option, isPresumptive }: TargetStateCardProps) {
+export function TargetStateCard({ option, isPresumptive, onEdit }: TargetStateCardProps) {
   const [showPlaybook, setShowPlaybook] = useState(false)
 
   return (
@@ -26,9 +27,8 @@ export function TargetStateCard({ option, isPresumptive }: TargetStateCardProps)
         </div>
         <button
           type="button"
-          disabled
-          title="Coming soon"
-          className="shrink-0 cursor-not-allowed rounded border border-neutral-200 px-2.5 py-1 text-xs text-neutral-400"
+          onClick={onEdit}
+          className="shrink-0 rounded border border-neutral-300 px-2.5 py-1 text-xs text-neutral-700 hover:bg-neutral-50"
         >
           Edit
         </button>

@@ -36,6 +36,8 @@ export interface PatternSummary {
   version: number
   target_state_count: number
   updated_at: string
+  deleted_at: string | null
+  deleted_by: string | null
 }
 
 export interface PatternDetail {
@@ -52,6 +54,8 @@ export interface PatternDetail {
   version: number
   created_at: string
   updated_at: string
+  deleted_at: string | null
+  deleted_by: string | null
   target_state_options: TargetStateSummary[]
 }
 
@@ -90,6 +94,8 @@ export interface TargetStateDetail {
   version: number
   created_at: string
   updated_at: string
+  deleted_at: string | null
+  deleted_by: string | null
 }
 
 export interface Engagement {
@@ -101,6 +107,8 @@ export interface Engagement {
   status: LifecycleStatus
   created_at: string
   updated_at: string
+  deleted_at: string | null
+  deleted_by: string | null
 }
 
 export interface CoverageSummary {
@@ -129,10 +137,78 @@ export interface DecisionRecord {
   status: DecisionStatus
   created_at: string
   updated_at: string
+  deleted_at: string | null
+  deleted_by: string | null
 }
 
 export interface HealthStatus {
   status: string
   database: 'connected' | 'error'
   version: string
+}
+
+// ---------- Request payloads (mirror the backend's Create/Update schemas) ----------
+
+export type DetectionRulesInput = DetectionRules
+export type EngineSupportInput = EngineSupport
+
+export interface PatternInput {
+  name: string
+  summary: string
+  description: string | null
+  legacy_stack: string
+  category: string
+  detection_rules: DetectionRulesInput
+  typical_indicators: string | null
+  known_risks: string | null
+  status: LifecycleStatus
+}
+
+export interface PatternCreateInput extends PatternInput {
+  id: string
+}
+
+export type PatternUpdateInput = PatternInput
+
+export interface TargetStateInput {
+  name: string
+  summary: string
+  target_stack: string
+  consumer_impact: ConsumerImpact
+  effort: EffortLevel
+  linux_compatible: boolean
+  container_ready: boolean
+  is_lift_and_shift: boolean
+  engine_support: EngineSupportInput | null
+  playbook_md: string | null
+  prerequisites: string | null
+  known_limitations: string | null
+  status: LifecycleStatus
+}
+
+export interface TargetStateCreateInput extends TargetStateInput {
+  id: string
+}
+
+export type TargetStateUpdateInput = TargetStateInput
+
+export interface PatternDeprecateResponse {
+  id: string
+  status: LifecycleStatus
+  referenced_by_decisions: number
+}
+
+export interface PatternSoftDeleteResponse {
+  id: string
+  deleted_at: string | null
+}
+
+export interface TargetStateDeprecateResponse {
+  id: string
+  status: LifecycleStatus
+}
+
+export interface TargetStateSoftDeleteResponse {
+  id: string
+  deleted_at: string | null
 }

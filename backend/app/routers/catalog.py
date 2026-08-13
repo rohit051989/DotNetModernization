@@ -93,10 +93,22 @@ def export_catalog(
     include_timestamps: bool = Query(False),
     db: Session = Depends(get_db),
 ):
-    patterns = db.query(models.Pattern).order_by(models.Pattern.id).all()
+    # Soft-deleted records are excluded unconditionally — a committed catalog file
+    # should never contain something that was removed, even for inspection.
+    patterns = (
+        db.query(models.Pattern)
+        .filter(models.Pattern.deleted_at.is_(None))
+        .order_by(models.Pattern.id)
+        .all()
+    )
 
     options_by_pattern: dict[str, list[models.TargetStateOption]] = {}
-    for option in db.query(models.TargetStateOption).order_by(models.TargetStateOption.id).all():
+    target_state_query = (
+        db.query(models.TargetStateOption)
+        .filter(models.TargetStateOption.deleted_at.is_(None))
+        .order_by(models.TargetStateOption.id)
+    )
+    for option in target_state_query.all():
         options_by_pattern.setdefault(option.pattern_id, []).append(option)
 
     pattern_payload = []
@@ -111,12 +123,22 @@ def export_catalog(
     engagement_payload: list[dict] = []
     decision_payload: list[dict] = []
     if include_engagements:
-        engagements = db.query(models.Engagement).order_by(models.Engagement.id).all()
+        engagements = (
+            db.query(models.Engagement)
+            .filter(models.Engagement.deleted_at.is_(None))
+            .order_by(models.Engagement.id)
+            .all()
+        )
         engagement_payload = [
             _serialize(e, _ENGAGEMENT_FIELDS, include_timestamps) for e in engagements
         ]
 
-        decisions = db.query(models.DecisionRecord).order_by(models.DecisionRecord.id).all()
+        decisions = (
+            db.query(models.DecisionRecord)
+            .filter(models.DecisionRecord.deleted_at.is_(None))
+            .order_by(models.DecisionRecord.id)
+            .all()
+        )
         decision_payload = [
             _serialize(d, _DECISION_FIELDS, include_timestamps) for d in decisions
         ]

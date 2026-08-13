@@ -31,10 +31,36 @@ backend/app/
   `{"detail": [{"field": "...", "message": "..."}]}`.
 - Business-rule violations (for example an approved decision missing an approver)
   also return **422**, not 400.
-- Referential refusals (deleting something still referenced) return **409** with a
-  message naming what blocks it.
-- Not found returns **404**.
+- Referential refusals (soft-deleting something still referenced) return **409**
+  with a message naming what blocks it.
+- Not found returns **404**. A soft-deleted record behaves as not-found on every
+  normal read — see "Soft delete vs deprecate" below.
 - Pagination is not required at this scale. Return full lists.
+
+## Soft delete vs deprecate
+
+Two orthogonal mechanisms, not one. Full semantics are in `02-DATA-MODEL.md`;
+the API-level contract is:
+
+- **Deprecate** (`POST .../deprecate`) sets `status = 'deprecated'`. The record
+  remains visible everywhere — normal list/get calls still return it, and the UI
+  status filter is how a user brings it back into view. Permissive: it always
+  succeeds.
+- **Soft delete** (`DELETE`) sets `deleted_at` (and `deleted_by` if supplied). The
+  record is excluded from every normal list/get response and from the export,
+  regardless of its `status`. Guarded: it is refused with 409 if the record is
+  still referenced by other non-deleted records (specifics per entity below).
+- **Restore** (`POST .../restore`) clears `deleted_at` and `deleted_by`. Backend
+  only — no UI control exists for it. **This operation, and soft delete itself,
+  are intended to become admin-only once authentication exists. They are
+  currently unguarded, like every other endpoint in this build; do not treat
+  their presence as evidence that access control has been considered.**
+
+Every list and get endpoint across every resource excludes rows where
+`deleted_at IS NOT NULL` by default. List endpoints accept `?include_deleted=true`
+to include them (so a deleted record can be inspected without direct DB access);
+get-by-id endpoints accept the same flag for the same reason. Without it, a
+soft-deleted record 404s exactly as if the row did not exist.
 
 ## Routes
 
@@ -52,32 +78,56 @@ still 200 if the query fails, so the UI can display a degraded state.
 
 ```
 GET    /api/patterns
-       ?status=active&category=service&q=wcf
+       ?status=active&category=service&q=wcf&include_deleted=false
        → 200 [PatternSummary]
 GET    /api/patterns/{pattern_id}
+       ?include_deleted=false
        → 200 PatternDetail   (includes nested target_state_options)
 POST   /api/patterns
        → 201 PatternDetail
 PUT    /api/patterns/{pattern_id}
        → 200 PatternDetail
+POST   /api/patterns/{pattern_id}/deprecate
+       → 200 {"id": "...", "status": "deprecated", "referenced_by_decisions": n}
 DELETE /api/patterns/{pattern_id}
-       → 200 {"id": "...", "status": "deprecated"}
+       ?deleted_by=someone
+       → 200 {"id": "...", "deleted_at": "..."}
+       → 409 if any non-deleted target state option, or any non-deleted
+         non-superseded decision record, still references the pattern
+POST   /api/patterns/{pattern_id}/restore
+       → 200 {"id": "...", "deleted_at": null}
 ```
 
 `q` matches case-insensitively against `name`, `summary` and `legacy_stack`.
 
-`DELETE` is a soft delete: sets `status = 'deprecated'`. If any non-superseded
-decision record references the pattern, still allow deprecation but include
-`"referenced_by_decisions": <count>` in the response so the UI can warn.
+`POST /deprecate` is the old `DELETE` behaviour, moved because `DELETE` now
+performs an actual deletion. Sets `status = 'deprecated'` and is permissive: if any
+non-deleted, non-superseded decision record references the pattern, deprecation
+still succeeds, with `"referenced_by_decisions": <count>` in the response so the
+UI can warn. Unchanged from before other than the route.
+
+`DELETE` is the new soft delete. It is guarded, not permissive: refused with 409
+naming the count and kind of what blocks it if the pattern has any non-deleted
+target state options, or is referenced by any non-deleted, non-superseded
+decision record. Clear those first (deprecate or soft-delete the target state
+options; supersede the decisions), or soft-delete cascades are not supported.
+`deleted_by` is an optional free-text query parameter — there is no auth system
+yet to source an identity from.
+
+`POST /restore` clears `deleted_at`/`deleted_by` unconditionally if the pattern
+exists, deleted or not. Restoring a pattern that is not currently deleted is a
+harmless no-op. `status` is untouched, so a restored pattern reappears exactly as
+deprecated/active/draft as it was before deletion.
 
 `POST` validates that `id` is a valid slug: `^[a-z0-9]+(-[a-z0-9]+)*$`. Reject
-duplicates with 409.
+duplicates with 409 — this includes ids belonging to a soft-deleted pattern, since
+the primary key still exists; restore it instead of recreating it.
 
 `PUT` increments `version` when any of `detection_rules`, `name`, `legacy_stack` or
 `category` change. Cosmetic edits to `description` do not bump the version.
 
 **PatternSummary** — `id, name, summary, legacy_stack, category, status, version,
-target_state_count, updated_at`
+target_state_count, updated_at, deleted_at, deleted_by`
 
 **PatternDetail** — all pattern columns plus `target_state_options: [TargetStateSummary]`
 
@@ -85,19 +135,40 @@ target_state_count, updated_at`
 
 ```
 GET    /api/patterns/{pattern_id}/target-states
+       ?include_deleted=false
        → 200 [TargetStateDetail]
 POST   /api/patterns/{pattern_id}/target-states
        → 201 TargetStateDetail
 GET    /api/target-states/{id}
+       ?include_deleted=false
        → 200 TargetStateDetail
 PUT    /api/target-states/{id}
        → 200 TargetStateDetail
+POST   /api/target-states/{id}/deprecate
+       → 200 {"id": "...", "status": "deprecated"}
+       → 409 if referenced by a non-deleted, non-superseded approved decision
 DELETE /api/target-states/{id}
-       → 200 {"id": "...", "status": "deprecated"}  soft delete
-       → 409 if referenced by a non-superseded approved decision
+       ?deleted_by=someone
+       → 200 {"id": "...", "deleted_at": "..."}
+       → 409 if referenced by any non-deleted, non-superseded decision record
+         (not only approved ones — removal is a stronger action than deprecation,
+         so the guard is correspondingly broader)
+POST   /api/target-states/{id}/restore
+       → 200 {"id": "...", "deleted_at": null}
 ```
 
 On `POST`, reject with 409 if `(pattern_id, name)` already exists.
+
+`POST /deprecate` is the old `DELETE` behaviour, moved and otherwise unchanged:
+still refused if a non-superseded **approved** decision references the option,
+now additionally requiring that decision record to be non-deleted.
+
+`DELETE` is the new soft delete, guarded more broadly than deprecate: refused if
+**any** non-superseded decision record (parked, in_review or approved) has this
+option as its `selected_target_state_id` and is not itself deleted.
+
+`POST /restore` clears `deleted_at`/`deleted_by` unconditionally if the option
+exists. `status` is untouched.
 
 Sort returned options by `consumer_impact` ascending (`none` first), then `effort`
 ascending. The lowest-impact option should always appear first — the UI relies on
@@ -106,12 +177,19 @@ this to present the presumptive choice at the top.
 ### Engagements
 
 ```
-GET    /api/engagements                    → 200 [Engagement]
+GET    /api/engagements                    ?include_deleted=false → 200 [Engagement]
 POST   /api/engagements                    → 201 Engagement
-GET    /api/engagements/{id}               → 200 Engagement
+GET    /api/engagements/{id}                ?include_deleted=false → 200 Engagement
 PUT    /api/engagements/{id}               → 200 Engagement
 GET    /api/engagements/{id}/coverage      → 200 CoverageSummary
 ```
+
+`engagements` gained `deleted_at`/`deleted_by` columns for consistency (see
+`02-DATA-MODEL.md`), and its list/get endpoints follow the same `include_deleted`
+convention as every other resource. There is no delete/deprecate/restore route for
+engagements in this build — the columns exist so the schema does not need another
+migration when that capability is added, but nothing in the API can set them yet.
+Coverage calculations only ever count non-deleted patterns and decisions.
 
 **CoverageSummary** — drives the future dashboard and is cheap to add now:
 
@@ -129,12 +207,18 @@ GET    /api/engagements/{id}/coverage      → 200 CoverageSummary
 ### Decision records
 
 ```
-GET    /api/engagements/{id}/decisions      → 200 [DecisionRecord]
+GET    /api/engagements/{id}/decisions      ?include_deleted=false → 200 [DecisionRecord]
 POST   /api/engagements/{id}/decisions      → 201 DecisionRecord
-GET    /api/decisions/{id}                  → 200 DecisionRecord
+GET    /api/decisions/{id}                  ?include_deleted=false → 200 DecisionRecord
 PUT    /api/decisions/{id}                  → 200 DecisionRecord
 POST   /api/decisions/{id}/supersede        → 200 DecisionRecord
 ```
+
+`decision_records` also gained `deleted_at`/`deleted_by`, and its list/get
+endpoints follow the same `include_deleted` convention. As with engagements, no
+route can set these columns yet — they exist so the partial unique index
+(`02-DATA-MODEL.md`) and the referential guards on pattern/target-state soft
+delete have something consistent to check against.
 
 `PUT` enforces every validation rule in `02-DATA-MODEL.md`. In particular, when
 transitioning to `approved`:
@@ -179,6 +263,9 @@ POST /api/catalog/import
 - timestamps serialised as ISO-8601 UTC with `Z`
 - exclude `created_at` / `updated_at` from the export by default (they create noise
   in diffs); include them only when `?include_timestamps=true`
+- soft-deleted records are excluded unconditionally, with no override — unlike
+  list/get endpoints there is no `?include_deleted` for export. A committed catalog
+  file should never contain something that was removed, even for inspection
 
 This is what allows the catalog to be committed to git and reviewed as a pull
 request, which is how it becomes durable IP rather than rows in someone's database.

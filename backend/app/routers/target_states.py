@@ -1,6 +1,6 @@
 import datetime
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import case
 from sqlalchemy.orm import Session
 
@@ -23,26 +23,33 @@ _EFFORT_ORDER = case(
 
 
 def get_target_states_for_pattern(
-    db: Session, pattern_id: str
+    db: Session, pattern_id: str, include_deleted: bool = False
 ) -> list[models.TargetStateOption]:
     """Lowest consumer_impact first, then lowest effort — the presumptive choice always leads."""
-    return (
-        db.query(models.TargetStateOption)
-        .filter(models.TargetStateOption.pattern_id == pattern_id)
-        .order_by(_IMPACT_ORDER, _EFFORT_ORDER)
-        .all()
+    query = db.query(models.TargetStateOption).filter(
+        models.TargetStateOption.pattern_id == pattern_id
     )
+    if not include_deleted:
+        query = query.filter(models.TargetStateOption.deleted_at.is_(None))
+    return query.order_by(_IMPACT_ORDER, _EFFORT_ORDER).all()
+
+
+def _get_visible_pattern(db: Session, pattern_id: str, include_deleted: bool) -> models.Pattern:
+    pattern = db.get(models.Pattern, pattern_id)
+    if pattern is None or (pattern.deleted_at is not None and not include_deleted):
+        raise HTTPException(status_code=404, detail=f"Pattern '{pattern_id}' not found")
+    return pattern
 
 
 @router.get(
     "/patterns/{pattern_id}/target-states",
     response_model=list[schemas.TargetStateDetail],
 )
-def list_target_states(pattern_id: str, db: Session = Depends(get_db)):
-    pattern = db.get(models.Pattern, pattern_id)
-    if pattern is None:
-        raise HTTPException(status_code=404, detail=f"Pattern '{pattern_id}' not found")
-    return get_target_states_for_pattern(db, pattern_id)
+def list_target_states(
+    pattern_id: str, include_deleted: bool = Query(False), db: Session = Depends(get_db)
+):
+    _get_visible_pattern(db, pattern_id, include_deleted)
+    return get_target_states_for_pattern(db, pattern_id, include_deleted=include_deleted)
 
 
 @router.post(
@@ -53,9 +60,7 @@ def list_target_states(pattern_id: str, db: Session = Depends(get_db)):
 def create_target_state(
     pattern_id: str, payload: schemas.TargetStateCreate, db: Session = Depends(get_db)
 ):
-    pattern = db.get(models.Pattern, pattern_id)
-    if pattern is None:
-        raise HTTPException(status_code=404, detail=f"Pattern '{pattern_id}' not found")
+    _get_visible_pattern(db, pattern_id, include_deleted=False)
 
     if db.get(models.TargetStateOption, payload.id) is not None:
         raise HTTPException(
@@ -103,9 +108,11 @@ def create_target_state(
 
 
 @router.get("/target-states/{target_state_id}", response_model=schemas.TargetStateDetail)
-def get_target_state(target_state_id: str, db: Session = Depends(get_db)):
+def get_target_state(
+    target_state_id: str, include_deleted: bool = Query(False), db: Session = Depends(get_db)
+):
     option = db.get(models.TargetStateOption, target_state_id)
-    if option is None:
+    if option is None or (option.deleted_at is not None and not include_deleted):
         raise HTTPException(
             status_code=404, detail=f"Target state option '{target_state_id}' not found"
         )
@@ -170,8 +177,11 @@ def update_target_state(
     return option
 
 
-@router.delete("/target-states/{target_state_id}", response_model=schemas.TargetStateDeleteResponse)
-def delete_target_state(target_state_id: str, db: Session = Depends(get_db)):
+@router.post(
+    "/target-states/{target_state_id}/deprecate",
+    response_model=schemas.TargetStateDeprecateResponse,
+)
+def deprecate_target_state(target_state_id: str, db: Session = Depends(get_db)):
     option = db.get(models.TargetStateOption, target_state_id)
     if option is None:
         raise HTTPException(
@@ -183,6 +193,7 @@ def delete_target_state(target_state_id: str, db: Session = Depends(get_db)):
         .filter(
             models.DecisionRecord.selected_target_state_id == target_state_id,
             models.DecisionRecord.status == "approved",
+            models.DecisionRecord.deleted_at.is_(None),
         )
         .first()
     )
@@ -199,4 +210,58 @@ def delete_target_state(target_state_id: str, db: Session = Depends(get_db)):
     option.status = "deprecated"
     option.updated_at = datetime.datetime.now(datetime.timezone.utc)
     db.commit()
-    return schemas.TargetStateDeleteResponse(id=option.id, status=option.status)
+    return schemas.TargetStateDeprecateResponse(id=option.id, status=option.status)
+
+
+@router.delete("/target-states/{target_state_id}", response_model=schemas.TargetStateSoftDeleteResponse)
+def delete_target_state(
+    target_state_id: str, deleted_by: str | None = Query(None), db: Session = Depends(get_db)
+):
+    option = db.get(models.TargetStateOption, target_state_id)
+    if option is None or option.deleted_at is not None:
+        raise HTTPException(
+            status_code=404, detail=f"Target state option '{target_state_id}' not found"
+        )
+
+    live_reference = (
+        db.query(models.DecisionRecord)
+        .filter(
+            models.DecisionRecord.selected_target_state_id == target_state_id,
+            models.DecisionRecord.status != "superseded",
+            models.DecisionRecord.deleted_at.is_(None),
+        )
+        .first()
+    )
+    if live_reference is not None:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Target state option '{target_state_id}' is referenced by non-superseded "
+                f"decision record '{live_reference.id}' in engagement "
+                f"'{live_reference.engagement_id}'; supersede that decision first."
+            ),
+        )
+
+    option.deleted_at = datetime.datetime.now(datetime.timezone.utc)
+    option.deleted_by = deleted_by
+    db.commit()
+    return schemas.TargetStateSoftDeleteResponse(id=option.id, deleted_at=option.deleted_at)
+
+
+@router.post(
+    "/target-states/{target_state_id}/restore",
+    response_model=schemas.TargetStateSoftDeleteResponse,
+)
+def restore_target_state(target_state_id: str, db: Session = Depends(get_db)):
+    # Admin-only in intent — no auth/role check exists yet in this build (see
+    # CLAUDE.md's out-of-scope list). TODO: gate behind an admin role once auth exists.
+    option = db.get(models.TargetStateOption, target_state_id)
+    if option is None:
+        raise HTTPException(
+            status_code=404, detail=f"Target state option '{target_state_id}' not found"
+        )
+
+    option.deleted_at = None
+    option.deleted_by = None
+    db.commit()
+    return schemas.TargetStateSoftDeleteResponse(id=option.id, deleted_at=None)

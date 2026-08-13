@@ -1,6 +1,6 @@
 import datetime
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app import models, schemas
@@ -10,8 +10,11 @@ router = APIRouter(prefix="/api/engagements", tags=["engagements"])
 
 
 @router.get("", response_model=list[schemas.Engagement])
-def list_engagements(db: Session = Depends(get_db)):
-    return db.query(models.Engagement).order_by(models.Engagement.id).all()
+def list_engagements(include_deleted: bool = Query(False), db: Session = Depends(get_db)):
+    query = db.query(models.Engagement)
+    if not include_deleted:
+        query = query.filter(models.Engagement.deleted_at.is_(None))
+    return query.order_by(models.Engagement.id).all()
 
 
 @router.post("", response_model=schemas.Engagement, status_code=201)
@@ -33,9 +36,11 @@ def create_engagement(payload: schemas.EngagementCreate, db: Session = Depends(g
 
 
 @router.get("/{engagement_id}", response_model=schemas.Engagement)
-def get_engagement(engagement_id: str, db: Session = Depends(get_db)):
+def get_engagement(
+    engagement_id: str, include_deleted: bool = Query(False), db: Session = Depends(get_db)
+):
     engagement = db.get(models.Engagement, engagement_id)
-    if engagement is None:
+    if engagement is None or (engagement.deleted_at is not None and not include_deleted):
         raise HTTPException(status_code=404, detail=f"Engagement '{engagement_id}' not found")
     return engagement
 
@@ -68,7 +73,10 @@ def get_engagement_coverage(engagement_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail=f"Engagement '{engagement_id}' not found")
 
     active_pattern_ids = [
-        p.id for p in db.query(models.Pattern.id).filter(models.Pattern.status == "active").all()
+        p.id
+        for p in db.query(models.Pattern.id)
+        .filter(models.Pattern.status == "active", models.Pattern.deleted_at.is_(None))
+        .all()
     ]
 
     live_decisions = (
@@ -76,6 +84,7 @@ def get_engagement_coverage(engagement_id: str, db: Session = Depends(get_db)):
         .filter(
             models.DecisionRecord.engagement_id == engagement_id,
             models.DecisionRecord.status != "superseded",
+            models.DecisionRecord.deleted_at.is_(None),
         )
         .all()
     )

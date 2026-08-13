@@ -2,15 +2,23 @@ import { useEffect, useMemo, useState } from 'react'
 import { listPatterns } from '../../api/catalog'
 import type { PatternSummary } from '../../types/catalog'
 import { EmptyState } from '../../components/EmptyState'
+import { PatternForm } from './PatternForm'
 
 const CATEGORIES = ['web-api', 'web-ui', 'service', 'batch', 'library', 'data-etl']
 
 interface PatternListProps {
   selectedPatternId: string | null
   onSelectPattern: (patternId: string) => void
+  refreshToken: number
+  onCatalogChanged: () => void
 }
 
-export function PatternList({ selectedPatternId, onSelectPattern }: PatternListProps) {
+export function PatternList({
+  selectedPatternId,
+  onSelectPattern,
+  refreshToken,
+  onCatalogChanged,
+}: PatternListProps) {
   const [patterns, setPatterns] = useState<PatternSummary[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -18,6 +26,7 @@ export function PatternList({ selectedPatternId, onSelectPattern }: PatternListP
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null)
   const [showDeprecated, setShowDeprecated] = useState(false)
+  const [showCreateForm, setShowCreateForm] = useState(false)
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(searchInput.trim()), 300)
@@ -41,7 +50,7 @@ export function PatternList({ selectedPatternId, onSelectPattern }: PatternListP
     return () => {
       cancelled = true
     }
-  }, [debouncedSearch])
+  }, [debouncedSearch, refreshToken])
 
   const filteredPatterns = useMemo(
     () =>
@@ -72,9 +81,8 @@ export function PatternList({ selectedPatternId, onSelectPattern }: PatternListP
       <div className="border-b border-neutral-200 p-4">
         <button
           type="button"
-          disabled
-          title="Coming soon"
-          className="mb-3 w-full cursor-not-allowed rounded border border-dashed border-neutral-300 py-2 text-sm font-medium text-neutral-400"
+          onClick={() => setShowCreateForm(true)}
+          className="mb-3 w-full rounded border border-dashed border-violet-300 py-2 text-sm font-medium text-violet-600 hover:border-violet-400 hover:bg-violet-50"
         >
           + New Pattern
         </button>
@@ -167,6 +175,18 @@ export function PatternList({ selectedPatternId, onSelectPattern }: PatternListP
             )
           })}
       </div>
+
+      {showCreateForm && (
+        <PatternForm
+          mode="create"
+          onClose={() => setShowCreateForm(false)}
+          onSaved={(patternId) => {
+            setShowCreateForm(false)
+            onCatalogChanged()
+            onSelectPattern(patternId)
+          }}
+        />
+      )}
     </div>
   )
 }

@@ -5,13 +5,33 @@ import { EmptyState } from '../components/EmptyState'
 
 export function CatalogPage() {
   const [selectedPatternId, setSelectedPatternId] = useState<string | null>(null)
+  const [refreshToken, setRefreshToken] = useState(0)
+
+  function handleCatalogChanged() {
+    setRefreshToken((token) => token + 1)
+  }
+
+  function handlePatternDeleted() {
+    setSelectedPatternId(null)
+    handleCatalogChanged()
+  }
 
   return (
     <div className="flex h-full">
-      <PatternList selectedPatternId={selectedPatternId} onSelectPattern={setSelectedPatternId} />
+      <PatternList
+        selectedPatternId={selectedPatternId}
+        onSelectPattern={setSelectedPatternId}
+        refreshToken={refreshToken}
+        onCatalogChanged={handleCatalogChanged}
+      />
       <div className="flex-1 overflow-y-auto">
         {selectedPatternId ? (
-          <PatternDetail patternId={selectedPatternId} />
+          <PatternDetail
+            patternId={selectedPatternId}
+            refreshToken={refreshToken}
+            onCatalogChanged={handleCatalogChanged}
+            onDeleted={handlePatternDeleted}
+          />
         ) : (
           <EmptyState
             title="Select a pattern"

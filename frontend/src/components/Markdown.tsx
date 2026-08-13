@@ -39,9 +39,15 @@ export function Markdown({ text }: { text: string }) {
   const blocks: ReactNode[] = []
   let listBuffer: ListBuffer = null
   let paragraphBuffer: string[] = []
+  let blockSeq = 0
 
-  function flushParagraph(key: string) {
+  function nextKey(): string {
+    return `b-${blockSeq++}`
+  }
+
+  function flushParagraph() {
     if (paragraphBuffer.length > 0) {
+      const key = nextKey()
       blocks.push(
         <p key={key} className="mb-2 last:mb-0">
           {renderInline(paragraphBuffer.join(' '), key)}
@@ -51,9 +57,10 @@ export function Markdown({ text }: { text: string }) {
     }
   }
 
-  function flushList(key: string) {
+  function flushList() {
     if (listBuffer) {
       const { type, items } = listBuffer
+      const key = nextKey()
       blocks.push(
         type === 'ul' ? (
           <ul key={key} className="mb-2 list-disc pl-5">
@@ -73,22 +80,21 @@ export function Markdown({ text }: { text: string }) {
     }
   }
 
-  lines.forEach((rawLine, idx) => {
+  lines.forEach((rawLine) => {
     const line = rawLine.trim()
-    const key = `b-${idx}`
 
     if (line === '') {
-      flushParagraph(key)
-      flushList(key)
+      flushParagraph()
+      flushList()
       return
     }
 
     const headingMatch = /^#{1,4}\s+(.*)$/.exec(line)
     if (headingMatch) {
-      flushParagraph(key)
-      flushList(key)
+      flushParagraph()
+      flushList()
       blocks.push(
-        <h4 key={key} className="mb-1 mt-3 text-sm font-semibold text-neutral-800 first:mt-0">
+        <h4 key={nextKey()} className="mb-1 mt-3 text-sm font-semibold text-neutral-800 first:mt-0">
           {headingMatch[1]}
         </h4>,
       )
@@ -97,9 +103,9 @@ export function Markdown({ text }: { text: string }) {
 
     const orderedMatch = /^\d+\.\s+(.*)$/.exec(line)
     if (orderedMatch) {
-      flushParagraph(key)
+      flushParagraph()
       if (!listBuffer || listBuffer.type !== 'ol') {
-        flushList(key)
+        flushList()
         listBuffer = { type: 'ol', items: [] }
       }
       listBuffer.items.push(orderedMatch[1])
@@ -108,21 +114,21 @@ export function Markdown({ text }: { text: string }) {
 
     const bulletMatch = /^[-*]\s+(.*)$/.exec(line)
     if (bulletMatch) {
-      flushParagraph(key)
+      flushParagraph()
       if (!listBuffer || listBuffer.type !== 'ul') {
-        flushList(key)
+        flushList()
         listBuffer = { type: 'ul', items: [] }
       }
       listBuffer.items.push(bulletMatch[1])
       return
     }
 
-    flushList(key)
+    flushList()
     paragraphBuffer.push(line)
   })
 
-  flushParagraph('final-p')
-  flushList('final-list')
+  flushParagraph()
+  flushList()
 
   return <div className="text-sm leading-relaxed text-neutral-700">{blocks}</div>
 }

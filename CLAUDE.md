@@ -73,8 +73,17 @@ modernization-platform/
    Patterns and target-state options are reusable across clients. Decision records
    belong to an engagement. Never let engagement data leak into the pattern or
    target-state tables. This separation is the point of the product.
-7. **Soft delete only.** Nothing in the catalog is hard-deleted; set
-   `status = 'deprecated'`. Historical decision records must remain resolvable.
+7. **Never hard-delete. Deprecate and soft-delete are two distinct mechanisms —
+   do not conflate them.** Nothing in the catalog is ever hard-deleted from the
+   database.
+   - **Deprecate** sets `status = 'deprecated'`. It is a catalog lifecycle state:
+     the record stays fully visible via the status filter, and historical
+     decision records referencing it must remain resolvable.
+   - **Soft delete** sets `deleted_at`/`deleted_by`, independent of `status`. It
+     means removal: the record disappears from all normal API responses, the
+     export, and the UI, until an admin-only `restore` clears `deleted_at`. See
+     `02-DATA-MODEL.md`'s "Soft delete vs deprecate" section for the full
+     semantics before touching either.
 8. Prefer boring, readable code over clever code. This will be handed to a
    delivery team.
 

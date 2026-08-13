@@ -45,6 +45,8 @@ class Pattern(Base):
     updated_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+    deleted_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
+    deleted_by: Mapped[str | None] = mapped_column(Text)
 
     __table_args__ = (
         CheckConstraint(
@@ -52,6 +54,7 @@ class Pattern(Base):
         ),
         Index("ix_patterns_status", "status"),
         Index("ix_patterns_category", "category"),
+        Index("ix_patterns_not_deleted", "id", postgresql_where=text("deleted_at IS NULL")),
     )
 
 
@@ -88,6 +91,8 @@ class TargetStateOption(Base):
     updated_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+    deleted_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
+    deleted_by: Mapped[str | None] = mapped_column(Text)
 
     __table_args__ = (
         UniqueConstraint("pattern_id", "name", name="uq_target_state_options_pattern_name"),
@@ -101,6 +106,9 @@ class TargetStateOption(Base):
         CheckConstraint(f"effort IN {EFFORT}", name="ck_target_state_options_effort"),
         Index("ix_target_state_options_pattern_id", "pattern_id"),
         Index("ix_target_state_options_status", "status"),
+        Index(
+            "ix_target_state_options_not_deleted", "id", postgresql_where=text("deleted_at IS NULL")
+        ),
     )
 
 
@@ -121,6 +129,8 @@ class Engagement(Base):
     updated_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+    deleted_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
+    deleted_by: Mapped[str | None] = mapped_column(Text)
 
     __table_args__ = (
         CheckConstraint(f"status IN {LIFECYCLE_STATUS}", name="ck_engagements_status"),
@@ -156,6 +166,8 @@ class DecisionRecord(Base):
     updated_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+    deleted_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
+    deleted_by: Mapped[str | None] = mapped_column(Text)
 
     __table_args__ = (
         CheckConstraint(
@@ -169,6 +181,6 @@ class DecisionRecord(Base):
             "engagement_id",
             "pattern_id",
             unique=True,
-            postgresql_where=text("status <> 'superseded'"),
+            postgresql_where=text("status <> 'superseded' AND deleted_at IS NULL"),
         ),
     )

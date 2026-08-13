@@ -1,6 +1,6 @@
 import datetime
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
@@ -27,6 +27,8 @@ def _pattern_detail(db: Session, pattern: models.Pattern) -> schemas.PatternDeta
         version=pattern.version,
         created_at=pattern.created_at,
         updated_at=pattern.updated_at,
+        deleted_at=pattern.deleted_at,
+        deleted_by=pattern.deleted_by,
         target_state_options=[
             schemas.TargetStateSummary.model_validate(option) for option in options
         ],
@@ -38,9 +40,12 @@ def list_patterns(
     status: str | None = None,
     category: str | None = None,
     q: str | None = None,
+    include_deleted: bool = Query(False),
     db: Session = Depends(get_db),
 ):
     query = db.query(models.Pattern)
+    if not include_deleted:
+        query = query.filter(models.Pattern.deleted_at.is_(None))
     if status:
         query = query.filter(models.Pattern.status == status)
     if category:
@@ -58,7 +63,10 @@ def list_patterns(
 
     counts = dict(
         db.query(models.TargetStateOption.pattern_id, func.count(models.TargetStateOption.id))
-        .filter(models.TargetStateOption.status != "deprecated")
+        .filter(
+            models.TargetStateOption.status != "deprecated",
+            models.TargetStateOption.deleted_at.is_(None),
+        )
         .group_by(models.TargetStateOption.pattern_id)
         .all()
     )
@@ -74,15 +82,19 @@ def list_patterns(
             version=p.version,
             target_state_count=counts.get(p.id, 0),
             updated_at=p.updated_at,
+            deleted_at=p.deleted_at,
+            deleted_by=p.deleted_by,
         )
         for p in patterns
     ]
 
 
 @router.get("/{pattern_id}", response_model=schemas.PatternDetail)
-def get_pattern(pattern_id: str, db: Session = Depends(get_db)):
+def get_pattern(
+    pattern_id: str, include_deleted: bool = Query(False), db: Session = Depends(get_db)
+):
     pattern = db.get(models.Pattern, pattern_id)
-    if pattern is None:
+    if pattern is None or (pattern.deleted_at is not None and not include_deleted):
         raise HTTPException(status_code=404, detail=f"Pattern '{pattern_id}' not found")
     return _pattern_detail(db, pattern)
 
@@ -143,8 +155,8 @@ def update_pattern(pattern_id: str, payload: schemas.PatternUpdate, db: Session 
     return _pattern_detail(db, pattern)
 
 
-@router.delete("/{pattern_id}", response_model=schemas.PatternDeleteResponse)
-def delete_pattern(pattern_id: str, db: Session = Depends(get_db)):
+@router.post("/{pattern_id}/deprecate", response_model=schemas.PatternDeprecateResponse)
+def deprecate_pattern(pattern_id: str, db: Session = Depends(get_db)):
     pattern = db.get(models.Pattern, pattern_id)
     if pattern is None:
         raise HTTPException(status_code=404, detail=f"Pattern '{pattern_id}' not found")
@@ -157,11 +169,75 @@ def delete_pattern(pattern_id: str, db: Session = Depends(get_db)):
         .filter(
             models.DecisionRecord.pattern_id == pattern_id,
             models.DecisionRecord.status != "superseded",
+            models.DecisionRecord.deleted_at.is_(None),
         )
         .scalar()
     )
 
     db.commit()
-    return schemas.PatternDeleteResponse(
+    return schemas.PatternDeprecateResponse(
         id=pattern.id, status=pattern.status, referenced_by_decisions=referenced
     )
+
+
+@router.delete("/{pattern_id}", response_model=schemas.PatternSoftDeleteResponse)
+def delete_pattern(
+    pattern_id: str, deleted_by: str | None = Query(None), db: Session = Depends(get_db)
+):
+    pattern = db.get(models.Pattern, pattern_id)
+    if pattern is None or pattern.deleted_at is not None:
+        raise HTTPException(status_code=404, detail=f"Pattern '{pattern_id}' not found")
+
+    active_target_states = (
+        db.query(func.count(models.TargetStateOption.id))
+        .filter(
+            models.TargetStateOption.pattern_id == pattern_id,
+            models.TargetStateOption.deleted_at.is_(None),
+        )
+        .scalar()
+    )
+    if active_target_states > 0:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Pattern '{pattern_id}' has {active_target_states} non-deleted target state "
+                "option(s); remove them first."
+            ),
+        )
+
+    live_decisions = (
+        db.query(func.count(models.DecisionRecord.id))
+        .filter(
+            models.DecisionRecord.pattern_id == pattern_id,
+            models.DecisionRecord.status != "superseded",
+            models.DecisionRecord.deleted_at.is_(None),
+        )
+        .scalar()
+    )
+    if live_decisions > 0:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Pattern '{pattern_id}' is referenced by {live_decisions} non-superseded "
+                "decision record(s); supersede them first."
+            ),
+        )
+
+    pattern.deleted_at = datetime.datetime.now(datetime.timezone.utc)
+    pattern.deleted_by = deleted_by
+    db.commit()
+    return schemas.PatternSoftDeleteResponse(id=pattern.id, deleted_at=pattern.deleted_at)
+
+
+@router.post("/{pattern_id}/restore", response_model=schemas.PatternSoftDeleteResponse)
+def restore_pattern(pattern_id: str, db: Session = Depends(get_db)):
+    # Admin-only in intent — no auth/role check exists yet in this build (see
+    # CLAUDE.md's out-of-scope list). TODO: gate behind an admin role once auth exists.
+    pattern = db.get(models.Pattern, pattern_id)
+    if pattern is None:
+        raise HTTPException(status_code=404, detail=f"Pattern '{pattern_id}' not found")
+
+    pattern.deleted_at = None
+    pattern.deleted_by = None
+    db.commit()
+    return schemas.PatternSoftDeleteResponse(id=pattern.id, deleted_at=None)
