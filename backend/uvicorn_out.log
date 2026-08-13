@@ -1,0 +1,23 @@
+INFO:     127.0.0.1:59831 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59868 - "POST /api/patterns HTTP/1.1" 201 Created
+INFO:     127.0.0.1:59868 - "POST /api/patterns/wcf-iis-servicemodel/target-states HTTP/1.1" 201 Created
+INFO:     127.0.0.1:59868 - "POST /api/patterns/wcf-iis-servicemodel/target-states HTTP/1.1" 201 Created
+INFO:     127.0.0.1:59868 - "GET /api/patterns/wcf-iis-servicemodel HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59869 - "POST /api/engagements HTTP/1.1" 201 Created
+INFO:     127.0.0.1:59869 - "POST /api/engagements/client-a-ocp4/decisions HTTP/1.1" 422 Unprocessable Content
+INFO:     127.0.0.1:59870 - "POST /api/engagements/client-a-ocp4/decisions HTTP/1.1" 201 Created
+INFO:     127.0.0.1:59870 - "DELETE /api/target-states/grpc-rewrite HTTP/1.1" 409 Conflict
+INFO:     127.0.0.1:59870 - "GET /api/engagements/client-a-ocp4/coverage HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59871 - "GET /api/catalog/export HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59871 - "GET /api/catalog/export HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59883 - "GET /api/catalog/export HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59888 - "GET /api/catalog/export HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65182 - "POST /api/patterns HTTP/1.1" 409 Conflict
+INFO:     127.0.0.1:65182 - "POST /api/patterns HTTP/1.1" 422 Unprocessable Content
+INFO:     127.0.0.1:65182 - "POST /api/patterns HTTP/1.1" 201 Created
+INFO:     127.0.0.1:65182 - "POST /api/engagements/client-a-ocp4/decisions HTTP/1.1" 422 Unprocessable Content
+INFO:     127.0.0.1:65182 - "DELETE /api/patterns/wcf-iis-servicemodel HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56644 - "GET /api/engagements/client-a-ocp4/decisions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56644 - "POST /api/decisions/3b32a260-6613-4091-bfd8-e4e750646cb1/supersede HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56644 - "POST /api/engagements/client-a-ocp4/decisions HTTP/1.1" 201 Created
+INFO:     127.0.0.1:56644 - "POST /api/engagements/client-a-ocp4/decisions HTTP/1.1" 409 Conflict

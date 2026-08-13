@@ -1,9 +1,11 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import text
+from fastapi.responses import JSONResponse
+from sqlalchemy.exc import IntegrityError
 
 from app.config import settings
-from app.db import SessionLocal
+from app.routers import catalog, decisions, engagements, health, patterns, target_states
 
 app = FastAPI(title="Modernization Platform — Pattern Catalog", version="0.1.0")
 
@@ -16,15 +18,26 @@ app.add_middleware(
 )
 
 
-@app.get("/api/health")
-def health() -> dict:
-    database_status = "connected"
-    db = SessionLocal()
-    try:
-        db.execute(text("SELECT 1"))
-    except Exception:
-        database_status = "error"
-    finally:
-        db.close()
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    errors = []
+    for err in exc.errors():
+        loc = [str(part) for part in err["loc"] if part not in ("body", "query", "path")]
+        errors.append({"field": ".".join(loc) or "__root__", "message": err["msg"]})
+    return JSONResponse(status_code=422, content={"detail": errors})
 
-    return {"status": "ok", "database": database_status, "version": app.version}
+
+@app.exception_handler(IntegrityError)
+async def integrity_error_handler(request: Request, exc: IntegrityError):
+    return JSONResponse(
+        status_code=409,
+        content={"detail": f"Database constraint violation: {exc.orig}"},
+    )
+
+
+app.include_router(health.router)
+app.include_router(patterns.router)
+app.include_router(target_states.router)
+app.include_router(engagements.router)
+app.include_router(decisions.router)
+app.include_router(catalog.router)
