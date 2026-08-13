@@ -1,21 +1,23 @@
-interface CatalogPageProps {
-  engagementId: string | null
-}
+import { useState } from 'react'
+import { PatternList } from './catalog/PatternList'
+import { PatternDetail } from './catalog/PatternDetail'
+import { EmptyState } from '../components/EmptyState'
 
-export function CatalogPage({ engagementId }: CatalogPageProps) {
+export function CatalogPage() {
+  const [selectedPatternId, setSelectedPatternId] = useState<string | null>(null)
+
   return (
-    <div className="flex h-full items-center justify-center p-12 text-center">
-      <div>
-        <p className="text-sm font-medium text-neutral-500">Catalog</p>
-        <p className="mt-1 text-neutral-400">
-          Pattern list and detail view are not built yet.
-          {engagementId && (
-            <>
-              {' '}
-              Selected engagement: <span className="font-mono">{engagementId}</span>
-            </>
-          )}
-        </p>
+    <div className="flex h-full">
+      <PatternList selectedPatternId={selectedPatternId} onSelectPattern={setSelectedPatternId} />
+      <div className="flex-1 overflow-y-auto">
+        {selectedPatternId ? (
+          <PatternDetail patternId={selectedPatternId} />
+        ) : (
+          <EmptyState
+            title="Select a pattern"
+            description="Choose a pattern from the list on the left to see its details."
+          />
+        )}
       </div>
     </div>
   )

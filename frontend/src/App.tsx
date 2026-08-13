@@ -10,7 +10,7 @@ function App() {
       selectedEngagementId={selectedEngagementId}
       onSelectEngagement={setSelectedEngagementId}
     >
-      <CatalogPage engagementId={selectedEngagementId} />
+      <CatalogPage />
     </AppShell>
   )
 }
