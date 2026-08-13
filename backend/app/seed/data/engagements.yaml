@@ -1,0 +1,14 @@
+engagements:
+  - id: client-a-ocp4
+    client_name: "Client A"
+    description: "Primary engagement. 50+ repositories, 600+ applications, several hundred SSIS packages. Windows and IIS to Linux on OCP4."
+    target_platform: "Linux / OpenShift Container Platform 4"
+    default_posture: "lift-and-shift"
+    status: active
+
+  - id: reference-engagement-b
+    client_name: "Reference Engagement B"
+    description: "Illustrative second engagement demonstrating catalog reuse — the same patterns with different approved target states. Retain for demonstration purposes."
+    target_platform: "Azure Kubernetes Service"
+    default_posture: "lift-and-shift"
+    status: active
