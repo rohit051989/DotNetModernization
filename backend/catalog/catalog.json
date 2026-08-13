@@ -1,0 +1,840 @@
+{
+  "catalog_version": "1.0",
+  "decision_records": [],
+  "engagements": [],
+  "exported_at": "2026-08-13T08:14:42.848248Z",
+  "patterns": [
+    {
+      "category": "web-ui",
+      "description": "Web Forms application using the page lifecycle, ViewState, server controls\nand code-behind. There is no lift-and-shift path: Web Forms does not exist on\nmodern .NET, so any migration is a rewrite by definition.\n",
+      "detection_rules": {
+        "confidence_weight": 1.0,
+        "config_markers": [
+          "system.web"
+        ],
+        "file_globs": [
+          "**/*.aspx",
+          "**/*.ascx",
+          "**/*.Master"
+        ],
+        "notes": "Presence of .aspx files is decisive. Flag for a mandatory rewrite decision.",
+        "required_namespaces": [
+          "System.Web.UI"
+        ],
+        "target_frameworks": [
+          "net46",
+          "net461",
+          "net462",
+          "net47",
+          "net471",
+          "net472",
+          "net48"
+        ]
+      },
+      "id": "aspnet-webforms",
+      "known_risks": "This is the one pattern where the engagement's lift-and-shift default cannot be honoured. Surface it to the client early rather than discovering it mid-programme. Effort estimates for Web Forms rewrites are routinely underestimated.",
+      "legacy_stack": ".NET Framework 4.x, ASP.NET Web Forms",
+      "name": "ASP.NET Web Forms",
+      "status": "active",
+      "summary": "Server-rendered Web Forms application with .aspx pages and code-behind.",
+      "target_state_options": [
+        {
+          "consumer_impact": "high",
+          "container_ready": true,
+          "effort": "high",
+          "engine_support": {
+            "coverage": "partial",
+            "custom_skills_required": [
+              "ocp4-container-packaging",
+              "webforms-behaviour-capture"
+            ],
+            "engine": "github-copilot-app-modernization",
+            "gaps": [
+              "Web Forms page model has no direct MVC equivalent",
+              "OCP4 containerization"
+            ],
+            "scenarios": [
+              "aspnet-to-aspnetcore"
+            ],
+            "skills": [
+              "routing-migration",
+              "webconfig-to-appsettings"
+            ]
+          },
+          "id": "aspnetcore-mvc-rewrite",
+          "is_lift_and_shift": false,
+          "known_limitations": "Requires explicit reimplementation of state that ViewState previously handled implicitly.",
+          "linux_compatible": true,
+          "name": "ASP.NET Core MVC rewrite",
+          "pattern_id": "aspnet-webforms",
+          "playbook_md": "Choose over Blazor Server where the delivery team is stronger in MVC, or\nwhere a persistent connection is undesirable in the target topology.\n",
+          "prerequisites": "Same as Blazor Server. Preferred where the team's skills favour MVC over Blazor.",
+          "status": "active",
+          "summary": "Rewrite as a conventional server-rendered ASP.NET Core MVC application.",
+          "target_stack": ".NET 10 + ASP.NET Core MVC + Razor views, container on OCP4",
+          "version": 1
+        },
+        {
+          "consumer_impact": "high",
+          "container_ready": true,
+          "effort": "high",
+          "engine_support": {
+            "coverage": "partial",
+            "custom_skills_required": [
+              "ocp4-container-packaging",
+              "webforms-behaviour-capture"
+            ],
+            "engine": "github-copilot-app-modernization",
+            "gaps": [
+              "ViewState semantics",
+              "complex page lifecycle logic",
+              "OCP4 session affinity"
+            ],
+            "scenarios": [
+              "webforms-to-blazor"
+            ],
+            "skills": [
+              "webforms-page-conversion",
+              "server-control-mapping"
+            ]
+          },
+          "id": "blazor-server-net10",
+          "is_lift_and_shift": false,
+          "known_limitations": "No automated path preserves ViewState or the page lifecycle. Expect genuine redesign of stateful screens. Requires a persistent connection, which changes load-balancer and session-affinity requirements on OCP4.",
+          "linux_compatible": true,
+          "name": "Blazor Server on .NET 10",
+          "pattern_id": "aspnet-webforms",
+          "playbook_md": "## Before starting\nCapture a screen-by-screen behavioural specification. Automated conversion\nproduces a starting point, not a finished screen.\n## Verification\nConventional contract parity does not apply. Use screen-level acceptance\ntests derived from the captured specification instead.\n",
+          "prerequisites": "Screen inventory and behavioural specification captured before starting. Business sign-off on UI change.",
+          "status": "active",
+          "summary": "Rewrite as a Blazor Server application, the closest conceptual match to the Web Forms component and server-render model.",
+          "target_stack": ".NET 10 + Blazor Server, container on OCP4",
+          "version": 1
+        }
+      ],
+      "typical_indicators": ".aspx and .aspx.cs pairs, .ascx user controls, Site.Master, ViewState in rendered output, references to System.Web.UI.",
+      "version": 1
+    },
+    {
+      "category": "batch",
+      "description": "Console application with a Main entry point performing batch work — file\nprocessing, data loads, report generation — invoked on a schedule rather than\nrun continuously.\n",
+      "detection_rules": {
+        "confidence_weight": 0.9,
+        "forbidden_namespaces": [
+          "System.Web",
+          "System.ServiceModel",
+          "System.ServiceProcess"
+        ],
+        "notes": "Distinguish from Windows Service by the absence of System.ServiceProcess and ServiceBase.",
+        "project_properties": {
+          "OutputType": "Exe"
+        },
+        "target_frameworks": [
+          "net47",
+          "net471",
+          "net472",
+          "net48",
+          "netcoreapp2.1",
+          "netcoreapp3.1"
+        ]
+      },
+      "id": "console-batch-job",
+      "known_risks": "Hardcoded Windows paths, drive-letter mappings, UNC shares and Windows-only scheduling assumptions. Scheduling itself moves out of the application and into the platform, which is a change of operational ownership as much as a code change.",
+      "legacy_stack": ".NET Framework 4.x or .NET Core 2.x console",
+      "name": "Console batch application",
+      "status": "active",
+      "summary": "Console executable run on a schedule, typically by Windows Task Scheduler.",
+      "target_state_options": [
+        {
+          "consumer_impact": "low",
+          "container_ready": true,
+          "effort": "medium",
+          "engine_support": {
+            "coverage": "partial",
+            "custom_skills_required": [
+              "ocp4-container-packaging",
+              "linux-remediation",
+              "cronjob-manifest-generation"
+            ],
+            "engine": "github-copilot-app-modernization",
+            "gaps": [
+              "containerization",
+              "CronJob manifest generation",
+              "Windows path remediation"
+            ],
+            "scenarios": [
+              "dotnet-upgrade"
+            ],
+            "skills": [
+              "sdk-style-conversion",
+              "configuration-migration"
+            ]
+          },
+          "id": "ocp4-cronjob-container",
+          "is_lift_and_shift": true,
+          "known_limitations": "Scheduling moves from Windows Task Scheduler to OpenShift, changing who owns the schedule. Local file dependencies must move to a mounted volume or object storage.",
+          "linux_compatible": true,
+          "name": "OCP4 CronJob container",
+          "pattern_id": "console-batch-job",
+          "playbook_md": "## Steps\n1. Retarget to net10.0 and convert to SDK-style.\n2. Replace hardcoded paths with configuration; verify path separator and\n   case-sensitivity assumptions.\n3. Ensure a non-zero exit code on failure so OpenShift can detect it.\n4. Emit structured logs to stdout.\n5. Generate the CronJob manifest with the schedule previously held in\n   Windows Task Scheduler.\n",
+          "prerequisites": "Job is idempotent and safe to retry. File paths externalized to configuration.",
+          "status": "active",
+          "summary": "Retarget to .NET 10, containerize, and schedule as an OpenShift CronJob.",
+          "target_stack": ".NET 10 console + OCP4 CronJob",
+          "version": 1
+        },
+        {
+          "consumer_impact": "low",
+          "container_ready": true,
+          "effort": "medium",
+          "engine_support": {
+            "coverage": "partial",
+            "custom_skills_required": [
+              "worker-service-conversion",
+              "ocp4-container-packaging"
+            ],
+            "engine": "github-copilot-app-modernization",
+            "gaps": [
+              "console-to-worker restructuring",
+              "containerization"
+            ],
+            "scenarios": [
+              "dotnet-upgrade"
+            ],
+            "skills": [
+              "sdk-style-conversion"
+            ]
+          },
+          "id": "worker-service-container",
+          "is_lift_and_shift": false,
+          "known_limitations": "Consumes resources continuously. Scheduling logic moves into the application, which makes it less visible to platform operators than a CronJob.",
+          "linux_compatible": true,
+          "name": ".NET Worker Service container",
+          "pattern_id": "console-batch-job",
+          "playbook_md": "Prefer the CronJob option unless the job runs very frequently or needs to\nhold warm state between executions.\n",
+          "prerequisites": "Job frequency high enough that a persistently running pod is justified.",
+          "status": "active",
+          "summary": "Convert to a long-running Worker Service with an internal scheduler, deployed as a Deployment rather than a CronJob.",
+          "target_stack": ".NET 10 Worker Service + OCP4 Deployment",
+          "version": 1
+        }
+      ],
+      "typical_indicators": "OutputType Exe, Main entry point, no web packages, app.config, frequent use of local file paths and drive letters.",
+      "version": 1
+    },
+    {
+      "category": "web-api",
+      "description": "REST API built on ASP.NET Core 2.0-2.2 using the classic `Startup.cs`\n`ConfigureServices` / `Configure` pair and `IWebHostBuilder`. Typically\nhosted in IIS behind the ASP.NET Core Module. Out of support since 2019.\n",
+      "detection_rules": {
+        "confidence_weight": 1.0,
+        "config_markers": [],
+        "file_globs": [
+          "**/Startup.cs",
+          "**/Controllers/*Controller.cs"
+        ],
+        "forbidden_file_globs": [
+          "**/*.svc",
+          "**/*.aspx"
+        ],
+        "notes": "Highest-confidence pattern in the estate. Simplest migration path and requires no contested target-state decision.",
+        "required_namespaces": [
+          "Microsoft.AspNetCore.Mvc"
+        ],
+        "required_packages": [
+          "Microsoft.AspNetCore.App",
+          "Microsoft.AspNetCore.Mvc"
+        ],
+        "target_frameworks": [
+          "netcoreapp2.0",
+          "netcoreapp2.1",
+          "netcoreapp2.2"
+        ]
+      },
+      "id": "core2-rest-api",
+      "known_risks": "Default JSON serializer changes from Newtonsoft to System.Text.Json on modern .NET, which can silently alter payload casing, null handling and date formats. Contract snapshot before migration is essential.",
+      "legacy_stack": ".NET Core 2.0 - 2.2",
+      "name": ".NET Core 2.x REST API",
+      "status": "active",
+      "summary": "ASP.NET Core 2.x Web API with Startup-based hosting, running on IIS.",
+      "target_state_options": [
+        {
+          "consumer_impact": "none",
+          "container_ready": true,
+          "effort": "low",
+          "engine_support": {
+            "coverage": "strong",
+            "custom_skills_required": [
+              "ocp4-container-packaging",
+              "linux-remediation"
+            ],
+            "engine": "github-copilot-app-modernization",
+            "gaps": [
+              "OCP4 containerization",
+              "health endpoint injection",
+              "stdout logging configuration"
+            ],
+            "scenarios": [
+              "dotnet-upgrade"
+            ],
+            "skills": [
+              "sdk-style-conversion",
+              "aspnetcore-hosting-model"
+            ]
+          },
+          "id": "net10-api-controllers-preserved",
+          "is_lift_and_shift": true,
+          "known_limitations": "Pins Newtonsoft.Json explicitly rather than adopting System.Text.Json, to guarantee payload parity. Serializer modernization is deferred to a later pass.",
+          "linux_compatible": true,
+          "name": ".NET 10 Web API, controllers preserved",
+          "pattern_id": "core2-rest-api",
+          "playbook_md": "## Steps\n1. Convert project to SDK-style if not already.\n2. Retarget to `net10.0`.\n3. Replace `WebHost.CreateDefaultBuilder` with `WebApplication.CreateBuilder`,\n   folding `Startup.ConfigureServices` and `Startup.Configure` into `Program.cs`.\n4. Pin `Newtonsoft.Json` via `AddNewtonsoftJson()` to preserve payload shape.\n5. Replace `IHostingEnvironment` with `IWebHostEnvironment`.\n6. Move `appsettings` overrides to environment variables.\n7. Add `/healthz` and `/readyz` endpoints for OCP4 probes.\n## Parity checks\n- OpenAPI diff against the pre-migration snapshot: zero route, verb, status\n  code or schema differences.\n- Characterization tests replayed against recorded request/response pairs.\n",
+          "prerequisites": "Repository builds cleanly on the current framework. Contract snapshot captured before any change.",
+          "status": "active",
+          "summary": "Retarget to .NET 10, move to WebApplicationBuilder, keep controller classes and routes exactly as they are.",
+          "target_stack": ".NET 10 + ASP.NET Core, container on OCP4",
+          "version": 1
+        },
+        {
+          "consumer_impact": "none",
+          "container_ready": true,
+          "effort": "medium",
+          "engine_support": {
+            "coverage": "partial",
+            "custom_skills_required": [
+              "minimal-api-restructure",
+              "ocp4-container-packaging"
+            ],
+            "engine": "github-copilot-app-modernization",
+            "gaps": [
+              "controller-to-minimal-API restructuring",
+              "OCP4 containerization"
+            ],
+            "scenarios": [
+              "dotnet-upgrade"
+            ],
+            "skills": [
+              "sdk-style-conversion"
+            ]
+          },
+          "id": "net10-api-minimal",
+          "is_lift_and_shift": false,
+          "known_limitations": "External contract is unchanged but internal structure churns significantly, enlarging the review surface for no consumer-visible benefit. Not the default choice under a lift-and-shift posture.",
+          "linux_compatible": true,
+          "name": ".NET 10 Minimal API",
+          "pattern_id": "core2-rest-api",
+          "playbook_md": "Same retargeting steps as the controllers-preserved option, then convert\neach controller action to a mapped endpoint. Only select this where the\nclient explicitly wants the modern idiom and accepts the larger diff.\n",
+          "prerequisites": "Good test coverage, since endpoint code is restructured rather than retargeted.",
+          "status": "active",
+          "summary": "Retarget and additionally rewrite controllers as minimal API endpoints.",
+          "target_stack": ".NET 10 + Minimal APIs, container on OCP4",
+          "version": 1
+        }
+      ],
+      "typical_indicators": "Startup.cs with ConfigureServices/Configure, Program.cs with WebHost.CreateDefaultBuilder, controllers deriving from ControllerBase.",
+      "version": 1
+    },
+    {
+      "category": "library",
+      "description": "Non-SDK-style class library on .NET Framework 4.7x. Frequently a shared\ndependency across several applications in the same repository, which makes it\na coordination point rather than an isolated migration.\n",
+      "detection_rules": {
+        "confidence_weight": 0.8,
+        "file_globs": [
+          "**/Properties/AssemblyInfo.cs"
+        ],
+        "forbidden_namespaces": [
+          "System.Web",
+          "System.ServiceModel",
+          "System.ServiceProcess"
+        ],
+        "notes": "Lower confidence weight because many patterns share these markers. Apply after more specific patterns have been matched.",
+        "project_properties": {
+          "OutputType": "Library"
+        },
+        "target_frameworks": [
+          "net47",
+          "net471",
+          "net472"
+        ]
+      },
+      "id": "fx47-class-library",
+      "known_risks": "Shared libraries fan out. Migrating one can break every consumer simultaneously, so these must be sequenced first within a wave and verified across all dependents.",
+      "legacy_stack": ".NET Framework 4.7 / 4.7.1 / 4.7.2",
+      "name": ".NET Framework 4.7 class library",
+      "status": "active",
+      "summary": "Shared class library targeting .NET Framework 4.7, consumed by multiple applications.",
+      "target_state_options": [
+        {
+          "consumer_impact": "low",
+          "container_ready": false,
+          "effort": "low",
+          "engine_support": {
+            "coverage": "strong",
+            "custom_skills_required": [],
+            "engine": "github-copilot-app-modernization",
+            "gaps": [
+              "cross-repository consumer coordination"
+            ],
+            "scenarios": [
+              "dotnet-upgrade"
+            ],
+            "skills": [
+              "sdk-style-conversion",
+              "packages-config-to-packagereference"
+            ]
+          },
+          "id": "net10-class-library",
+          "is_lift_and_shift": true,
+          "known_limitations": "Legacy Framework consumers cannot reference a net10.0 library. Sequencing is mandatory, not optional.",
+          "linux_compatible": true,
+          "name": ".NET 10 class library",
+          "pattern_id": "fx47-class-library",
+          "playbook_md": "Preferred destination once the dependency graph shows every consumer is in\nthe same wave. Otherwise use the .NET Standard 2.0 bridge first.\n",
+          "prerequisites": "All consuming applications scheduled in the same migration wave.",
+          "status": "active",
+          "summary": "Retarget directly to .NET 10. Requires all consumers to migrate in the same wave.",
+          "target_stack": ".NET 10",
+          "version": 1
+        },
+        {
+          "consumer_impact": "none",
+          "container_ready": false,
+          "effort": "low",
+          "engine_support": {
+            "coverage": "strong",
+            "custom_skills_required": [],
+            "engine": "github-copilot-app-modernization",
+            "gaps": [],
+            "scenarios": [
+              "dotnet-upgrade",
+              "sdk-style-conversion"
+            ],
+            "skills": [
+              "sdk-style-conversion",
+              "packages-config-to-packagereference"
+            ]
+          },
+          "id": "netstandard20-bridge",
+          "is_lift_and_shift": true,
+          "known_limitations": "Interim state, not a destination. Some Framework APIs have no .NET Standard equivalent. Plan a later move to net10.0 once all consumers are migrated.",
+          "linux_compatible": true,
+          "name": ".NET Standard 2.0 bridge",
+          "pattern_id": "fx47-class-library",
+          "playbook_md": "Use where the library has consumers that cannot migrate in the same wave.\nConvert to SDK-style, migrate packages.config to PackageReference,\nretarget to netstandard2.0, remove AssemblyInfo in favour of csproj\nproperties. Both old and new consumers keep working.\n",
+          "prerequisites": "No dependency on Framework-only APIs such as System.Web, AppDomain or Windows-specific configuration.",
+          "status": "active",
+          "summary": "Retarget to .NET Standard 2.0 so both legacy and modern consumers can reference it during a phased migration.",
+          "target_stack": ".NET Standard 2.0",
+          "version": 1
+        }
+      ],
+      "typical_indicators": "Legacy csproj with <TargetFrameworkVersion>, packages.config, AssemblyInfo.cs, OutputType Library.",
+      "version": 1
+    },
+    {
+      "category": "web-api",
+      "description": "System.Web-based MVC or Web API application with Global.asax, App_Start\nconfiguration classes and web.config. Tightly coupled to IIS and the\nSystem.Web pipeline.\n",
+      "detection_rules": {
+        "confidence_weight": 1.0,
+        "config_markers": [
+          "system.web",
+          "system.webServer"
+        ],
+        "file_globs": [
+          "**/Global.asax",
+          "**/App_Start/*.cs"
+        ],
+        "forbidden_file_globs": [
+          "**/*.aspx"
+        ],
+        "notes": "Distinguish from Web Forms by the absence of .aspx files. An application may contain both, in which case record two impact-map regions.",
+        "required_namespaces": [
+          "System.Web.Mvc",
+          "System.Web.Http"
+        ],
+        "target_frameworks": [
+          "net46",
+          "net461",
+          "net462",
+          "net47",
+          "net471",
+          "net472",
+          "net48"
+        ]
+      },
+      "id": "fx-aspnet-mvc",
+      "known_risks": "HttpContext usage is often pervasive and does not map cleanly. Session state, request-scoped statics and web.config transforms all need deliberate handling.",
+      "legacy_stack": ".NET Framework 4.6 - 4.8, ASP.NET MVC 5 / Web API 2",
+      "name": "Classic ASP.NET MVC / Web API on .NET Framework",
+      "status": "active",
+      "summary": "ASP.NET MVC 5 or Web API 2 application on .NET Framework, hosted in IIS.",
+      "target_state_options": [
+        {
+          "consumer_impact": "none",
+          "container_ready": true,
+          "effort": "medium",
+          "engine_support": {
+            "coverage": "strong",
+            "custom_skills_required": [
+              "ocp4-container-packaging",
+              "linux-remediation"
+            ],
+            "engine": "github-copilot-app-modernization",
+            "gaps": [
+              "YARP proxy configuration",
+              "OCP4 containerization"
+            ],
+            "scenarios": [
+              "aspnet-to-aspnetcore"
+            ],
+            "skills": [
+              "system-web-adapters",
+              "routing-migration",
+              "httpcontext-migration",
+              "global-asax-to-startup",
+              "webconfig-to-appsettings"
+            ]
+          },
+          "id": "aspnetcore-incremental-adapters",
+          "is_lift_and_shift": true,
+          "known_limitations": "Temporarily increases operational complexity by running two applications. Requires a defined end date or the interim state becomes permanent.",
+          "linux_compatible": true,
+          "name": "Incremental migration with System.Web adapters",
+          "pattern_id": "fx-aspnet-mvc",
+          "playbook_md": "## Steps\n1. Stand up a new ASP.NET Core host alongside the existing application.\n2. Introduce YARP to route unmigrated paths back to the legacy app.\n3. Add System.Web adapters so shared session and HttpContext work across both.\n4. Migrate controllers route group by route group, verifying each.\n5. Retire the legacy host once the route inventory is exhausted.\n## Parity checks\n- Route inventory diff at each increment: no route may disappear silently.\n",
+          "prerequisites": "Ability to run two processes during transition. Route inventory captured up front.",
+          "status": "active",
+          "summary": "Run ASP.NET Core alongside the existing app using System.Web adapters and a YARP strangler proxy, migrating routes progressively.",
+          "target_stack": ".NET 10 + ASP.NET Core + System.Web adapters + YARP",
+          "version": 1
+        },
+        {
+          "consumer_impact": "low",
+          "container_ready": true,
+          "effort": "high",
+          "engine_support": {
+            "coverage": "strong",
+            "custom_skills_required": [
+              "ocp4-container-packaging",
+              "linux-remediation"
+            ],
+            "engine": "github-copilot-app-modernization",
+            "gaps": [
+              "OCP4 containerization",
+              "Windows authentication replacement on Linux"
+            ],
+            "scenarios": [
+              "aspnet-to-aspnetcore"
+            ],
+            "skills": [
+              "routing-migration",
+              "filters-migration",
+              "httpcontext-migration",
+              "global-asax-to-startup",
+              "webconfig-to-appsettings",
+              "bundling-migration"
+            ]
+          },
+          "id": "aspnetcore-mvc-net10",
+          "is_lift_and_shift": false,
+          "known_limitations": "Big-bang cutover with a large review surface. Only appropriate for small or well-tested applications.",
+          "linux_compatible": true,
+          "name": "Direct migration to ASP.NET Core MVC on .NET 10",
+          "pattern_id": "fx-aspnet-mvc",
+          "playbook_md": "Use for smaller applications where the incremental approach adds more\noperational overhead than it removes risk.\n",
+          "prerequisites": "Strong test coverage. Limited HttpContext and session sprawl.",
+          "status": "active",
+          "summary": "Single-pass migration of the whole application to ASP.NET Core MVC.",
+          "target_stack": ".NET 10 + ASP.NET Core MVC, container on OCP4",
+          "version": 1
+        }
+      ],
+      "typical_indicators": "Global.asax, App_Start/RouteConfig.cs, App_Start/WebApiConfig.cs, web.config with system.web section, references to System.Web.Mvc.",
+      "version": 1
+    },
+    {
+      "category": "data-etl",
+      "description": "Integration Services package with control flow and data flow tasks,\nconnection managers, and frequently embedded script tasks containing C# or\nVB.NET. Executed by SQL Server Agent or the SSIS catalog.\n",
+      "detection_rules": {
+        "confidence_weight": 1.0,
+        "file_globs": [
+          "**/*.dtsx",
+          "**/*.dtproj"
+        ],
+        "notes": "File extension is decisive. Complexity varies enormously between packages, so the impact map should record per-package complexity, not just presence."
+      },
+      "id": "ssis-package",
+      "known_risks": "No market tooling covers this conversion. Package XML is highly structured and parseable, which favours a deterministic-first accelerator, but transaction and checkpoint semantics, package variables and expression evaluation carry real behavioural risk. Row-level output equivalence testing is the only credible verification.",
+      "legacy_stack": "SQL Server Integration Services",
+      "name": "SSIS package",
+      "status": "active",
+      "summary": "SQL Server Integration Services package performing ETL, defined in a .dtsx file.",
+      "target_state_options": [
+        {
+          "consumer_impact": "medium",
+          "container_ready": true,
+          "effort": "medium",
+          "engine_support": {
+            "coverage": "none",
+            "custom_skills_required": [
+              "ssis-inventory-parser",
+              "ssis-to-sql-translator",
+              "ocp4-container-packaging"
+            ],
+            "engine": "none",
+            "gaps": [
+              "No market tooling covers SSIS conversion at all"
+            ],
+            "scenarios": [],
+            "skills": []
+          },
+          "id": "csharp-sql-pushdown",
+          "is_lift_and_shift": false,
+          "known_limitations": "Only applies where transformations are set-based. Row-by-row logic, external service calls and file-based sources still need application code. Moves load onto the database server.",
+          "linux_compatible": true,
+          "name": "C# orchestrator with SQL pushdown",
+          "pattern_id": "ssis-package",
+          "playbook_md": "Frequently the lower-effort option for straightforward load packages.\nAssess per package during inventory rather than choosing once for the whole\nestate — the two SSIS options are likely to be mixed across several hundred\npackages, and the segmentation rule should be recorded in the decision.\n",
+          "prerequisites": "Source and target reside on the same database platform, and the transformation is expressible as set operations.",
+          "status": "active",
+          "summary": "Push set-based transformation logic into SQL and keep a thin C# orchestrator for control flow.",
+          "target_stack": ".NET 10 worker + T-SQL + OCP4 CronJob",
+          "version": 1
+        },
+        {
+          "consumer_impact": "medium",
+          "container_ready": true,
+          "effort": "high",
+          "engine_support": {
+            "coverage": "none",
+            "custom_skills_required": [
+              "ssis-inventory-parser",
+              "ssis-dataflow-converter",
+              "ssis-script-task-porter",
+              "ocp4-container-packaging"
+            ],
+            "engine": "none",
+            "gaps": [
+              "No market tooling covers SSIS conversion at all"
+            ],
+            "scenarios": [],
+            "skills": []
+          },
+          "id": "csharp-worker-container",
+          "is_lift_and_shift": false,
+          "known_limitations": "Complex data flows with many transformations translate poorly to straight-line code. Package-level variables and expression evaluation need explicit reimplementation. Script tasks require porting on their own terms.",
+          "linux_compatible": true,
+          "name": "C# worker with in-process pipeline",
+          "pattern_id": "ssis-package",
+          "playbook_md": "## Approach\nDeterministic first: parse the .dtsx XML to inventory components,\nconnection managers and script tasks. Template-convert connection managers\nand standard data flow components. Use an LLM sub-agent only for script\ntasks and error-handling semantics.\n## Verification\nExecute the source package and the generated worker against identical\ninput, then diff output tables row by row. This is the strongest\nverification available anywhere in the programme — use it as the reference\nstandard for what a verification oracle should look like.\n",
+          "prerequisites": "Source and target schemas documented. Representative input data available for equivalence testing.",
+          "status": "active",
+          "summary": "Convert the package to a C# worker that reimplements the data flow in code, containerized for OCP4.",
+          "target_stack": ".NET 10 worker + OCP4 CronJob",
+          "version": 1
+        }
+      ],
+      "typical_indicators": ".dtsx files, .dtproj project files, connection managers, Execute SQL and Data Flow tasks, Script Task components.",
+      "version": 1
+    },
+    {
+      "category": "service",
+      "description": "WCF service using ServiceContract and OperationContract attributes, with\nbindings and behaviours configured in web.config, hosted in IIS. Frequently\nconsumed by external parties whose contracts cannot change.\n",
+      "detection_rules": {
+        "confidence_weight": 1.0,
+        "config_markers": [
+          "system.serviceModel"
+        ],
+        "file_globs": [
+          "**/*.svc"
+        ],
+        "notes": "Server-side WCF only. Client-side WCF proxies are a separate concern and are handled as part of the consuming application.",
+        "required_namespaces": [
+          "System.ServiceModel"
+        ],
+        "target_frameworks": [
+          "net46",
+          "net461",
+          "net462",
+          "net47",
+          "net471",
+          "net472",
+          "net48"
+        ]
+      },
+      "id": "wcf-iis-servicemodel",
+      "known_risks": "External consumers are the dominant constraint. Establish before any decision whether callers can change. A silently altered WSDL is the highest-consequence failure mode in this estate.",
+      "legacy_stack": ".NET Framework 4.x, WCF / System.ServiceModel",
+      "name": "WCF service hosted in IIS",
+      "status": "active",
+      "summary": "SOAP service built on System.ServiceModel and hosted in IIS via .svc endpoints.",
+      "target_state_options": [
+        {
+          "consumer_impact": "none",
+          "container_ready": true,
+          "effort": "medium",
+          "engine_support": {
+            "coverage": "strong",
+            "custom_skills_required": [
+              "ocp4-container-packaging",
+              "linux-remediation",
+              "wsdl-parity-check"
+            ],
+            "engine": "github-copilot-app-modernization",
+            "gaps": [
+              "OCP4 containerization",
+              "Windows authentication replacement",
+              "WSDL parity verification"
+            ],
+            "scenarios": [
+              "dotnet-upgrade"
+            ],
+            "skills": [
+              "upgrade-wcf-to-corewcf"
+            ]
+          },
+          "id": "corewcf-net10",
+          "is_lift_and_shift": true,
+          "known_limitations": "CoreWCF does not support every WCF binding. WS-* protocols, MSMQ transport and some Windows-integrated security modes need case-by-case assessment. Windows authentication requires an alternative on Linux.",
+          "linux_compatible": true,
+          "name": "CoreWCF on .NET 10",
+          "pattern_id": "wcf-iis-servicemodel",
+          "playbook_md": "## Steps\n1. Snapshot the published WSDL and generate a contract baseline.\n2. Retarget to net10.0 and replace System.ServiceModel hosting with CoreWCF.\n3. Translate web.config bindings and behaviours to code-based configuration.\n4. Convert synchronous contracts to Task-based where the engine proposes it,\n   verifying the generated WSDL is unchanged.\n5. Replace Windows authentication with the engagement-approved mechanism.\n## Parity checks\n- WSDL diff against the baseline: must be empty.\n- Recorded SOAP request/response pairs replayed against the new service.\n",
+          "prerequisites": "Bindings in use must be supported by CoreWCF. WSDL snapshot captured before migration.",
+          "status": "active",
+          "summary": "Port to CoreWCF, preserving service contracts, bindings and the published WSDL.",
+          "target_stack": ".NET 10 + CoreWCF, container on OCP4",
+          "version": 1
+        },
+        {
+          "consumer_impact": "high",
+          "container_ready": true,
+          "effort": "high",
+          "engine_support": {
+            "coverage": "none",
+            "custom_skills_required": [
+              "wcf-contract-to-proto",
+              "ocp4-container-packaging"
+            ],
+            "engine": "github-copilot-app-modernization",
+            "gaps": [
+              "No engine path from WCF contracts to protobuf definitions"
+            ],
+            "scenarios": [],
+            "skills": []
+          },
+          "id": "grpc-net10",
+          "is_lift_and_shift": false,
+          "known_limitations": "All callers must change. Only viable where consumers are internal and in scope for coordinated change.",
+          "linux_compatible": true,
+          "name": "gRPC service on .NET 10",
+          "pattern_id": "wcf-iis-servicemodel",
+          "playbook_md": "Contract-first. Derive .proto definitions from the existing service\ncontracts, then implement against them. Requires a coordinated client\nmigration plan before starting.\n",
+          "prerequisites": "Every consumer must be able to adopt a gRPC client. Requires HTTP/2 support through the OCP4 ingress path.",
+          "status": "active",
+          "summary": "Rewrite as a contract-first gRPC service.",
+          "target_stack": ".NET 10 + gRPC, container on OCP4",
+          "version": 1
+        },
+        {
+          "consumer_impact": "high",
+          "container_ready": true,
+          "effort": "high",
+          "engine_support": {
+            "coverage": "none",
+            "custom_skills_required": [
+              "wcf-contract-to-rest",
+              "ocp4-container-packaging"
+            ],
+            "engine": "github-copilot-app-modernization",
+            "gaps": [
+              "No engine path from WCF to REST resource modelling"
+            ],
+            "scenarios": [],
+            "skills": []
+          },
+          "id": "rest-net10",
+          "is_lift_and_shift": false,
+          "known_limitations": "The largest change of the three options. SOAP faults, message-level security and transactional semantics have no direct REST equivalent.",
+          "linux_compatible": true,
+          "name": "REST API on .NET 10",
+          "pattern_id": "wcf-iis-servicemodel",
+          "playbook_md": "Select only where SOAP retirement is an explicit programme objective and\nevery consumer is in scope for coordinated change.\n",
+          "prerequisites": "All consumers able to change. Resource model designed and agreed.",
+          "status": "active",
+          "summary": "Rewrite as a conventional REST API, retiring SOAP entirely.",
+          "target_stack": ".NET 10 + ASP.NET Core, container on OCP4",
+          "version": 1
+        }
+      ],
+      "typical_indicators": ".svc files, [ServiceContract] and [OperationContract] attributes, system.serviceModel section in web.config, generated WSDL endpoints.",
+      "version": 1
+    },
+    {
+      "category": "service",
+      "description": "Background service installed on Windows via ServiceBase and InstallUtil,\nrunning continuously under a service account.\n",
+      "detection_rules": {
+        "confidence_weight": 1.0,
+        "notes": "ServiceBase inheritance is decisive.",
+        "project_properties": {
+          "OutputType": "Exe"
+        },
+        "required_namespaces": [
+          "System.ServiceProcess"
+        ],
+        "target_frameworks": [
+          "net47",
+          "net471",
+          "net472",
+          "net48"
+        ]
+      },
+      "id": "windows-service",
+      "known_risks": "Service account identity often carries Windows-integrated permissions to file shares and databases. The identity model must be redesigned for Linux, not merely ported.",
+      "legacy_stack": ".NET Framework 4.x, System.ServiceProcess",
+      "name": "Windows Service",
+      "status": "active",
+      "summary": "Long-running Windows Service built on ServiceBase.",
+      "target_state_options": [
+        {
+          "consumer_impact": "low",
+          "container_ready": true,
+          "effort": "medium",
+          "engine_support": {
+            "coverage": "partial",
+            "custom_skills_required": [
+              "windows-service-conversion",
+              "ocp4-container-packaging",
+              "linux-remediation"
+            ],
+            "engine": "github-copilot-app-modernization",
+            "gaps": [
+              "ServiceBase to BackgroundService conversion",
+              "containerization",
+              "Windows authentication replacement"
+            ],
+            "scenarios": [
+              "dotnet-upgrade"
+            ],
+            "skills": [
+              "sdk-style-conversion"
+            ]
+          },
+          "id": "worker-service-daemon-container",
+          "is_lift_and_shift": true,
+          "known_limitations": "Windows-integrated authentication to SQL Server or file shares has no direct Linux equivalent. Expect a security-driven forcing factor here rather than a pure lift-and-shift.",
+          "linux_compatible": true,
+          "name": ".NET Worker Service container",
+          "pattern_id": "windows-service",
+          "playbook_md": "## Steps\n1. Replace ServiceBase with BackgroundService under the generic host.\n2. Map OnStart/OnStop to ExecuteAsync and StopAsync with cancellation.\n3. Remove the installer project; OpenShift owns lifecycle now.\n4. Replace Windows-integrated authentication with the approved mechanism.\n5. Add liveness and readiness probes.\n",
+          "prerequisites": "Service account permissions mapped to an alternative identity mechanism on OCP4.",
+          "status": "active",
+          "summary": "Convert ServiceBase to a BackgroundService hosted worker, containerized and deployed as an OCP4 Deployment.",
+          "target_stack": ".NET 10 Worker Service + OCP4 Deployment",
+          "version": 1
+        }
+      ],
+      "typical_indicators": "ServiceBase subclass, ProjectInstaller.cs, System.ServiceProcess reference, OnStart/OnStop overrides.",
+      "version": 1
+    }
+  ]
+}
