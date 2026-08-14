@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     api_host: str = "127.0.0.1"
     api_port: int = 8000
     cors_origins: str = "http://localhost:5173"
+    runs_dir: str = "./runs"
 
     @property
     def cors_origins_list(self) -> list[str]:

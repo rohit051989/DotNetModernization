@@ -13,6 +13,7 @@ from app.routers import (
     health,
     patterns,
     target_states,
+    workflow_executions,
     workflow_jobs,
     workflow_steps,
 )
@@ -54,3 +55,4 @@ app.include_router(decisions.router)
 app.include_router(catalog.router)
 app.include_router(workflow_steps.router)
 app.include_router(workflow_jobs.router)
+app.include_router(workflow_executions.router)

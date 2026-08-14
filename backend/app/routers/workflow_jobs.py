@@ -13,6 +13,10 @@ from app.workflow.definition.schemas import (
     ValidationErrorOut,
 )
 from app.workflow.definition.service import DuplicateJobVersionError
+from app.workflow.runtime import service as runtime_service
+from app.workflow.runtime.instance import ParameterValidationError
+from app.workflow.runtime.schemas import JobExecutionOut, LaunchJobRequest
+from app.workflow.runtime.service import PreconditionError
 
 router = APIRouter(prefix="/api/workflow/jobs", tags=["workflow"])
 
@@ -71,3 +75,19 @@ def get_active_job(job_name: str, db: Session = Depends(get_db)):
     if row is None:
         raise HTTPException(status_code=404, detail=f"No active definition for job '{job_name}'")
     return JobDefinition.model_validate(row)
+
+
+@router.post("/{job_name}/launch", response_model=JobExecutionOut, status_code=202)
+def launch_job(job_name: str, payload: LaunchJobRequest, db: Session = Depends(get_db)):
+    try:
+        execution = runtime_service.launch_job(db, job_name, payload.parameters, triggered_by="api")
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except (ParameterValidationError, PreconditionError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except NotImplementedError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    db.commit()
+    db.refresh(execution)
+    return runtime_service.to_execution_out(db, execution)
