@@ -47,6 +47,60 @@ def _tilde_bounds(base: Version) -> tuple[Version, Version]:
     return base, (major, minor + 1, 0)
 
 
+def _next_patch(version: Version) -> Version:
+    major, minor, patch = version
+    return major, minor, patch + 1
+
+
+def range_bounds(version_range: str) -> tuple[Version, Version | None]:
+    """(lower_inclusive, upper_exclusive) for a range. `None` upper means
+    unbounded above. Used to check two RANGES against each other (e.g. a
+    step's consumes range against an external_inputs range) — `satisfies`
+    above only compares a concrete version against a range."""
+    version_range = version_range.strip()
+
+    if version_range.startswith("^"):
+        return _caret_bounds(parse_version(version_range[1:]))
+    if version_range.startswith("~"):
+        return _tilde_bounds(parse_version(version_range[1:]))
+
+    lower: Version = (0, 0, 0)
+    upper: Version | None = None
+    clauses = version_range.split()
+    if not clauses:
+        raise ValueError("version_range must not be empty")
+
+    for clause in clauses:
+        match = _COMPARATOR_RE.match(clause)
+        if not match:
+            raise ValueError(f"'{clause}' is not a valid range clause in '{version_range}'")
+        op, clause_version = match.groups()
+        op = op or "="
+        version = parse_version(clause_version)
+        if op == ">=":
+            lower = version
+        elif op == ">":
+            lower = _next_patch(version)
+        elif op == "<":
+            upper = version
+        elif op == "<=":
+            upper = _next_patch(version)
+        elif op == "=":
+            lower, upper = version, _next_patch(version)
+    return lower, upper
+
+
+def ranges_overlap(range_a: str, range_b: str) -> bool:
+    """True if some version could satisfy both ranges at once."""
+    lower_a, upper_a = range_bounds(range_a)
+    lower_b, upper_b = range_bounds(range_b)
+    if upper_a is not None and _compare(lower_b, upper_a) >= 0:
+        return False
+    if upper_b is not None and _compare(lower_a, upper_b) >= 0:
+        return False
+    return True
+
+
 def satisfies(version: str, version_range: str) -> bool:
     """True if `version` falls within `version_range`."""
     v = parse_version(version)

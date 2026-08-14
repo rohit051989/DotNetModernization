@@ -4,12 +4,34 @@ Declarative YAML describing a job's steps and flow. Loaded, validated, and store
 `wf_job_definitions`. Job definitions live in `backend/app/jobs/*.yaml` and are
 committed to git.
 
+## Phase 0 is two jobs, not one
+
+Earlier drafts of this document showed a single `phase0-estate-discovery` job
+covering lifecycle steps 1-12. That job does not exist. `15-REPOSITORY-INGEST-UI.md`
+Part A splits phase 0 by scope instead:
+
+- `phase0-repository-discovery` — per repository, steps 1, 2, 3, 4, 8, 9, 10. Defined
+  in `backend/app/jobs/phase0-repository-discovery.yaml`. Launched automatically on
+  registration or rescan.
+- `phase0-estate-consolidation` — engagement-scoped, steps 5, 6, 7, 11, 12. **Not
+  defined yet** — all five steps are stubs. Its precondition, once defined, will be
+  that every in-scope, non-deleted repository has a completed
+  `phase0-repository-discovery` execution.
+
+Steps 5, 6, 7, 11 and 12 are genuinely estate-wide — clustering unmatched patterns,
+building a cross-repository dependency graph, or planning waves cannot be done from a
+single repository. That is the reason for the split, not an arbitrary size limit.
+
+The minimal example below is illustrative of the format's features, not a literal
+job. See `backend/app/jobs/phase0-repository-discovery.yaml` for the real,
+currently-defined job.
+
 ## Minimal example
 
 ```yaml
-job_name: phase0-estate-discovery
+job_name: example-job
 version: 1
-description: "Estate discovery and inventory. Lifecycle steps 1-12."
+description: "Illustrates parameters, external inputs, and input wiring."
 
 parameters:
   - name: engagement_id

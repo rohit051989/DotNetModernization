@@ -1,0 +1,25 @@
+job_name: phase0-repository-discovery
+version: 1
+description: "Per-repository discovery and analysis. Lifecycle steps 1,2,3,4,8,9,10."
+
+parameters:
+  - name: engagement_id
+    type: string
+    required: true
+  - name: repository_id
+    type: string
+    required: true
+  - name: ingest_token
+    type: string
+    required: true
+
+stub_policy: continue
+
+flow:
+  - step: repository-ingest
+  - step: solution-discovery
+  - step: application-fingerprinting
+  - step: pattern-classification
+  - step: impact-map-generation
+  - step: test-coverage-assessment
+  - step: risk-scoring-tier-assignment
