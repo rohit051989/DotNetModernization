@@ -21,6 +21,7 @@ class ParameterSpec(BaseModel):
     type: str
     required: bool = False
     default: Any = None
+    description: str | None = None
 
 
 class ExternalInputSpec(BaseModel):

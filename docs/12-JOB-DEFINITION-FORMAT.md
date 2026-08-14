@@ -37,10 +37,12 @@ parameters:
   - name: engagement_id
     type: string
     required: true
+    description: "The engagement this run belongs to."
   - name: source_type
     type: string
     required: false
     default: manifest
+    description: "Optional. Where to read repositories from."
 
 external_inputs:
   - logical_name: repo_manifest
@@ -55,6 +57,12 @@ flow:
     config:
       source_type: "${params.source_type}"
 ```
+
+Each parameter may carry an optional `description` — plain text explaining what
+it's for. Purely documentary; the engine does not read it. It's what
+`GET /api/workflow/jobs/{job_name}/parameters` (see below) surfaces to a launch
+form or an integrator, so a job author should write one for every parameter that
+isn't self-explanatory from its name alone.
 
 ## Flow constructs
 
@@ -257,7 +265,31 @@ POST /api/workflow/jobs/validate               validate YAML without storing
 POST /api/workflow/jobs                        store, validate, optionally activate
 POST /api/workflow/jobs/{name}/activate/{ver}  activate a validated version
 GET  /api/workflow/jobs/{name}                 current active definition
+GET  /api/workflow/jobs/{name}/parameters      declared parameters, for a launch form
+POST /api/workflow/jobs/{name}/launch          launch — see 18-API-CONVENTIONS.md Part B
 ```
 
 Activation is refused for an invalid definition. Only one active version per
 `job_name`.
+
+`GET .../parameters` reads the *active* definition's `parameters` block — name,
+type, required, default, and description — so a launch form (or an integrator)
+never has to hardcode per-job knowledge. See `18-API-CONVENTIONS.md` Part B for
+the exact response shape.
+
+Launch (`POST .../launch`) validates the supplied `{"parameters": {...}}` against
+that same declared list before doing anything else. Every failure names the
+offending parameter and says whether it was missing, unknown, or the wrong
+declared type, and points back at `GET .../parameters`:
+
+```json
+{
+  "detail": [
+    {
+      "field": "ingest_token",
+      "message": "missing required parameter 'ingest_token'. See GET /api/workflow/jobs/phase0-repository-discovery/parameters for the full parameter list.",
+      "code": "MISSING_REQUIRED_PARAMETER"
+    }
+  ]
+}
+```

@@ -1,17 +1,20 @@
 job_name: phase0-repository-discovery
-version: 1
+version: 2
 description: "Per-repository discovery and analysis. Lifecycle steps 1,2,3,4,8,9,10."
 
 parameters:
   - name: engagement_id
     type: string
     required: true
+    description: "The engagement this run belongs to."
   - name: repository_id
     type: string
     required: true
+    description: "UUID of the registered repository to analyse."
   - name: ingest_token
     type: string
     required: true
+    description: "UUID generated per registration or rescan. Makes each rescan a distinct job instance rather than a restart of the previous one."
 
 stub_policy: continue
 

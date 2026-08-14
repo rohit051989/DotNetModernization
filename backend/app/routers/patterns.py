@@ -1,14 +1,17 @@
 import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app import models, schemas
 from app.db import get_db
+from app.errors import ErrorResponse, error
 from app.routers.target_states import get_target_states_for_pattern
 
-router = APIRouter(prefix="/api/patterns", tags=["patterns"])
+router = APIRouter(prefix="/api/patterns", tags=["Patterns"])
+
+_NOT_FOUND = {"model": ErrorResponse, "description": "No pattern exists with this id (or it is soft-deleted and `include_deleted` was not set)."}
 
 
 def _pattern_detail(db: Session, pattern: models.Pattern) -> schemas.PatternDetail:
@@ -35,12 +38,18 @@ def _pattern_detail(db: Session, pattern: models.Pattern) -> schemas.PatternDeta
     )
 
 
-@router.get("", response_model=list[schemas.PatternSummary])
+@router.get(
+    "",
+    response_model=list[schemas.PatternSummary],
+    summary="List master catalog patterns",
+    response_description="Patterns matching the filters, ordered by id.",
+    operation_id="list_patterns",
+)
 def list_patterns(
-    status: str | None = None,
-    category: str | None = None,
-    q: str | None = None,
-    include_deleted: bool = Query(False),
+    status: str | None = Query(None, description="Filter by lifecycle status: 'draft', 'active', or 'deprecated'."),
+    category: str | None = Query(None, description="Filter by exact category match."),
+    q: str | None = Query(None, description="Case-insensitive substring match against name, summary, and legacy_stack."),
+    include_deleted: bool = Query(False, description="Include soft-deleted patterns."),
     db: Session = Depends(get_db),
 ):
     query = db.query(models.Pattern)
@@ -89,20 +98,38 @@ def list_patterns(
     ]
 
 
-@router.get("/{pattern_id}", response_model=schemas.PatternDetail)
+@router.get(
+    "/{pattern_id}",
+    response_model=schemas.PatternDetail,
+    summary="Get a pattern, with its target state options",
+    response_description="The pattern, including every non-deleted target state option nested under it.",
+    operation_id="get_pattern",
+    responses={404: _NOT_FOUND},
+)
 def get_pattern(
-    pattern_id: str, include_deleted: bool = Query(False), db: Session = Depends(get_db)
+    pattern_id: str,
+    include_deleted: bool = Query(False, description="Return the pattern even if it is soft-deleted."),
+    db: Session = Depends(get_db),
 ):
     pattern = db.get(models.Pattern, pattern_id)
     if pattern is None or (pattern.deleted_at is not None and not include_deleted):
-        raise HTTPException(status_code=404, detail=f"Pattern '{pattern_id}' not found")
+        raise error(404, f"Pattern '{pattern_id}' not found", code="NOT_FOUND")
     return _pattern_detail(db, pattern)
 
 
-@router.post("", response_model=schemas.PatternDetail, status_code=201)
+@router.post(
+    "",
+    response_model=schemas.PatternDetail,
+    status_code=201,
+    summary="Create a master catalog pattern",
+    response_description="The newly created pattern.",
+    operation_id="create_pattern",
+    responses={409: {"model": ErrorResponse, "description": "A pattern with this id already exists, including a soft-deleted one — restore it instead of recreating it."}},
+)
 def create_pattern(payload: schemas.PatternCreate, db: Session = Depends(get_db)):
+    """`id` must be a lowercase, hyphenated slug (`^[a-z0-9]+(-[a-z0-9]+)*$`)."""
     if db.get(models.Pattern, payload.id) is not None:
-        raise HTTPException(status_code=409, detail=f"Pattern '{payload.id}' already exists")
+        raise error(409, f"Pattern '{payload.id}' already exists", field="id", code="DUPLICATE_ID")
 
     pattern = models.Pattern(
         id=payload.id,
@@ -122,11 +149,20 @@ def create_pattern(payload: schemas.PatternCreate, db: Session = Depends(get_db)
     return _pattern_detail(db, pattern)
 
 
-@router.put("/{pattern_id}", response_model=schemas.PatternDetail)
+@router.put(
+    "/{pattern_id}",
+    response_model=schemas.PatternDetail,
+    summary="Update a pattern",
+    response_description="The updated pattern.",
+    operation_id="update_pattern",
+    responses={404: _NOT_FOUND},
+)
 def update_pattern(pattern_id: str, payload: schemas.PatternUpdate, db: Session = Depends(get_db)):
+    """`version` increments only when `detection_rules`, `name`, `legacy_stack`
+    or `category` change — cosmetic edits to `description` do not bump it."""
     pattern = db.get(models.Pattern, pattern_id)
     if pattern is None:
-        raise HTTPException(status_code=404, detail=f"Pattern '{pattern_id}' not found")
+        raise error(404, f"Pattern '{pattern_id}' not found", code="NOT_FOUND")
 
     new_detection_rules = payload.detection_rules.model_dump()
     material_change = (
@@ -169,11 +205,28 @@ def _count_live_decisions(db: Session, pattern_id: str) -> int:
     )
 
 
-@router.post("/{pattern_id}/deprecate", response_model=schemas.PatternDeprecateResponse)
+@router.post(
+    "/{pattern_id}/deprecate",
+    response_model=schemas.PatternDeprecateResponse,
+    summary="Deprecate a pattern",
+    response_description="The pattern's new status and how many live decisions still reference it.",
+    operation_id="deprecate_pattern",
+    responses={404: _NOT_FOUND},
+)
 def deprecate_pattern(pattern_id: str, db: Session = Depends(get_db)):
+    """
+    Sets `status = 'deprecated'`. **Permissive** — always succeeds, even if
+    decision records still reference the pattern; `referenced_by_decisions`
+    in the response lets the UI warn without blocking the action.
+
+    Distinct from `DELETE` (soft delete): a deprecated pattern stays fully
+    visible in every list/get response and via the status filter. Cascades:
+    every non-deleted target state option under this pattern is deprecated
+    in the same request.
+    """
     pattern = db.get(models.Pattern, pattern_id)
     if pattern is None:
-        raise HTTPException(status_code=404, detail=f"Pattern '{pattern_id}' not found")
+        raise error(404, f"Pattern '{pattern_id}' not found", code="NOT_FOUND")
 
     pattern.status = "deprecated"
     pattern.updated_at = datetime.datetime.now(datetime.timezone.utc)
@@ -198,24 +251,47 @@ def deprecate_pattern(pattern_id: str, db: Session = Depends(get_db)):
     )
 
 
-@router.delete("/{pattern_id}", response_model=schemas.PatternSoftDeleteResponse)
+@router.delete(
+    "/{pattern_id}",
+    response_model=schemas.PatternSoftDeleteResponse,
+    summary="Soft-delete a pattern",
+    response_description="When the soft delete took effect.",
+    operation_id="delete_pattern",
+    responses={
+        404: _NOT_FOUND,
+        409: {"model": ErrorResponse, "description": "A non-superseded, non-deleted decision record (in any engagement) still references this pattern."},
+    },
+)
 def delete_pattern(
-    pattern_id: str, deleted_by: str | None = Query(None), db: Session = Depends(get_db)
+    pattern_id: str,
+    deleted_by: str | None = Query(None, description="Free-text identity performing the delete — there is no auth system yet to source one from."),
+    db: Session = Depends(get_db),
 ):
+    """
+    Sets `deleted_at`/`deleted_by`, excluding the pattern from every normal
+    list/get response and from the export. **Guarded, not permissive** —
+    refused with 409 if any non-superseded decision record in any engagement
+    still references it; supersede or remove those first. The mere existence
+    of target state options never blocks this — it cascades over them
+    instead, soft-deleting every non-deleted option under this pattern in
+    the same request.
+
+    Distinct from `POST .../deprecate`: that sets a status flag and stays
+    visible everywhere; this actually hides the record.
+    """
     pattern = db.get(models.Pattern, pattern_id)
     if pattern is None or pattern.deleted_at is not None:
-        raise HTTPException(status_code=404, detail=f"Pattern '{pattern_id}' not found")
+        raise error(404, f"Pattern '{pattern_id}' not found", code="NOT_FOUND")
 
     # Blocked only by live decisions, in any engagement — never by the mere
     # existence of target state options, which this action cascades over instead.
     live_decisions = _count_live_decisions(db, pattern_id)
     if live_decisions > 0:
-        raise HTTPException(
-            status_code=409,
-            detail=(
-                f"Pattern '{pattern_id}' is referenced by {live_decisions} non-superseded "
-                "decision record(s); supersede them first."
-            ),
+        raise error(
+            409,
+            f"Pattern '{pattern_id}' is referenced by {live_decisions} non-superseded "
+            "decision record(s); supersede them first.",
+            code="REFERENCED_BY_DECISIONS",
         )
 
     pattern.deleted_at = datetime.datetime.now(datetime.timezone.utc)
@@ -237,13 +313,28 @@ def delete_pattern(
     return schemas.PatternSoftDeleteResponse(id=pattern.id, deleted_at=pattern.deleted_at)
 
 
-@router.post("/{pattern_id}/restore", response_model=schemas.PatternSoftDeleteResponse)
+@router.post(
+    "/{pattern_id}/restore",
+    response_model=schemas.PatternSoftDeleteResponse,
+    summary="Restore a soft-deleted pattern",
+    response_description="deleted_at is now null.",
+    operation_id="restore_pattern",
+    responses={404: {"model": ErrorResponse, "description": "No pattern exists with this id."}},
+)
 def restore_pattern(pattern_id: str, db: Session = Depends(get_db)):
-    # Admin-only in intent — no auth/role check exists yet in this build (see
-    # CLAUDE.md's out-of-scope list). TODO: gate behind an admin role once auth exists.
+    """
+    Clears `deleted_at`/`deleted_by` unconditionally, deleted or not —
+    restoring an already-live pattern is a harmless no-op. `status` is
+    untouched, so the pattern reappears exactly as active/deprecated/draft as
+    before deletion.
+
+    Admin-only in intent; unguarded for now, like every endpoint in this
+    build — no auth system exists yet (see CLAUDE.md).
+    """
+    # TODO: gate behind an admin role once auth exists.
     pattern = db.get(models.Pattern, pattern_id)
     if pattern is None:
-        raise HTTPException(status_code=404, detail=f"Pattern '{pattern_id}' not found")
+        raise error(404, f"Pattern '{pattern_id}' not found", code="NOT_FOUND")
 
     pattern.deleted_at = None
     pattern.deleted_by = None

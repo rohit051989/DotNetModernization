@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { createDecision, updateDecision } from '../../api/catalog'
+import { upsertEngagementPatternDecision } from '../../api/catalog'
 import { ApiError } from '../../api/client'
 import { Drawer } from '../../components/Drawer'
 import { ConfirmDialog } from '../../components/ConfirmDialog'
@@ -123,11 +123,7 @@ export function DecisionForm({
     }
 
     try {
-      if (decision) {
-        await updateDecision(decision.id, payload)
-      } else {
-        await createDecision(engagementId, { pattern_id: patternId, ...payload })
-      }
+      await upsertEngagementPatternDecision(engagementId, patternId, payload)
       showToast('success', `Decision ${decision ? 'updated' : 'recorded'}.`)
       onSaved()
     } catch (err) {

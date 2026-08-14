@@ -16,20 +16,38 @@ from app import models
 from app.workflow.definition.model import JobDefinitionFile
 
 
-def evaluate_preconditions(db: Session, definition: JobDefinitionFile, parameters: dict) -> list[str]:
-    """Returns human-readable reasons any precondition is unmet. Empty means
-    the job may launch."""
-    failures: list[str] = []
+def evaluate_preconditions(db: Session, definition: JobDefinitionFile, parameters: dict) -> list[dict]:
+    """Returns errors in this API's shared shape (`field`/`message`/`code`)
+    for every unmet precondition. Empty means the job may launch."""
+    failures: list[dict] = []
     for pre in definition.preconditions:
         if pre.type == "job_completed":
             if not _job_completed(db, pre.job_name, parameters):
-                failures.append(pre.description or f"job '{pre.job_name}' has not completed")
+                failures.append(
+                    {
+                        "field": None,
+                        "message": pre.description or f"job '{pre.job_name}' has not completed",
+                        "code": "PRECONDITION_JOB_NOT_COMPLETED",
+                    }
+                )
         elif pre.type == "artifact_exists":
             if not _artifact_exists(db, pre.artifact_type):
-                failures.append(pre.description or f"no artifact of type '{pre.artifact_type}' exists")
+                failures.append(
+                    {
+                        "field": None,
+                        "message": pre.description or f"no artifact of type '{pre.artifact_type}' exists",
+                        "code": "PRECONDITION_ARTIFACT_MISSING",
+                    }
+                )
         elif pre.type == "decision_approved":
             if not _decision_approved(db, pre.pattern_id, parameters):
-                failures.append(pre.description or f"pattern '{pre.pattern_id}' has no approved decision")
+                failures.append(
+                    {
+                        "field": None,
+                        "message": pre.description or f"pattern '{pre.pattern_id}' has no approved decision",
+                        "code": "PRECONDITION_DECISION_NOT_APPROVED",
+                    }
+                )
     return failures
 
 

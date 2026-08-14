@@ -15,35 +15,75 @@ from app import models
 from app.workflow.definition.model import JobDefinitionFile
 
 
+_TYPE_CHECKS = {
+    "string": lambda v: isinstance(v, str),
+    "integer": lambda v: isinstance(v, int) and not isinstance(v, bool),
+    "boolean": lambda v: isinstance(v, bool),
+    "number": lambda v: isinstance(v, (int, float)) and not isinstance(v, bool),
+}
+
+
 class ParameterValidationError(Exception):
-    def __init__(self, errors: list[str]):
-        super().__init__("; ".join(errors))
+    """Carries errors in this API's shared shape (`field`/`message`/`code`)
+    — see app/errors.py. Each error names the offending parameter and says
+    whether it was missing, unknown, or the wrong type."""
+
+    def __init__(self, errors: list[dict]):
+        super().__init__("; ".join(e["message"] for e in errors))
         self.errors = errors
 
 
-def resolve_parameters(definition: JobDefinitionFile, provided: dict) -> dict:
-    """Applies declared defaults, enforces `required`, and rejects parameters
-    the job definition does not declare."""
+def resolve_parameters(job_name: str, definition: JobDefinitionFile, provided: dict) -> dict:
+    """Applies declared defaults, enforces `required`, checks basic types,
+    and rejects parameters the job definition does not declare. Every error
+    points at `GET /api/workflow/jobs/{job_name}/parameters` for the full
+    contract — see 18-API-CONVENTIONS.md Part B."""
     resolved: dict = {}
-    errors: list[str] = []
+    problems: list[dict] = []
     declared_names = {p.name for p in definition.parameters}
+    pointer = f"See GET /api/workflow/jobs/{job_name}/parameters for the full parameter list."
 
     for param in definition.parameters:
         if param.name in provided:
-            resolved[param.name] = provided[param.name]
+            value = provided[param.name]
+            type_check = _TYPE_CHECKS.get(param.type)
+            if type_check is not None and not type_check(value):
+                problems.append(
+                    {
+                        "field": param.name,
+                        "message": (
+                            f"'{param.name}' must be of type '{param.type}', got "
+                            f"{type(value).__name__}. {pointer}"
+                        ),
+                        "code": "WRONG_TYPE",
+                    }
+                )
+            else:
+                resolved[param.name] = value
         elif param.default is not None:
             resolved[param.name] = param.default
         elif param.required:
-            errors.append(f"missing required parameter '{param.name}'")
+            problems.append(
+                {
+                    "field": param.name,
+                    "message": f"missing required parameter '{param.name}'. {pointer}",
+                    "code": "MISSING_REQUIRED_PARAMETER",
+                }
+            )
         else:
             resolved[param.name] = None
 
-    unknown = sorted(set(provided) - declared_names)
-    if unknown:
-        errors.append(f"unknown parameters: {', '.join(unknown)}")
+    for name in sorted(set(provided) - declared_names):
+        problems.append(
+            {
+                "field": name,
+                "message": f"'{name}' is not a declared parameter for '{job_name}'. {pointer}",
+                "code": "UNKNOWN_PARAMETER",
+            }
+        )
 
-    if errors:
-        raise ParameterValidationError(errors)
+    if problems:
+        raise ParameterValidationError(problems)
     return resolved
 
 

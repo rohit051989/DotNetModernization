@@ -2,13 +2,14 @@ import datetime
 import json
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.orm import Session
 
 from app import models, schemas
 from app.db import get_db
+from app.errors import ErrorResponse, errors
 
-router = APIRouter(prefix="/api/catalog", tags=["catalog"])
+router = APIRouter(prefix="/api/catalog", tags=["Catalog"])
 
 CATALOG_VERSION = "1.0"
 
@@ -88,32 +89,59 @@ def _serialize(obj, fields: list[str], include_timestamps: bool) -> dict:
     return data
 
 
-@router.get("/export")
+@router.get(
+    "/export",
+    summary="Export the catalog as deterministic JSON",
+    response_description="A byte-identical-for-identical-data JSON document, suitable for committing to git.",
+    operation_id="export_catalog",
+    responses={422: {"model": ErrorResponse, "description": "scope=engagement without a valid engagement_id."}},
+)
 def export_catalog(
-    scope: str = Query("master", pattern="^(master|engagement)$"),
-    engagement_id: str | None = Query(None),
-    include_engagements: bool = Query(False),
-    include_timestamps: bool = Query(False),
+    scope: str = Query(
+        "master",
+        pattern="^(master|engagement)$",
+        description="'master' (default) exports only patterns and target state options — client-agnostic, no overlay or decisions, regardless of include_engagements. 'engagement' additionally merges one engagement's overlay and decisions.",
+    ),
+    engagement_id: str | None = Query(
+        None, description="Required when scope=engagement; ignored otherwise."
+    ),
+    include_engagements: bool = Query(
+        False, description="Also include the engagements/decision_records arrays. Only takes effect with scope=engagement."
+    ),
+    include_timestamps: bool = Query(
+        False, description="Include created_at/updated_at. Excluded by default to keep diffs quiet."
+    ),
     db: Session = Depends(get_db),
 ):
+    """
+    **The export is deterministic**: keys sorted alphabetically at every
+    level, `patterns`/`target_state_options` sorted by id, 2-space indent,
+    trailing newline, timestamps as ISO-8601 UTC. Soft-deleted records are
+    excluded unconditionally, with no override — a committed catalog file
+    should never contain something that was removed, even for inspection.
+    This is what lets the catalog be committed to git and reviewed as a pull
+    request rather than living only as rows in a database.
+    """
     if scope == "engagement":
         if not engagement_id:
-            raise HTTPException(
-                status_code=422,
-                detail=[
+            raise errors(
+                422,
+                [
                     {
                         "field": "engagement_id",
                         "message": "engagement_id is required when scope=engagement.",
+                        "code": "MISSING_ENGAGEMENT_ID",
                     }
                 ],
             )
         if db.get(models.Engagement, engagement_id) is None:
-            raise HTTPException(
-                status_code=422,
-                detail=[
+            raise errors(
+                422,
+                [
                     {
                         "field": "engagement_id",
                         "message": f"Engagement '{engagement_id}' does not exist.",
+                        "code": "ENGAGEMENT_NOT_FOUND",
                     }
                 ],
             )
@@ -202,20 +230,38 @@ def export_catalog(
     return Response(content=body, media_type="application/json")
 
 
-@router.post("/import", response_model=schemas.CatalogImportResult)
+@router.post(
+    "/import",
+    response_model=schemas.CatalogImportResult,
+    summary="Import a catalog export",
+    response_description="Counts of records created and updated.",
+    operation_id="import_catalog",
+    responses={422: {"model": ErrorResponse, "description": "mode=replace without ?confirm=true."}},
+)
 def import_catalog(
     payload: schemas.CatalogExport,
-    mode: str = Query("merge", pattern="^(merge|replace)$"),
-    confirm: bool = Query(False),
+    mode: str = Query(
+        "merge",
+        pattern="^(merge|replace)$",
+        description="'merge' (default) upserts by id and leaves unlisted records untouched. 'replace' additionally deprecates every pattern/target state option not present in the payload.",
+    ),
+    confirm: bool = Query(
+        False, description="Required (must be true) when mode=replace, since that mode is destructive."
+    ),
     db: Session = Depends(get_db),
 ):
+    """Upserts patterns, target state options, engagements, and decision
+    records by id. `mode=replace` is destructive — every pattern and target
+    state option not present in the payload is set to `status: 'deprecated'`
+    (never hard-deleted; see CLAUDE.md's soft-delete convention)."""
     if mode == "replace" and not confirm:
-        raise HTTPException(
-            status_code=422,
-            detail=[
+        raise errors(
+            422,
+            [
                 {
                     "field": "confirm",
                     "message": "mode=replace is destructive; pass ?confirm=true to proceed.",
+                    "code": "CONFIRMATION_REQUIRED",
                 }
             ],
         )

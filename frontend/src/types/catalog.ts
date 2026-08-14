@@ -230,10 +230,11 @@ export interface DecisionRecordInput {
   status: DecisionStatus
 }
 
-export interface DecisionRecordCreateInput extends DecisionRecordInput {
-  pattern_id: string
-}
+// Body for PUT /api/engagements/{eid}/patterns/{pid}/decision — identity is
+// fully in the path, so there is no pattern_id here.
+export type DecisionRecordUpsertInput = DecisionRecordInput
 
+// Body for PUT /api/decisions/{id} — editing a specific record by its own id.
 export type DecisionRecordUpdateInput = DecisionRecordInput
 
 // ---------- Client-scoped patterns (engagement_patterns overlay) ----------

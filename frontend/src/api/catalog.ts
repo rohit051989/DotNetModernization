@@ -1,8 +1,8 @@
 import { api } from './client'
 import type {
   DecisionRecord,
-  DecisionRecordCreateInput,
   DecisionRecordUpdateInput,
+  DecisionRecordUpsertInput,
   Engagement,
   EngagementPatternDeferRequest,
   EngagementPatternSoftDeleteResponse,
@@ -84,9 +84,19 @@ export function listDecisions(engagementId: string) {
   return api.get<DecisionRecord[]>(`/api/engagements/${encodeURIComponent(engagementId)}/decisions`)
 }
 
-export function createDecision(engagementId: string, payload: DecisionRecordCreateInput) {
-  return api.post<DecisionRecord>(
-    `/api/engagements/${encodeURIComponent(engagementId)}/decisions`,
+export function getEngagementPatternDecision(engagementId: string, patternId: string) {
+  return api.get<DecisionRecord>(
+    `/api/engagements/${encodeURIComponent(engagementId)}/patterns/${encodeURIComponent(patternId)}/decision`,
+  )
+}
+
+export function upsertEngagementPatternDecision(
+  engagementId: string,
+  patternId: string,
+  payload: DecisionRecordUpsertInput,
+) {
+  return api.put<DecisionRecord>(
+    `/api/engagements/${encodeURIComponent(engagementId)}/patterns/${encodeURIComponent(patternId)}/decision`,
     payload,
   )
 }

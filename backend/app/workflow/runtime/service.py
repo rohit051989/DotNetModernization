@@ -20,8 +20,10 @@ STOPPABLE_BATCH_STATUSES = ("STARTING", "STARTED")
 
 
 class PreconditionError(Exception):
-    def __init__(self, failures: list[str]):
-        super().__init__("; ".join(failures))
+    """Carries errors in this API's shared shape — see app/errors.py."""
+
+    def __init__(self, failures: list[dict]):
+        super().__init__("; ".join(f["message"] for f in failures))
         self.failures = failures
 
 
@@ -44,7 +46,7 @@ def launch_job(
         raise LookupError(f"no active definition for job '{job_name}'")
     definition = JobDefinitionFile.model_validate(definition_row.definition)
 
-    parameters = resolve_parameters(definition, provided_parameters)
+    parameters = resolve_parameters(job_name, definition, provided_parameters)
 
     failures = preconditions.evaluate_preconditions(db, definition, parameters)
     if failures:
@@ -144,16 +146,35 @@ def to_execution_out(db: Session, execution: models.WfJobExecution) -> JobExecut
 
 
 def list_executions(
-    db: Session, job_name: str | None = None, status: str | None = None
+    db: Session,
+    job_name: str | None = None,
+    batch_status: str | None = None,
+    engagement_id: str | None = None,
+    repository_id: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
 ) -> list[models.WfJobExecution]:
-    query = db.query(models.WfJobExecution)
+    """`engagement_id`/`repository_id` match inside `wf_job_instances.parameters`
+    — they only ever match jobs that declare those parameters. A job like
+    `trackB-wave`, scoped to a wave with no `repository_id` at all, simply
+    won't match a `repository_id` filter."""
+    query = db.query(models.WfJobExecution).join(
+        models.WfJobInstance, models.WfJobExecution.job_instance_id == models.WfJobInstance.id
+    )
     if job_name:
-        query = query.join(
-            models.WfJobInstance, models.WfJobExecution.job_instance_id == models.WfJobInstance.id
-        ).filter(models.WfJobInstance.job_name == job_name)
-    if status:
-        query = query.filter(models.WfJobExecution.batch_status == status)
-    return query.order_by(models.WfJobExecution.created_at.desc()).all()
+        query = query.filter(models.WfJobInstance.job_name == job_name)
+    if batch_status:
+        query = query.filter(models.WfJobExecution.batch_status == batch_status)
+    if engagement_id:
+        query = query.filter(models.WfJobInstance.parameters["engagement_id"].astext == engagement_id)
+    if repository_id:
+        query = query.filter(models.WfJobInstance.parameters["repository_id"].astext == repository_id)
+    return (
+        query.order_by(models.WfJobExecution.created_at.desc())
+        .limit(limit)
+        .offset(offset)
+        .all()
+    )
 
 
 def get_step_executions(db: Session, execution_id: uuid.UUID) -> list[models.WfStepExecution]:

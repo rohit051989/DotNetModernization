@@ -1,19 +1,23 @@
 import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app import models, schemas
 from app.db import get_db
+from app.errors import ErrorResponse, error
 from app.routers.target_states import get_target_states_for_pattern
 
-router = APIRouter(prefix="/api/engagements", tags=["engagement-patterns"])
+router = APIRouter(prefix="/api/engagements", tags=["Client Catalog"])
+
+_ENGAGEMENT_NOT_FOUND = {"model": ErrorResponse, "description": "No engagement exists with this id."}
+_PATTERN_NOT_FOUND = {"model": ErrorResponse, "description": "No pattern exists with this id in the master catalog, or it is client-deleted here and `include_deleted` was not set."}
 
 
 def _get_engagement(db: Session, engagement_id: str) -> models.Engagement:
     engagement = db.get(models.Engagement, engagement_id)
     if engagement is None or engagement.deleted_at is not None:
-        raise HTTPException(status_code=404, detail=f"Engagement '{engagement_id}' not found")
+        raise error(404, f"Engagement '{engagement_id}' not found", code="NOT_FOUND")
     return engagement
 
 
@@ -23,7 +27,7 @@ def _get_visible_master_pattern(db: Session, pattern_id: str) -> models.Pattern:
     flag only ever governs the overlay's own (client-scoped) deletion state."""
     pattern = db.get(models.Pattern, pattern_id)
     if pattern is None or pattern.deleted_at is not None:
-        raise HTTPException(status_code=404, detail=f"Pattern '{pattern_id}' not found")
+        raise error(404, f"Pattern '{pattern_id}' not found", code="NOT_FOUND")
     return pattern
 
 
@@ -99,13 +103,28 @@ def _to_view(
     )
 
 
-@router.get("/{engagement_id}/patterns", response_model=list[schemas.EngagementPatternView])
+@router.get(
+    "/{engagement_id}/patterns",
+    response_model=list[schemas.EngagementPatternView],
+    summary="List the client catalog for an engagement",
+    response_description="Every master pattern merged with this engagement's overlay, subject to the filters.",
+    operation_id="list_engagement_patterns",
+    responses={404: _ENGAGEMENT_NOT_FOUND},
+)
 def list_engagement_patterns(
     engagement_id: str,
-    include_deleted: bool = Query(False),
-    include_deferred: bool = Query(True),
+    include_deleted: bool = Query(False, description="Include patterns this engagement has client-deleted."),
+    include_deferred: bool = Query(True, description="Include patterns this engagement has deferred."),
     db: Session = Depends(get_db),
 ):
+    """
+    The **client catalog**: every non-deleted master pattern, merged with
+    this one engagement's `engagement_patterns` overlay (scope_status,
+    client-scoped soft delete) and a decision summary. This is a read model,
+    not a stored row — see `EngagementPatternView`. Reads and writes here
+    never touch `patterns` or `target_state_options`; see 02-DATA-MODEL.md's
+    master-vs-client separation.
+    """
     _get_engagement(db, engagement_id)
 
     patterns = (
@@ -134,12 +153,17 @@ def list_engagement_patterns(
 
 
 @router.get(
-    "/{engagement_id}/patterns/{pattern_id}", response_model=schemas.EngagementPatternView
+    "/{engagement_id}/patterns/{pattern_id}",
+    response_model=schemas.EngagementPatternView,
+    summary="Get one pattern from an engagement's client catalog",
+    response_description="The master pattern merged with this engagement's overlay.",
+    operation_id="get_engagement_pattern",
+    responses={404: _PATTERN_NOT_FOUND},
 )
 def get_engagement_pattern(
     engagement_id: str,
     pattern_id: str,
-    include_deleted: bool = Query(False),
+    include_deleted: bool = Query(False, description="Return the pattern even if this engagement has client-deleted it."),
     db: Session = Depends(get_db),
 ):
     _get_engagement(db, engagement_id)
@@ -147,15 +171,19 @@ def get_engagement_pattern(
 
     overlay = _get_overlay(db, engagement_id, pattern_id)
     if overlay is not None and overlay.deleted_at is not None and not include_deleted:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Pattern '{pattern_id}' not found in engagement '{engagement_id}'",
+        raise error(
+            404, f"Pattern '{pattern_id}' not found in engagement '{engagement_id}'", code="NOT_FOUND"
         )
     return _to_view(db, pattern, overlay, engagement_id)
 
 
 @router.post(
-    "/{engagement_id}/patterns/{pattern_id}/defer", response_model=schemas.EngagementPatternView
+    "/{engagement_id}/patterns/{pattern_id}/defer",
+    response_model=schemas.EngagementPatternView,
+    summary="Defer a pattern for an engagement",
+    response_description="The pattern's updated view, with scope_status now 'deferred'.",
+    operation_id="defer_engagement_pattern",
+    responses={404: _PATTERN_NOT_FOUND},
 )
 def defer_engagement_pattern(
     engagement_id: str,
@@ -163,6 +191,12 @@ def defer_engagement_pattern(
     payload: schemas.EngagementPatternDeferRequest,
     db: Session = Depends(get_db),
 ):
+    """
+    Upserts the `engagement_patterns` overlay row with `scope_status =
+    'deferred'`. Always succeeds — never blocked by anything, including an
+    existing decision record, and never modifies that record. Writes only to
+    `engagement_patterns`; the master pattern is untouched.
+    """
     _get_engagement(db, engagement_id)
     pattern = _get_visible_master_pattern(db, pattern_id)
 
@@ -177,10 +211,15 @@ def defer_engagement_pattern(
 @router.post(
     "/{engagement_id}/patterns/{pattern_id}/reactivate",
     response_model=schemas.EngagementPatternView,
+    summary="Reactivate a deferred pattern for an engagement",
+    response_description="The pattern's updated view, with scope_status now 'active'.",
+    operation_id="reactivate_engagement_pattern",
+    responses={404: _PATTERN_NOT_FOUND},
 )
 def reactivate_engagement_pattern(
     engagement_id: str, pattern_id: str, db: Session = Depends(get_db)
 ):
+    """Upserts the overlay row with `scope_status = 'active'`. Always succeeds."""
     _get_engagement(db, engagement_id)
     pattern = _get_visible_master_pattern(db, pattern_id)
 
@@ -195,13 +234,28 @@ def reactivate_engagement_pattern(
 @router.delete(
     "/{engagement_id}/patterns/{pattern_id}",
     response_model=schemas.EngagementPatternSoftDeleteResponse,
+    summary="Client-scoped soft delete of a pattern",
+    response_description="When the client-scoped soft delete took effect.",
+    operation_id="delete_engagement_pattern",
+    responses={
+        404: _PATTERN_NOT_FOUND,
+        409: {"model": ErrorResponse, "description": "A non-superseded decision record exists for this (engagement, pattern)."},
+    },
 )
 def delete_engagement_pattern(
     engagement_id: str,
     pattern_id: str,
-    deleted_by: str | None = Query(None),
+    deleted_by: str | None = Query(None, description="Free-text identity performing the delete."),
     db: Session = Depends(get_db),
 ):
+    """
+    Upserts the overlay row with `deleted_at`/`deleted_by` set — this
+    engagement stops seeing the pattern; every other engagement, and the
+    master pattern itself, is unaffected. Refused with 409 if a
+    non-superseded decision record exists for this exact
+    `(engagement_id, pattern_id)`; supersede or remove it first. This check
+    is scoped to this one engagement only.
+    """
     _get_engagement(db, engagement_id)
     _get_visible_master_pattern(db, pattern_id)
 
@@ -216,12 +270,11 @@ def delete_engagement_pattern(
         .first()
     )
     if live_decision is not None:
-        raise HTTPException(
-            status_code=409,
-            detail=(
-                f"Engagement '{engagement_id}' has a non-superseded decision record "
-                f"'{live_decision.id}' for pattern '{pattern_id}'; supersede or remove it first."
-            ),
+        raise error(
+            409,
+            f"Engagement '{engagement_id}' has a non-superseded decision record "
+            f"'{live_decision.id}' for pattern '{pattern_id}'; supersede or remove it first.",
+            code="REFERENCED_BY_DECISION",
         )
 
     overlay = _get_or_create_overlay(db, engagement_id, pattern_id)
@@ -238,14 +291,19 @@ def delete_engagement_pattern(
 @router.post(
     "/{engagement_id}/patterns/{pattern_id}/restore",
     response_model=schemas.EngagementPatternSoftDeleteResponse,
+    summary="Restore a client-scoped soft-deleted pattern",
+    response_description="deleted_at is now null.",
+    operation_id="restore_engagement_pattern",
+    responses={404: {"model": ErrorResponse, "description": "No pattern exists with this id in the master catalog."}},
 )
 def restore_engagement_pattern(engagement_id: str, pattern_id: str, db: Session = Depends(get_db)):
-    # Admin-only in intent — no auth/role check exists yet in this build (see
-    # CLAUDE.md's out-of-scope list). TODO: gate behind an admin role once auth exists.
+    """Clears `deleted_at`/`deleted_by` on the overlay row. Admin-only in
+    intent; unguarded for now — no auth system exists yet (see CLAUDE.md)."""
+    # TODO: gate behind an admin role once auth exists.
     _get_engagement(db, engagement_id)
     pattern = db.get(models.Pattern, pattern_id)
     if pattern is None:
-        raise HTTPException(status_code=404, detail=f"Pattern '{pattern_id}' not found")
+        raise error(404, f"Pattern '{pattern_id}' not found", code="NOT_FOUND")
 
     overlay = _get_overlay(db, engagement_id, pattern_id)
     if overlay is not None:

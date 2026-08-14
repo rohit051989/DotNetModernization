@@ -1,13 +1,16 @@
 import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy import case
 from sqlalchemy.orm import Session
 
 from app import models, schemas
 from app.db import get_db
+from app.errors import ErrorResponse, error
 
-router = APIRouter(prefix="/api", tags=["target-states"])
+router = APIRouter(prefix="/api", tags=["Target States"])
+
+_NOT_FOUND = {"model": ErrorResponse, "description": "No target state option exists with this id."}
 
 _IMPACT_ORDER = case(
     (models.TargetStateOption.consumer_impact == "none", 0),
@@ -37,7 +40,7 @@ def get_target_states_for_pattern(
 def _get_visible_pattern(db: Session, pattern_id: str, include_deleted: bool) -> models.Pattern:
     pattern = db.get(models.Pattern, pattern_id)
     if pattern is None or (pattern.deleted_at is not None and not include_deleted):
-        raise HTTPException(status_code=404, detail=f"Pattern '{pattern_id}' not found")
+        raise error(404, f"Pattern '{pattern_id}' not found", code="NOT_FOUND")
     return pattern
 
 
@@ -58,9 +61,15 @@ def _clear_other_recommendations(db: Session, pattern_id: str, keep_id: str) -> 
 @router.get(
     "/patterns/{pattern_id}/target-states",
     response_model=list[schemas.TargetStateDetail],
+    summary="List target state options for a pattern",
+    response_description="Options for this pattern, lowest consumer_impact first, then lowest effort.",
+    operation_id="list_target_states",
+    responses={404: {"model": ErrorResponse, "description": "No pattern exists with this id."}},
 )
 def list_target_states(
-    pattern_id: str, include_deleted: bool = Query(False), db: Session = Depends(get_db)
+    pattern_id: str,
+    include_deleted: bool = Query(False, description="Include soft-deleted options."),
+    db: Session = Depends(get_db),
 ):
     _get_visible_pattern(db, pattern_id, include_deleted)
     return get_target_states_for_pattern(db, pattern_id, include_deleted=include_deleted)
@@ -70,16 +79,26 @@ def list_target_states(
     "/patterns/{pattern_id}/target-states",
     response_model=schemas.TargetStateDetail,
     status_code=201,
+    summary="Create a target state option under a pattern",
+    response_description="The newly created option.",
+    operation_id="create_target_state",
+    responses={
+        404: {"model": ErrorResponse, "description": "No pattern exists with this id."},
+        409: {"model": ErrorResponse, "description": "This id already exists, or the (pattern_id, name) pair is already used."},
+    },
 )
 def create_target_state(
     pattern_id: str, payload: schemas.TargetStateCreate, db: Session = Depends(get_db)
 ):
+    """
+    `id` must be a lowercase, hyphenated slug. Setting `is_recommended: true`
+    clears the flag on every other option under this pattern in the same
+    request — at most one recommended option per pattern.
+    """
     _get_visible_pattern(db, pattern_id, include_deleted=False)
 
     if db.get(models.TargetStateOption, payload.id) is not None:
-        raise HTTPException(
-            status_code=409, detail=f"Target state option '{payload.id}' already exists"
-        )
+        raise error(409, f"Target state option '{payload.id}' already exists", field="id", code="DUPLICATE_ID")
 
     duplicate_name = (
         db.query(models.TargetStateOption)
@@ -90,12 +109,11 @@ def create_target_state(
         .first()
     )
     if duplicate_name is not None:
-        raise HTTPException(
-            status_code=409,
-            detail=(
-                f"Target state option named '{payload.name}' already exists "
-                f"for pattern '{pattern_id}'"
-            ),
+        raise error(
+            409,
+            f"Target state option named '{payload.name}' already exists for pattern '{pattern_id}'",
+            field="name",
+            code="DUPLICATE_NAME",
         )
 
     option = models.TargetStateOption(
@@ -125,27 +143,44 @@ def create_target_state(
     return option
 
 
-@router.get("/target-states/{target_state_id}", response_model=schemas.TargetStateDetail)
+@router.get(
+    "/target-states/{target_state_id}",
+    response_model=schemas.TargetStateDetail,
+    summary="Get a target state option",
+    response_description="The target state option.",
+    operation_id="get_target_state",
+    responses={404: _NOT_FOUND},
+)
 def get_target_state(
-    target_state_id: str, include_deleted: bool = Query(False), db: Session = Depends(get_db)
+    target_state_id: str,
+    include_deleted: bool = Query(False, description="Return the option even if it is soft-deleted."),
+    db: Session = Depends(get_db),
 ):
     option = db.get(models.TargetStateOption, target_state_id)
     if option is None or (option.deleted_at is not None and not include_deleted):
-        raise HTTPException(
-            status_code=404, detail=f"Target state option '{target_state_id}' not found"
-        )
+        raise error(404, f"Target state option '{target_state_id}' not found", code="NOT_FOUND")
     return option
 
 
-@router.put("/target-states/{target_state_id}", response_model=schemas.TargetStateDetail)
+@router.put(
+    "/target-states/{target_state_id}",
+    response_model=schemas.TargetStateDetail,
+    summary="Update a target state option",
+    response_description="The updated option.",
+    operation_id="update_target_state",
+    responses={
+        404: _NOT_FOUND,
+        409: {"model": ErrorResponse, "description": "Another option under the same pattern already has this name."},
+    },
+)
 def update_target_state(
     target_state_id: str, payload: schemas.TargetStateUpdate, db: Session = Depends(get_db)
 ):
+    """`version` increments only on a material change (`name`, `target_stack`,
+    `consumer_impact`, or `effort`)."""
     option = db.get(models.TargetStateOption, target_state_id)
     if option is None:
-        raise HTTPException(
-            status_code=404, detail=f"Target state option '{target_state_id}' not found"
-        )
+        raise error(404, f"Target state option '{target_state_id}' not found", code="NOT_FOUND")
 
     duplicate_name = (
         db.query(models.TargetStateOption)
@@ -157,12 +192,11 @@ def update_target_state(
         .first()
     )
     if duplicate_name is not None:
-        raise HTTPException(
-            status_code=409,
-            detail=(
-                f"Target state option named '{payload.name}' already exists "
-                f"for pattern '{option.pattern_id}'"
-            ),
+        raise error(
+            409,
+            f"Target state option named '{payload.name}' already exists for pattern '{option.pattern_id}'",
+            field="name",
+            code="DUPLICATE_NAME",
         )
 
     material_change = (
@@ -202,13 +236,24 @@ def update_target_state(
 @router.post(
     "/target-states/{target_state_id}/deprecate",
     response_model=schemas.TargetStateDeprecateResponse,
+    summary="Deprecate a target state option",
+    response_description="The option's new status.",
+    operation_id="deprecate_target_state",
+    responses={
+        404: _NOT_FOUND,
+        409: {"model": ErrorResponse, "description": "A non-superseded, non-deleted decision record has this option approved as its selection."},
+    },
 )
 def deprecate_target_state(target_state_id: str, db: Session = Depends(get_db)):
+    """
+    Sets `status = 'deprecated'`. Distinct from `DELETE` (soft delete): the
+    option remains visible in every list/get response. Refused with 409 only
+    if a non-superseded **approved** decision selects this option — a
+    narrower guard than `DELETE`'s, since deprecation is a softer signal.
+    """
     option = db.get(models.TargetStateOption, target_state_id)
     if option is None:
-        raise HTTPException(
-            status_code=404, detail=f"Target state option '{target_state_id}' not found"
-        )
+        raise error(404, f"Target state option '{target_state_id}' not found", code="NOT_FOUND")
 
     approved_reference = (
         db.query(models.DecisionRecord)
@@ -220,13 +265,12 @@ def deprecate_target_state(target_state_id: str, db: Session = Depends(get_db)):
         .first()
     )
     if approved_reference is not None:
-        raise HTTPException(
-            status_code=409,
-            detail=(
-                f"Target state option '{target_state_id}' is the approved selection for "
-                f"decision record '{approved_reference.id}' in engagement "
-                f"'{approved_reference.engagement_id}'; supersede that decision first."
-            ),
+        raise error(
+            409,
+            f"Target state option '{target_state_id}' is the approved selection for "
+            f"decision record '{approved_reference.id}' in engagement "
+            f"'{approved_reference.engagement_id}'; supersede that decision first.",
+            code="APPROVED_ELSEWHERE",
         )
 
     option.status = "deprecated"
@@ -235,15 +279,31 @@ def deprecate_target_state(target_state_id: str, db: Session = Depends(get_db)):
     return schemas.TargetStateDeprecateResponse(id=option.id, status=option.status)
 
 
-@router.delete("/target-states/{target_state_id}", response_model=schemas.TargetStateSoftDeleteResponse)
+@router.delete(
+    "/target-states/{target_state_id}",
+    response_model=schemas.TargetStateSoftDeleteResponse,
+    summary="Soft-delete a target state option",
+    response_description="When the soft delete took effect.",
+    operation_id="delete_target_state",
+    responses={
+        404: _NOT_FOUND,
+        409: {"model": ErrorResponse, "description": "A non-superseded decision record (any status) has this option selected."},
+    },
+)
 def delete_target_state(
-    target_state_id: str, deleted_by: str | None = Query(None), db: Session = Depends(get_db)
+    target_state_id: str,
+    deleted_by: str | None = Query(None, description="Free-text identity performing the delete."),
+    db: Session = Depends(get_db),
 ):
+    """
+    Guarded more broadly than deprecate: refused if **any** non-superseded
+    decision record (parked, in_review, or approved) has this option
+    selected and is not itself deleted — removal is a stronger action than
+    deprecation, so the check is correspondingly wider.
+    """
     option = db.get(models.TargetStateOption, target_state_id)
     if option is None or option.deleted_at is not None:
-        raise HTTPException(
-            status_code=404, detail=f"Target state option '{target_state_id}' not found"
-        )
+        raise error(404, f"Target state option '{target_state_id}' not found", code="NOT_FOUND")
 
     live_reference = (
         db.query(models.DecisionRecord)
@@ -255,13 +315,12 @@ def delete_target_state(
         .first()
     )
     if live_reference is not None:
-        raise HTTPException(
-            status_code=409,
-            detail=(
-                f"Target state option '{target_state_id}' is referenced by non-superseded "
-                f"decision record '{live_reference.id}' in engagement "
-                f"'{live_reference.engagement_id}'; supersede that decision first."
-            ),
+        raise error(
+            409,
+            f"Target state option '{target_state_id}' is referenced by non-superseded "
+            f"decision record '{live_reference.id}' in engagement "
+            f"'{live_reference.engagement_id}'; supersede that decision first.",
+            code="REFERENCED_BY_DECISION",
         )
 
     option.deleted_at = datetime.datetime.now(datetime.timezone.utc)
@@ -273,15 +332,18 @@ def delete_target_state(
 @router.post(
     "/target-states/{target_state_id}/restore",
     response_model=schemas.TargetStateSoftDeleteResponse,
+    summary="Restore a soft-deleted target state option",
+    response_description="deleted_at is now null.",
+    operation_id="restore_target_state",
+    responses={404: _NOT_FOUND},
 )
 def restore_target_state(target_state_id: str, db: Session = Depends(get_db)):
-    # Admin-only in intent — no auth/role check exists yet in this build (see
-    # CLAUDE.md's out-of-scope list). TODO: gate behind an admin role once auth exists.
+    """Clears `deleted_at`/`deleted_by` unconditionally; `status` is untouched.
+    Admin-only in intent; unguarded for now — no auth system exists yet (see CLAUDE.md)."""
+    # TODO: gate behind an admin role once auth exists.
     option = db.get(models.TargetStateOption, target_state_id)
     if option is None:
-        raise HTTPException(
-            status_code=404, detail=f"Target state option '{target_state_id}' not found"
-        )
+        raise error(404, f"Target state option '{target_state_id}' not found", code="NOT_FOUND")
 
     option.deleted_at = None
     option.deleted_by = None

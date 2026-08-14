@@ -28,15 +28,23 @@ backend/app/
 
 - Response models are explicit Pydantic classes. Never return ORM objects directly.
 - `snake_case` in JSON. The frontend maps to camelCase if it wants to; the API does not.
-- Validation failures return **422** with a body of
-  `{"detail": [{"field": "...", "message": "..."}]}`.
+- **One error shape everywhere** — see `18-API-CONVENTIONS.md` Part C, registered as
+  the shared `ErrorResponse` OpenAPI component:
+  `{"detail": [{"field": "...", "message": "...", "code": "..."}]}`. `field` is
+  null when the error isn't about one field (a 404, or a conflict spanning several
+  records); `code` is a short machine-readable slug.
 - Business-rule violations (for example an approved decision missing an approver)
-  also return **422**, not 400.
+  return **422**, not 400, using the same shape.
 - Referential refusals (soft-deleting something still referenced) return **409**
   with a message naming what blocks it.
 - Not found returns **404**. A soft-deleted record behaves as not-found on every
   normal read — see "Soft delete vs deprecate" below.
-- Pagination is not required at this scale. Return full lists.
+- Pagination is not required at this scale for catalog resources — return full
+  lists. Workflow execution listings are the exception: `?limit=&offset=` (default
+  `limit=50`), since that collection grows with every job launch.
+- Every route carries `summary`, `tags`, `operation_id`, and documents its non-200
+  `responses` — see `18-API-CONVENTIONS.md` Part A. `operation_id` is set explicitly
+  and must not change once a route ships; it is what a generated client binds to.
 
 ## Soft delete vs deprecate
 
@@ -279,6 +287,8 @@ POST   /api/engagements                    → 201 Engagement
 GET    /api/engagements/{id}                ?include_deleted=false → 200 Engagement
 PUT    /api/engagements/{id}               → 200 Engagement
 GET    /api/engagements/{id}/coverage      → 200 CoverageSummary
+GET    /api/engagements/{id}/executions    ?job_name=&batch_status=&limit=&offset=
+                                            → 200 [JobExecutionOut]
 ```
 
 `engagements` gained `deleted_at`/`deleted_by` columns for consistency (see
@@ -286,6 +296,14 @@ GET    /api/engagements/{id}/coverage      → 200 CoverageSummary
 convention as every other resource. There is no delete/deprecate/restore route for
 engagements in this build — the columns exist so the schema does not need another
 migration when that capability is added, but nothing in the API can set them yet.
+
+`GET .../executions` is a convenience, engagement-scoped view over
+`GET /api/workflow/executions` (see `10-ENGINE-CONCEPTS.md` and
+`12-JOB-DEFINITION-FORMAT.md` for the engine itself) — same data, pre-filtered to
+executions whose job instance declares this `engagement_id` parameter. The
+canonical, flat collection is not nested under engagements: the engagement is a
+job *parameter*, not an owner, and a future wave-scoped job may have no
+`engagement_id` at all.
 
 **CoverageSummary** — drives the future dashboard and is cheap to add now:
 
@@ -314,21 +332,41 @@ genuinely untouched by this engagement.
 ### Decision records
 
 ```
-GET    /api/engagements/{id}/decisions      ?include_deleted=false → 200 [DecisionRecord]
-POST   /api/engagements/{id}/decisions      → 201 DecisionRecord
+GET    /api/engagements/{id}/decisions                     ?include_deleted=false → 200 [DecisionRecord]
+GET    /api/engagements/{id}/patterns/{pid}/decision        → 200 DecisionRecord
+                                                              → 404 if none recorded yet
+PUT    /api/engagements/{id}/patterns/{pid}/decision         → 200 or 201 DecisionRecord
 GET    /api/decisions/{id}                  ?include_deleted=false → 200 DecisionRecord
 PUT    /api/decisions/{id}                  → 200 DecisionRecord
 POST   /api/decisions/{id}/supersede        → 200 DecisionRecord
 ```
 
-`decision_records` also gained `deleted_at`/`deleted_by`, and its list/get
-endpoints follow the same `include_deleted` convention. As with engagements, no
-route can set these columns yet — they exist so the partial unique index
-(`02-DATA-MODEL.md`) and the referential guards on pattern/target-state soft
-delete have something consistent to check against.
+**Per `18-API-CONVENTIONS.md` Part B**, a decision record is a singleton per
+`(engagement, pattern)`, enforced by a partial unique index — so its identity
+belongs fully in the path, not in a request body field. There is no longer a
+`POST /api/engagements/{id}/decisions` that takes `pattern_id` in the body; the
+frontend decision panel always has both ids in context, so this simplifies the
+client too.
 
-`PUT` enforces every validation rule in `02-DATA-MODEL.md`. In particular, when
-transitioning to `approved`:
+`GET .../patterns/{pid}/decision` fetches the live (non-superseded, non-deleted)
+decision for that pattern in that engagement. 404 means "nothing decided yet" —
+the normal empty state, not an error condition to work around.
+
+`PUT .../patterns/{pid}/decision` **upserts** that same singleton: creates it
+(responding **201**) if none exists yet, or updates it in place (responding
+**200**) if one does. Omitted body fields leave an existing value unchanged.
+`PUT /api/decisions/{id}` remains, unchanged, for editing one specific record by
+its own id — including historical (superseded) ones, which the pattern-scoped
+route can never reach since it only ever touches the live decision.
+
+`decision_records` also gained `deleted_at`/`deleted_by`, and its list/get
+endpoints follow the same `include_deleted` convention. No route can set these
+columns yet — they exist so the partial unique index (`02-DATA-MODEL.md`) and the
+referential guards on pattern/target-state soft delete have something consistent
+to check against.
+
+Both write routes enforce every validation rule in `02-DATA-MODEL.md`. In
+particular, when transitioning to `approved`:
 
 1. `selected_target_state_id` present and belonging to the same pattern
 2. `rationale`, `approver_name`, `decision_date` present
@@ -341,7 +379,8 @@ so the errors should read well:
 ```json
 {"detail": [{
   "field": "forcing_factor",
-  "message": "gRPC rewrite has higher consumer impact (high) than the lowest candidate CoreWCF on .NET 10 (none). A forcing factor is required to justify the deviation."
+  "message": "gRPC rewrite has higher consumer impact (high) than the lowest candidate CoreWCF on .NET 10 (none). A forcing factor is required to justify the deviation.",
+  "code": "FORCING_FACTOR_REQUIRED"
 }]}
 ```
 

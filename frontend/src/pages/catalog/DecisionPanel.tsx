@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
-import { listDecisions, supersedeDecision } from '../../api/catalog'
+import { useEffect, useState } from 'react'
+import { getEngagementPatternDecision, supersedeDecision } from '../../api/catalog'
 import { ApiError } from '../../api/client'
 import { DecisionStatusBadge } from '../../components/Badge'
 import { ConfirmDialog } from '../../components/ConfirmDialog'
@@ -24,7 +24,7 @@ export function DecisionPanel({
   targetStates,
 }: DecisionPanelProps) {
   const { showToast } = useToast()
-  const [decisions, setDecisions] = useState<DecisionRecord[]>([])
+  const [decision, setDecision] = useState<DecisionRecord | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [refreshToken, setRefreshToken] = useState(0)
@@ -36,12 +36,18 @@ export function DecisionPanel({
     let cancelled = false
     setLoading(true)
     setError(null)
-    listDecisions(engagementId)
+    getEngagementPatternDecision(engagementId, patternId)
       .then((result) => {
-        if (!cancelled) setDecisions(result)
+        if (!cancelled) setDecision(result)
       })
-      .catch(() => {
-        if (!cancelled) setError('Could not load decisions.')
+      .catch((err) => {
+        if (cancelled) return
+        // 404 means "nothing decided yet" — the normal empty state, not an error.
+        if (err instanceof ApiError && err.status === 404) {
+          setDecision(null)
+        } else {
+          setError('Could not load decision.')
+        }
       })
       .finally(() => {
         if (!cancelled) setLoading(false)
@@ -49,12 +55,7 @@ export function DecisionPanel({
     return () => {
       cancelled = true
     }
-  }, [engagementId, refreshToken])
-
-  const decision = useMemo(
-    () => decisions.find((d) => d.pattern_id === patternId && d.status !== 'superseded') ?? null,
-    [decisions, patternId],
-  )
+  }, [engagementId, patternId, refreshToken])
 
   function refresh() {
     setRefreshToken((token) => token + 1)

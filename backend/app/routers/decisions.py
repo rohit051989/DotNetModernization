@@ -1,14 +1,18 @@
 import datetime
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.orm import Session
 
 from app import models, schemas
 from app.db import get_db
+from app.errors import ErrorResponse, error, errors
 from app.schemas import CONSUMER_IMPACT_RANK
 
-router = APIRouter(prefix="/api", tags=["decisions"])
+router = APIRouter(prefix="/api", tags=["Decisions"])
+
+_DECISION_NOT_FOUND = {"model": ErrorResponse, "description": "No decision record exists with this id."}
+_VALIDATION_FAILED = {"model": ErrorResponse, "description": "One or more decision validation rules failed — see 02-DATA-MODEL.md."}
 
 
 def _decision_response(db: Session, decision: models.DecisionRecord) -> schemas.DecisionRecord:
@@ -52,53 +56,62 @@ def _validate_decision(
     status: str,
 ) -> None:
     """Enforces the decision-record validation rules from 02-DATA-MODEL.md."""
-    errors: list[dict] = []
+    problems: list[dict] = []
 
     selected_option = None
     if selected_target_state_id:
         selected_option = db.get(models.TargetStateOption, selected_target_state_id)
         if selected_option is None:
-            errors.append(
+            problems.append(
                 {
                     "field": "selected_target_state_id",
                     "message": f"Target state option '{selected_target_state_id}' does not exist.",
+                    "code": "TARGET_STATE_NOT_FOUND",
                 }
             )
         elif selected_option.pattern_id != pattern_id:
-            errors.append(
+            problems.append(
                 {
                     "field": "selected_target_state_id",
                     "message": (
                         f"Target state option '{selected_target_state_id}' belongs to pattern "
                         f"'{selected_option.pattern_id}', not '{pattern_id}'."
                     ),
+                    "code": "TARGET_STATE_WRONG_PATTERN",
                 }
             )
 
     if status == "approved":
         if not selected_target_state_id:
-            errors.append(
+            problems.append(
                 {
                     "field": "selected_target_state_id",
                     "message": "An approved decision requires a selected target state option.",
+                    "code": "APPROVAL_REQUIRES_SELECTION",
                 }
             )
         if not rationale:
-            errors.append(
-                {"field": "rationale", "message": "An approved decision requires a rationale."}
+            problems.append(
+                {
+                    "field": "rationale",
+                    "message": "An approved decision requires a rationale.",
+                    "code": "APPROVAL_REQUIRES_RATIONALE",
+                }
             )
         if not approver_name:
-            errors.append(
+            problems.append(
                 {
                     "field": "approver_name",
                     "message": "An approved decision requires an approver name.",
+                    "code": "APPROVAL_REQUIRES_APPROVER",
                 }
             )
         if not decision_date:
-            errors.append(
+            problems.append(
                 {
                     "field": "decision_date",
                     "message": "An approved decision requires a decision date.",
+                    "code": "APPROVAL_REQUIRES_DATE",
                 }
             )
 
@@ -115,7 +128,7 @@ def _validate_decision(
                 selected_rank = CONSUMER_IMPACT_RANK[selected_option.consumer_impact]
                 lowest_rank = CONSUMER_IMPACT_RANK[lowest.consumer_impact]
                 if selected_rank > lowest_rank and not forcing_factor:
-                    errors.append(
+                    problems.append(
                         {
                             "field": "forcing_factor",
                             "message": (
@@ -124,22 +137,57 @@ def _validate_decision(
                                 f"{lowest.name} ({lowest.consumer_impact}). A forcing factor is "
                                 "required to justify the deviation."
                             ),
+                            "code": "FORCING_FACTOR_REQUIRED",
                         }
                     )
 
-    if errors:
-        raise HTTPException(status_code=422, detail=errors)
+    if problems:
+        raise errors(422, problems)
+
+
+def _apply_decision_fields(decision: models.DecisionRecord, payload) -> None:
+    """Partial-update semantics shared by both write paths: a field present
+    (non-None) in the payload overwrites; omitted fields leave the existing
+    value unchanged."""
+    if payload.selected_target_state_id is not None:
+        decision.selected_target_state_id = payload.selected_target_state_id
+    if payload.candidates_considered is not None:
+        decision.candidates_considered = payload.candidates_considered
+    if payload.evaluation_notes is not None:
+        decision.evaluation_notes = payload.evaluation_notes
+    if payload.forcing_factor is not None:
+        decision.forcing_factor = payload.forcing_factor
+    if payload.rationale is not None:
+        decision.rationale = payload.rationale
+    if payload.approver_name is not None:
+        decision.approver_name = payload.approver_name
+    if payload.approver_role is not None:
+        decision.approver_role = payload.approver_role
+    if payload.decision_date is not None:
+        decision.decision_date = payload.decision_date
+    if payload.status is not None:
+        decision.status = payload.status
+    decision.updated_at = datetime.datetime.now(datetime.timezone.utc)
 
 
 @router.get(
-    "/engagements/{engagement_id}/decisions", response_model=list[schemas.DecisionRecord]
+    "/engagements/{engagement_id}/decisions",
+    response_model=list[schemas.DecisionRecord],
+    summary="List decision records for an engagement",
+    response_description="Decision records ordered by creation time.",
+    tags=["Decisions", "Engagements"],
+    operation_id="list_engagement_decisions",
+    responses={404: {"model": ErrorResponse, "description": "No engagement exists with this id."}},
 )
 def list_decisions(
-    engagement_id: str, include_deleted: bool = Query(False), db: Session = Depends(get_db)
+    engagement_id: str,
+    include_deleted: bool = Query(False, description="Include soft-deleted decision records."),
+    db: Session = Depends(get_db),
 ):
+
     engagement = db.get(models.Engagement, engagement_id)
     if engagement is None:
-        raise HTTPException(status_code=404, detail=f"Engagement '{engagement_id}' not found")
+        raise error(404, f"Engagement '{engagement_id}' not found", code="NOT_FOUND")
 
     query = db.query(models.DecisionRecord).filter(
         models.DecisionRecord.engagement_id == engagement_id
@@ -150,89 +198,173 @@ def list_decisions(
     return [_decision_response(db, d) for d in decisions]
 
 
-@router.post(
-    "/engagements/{engagement_id}/decisions",
+@router.get(
+    "/engagements/{engagement_id}/patterns/{pattern_id}/decision",
     response_model=schemas.DecisionRecord,
-    status_code=201,
+    summary="Get the live decision for a pattern in an engagement",
+    response_description="The current (non-superseded, non-deleted) decision record.",
+    tags=["Decisions", "Client Catalog"],
+    operation_id="get_engagement_pattern_decision",
+    responses={404: {"model": ErrorResponse, "description": "No live decision exists for this (engagement, pattern) pair."}},
 )
-def create_decision(
-    engagement_id: str, payload: schemas.DecisionRecordCreate, db: Session = Depends(get_db)
+def get_engagement_pattern_decision(
+    engagement_id: str, pattern_id: str, db: Session = Depends(get_db)
 ):
-    engagement = db.get(models.Engagement, engagement_id)
-    if engagement is None:
-        raise HTTPException(status_code=404, detail=f"Engagement '{engagement_id}' not found")
+    """
+    A decision record is a singleton per `(engagement, pattern)` — this is
+    the identity-in-the-path read for it. Returns 404 when no decision has
+    been recorded yet; that is the normal "nothing decided" state, not an
+    error condition to work around.
+    """
 
-    pattern = db.get(models.Pattern, payload.pattern_id)
-    if pattern is None:
-        raise HTTPException(status_code=404, detail=f"Pattern '{payload.pattern_id}' not found")
-
-    _validate_decision(
-        db,
-        pattern_id=payload.pattern_id,
-        selected_target_state_id=payload.selected_target_state_id,
-        candidates_considered=payload.candidates_considered,
-        forcing_factor=payload.forcing_factor,
-        rationale=payload.rationale,
-        approver_name=payload.approver_name,
-        decision_date=payload.decision_date,
-        status=payload.status,
-    )
-
-    live_conflict = (
+    decision = (
         db.query(models.DecisionRecord)
         .filter(
             models.DecisionRecord.engagement_id == engagement_id,
-            models.DecisionRecord.pattern_id == payload.pattern_id,
+            models.DecisionRecord.pattern_id == pattern_id,
+            models.DecisionRecord.status != "superseded",
+            models.DecisionRecord.deleted_at.is_(None),
+        )
+        .first()
+    )
+    if decision is None:
+        raise error(
+            404,
+            f"No live decision for pattern '{pattern_id}' in engagement '{engagement_id}'",
+            code="NOT_FOUND",
+        )
+    return _decision_response(db, decision)
+
+
+@router.put(
+    "/engagements/{engagement_id}/patterns/{pattern_id}/decision",
+    response_model=schemas.DecisionRecord,
+    summary="Record or update the decision for a pattern in an engagement",
+    response_description="The created or updated decision record.",
+    tags=["Decisions", "Client Catalog"],
+    operation_id="upsert_engagement_pattern_decision",
+    responses={
+        404: {"model": ErrorResponse, "description": "No engagement or pattern exists with these ids."},
+        422: _VALIDATION_FAILED,
+    },
+)
+def upsert_engagement_pattern_decision(
+    engagement_id: str,
+    pattern_id: str,
+    payload: schemas.DecisionRecordUpsert,
+    response: Response,
+    db: Session = Depends(get_db),
+):
+    """
+    Upsert of the singleton decision for this `(engagement, pattern)` pair —
+    identity is fully in the path, so the request body carries no id.
+    Creates the live decision if none exists yet (responds **201**), or
+    updates the existing one in place (responds **200**); omitted fields
+    leave an existing value unchanged. Enforces every rule in
+    02-DATA-MODEL.md for a transition to `status: "approved"`: a selected
+    target state belonging to this pattern, a rationale, an approver name, a
+    decision date, and — when the selection is not the lowest
+    `consumer_impact` among `candidates_considered` — a `forcing_factor`
+    justifying the deviation.
+    """
+
+    engagement = db.get(models.Engagement, engagement_id)
+    if engagement is None:
+        raise error(404, f"Engagement '{engagement_id}' not found", code="NOT_FOUND")
+
+    pattern = db.get(models.Pattern, pattern_id)
+    if pattern is None:
+        raise error(404, f"Pattern '{pattern_id}' not found", code="NOT_FOUND")
+
+    existing = (
+        db.query(models.DecisionRecord)
+        .filter(
+            models.DecisionRecord.engagement_id == engagement_id,
+            models.DecisionRecord.pattern_id == pattern_id,
             models.DecisionRecord.status != "superseded",
         )
         .first()
     )
-    if live_conflict is not None:
-        raise HTTPException(
-            status_code=409,
-            detail=(
-                f"Engagement '{engagement_id}' already has a live decision record "
-                f"'{live_conflict.id}' for pattern '{payload.pattern_id}'; supersede it first."
-            ),
-        )
 
-    decision = models.DecisionRecord(
-        id=uuid.uuid4(),
-        engagement_id=engagement_id,
-        pattern_id=payload.pattern_id,
+    _validate_decision(
+        db,
+        pattern_id=pattern_id,
         selected_target_state_id=payload.selected_target_state_id,
         candidates_considered=payload.candidates_considered,
-        evaluation_notes=payload.evaluation_notes,
         forcing_factor=payload.forcing_factor,
         rationale=payload.rationale,
         approver_name=payload.approver_name,
-        approver_role=payload.approver_role,
         decision_date=payload.decision_date,
         status=payload.status,
     )
-    db.add(decision)
+
+    if existing is None:
+        decision = models.DecisionRecord(
+            id=uuid.uuid4(),
+            engagement_id=engagement_id,
+            pattern_id=pattern_id,
+            selected_target_state_id=payload.selected_target_state_id,
+            candidates_considered=payload.candidates_considered,
+            evaluation_notes=payload.evaluation_notes,
+            forcing_factor=payload.forcing_factor,
+            rationale=payload.rationale,
+            approver_name=payload.approver_name,
+            approver_role=payload.approver_role,
+            decision_date=payload.decision_date,
+            status=payload.status,
+        )
+        db.add(decision)
+        response.status_code = 201
+    else:
+        decision = existing
+        _apply_decision_fields(decision, payload)
+
     db.commit()
     db.refresh(decision)
     return _decision_response(db, decision)
 
 
-@router.get("/decisions/{decision_id}", response_model=schemas.DecisionRecord)
+@router.get(
+    "/decisions/{decision_id}",
+    response_model=schemas.DecisionRecord,
+    summary="Get a decision record by id",
+    response_description="The decision record.",
+    operation_id="get_decision",
+    responses={404: _DECISION_NOT_FOUND},
+)
 def get_decision(
-    decision_id: uuid.UUID, include_deleted: bool = Query(False), db: Session = Depends(get_db)
+    decision_id: uuid.UUID,
+    include_deleted: bool = Query(False, description="Return the record even if it is soft-deleted."),
+    db: Session = Depends(get_db),
 ):
+
     decision = db.get(models.DecisionRecord, decision_id)
     if decision is None or (decision.deleted_at is not None and not include_deleted):
-        raise HTTPException(status_code=404, detail=f"Decision record '{decision_id}' not found")
+        raise error(404, f"Decision record '{decision_id}' not found", code="NOT_FOUND")
     return _decision_response(db, decision)
 
 
-@router.put("/decisions/{decision_id}", response_model=schemas.DecisionRecord)
+@router.put(
+    "/decisions/{decision_id}",
+    response_model=schemas.DecisionRecord,
+    summary="Update a specific decision record by id",
+    response_description="The updated decision record.",
+    operation_id="update_decision",
+    responses={404: _DECISION_NOT_FOUND, 422: _VALIDATION_FAILED},
+)
 def update_decision(
     decision_id: uuid.UUID, payload: schemas.DecisionRecordUpdate, db: Session = Depends(get_db)
 ):
+    """
+    Edits one specific record by its own id — including historical
+    (superseded) ones, unlike the pattern-scoped upsert above, which only
+    ever touches the live decision. Enforces the same approval rules as the
+    upsert route.
+    """
+
     decision = db.get(models.DecisionRecord, decision_id)
     if decision is None:
-        raise HTTPException(status_code=404, detail=f"Decision record '{decision_id}' not found")
+        raise error(404, f"Decision record '{decision_id}' not found", code="NOT_FOUND")
 
     new_status = payload.status if payload.status is not None else decision.status
     new_selected = (
@@ -268,33 +400,28 @@ def update_decision(
         status=new_status,
     )
 
-    decision.selected_target_state_id = new_selected
-    decision.candidates_considered = new_candidates
-    decision.evaluation_notes = (
-        payload.evaluation_notes
-        if payload.evaluation_notes is not None
-        else decision.evaluation_notes
-    )
-    decision.forcing_factor = new_forcing_factor
-    decision.rationale = new_rationale
-    decision.approver_name = new_approver_name
-    decision.approver_role = (
-        payload.approver_role if payload.approver_role is not None else decision.approver_role
-    )
-    decision.decision_date = new_decision_date
-    decision.status = new_status
-    decision.updated_at = datetime.datetime.now(datetime.timezone.utc)
+    _apply_decision_fields(decision, payload)
 
     db.commit()
     db.refresh(decision)
     return _decision_response(db, decision)
 
 
-@router.post("/decisions/{decision_id}/supersede", response_model=schemas.DecisionRecord)
+@router.post(
+    "/decisions/{decision_id}/supersede",
+    response_model=schemas.DecisionRecord,
+    summary="Supersede a decision record",
+    response_description="The now-superseded decision record.",
+    operation_id="supersede_decision",
+    responses={404: _DECISION_NOT_FOUND},
+)
 def supersede_decision(decision_id: uuid.UUID, db: Session = Depends(get_db)):
+    """Sets `status = 'superseded'`, freeing the partial unique index so a
+    new decision can be recorded for that (engagement, pattern)."""
+
     decision = db.get(models.DecisionRecord, decision_id)
     if decision is None:
-        raise HTTPException(status_code=404, detail=f"Decision record '{decision_id}' not found")
+        raise error(404, f"Decision record '{decision_id}' not found", code="NOT_FOUND")
 
     decision.status = "superseded"
     decision.updated_at = datetime.datetime.now(datetime.timezone.utc)
