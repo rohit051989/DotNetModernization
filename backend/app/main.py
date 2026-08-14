@@ -13,6 +13,7 @@ from app.routers import (
     health,
     patterns,
     target_states,
+    workflow_steps,
 )
 
 app = FastAPI(title="Modernization Platform — Pattern Catalog", version="0.1.0")
@@ -50,3 +51,4 @@ app.include_router(engagements.router)
 app.include_router(engagement_patterns.router)
 app.include_router(decisions.router)
 app.include_router(catalog.router)
+app.include_router(workflow_steps.router)

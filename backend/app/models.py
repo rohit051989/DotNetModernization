@@ -27,7 +27,9 @@ DECISION_STATUS = ("parked", "in_review", "approved", "superseded")
 SCOPE_STATUS = ("active", "deferred")
 
 ADAPTER_TYPE = ("python", "process", "http", "event", "stub")
-STEP_OWNER_CODE = ("P", "C", "S", "H")
+# Combined codes (e.g. "P + S") denote shared authorship within one step and are
+# stored verbatim — see 17-LIFECYCLE-STEPS.md "Owner codes".
+STEP_OWNER_CODE = ("P", "C", "S", "H", "P + S", "P + H")
 IMPLEMENTATION_STATUS = ("stub", "implemented", "deprecated")
 VALIDATION_STATUS = ("valid", "invalid")
 BATCH_STATUS = (

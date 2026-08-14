@@ -8,6 +8,8 @@ from sqlalchemy.orm import Session
 
 from app import models
 from app.db import SessionLocal
+from app.workflow import registration
+from app.workflow.schemas import StepDeclaration
 
 DATA_DIR = Path(__file__).parent / "data"
 
@@ -209,6 +211,46 @@ def seed(reset: bool = False) -> dict:
         db.close()
 
 
+def seed_lifecycle_steps() -> dict:
+    """Registers all 51 lifecycle steps as stubs from lifecycle_steps.yaml —
+    see 17-LIFECYCLE-STEPS.md. Idempotent upsert by step_name: re-run any time
+    the file changes, no code changes needed."""
+    db = SessionLocal()
+    try:
+        steps_data = _load("lifecycle_steps.yaml")["steps"]
+        created = 0
+        updated = 0
+        for step_data in steps_data:
+            declaration = StepDeclaration(
+                step_name=step_data["step_name"],
+                lifecycle_step_no=step_data["lifecycle_step_no"],
+                display_name=step_data["display_name"],
+                owner_code=step_data["owner_code"],
+                version="0.0.0",
+                implementation_status="stub",
+                consumes=[],
+                produces=[],
+                adapter_type="stub",
+                adapter_config={
+                    "exit_status": "NOT_IMPLEMENTED",
+                    "message": "Awaiting implementation by platform team",
+                },
+            )
+            _row, was_created, _warnings = registration.register_step(db, declaration)
+            if was_created:
+                created += 1
+            else:
+                updated += 1
+        db.commit()
+        return {
+            "steps_created": created,
+            "steps_updated": updated,
+            "steps_total": db.query(models.WfStepRegistration).count(),
+        }
+    finally:
+        db.close()
+
+
 def print_summary(result: dict) -> None:
     totals = result["totals"]
     print(
@@ -221,3 +263,10 @@ def print_summary(result: dict) -> None:
         parts = [f"{key}: {value}" for key, value in coverage.items() if value > 0]
         if parts:
             print(f"  {engagement_id:<22} " + "   ".join(parts))
+
+
+def print_steps_summary(result: dict) -> None:
+    print(
+        f"Seeded: {result['steps_total']} lifecycle steps "
+        f"({result['steps_created']} created, {result['steps_updated']} updated)"
+    )
