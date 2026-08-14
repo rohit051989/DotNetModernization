@@ -1,0 +1,23 @@
+{
+  "envelope_version": "1.0",
+  "step_name": "repository-ingest",
+  "step_version": "1.0.0",
+  "job_name": "phase0-repository-discovery",
+  "job_execution_id": "00000000-0000-0000-0000-000000000001",
+  "step_execution_id": "00000000-0000-0000-0000-000000000002",
+  "attempt": 1,
+  "partition_key": null,
+  "parameters": {
+    "engagement_id": "client-a-ocp4",
+    "repository_id": "00000000-0000-0000-0000-000000000000",
+    "ingest_token": "00000000-0000-0000-0000-000000000003"
+  },
+  "config": {},
+  "inputs": {},
+  "job_context": {},
+  "step_context": {},
+  "working_dir": "./runs/client-a-ocp4/_no-repo/0001-00000000/repository-ingest",
+  "output_dir": "./runs/client-a-ocp4/_no-repo/0001-00000000/repository-ingest/out",
+  "database_url": "postgresql+psycopg://catalog:catalog_dev_pw@localhost:5433/modernization_catalog",
+  "log_level": "INFO"
+}

@@ -57,6 +57,32 @@ def _flat_step_nodes(flow: list) -> list[StepNode]:
     return nodes
 
 
+def _repository_slug(db: Session, repository_id) -> str:
+    if not repository_id:
+        return "_no-repo"
+    repo = db.get(models.Repository, repository_id)
+    return repo.slug if repo is not None else "_no-repo"
+
+
+def _run_base_dir(
+    db: Session, instance: models.WfJobInstance, job_execution: models.WfJobExecution
+) -> Path:
+    """`runs/{engagement_id}/{repository_slug}/{execution_number:04d}-{execution_id_short}`
+    — browsable back to the client and repository a run belongs to, unlike a bare
+    execution id. Falls back to `_no-repo` when the job declares no
+    `repository_id` (or it doesn't resolve to a row) — see 11-STEP-CONTRACT.md."""
+    parameters = instance.parameters or {}
+    engagement_id = parameters.get("engagement_id") or "_no-engagement"
+    repository_slug = _repository_slug(db, parameters.get("repository_id"))
+    execution_id_short = str(job_execution.id)[:8]
+    execution_dir = f"{job_execution.execution_number:04d}-{execution_id_short}"
+    # Absolute: StepContext.working_dir/output_dir are documented as absolute
+    # paths (11-STEP-CONTRACT.md), and Path.as_uri() (used when steps report
+    # a file:// artifact uri) raises on a relative path. settings.runs_dir
+    # defaults to a relative "./runs".
+    return (Path(settings.runs_dir) / engagement_id / repository_slug / execution_dir).resolve()
+
+
 def _resolve_config(value, parameters: dict):
     """Substitutes ${params.x} tokens in a step's `config` block."""
     if isinstance(value, str):
@@ -284,6 +310,7 @@ def _invoke_step(
     node: StepNode,
     registration: models.WfStepRegistration,
     attempt: int,
+    run_base: Path,
 ) -> tuple[models.WfStepExecution, StepResult, bool]:
     step_execution = models.WfStepExecution(
         job_execution_id=job_execution.id,
@@ -296,7 +323,7 @@ def _invoke_step(
     db.add(step_execution)
     db.flush()
 
-    run_root = Path(settings.runs_dir) / str(job_execution.id) / node.step
+    run_root = run_base / node.step
     output_dir = run_root / "out"
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -407,6 +434,8 @@ def run_execution(
     job_execution.started_at = _now()
     db.flush()
 
+    run_base = _run_base_dir(db, instance, job_execution)
+
     for i, node in enumerate(flow_steps):
         if i < resume_index:
             _carry_forward_step(db, job_execution, prior_steps_by_name[node.step])
@@ -435,7 +464,7 @@ def run_execution(
             return job_execution
 
         step_execution, result, should_halt = _invoke_step(
-            db, job_execution, instance, definition, node, registration, attempt
+            db, job_execution, instance, definition, node, registration, attempt, run_base
         )
 
         if should_halt:

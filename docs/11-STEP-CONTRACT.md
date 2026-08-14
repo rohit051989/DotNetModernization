@@ -51,8 +51,8 @@ The engine passes this JSON to the step. `envelope_version` is `"1.0"`.
   "job_context": { "arbitrary": "job-scoped state" },
   "step_context": { "arbitrary": "step-scoped state, survives restart" },
 
-  "working_dir": "/.../runs/8f2c/repository-ingest",
-  "output_dir": "/.../runs/8f2c/repository-ingest/out",
+  "working_dir": "/.../runs/client-a-ocp4/order-management/0001-8f2c1a3b/repository-ingest",
+  "output_dir": "/.../runs/client-a-ocp4/order-management/0001-8f2c1a3b/repository-ingest/out",
 
   "database_url": "postgresql+psycopg://...",
   "log_level": "INFO"
@@ -71,6 +71,26 @@ Notes:
   tables. Steps from other teams may ignore it.
 - `step_context` is how a step resumes mid-work after a failure — a chunk-oriented
   step records its cursor here.
+
+### Run directory layout
+
+`working_dir` and `output_dir` are built from:
+
+```
+runs/{engagement_id}/{repository_slug}/{execution_number:04d}-{execution_id_short}/{step_name}/out
+```
+
+Falls back to `runs/{engagement_id}/_no-repo/...` for a job whose parameters declare
+no `repository_id` — or whose `repository_id` doesn't resolve to a `repositories`
+row. `execution_id_short` is the first 8 characters of the job execution's UUID.
+
+This exists so a directory on disk is browsable back to the client and repository it
+belongs to — a bare `runs/{execution_id}/{step_name}/out` tells you nothing without
+a database lookup. `{execution_number:04d}-{execution_id_short}` keeps every
+execution of the same repository in its own directory, ordered numerically, while
+still being unique even if two instances somehow shared an execution number.
+Computed once per job execution (`app/workflow/runtime/executor.py`), not
+per-step — every step in the same execution shares the same base directory.
 
 ## Response — StepResult
 

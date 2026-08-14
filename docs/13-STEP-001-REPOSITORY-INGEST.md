@@ -1,7 +1,8 @@
 # 13 — Step 1: Repository Ingest
 
 Lifecycle step 1. Owner: **P** (platform, deterministic). Job:
-`phase0-estate-discovery`.
+`phase0-repository-discovery`, per repository — see `15-REPOSITORY-INGEST-UI.md`
+Part A.
 
 > Enumerate repositories and create the inventory record set that everything
 > downstream populates.
@@ -11,77 +12,64 @@ builds on its output.
 
 ## Scope
 
-**In:** discover repositories from a declared source, register them in the platform
-inventory, obtain a local working copy, record a baseline commit SHA, capture
-coarse size metrics.
+**In:** read one already-registered repository's folder in place, resolve its git
+metadata when present, verify its asserted clone URL, capture coarse size metrics,
+and update its `repositories` row.
 
 **Out:** solution or project parsing (step 2), fingerprinting (step 3), dependency
-analysis (step 7). This step does not open a single `.csproj`.
+analysis (step 7). This step does not open a single `.csproj`. Also out: discovering
+or registering repositories — that is the registration API (`15-REPOSITORY-INGEST-UI.md`
+Part D), which runs before this step and creates the `repositories` row this step
+reads.
 
 ## Sources
 
-Three source types, selected by `config.source_type`.
+Two source types, replacing the three in earlier drafts of this document — see
+`15-REPOSITORY-INGEST-UI.md` Part B. Selected by the `repositories.source_type`
+column, **not** by step config.
 
-### `manifest` — the default, and the only one needed for the demo
+### `local_path` — the only implemented source
 
-A YAML file listing repositories. Clone credentials are never in the manifest.
+The repository already exists on disk. The step reads it **in place**; nothing is
+copied or cloned.
 
-```yaml
-# input/repos.yaml
-manifest_version: "1.0"
-repositories:
-  - name: order-management
-    clone_url: "https://github.com/example/order-management.git"
-    default_branch: main
-  - name: legacy-billing
-    clone_url: "https://github.com/example/legacy-billing.git"
-    default_branch: master
-    tags: ["high-risk"]
-```
+1. Read `local_path` from the `repositories` row — the row is authoritative and was
+   validated at registration. Do not take it from step `config`.
+2. Verify the path still exists and is a directory. `FAILED` with a clear message
+   naming the path if the folder has moved or been deleted.
+3. Detect `.git`. If present, resolve HEAD SHA, current branch and the `origin`
+   remote URL; set `has_git_history: true`. If absent, set `ingest_commit_sha` null
+   and `has_git_history: false` — a working folder without history is valid input.
+4. Perform clone URL verification (see "Clone URL verification" below) and record
+   the outcome.
+5. Compute size and file-count metrics, skipping `.git`, `node_modules`, `bin`,
+   `obj`, `packages`.
+6. Update the `repositories` row and emit the `repository-inventory` artifact for
+   this single repository.
 
-### `local_directory` — for sample sets and offline work
+**Phase 0 is read-only against the registered folder.** It must not write anything
+there. Track A will later create a working branch; that is separate. Enforced in the
+implementation and verified with `git status` during testing.
 
-Scans a directory one level deep for folders containing a `.git` directory. Each
-becomes a repository. Useful for the pre-onboarding sample set where repositories are
-already on disk.
+### `git_clone` — not implemented
 
-```yaml
-config:
-  source_type: local_directory
-  root_path: "D:/samples/dotnet-legacy"
-```
+Accepted as a shape at registration (parent directory plus an HTTPS clone URL), but
+registration itself returns `501` for it (`15-REPOSITORY-INGEST-UI.md` Part D) — a
+job never actually launches with `source_type: git_clone` yet. This step still
+guards defensively: if it is ever invoked against a repository whose `source_type`
+is not `local_path`, it returns `NOT_IMPLEMENTED` rather than guessing.
 
-### `provider_api` — specify now, implement later
-
-GitHub, Azure DevOps or Bitbucket organisation enumeration. Register the code path
-and return `NOT_IMPLEMENTED`. We have no client credentials pre-onboarding, so
-building it now would be untestable.
+There is no more `manifest` source and no more `local_directory` source. Repository
+discovery is one folder at a time, registered through the UI/API, not enumerated in
+bulk by this step. There is no concurrent cloning to configure, because this step
+never clones.
 
 ## Configuration
 
-```yaml
-config:
-  source_type: manifest              # manifest | local_directory | provider_api
-  manifest_path: "./input/repos.yaml"
-  root_path: null                    # local_directory only
-  workspace_root: "./workspace/repos"
-  clone_mode: shallow                # shallow | full | none
-  shallow_depth: 1
-  clone_timeout_seconds: 600
-  max_concurrent_clones: 4
-  skip_on_clone_failure: true
-  compute_size_metrics: true
-```
-
-`clone_mode: none` registers repositories without cloning — useful for a fast
-inventory pass before committing disk to 50+ clones.
-
-`clone_mode: shallow` is the default. Step 18 needs real history for baseline
-verification, so it will deepen the clone itself when required. Do not clone full
-history here.
-
-Credentials come from engine environment (`GIT_USERNAME` / `GIT_TOKEN`), never from
-config or the manifest.
+None. `config` is not used by this step — everything it needs (`local_path`,
+`clone_url`, `source_type`) lives on the `repositories` row, addressed by
+`parameters.repository_id`. This is deliberate: the row was validated once, at
+registration, and is the single source of truth for every subsequent scan.
 
 ## Contract
 
@@ -94,10 +82,7 @@ version: "1.0.0"
 owner_team: "platform"
 implementation_status: implemented
 
-consumes:
-  - artifact_type: repo-manifest
-    version_range: "^1.0.0"
-    optional: true            # not required for local_directory or provider_api
+consumes: []
 
 produces:
   - artifact_type: repository-inventory
@@ -112,141 +97,159 @@ restart:
   start_limit: 3
 ```
 
-`consumes` is `optional: true` because only the `manifest` source needs it. The step
-validates at runtime that a manifest input is present when `source_type: manifest`,
-failing with a clear message otherwise.
+`consumes` is empty — this step reads the `repositories` row directly via
+`parameters.repository_id`, not an upstream artifact. That is what makes the job
+definition's `flow` need no `inputs:` wiring for it (see
+`phase0-repository-discovery.yaml`).
 
-## New table: `repositories`
+## `repositories` table
 
-Platform inventory, not a workflow table — no `wf_` prefix.
+Defined in full in `15-REPOSITORY-INGEST-UI.md` Part C, which replaces the table
+definition this document used to carry. Read that section before touching this
+step's persistence — in particular the three partial unique indexes, the
+normalisation rules for `clone_url` and `local_path`, and the distinction between
+"Scan results" columns (written by this step) and "Lifecycle" / "Engagement
+metadata" columns (written by the registration API, not this step).
 
-| Column | Type | Notes |
+This step writes only the "Scan results" columns — `has_git_history`,
+`ingest_commit_sha`, `size_bytes`, `file_count`, `ingest_status`, `ingest_error` —
+plus `detected_clone_url`, `clone_url_verification`, and `last_scanned_at`. It never
+sets `first_registered_at`, and never touches `local_path`, `clone_url`,
+`root_folder_name`, or any of the engagement-metadata columns — those are identity
+or operator-supplied fields owned by registration.
+
+## Clone URL verification
+
+The user **asserts** `clone_url` at registration; this step **verifies** it against
+`.git` on every scan. Never silently overwrite what the user entered.
+
+| Condition | `clone_url_verification` | Behaviour |
 |---|---|---|
-| `id` | `UUID` PK | |
-| `engagement_id` | `TEXT` NOT NULL FK → `engagements.id` | |
-| `name` | `TEXT` NOT NULL | From manifest or directory name |
-| `slug` | `TEXT` NOT NULL | Normalised, `^[a-z0-9]+(-[a-z0-9]+)*$` |
-| `source_type` | `TEXT` NOT NULL | CHECK IN (`manifest`,`local_directory`,`provider_api`) |
-| `source_uri` | `TEXT` | Clone URL, or absolute path for local |
-| `default_branch` | `TEXT` | |
-| `local_path` | `TEXT` | Working copy location |
-| `ingest_commit_sha` | `TEXT` | Baseline. The estate as of this scan |
-| `ingest_status` | `TEXT` NOT NULL | CHECK IN (`registered`,`cloned`,`clone_failed`,`skipped`) |
-| `ingest_error` | `TEXT` | |
-| `size_bytes` | `BIGINT` | Working tree, excluding `.git` |
-| `file_count` | `INTEGER` | |
-| `tags` | `JSONB` | From manifest |
-| `first_ingested_at` | `TIMESTAMPTZ` | Set once |
-| `last_ingested_at` | `TIMESTAMPTZ` | Updated every run |
-| `deleted_at` / `deleted_by` | `TIMESTAMPTZ` / `TEXT` | Soft delete, consistent with the catalog |
-| `created_at` / `updated_at` | `TIMESTAMPTZ` | |
+| `.git` present, normalised remote matches `clone_url` | `verified` | Proceed |
+| `.git` present, normalised remote differs | `mismatch` | Proceed; both values stored, no rejection |
+| No `.git`, or no `origin` remote configured | `unverifiable` | Proceed |
 
-Unique on `(engagement_id, slug)` where `deleted_at IS NULL`.
-Indexes on `engagement_id`, `ingest_status`.
+Normalisation (lowercase host, strip trailing `.git`, strip trailing slash, strip
+embedded credentials, treat `git@host:org/repo` as `https://host/org/repo`) is the
+same rule given in `15-REPOSITORY-INGEST-UI.md` Part C, applied to both sides before
+comparing. A mismatch is a warning, not a rejection — see that document for why.
 
 ## Artifact: `repository-inventory@1.0.0`
 
-Written to `output_dir/repository-inventory.json`. Deterministic — sorted keys,
-repositories sorted by `slug`, 2-space indent, trailing newline. Same rules as the
-catalog export, and for the same reason: this artifact gets committed and diffed.
+Written to `output_dir/repository-inventory.json`, one artifact per repository (not
+a bulk array across many repositories — this step's job is scoped to exactly one via
+`parameters.repository_id`). Deterministic — sorted keys, 2-space indent, trailing
+newline. Same rules as the catalog export, and for the same reason: this artifact
+gets committed and diffed.
 
 ```json
 {
   "artifact_type": "repository-inventory",
   "artifact_version": "1.0.0",
   "engagement_id": "client-a-ocp4",
-  "source_type": "manifest",
-  "generated_at": "2026-08-05T10:00:00Z",
-  "summary": {
-    "total": 52,
-    "cloned": 49,
-    "clone_failed": 2,
-    "skipped": 1,
-    "total_size_bytes": 4821004032
-  },
-  "repositories": [
+  "repository_id": "3f2b8c14-9d7e-4a51-b6c2-8e1d4f70a9b3",
+  "slug": "order-management",
+  "name": "Order Management",
+  "root_folder_name": "order-management",
+  "local_path": "D:\\repos\\order-management",
+  "source_type": "local_path",
+  "clone_url": "https://github.com/example/order-management.git",
+  "detected_clone_url": "https://github.com/example/order-management.git",
+  "clone_url_verification": "verified",
+  "provider": "github",
+  "default_branch": "main",
+  "current_branch": "main",
+  "has_git_history": true,
+  "ingest_commit_sha": "a1b2c3d4e5f6...",
+  "size_bytes": 48210040,
+  "file_count": 1842
+}
+```
+
+**There is no `generated_at` field in this file.** The task requires "`generated_at`
+excluded from the checksum calculation" so two runs over an unchanged repository
+produce an identical checksum — and the engine's checksum (`app/workflow/adapters/base.py`)
+is computed over the artifact file's actual bytes on disk, to catch a corrupt or
+truncated write. The only way to satisfy both — a stable checksum *and* a checksum
+that is genuinely the file's own hash, not something computed differently from what
+gets verified — is to keep the varying timestamp out of the hashed bytes entirely.
+`generated_at` is therefore carried in the `StepResult` output's `metadata` instead:
+
+```json
+{
+  "outputs": [
     {
-      "slug": "order-management",
-      "name": "order-management",
-      "source_uri": "https://github.com/example/order-management.git",
-      "default_branch": "main",
-      "local_path": "workspace/repos/order-management",
-      "ingest_commit_sha": "a1b2c3d4e5f6...",
-      "ingest_status": "cloned",
-      "size_bytes": 48210040,
-      "file_count": 1842,
-      "tags": []
+      "artifact_type": "repository-inventory",
+      "artifact_version": "1.0.0",
+      "uri": "file:///.../repository-inventory.json",
+      "checksum": "sha256:...",
+      "metadata": { "generated_at": "2026-08-05T10:00:00Z" }
     }
   ]
 }
 ```
 
-`generated_at` is excluded from the checksum calculation so that two runs over
-unchanged repositories produce an identical checksum. State this explicitly in the
-implementation.
+`current_branch` is informational only — there is no column for it on `repositories`
+(only `default_branch`, which is operator-supplied or detected once at registration).
+This step never overwrites `default_branch`.
 
 ## Processing model
 
-Chunk-oriented, because the item count is unbounded.
-
-- **Read:** one repository entry from the resolved source
-- **Process:** normalise the slug, clone or verify the working copy, resolve the
-  commit SHA, compute size metrics
-- **Write:** upsert the `repositories` row, commit every 10 items
-
-Resumability: after each commit, record the last processed slug in
-`step_context_updates.cursor`. On restart, skip entries already past the cursor.
-
-Concurrency: clone in a bounded thread pool of `max_concurrent_clones`. Database
-writes remain serialised on the main thread — do not share a session across threads.
+Single item, not chunked — this step's whole job is one `repositories` row, resolved
+from `parameters.repository_id`. Earlier drafts of this document described a
+chunk-oriented, cursor-resumable model for enumerating many repositories from a
+manifest; that no longer applies; registering many repositories means launching this
+job once per repository (`phase0-repository-discovery` is per-repository — see
+`15-REPOSITORY-INGEST-UI.md` Part A).
 
 Metrics mapping:
-- `read_count` — entries found in the source
-- `write_count` — rows upserted successfully
-- `skip_count` — clone failures skipped, plus entries already past the cursor
-- `commit_count` — chunk commits
+- `read_count` — always `1` (the one repository)
+- `write_count` — `1` on success, `0` on failure
+- `skip_count` — always `0` — there is nothing to skip within a single repository
+- `commit_count` — `1` (one row update)
 
 ## Exit statuses
 
 | Condition | Exit status |
 |---|---|
-| All repositories processed | `COMPLETED` |
-| Some clones failed, `skip_on_clone_failure: true` | `COMPLETED`, with `diagnostics` per failure |
-| Some clones failed, `skip_on_clone_failure: false` | `FAILED` |
-| Source unreachable or manifest unparseable | `FAILED` |
-| Source resolved to zero repositories | `FAILED` — almost certainly misconfiguration, not a valid empty estate |
-| `source_type: provider_api` | `NOT_IMPLEMENTED` |
+| Repository scanned successfully | `COMPLETED` |
+| `parameters.repository_id` missing, or no matching row | `FAILED` |
+| `local_path` does not exist or is not a directory | `FAILED` — `repositories.ingest_status` set to `path_missing` |
+| `repositories.source_type` is not `local_path` | `NOT_IMPLEMENTED` |
 
 ## Idempotency
 
-Re-running must be safe. Upsert on `(engagement_id, slug)`:
-
-- existing row → update `last_ingested_at`, `ingest_commit_sha`, size metrics,
-  status. Preserve `first_ingested_at`.
-- working copy already present and valid → fetch and reset to the default branch
-  rather than re-cloning.
-- repository in the inventory but absent from the source → **do not delete.** Set
-  `ingest_status: skipped` with `ingest_error: "not present in current source"`.
-  Removal is a human decision, consistent with the catalog's soft-delete philosophy.
+Re-running (a rescan) updates the **same** `repositories` row in place — it was
+created once, at registration, and this step never creates or deletes a row.
+`first_registered_at` is preserved; `last_scanned_at`, `ingest_commit_sha`,
+`has_git_history`, `detected_clone_url`, `clone_url_verification`, `size_bytes`,
+`file_count` and `ingest_status` are all overwritten with this run's findings. Two
+consecutive runs over an unchanged repository produce byte-identical artifacts
+(and therefore identical checksums) and leave the row in the same state.
 
 ## Validation and safety
 
-- Reject `local_path` values escaping `workspace_root` — guard against path
-  traversal from a hostile manifest.
-- Reject clone URLs with embedded credentials (`https://user:pass@…`). Fail with a
-  clear message pointing at environment variables.
-- Cap `file_count` traversal depth and skip `.git`, `node_modules`, `bin`, `obj`,
-  `packages` when computing size metrics, or size computation dominates runtime.
+- Cap traversal and skip `.git`, `node_modules`, `bin`, `obj`, `packages` when
+  computing size metrics, or size computation dominates runtime.
 - Never log credentials or full clone URLs containing tokens.
+- Path-traversal and embedded-credential rejection for `local_path` / `clone_url`
+  happen once, at registration (`15-REPOSITORY-INGEST-UI.md` Part E) — this step
+  trusts the row it reads rather than re-validating input shape.
 
 ## Test fixtures
 
 Ship alongside the implementation:
 
-- `tests/fixtures/repos-valid.yaml` — three repositories, one with tags
-- `tests/fixtures/repos-empty.yaml` — zero repositories, must fail
-- `tests/fixtures/repos-bad-credentials.yaml` — embedded credentials, must fail
-- `tests/fixtures/sample-context.json` — a full StepContext for standalone invocation
+- `tests/fixtures/sample-context.json` — a full StepContext for standalone
+  invocation. Its `parameters.repository_id` is a placeholder that will not resolve
+  to a real row unless you have inserted one with that id — that is expected;
+  invoking it demonstrates the standalone stdin/stdout mechanism works even when the
+  outcome is a clean `FAILED`, not that the placeholder repository exists.
+- The "folder with `.git`", "folder without `.git`", and "non-existent path" cases
+  are constructed at test time in `tests/test_repository_ingest.py` (a real,
+  disposable git working tree via `git init`), rather than checked in — a `.git`
+  directory does not check into another git repository the way a plain fixture file
+  does.
 
 Standalone invocation must work, per `11-STEP-CONTRACT.md`:
 
@@ -261,17 +264,19 @@ exercise it without the engine.
 
 ## Acceptance criteria
 
-- [ ] Registers in `wf_step_registrations` with the declared contract
-- [ ] `phase0-estate-discovery` job definition validates and activates with step 1
-      real and steps 2–12 as stubs
-- [ ] Runs against a local directory of at least three sample repositories
-- [ ] Runs against a manifest of at least three public repositories
+- [ ] Registers in `wf_step_registrations` with the declared contract: `consumes: []`,
+      `produces: [repository-inventory@1.0.0]`, `adapter_type: python`,
+      `implementation_status: implemented`
+- [ ] `phase0-repository-discovery` validates with step 1 real and steps 2–10 as
+      stubs, with **no change to the job definition YAML**
+- [ ] Runs against a local folder with `.git`: resolves HEAD SHA, current branch,
+      origin remote, and sets `clone_url_verification` correctly
+- [ ] Runs against a local folder without `.git`: `has_git_history: false`,
+      `ingest_commit_sha: null`, `clone_url_verification: "unverifiable"`
+- [ ] A missing/moved folder yields `FAILED` and `ingest_status: path_missing`,
+      naming the path in the message
 - [ ] Produces a `repository-inventory` artifact with a verified checksum
-- [ ] Two consecutive runs over unchanged repositories produce identical checksums
-- [ ] Killing the process mid-run and restarting resumes from the cursor without
-      duplicate rows
-- [ ] A single unreachable repository yields `COMPLETED` with a diagnostic, not a
-      failed job
-- [ ] Zero repositories yields `FAILED`
-- [ ] `provider_api` yields `NOT_IMPLEMENTED`
+- [ ] Two consecutive runs over an unchanged repository produce identical checksums
+- [ ] `git status` in the registered folder is clean after a run — nothing written
+      there
 - [ ] Standalone stdin/stdout invocation works
