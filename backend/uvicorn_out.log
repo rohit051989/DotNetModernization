@@ -2,3 +2,20 @@ INFO:     127.0.0.1:61695 - "GET /api/workflow/steps HTTP/1.1" 200 OK
 INFO:     127.0.0.1:61697 - "GET /api/workflow/steps/repository-ingest HTTP/1.1" 200 OK
 INFO:     127.0.0.1:61698 - "GET /api/workflow/steps/does-not-exist HTTP/1.1" 404 Not Found
 INFO:     127.0.0.1:51798 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55665 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50380 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63110 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54914 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64751 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65052 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57704 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52929 - "OPTIONS /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52929 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54322 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50409 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61817 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50564 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53272 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63597 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55096 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60621 - "GET /api/health HTTP/1.1" 200 OK
