@@ -36,6 +36,7 @@ interface TargetStateFormState {
   linux_compatible: boolean
   container_ready: boolean
   is_lift_and_shift: boolean
+  is_recommended: boolean
   prerequisites: string
   known_limitations: string
   playbook_md: string
@@ -55,6 +56,7 @@ function toFormState(option?: TargetStateDetail): TargetStateFormState {
       linux_compatible: true,
       container_ready: true,
       is_lift_and_shift: false,
+      is_recommended: false,
       prerequisites: '',
       known_limitations: '',
       playbook_md: '',
@@ -72,6 +74,7 @@ function toFormState(option?: TargetStateDetail): TargetStateFormState {
     linux_compatible: option.linux_compatible,
     container_ready: option.container_ready,
     is_lift_and_shift: option.is_lift_and_shift,
+    is_recommended: option.is_recommended,
     prerequisites: option.prerequisites ?? '',
     known_limitations: option.known_limitations ?? '',
     playbook_md: option.playbook_md ?? '',
@@ -143,6 +146,7 @@ export function TargetStateForm({ mode, patternId, option, onClose, onSaved }: T
       linux_compatible: form.linux_compatible,
       container_ready: form.container_ready,
       is_lift_and_shift: form.is_lift_and_shift,
+      is_recommended: form.is_recommended,
       engine_support: engineSupportHasContent ? form.engine_support : null,
       playbook_md: form.playbook_md || null,
       prerequisites: form.prerequisites || null,
@@ -271,7 +275,18 @@ export function TargetStateForm({ mode, patternId, option, onClose, onSaved }: T
                 checked={form.is_lift_and_shift}
                 onChange={(checked) => update('is_lift_and_shift', checked)}
               />
+              <Toggle
+                label="Recommended"
+                checked={form.is_recommended}
+                onChange={(checked) => update('is_recommended', checked)}
+              />
             </div>
+            {form.is_recommended && (
+              <p className="text-xs text-neutral-500">
+                Saving will clear "Recommended" on every other option for this pattern — at most
+                one is ever recommended.
+              </p>
+            )}
 
             <Field label="Prerequisites" error={fieldErrors.prerequisites}>
               <textarea

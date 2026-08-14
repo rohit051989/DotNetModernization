@@ -1,7 +1,11 @@
 import { useEffect, useState } from 'react'
 import { deletePattern, deprecatePattern, getPattern, listTargetStates } from '../../api/catalog'
 import { ApiError } from '../../api/client'
-import type { DetectionRules, PatternDetail as PatternDetailModel, TargetStateDetail } from '../../types/catalog'
+import type {
+  DetectionRules,
+  PatternDetail as PatternDetailModel,
+  TargetStateDetail,
+} from '../../types/catalog'
 import { CategoryBadge, StatusBadge } from '../../components/Badge'
 import { ConfirmDialog } from '../../components/ConfirmDialog'
 import { Markdown } from '../../components/Markdown'
@@ -131,6 +135,10 @@ export function PatternDetail({ patternId, refreshToken, onCatalogChanged, onDel
             <StatusBadge status={pattern.status} />
           </div>
         </div>
+        {/* TODO: gate Edit/Deprecate/Delete behind an admin check once auth exists
+            (04-FRONTEND-SPEC.md, "Future: access control"). These are master-scoped
+            mutations — currently reachable by anyone, like every other action in
+            this build. */}
         <div className="flex shrink-0 gap-2">
           <button
             type="button"

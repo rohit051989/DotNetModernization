@@ -31,6 +31,7 @@ patterns:
         linux_compatible: true
         container_ready: true
         is_lift_and_shift: true
+        is_recommended: true
         prerequisites: "Repository builds cleanly on the current framework. Contract snapshot captured before any change."
         known_limitations: "Pins Newtonsoft.Json explicitly rather than adopting System.Text.Json, to guarantee payload parity. Serializer modernization is deferred to a later pass."
         engine_support:
@@ -108,6 +109,7 @@ patterns:
         linux_compatible: true
         container_ready: false
         is_lift_and_shift: true
+        is_recommended: true
         prerequisites: "No dependency on Framework-only APIs such as System.Web, AppDomain or Windows-specific configuration."
         known_limitations: "Interim state, not a destination. Some Framework APIs have no .NET Standard equivalent. Plan a later move to net10.0 once all consumers are migrated."
         engine_support:
@@ -175,6 +177,7 @@ patterns:
         linux_compatible: true
         container_ready: true
         is_lift_and_shift: true
+        is_recommended: true
         prerequisites: "Ability to run two processes during transition. Route inventory captured up front."
         known_limitations: "Temporarily increases operational complexity by running two applications. Requires a defined end date or the interim state becomes permanent."
         engine_support:
@@ -313,6 +316,7 @@ patterns:
         linux_compatible: true
         container_ready: true
         is_lift_and_shift: true
+        is_recommended: true
         prerequisites: "Bindings in use must be supported by CoreWCF. WSDL snapshot captured before migration."
         known_limitations: "CoreWCF does not support every WCF binding. WS-* protocols, MSMQ transport and some Windows-integrated security modes need case-by-case assessment. Windows authentication requires an alternative on Linux."
         engine_support:
@@ -408,6 +412,7 @@ patterns:
         linux_compatible: true
         container_ready: true
         is_lift_and_shift: true
+        is_recommended: true
         prerequisites: "Job is idempotent and safe to retry. File paths externalized to configuration."
         known_limitations: "Scheduling moves from Windows Task Scheduler to OpenShift, changing who owns the schedule. Local file dependencies must move to a mounted volume or object storage."
         engine_support:
@@ -477,6 +482,7 @@ patterns:
         linux_compatible: true
         container_ready: true
         is_lift_and_shift: true
+        is_recommended: true
         prerequisites: "Service account permissions mapped to an alternative identity mechanism on OCP4."
         known_limitations: "Windows-integrated authentication to SQL Server or file shares has no direct Linux equivalent. Expect a security-driven forcing factor here rather than a pure lift-and-shift."
         engine_support:

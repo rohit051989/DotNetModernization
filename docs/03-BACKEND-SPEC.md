@@ -13,9 +13,10 @@ backend/app/
   schemas.py         Pydantic request/response models
   routers/
     health.py
-    patterns.py
-    target_states.py
+    patterns.py            master catalog: patterns
+    target_states.py       master catalog: target state options
     engagements.py
+    engagement_patterns.py client catalog: the engagement-scoped pattern overlay
     decisions.py
     catalog.py       export / import
   seed/
@@ -62,6 +63,23 @@ to include them (so a deleted record can be inspected without direct DB access);
 get-by-id endpoints accept the same flag for the same reason. Without it, a
 soft-deleted record 404s exactly as if the row did not exist.
 
+## Master catalog vs client catalog
+
+Full concept and the `engagement_patterns` table are in `02-DATA-MODEL.md`. The
+API-level rule that matters most while implementing routes: **the endpoints
+under `/api/engagements/{eid}/patterns/...` never write to `patterns` or
+`target_state_options`, under any circumstance.** They read master data (joined
+in for display) and write only to `engagement_patterns` and, via the existing
+decisions endpoints, to `decision_records`. If a change to one of these routes
+seems to require touching a master table, that is a sign the change belongs on
+the `/api/patterns` or `/api/target-states` routes instead, not here.
+
+The reverse guard also holds: the master guards on `/api/patterns/{id}` (deprecate,
+delete) check `decision_records` **across every engagement**, not just one — a
+master pattern is shared IP, so retiring it must account for every engagement
+that might be relying on it, which is exactly why that check is broader than the
+client-scoped one on `engagement_patterns`.
+
 ## Routes
 
 ### Health
@@ -92,8 +110,8 @@ POST   /api/patterns/{pattern_id}/deprecate
 DELETE /api/patterns/{pattern_id}
        ?deleted_by=someone
        → 200 {"id": "...", "deleted_at": "..."}
-       → 409 if any non-deleted target state option, or any non-deleted
-         non-superseded decision record, still references the pattern
+       → 409 if any non-deleted, non-superseded decision record in ANY
+         engagement still references the pattern
 POST   /api/patterns/{pattern_id}/restore
        → 200 {"id": "...", "deleted_at": null}
 ```
@@ -102,15 +120,20 @@ POST   /api/patterns/{pattern_id}/restore
 
 `POST /deprecate` is the old `DELETE` behaviour, moved because `DELETE` now
 performs an actual deletion. Sets `status = 'deprecated'` and is permissive: if any
-non-deleted, non-superseded decision record references the pattern, deprecation
-still succeeds, with `"referenced_by_decisions": <count>` in the response so the
-UI can warn. Unchanged from before other than the route.
+non-deleted, non-superseded decision record references the pattern (in any
+engagement), deprecation still succeeds, with `"referenced_by_decisions": <count>`
+in the response so the UI can warn. It **cascades**: every non-deleted target
+state option under this pattern is also set to `status = 'deprecated'` in the
+same request.
 
-`DELETE` is the new soft delete. It is guarded, not permissive: refused with 409
-naming the count and kind of what blocks it if the pattern has any non-deleted
-target state options, or is referenced by any non-deleted, non-superseded
-decision record. Clear those first (deprecate or soft-delete the target state
-options; supersede the decisions), or soft-delete cascades are not supported.
+`DELETE` is the new soft delete. It is guarded, not permissive, but **only by
+decision records** — the existence of target state options never blocks it.
+Refused with 409 naming the count of non-superseded, non-deleted decision
+records (across every engagement, not just one) that still reference the
+pattern; supersede or remove those first. If it succeeds, it **cascades**: every
+non-deleted target state option under this pattern is soft-deleted in the same
+request, with the same `deleted_by`. There is no way to soft-delete a pattern and
+leave a live target state option behind.
 `deleted_by` is an optional free-text query parameter — there is no auth system
 yet to source an identity from.
 
@@ -161,7 +184,9 @@ On `POST`, reject with 409 if `(pattern_id, name)` already exists.
 
 `POST /deprecate` is the old `DELETE` behaviour, moved and otherwise unchanged:
 still refused if a non-superseded **approved** decision references the option,
-now additionally requiring that decision record to be non-deleted.
+now additionally requiring that decision record to be non-deleted. (This is the
+per-option deprecate guard, separate from the pattern-level deprecate cascade
+described above — an individual option can also be deprecated directly.)
 
 `DELETE` is the new soft delete, guarded more broadly than deprecate: refused if
 **any** non-superseded decision record (parked, in_review or approved) has this
@@ -173,6 +198,78 @@ exists. `status` is untouched.
 Sort returned options by `consumer_impact` ascending (`none` first), then `effort`
 ascending. The lowest-impact option should always appear first — the UI relies on
 this to present the presumptive choice at the top.
+
+`is_recommended` marks the master catalog's recommended option for the pattern —
+independent of any engagement's decision, which may reasonably choose a different
+option under a forcing factor. Enforced in the API layer on both `POST` and `PUT`:
+setting `is_recommended: true` on one option clears it on every other option under
+the same `pattern_id` in the same request, so at most one is ever `true`. There is
+no dedicated endpoint for it; it's just a field on the existing create/update
+payloads.
+
+### Client-scoped patterns (the client catalog)
+
+```
+GET    /api/engagements/{eid}/patterns
+       ?include_deleted=false&include_deferred=true
+       → 200 [EngagementPatternView]
+GET    /api/engagements/{eid}/patterns/{pid}
+       ?include_deleted=false
+       → 200 EngagementPatternView
+POST   /api/engagements/{eid}/patterns/{pid}/defer
+       body: {"deferred_reason": "..."}
+       → 200 EngagementPatternView
+POST   /api/engagements/{eid}/patterns/{pid}/reactivate
+       → 200 EngagementPatternView
+DELETE /api/engagements/{eid}/patterns/{pid}
+       ?deleted_by=someone
+       → 200 {"engagement_id": "...", "pattern_id": "...", "deleted_at": "..."}
+       → 409 if a non-superseded decision record exists for this
+         (engagement, pattern)
+POST   /api/engagements/{eid}/patterns/{pid}/restore
+       → 200 {"engagement_id": "...", "pattern_id": "...", "deleted_at": null}
+```
+
+**EngagementPatternView** is a merged read model, not a stored row: master
+pattern fields (the same shape as `PatternSummary`, plus `target_state_options`
+the same as in `PatternDetail`) joined with the overlay's `scope_status` /
+`deferred_reason` and a decision summary (`decision_status`,
+`selected_target_state_name`, or `null` if no decision has been recorded yet for
+this pattern in this engagement). Remember the overlay is lazy (see
+`02-DATA-MODEL.md`): when no `engagement_patterns` row exists,
+`scope_status` reads as `"active"` and `deleted_at` as `null` in the merged view,
+same as if a row existed saying exactly that.
+
+`GET` (list) excludes client-deleted patterns for this engagement by default;
+`?include_deleted=true` includes them. `?include_deferred=false` excludes
+deferred patterns; it defaults to `true` (deferred patterns show up by default,
+just visually distinguished — see `04-FRONTEND-SPEC.md`) since hiding them by
+default would make it too easy to lose track of a whole category of work.
+
+`POST /defer` upserts the `engagement_patterns` row: creates it with
+`scope_status='deferred'` if absent, or updates it if present. Always succeeds —
+deferring is never blocked by anything, including an existing decision record,
+and never modifies the decision record. `deferred_reason` is optional free text.
+
+`POST /reactivate` upserts the row with `scope_status='active'`. Also always
+succeeds.
+
+`DELETE` is the client-scoped soft delete: upserts the overlay row with
+`deleted_at`/`deleted_by` set. Refused with 409 if a non-superseded decision
+record exists for this exact `(engagement_id, pattern_id)` — supersede or remove
+it first. This check is scoped to this one engagement only; it has no bearing on,
+and is not affected by, any other engagement's decision for the same pattern, or
+on whether the master pattern itself could be deleted.
+
+`POST /restore` clears `deleted_at`/`deleted_by` on the overlay row.
+Unconditional, same as the master restore endpoints; admin-only in intent, not
+yet gated (see the note under "Soft delete vs deprecate" above).
+
+**These five endpoints never write to `patterns` or `target_state_options`.**
+They read master data for the merged view and write only `engagement_patterns`
+(and, indirectly through the existing decisions endpoints, `decision_records`).
+A pattern deferred or deleted here is affected in this engagement alone; the
+master pattern and every other engagement are untouched.
 
 ### Engagements
 
@@ -189,7 +286,6 @@ GET    /api/engagements/{id}/coverage      → 200 CoverageSummary
 convention as every other resource. There is no delete/deprecate/restore route for
 engagements in this build — the columns exist so the schema does not need another
 migration when that capability is added, but nothing in the API can set them yet.
-Coverage calculations only ever count non-deleted patterns and decisions.
 
 **CoverageSummary** — drives the future dashboard and is cheap to add now:
 
@@ -200,9 +296,20 @@ Coverage calculations only ever count non-deleted patterns and decisions.
   "approved": 5,
   "in_review": 1,
   "parked": 2,
+  "deferred": 1,
   "patterns_without_decision": ["ssis-package"]
 }
 ```
+
+`total_patterns` counts non-deleted, active master patterns, minus any this
+engagement has client-deleted via `engagement_patterns`. `deferred` counts
+patterns this engagement has deferred (independent of whether a decision record
+also exists for them — a pattern can be deferred and still have a stale parked
+decision, and both facts should be visible). `approved` / `in_review` / `parked`
+count this engagement's non-superseded, non-deleted decision records by status,
+as before. `patterns_without_decision` lists master patterns with neither a
+decision record nor a client-delete/defer overlay row — i.e. patterns still
+genuinely untouched by this engagement.
 
 ### Decision records
 
@@ -248,12 +355,25 @@ so the UI does not need extra lookups.
 
 ```
 GET  /api/catalog/export
-     ?include_engagements=false
+     ?scope=master|engagement&engagement_id=...&include_engagements=false
      → 200 CatalogExport
 POST /api/catalog/import
      body: CatalogExport, query: ?mode=merge|replace
      → 200 {"patterns_created": n, "patterns_updated": n, ...}
 ```
+
+`scope=master` (the default) exports only `patterns` and their nested
+`target_state_options` — no overlay, no decisions, regardless of
+`include_engagements`. This is what keeps the exported master catalog clean,
+client-agnostic and portable: it must never carry one engagement's deferrals,
+deletions or decisions, since those belong to that engagement alone, not to the
+shared IP. `scope=engagement` requires `?engagement_id=...` and additionally
+includes that one engagement's `engagement_patterns` overlay state (merged onto
+each pattern entry as `scope_status` / `deferred_reason`, following the same
+lazy-row-means-active rule as the API) and its `decision_records`, still subject
+to `include_engagements`/`include_timestamps` as before. Requesting
+`scope=engagement` without `engagement_id`, or for an engagement that does not
+exist, is a 422.
 
 **The export must be deterministic.** Same data in, byte-identical file out:
 
@@ -290,7 +410,10 @@ Export shape:
 ## Seeding
 
 `python -m app.seed` must be idempotent — safe to run repeatedly. Upsert by id.
-Add a `--reset` flag that truncates all four tables first, for demo resets.
+Add a `--reset` flag that truncates all tables first, for demo resets. The seed
+data itself does not populate `engagement_patterns` — the overlay is lazy (see
+`02-DATA-MODEL.md`), so a freshly-seeded catalog correctly has zero overlay rows,
+meaning every pattern starts active and undeleted in every engagement.
 
 Print a summary on completion:
 

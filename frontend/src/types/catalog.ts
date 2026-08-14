@@ -3,6 +3,7 @@ export type ConsumerImpact = 'none' | 'low' | 'medium' | 'high'
 export type EffortLevel = 'low' | 'medium' | 'high'
 export type DecisionStatus = 'parked' | 'in_review' | 'approved' | 'superseded'
 export type EngineCoverage = 'none' | 'partial' | 'strong'
+export type ScopeStatus = 'active' | 'deferred'
 
 export interface DetectionRules {
   target_frameworks: string[]
@@ -70,6 +71,7 @@ export interface TargetStateSummary {
   linux_compatible: boolean
   container_ready: boolean
   is_lift_and_shift: boolean
+  is_recommended: boolean
   status: LifecycleStatus
   version: number
   updated_at: string
@@ -86,6 +88,7 @@ export interface TargetStateDetail {
   linux_compatible: boolean
   container_ready: boolean
   is_lift_and_shift: boolean
+  is_recommended: boolean
   engine_support: EngineSupport | null
   playbook_md: string | null
   prerequisites: string | null
@@ -117,6 +120,7 @@ export interface CoverageSummary {
   approved: number
   in_review: number
   parked: number
+  deferred: number
   patterns_without_decision: string[]
 }
 
@@ -179,6 +183,7 @@ export interface TargetStateInput {
   linux_compatible: boolean
   container_ready: boolean
   is_lift_and_shift: boolean
+  is_recommended: boolean
   engine_support: EngineSupportInput | null
   playbook_md: string | null
   prerequisites: string | null
@@ -210,5 +215,59 @@ export interface TargetStateDeprecateResponse {
 
 export interface TargetStateSoftDeleteResponse {
   id: string
+  deleted_at: string | null
+}
+
+export interface DecisionRecordInput {
+  selected_target_state_id: string | null
+  candidates_considered: string[] | null
+  evaluation_notes: string | null
+  forcing_factor: string | null
+  rationale: string | null
+  approver_name: string | null
+  approver_role: string | null
+  decision_date: string | null
+  status: DecisionStatus
+}
+
+export interface DecisionRecordCreateInput extends DecisionRecordInput {
+  pattern_id: string
+}
+
+export type DecisionRecordUpdateInput = DecisionRecordInput
+
+// ---------- Client-scoped patterns (engagement_patterns overlay) ----------
+
+export interface EngagementPatternDeferRequest {
+  deferred_reason: string | null
+}
+
+export interface EngagementPatternView {
+  engagement_id: string
+  pattern_id: string
+  name: string
+  summary: string
+  description: string | null
+  legacy_stack: string
+  category: string
+  detection_rules: DetectionRules
+  typical_indicators: string | null
+  known_risks: string | null
+  status: LifecycleStatus
+  version: number
+  created_at: string
+  updated_at: string
+  target_state_options: TargetStateSummary[]
+  scope_status: ScopeStatus
+  deferred_reason: string | null
+  deleted_at: string | null
+  deleted_by: string | null
+  decision_status: DecisionStatus | null
+  selected_target_state_name: string | null
+}
+
+export interface EngagementPatternSoftDeleteResponse {
+  engagement_id: string
+  pattern_id: string
   deleted_at: string | null
 }

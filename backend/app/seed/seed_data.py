@@ -19,7 +19,10 @@ def _load(filename: str) -> dict:
 
 def reset_tables(db: Session) -> None:
     db.execute(
-        text("TRUNCATE decision_records, target_state_options, engagements, patterns CASCADE")
+        text(
+            "TRUNCATE engagement_patterns, decision_records, target_state_options, "
+            "engagements, patterns CASCADE"
+        )
     )
     db.commit()
 
@@ -61,6 +64,7 @@ def _upsert_target_state(db: Session, pattern_id: str, data: dict) -> bool:
     option.linux_compatible = data.get("linux_compatible", True)
     option.container_ready = data.get("container_ready", True)
     option.is_lift_and_shift = data.get("is_lift_and_shift", False)
+    option.is_recommended = data.get("is_recommended", False)
     option.engine_support = data.get("engine_support")
     option.playbook_md = data.get("playbook_md")
     option.prerequisites = data.get("prerequisites")

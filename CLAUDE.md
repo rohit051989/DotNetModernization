@@ -86,6 +86,15 @@ modernization-platform/
      semantics before touching either.
 8. Prefer boring, readable code over clever code. This will be handed to a
    delivery team.
+9. **Client-scoped operations must never mutate master catalog tables.**
+   Anything under `/api/engagements/{eid}/patterns/...` (the client catalog: defer,
+   reactivate, client-scoped delete/restore) may only write to
+   `engagement_patterns` and, via the existing decisions endpoints,
+   `decision_records`. It must never write to `patterns` or
+   `target_state_options` under any circumstance. If a change to a client-scoped
+   endpoint seems to require touching a master table, that change belongs on the
+   master endpoints (`/api/patterns`, `/api/target-states`) instead — see
+   "Master catalog vs client catalog" in `02-DATA-MODEL.md`.
 
 ## Domain vocabulary
 
@@ -95,9 +104,29 @@ Use these terms exactly and consistently in code, APIs, and UI copy.
   Example: "WCF service hosted in IIS using System.ServiceModel".
 - **Target state option** — one possible modernization destination for a pattern.
   A pattern may have several. Example: "CoreWCF on .NET 10".
+- **Recommendation** — the master catalog's own recommended target state option
+  for a pattern (`is_recommended`), set independent of any engagement's decision.
+  At most one per pattern. Distinct from the "presumptive choice" (lowest
+  consumer impact), which the two may or may not agree on.
 - **Engagement** — one client program.
 - **Decision record** — an engagement's approved choice of one target state option
   for one pattern, with rationale and approver.
+- **Master catalog** — the reusable IP: `patterns` and `target_state_options`.
+  Client-agnostic, editable in one place only, shared by every engagement.
+- **Client catalog** — the master catalog as seen and acted on by one
+  engagement: the merged view of master pattern data with that engagement's
+  `engagement_patterns` overlay and `decision_records`. Editing here never
+  changes the master catalog or any other engagement.
+- **Engagement pattern overlay** (`engagement_patterns`) — the row, one per
+  `(engagement, pattern)`, carrying that engagement's `scope_status`
+  (active/deferred) and client-scoped soft delete. Lazy: no row means active and
+  not deleted. Never confuse this with a decision record — the overlay is about
+  whether an engagement is engaging with a pattern at all; the decision record is
+  about what it chose.
+- **Defer** — an engagement's client-scoped decision not to tackle a pattern
+  right now (`engagement_patterns.scope_status = 'deferred'`). Not the same as
+  **deprecate**, which retires a pattern from the master catalog for everyone.
+  Different words for different layers, deliberately.
 - **Consumer impact** — how much a target state option changes what existing
   callers see. The lift-and-shift default means the lowest-impact viable option is
   presumptive.
@@ -109,3 +138,10 @@ Use these terms exactly and consistently in code, APIs, and UI copy.
 Authentication, RBAC, multi-user concurrency, audit logging, repository scanning,
 dependency graphs, wave planning, orchestration, engine integration, deployment.
 Do not scaffold these "for later".
+
+**Access control is parked, not forgotten.** The intent — admins see the master
+catalog and every engagement; non-admins see only their own engagement, with the
+master view hidden entirely — is recorded in `04-FRONTEND-SPEC.md`'s "Future:
+access control" section, with `// TODO: gate ... once auth exists` markers left
+at the view switcher and every master-scoped mutation. Leave those markers alone;
+they're the map for when auth lands. Do not implement the checks now.

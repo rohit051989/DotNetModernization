@@ -1,6 +1,12 @@
 import { api } from './client'
 import type {
+  DecisionRecord,
+  DecisionRecordCreateInput,
+  DecisionRecordUpdateInput,
   Engagement,
+  EngagementPatternDeferRequest,
+  EngagementPatternSoftDeleteResponse,
+  EngagementPatternView,
   HealthStatus,
   PatternCreateInput,
   PatternDeprecateResponse,
@@ -71,5 +77,65 @@ export function deprecateTargetState(targetStateId: string) {
 export function deleteTargetState(targetStateId: string) {
   return api.delete<TargetStateSoftDeleteResponse>(
     `/api/target-states/${encodeURIComponent(targetStateId)}`,
+  )
+}
+
+export function listDecisions(engagementId: string) {
+  return api.get<DecisionRecord[]>(`/api/engagements/${encodeURIComponent(engagementId)}/decisions`)
+}
+
+export function createDecision(engagementId: string, payload: DecisionRecordCreateInput) {
+  return api.post<DecisionRecord>(
+    `/api/engagements/${encodeURIComponent(engagementId)}/decisions`,
+    payload,
+  )
+}
+
+export function updateDecision(decisionId: string, payload: DecisionRecordUpdateInput) {
+  return api.put<DecisionRecord>(`/api/decisions/${encodeURIComponent(decisionId)}`, payload)
+}
+
+export function supersedeDecision(decisionId: string) {
+  return api.post<DecisionRecord>(`/api/decisions/${encodeURIComponent(decisionId)}/supersede`)
+}
+
+export function listEngagementPatterns(engagementId: string) {
+  return api.get<EngagementPatternView[]>(
+    `/api/engagements/${encodeURIComponent(engagementId)}/patterns`,
+  )
+}
+
+export function getEngagementPattern(engagementId: string, patternId: string) {
+  return api.get<EngagementPatternView>(
+    `/api/engagements/${encodeURIComponent(engagementId)}/patterns/${encodeURIComponent(patternId)}`,
+  )
+}
+
+export function deferEngagementPattern(
+  engagementId: string,
+  patternId: string,
+  payload: EngagementPatternDeferRequest,
+) {
+  return api.post<EngagementPatternView>(
+    `/api/engagements/${encodeURIComponent(engagementId)}/patterns/${encodeURIComponent(patternId)}/defer`,
+    payload,
+  )
+}
+
+export function reactivateEngagementPattern(engagementId: string, patternId: string) {
+  return api.post<EngagementPatternView>(
+    `/api/engagements/${encodeURIComponent(engagementId)}/patterns/${encodeURIComponent(patternId)}/reactivate`,
+  )
+}
+
+export function deleteEngagementPattern(engagementId: string, patternId: string) {
+  return api.delete<EngagementPatternSoftDeleteResponse>(
+    `/api/engagements/${encodeURIComponent(engagementId)}/patterns/${encodeURIComponent(patternId)}`,
+  )
+}
+
+export function restoreEngagementPattern(engagementId: string, patternId: string) {
+  return api.post<EngagementPatternSoftDeleteResponse>(
+    `/api/engagements/${encodeURIComponent(engagementId)}/patterns/${encodeURIComponent(patternId)}/restore`,
   )
 }

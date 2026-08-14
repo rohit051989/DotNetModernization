@@ -9,6 +9,7 @@ ConsumerImpact = Literal["none", "low", "medium", "high"]
 EffortLevel = Literal["low", "medium", "high"]
 DecisionStatus = Literal["parked", "in_review", "approved", "superseded"]
 EngineCoverage = Literal["none", "partial", "strong"]
+ScopeStatus = Literal["active", "deferred"]
 
 CONSUMER_IMPACT_RANK = {"none": 0, "low": 1, "medium": 2, "high": 3}
 EFFORT_RANK = {"low": 0, "medium": 1, "high": 2}
@@ -92,6 +93,7 @@ class TargetStateSummary(BaseModel):
     linux_compatible: bool
     container_ready: bool
     is_lift_and_shift: bool
+    is_recommended: bool
     status: LifecycleStatus
     version: int
     updated_at: datetime.datetime
@@ -157,6 +159,7 @@ class TargetStateBase(BaseModel):
     linux_compatible: bool = True
     container_ready: bool = True
     is_lift_and_shift: bool = False
+    is_recommended: bool = False
     engine_support: EngineSupport | None = None
     playbook_md: str | None = None
     prerequisites: str | None = None
@@ -190,6 +193,7 @@ class TargetStateDetail(BaseModel):
     linux_compatible: bool
     container_ready: bool
     is_lift_and_shift: bool
+    is_recommended: bool
     engine_support: dict | None
     playbook_md: str | None
     prerequisites: str | None
@@ -251,6 +255,7 @@ class CoverageSummary(BaseModel):
     approved: int
     in_review: int
     parked: int
+    deferred: int
     patterns_without_decision: list[str]
 
 
@@ -303,6 +308,49 @@ class DecisionRecord(BaseModel):
     updated_at: datetime.datetime
     deleted_at: datetime.datetime | None
     deleted_by: str | None
+
+
+# ---------- Client-scoped patterns (engagement_patterns overlay) ----------
+
+
+class EngagementPatternDeferRequest(BaseModel):
+    deferred_reason: str | None = None
+
+
+class EngagementPatternView(BaseModel):
+    """A merged read model, not a stored row: master pattern fields (full
+    PatternDetail shape) joined with this engagement's overlay state and a
+    lightweight decision summary. See 02-DATA-MODEL.md's lazy-overlay note —
+    scope_status/deleted_at here reflect 'active'/None when no overlay row
+    exists, exactly as if a row existed saying so explicitly."""
+
+    engagement_id: str
+    pattern_id: str
+    name: str
+    summary: str
+    description: str | None
+    legacy_stack: str
+    category: str
+    detection_rules: dict
+    typical_indicators: str | None
+    known_risks: str | None
+    status: LifecycleStatus
+    version: int
+    created_at: datetime.datetime
+    updated_at: datetime.datetime
+    target_state_options: list[TargetStateSummary]
+    scope_status: ScopeStatus
+    deferred_reason: str | None
+    deleted_at: datetime.datetime | None
+    deleted_by: str | None
+    decision_status: DecisionStatus | None
+    selected_target_state_name: str | None
+
+
+class EngagementPatternSoftDeleteResponse(BaseModel):
+    engagement_id: str
+    pattern_id: str
+    deleted_at: datetime.datetime | None
 
 
 # ---------- Catalog export / import ----------

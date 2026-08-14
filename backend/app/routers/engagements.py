@@ -72,12 +72,31 @@ def get_engagement_coverage(engagement_id: str, db: Session = Depends(get_db)):
     if engagement is None:
         raise HTTPException(status_code=404, detail=f"Engagement '{engagement_id}' not found")
 
-    active_pattern_ids = [
+    active_pattern_ids = {
         p.id
         for p in db.query(models.Pattern.id)
         .filter(models.Pattern.status == "active", models.Pattern.deleted_at.is_(None))
         .all()
-    ]
+    }
+
+    overlays = {
+        overlay.pattern_id: overlay
+        for overlay in db.query(models.EngagementPattern)
+        .filter(models.EngagementPattern.engagement_id == engagement_id)
+        .all()
+    }
+
+    # Client-deleted patterns don't count toward this engagement's coverage at all.
+    client_deleted_pattern_ids = {
+        pid for pid, overlay in overlays.items() if overlay.deleted_at is not None
+    }
+    counted_pattern_ids = active_pattern_ids - client_deleted_pattern_ids
+
+    deferred_pattern_ids = {
+        pid
+        for pid, overlay in overlays.items()
+        if overlay.scope_status == "deferred" and overlay.deleted_at is None
+    } & counted_pattern_ids
 
     live_decisions = (
         db.query(models.DecisionRecord)
@@ -90,19 +109,27 @@ def get_engagement_coverage(engagement_id: str, db: Session = Depends(get_db)):
     )
     decisions_by_pattern = {d.pattern_id: d for d in live_decisions}
 
-    approved = sum(1 for d in live_decisions if d.status == "approved")
-    in_review = sum(1 for d in live_decisions if d.status == "in_review")
-    parked = sum(1 for d in live_decisions if d.status == "parked")
+    approved = sum(
+        1 for d in live_decisions if d.status == "approved" and d.pattern_id in counted_pattern_ids
+    )
+    in_review = sum(
+        1 for d in live_decisions if d.status == "in_review" and d.pattern_id in counted_pattern_ids
+    )
+    parked = sum(
+        1 for d in live_decisions if d.status == "parked" and d.pattern_id in counted_pattern_ids
+    )
 
+    # Genuinely untouched: no decision, and no overlay row at all (not even deferred).
     patterns_without_decision = sorted(
-        pid for pid in active_pattern_ids if pid not in decisions_by_pattern
+        pid for pid in counted_pattern_ids if pid not in decisions_by_pattern and pid not in overlays
     )
 
     return schemas.CoverageSummary(
         engagement_id=engagement_id,
-        total_patterns=len(active_pattern_ids),
+        total_patterns=len(counted_pattern_ids),
         approved=approved,
         in_review=in_review,
         parked=parked,
+        deferred=len(deferred_pattern_ids),
         patterns_without_decision=patterns_without_decision,
     )

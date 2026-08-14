@@ -1,12 +1,19 @@
 import { useState } from 'react'
 import type { TargetStateDetail } from '../../types/catalog'
-import { CoverageBadge, EffortBadge, ImpactBadge, LiftAndShiftPill } from '../../components/Badge'
+import {
+  CoverageBadge,
+  EffortBadge,
+  ImpactBadge,
+  LiftAndShiftPill,
+  RecommendedBadge,
+} from '../../components/Badge'
 import { Markdown } from '../../components/Markdown'
 
 interface TargetStateCardProps {
   option: TargetStateDetail
   isPresumptive: boolean
-  onEdit: () => void
+  /** Omit to render read-only (no Edit button) — used in the client catalog view. */
+  onEdit?: () => void
 }
 
 export function TargetStateCard({ option, isPresumptive, onEdit }: TargetStateCardProps) {
@@ -25,16 +32,19 @@ export function TargetStateCard({ option, isPresumptive, onEdit }: TargetStateCa
           <p className="text-sm font-semibold text-neutral-900">{option.name}</p>
           <p className="text-xs text-neutral-400">{option.target_stack}</p>
         </div>
-        <button
-          type="button"
-          onClick={onEdit}
-          className="shrink-0 rounded border border-neutral-300 px-2.5 py-1 text-xs text-neutral-700 hover:bg-neutral-50"
-        >
-          Edit
-        </button>
+        {onEdit && (
+          <button
+            type="button"
+            onClick={onEdit}
+            className="shrink-0 rounded border border-neutral-300 px-2.5 py-1 text-xs text-neutral-700 hover:bg-neutral-50"
+          >
+            Edit
+          </button>
+        )}
       </div>
 
       <div className="mt-3 flex flex-wrap items-center gap-1.5">
+        {option.is_recommended && <RecommendedBadge />}
         <ImpactBadge impact={option.consumer_impact} />
         <EffortBadge effort={option.effort} />
         {option.is_lift_and_shift && <LiftAndShiftPill />}

@@ -155,6 +155,20 @@ def update_pattern(pattern_id: str, payload: schemas.PatternUpdate, db: Session 
     return _pattern_detail(db, pattern)
 
 
+def _count_live_decisions(db: Session, pattern_id: str) -> int:
+    """Non-superseded, non-deleted decision records against this pattern, across
+    every engagement — the master guard's blast radius is the whole catalog."""
+    return (
+        db.query(func.count(models.DecisionRecord.id))
+        .filter(
+            models.DecisionRecord.pattern_id == pattern_id,
+            models.DecisionRecord.status != "superseded",
+            models.DecisionRecord.deleted_at.is_(None),
+        )
+        .scalar()
+    )
+
+
 @router.post("/{pattern_id}/deprecate", response_model=schemas.PatternDeprecateResponse)
 def deprecate_pattern(pattern_id: str, db: Session = Depends(get_db)):
     pattern = db.get(models.Pattern, pattern_id)
@@ -164,14 +178,18 @@ def deprecate_pattern(pattern_id: str, db: Session = Depends(get_db)):
     pattern.status = "deprecated"
     pattern.updated_at = datetime.datetime.now(datetime.timezone.utc)
 
-    referenced = (
-        db.query(func.count(models.DecisionRecord.id))
+    referenced = _count_live_decisions(db, pattern_id)
+
+    # Cascades: a deprecated pattern's target state options are deprecated with it.
+    # There is no independent path to keep an option live under a retired pattern.
+    (
+        db.query(models.TargetStateOption)
         .filter(
-            models.DecisionRecord.pattern_id == pattern_id,
-            models.DecisionRecord.status != "superseded",
-            models.DecisionRecord.deleted_at.is_(None),
+            models.TargetStateOption.pattern_id == pattern_id,
+            models.TargetStateOption.deleted_at.is_(None),
+            models.TargetStateOption.status != "deprecated",
         )
-        .scalar()
+        .update({"status": "deprecated", "updated_at": pattern.updated_at}, synchronize_session=False)
     )
 
     db.commit()
@@ -188,32 +206,9 @@ def delete_pattern(
     if pattern is None or pattern.deleted_at is not None:
         raise HTTPException(status_code=404, detail=f"Pattern '{pattern_id}' not found")
 
-    active_target_states = (
-        db.query(func.count(models.TargetStateOption.id))
-        .filter(
-            models.TargetStateOption.pattern_id == pattern_id,
-            models.TargetStateOption.deleted_at.is_(None),
-        )
-        .scalar()
-    )
-    if active_target_states > 0:
-        raise HTTPException(
-            status_code=409,
-            detail=(
-                f"Pattern '{pattern_id}' has {active_target_states} non-deleted target state "
-                "option(s); remove them first."
-            ),
-        )
-
-    live_decisions = (
-        db.query(func.count(models.DecisionRecord.id))
-        .filter(
-            models.DecisionRecord.pattern_id == pattern_id,
-            models.DecisionRecord.status != "superseded",
-            models.DecisionRecord.deleted_at.is_(None),
-        )
-        .scalar()
-    )
+    # Blocked only by live decisions, in any engagement — never by the mere
+    # existence of target state options, which this action cascades over instead.
+    live_decisions = _count_live_decisions(db, pattern_id)
     if live_decisions > 0:
         raise HTTPException(
             status_code=409,
@@ -225,6 +220,19 @@ def delete_pattern(
 
     pattern.deleted_at = datetime.datetime.now(datetime.timezone.utc)
     pattern.deleted_by = deleted_by
+
+    (
+        db.query(models.TargetStateOption)
+        .filter(
+            models.TargetStateOption.pattern_id == pattern_id,
+            models.TargetStateOption.deleted_at.is_(None),
+        )
+        .update(
+            {"deleted_at": pattern.deleted_at, "deleted_by": deleted_by},
+            synchronize_session=False,
+        )
+    )
+
     db.commit()
     return schemas.PatternSoftDeleteResponse(id=pattern.id, deleted_at=pattern.deleted_at)
 

@@ -23,6 +23,7 @@ LIFECYCLE_STATUS = ("draft", "active", "deprecated")
 CONSUMER_IMPACT = ("none", "low", "medium", "high")
 EFFORT = ("low", "medium", "high")
 DECISION_STATUS = ("parked", "in_review", "approved", "superseded")
+SCOPE_STATUS = ("active", "deferred")
 
 
 class Pattern(Base):
@@ -77,6 +78,9 @@ class TargetStateOption(Base):
         Boolean, nullable=False, server_default="true"
     )
     is_lift_and_shift: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false"
+    )
+    is_recommended: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default="false"
     )
     engine_support: Mapped[dict | None] = mapped_column(JSONB)
@@ -183,4 +187,34 @@ class DecisionRecord(Base):
             unique=True,
             postgresql_where=text("status <> 'superseded' AND deleted_at IS NULL"),
         ),
+    )
+
+
+class EngagementPattern(Base):
+    """The client-scoped overlay on a master pattern. Lazy: absence of a row
+    means active and not deleted for that engagement — see 02-DATA-MODEL.md."""
+
+    __tablename__ = "engagement_patterns"
+
+    engagement_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("engagements.id"), primary_key=True
+    )
+    pattern_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("patterns.id"), primary_key=True
+    )
+    scope_status: Mapped[str] = mapped_column(Text, nullable=False, server_default="active")
+    deferred_reason: Mapped[str | None] = mapped_column(Text)
+    deleted_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
+    deleted_by: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        CheckConstraint(f"scope_status IN {SCOPE_STATUS}", name="ck_engagement_patterns_scope_status"),
+        Index("ix_engagement_patterns_engagement_id", "engagement_id"),
+        Index("ix_engagement_patterns_engagement_scope_status", "engagement_id", "scope_status"),
     )

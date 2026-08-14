@@ -41,6 +41,20 @@ def _get_visible_pattern(db: Session, pattern_id: str, include_deleted: bool) ->
     return pattern
 
 
+def _clear_other_recommendations(db: Session, pattern_id: str, keep_id: str) -> None:
+    """At most one is_recommended=true per pattern, enforced here rather than a
+    DB constraint (03-BACKEND-SPEC.md)."""
+    (
+        db.query(models.TargetStateOption)
+        .filter(
+            models.TargetStateOption.pattern_id == pattern_id,
+            models.TargetStateOption.id != keep_id,
+            models.TargetStateOption.is_recommended.is_(True),
+        )
+        .update({"is_recommended": False}, synchronize_session=False)
+    )
+
+
 @router.get(
     "/patterns/{pattern_id}/target-states",
     response_model=list[schemas.TargetStateDetail],
@@ -95,6 +109,7 @@ def create_target_state(
         linux_compatible=payload.linux_compatible,
         container_ready=payload.container_ready,
         is_lift_and_shift=payload.is_lift_and_shift,
+        is_recommended=payload.is_recommended,
         engine_support=payload.engine_support.model_dump() if payload.engine_support else None,
         playbook_md=payload.playbook_md,
         prerequisites=payload.prerequisites,
@@ -102,6 +117,9 @@ def create_target_state(
         status=payload.status,
     )
     db.add(option)
+    if payload.is_recommended:
+        db.flush()  # option must exist before excluding its id from the clear
+        _clear_other_recommendations(db, pattern_id, option.id)
     db.commit()
     db.refresh(option)
     return option
@@ -162,6 +180,7 @@ def update_target_state(
     option.linux_compatible = payload.linux_compatible
     option.container_ready = payload.container_ready
     option.is_lift_and_shift = payload.is_lift_and_shift
+    option.is_recommended = payload.is_recommended
     option.engine_support = payload.engine_support.model_dump() if payload.engine_support else None
     option.playbook_md = payload.playbook_md
     option.prerequisites = payload.prerequisites
@@ -171,6 +190,9 @@ def update_target_state(
     if material_change:
         option.version += 1
     option.updated_at = datetime.datetime.now(datetime.timezone.utc)
+
+    if payload.is_recommended:
+        _clear_other_recommendations(db, option.pattern_id, option.id)
 
     db.commit()
     db.refresh(option)

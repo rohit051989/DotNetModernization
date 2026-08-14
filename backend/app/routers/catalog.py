@@ -36,6 +36,7 @@ _TARGET_STATE_FIELDS = [
     "linux_compatible",
     "container_ready",
     "is_lift_and_shift",
+    "is_recommended",
     "engine_support",
     "playbook_md",
     "prerequisites",
@@ -89,10 +90,34 @@ def _serialize(obj, fields: list[str], include_timestamps: bool) -> dict:
 
 @router.get("/export")
 def export_catalog(
+    scope: str = Query("master", pattern="^(master|engagement)$"),
+    engagement_id: str | None = Query(None),
     include_engagements: bool = Query(False),
     include_timestamps: bool = Query(False),
     db: Session = Depends(get_db),
 ):
+    if scope == "engagement":
+        if not engagement_id:
+            raise HTTPException(
+                status_code=422,
+                detail=[
+                    {
+                        "field": "engagement_id",
+                        "message": "engagement_id is required when scope=engagement.",
+                    }
+                ],
+            )
+        if db.get(models.Engagement, engagement_id) is None:
+            raise HTTPException(
+                status_code=422,
+                detail=[
+                    {
+                        "field": "engagement_id",
+                        "message": f"Engagement '{engagement_id}' does not exist.",
+                    }
+                ],
+            )
+
     # Soft-deleted records are excluded unconditionally — a committed catalog file
     # should never contain something that was removed, even for inspection.
     patterns = (
@@ -111,6 +136,18 @@ def export_catalog(
     for option in target_state_query.all():
         options_by_pattern.setdefault(option.pattern_id, []).append(option)
 
+    # scope=engagement merges this one engagement's overlay onto each pattern
+    # entry. scope=master (the default) never does this, regardless of
+    # include_engagements — the master export must stay client-agnostic.
+    overlays_by_pattern: dict[str, models.EngagementPattern] = {}
+    if scope == "engagement":
+        overlays_by_pattern = {
+            overlay.pattern_id: overlay
+            for overlay in db.query(models.EngagementPattern)
+            .filter(models.EngagementPattern.engagement_id == engagement_id)
+            .all()
+        }
+
     pattern_payload = []
     for pattern in patterns:
         entry = _serialize(pattern, _PATTERN_FIELDS, include_timestamps)
@@ -118,14 +155,21 @@ def export_catalog(
             _serialize(option, _TARGET_STATE_FIELDS, include_timestamps)
             for option in options_by_pattern.get(pattern.id, [])
         ]
+        if scope == "engagement":
+            overlay = overlays_by_pattern.get(pattern.id)
+            entry["scope_status"] = overlay.scope_status if overlay else "active"
+            entry["deferred_reason"] = overlay.deferred_reason if overlay else None
         pattern_payload.append(entry)
 
+    # The top-level engagements/decision_records arrays remain opt-in via
+    # include_engagements, but only ever populated in scope=engagement, and then
+    # only for that one engagement — never the whole roster.
     engagement_payload: list[dict] = []
     decision_payload: list[dict] = []
-    if include_engagements:
+    if scope == "engagement" and include_engagements:
         engagements = (
             db.query(models.Engagement)
-            .filter(models.Engagement.deleted_at.is_(None))
+            .filter(models.Engagement.deleted_at.is_(None), models.Engagement.id == engagement_id)
             .order_by(models.Engagement.id)
             .all()
         )
@@ -135,7 +179,10 @@ def export_catalog(
 
         decisions = (
             db.query(models.DecisionRecord)
-            .filter(models.DecisionRecord.deleted_at.is_(None))
+            .filter(
+                models.DecisionRecord.deleted_at.is_(None),
+                models.DecisionRecord.engagement_id == engagement_id,
+            )
             .order_by(models.DecisionRecord.id)
             .all()
         )
@@ -232,6 +279,7 @@ def import_catalog(
             option.linux_compatible = option_data.get("linux_compatible", True)
             option.container_ready = option_data.get("container_ready", True)
             option.is_lift_and_shift = option_data.get("is_lift_and_shift", False)
+            option.is_recommended = option_data.get("is_recommended", False)
             option.engine_support = option_data.get("engine_support")
             option.playbook_md = option_data.get("playbook_md")
             option.prerequisites = option_data.get("prerequisites")
