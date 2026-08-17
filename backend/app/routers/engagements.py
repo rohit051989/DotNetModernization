@@ -116,7 +116,14 @@ def get_engagement_coverage(engagement_id: str, db: Session = Depends(get_db)):
     engagement = db.get(models.Engagement, engagement_id)
     if engagement is None:
         raise error(404, f"Engagement '{engagement_id}' not found", code="NOT_FOUND")
+    return compute_coverage(db, engagement_id)
 
+
+def compute_coverage(db: Session, engagement_id: str) -> schemas.CoverageSummary:
+    """Shared with the dashboard (`GET /api/engagements/{eid}/dashboard`) so
+    its decision counts match this endpoint exactly, by construction —
+    16-DASHBOARD-SPEC.md's acceptance criterion. Caller is responsible for
+    the engagement-exists check."""
     active_pattern_ids = {
         p.id
         for p in db.query(models.Pattern.id)

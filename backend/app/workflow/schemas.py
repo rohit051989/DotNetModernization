@@ -133,3 +133,44 @@ class StepRegistrationResult(BaseModel):
     warnings: list[ContractChangeWarning] = Field(
         description="Contract-change warnings triggered by this registration. Registration always succeeds regardless — these are informational."
     )
+
+
+class MetricsAvailable(BaseModel):
+    """Whether the step that produces each dashboard metric is implemented
+    yet. See 15-REPOSITORY-INGEST-UI.md Part G — the frontend renders '—'
+    with an explanatory tooltip for anything false here, never a fabricated
+    zero."""
+
+    repository_count: bool = Field(description="True once 'repository-ingest' (step 1) is implemented.")
+    application_count: bool = Field(description="True once 'application-fingerprinting' (step 3) is implemented.")
+    pattern_classification: bool = Field(description="True once 'pattern-classification' (step 4) is implemented.")
+    impact_map: bool = Field(description="True once 'impact-map-generation' (step 8) is implemented.")
+    test_coverage: bool = Field(description="True once 'test-coverage-assessment' (step 9) is implemented.")
+    risk_tier: bool = Field(description="True once 'risk-scoring-tier-assignment' (step 10) is implemented.")
+
+
+class WorkflowCapabilities(BaseModel):
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "implemented_steps": ["repository-ingest"],
+                    "metrics_available": {
+                        "repository_count": True,
+                        "application_count": False,
+                        "pattern_classification": False,
+                        "impact_map": False,
+                        "test_coverage": False,
+                        "risk_tier": False,
+                    },
+                }
+            ]
+        }
+    )
+
+    implemented_steps: list[str] = Field(
+        description="step_name of every step with implementation_status: implemented, in lifecycle_step_no order."
+    )
+    metrics_available: MetricsAvailable = Field(
+        description="Derived from wf_step_registrations.implementation_status — never fabricated."
+    )

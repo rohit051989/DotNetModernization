@@ -38,9 +38,17 @@ def _next_execution_number(db: Session, instance_id: uuid.UUID) -> int:
     return (current_max or 0) + 1
 
 
-def launch_job(
+def create_execution(
     db: Session, job_name: str, provided_parameters: dict, triggered_by: str = "api"
-) -> models.WfJobExecution:
+) -> tuple[models.WfJobExecution, models.WfJobInstance, JobDefinitionFile]:
+    """Phase 1 of a launch: validates parameters and preconditions, resolves
+    (or creates) the job instance, and creates the `STARTING` job execution
+    row — but does not run it. Split out from `launch_job` so a caller that
+    needs "synchronous creation, asynchronous execution"
+    (15-REPOSITORY-INGEST-UI.md Part E) can commit this and hand the actual
+    run off to `run_execution_in_background` via `BackgroundTasks`, while
+    still returning a trackable `job_execution_id` in the response.
+    """
     definition_row = definition_service.get_active_definition(db, job_name)
     if definition_row is None:
         raise LookupError(f"no active definition for job '{job_name}'")
@@ -66,7 +74,54 @@ def launch_job(
     db.add(job_execution)
     db.flush()
 
+    return job_execution, instance, definition
+
+
+def launch_job(
+    db: Session, job_name: str, provided_parameters: dict, triggered_by: str = "api"
+) -> models.WfJobExecution:
+    """Synchronous, end-to-end: creates and immediately runs the execution in
+    the caller's own session/transaction. Used by the generic
+    `POST /api/workflow/jobs/{name}/launch` endpoint, which has no
+    async-execution requirement of its own."""
+    job_execution, instance, definition = create_execution(
+        db, job_name, provided_parameters, triggered_by
+    )
     return executor.run_execution(db, job_execution, instance, definition)
+
+
+def run_execution_in_background(
+    job_execution_id: uuid.UUID, instance_id: uuid.UUID, definition_dict: dict
+) -> None:
+    """Runs a previously-created (and already-committed) execution to
+    completion in its own database session. For use with FastAPI
+    `BackgroundTasks`: the request-scoped session the route handler used is
+    closed by the time a background task runs, so this cannot reuse it.
+
+    Defensive: if the run itself raises unexpectedly, marks the execution
+    FAILED rather than leaving it stuck in STARTING/STARTED — the startup
+    reconciliation only catches executions orphaned by a process restart,
+    not ones whose background task died while the process kept running.
+    """
+    from app.db import SessionLocal
+
+    db = SessionLocal()
+    try:
+        job_execution = db.get(models.WfJobExecution, job_execution_id)
+        instance = db.get(models.WfJobInstance, instance_id)
+        definition = JobDefinitionFile.model_validate(definition_dict)
+        executor.run_execution(db, job_execution, instance, definition)
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        job_execution = db.get(models.WfJobExecution, job_execution_id)
+        if job_execution is not None and job_execution.batch_status in ("STARTING", "STARTED"):
+            job_execution.batch_status = "FAILED"
+            job_execution.exit_status = "FAILED"
+            job_execution.exit_message = f"background execution crashed: {type(exc).__name__}: {exc}"
+            db.commit()
+    finally:
+        db.close()
 
 
 def resume_execution(db: Session, execution_id: uuid.UUID) -> models.WfJobExecution:

@@ -55,7 +55,7 @@ def normalize_clone_url(url: str) -> str:
     return f"{parsed.scheme}://{host}{path}"
 
 
-def _run_git(local_path: Path, *args: str) -> str | None:
+def run_git(local_path: Path, *args: str) -> str | None:
     """Runs `git <args>` in `local_path`. Returns None on any failure — a
     missing git executable, a non-zero exit, or empty output — rather than
     raising; the caller treats that as "could not resolve"."""
@@ -146,9 +146,9 @@ def run(context: StepContext) -> StepResult:
         current_branch = None
         detected_clone_url = None
         if has_git_history:
-            ingest_commit_sha = _run_git(local_path, "rev-parse", "HEAD")
-            current_branch = _run_git(local_path, "rev-parse", "--abbrev-ref", "HEAD")
-            detected_clone_url = _run_git(local_path, "config", "--get", "remote.origin.url")
+            ingest_commit_sha = run_git(local_path, "rev-parse", "HEAD")
+            current_branch = run_git(local_path, "rev-parse", "--abbrev-ref", "HEAD")
+            detected_clone_url = run_git(local_path, "config", "--get", "remote.origin.url")
 
         if detected_clone_url is None:
             clone_url_verification = "unverifiable"

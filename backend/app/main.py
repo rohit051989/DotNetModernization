@@ -1,3 +1,6 @@
+import datetime
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -7,20 +10,59 @@ from sqlalchemy.exc import IntegrityError
 from app.config import settings
 from app.routers import (
     catalog,
+    dashboard,
     decisions,
     engagement_patterns,
     engagements,
     health,
     patterns,
+    repositories,
     target_states,
+    workflow_capabilities,
     workflow_executions,
     workflow_jobs,
     workflow_steps,
 )
 
+
+def _reconcile_orphaned_executions() -> None:
+    """Marks any execution left `STARTING`/`STARTED` by a previous process as
+    `FAILED`. `BackgroundTasks` execution is in-memory and does not survive a
+    process restart — without this, an execution whose background task was
+    killed mid-run would show as permanently stuck rather than as a clear,
+    restartable failure. See 15-REPOSITORY-INGEST-UI.md Part E."""
+    from app import models
+    from app.db import SessionLocal
+
+    db = SessionLocal()
+    try:
+        orphaned = (
+            db.query(models.WfJobExecution)
+            .filter(models.WfJobExecution.batch_status.in_(["STARTING", "STARTED"]))
+            .all()
+        )
+        if not orphaned:
+            return
+        now = datetime.datetime.now(datetime.timezone.utc)
+        for execution in orphaned:
+            execution.batch_status = "FAILED"
+            execution.exit_status = "FAILED"
+            execution.exit_message = "orphaned by engine restart"
+            execution.ended_at = now
+        db.commit()
+    finally:
+        db.close()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    _reconcile_orphaned_executions()
+    yield
+
 app = FastAPI(
     title="Modernization Platform API",
-    version="0.3.0",
+    version="0.4.0",
+    lifespan=lifespan,
     description=(
         "Control plane for .NET legacy modernization at fleet scale: the reusable "
         "pattern catalog, engagement-scoped decisions, and the lifecycle "
@@ -110,6 +152,24 @@ app = FastAPI(
                 "rather than starting over."
             ),
         },
+        {
+            "name": "Repositories",
+            "description": (
+                "Engagement-scoped registration of local repository folders — the entry "
+                "point to phase 0. The repository already exists on the operating machine; "
+                "there is no file upload. Registering one launches "
+                "`phase0-repository-discovery` for it automatically. See "
+                "15-REPOSITORY-INGEST-UI.md."
+            ),
+        },
+        {
+            "name": "Dashboard",
+            "description": (
+                "Engagement-scoped, read-only modernization status, repository by "
+                "repository. `null` fields are sections no implemented step produces "
+                "yet — never a fabricated zero. See 16-DASHBOARD-SPEC.md."
+            ),
+        },
     ],
 )
 
@@ -160,5 +220,8 @@ app.include_router(engagement_patterns.router)
 app.include_router(decisions.router)
 app.include_router(catalog.router)
 app.include_router(workflow_steps.router)
+app.include_router(workflow_capabilities.router)
 app.include_router(workflow_jobs.router)
 app.include_router(workflow_executions.router)
+app.include_router(repositories.router)
+app.include_router(dashboard.router)

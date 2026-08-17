@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { getHealth } from '../api/catalog'
 import type { Engagement } from '../types/catalog'
-import { TabBar } from './TabBar'
+import { TabBar, type TabKey } from './TabBar'
 
 const HEALTH_POLL_INTERVAL_MS = 30_000
 const MASTER_VALUE = ''
@@ -12,6 +12,8 @@ interface AppShellProps {
   /** null selects the Master Catalog view. */
   selectedEngagementId: string | null
   onSelectEngagement: (engagementId: string | null) => void
+  activeTab: TabKey
+  onSelectTab: (tab: TabKey) => void
 }
 
 export function AppShell({
@@ -19,6 +21,8 @@ export function AppShell({
   engagements,
   selectedEngagementId,
   onSelectEngagement,
+  activeTab,
+  onSelectTab,
 }: AppShellProps) {
   const [healthy, setHealthy] = useState<boolean | null>(null)
 
@@ -77,7 +81,7 @@ export function AppShell({
           </label>
         </div>
       </header>
-      <TabBar />
+      <TabBar activeTab={activeTab} onSelectTab={onSelectTab} isMaster={isMaster} />
       <main className="flex-1 overflow-auto">{children}</main>
     </div>
   )

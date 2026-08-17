@@ -15,6 +15,24 @@ Do not build inventory scanning, orchestration, or engine integration yet. Stub 
 future UI tabs as disabled placeholders so the growth path is visible, but implement
 nothing behind them.
 
+## Operating model
+
+The platform runs on a single machine, operated by one person per client engagement.
+The orchestration engine, the database, the UI and the repositories it registers all
+live on that machine. Every lifecycle step executes locally against local paths.
+
+This assumption is what justifies: local filesystem paths as first-class API input,
+in-process background execution (`BackgroundTasks`, not a job queue), no object
+storage, no distributed workers, and no per-user access control.
+
+When it changes — multiple operators, a shared server, containerised deployment —
+the things that break first are local path validity (a path is only meaningful on
+the machine that registered it), `BackgroundTasks` durability (in-memory; does not
+survive a process restart, hence the startup reconciliation that fails anything left
+`STARTED`), and the absence of user scoping (nothing today distinguishes which
+operator registered what). See `15-REPOSITORY-INGEST-UI.md`'s "Operating model"
+section for the source of this note.
+
 ## Tech stack (fixed — do not substitute)
 
 | Layer | Choice | Notes |
