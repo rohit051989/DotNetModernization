@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     api_port: int = 8000
     cors_origins: str = "http://localhost:5173"
     runs_dir: str = "./runs"
+    artifact_inline_max_bytes: int = 5 * 1024 * 1024
 
     @property
     def cors_origins_list(self) -> list[str]:

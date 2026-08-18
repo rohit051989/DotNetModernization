@@ -114,7 +114,7 @@ consumes:
 
 produces:
   - artifact_type: solution-project-inventory
-    artifact_version: "1.0.0"
+    artifact_version: "2.0.0"
 
 adapter_type: process
 adapter_config:
@@ -156,7 +156,9 @@ explicit and replacement is trivial.
 | `standalone_project_count` | `INTEGER` | On disk but in no solution |
 | `shared_project_count` | `INTEGER` | Referenced by more than one solution |
 | `unresolved_reference_count` | `INTEGER` | Solution and project references that did not resolve |
-| `unsupported_project_count` | `INTEGER` | Recognised as a project file but not parseable by us |
+| `out_of_scope_project_count` | `INTEGER` | Recognised non-.NET project type (Part D) — present, intentionally not analysed |
+| `unknown_project_count` | `INTEGER` | `*proj` extension we do not recognise at all |
+| `failed_parse_count` | `INTEGER` | Files we should have been able to parse but could not — malformed `.csproj`/`.sln`, unreadable encoding |
 | `legacy_project_count` | `INTEGER` | |
 | `sdk_project_count` | `INTEGER` | |
 | `framework_families` | `JSONB` | `{"net-framework": 8, "net-core": 3, "net": 2}` |
@@ -165,8 +167,11 @@ explicit and replacement is trivial.
 | `step_execution_id` | `UUID` | Provenance |
 | `scanned_at` | `TIMESTAMPTZ` | |
 
-`scan_status` is `partial` when any solution or project parse failed but the scan
-completed, `failed` when nothing could be parsed at all.
+`scan_status` is driven only by `failed_parse_count`: `partial` when
+`failed_parse_count > 0` but the scan completed, `failed` when every recognised
+.NET project failed to parse. Out-of-scope project types (Docker Compose, Node.js,
+...) and unknown `*proj` extensions are informational — they are inventory findings,
+not scan problems, and never degrade `scan_status`. See Part H.
 
 ### `solutions`
 
@@ -217,7 +222,7 @@ Raw metadata only. No interpretation.
 | `package_reference_count` | `INTEGER` NOT NULL DEFAULT 0 | |
 | `package_management_style` | `TEXT` NOT NULL | CHECK IN (`packagereference`, `packages_config`, `mixed`, `none`) |
 | `has_packages_config` | `BOOLEAN` NOT NULL DEFAULT false | |
-| `parse_status` | `TEXT` NOT NULL | CHECK IN (`success`, `partial`, `failed`) |
+| `parse_status` | `TEXT` NOT NULL | CHECK IN (`success`, `partial`, `failed`, `out_of_scope`) |
 | `parse_warnings` | `JSONB` | Array of strings |
 
 Unique on `(repository_id, relative_path)`. Index on `(repository_id, framework_family)`
@@ -295,14 +300,51 @@ Direct mapping, no inference:
 | `.dtproj` | `ssis_project` | `ssis` |
 | `.shproj` | `shared_project` | `shared` |
 | `.vcxproj` | `cpp_project` | `cpp` |
-| anything else matching `*proj` | `unknown_project` | `unknown` |
-
-An unrecognised `*proj` file is recorded with `parse_status: failed` and counted in
-`unsupported_project_count`. Never silently skipped — an unknown project type is a
-discovery finding, not noise.
 
 `.dtproj` is notable: it signals SSIS, which is a catalog pattern with no market
 tooling. Step 2 records it structurally; step 4 does the matching.
+
+### Known non-.NET project types — out of scope, not failures
+
+Some `*proj` extensions are recognised but are never .NET projects. They belong
+in the inventory as present-and-out-of-scope, not as parse failures — a `.dcproj`
+(Docker Compose) sitting next to a solution is normal at estate scale and must not
+read as a scan problem:
+
+| Extension | `structural_type` | `language` |
+|---|---|---|
+| `.dcproj` | `docker_compose_project` | `unknown` |
+| `.njsproj` | `nodejs_project` | `unknown` |
+| `.pyproj` | `python_project` | `unknown` |
+| `.esproj` | `javascript_project` | `unknown` |
+| `.wapproj` | `windows_packaging_project` | `unknown` |
+| `.wixproj` | `wix_installer_project` | `unknown` |
+| `.deployproj` | `deployment_project` | `unknown` |
+| `.modelproj` | `modeling_project` | `unknown` |
+
+These are recorded with `parse_status: success` and no metadata extracted — no
+`target_framework_raw`, no packages, no references. They count toward
+`out_of_scope_project_count`, not `project_file_count`'s recognised .NET subset.
+`parse_warnings` gets one entry per file, e.g. `"Docker Compose project, recorded
+but not analysed (not a .NET project)"`.
+
+### Genuinely unknown project types
+
+Anything else matching `*proj` — not a known .NET extension, not a known
+non-.NET extension above — is `structural_type: unknown_project`,
+`language: unknown`, `parse_status: out_of_scope`, and counted in
+`unknown_project_count`. Never silently skipped — an unrecognised extension is a
+discovery finding, not noise, but it is informational rather than a scan problem:
+we don't know what it is, so we make no claim about whether it should have parsed.
+
+### Genuine parse failures
+
+A file with a known .NET extension (`.csproj`, `.vbproj`, `.fsproj`, `.sqlproj`,
+`.dtproj`, `.shproj`, `.vcxproj`) that cannot be parsed — malformed XML, unreadable
+encoding — is `parse_status: failed`, counted in `failed_parse_count`, with a
+`parse_warnings` entry prefixed `"parse failed: <reason>"`. This is the only
+category that represents step 2 falling short of what it should have been able to
+do, and the only one that degrades `scan_status`. See Part H.
 
 ---
 
@@ -354,7 +396,13 @@ BOM, fall back to UTF-8 with replacement, and warn rather than fail.
 
 ---
 
-## Part G — Artifact `solution-project-inventory@1.0.0`
+## Part G — Artifact `solution-project-inventory@2.0.0`
+
+Bumped from 1.0.0 to 2.0.0 when `unsupported_project_count` was removed in favour of
+`out_of_scope_project_count`, `unknown_project_count`, and `failed_parse_count` —
+removing a field is a breaking change (see 11-STEP-CONTRACT.md's "Artifact
+versioning"). Nothing consumed this artifact at the time, so the bump had no
+affected-consumer fallout.
 
 Deterministic: sorted keys, solutions sorted by `relative_path`, projects sorted by
 `relative_path`, 2-space indent, trailing newline. `generated_at` goes in
@@ -364,7 +412,7 @@ unchanged input yields an identical checksum.
 ```json
 {
   "artifact_type": "solution-project-inventory",
-  "artifact_version": "1.0.0",
+  "artifact_version": "2.0.0",
   "repository_id": "…",
   "repository_slug": "order-management",
   "scan_status": "partial",
@@ -377,7 +425,9 @@ unchanged input yields an identical checksum.
     "unresolved_reference_count": 1,
     "legacy_project_count": 8,
     "sdk_project_count": 5,
-    "unsupported_project_count": 1,
+    "out_of_scope_project_count": 1,
+    "unknown_project_count": 0,
+    "failed_parse_count": 1,
     "framework_families": { "net-framework": 8, "net-core": 3, "net-standard": 2 },
     "artifact_counts": { "build": 16, "package": 3, "pipeline": 1, "configuration": 9 }
   },
@@ -395,15 +445,25 @@ unchanged input yields an identical checksum.
 
 | Condition | Exit status |
 |---|---|
-| All solutions and projects parsed | `COMPLETED`, `scan_status: complete` |
-| Some parse failures, scan finished | `COMPLETED`, `scan_status: partial`, one diagnostic per failure |
+| All solutions and recognised .NET projects parsed | `COMPLETED`, `scan_status: complete` |
+| Repository contains only out-of-scope and/or unknown project types, nothing failed | `COMPLETED`, `scan_status: complete`, informational diagnostics only |
+| `failed_parse_count > 0`, scan finished | `COMPLETED`, `scan_status: partial`, one `error`-level diagnostic per failure |
 | No solution or project files found at all | `COMPLETED`, `scan_status: complete`, `NOOP`-style message. A repository with no .NET projects is a valid finding |
 | Repository folder missing | `FAILED` |
 | Input artifact unresolvable | `FAILED` — the engine should catch this before invoke |
-| Every project file failed to parse | `FAILED`, `scan_status: failed` |
+| Every recognised .NET project failed to parse | `FAILED`, `scan_status: failed` |
+
+`scan_status: partial` is driven **only** by `failed_parse_count > 0`. Out-of-scope
+project types (Part D) and unknown `*proj` extensions never degrade `scan_status` —
+they are recorded, counted, and surfaced as `info`-level diagnostics
+(`PROJECT_OUT_OF_SCOPE`, `PROJECT_UNKNOWN_TYPE`), distinct from the `error`-level
+diagnostics (`SOLUTION_PARSE_FAILED`, `PROJECT_PARSE_FAILED`) that genuine failures
+produce. A repository containing nothing but a `.dcproj` next to its solution is
+`scan_status: complete` with `out_of_scope_project_count: 1`.
 
 Metrics: `read_count` = project files found, `write_count` = projects persisted,
-`skip_count` = parse failures.
+`skip_count` = `failed_parse_count` (genuine parse failures only — out-of-scope and
+unknown project types are not skips, they are recorded successfully).
 
 ---
 
@@ -429,7 +489,10 @@ Rendered only when `repository_structure` exists; otherwise an empty state namin
 step 2.
 
 - **Summary strip** — solutions, projects, standalone, shared, unresolved, legacy vs
-  SDK, scan status badge (`complete` teal, `partial` amber, `failed` red)
+  SDK, out-of-scope, unknown-type, and failed-parse counts shown separately, scan
+  status badge (`complete` teal, `partial` amber, `failed` red) — amber/red are
+  reserved for `failed_parse_count > 0`; out-of-scope and unknown counts never tint
+  the badge
 - **Solutions** — expandable rows listing member projects, missing ones flagged
 - **Standalone projects** — separate list, since these are exactly what a
   solution-driven view misses
@@ -471,8 +534,15 @@ produce a number that quietly becomes wrong at step 3.
       `external_repository`
 - [ ] Legacy and SDK-style projects both parse, with `project_format` correct
 - [ ] A `.sqlproj` or `.dtproj` is recorded with the right `structural_type`, not skipped
-- [ ] An unparseable `*proj` file is counted in `unsupported_project_count` with
-      `parse_status: failed`, and the scan continues
+- [ ] A known non-.NET project type (e.g. `.dcproj`) is recorded with
+      `parse_status: success`, counted in `out_of_scope_project_count`, and does not
+      degrade `scan_status`
+- [ ] A genuinely unrecognised `*proj` extension is recorded with
+      `parse_status: out_of_scope`, counted in `unknown_project_count`, and does not
+      degrade `scan_status`
+- [ ] A malformed file with a known .NET extension is counted in
+      `failed_parse_count` with `parse_status: failed`, drives `scan_status: partial`,
+      and the scan continues
 - [ ] Multi-targeting project records all frameworks, with a warning explaining the
       chosen family
 - [ ] A UTF-16 or BOM-prefixed project file parses
@@ -482,3 +552,7 @@ produce a number that quietly becomes wrong at step 3.
 - [ ] A repository with no .NET projects completes cleanly rather than failing
 - [ ] Applications and Patterns cards still show `—`
 - [ ] The script does not import from `backend.app`
+- [ ] `solution-project-inventory` is registered and produced at `2.0.0` — the
+      major bump required when `unsupported_project_count` was removed — and
+      `phase0-repository-discovery` still validates, since nothing yet consumes
+      this artifact

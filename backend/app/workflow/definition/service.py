@@ -91,3 +91,15 @@ def activate_definition(db: Session, job_name: str, version: int) -> models.WfJo
 
 def get_active_definition(db: Session, job_name: str) -> models.WfJobDefinition | None:
     return db.query(models.WfJobDefinition).filter_by(job_name=job_name, is_active=True).first()
+
+
+def list_active_definitions(db: Session) -> list[models.WfJobDefinition]:
+    """Every job with a currently-active definition — the Workflow tab's
+    jobs list (20-WORKFLOW-OBSERVABILITY-UI.md Part B) iterates this rather
+    than a hardcoded job name."""
+    return (
+        db.query(models.WfJobDefinition)
+        .filter_by(is_active=True)
+        .order_by(models.WfJobDefinition.job_name)
+        .all()
+    )

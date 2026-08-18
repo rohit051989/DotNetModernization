@@ -48,6 +48,27 @@ SOURCE_TYPE = ("local_path", "git_clone")
 CRITICALITY = ("low", "medium", "high", "critical")
 RETIREMENT_STATUS = ("active", "slated_for_retirement", "decommissioned")
 INGEST_STATUS = ("registered", "scanned", "scan_failed", "path_missing")
+SOURCE_STATUS = ("active", "archived", "disabled", "inaccessible")
+
+# ---- Step 2 — solution & project discovery (19-STEP-002-SOLUTION-DISCOVERY.md) ----
+SCAN_STATUS = ("complete", "partial", "failed")
+PARSE_STATUS = ("success", "partial", "failed", "out_of_scope")
+PROJECT_FORMAT = ("legacy_msbuild", "sdk_style", "unknown")
+PROJECT_LANGUAGE = ("csharp", "vb", "fsharp", "sql", "ssis", "cpp", "shared", "unknown")
+SOLUTION_PROJECT_RESOLUTION_STATUS = ("resolved", "unresolved")
+PROJECT_REFERENCE_RESOLUTION_STATUS = ("resolved", "unresolved", "external_repository")
+PACKAGE_DECLARATION_SOURCE = ("packagereference", "packages_config")
+PACKAGE_MANAGEMENT_STYLE = ("packagereference", "packages_config", "mixed", "none")
+REPOSITORY_ARTIFACT_CATEGORY = (
+    "build",
+    "package",
+    "pipeline",
+    "container",
+    "script",
+    "configuration",
+    "deployment",
+    "documentation",
+)
 
 
 class Pattern(Base):
@@ -381,8 +402,12 @@ class WfStepExecution(Base):
     skip_count: Mapped[int] = mapped_column(Integer, server_default="0")
     commit_count: Mapped[int] = mapped_column(Integer, server_default="0")
     execution_context: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+    diagnostics: Mapped[list | None] = mapped_column(JSONB)
+    inputs_resolved: Mapped[list | None] = mapped_column(JSONB)
     stdout_tail: Mapped[str | None] = mapped_column(Text)
     stderr_tail: Mapped[str | None] = mapped_column(Text)
+    carried_forward: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    working_dir: Mapped[str | None] = mapped_column(Text)
     started_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
     ended_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
 
@@ -460,6 +485,15 @@ class Repository(Base):
     ingest_error: Mapped[str | None] = mapped_column(Text)
     ingest_token: Mapped[str | None] = mapped_column(Text)
 
+    # docs/19 Part A — step 1 amendments feeding step 2's requirements.
+    organization: Mapped[str | None] = mapped_column(Text)
+    last_commit_date: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
+    primary_languages: Mapped[list | None] = mapped_column(JSONB)
+    # Source-control platform status — only knowable via a provider API, so
+    # always null for local_path. Deliberately distinct from ingest_status
+    # (did our scan work?) and retirement_status (in modernization scope?).
+    source_status: Mapped[str | None] = mapped_column(Text)
+
     first_registered_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
     last_scanned_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
     deleted_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
@@ -482,6 +516,10 @@ class Repository(Base):
             f"retirement_status IN {RETIREMENT_STATUS}", name="ck_repositories_retirement_status"
         ),
         CheckConstraint(f"ingest_status IN {INGEST_STATUS}", name="ck_repositories_ingest_status"),
+        CheckConstraint(
+            f"source_status IS NULL OR source_status IN {SOURCE_STATUS}",
+            name="ck_repositories_source_status",
+        ),
         Index(
             "uq_repositories_engagement_clone_url_normalised",
             "engagement_id",
@@ -506,4 +544,234 @@ class Repository(Base):
         Index("ix_repositories_engagement_id", "engagement_id"),
         Index("ix_repositories_ingest_status", "ingest_status"),
         Index("ix_repositories_retirement_status", "retirement_status"),
+    )
+
+
+class RepositoryStructure(Base):
+    """1:1 summary written by step 2 (solution-discovery). Separate from
+    `repositories` so step ownership is explicit and replacement — delete by
+    repository_id, then insert — is trivial. See
+    19-STEP-002-SOLUTION-DISCOVERY.md Part C."""
+
+    __tablename__ = "repository_structure"
+
+    repository_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("repositories.id", ondelete="CASCADE"), primary_key=True
+    )
+    scan_status: Mapped[str] = mapped_column(Text, nullable=False)
+    solution_count: Mapped[int | None] = mapped_column(Integer)
+    project_file_count: Mapped[int | None] = mapped_column(Integer)
+    projects_referenced_count: Mapped[int | None] = mapped_column(Integer)
+    standalone_project_count: Mapped[int | None] = mapped_column(Integer)
+    shared_project_count: Mapped[int | None] = mapped_column(Integer)
+    unresolved_reference_count: Mapped[int | None] = mapped_column(Integer)
+    out_of_scope_project_count: Mapped[int | None] = mapped_column(Integer)
+    unknown_project_count: Mapped[int | None] = mapped_column(Integer)
+    failed_parse_count: Mapped[int | None] = mapped_column(Integer)
+    legacy_project_count: Mapped[int | None] = mapped_column(Integer)
+    sdk_project_count: Mapped[int | None] = mapped_column(Integer)
+    framework_families: Mapped[dict | None] = mapped_column(JSONB)
+    artifact_counts: Mapped[dict | None] = mapped_column(JSONB)
+    parse_warnings: Mapped[list | None] = mapped_column(JSONB)
+    step_execution_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    scanned_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        CheckConstraint(f"scan_status IN {SCAN_STATUS}", name="ck_repository_structure_scan_status"),
+    )
+
+
+class Solution(Base):
+    """A `.sln` file found on disk. See 19-STEP-002-SOLUTION-DISCOVERY.md Part C."""
+
+    __tablename__ = "solutions"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    repository_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("repositories.id", ondelete="CASCADE"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    relative_path: Mapped[str] = mapped_column(Text, nullable=False)
+    format_version: Mapped[str | None] = mapped_column(Text)
+    visual_studio_version: Mapped[str | None] = mapped_column(Text)
+    minimum_vs_version: Mapped[str | None] = mapped_column(Text)
+    project_count: Mapped[int | None] = mapped_column(Integer)
+    resolved_project_count: Mapped[int | None] = mapped_column(Integer)
+    missing_project_count: Mapped[int | None] = mapped_column(Integer)
+    solution_folder_count: Mapped[int | None] = mapped_column(Integer)
+    shared_project_count: Mapped[int | None] = mapped_column(Integer)
+    parse_status: Mapped[str] = mapped_column(Text, nullable=False)
+    parse_error: Mapped[str | None] = mapped_column(Text)
+
+    __table_args__ = (
+        UniqueConstraint("repository_id", "relative_path", name="uq_solutions_repository_relative_path"),
+        CheckConstraint(f"parse_status IN {PARSE_STATUS}", name="ck_solutions_parse_status"),
+        Index("ix_solutions_repository_id", "repository_id"),
+    )
+
+
+class Project(Base):
+    """A project file (`.csproj`, `.vbproj`, ...) found on disk. Raw metadata
+    only — no interpretation. See 19-STEP-002-SOLUTION-DISCOVERY.md Parts C/D/E."""
+
+    __tablename__ = "projects"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    repository_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("repositories.id", ondelete="CASCADE"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    relative_path: Mapped[str] = mapped_column(Text, nullable=False)
+    extension: Mapped[str] = mapped_column(Text, nullable=False)
+    structural_type: Mapped[str] = mapped_column(Text, nullable=False)
+    project_format: Mapped[str] = mapped_column(Text, nullable=False)
+    language: Mapped[str] = mapped_column(Text, nullable=False)
+    assembly_name: Mapped[str | None] = mapped_column(Text)
+    root_namespace: Mapped[str | None] = mapped_column(Text)
+    output_type: Mapped[str | None] = mapped_column(Text)
+    target_framework_raw: Mapped[str | None] = mapped_column(Text)
+    target_frameworks_raw: Mapped[list | None] = mapped_column(JSONB)
+    framework_family: Mapped[str | None] = mapped_column(Text)
+    framework_version: Mapped[str | None] = mapped_column(Text)
+    is_multi_targeting: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    solution_membership_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    is_standalone: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    project_reference_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    package_reference_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    package_management_style: Mapped[str] = mapped_column(Text, nullable=False)
+    has_packages_config: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    parse_status: Mapped[str] = mapped_column(Text, nullable=False)
+    parse_warnings: Mapped[list | None] = mapped_column(JSONB)
+
+    __table_args__ = (
+        UniqueConstraint("repository_id", "relative_path", name="uq_projects_repository_relative_path"),
+        CheckConstraint(f"project_format IN {PROJECT_FORMAT}", name="ck_projects_project_format"),
+        CheckConstraint(f"language IN {PROJECT_LANGUAGE}", name="ck_projects_language"),
+        CheckConstraint(
+            f"package_management_style IN {PACKAGE_MANAGEMENT_STYLE}",
+            name="ck_projects_package_management_style",
+        ),
+        CheckConstraint(f"parse_status IN {PARSE_STATUS}", name="ck_projects_parse_status"),
+        Index("ix_projects_repository_id", "repository_id"),
+        Index("ix_projects_repository_framework_family", "repository_id", "framework_family"),
+        Index("ix_projects_repository_project_format", "repository_id", "project_format"),
+    )
+
+
+class SolutionProject(Base):
+    """Solution membership — one row per `.sln` project entry (excluding
+    solution-folder entries). See 19-STEP-002-SOLUTION-DISCOVERY.md Part C."""
+
+    __tablename__ = "solution_projects"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    solution_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("solutions.id", ondelete="CASCADE"), nullable=False
+    )
+    project_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="SET NULL")
+    )
+    raw_path: Mapped[str] = mapped_column(Text, nullable=False)
+    project_guid: Mapped[str | None] = mapped_column(Text)
+    project_type_guid: Mapped[str | None] = mapped_column(Text)
+    solution_folder: Mapped[str | None] = mapped_column(Text)
+    resolution_status: Mapped[str] = mapped_column(Text, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("solution_id", "raw_path", name="uq_solution_projects_solution_raw_path"),
+        CheckConstraint(
+            f"resolution_status IN {SOLUTION_PROJECT_RESOLUTION_STATUS}",
+            name="ck_solution_projects_resolution_status",
+        ),
+        Index("ix_solution_projects_solution_id", "solution_id"),
+        Index("ix_solution_projects_project_id", "project_id"),
+    )
+
+
+class ProjectReference(Base):
+    """A `<ProjectReference>` declaration. See
+    19-STEP-002-SOLUTION-DISCOVERY.md Part C."""
+
+    __tablename__ = "project_references"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    source_project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+    )
+    referenced_project_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="SET NULL")
+    )
+    raw_path: Mapped[str] = mapped_column(Text, nullable=False)
+    resolution_status: Mapped[str] = mapped_column(Text, nullable=False)
+    is_cross_solution: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+
+    __table_args__ = (
+        UniqueConstraint("source_project_id", "raw_path", name="uq_project_references_source_raw_path"),
+        CheckConstraint(
+            f"resolution_status IN {PROJECT_REFERENCE_RESOLUTION_STATUS}",
+            name="ck_project_references_resolution_status",
+        ),
+        Index("ix_project_references_source_project_id", "source_project_id"),
+        Index("ix_project_references_referenced_project_id", "referenced_project_id"),
+    )
+
+
+class ProjectPackage(Base):
+    """A NuGet package declaration — `<PackageReference>` or a
+    `packages.config` entry. See 19-STEP-002-SOLUTION-DISCOVERY.md Part C."""
+
+    __tablename__ = "project_packages"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+    )
+    package_name: Mapped[str] = mapped_column(Text, nullable=False)
+    version_raw: Mapped[str | None] = mapped_column(Text)
+    declaration_source: Mapped[str] = mapped_column(Text, nullable=False)
+    target_framework_raw: Mapped[str | None] = mapped_column(Text)
+    is_malformed: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+
+    __table_args__ = (
+        UniqueConstraint(
+            "project_id", "package_name", "declaration_source", name="uq_project_packages_project_name_source"
+        ),
+        CheckConstraint(
+            f"declaration_source IN {PACKAGE_DECLARATION_SOURCE}", name="ck_project_packages_declaration_source"
+        ),
+        Index("ix_project_packages_project_id", "project_id"),
+    )
+
+
+class RepositoryArtifact(Base):
+    """Presence-only record of a supporting file (build config, pipeline
+    definition, container file, ...). No content interpretation. See
+    19-STEP-002-SOLUTION-DISCOVERY.md Part C."""
+
+    __tablename__ = "repository_artifacts"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    repository_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("repositories.id", ondelete="CASCADE"), nullable=False
+    )
+    category: Mapped[str] = mapped_column(Text, nullable=False)
+    relative_path: Mapped[str] = mapped_column(Text, nullable=False)
+    file_name: Mapped[str] = mapped_column(Text, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("repository_id", "relative_path", name="uq_repository_artifacts_repository_relative_path"),
+        CheckConstraint(f"category IN {REPOSITORY_ARTIFACT_CATEGORY}", name="ck_repository_artifacts_category"),
+        Index("ix_repository_artifacts_repository_id", "repository_id"),
     )

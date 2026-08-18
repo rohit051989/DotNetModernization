@@ -138,6 +138,38 @@ class FolderWithGitTests(RepositoryIngestTestCase):
         self.assertNotIn("generated_at", inventory)
         self.assertEqual(inventory["ingest_commit_sha"], expected_sha)
         self.assertEqual(result.outputs[0].metadata["generated_at"].endswith("Z"), True)
+        self.assertEqual(inventory["artifact_version"], "1.1.0")
+        self.assertEqual(inventory["organization"], "example")
+        self.assertIsNotNone(inventory["last_commit_date"])
+        self.assertIsNone(inventory["source_status"])
+
+        self.db.refresh(repo)
+        self.assertEqual(repo.organization, "example")
+        self.assertIsNotNone(repo.last_commit_date)
+        self.assertIsNone(repo.source_status)
+        self.assertEqual(repo.primary_languages, [])  # README.md's .md extension isn't a mapped language
+
+    def test_primary_languages_counted_by_extension_excluding_skipped_dirs(self):
+        local_path = Path(self.tmp.name) / "with-git-languages"
+        _init_git_repo(local_path, "https://github.com/example/with-git-languages.git")
+        (local_path / "Program.cs").write_text("// cs\n", encoding="utf-8")
+        (local_path / "Other.cs").write_text("// cs\n", encoding="utf-8")
+        (local_path / "site.css").write_text("/* css */\n", encoding="utf-8")
+        (local_path / "node_modules").mkdir()
+        (local_path / "node_modules" / "index.js").write_text("// js\n", encoding="utf-8")
+
+        repo = self._make_repository_row(
+            local_path, clone_url="https://github.com/example/with-git-languages.git"
+        )
+        repository_ingest.run(self._make_context(repo.id, Path(self.tmp.name) / "out"))
+
+        self.db.refresh(repo)
+        languages = {entry["language"]: entry for entry in repo.primary_languages}
+        self.assertNotIn("JavaScript/TypeScript", languages)  # excluded via node_modules
+        self.assertEqual(languages["C#"]["file_count"], 2)
+        self.assertEqual(languages["Web"]["file_count"], 1)
+        self.assertEqual(languages["C#"]["percentage"], round(2 / 3 * 100, 1))
+
 
     def test_mismatched_clone_url_is_a_warning_not_a_failure(self):
         local_path = Path(self.tmp.name) / "with-git-mismatch"

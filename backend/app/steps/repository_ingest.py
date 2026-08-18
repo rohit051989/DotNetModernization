@@ -29,9 +29,30 @@ from app.workflow.adapters.base import compute_checksum
 from app.workflow.contract import StepContext, StepOutput, StepResult
 
 ARTIFACT_TYPE = "repository-inventory"
-ARTIFACT_VERSION = "1.0.0"
+ARTIFACT_VERSION = "1.1.0"
 
 SKIP_DIR_NAMES = {".git", "node_modules", "bin", "obj", "packages"}
+
+# docs/19-STEP-002-SOLUTION-DISCOVERY.md Part A — "Language detection".
+EXTENSION_LANGUAGE_MAP = {
+    ".cs": "C#",
+    ".vb": "VB.NET",
+    ".fs": "F#",
+    ".sql": "SQL",
+    ".ps1": "PowerShell",
+    ".js": "JavaScript/TypeScript",
+    ".ts": "JavaScript/TypeScript",
+    ".xml": "XML",
+    ".config": "XML",
+    ".xaml": "XML",
+    ".cshtml": "Razor/WebForms markup",
+    ".aspx": "Razor/WebForms markup",
+    ".ascx": "Razor/WebForms markup",
+    ".html": "Web",
+    ".css": "Web",
+}
+
+PRIMARY_LANGUAGES_LIMIT = 6
 
 _SSH_URL_RE = re.compile(r"^git@([^:]+):(.+?)(?:\.git)?/?$")
 
@@ -55,6 +76,15 @@ def normalize_clone_url(url: str) -> str:
     return f"{parsed.scheme}://{host}{path}"
 
 
+def derive_organization(clone_url: str) -> str | None:
+    """First path segment of the clone URL — `github.com/acme/orders` ->
+    `acme`. Null when the URL has no path segment to parse (docs/19 Part A)."""
+    path = urlparse(normalize_clone_url(clone_url)).path.strip("/")
+    if not path:
+        return None
+    return path.split("/")[0]
+
+
 def run_git(local_path: Path, *args: str) -> str | None:
     """Runs `git <args>` in `local_path`. Returns None on any failure — a
     missing git executable, a non-zero exit, or empty output — rather than
@@ -74,11 +104,14 @@ def run_git(local_path: Path, *args: str) -> str | None:
     return output or None
 
 
-def compute_size_metrics(local_path: Path) -> tuple[int, int]:
-    """Total size and file count under `local_path`, skipping SKIP_DIR_NAMES
-    entirely (pruned from traversal, not just excluded from the count)."""
+def compute_size_metrics(local_path: Path) -> tuple[int, int, dict[str, int]]:
+    """Total size, file count and per-language file counts under
+    `local_path`, skipping SKIP_DIR_NAMES entirely (pruned from traversal,
+    not just excluded from the count). Language counts feed
+    `summarize_primary_languages` — see docs/19 Part A."""
     total_size = 0
     total_files = 0
+    language_counts: dict[str, int] = {}
     for root, dirs, files in os.walk(local_path):
         dirs[:] = [d for d in dirs if d not in SKIP_DIR_NAMES]
         for filename in files:
@@ -88,7 +121,26 @@ def compute_size_metrics(local_path: Path) -> tuple[int, int]:
             except OSError:
                 continue
             total_files += 1
-    return total_size, total_files
+            language = EXTENSION_LANGUAGE_MAP.get(file_path.suffix.lower())
+            if language:
+                language_counts[language] = language_counts.get(language, 0) + 1
+    return total_size, total_files, language_counts
+
+
+def summarize_primary_languages(language_counts: dict[str, int]) -> list[dict]:
+    """`{language, file_count, percentage}`, descending by count, top 6.
+    Percentages are of counted files only (docs/19 Part A) — files with an
+    unrecognised extension don't contribute to the denominator."""
+    counted_total = sum(language_counts.values())
+    ranked = sorted(language_counts.items(), key=lambda item: item[1], reverse=True)
+    return [
+        {
+            "language": language,
+            "file_count": count,
+            "percentage": round(count / counted_total * 100, 1) if counted_total else 0.0,
+        }
+        for language, count in ranked[:PRIMARY_LANGUAGES_LIMIT]
+    ]
 
 
 def _open_session(database_url: str):
@@ -145,10 +197,12 @@ def run(context: StepContext) -> StepResult:
         ingest_commit_sha = None
         current_branch = None
         detected_clone_url = None
+        last_commit_date_raw = None
         if has_git_history:
             ingest_commit_sha = run_git(local_path, "rev-parse", "HEAD")
             current_branch = run_git(local_path, "rev-parse", "--abbrev-ref", "HEAD")
             detected_clone_url = run_git(local_path, "config", "--get", "remote.origin.url")
+            last_commit_date_raw = run_git(local_path, "log", "-1", "--format=%cI")
 
         if detected_clone_url is None:
             clone_url_verification = "unverifiable"
@@ -157,7 +211,16 @@ def run(context: StepContext) -> StepResult:
         else:
             clone_url_verification = "mismatch"
 
-        size_bytes, file_count = compute_size_metrics(local_path)
+        last_commit_date = (
+            datetime.datetime.fromisoformat(last_commit_date_raw) if last_commit_date_raw else None
+        )
+        organization = derive_organization(repo.clone_url)
+        # source_status is only knowable via a provider API — local_path is
+        # the only implemented source_type, so it always stays null here.
+        source_status = None
+
+        size_bytes, file_count, language_counts = compute_size_metrics(local_path)
+        primary_languages = summarize_primary_languages(language_counts)
 
         repo.has_git_history = has_git_history
         repo.ingest_commit_sha = ingest_commit_sha
@@ -165,6 +228,10 @@ def run(context: StepContext) -> StepResult:
         repo.clone_url_verification = clone_url_verification
         repo.size_bytes = size_bytes
         repo.file_count = file_count
+        repo.organization = organization
+        repo.last_commit_date = last_commit_date
+        repo.primary_languages = primary_languages
+        repo.source_status = source_status
         repo.ingest_status = "scanned"
         repo.ingest_error = None
         repo.last_scanned_at = now
@@ -195,6 +262,10 @@ def run(context: StepContext) -> StepResult:
             "ingest_commit_sha": ingest_commit_sha,
             "size_bytes": size_bytes,
             "file_count": file_count,
+            "organization": organization,
+            "last_commit_date": _iso_utc(last_commit_date) if last_commit_date else None,
+            "primary_languages": primary_languages,
+            "source_status": source_status,
         }
 
         output_dir = Path(context.output_dir)

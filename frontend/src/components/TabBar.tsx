@@ -1,4 +1,4 @@
-export type TabKey = 'catalog' | 'repositories' | 'applications' | 'dependencies' | 'waves' | 'dashboard'
+export type TabKey = 'catalog' | 'repositories' | 'applications' | 'dependencies' | 'waves' | 'dashboard' | 'workflow'
 
 interface Tab {
   key: TabKey
@@ -17,6 +17,7 @@ const TABS: Tab[] = [
   { key: 'dependencies', label: 'Dependencies', engagementOnly: true, implemented: false },
   { key: 'waves', label: 'Waves', engagementOnly: true, implemented: false },
   { key: 'dashboard', label: 'Dashboard', engagementOnly: true, implemented: true },
+  { key: 'workflow', label: 'Workflow', engagementOnly: true, implemented: true },
 ]
 
 interface TabBarProps {

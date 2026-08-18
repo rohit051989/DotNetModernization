@@ -24,6 +24,25 @@ export interface DashboardDecisionCounts {
   deferred: number
 }
 
+export interface DashboardStructureCounts {
+  repositories_scanned: number
+  solution_count: number
+  project_file_count: number
+  standalone_project_count: number
+  unresolved_reference_count: number
+  legacy_project_count: number
+  sdk_project_count: number
+  framework_families: Record<string, number>
+}
+
+export interface DashboardRepositoryStructureBrief {
+  scan_status: 'complete' | 'partial' | 'failed'
+  solution_count: number | null
+  project_file_count: number | null
+  standalone_project_count: number | null
+  framework_families: Record<string, number>
+}
+
 export interface DashboardCapabilities {
   application_count: boolean
   pattern_classification: boolean
@@ -51,6 +70,7 @@ export interface DashboardSummary {
   generated_at: string
   repositories: DashboardRepositoryCounts
   discovery: DashboardDiscoveryCounts
+  structure: DashboardStructureCounts
   applications: Record<string, unknown> | null
   patterns: Record<string, unknown> | null
   risk_tiers: Record<string, unknown> | null
@@ -58,6 +78,13 @@ export interface DashboardSummary {
   decisions: DashboardDecisionCounts
   capabilities: DashboardCapabilities
   recent_executions: DashboardRecentExecution[]
+}
+
+export interface DashboardStepBrief {
+  step_name: string
+  display_name: string
+  batch_status: string
+  exit_status: string | null
 }
 
 export interface DashboardLatestExecution {
@@ -69,6 +96,7 @@ export interface DashboardLatestExecution {
   steps_failed: number
   steps_total: number
   current_step: string | null
+  steps: DashboardStepBrief[]
   started_at: string | null
   ended_at: string | null
 }
@@ -86,6 +114,7 @@ export interface DashboardRepositoryRow {
   file_count: number | null
   last_ingested_at: string | null
   latest_execution: DashboardLatestExecution | null
+  structure: DashboardRepositoryStructureBrief | null
   application_count: number | null
   patterns_identified: number | null
   highest_risk_tier: string | null

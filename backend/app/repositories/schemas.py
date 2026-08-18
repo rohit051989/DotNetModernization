@@ -10,6 +10,13 @@ Criticality = Literal["low", "medium", "high", "critical"]
 RetirementStatus = Literal["active", "slated_for_retirement", "decommissioned"]
 CloneUrlVerification = Literal["verified", "mismatch", "unverifiable"]
 IngestStatus = Literal["registered", "scanned", "scan_failed", "path_missing"]
+SourceStatus = Literal["active", "archived", "disabled", "inaccessible"]
+
+
+class PrimaryLanguage(BaseModel):
+    language: str = Field(description="Language name mapped from file extension.")
+    file_count: int = Field(description="Count of files with a mapped extension for this language.")
+    percentage: float = Field(description="Share of counted files, rounded to one decimal.")
 
 
 # ---------- Path inspection ----------
@@ -208,6 +215,18 @@ class RepositoryDetail(RepositorySummary):
     clone_url: str = Field(description="Operator-asserted canonical URL. Identity — never changes.")
     detected_clone_url: str | None = Field(description="What .git actually reports. Null when no git remote.")
     default_branch: str | None = Field(description="Detected or operator-supplied default branch.")
+    organization: str | None = Field(
+        description="First path segment of the clone URL, e.g. 'acme' from github.com/acme/orders. Null when unparseable."
+    )
+    last_commit_date: datetime.datetime | None = Field(
+        description="Committer date of HEAD at the last scan. Null when has_git_history is false."
+    )
+    primary_languages: list[PrimaryLanguage] | None = Field(
+        description="Top 6 languages by file count from the last scan, descending, same exclusions as size_bytes/file_count. Null before the first scan."
+    )
+    source_status: SourceStatus | None = Field(
+        description="What the source-control platform reports. Only knowable via a provider API — always null for local_path."
+    )
     description: str | None = Field(description="What this repository contains.")
     technical_owner: str | None = Field(description="Who to ask about this repository.")
     tags: list[str] = Field(description="Free-form labels.")

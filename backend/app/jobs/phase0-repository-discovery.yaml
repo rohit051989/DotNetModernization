@@ -1,5 +1,5 @@
 job_name: phase0-repository-discovery
-version: 2
+version: 3
 description: "Per-repository discovery and analysis. Lifecycle steps 1,2,3,4,8,9,10."
 
 parameters:
@@ -21,6 +21,11 @@ stub_policy: continue
 flow:
   - step: repository-ingest
   - step: solution-discovery
+    inputs:
+      repository-inventory: "${artifacts.repository-inventory}"
+    restart:
+      allow_start_if_complete: false
+      start_limit: 3
   - step: application-fingerprinting
   - step: pattern-classification
   - step: impact-map-generation

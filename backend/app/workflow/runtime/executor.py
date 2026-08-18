@@ -24,6 +24,7 @@ from app import models
 from app.config import settings
 from app.workflow import semver
 from app.workflow.adapters import create_adapter
+from app.workflow.adapters.base import local_path_from_uri
 from app.workflow.contract import ArtifactRef, StepContext, StepResult
 from app.workflow.definition.model import JobDefinitionFile, StepNode
 
@@ -151,12 +152,18 @@ def _resolve_inputs(
     registration: models.WfStepRegistration,
     job_execution: models.WfJobExecution,
     definition: JobDefinitionFile,
-) -> dict[str, ArtifactRef]:
+) -> tuple[dict[str, ArtifactRef], list[dict]]:
     """Resolves each `inputs:` entry to a concrete artifact from wf_artifacts,
     then re-checks its version against the matching `consumes` entry's range
     — the third and final layer of contract-change detection from
-    10-ENGINE-CONCEPTS.md, run immediately before invocation."""
+    10-ENGINE-CONCEPTS.md, run immediately before invocation.
+
+    Also returns a persistable `inputs_resolved` record (logical name,
+    artifact type/version, artifact id) — the visible evidence, kept on
+    `wf_step_executions`, that this step actually received a given upstream
+    artifact version (docs/20-WORKFLOW-OBSERVABILITY-UI.md Part A)."""
     resolved: dict[str, ArtifactRef] = {}
+    inputs_resolved: list[dict] = []
     consumes_by_type = {c["artifact_type"]: c for c in registration.consumes}
 
     for logical_name, raw_ref in node.inputs.items():
@@ -198,7 +205,15 @@ def _resolve_inputs(
             uri=artifact_row.uri,
             checksum=artifact_row.checksum,
         )
-    return resolved
+        inputs_resolved.append(
+            {
+                "logical_name": logical_name,
+                "artifact_type": artifact_row.artifact_type,
+                "artifact_version": artifact_row.artifact_version,
+                "artifact_id": str(artifact_row.id),
+            }
+        )
+    return resolved, inputs_resolved
 
 
 def _register_artifacts(
@@ -209,8 +224,14 @@ def _register_artifacts(
 ) -> None:
     # Trusts adapter-layer verification (app/workflow/adapters/base.py) — a
     # StepResult with a checksum mismatch would already be FAILED with no
-    # outputs by the time it reaches here.
+    # outputs by the time it reaches here. size_bytes is captured now, while
+    # the file is known to exist, so it survives the run directory later
+    # being cleaned up (11-STEP-CONTRACT.md / docs/20 Part E).
     for output in outputs:
+        try:
+            size_bytes = local_path_from_uri(output.uri).stat().st_size
+        except OSError:
+            size_bytes = None
         db.add(
             models.WfArtifact(
                 step_execution_id=step_execution.id,
@@ -219,6 +240,7 @@ def _register_artifacts(
                 artifact_version=output.artifact_version,
                 uri=output.uri,
                 checksum=output.checksum,
+                size_bytes=size_bytes,
                 artifact_metadata=output.metadata,
             )
         )
@@ -261,8 +283,12 @@ def _carry_forward_step(
         skip_count=prior.skip_count,
         commit_count=prior.commit_count,
         execution_context=prior.execution_context,
+        diagnostics=prior.diagnostics,
+        inputs_resolved=prior.inputs_resolved,
         stdout_tail=prior.stdout_tail,
         stderr_tail=prior.stderr_tail,
+        carried_forward=True,
+        working_dir=prior.working_dir,
         started_at=prior.started_at,
         ended_at=prior.ended_at,
     )
@@ -326,9 +352,10 @@ def _invoke_step(
     run_root = run_base / node.step
     output_dir = run_root / "out"
     output_dir.mkdir(parents=True, exist_ok=True)
+    step_execution.working_dir = str(run_root)
 
     try:
-        inputs = _resolve_inputs(db, node, registration, job_execution, definition)
+        inputs, inputs_resolved = _resolve_inputs(db, node, registration, job_execution, definition)
     except StepInvocationError as exc:
         step_execution.batch_status = "FAILED"
         step_execution.exit_status = "FAILED"
@@ -336,6 +363,8 @@ def _invoke_step(
         step_execution.ended_at = _now()
         db.flush()
         return step_execution, StepResult(exit_status="FAILED", exit_message=str(exc)), True
+
+    step_execution.inputs_resolved = inputs_resolved or None
 
     context = StepContext(
         step_name=node.step,
@@ -373,6 +402,14 @@ def _invoke_step(
     step_execution.write_count = result.metrics.write_count
     step_execution.skip_count = result.metrics.skip_count
     step_execution.commit_count = result.metrics.commit_count
+    step_execution.diagnostics = [d.model_dump() for d in result.diagnostics] or None
+    # The process adapter surfaces captured stderr as a PROCESS_STDERR
+    # diagnostic (app/workflow/adapters/process_adapter.py) — no adapter
+    # currently produces free-form stdout, so stdout_tail stays null
+    # (docs/20 Part E: "no output captured" is the normal case).
+    step_execution.stderr_tail = next(
+        (d.message for d in result.diagnostics if d.code == "PROCESS_STDERR"), None
+    )
     step_execution.ended_at = _now()
 
     if result.outputs:

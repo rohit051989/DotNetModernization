@@ -86,9 +86,7 @@ def get_execution(execution_id: uuid.UUID, db: Session = Depends(get_db)):
         raise error(404, f"execution '{execution_id}' not found", code="NOT_FOUND")
 
     out = service.to_execution_out(db, execution)
-    steps = [
-        StepExecutionOut.model_validate(se) for se in service.get_step_executions(db, execution_id)
-    ]
+    steps = service.to_step_execution_outs(db, execution)
     return JobExecutionDetail(**out.model_dump(), steps=steps)
 
 
@@ -145,6 +143,4 @@ def get_execution_steps(execution_id: uuid.UUID, db: Session = Depends(get_db)):
     execution = service.get_execution(db, execution_id)
     if execution is None:
         raise error(404, f"execution '{execution_id}' not found", code="NOT_FOUND")
-    return [
-        StepExecutionOut.model_validate(se) for se in service.get_step_executions(db, execution_id)
-    ]
+    return service.to_step_execution_outs(db, execution)

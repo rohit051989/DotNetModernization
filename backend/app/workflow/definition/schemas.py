@@ -73,6 +73,38 @@ class JobParameterOut(BaseModel):
     description: str | None = Field(description="Human-readable explanation of what this parameter is for, if the job definition provides one.")
 
 
+class JobDefinitionSummary(BaseModel):
+    """One row per registered job for the Workflow tab's jobs list — see
+    20-WORKFLOW-OBSERVABILITY-UI.md Part B."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "job_name": "phase0-repository-discovery",
+                    "active_version": 3,
+                    "description": "Per-repository discovery and analysis. Lifecycle steps 1,2,3,4,8,9,10.",
+                    "scope": "per_repository",
+                    "step_count": 7,
+                    "implemented_step_count": 2,
+                    "stub_step_count": 5,
+                }
+            ]
+        }
+    )
+
+    job_name: str
+    active_version: int = Field(description="The currently active definition version.")
+    description: str | None
+    scope: Literal["per_repository", "per_engagement", "other"] = Field(
+        description="Derived from declared parameters: 'per_repository' if repository_id is declared, "
+        "else 'per_engagement' if engagement_id is declared, else 'other'."
+    )
+    step_count: int = Field(description="Steps in this definition's flow.")
+    implemented_step_count: int = Field(description="Of those, how many are registered with implementation_status 'implemented'.")
+    stub_step_count: int = Field(description="Of those, how many are still 'stub'.")
+
+
 class JobParametersResponse(BaseModel):
     model_config = ConfigDict(
         json_schema_extra={

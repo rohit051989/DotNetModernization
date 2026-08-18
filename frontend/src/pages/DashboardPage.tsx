@@ -9,6 +9,7 @@ const POLL_INTERVAL_MS = 5000
 interface DashboardPageProps {
   engagementId: string
   onNavigateToRepositories: () => void
+  onNavigateToExecution: (executionId: string) => void
 }
 
 function formatBytes(bytes: number): string {
@@ -40,7 +41,7 @@ function formatDuration(startIso: string | null, endIso: string | null): string 
   return `${Math.round(seconds / 60)}m`
 }
 
-export function DashboardPage({ engagementId, onNavigateToRepositories }: DashboardPageProps) {
+export function DashboardPage({ engagementId, onNavigateToRepositories, onNavigateToExecution }: DashboardPageProps) {
   const [summary, setSummary] = useState<DashboardSummary | null>(null)
   const [rows, setRows] = useState<DashboardRepositoryRow[]>([])
   const [loading, setLoading] = useState(true)
@@ -131,6 +132,24 @@ export function DashboardPage({ engagementId, onNavigateToRepositories }: Dashbo
             {summary.discovery.in_progress} in progress · {summary.discovery.failed} failed
           </p>
         </SummaryCard>
+        <SummaryCard title="Solutions">
+          <p className="text-2xl font-semibold text-neutral-900">{summary.structure.solution_count}</p>
+          <p className="text-xs text-neutral-400">across {summary.structure.repositories_scanned} scanned repositories</p>
+        </SummaryCard>
+        <SummaryCard title="Projects">
+          <p className="text-2xl font-semibold text-neutral-900">{summary.structure.project_file_count}</p>
+          <p className="text-xs text-neutral-400">{summary.structure.standalone_project_count} standalone</p>
+        </SummaryCard>
+        <SummaryCard title="Unresolved references">
+          <p className="text-2xl font-semibold text-neutral-900">{summary.structure.unresolved_reference_count}</p>
+          <p className="text-xs text-neutral-400">solution and project references</p>
+        </SummaryCard>
+        <SummaryCard title="Legacy vs SDK">
+          <p className="text-2xl font-semibold text-neutral-900">
+            {summary.structure.legacy_project_count} / {summary.structure.sdk_project_count}
+          </p>
+          <p className="text-xs text-neutral-400">legacy_msbuild vs sdk_style</p>
+        </SummaryCard>
         <UnavailableCard title="Applications" awaiting="application fingerprinting (step 3)" />
         <UnavailableCard title="Patterns identified" awaiting="pattern classification (step 4)" />
         <SummaryCard title="Target state decisions">
@@ -154,6 +173,11 @@ export function DashboardPage({ engagementId, onNavigateToRepositories }: Dashbo
               <th className="px-3 py-2 font-medium">Ingest status</th>
               <th className="px-3 py-2 font-medium">Git</th>
               <th className="px-3 py-2 font-medium">Size</th>
+              <th className="px-3 py-2 font-medium">Solutions</th>
+              <th className="px-3 py-2 font-medium">Projects</th>
+              <th className="px-3 py-2 font-medium">Standalone</th>
+              <th className="px-3 py-2 font-medium">Frameworks</th>
+              <th className="px-3 py-2 font-medium">Scan status</th>
               <th className="px-3 py-2 font-medium">Applications</th>
               <th className="px-3 py-2 font-medium">Patterns</th>
               <th className="px-3 py-2 font-medium">Discovery progress</th>
@@ -163,7 +187,6 @@ export function DashboardPage({ engagementId, onNavigateToRepositories }: Dashbo
           <tbody>
             {rows.map((row) => {
               const latest = row.latest_execution
-              const isRunning = latest ? !isExecutionTerminal(latest.batch_status) : false
               return (
                 <tr key={row.repository_id} className="border-b border-neutral-100">
                   <td className="px-4 py-2 font-medium text-neutral-900">{row.name}</td>
@@ -171,6 +194,29 @@ export function DashboardPage({ engagementId, onNavigateToRepositories }: Dashbo
                   <td className="px-3 py-2 text-neutral-600">{row.ingest_status.replace('_', ' ')}</td>
                   <td className="px-3 py-2 text-neutral-500">{row.has_git_history ? '✓' : '—'}</td>
                   <td className="px-3 py-2 text-neutral-600">{row.size_bytes !== null ? formatBytes(row.size_bytes) : '—'}</td>
+                  <td className="px-3 py-2 text-neutral-600">{row.structure?.solution_count ?? '—'}</td>
+                  <td className="px-3 py-2 text-neutral-600">{row.structure?.project_file_count ?? '—'}</td>
+                  <td className="px-3 py-2 text-neutral-600">{row.structure?.standalone_project_count ?? '—'}</td>
+                  <td className="px-3 py-2 text-neutral-500">
+                    {row.structure ? Object.keys(row.structure.framework_families).join(', ') || '—' : '—'}
+                  </td>
+                  <td className="px-3 py-2">
+                    {row.structure ? (
+                      <span
+                        className={
+                          row.structure.scan_status === 'complete'
+                            ? 'rounded-full border border-teal-200 bg-teal-50 px-2 py-0.5 text-xs font-medium text-teal-700'
+                            : row.structure.scan_status === 'partial'
+                              ? 'rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700'
+                              : 'rounded-full border border-red-200 bg-red-50 px-2 py-0.5 text-xs font-medium text-red-700'
+                        }
+                      >
+                        {row.structure.scan_status}
+                      </span>
+                    ) : (
+                      <span className="text-xs text-neutral-300">not scanned</span>
+                    )}
+                  </td>
                   <td className="px-3 py-2 text-neutral-300" title="Awaiting application fingerprinting (step 3)">
                     —
                   </td>
@@ -180,12 +226,9 @@ export function DashboardPage({ engagementId, onNavigateToRepositories }: Dashbo
                   <td className="px-3 py-2">
                     {latest ? (
                       <DiscoveryProgressBar
-                        stepsCompleted={latest.steps_completed}
-                        stepsNotImplemented={latest.steps_not_implemented}
-                        stepsFailed={latest.steps_failed}
+                        steps={latest.steps}
                         stepsTotal={latest.steps_total}
-                        isRunning={isRunning}
-                        currentStep={latest.current_step}
+                        onClick={() => onNavigateToExecution(latest.job_execution_id)}
                       />
                     ) : (
                       <span className="text-xs text-neutral-300">not started</span>
@@ -211,28 +254,34 @@ export function DashboardPage({ engagementId, onNavigateToRepositories }: Dashbo
           <h2 className="mb-2 text-sm font-semibold text-neutral-900">Recent activity</h2>
           <ul className="divide-y divide-neutral-100">
             {summary.recent_executions.slice(0, 10).map((execution) => (
-              <li key={execution.job_execution_id} className="flex items-center justify-between py-2 text-sm">
-                <div>
-                  <p className="text-neutral-800">
-                    {execution.job_name}
-                    {execution.repository_slug ? ` · ${execution.repository_slug}` : ''}
-                  </p>
-                  <p className="text-xs text-neutral-400">{formatRelative(execution.started_at)}</p>
-                </div>
-                <div className="text-right text-xs">
-                  <p
-                    className={
-                      execution.batch_status === 'COMPLETED'
-                        ? 'font-medium text-emerald-600'
-                        : execution.batch_status === 'FAILED'
-                          ? 'font-medium text-red-600'
-                          : 'font-medium text-amber-600'
-                    }
-                  >
-                    {execution.batch_status}
-                  </p>
-                  <p className="text-neutral-400">{formatDuration(execution.started_at, execution.ended_at)}</p>
-                </div>
+              <li key={execution.job_execution_id}>
+                <button
+                  type="button"
+                  onClick={() => onNavigateToExecution(execution.job_execution_id)}
+                  className="flex w-full items-center justify-between py-2 text-left text-sm hover:bg-neutral-50"
+                >
+                  <div>
+                    <p className="text-neutral-800">
+                      {execution.job_name}
+                      {execution.repository_slug ? ` · ${execution.repository_slug}` : ''}
+                    </p>
+                    <p className="text-xs text-neutral-400">{formatRelative(execution.started_at)}</p>
+                  </div>
+                  <div className="text-right text-xs">
+                    <p
+                      className={
+                        execution.batch_status === 'COMPLETED'
+                          ? 'font-medium text-emerald-600'
+                          : execution.batch_status === 'FAILED'
+                            ? 'font-medium text-red-600'
+                            : 'font-medium text-amber-600'
+                      }
+                    >
+                      {execution.batch_status}
+                    </p>
+                    <p className="text-neutral-400">{formatDuration(execution.started_at, execution.ended_at)}</p>
+                  </div>
+                </button>
               </li>
             ))}
             {summary.recent_executions.length === 0 && <p className="text-sm text-neutral-400">No executions yet.</p>}

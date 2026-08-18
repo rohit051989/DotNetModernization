@@ -6,12 +6,13 @@ import { RepositoryDetailPanel } from './repositories/RepositoryDetailPanel'
 interface RepositoriesPageProps {
   engagementId: string
   engagementName: string
+  onNavigateToExecution: (executionId: string) => void
 }
 
 /** Engagement-scoped. Hidden entirely in Master Catalog view — see
  * 15-REPOSITORY-INGEST-UI.md Part F. App.tsx never mounts this component
  * without an engagement selected. */
-export function RepositoriesPage({ engagementId, engagementName }: RepositoriesPageProps) {
+export function RepositoriesPage({ engagementId, engagementName, onNavigateToExecution }: RepositoriesPageProps) {
   const [selectedRepositoryId, setSelectedRepositoryId] = useState<string | null>(null)
   const [refreshToken, setRefreshToken] = useState(0)
 
@@ -31,6 +32,7 @@ export function RepositoriesPage({ engagementId, engagementName }: RepositoriesP
         engagementName={engagementName}
         selectedRepositoryId={selectedRepositoryId}
         onSelectRepository={setSelectedRepositoryId}
+        onNavigateToExecution={onNavigateToExecution}
         refreshToken={refreshToken}
         onChanged={handleChanged}
       />
@@ -41,6 +43,7 @@ export function RepositoriesPage({ engagementId, engagementName }: RepositoriesP
             refreshToken={refreshToken}
             onChanged={handleChanged}
             onDeleted={handleRemoved}
+            onNavigateToExecution={onNavigateToExecution}
           />
         ) : (
           <EmptyState

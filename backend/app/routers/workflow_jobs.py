@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
+from app import models
 from app.db import get_db
 from app.errors import ErrorResponse, error, errors
 from app.workflow.definition import service
@@ -10,6 +11,7 @@ from app.workflow.definition.schemas import (
     JobDefinition,
     JobDefinitionStoreRequest,
     JobDefinitionStoreResult,
+    JobDefinitionSummary,
     JobDefinitionValidateRequest,
     JobDefinitionValidateResponse,
     JobParameterOut,
@@ -25,6 +27,61 @@ from app.workflow.runtime.service import PreconditionError
 router = APIRouter(prefix="/api/workflow/jobs", tags=["Workflow Jobs"])
 
 _NO_ACTIVE_DEFINITION = {"model": ErrorResponse, "description": "No active definition exists for this job_name."}
+
+
+def _job_scope(parameter_names: set[str]) -> str:
+    if "repository_id" in parameter_names:
+        return "per_repository"
+    if "engagement_id" in parameter_names:
+        return "per_engagement"
+    return "other"
+
+
+@router.get(
+    "",
+    response_model=list[JobDefinitionSummary],
+    summary="List every job with an active definition",
+    response_description="One row per registered job — the Workflow tab's jobs list.",
+    operation_id="list_job_definitions",
+)
+def list_job_definitions(db: Session = Depends(get_db)):
+    """
+    Drives the Workflow tab's jobs panel — job name, active version, scope,
+    and how many of its steps are implemented versus stub
+    (20-WORKFLOW-OBSERVABILITY-UI.md Part B).
+    """
+    rows = service.list_active_definitions(db)
+    step_names: set[str] = set()
+    definitions: dict[str, JobDefinitionFile] = {}
+    for row in rows:
+        definition = JobDefinitionFile.model_validate(row.definition)
+        definitions[row.job_name] = definition
+        step_names.update(node.step for node in definition.flow)
+
+    registrations = {
+        reg.step_name: reg
+        for reg in db.query(models.WfStepRegistration).filter(models.WfStepRegistration.step_name.in_(step_names))
+    }
+
+    summaries = []
+    for row in rows:
+        definition = definitions[row.job_name]
+        flow_steps = [node.step for node in definition.flow]
+        implemented = sum(
+            1 for name in flow_steps if registrations.get(name) and registrations[name].implementation_status == "implemented"
+        )
+        summaries.append(
+            JobDefinitionSummary(
+                job_name=row.job_name,
+                active_version=row.version,
+                description=definition.description,
+                scope=_job_scope({p.name for p in definition.parameters}),
+                step_count=len(flow_steps),
+                implemented_step_count=implemented,
+                stub_step_count=len(flow_steps) - implemented,
+            )
+        )
+    return summaries
 
 
 @router.post(

@@ -2,12 +2,14 @@ import { useEffect, useState } from 'react'
 import {
   deleteRepository,
   getRepository,
+  listRepositoryExecutions,
   rescanRepository,
   restoreRepository,
   updateRepository,
   verifyRepositoryPath,
 } from '../../api/repositories'
 import type { Criticality, RepositoryDetail, RetirementStatus } from '../../types/repositories'
+import type { JobExecution } from '../../types/workflow'
 import { ApiError } from '../../api/client'
 import { EmptyState } from '../../components/EmptyState'
 import { ConfirmDialog } from '../../components/ConfirmDialog'
@@ -15,15 +17,24 @@ import { Field, inputClass } from '../../components/FormField'
 import { TagInput } from '../../components/TagInput'
 import { useToast } from '../../components/Toast'
 import { CriticalityBadge, CloneUrlVerificationBadge, IngestStatusBadge, RetirementBadge } from '../../components/RepositoryBadges'
+import { BatchStatusBadge, ExitStatusBadge } from '../../components/WorkflowBadges'
+import { RepositoryStructureSection } from './RepositoryStructureSection'
 
 interface RepositoryDetailPanelProps {
   repositoryId: string
   refreshToken: number
   onChanged: () => void
   onDeleted: () => void
+  onNavigateToExecution: (executionId: string) => void
 }
 
-export function RepositoryDetailPanel({ repositoryId, refreshToken, onChanged, onDeleted }: RepositoryDetailPanelProps) {
+export function RepositoryDetailPanel({
+  repositoryId,
+  refreshToken,
+  onChanged,
+  onDeleted,
+  onNavigateToExecution,
+}: RepositoryDetailPanelProps) {
   const { showToast } = useToast()
   const [repo, setRepo] = useState<RepositoryDetail | null>(null)
   const [loading, setLoading] = useState(true)
@@ -204,13 +215,23 @@ export function RepositoryDetailPanel({ repositoryId, refreshToken, onChanged, o
             {repo.detected_clone_url ? <span className="font-mono text-xs">{repo.detected_clone_url}</span> : '—'}
           </Metadata>
           <Metadata label="Provider">{repo.provider ?? '—'}</Metadata>
+          <Metadata label="Organization">{repo.organization ?? '—'}</Metadata>
           <Metadata label="Default branch">{repo.default_branch ?? '—'}</Metadata>
           <Metadata label="Commit SHA">
             {repo.has_git_history ? <span className="font-mono text-xs">{repo.ingest_commit_sha?.slice(0, 12)}</span> : 'no git history'}
           </Metadata>
+          <Metadata label="Last commit">
+            {repo.last_commit_date ? new Date(repo.last_commit_date).toLocaleString() : '—'}
+          </Metadata>
           <Metadata label="Size / files">
             {repo.size_bytes !== null ? `${(repo.size_bytes / 1024 / 1024).toFixed(2)} MB` : '—'} / {repo.file_count ?? '—'}
           </Metadata>
+          <Metadata label="Primary languages">
+            {repo.primary_languages && repo.primary_languages.length > 0
+              ? repo.primary_languages.map((entry) => `${entry.language} (${entry.percentage}%)`).join(', ')
+              : '—'}
+          </Metadata>
+          <Metadata label="Source status">{repo.source_status ?? '—'}</Metadata>
           <Metadata label="Technical owner">{repo.technical_owner ?? '—'}</Metadata>
           <Metadata label="Description">{repo.description ?? '—'}</Metadata>
           <Metadata label="Tags">{repo.tags.length ? repo.tags.join(', ') : '—'}</Metadata>
@@ -224,22 +245,15 @@ export function RepositoryDetailPanel({ repositoryId, refreshToken, onChanged, o
         </dl>
       )}
 
+      {!editing && (
+        <section className="border-t border-neutral-100 pt-4">
+          <RepositoryStructureSection repositoryId={repo.id} refreshToken={localRefresh} />
+        </section>
+      )}
+
       <section>
-        <h3 className="mb-2 text-sm font-semibold text-neutral-900">Latest discovery execution</h3>
-        {repo.latest_execution ? (
-          <div className="rounded border border-neutral-200 p-3 text-sm">
-            <p>
-              <span className="font-medium">{repo.latest_execution.batch_status}</span>
-              {repo.latest_execution.exit_status ? ` · ${repo.latest_execution.exit_status}` : ''}
-            </p>
-            <p className="text-xs text-neutral-400">
-              {repo.latest_execution.started_at ? new Date(repo.latest_execution.started_at).toLocaleString() : ''}
-              {repo.latest_execution.ended_at ? ` – ${new Date(repo.latest_execution.ended_at).toLocaleString()}` : ''}
-            </p>
-          </div>
-        ) : (
-          <p className="text-sm text-neutral-400">Discovery has not run yet.</p>
-        )}
+        <h3 className="mb-2 text-sm font-semibold text-neutral-900">Discovery execution history</h3>
+        <ExecutionHistory repositoryId={repo.id} refreshToken={localRefresh} onNavigateToExecution={onNavigateToExecution} />
       </section>
 
       <ConfirmDialog
@@ -252,6 +266,77 @@ export function RepositoryDetailPanel({ repositoryId, refreshToken, onChanged, o
         onCancel={() => setShowDeleteConfirm(false)}
       />
     </div>
+  )
+}
+
+function ExecutionHistory({
+  repositoryId,
+  refreshToken,
+  onNavigateToExecution,
+}: {
+  repositoryId: string
+  refreshToken: number
+  onNavigateToExecution: (executionId: string) => void
+}) {
+  const [executions, setExecutions] = useState<JobExecution[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    listRepositoryExecutions(repositoryId)
+      .then((result) => {
+        if (!cancelled) setExecutions(result)
+      })
+      .catch(() => {
+        if (!cancelled) setExecutions([])
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [repositoryId, refreshToken])
+
+  if (loading) return <p className="text-sm text-neutral-400">Loading…</p>
+  if (executions.length === 0) return <p className="text-sm text-neutral-400">Discovery has not run yet.</p>
+
+  return (
+    <table className="w-full text-left text-sm">
+      <thead className="text-xs uppercase tracking-wide text-neutral-500">
+        <tr>
+          <th className="py-1.5 pr-3 font-medium">Batch status</th>
+          <th className="py-1.5 pr-3 font-medium">Exit status</th>
+          <th className="py-1.5 pr-3 font-medium">Steps</th>
+          <th className="py-1.5 pr-3 font-medium">Started</th>
+          <th className="py-1.5 font-medium">Triggered by</th>
+        </tr>
+      </thead>
+      <tbody>
+        {executions.map((execution) => (
+          <tr
+            key={execution.id}
+            onClick={() => onNavigateToExecution(execution.id)}
+            className="cursor-pointer border-t border-neutral-100 hover:bg-neutral-50"
+          >
+            <td className="py-1.5 pr-3">
+              <BatchStatusBadge status={execution.batch_status} />
+            </td>
+            <td className="py-1.5 pr-3">
+              <ExitStatusBadge status={execution.exit_status} />
+            </td>
+            <td className="py-1.5 pr-3 text-neutral-500">
+              {execution.step_summary.completed + execution.step_summary.not_implemented}/{execution.step_summary.total}
+            </td>
+            <td className="py-1.5 pr-3 whitespace-nowrap text-neutral-500">
+              {execution.started_at ? new Date(execution.started_at).toLocaleString() : '—'}
+            </td>
+            <td className="py-1.5 text-neutral-500">{execution.triggered_by ?? '—'}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   )
 }
 

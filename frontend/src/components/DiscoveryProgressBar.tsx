@@ -1,58 +1,62 @@
+import type { DashboardStepBrief } from '../types/dashboard'
+
 interface Segment {
   tone: string
   title: string
 }
 
 interface DiscoveryProgressBarProps {
-  stepsCompleted: number
-  stepsNotImplemented: number
-  stepsFailed: number
+  steps: DashboardStepBrief[]
   stepsTotal: number
-  isRunning: boolean
-  currentStep?: string | null
+  /** Deep-links to the execution's detail — 20-WORKFLOW-OBSERVABILITY-UI.md
+   * Part C: "the discovery progress bar links to the latest execution
+   * detail. Each segment tooltips with its step name and status." */
+  onClick?: () => void
 }
 
-/** One segment per lifecycle step: completed green, not-implemented grey
- * hatched, failed red, running amber pulsing, pending empty. At a glance it
- * shows which steps are real and which are stubs — see 16-DASHBOARD-SPEC.md
- * Band 2. Segment order is result-order (completed, then failed, then
- * running, then not-implemented, then pending), not necessarily lifecycle
- * order, since only aggregate counts are available here. */
-export function DiscoveryProgressBar({
-  stepsCompleted,
-  stepsNotImplemented,
-  stepsFailed,
-  stepsTotal,
-  isRunning,
-  currentStep,
-}: DiscoveryProgressBarProps) {
-  const runningCount = isRunning ? 1 : 0
-  const accountedFor = stepsCompleted + stepsFailed + runningCount + stepsNotImplemented
-  const pending = Math.max(0, stepsTotal - accountedFor)
-
-  const segments: Segment[] = [
-    ...Array.from({ length: stepsCompleted }, () => ({ tone: 'bg-emerald-500', title: 'Completed' })),
-    ...Array.from({ length: stepsFailed }, () => ({ tone: 'bg-red-500', title: 'Failed' })),
-    ...Array.from({ length: runningCount }, () => ({
-      tone: 'animate-pulse bg-amber-400',
-      title: currentStep ? `Running: ${currentStep}` : 'Running',
-    })),
-    ...Array.from({ length: stepsNotImplemented }, () => ({
+function segmentFor(step: DashboardStepBrief): Segment {
+  if (step.batch_status === 'FAILED') {
+    return { tone: 'bg-red-500', title: `${step.display_name} — failed` }
+  }
+  if (step.batch_status === 'STARTED' || step.batch_status === 'STARTING') {
+    return { tone: 'animate-pulse bg-amber-400', title: `${step.display_name} — running` }
+  }
+  if (step.exit_status === 'NOT_IMPLEMENTED') {
+    return {
       tone: 'bg-[repeating-linear-gradient(45deg,#d4d4d4,#d4d4d4_3px,#e5e5e5_3px,#e5e5e5_6px)]',
-      title: 'Not implemented yet',
-    })),
+      title: `${step.display_name} — not implemented yet`,
+    }
+  }
+  if (step.exit_status === 'COMPLETED') {
+    return { tone: 'bg-emerald-500', title: `${step.display_name} — completed` }
+  }
+  return { tone: 'bg-neutral-200', title: `${step.display_name} — ${step.batch_status.toLowerCase()}` }
+}
+
+/** One segment per lifecycle step, in flow order — completed green,
+ * not-implemented grey hatched, failed red, running amber pulsing, pending
+ * (not yet reached, no row at all) empty. At a glance it shows which steps
+ * are real and which are stubs — see 16-DASHBOARD-SPEC.md Band 2. */
+export function DiscoveryProgressBar({ steps, stepsTotal, onClick }: DiscoveryProgressBarProps) {
+  const pending = Math.max(0, stepsTotal - steps.length)
+  const segments: Segment[] = [
+    ...steps.map(segmentFor),
     ...Array.from({ length: pending }, () => ({ tone: 'bg-neutral-100', title: 'Pending' })),
   ]
+  const completedCount = steps.filter((s) => s.exit_status === 'COMPLETED').length
 
+  const Wrapper = onClick ? 'button' : 'div'
   return (
-    <div
-      className="flex h-2 w-full min-w-[90px] gap-0.5"
+    <Wrapper
+      type={onClick ? 'button' : undefined}
+      onClick={onClick}
+      className={`flex h-2 w-full min-w-[90px] gap-0.5 ${onClick ? 'cursor-pointer' : ''}`}
       role="img"
-      aria-label={`${stepsCompleted} of ${stepsTotal} steps complete`}
+      aria-label={`${completedCount} of ${stepsTotal} steps complete`}
     >
       {segments.map((segment, index) => (
         <div key={index} title={segment.title} className={`h-full flex-1 rounded-sm ${segment.tone}`} />
       ))}
-    </div>
+    </Wrapper>
   )
 }

@@ -1,5 +1,11 @@
 const BASE_URL = import.meta.env.VITE_API_BASE_URL
 
+/** For places that need a real URL rather than a fetch() call — e.g. a
+ * download link the browser navigates to directly. */
+export function apiUrl(path: string): string {
+  return `${BASE_URL}${path}`
+}
+
 export interface FieldError {
   field: string
   message: string

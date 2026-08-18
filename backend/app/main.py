@@ -17,7 +17,9 @@ from app.routers import (
     health,
     patterns,
     repositories,
+    structure,
     target_states,
+    workflow_artifacts,
     workflow_capabilities,
     workflow_executions,
     workflow_jobs,
@@ -153,6 +155,15 @@ app = FastAPI(
             ),
         },
         {
+            "name": "Workflow Artifacts",
+            "description": (
+                "Files a step produced and registered with the engine. `content` and "
+                "`download` both re-verify the on-disk checksum against the recorded "
+                "one before serving anything — drift is a real finding, never served "
+                "silently. See 20-WORKFLOW-OBSERVABILITY-UI.md."
+            ),
+        },
+        {
             "name": "Repositories",
             "description": (
                 "Engagement-scoped registration of local repository folders — the entry "
@@ -168,6 +179,15 @@ app = FastAPI(
                 "Engagement-scoped, read-only modernization status, repository by "
                 "repository. `null` fields are sections no implemented step produces "
                 "yet — never a fabricated zero. See 16-DASHBOARD-SPEC.md."
+            ),
+        },
+        {
+            "name": "Solution Discovery",
+            "description": (
+                "Read-only results of lifecycle step 2: solutions, projects, project "
+                "references, and supporting artifacts found per repository. Structural "
+                "facts only — nothing here is interpreted as an application or a pattern "
+                "yet. See 19-STEP-002-SOLUTION-DISCOVERY.md."
             ),
         },
     ],
@@ -223,5 +243,7 @@ app.include_router(workflow_steps.router)
 app.include_router(workflow_capabilities.router)
 app.include_router(workflow_jobs.router)
 app.include_router(workflow_executions.router)
+app.include_router(workflow_artifacts.router)
 app.include_router(repositories.router)
+app.include_router(structure.router)
 app.include_router(dashboard.router)

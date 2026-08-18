@@ -110,6 +110,10 @@ def _repository_out(db: Session, repo: models.Repository, detail: bool = False):
         created_at=repo.created_at,
         updated_at=repo.updated_at,
         deleted_by=repo.deleted_by,
+        organization=repo.organization,
+        last_commit_date=repo.last_commit_date,
+        primary_languages=repo.primary_languages,
+        source_status=repo.source_status,
         latest_execution=latest_execution,
     )
 

@@ -1,42 +1,18 @@
+import type { JobExecution } from './workflow'
+
+export type { JobExecution }
+
 export type Criticality = 'low' | 'medium' | 'high' | 'critical'
 export type RetirementStatus = 'active' | 'slated_for_retirement' | 'decommissioned'
 export type CloneUrlVerification = 'verified' | 'mismatch' | 'unverifiable'
 export type IngestStatus = 'registered' | 'scanned' | 'scan_failed' | 'path_missing'
 export type SourceType = 'local_path' | 'git_clone'
+export type SourceStatus = 'active' | 'archived' | 'disabled' | 'inaccessible'
 
-export interface JobExecution {
-  id: string
-  job_name: string
-  job_instance_id: string
-  job_definition_id: string
-  execution_number: number
-  batch_status: string
-  exit_status: string | null
-  exit_message: string | null
-  execution_context: Record<string, unknown>
-  engine_version: string
-  triggered_by: string | null
-  started_at: string | null
-  ended_at: string | null
-  created_at: string
-}
-
-export interface StepExecution {
-  id: string
-  job_execution_id: string
-  step_name: string
-  step_version: string
-  partition_key: string | null
-  attempt: number
-  batch_status: string
-  exit_status: string | null
-  exit_message: string | null
-  read_count: number
-  write_count: number
-  skip_count: number
-  commit_count: number
-  started_at: string | null
-  ended_at: string | null
+export interface PrimaryLanguage {
+  language: string
+  file_count: number
+  percentage: number
 }
 
 export interface RepositorySummary {
@@ -74,6 +50,10 @@ export interface RepositoryDetail extends RepositorySummary {
   created_at: string
   updated_at: string
   deleted_by: string | null
+  organization: string | null
+  last_commit_date: string | null
+  primary_languages: PrimaryLanguage[] | null
+  source_status: SourceStatus | null
   latest_execution: JobExecution | null
 }
 

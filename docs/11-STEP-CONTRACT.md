@@ -15,6 +15,28 @@ Two layers, with different change policies:
 Everything that follows in this document is envelope. Artifact schemas live with
 their producing step's spec.
 
+## Artifact versioning
+
+The payload layer "evolves freely" above means semver'd, not unversioned. Every
+artifact type has a version, and that version is a promise to whoever reads the
+schema — including a future step that doesn't exist yet. The rule is plain:
+
+- **Adding an optional field is a minor bump.** Existing consumers ignore what
+  they don't know about; nothing breaks.
+- **Removing or renaming a field, or changing its type or meaning, is a major
+  bump.** Anything reading the old shape can break, so semver has to say so.
+- **The bump happens in the same change as the schema edit, never afterwards.**
+  A schema change and its version bump are one commit, not two. Bumping later,
+  once someone notices, defeats the entire point: registered consumers use the
+  version to decide whether new output is safe to read, and a stale version
+  number lies to that check.
+- **A step author must not edit an artifact schema without changing its
+  version.** This applies even when nothing currently consumes the artifact —
+  "nothing depends on it yet" is not an exemption, because the version is what a
+  future consumer will trust. See `10-ENGINE-CONCEPTS.md`'s contract-change
+  detection for what a major bump triggers against steps that already declare a
+  `consumes` range on the artifact.
+
 ## Invocation — StepContext
 
 The engine passes this JSON to the step. `envelope_version` is `"1.0"`.

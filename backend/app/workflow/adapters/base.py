@@ -17,7 +17,7 @@ from app.workflow.contract import Diagnostic, StepContext, StepResult
 _WINDOWS_DRIVE_RE = re.compile(r"^/[A-Za-z]:")
 
 
-def _local_path(uri: str) -> Path:
+def local_path_from_uri(uri: str) -> Path:
     """Resolves an artifact URI to a local filesystem path. Only `file://` and
     bare paths are supported — this platform has no object storage (see
     15-REPOSITORY-INGEST-UI.md's single-machine operating model)."""
@@ -34,7 +34,7 @@ def _local_path(uri: str) -> Path:
 def compute_checksum(uri: str) -> str:
     """SHA-256 of the artifact's content, in the `sha256:<hex>` form used
     throughout the envelope."""
-    digest = hashlib.sha256(_local_path(uri).read_bytes()).hexdigest()
+    digest = hashlib.sha256(local_path_from_uri(uri).read_bytes()).hexdigest()
     return f"sha256:{digest}"
 
 

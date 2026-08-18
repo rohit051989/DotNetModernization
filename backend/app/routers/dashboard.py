@@ -17,6 +17,7 @@ from app import models
 from app.db import get_db
 from app.errors import ErrorResponse, error
 from app.routers.engagements import compute_coverage
+from app.structure import service as structure_service
 from app.workflow.runtime import service as runtime_service
 
 router = APIRouter(prefix="/api/engagements", tags=["Dashboard"])
@@ -64,6 +65,22 @@ class DecisionCounts(BaseModel):
     deferred: int
 
 
+class StructureCounts(BaseModel):
+    """Real (not null) once solution-discovery — lifecycle step 2 — is
+    implemented, unlike `applications`/`patterns`/`risk_tiers`/`waves` below.
+    Zero repositories scanned yet is a legitimate zero, not an unimplemented
+    capability, so this is never null."""
+
+    repositories_scanned: int = Field(description="Repositories with a repository_structure row — solution-discovery has run.")
+    solution_count: int = Field(description="Sum of solutions found across scanned repositories.")
+    project_file_count: int = Field(description="Sum of project files found across scanned repositories.")
+    standalone_project_count: int = Field(description="Sum of projects referenced by no solution.")
+    unresolved_reference_count: int = Field(description="Sum of solution/project references that did not resolve.")
+    legacy_project_count: int = Field(description="Sum of projects with project_format 'legacy_msbuild'.")
+    sdk_project_count: int = Field(description="Sum of projects with project_format 'sdk_style'.")
+    framework_families: dict[str, int] = Field(description="Project count per normalised framework family, summed across repositories.")
+
+
 class DashboardCapabilities(BaseModel):
     application_count: bool = Field(description="True once 'application-fingerprinting' (step 3) is implemented.")
     pattern_classification: bool = Field(description="True once 'pattern-classification' (step 4) is implemented.")
@@ -109,6 +126,16 @@ class DashboardSummary(BaseModel):
                         "failed": 0,
                         "awaiting_approval": 0,
                     },
+                    "structure": {
+                        "repositories_scanned": 3,
+                        "solution_count": 5,
+                        "project_file_count": 42,
+                        "standalone_project_count": 6,
+                        "unresolved_reference_count": 2,
+                        "legacy_project_count": 30,
+                        "sdk_project_count": 12,
+                        "framework_families": {"net-framework": 30, "net": 12},
+                    },
                     "applications": None,
                     "patterns": None,
                     "risk_tiers": None,
@@ -139,6 +166,7 @@ class DashboardSummary(BaseModel):
     generated_at: str = Field(description="ISO-8601 UTC timestamp this snapshot was computed.")
     repositories: RepositoryCounts
     discovery: DiscoveryCounts
+    structure: StructureCounts = Field(description="Solution/project discovery rollup — see 19-STEP-002-SOLUTION-DISCOVERY.md.")
     applications: dict | None = Field(default=None, description="Null — no step producing application rollups is implemented yet.")
     patterns: dict | None = Field(default=None, description="Null — no step producing pattern rollups is implemented yet.")
     risk_tiers: dict | None = Field(default=None, description="Null — no step producing risk tiers is implemented yet.")
@@ -146,6 +174,17 @@ class DashboardSummary(BaseModel):
     decisions: DecisionCounts = Field(description="Real now — computed the same way as GET /api/engagements/{eid}/coverage.")
     capabilities: DashboardCapabilities
     recent_executions: list[RecentExecution] = Field(description="Last 10 executions across every job for this engagement.")
+
+
+class StepBrief(BaseModel):
+    """Per-segment detail for the discovery progress bar's tooltip — see
+    20-WORKFLOW-OBSERVABILITY-UI.md Part C: 'Each segment tooltips with its
+    step name and status.'"""
+
+    step_name: str
+    display_name: str
+    batch_status: str
+    exit_status: str | None
 
 
 class LatestExecutionInfo(BaseModel):
@@ -157,8 +196,20 @@ class LatestExecutionInfo(BaseModel):
     steps_failed: int
     steps_total: int
     current_step: str | None = Field(description="The step currently STARTED, or null if none is running.")
+    steps: list[StepBrief] = Field(default_factory=list, description="Every step recorded so far, in start order.")
     started_at: datetime.datetime | None
     ended_at: datetime.datetime | None
+
+
+class RepositoryStructureBrief(BaseModel):
+    """Per-row summary for the dashboard's repository table columns. Null
+    when solution-discovery has not run for this repository yet."""
+
+    scan_status: str = Field(description="'complete', 'partial', or 'failed'.")
+    solution_count: int | None
+    project_file_count: int | None
+    standalone_project_count: int | None
+    framework_families: dict[str, int] = Field(description="Project count per normalised framework family.")
 
 
 class DashboardRepositoryRow(BaseModel):
@@ -174,6 +225,7 @@ class DashboardRepositoryRow(BaseModel):
     file_count: int | None
     last_ingested_at: datetime.datetime | None = Field(description="repositories.last_scanned_at.")
     latest_execution: LatestExecutionInfo | None = Field(description="Null if discovery has never run for this repository.")
+    structure: RepositoryStructureBrief | None = Field(default=None, description="Null until solution-discovery has run for this repository.")
     application_count: int | None = Field(default=None, description="Null — awaiting application fingerprinting (step 3).")
     patterns_identified: int | None = Field(default=None, description="Null — awaiting pattern classification (step 4).")
     highest_risk_tier: str | None = Field(default=None, description="Null — awaiting risk scoring (step 10).")
@@ -202,6 +254,30 @@ def _step_progress(db: Session, execution_id: uuid.UUID) -> tuple[int, int, int,
     failed = sum(1 for s in steps if s.batch_status == "FAILED")
     current_step = next((s.step_name for s in steps if s.batch_status == "STARTED"), None)
     return completed, not_implemented, failed, len(steps), current_step
+
+
+def _step_briefs(db: Session, execution_id: uuid.UUID) -> list[StepBrief]:
+    steps = (
+        db.query(models.WfStepExecution)
+        .filter_by(job_execution_id=execution_id)
+        .order_by(models.WfStepExecution.started_at)
+        .all()
+    )
+    registrations = {
+        row.step_name: row
+        for row in db.query(models.WfStepRegistration).filter(
+            models.WfStepRegistration.step_name.in_({s.step_name for s in steps})
+        )
+    }
+    return [
+        StepBrief(
+            step_name=s.step_name,
+            display_name=registrations[s.step_name].display_name if s.step_name in registrations else s.step_name,
+            batch_status=s.batch_status,
+            exit_status=s.exit_status,
+        )
+        for s in steps
+    ]
 
 
 def _latest_discovery_by_repository(db: Session, engagement_id: str) -> dict[str, models.WfJobExecution]:
@@ -305,6 +381,9 @@ def get_dashboard(engagement_id: str, db: Session = Depends(get_db)):
         **{name: step in implemented_step_names for name, step in _CAPABILITY_STEP.items()}
     )
 
+    structure_summary = structure_service.get_engagement_structure_summary(db, engagement_id)
+    structure_counts = StructureCounts(**{k: v for k, v in structure_summary.items() if k != "engagement_id"})
+
     slugs_by_id = {str(r.id): r.slug for r in repos}
     recent_executions = []
     for execution in runtime_service.list_executions(db, engagement_id=engagement_id, limit=10):
@@ -331,6 +410,7 @@ def get_dashboard(engagement_id: str, db: Session = Depends(get_db)):
         generated_at=_iso_utc(datetime.datetime.now(datetime.timezone.utc)),
         repositories=repository_counts,
         discovery=discovery_counts,
+        structure=structure_counts,
         applications=None,
         patterns=None,
         risk_tiers=None,
@@ -383,6 +463,12 @@ def get_dashboard_repositories(
     repos.sort(key=sort_fns.get(sort_key, sort_fns["name"]), reverse=reverse)
 
     latest_by_repo = _latest_discovery_by_repository(db, engagement_id)
+    structure_by_repo = {
+        row.repository_id: row
+        for row in db.query(models.RepositoryStructure).filter(
+            models.RepositoryStructure.repository_id.in_([r.id for r in repos])
+        )
+    } if repos else {}
 
     rows = []
     for repo in repos:
@@ -390,6 +476,19 @@ def get_dashboard_repositories(
         bucket = _discovery_bucket(execution)
         if discovery_status and bucket != discovery_status:
             continue
+
+        structure_row = structure_by_repo.get(repo.id)
+        structure_brief = (
+            RepositoryStructureBrief(
+                scan_status=structure_row.scan_status,
+                solution_count=structure_row.solution_count,
+                project_file_count=structure_row.project_file_count,
+                standalone_project_count=structure_row.standalone_project_count,
+                framework_families=structure_row.framework_families or {},
+            )
+            if structure_row is not None
+            else None
+        )
 
         latest_execution = None
         if execution is not None:
@@ -403,6 +502,7 @@ def get_dashboard_repositories(
                 steps_failed=failed,
                 steps_total=total,
                 current_step=current_step,
+                steps=_step_briefs(db, execution.id),
                 started_at=execution.started_at,
                 ended_at=execution.ended_at,
             )
@@ -421,6 +521,7 @@ def get_dashboard_repositories(
                 file_count=repo.file_count,
                 last_ingested_at=repo.last_scanned_at,
                 latest_execution=latest_execution,
+                structure=structure_brief,
             )
         )
 

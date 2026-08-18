@@ -41,6 +41,7 @@ interface RepositoryListProps {
   engagementName: string
   selectedRepositoryId: string | null
   onSelectRepository: (repositoryId: string) => void
+  onNavigateToExecution: (executionId: string) => void
   refreshToken: number
   onChanged: () => void
 }
@@ -50,6 +51,7 @@ export function RepositoryList({
   engagementName,
   selectedRepositoryId,
   onSelectRepository,
+  onNavigateToExecution,
   refreshToken,
   onChanged,
 }: RepositoryListProps) {
@@ -207,7 +209,6 @@ export function RepositoryList({
               {repositories.map((repo) => {
                 const progress = progressByRepo[repo.id]
                 const latest = progress?.latest_execution ?? null
-                const isRunning = latest ? !['COMPLETED', 'FAILED', 'STOPPED', 'ABANDONED'].includes(latest.batch_status) : false
                 return (
                   <tr
                     key={repo.id}
@@ -237,15 +238,12 @@ export function RepositoryList({
                     <td className="px-3 py-2 text-neutral-300" title="Awaiting pattern classification (step 4)">
                       —
                     </td>
-                    <td className="px-3 py-2">
+                    <td className="px-3 py-2" onClick={(event) => latest && event.stopPropagation()}>
                       {latest ? (
                         <DiscoveryProgressBar
-                          stepsCompleted={latest.steps_completed}
-                          stepsNotImplemented={latest.steps_not_implemented}
-                          stepsFailed={latest.steps_failed}
+                          steps={latest.steps}
                           stepsTotal={latest.steps_total}
-                          isRunning={isRunning}
-                          currentStep={latest.current_step}
+                          onClick={() => onNavigateToExecution(latest.job_execution_id)}
                         />
                       ) : (
                         <span className="text-xs text-neutral-300">not started</span>

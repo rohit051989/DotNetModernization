@@ -13,10 +13,18 @@ from app.workflow.definition import service as definition_service
 from app.workflow.definition.model import JobDefinitionFile
 from app.workflow.runtime import executor, preconditions
 from app.workflow.runtime.instance import get_or_create_instance, resolve_parameters
-from app.workflow.runtime.schemas import JobExecutionOut
+from app.workflow.runtime.schemas import (
+    DiagnosticOut,
+    JobExecutionOut,
+    ProducedOutputRef,
+    ResolvedInputRef,
+    StepExecutionOut,
+    StepSummary,
+)
 
 RESUMABLE_BATCH_STATUSES = ("FAILED", "STOPPED")
 STOPPABLE_BATCH_STATUSES = ("STARTING", "STARTED")
+RESTARTABLE_BATCH_STATUSES = ("FAILED",)
 
 
 class PreconditionError(Exception):
@@ -179,24 +187,95 @@ def get_job_name(db: Session, execution: models.WfJobExecution) -> str:
     return instance.job_name if instance else ""
 
 
+def _duration_seconds(started_at, ended_at) -> float | None:
+    if started_at is None or ended_at is None:
+        return None
+    return round((ended_at - started_at).total_seconds(), 3)
+
+
+def _resolved_context(db: Session, parameters: dict) -> dict[str, str]:
+    """Turns opaque instance parameters into names — docs/20 Part A:
+    'resolved_context is the important addition... Populate it by looking up
+    whichever parameters are present; omit keys that do not apply.'"""
+    context: dict[str, str] = {}
+
+    engagement_id = parameters.get("engagement_id")
+    if engagement_id:
+        engagement = db.get(models.Engagement, engagement_id)
+        if engagement is not None:
+            context["engagement_name"] = engagement.client_name
+
+    repository_id = parameters.get("repository_id")
+    if repository_id:
+        try:
+            repo = db.get(models.Repository, repository_id)
+        except Exception:
+            repo = None
+        if repo is not None:
+            context["repository_slug"] = repo.slug
+            context["repository_name"] = repo.name
+
+    return context
+
+
+def _flow_step_names(definition: JobDefinitionFile) -> list[str]:
+    """Ordered step names in this definition's flow. Splits/deciders are
+    deferred to E8 — every flow entry today is a plain step."""
+    return [node.step for node in definition.flow]
+
+
+def _compute_step_summary(step_rows: list[models.WfStepExecution], flow_step_names: list[str]) -> StepSummary:
+    completed = sum(1 for s in step_rows if s.exit_status == "COMPLETED")
+    not_implemented = sum(1 for s in step_rows if s.exit_status == "NOT_IMPLEMENTED")
+    failed = sum(1 for s in step_rows if s.batch_status == "FAILED")
+    total = len(flow_step_names) or len(step_rows)
+    pending = max(0, total - len(step_rows))
+    return StepSummary(total=total, completed=completed, not_implemented=not_implemented, failed=failed, pending=pending)
+
+
 def to_execution_out(db: Session, execution: models.WfJobExecution) -> JobExecutionOut:
     """`job_name` isn't a column on wf_job_executions — it's joined from the
-    instance — so this can't be a plain `model_validate(execution)`."""
+    instance — so this can't be a plain `model_validate(execution)`. Also
+    joins the definition version, resolves parameter UUIDs to names, and
+    rolls up step/artifact counts (docs/20 Part A)."""
+    instance = db.get(models.WfJobInstance, execution.job_instance_id)
+    definition_row = db.get(models.WfJobDefinition, execution.job_definition_id)
+    definition = JobDefinitionFile.model_validate(definition_row.definition) if definition_row else None
+
+    step_rows = (
+        db.query(models.WfStepExecution)
+        .filter_by(job_execution_id=execution.id)
+        .order_by(models.WfStepExecution.started_at)
+        .all()
+    )
+    flow_step_names = _flow_step_names(definition) if definition else [s.step_name for s in step_rows]
+    artifact_count = (
+        db.query(models.WfArtifact).filter_by(job_execution_id=execution.id).count()
+    )
+
     return JobExecutionOut(
         id=execution.id,
-        job_name=get_job_name(db, execution),
+        job_name=instance.job_name if instance else "",
         job_instance_id=execution.job_instance_id,
         job_definition_id=execution.job_definition_id,
+        job_definition_version=definition_row.version if definition_row else 0,
         execution_number=execution.execution_number,
         batch_status=execution.batch_status,
         exit_status=execution.exit_status,
         exit_message=execution.exit_message,
         execution_context=execution.execution_context or {},
+        parameters=instance.parameters if instance else {},
         engine_version=execution.engine_version,
         triggered_by=execution.triggered_by,
         started_at=execution.started_at,
         ended_at=execution.ended_at,
+        duration_seconds=_duration_seconds(execution.started_at, execution.ended_at),
         created_at=execution.created_at,
+        resolved_context=_resolved_context(db, instance.parameters if instance else {}),
+        step_summary=_compute_step_summary(step_rows, flow_step_names),
+        artifact_count=artifact_count,
+        can_restart=execution.batch_status in RESTARTABLE_BATCH_STATUSES,
+        can_resume=execution.batch_status == "STOPPED",
     )
 
 
@@ -239,3 +318,84 @@ def get_step_executions(db: Session, execution_id: uuid.UUID) -> list[models.WfS
         .order_by(models.WfStepExecution.started_at)
         .all()
     )
+
+
+def to_step_execution_out(
+    db: Session,
+    step_execution: models.WfStepExecution,
+    sequence: int,
+    registration: models.WfStepRegistration | None = None,
+) -> StepExecutionOut:
+    """Joins `wf_step_registrations` for display metadata, and `wf_artifacts`
+    for outputs actually produced by this step execution (docs/20 Part A)."""
+    if registration is None:
+        registration = db.get(models.WfStepRegistration, step_execution.step_name)
+
+    outputs = (
+        db.query(models.WfArtifact).filter_by(step_execution_id=step_execution.id).order_by(models.WfArtifact.created_at).all()
+    )
+
+    return StepExecutionOut(
+        step_execution_id=step_execution.id,
+        job_execution_id=step_execution.job_execution_id,
+        step_name=step_execution.step_name,
+        lifecycle_step_no=registration.lifecycle_step_no if registration else None,
+        display_name=registration.display_name if registration else step_execution.step_name,
+        owner_code=registration.owner_code if registration else "",
+        step_version=step_execution.step_version,
+        adapter_type=registration.adapter_type if registration else "",
+        implementation_status=registration.implementation_status if registration else "",
+        sequence=sequence,
+        partition_key=step_execution.partition_key,
+        attempt=step_execution.attempt,
+        batch_status=step_execution.batch_status,
+        exit_status=step_execution.exit_status,
+        exit_message=step_execution.exit_message,
+        metrics={
+            "read_count": step_execution.read_count,
+            "write_count": step_execution.write_count,
+            "skip_count": step_execution.skip_count,
+            "commit_count": step_execution.commit_count,
+        },
+        started_at=step_execution.started_at,
+        ended_at=step_execution.ended_at,
+        duration_seconds=_duration_seconds(step_execution.started_at, step_execution.ended_at),
+        diagnostics=[DiagnosticOut(**d) for d in (step_execution.diagnostics or [])],
+        inputs_resolved=[ResolvedInputRef(**r) for r in (step_execution.inputs_resolved or [])],
+        outputs_produced=[
+            ProducedOutputRef(artifact_id=a.id, artifact_type=a.artifact_type, artifact_version=a.artifact_version)
+            for a in outputs
+        ],
+        stdout_tail=step_execution.stdout_tail,
+        stderr_tail=step_execution.stderr_tail,
+        working_dir=step_execution.working_dir,
+        carried_forward=step_execution.carried_forward,
+    )
+
+
+def to_step_execution_outs(db: Session, execution: models.WfJobExecution) -> list[StepExecutionOut]:
+    """All step executions for one job execution, enriched, in flow order —
+    `sequence` reflects the job definition's declared step order, not
+    started_at, so a not-yet-reached step still sorts correctly relative to
+    its siblings once it appears."""
+    definition_row = db.get(models.WfJobDefinition, execution.job_definition_id)
+    definition = JobDefinitionFile.model_validate(definition_row.definition) if definition_row else None
+    flow_step_names = _flow_step_names(definition) if definition else []
+    sequence_by_name = {name: i + 1 for i, name in enumerate(flow_step_names)}
+
+    step_rows = get_step_executions(db, execution.id)
+    registrations = {
+        row.step_name: row
+        for row in db.query(models.WfStepRegistration).filter(
+            models.WfStepRegistration.step_name.in_({s.step_name for s in step_rows})
+        )
+    }
+
+    outs = [
+        to_step_execution_out(
+            db, step, sequence_by_name.get(step.step_name, i + 1), registrations.get(step.step_name)
+        )
+        for i, step in enumerate(step_rows)
+    ]
+    outs.sort(key=lambda s: s.sequence)
+    return outs
