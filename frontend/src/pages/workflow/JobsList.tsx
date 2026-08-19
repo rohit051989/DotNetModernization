@@ -22,10 +22,12 @@ const SCOPE_LABELS: Record<JobDefinitionSummary['scope'], string> = {
 
 interface JobsListProps {
   engagementId: string
+  selectedJobName: string | null
   onSelectExecution: (executionId: string) => void
+  onSelectJob: (jobName: string) => void
 }
 
-export function JobsList({ engagementId, onSelectExecution }: JobsListProps) {
+export function JobsList({ engagementId, selectedJobName, onSelectExecution, onSelectJob }: JobsListProps) {
   const [jobs, setJobs] = useState<JobDefinitionSummary[]>([])
   const [lastExecutions, setLastExecutions] = useState<Record<string, JobExecution | null>>({})
   const [loading, setLoading] = useState(true)
@@ -75,10 +77,17 @@ export function JobsList({ engagementId, onSelectExecution }: JobsListProps) {
           <tbody>
             {jobs.map((job) => {
               const last = lastExecutions[job.job_name]
+              const isSelected = selectedJobName === job.job_name
               return (
-                <tr key={job.job_name} className="border-b border-neutral-100">
+                <tr key={job.job_name} className={`border-b border-neutral-100 ${isSelected ? 'bg-violet-50/60' : ''}`}>
                   <td className="px-4 py-2">
-                    <div className="font-medium text-neutral-900">{job.job_name}</div>
+                    <button
+                      type="button"
+                      onClick={() => onSelectJob(job.job_name)}
+                      className="text-left font-medium text-neutral-900 hover:text-violet-700 hover:underline"
+                    >
+                      {job.job_name}
+                    </button>
                     {job.description && <div className="text-xs text-neutral-400">{job.description}</div>}
                   </td>
                   <td className="px-3 py-2 text-neutral-600">v{job.active_version}</td>

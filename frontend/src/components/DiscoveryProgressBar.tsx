@@ -14,7 +14,22 @@ interface DiscoveryProgressBarProps {
   onClick?: () => void
 }
 
+const SKIP_REASON_TITLES: Record<string, string> = {
+  POLICY_DISABLED: 'disabled by policy',
+  CONDITION_FALSE: 'not applicable — condition false',
+  TIER_NOT_APPLICABLE: 'not applicable for this tier',
+  UPSTREAM_SKIPPED: 'skipped — upstream step skipped',
+  CASCADED_POLICY: 'skipped — cascaded from a disabled step',
+}
+
 function segmentFor(step: DashboardStepBrief): Segment {
+  if (step.exit_status === 'SKIPPED') {
+    const reason = step.skip_reason ? (SKIP_REASON_TITLES[step.skip_reason] ?? 'skipped') : 'skipped'
+    return {
+      tone: 'border border-dashed border-violet-400 bg-violet-50',
+      title: `${step.display_name} — ${reason}`,
+    }
+  }
   if (step.batch_status === 'FAILED') {
     return { tone: 'bg-red-500', title: `${step.display_name} — failed` }
   }

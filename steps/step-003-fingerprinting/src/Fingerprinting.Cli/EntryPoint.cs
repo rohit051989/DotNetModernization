@@ -77,7 +77,7 @@ public static class EntryPoint
                 ?? throw new InvalidOperationException("inventory deserialized to null");
 
             var registry = SignalRegistry.Load(RegistryPath());
-            var pipeline = new FingerprintPipeline(registry, [new FileIndicatorExtractor()]);
+            var pipeline = new FingerprintPipeline(registry, Extractors());
 
             // No database in standalone mode — every project gets a
             // deterministic, stable-across-reruns id derived from its path
@@ -178,7 +178,7 @@ public static class EntryPoint
         var projectIds = await db.ResolveProjectIdsAsync(inventory.RepositoryId, CancellationToken.None);
 
         var registry = SignalRegistry.Load(RegistryPath());
-        var pipeline = new FingerprintPipeline(registry, [new FileIndicatorExtractor()]);
+        var pipeline = new FingerprintPipeline(registry, Extractors());
 
         var artifact = await pipeline.RunAsync(
             inventory,
@@ -244,7 +244,20 @@ public static class EntryPoint
         return new Guid(hash[..16]);
     }
 
-    private static string RegistryPath() => Path.Combine(AppContext.BaseDirectory, "schemas", "signal-registry-1.0.0.json");
+    /// <summary>Every registered extractor, in the order they run — order is
+    /// otherwise immaterial since FingerprintPipeline sorts signals centrally
+    /// after collection (21-STEP-003-FINGERPRINTING.md Part B rule 2).</summary>
+    private static IReadOnlyList<IFingerprintExtractor> Extractors() =>
+    [
+        new FileIndicatorExtractor(),
+        new FrameworkReferenceExtractor(),
+        new AttributeExtractor(),
+        new InheritanceExtractor(),
+        new EntryPointExtractor(),
+        new ConfigurationExtractor(),
+    ];
+
+    private static string RegistryPath() => Path.Combine(AppContext.BaseDirectory, "schemas", "signal-registry-1.1.0.json");
 
     private static string SchemaPath() =>
         Path.Combine(AppContext.BaseDirectory, "schemas", "application-fingerprint-1.0.0.schema.json");

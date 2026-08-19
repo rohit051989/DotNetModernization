@@ -13,6 +13,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Fingerprinting.Analysis", "
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Fingerprinting.Extractors", "src\Fingerprinting.Extractors\Fingerprinting.Extractors.csproj", "{80579A25-1F04-455C-B861-DD079D9AD151}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{962AF70A-40BF-4228-9F8B-B55EAAE9A310}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Fingerprinting.Tests", "tests\Fingerprinting.Tests\Fingerprinting.Tests.csproj", "{3A14AA6F-EF28-4A32-9C44-26F8F99FC0BF}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -71,6 +75,18 @@ Global
 		{80579A25-1F04-455C-B861-DD079D9AD151}.Release|x64.Build.0 = Release|Any CPU
 		{80579A25-1F04-455C-B861-DD079D9AD151}.Release|x86.ActiveCfg = Release|Any CPU
 		{80579A25-1F04-455C-B861-DD079D9AD151}.Release|x86.Build.0 = Release|Any CPU
+		{3A14AA6F-EF28-4A32-9C44-26F8F99FC0BF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3A14AA6F-EF28-4A32-9C44-26F8F99FC0BF}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3A14AA6F-EF28-4A32-9C44-26F8F99FC0BF}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{3A14AA6F-EF28-4A32-9C44-26F8F99FC0BF}.Debug|x64.Build.0 = Debug|Any CPU
+		{3A14AA6F-EF28-4A32-9C44-26F8F99FC0BF}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{3A14AA6F-EF28-4A32-9C44-26F8F99FC0BF}.Debug|x86.Build.0 = Debug|Any CPU
+		{3A14AA6F-EF28-4A32-9C44-26F8F99FC0BF}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3A14AA6F-EF28-4A32-9C44-26F8F99FC0BF}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3A14AA6F-EF28-4A32-9C44-26F8F99FC0BF}.Release|x64.ActiveCfg = Release|Any CPU
+		{3A14AA6F-EF28-4A32-9C44-26F8F99FC0BF}.Release|x64.Build.0 = Release|Any CPU
+		{3A14AA6F-EF28-4A32-9C44-26F8F99FC0BF}.Release|x86.ActiveCfg = Release|Any CPU
+		{3A14AA6F-EF28-4A32-9C44-26F8F99FC0BF}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -80,5 +96,6 @@ Global
 		{0DA6EC68-27AC-4FEE-9321-810EE8995859} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{79411222-2EF6-4385-A197-FB8E5E0D2AC3} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{80579A25-1F04-455C-B861-DD079D9AD151} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+		{3A14AA6F-EF28-4A32-9C44-26F8F99FC0BF} = {962AF70A-40BF-4228-9F8B-B55EAAE9A310}
 	EndGlobalSection
 EndGlobal

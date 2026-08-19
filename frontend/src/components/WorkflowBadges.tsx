@@ -46,6 +46,43 @@ export function StubChip() {
   return <span className="rounded bg-neutral-200 px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-neutral-600">STUB</span>
 }
 
+export function ImplementationStatusChip({ status }: { status: string }) {
+  if (status === 'implemented') {
+    return <span className="rounded bg-teal-100 px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-teal-700">IMPLEMENTED</span>
+  }
+  if (status === 'deprecated') {
+    return <span className="rounded bg-neutral-200 px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-neutral-500">DEPRECATED</span>
+  }
+  return <StubChip />
+}
+
+export function AdapterTypeChip({ adapterType }: { adapterType: string }) {
+  return (
+    <span className="rounded border border-neutral-200 bg-white px-1.5 py-0.5 font-mono text-[10px] text-neutral-500">
+      {adapterType || '—'}
+    </span>
+  )
+}
+
+/** Part D's five skip reasons, each with its own chip label — the marker
+ * itself is rendered by the caller (hollow, dashed for POLICY_DISABLED). */
+const SKIP_REASON_LABELS: Record<string, string> = {
+  POLICY_DISABLED: 'SKIPPED',
+  CONDITION_FALSE: 'NOT APPLICABLE',
+  TIER_NOT_APPLICABLE: 'TIER N/A',
+  UPSTREAM_SKIPPED: 'UPSTREAM SKIPPED',
+  CASCADED_POLICY: 'CASCADED',
+}
+
+export function SkipReasonChip({ reason }: { reason: string | null }) {
+  const label = (reason && SKIP_REASON_LABELS[reason]) || 'SKIPPED'
+  return (
+    <span className="rounded border border-dashed border-violet-300 bg-violet-50 px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-violet-700">
+      {label}
+    </span>
+  )
+}
+
 export function GateChip() {
   return <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-amber-700">GATE</span>
 }

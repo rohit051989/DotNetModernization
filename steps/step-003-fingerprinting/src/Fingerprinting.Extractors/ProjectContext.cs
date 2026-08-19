@@ -18,4 +18,18 @@ public sealed record ProjectContext
 
     /// <summary>Absolute path to the directory containing the project file.</summary>
     public required string ProjectDirectory { get; init; }
+
+    /// <summary>Package references step 2 already recorded for this project —
+    /// read here, never re-parsed from the project file
+    /// (21-STEP-003-FINGERPRINTING.md Part A7). Empty for projects step 2
+    /// found no packages for.</summary>
+    public IReadOnlyList<PackageReferenceInfo> Packages { get; init; } = [];
+}
+
+/// <summary>One package reference as step 2 recorded it — the slice
+/// FrameworkReferenceExtractor needs, not a full re-model of step 2's schema.</summary>
+public sealed record PackageReferenceInfo
+{
+    public required string PackageName { get; init; }
+    public string? VersionRaw { get; init; }
 }

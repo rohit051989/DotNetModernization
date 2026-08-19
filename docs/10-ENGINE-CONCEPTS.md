@@ -43,6 +43,7 @@ Use these terms exactly, in code, APIs and UI.
 | `NOOP` | Nothing to do; treated as success. E.g. characterization tests skipped because coverage was sufficient |
 | `AWAITING_APPROVAL` | Human gate reached. Job execution ends cleanly; a separate trigger resumes it |
 | `NOT_IMPLEMENTED` | Step is registered but has no implementation yet. Behaviour configurable per job: halt or continue |
+| `SKIPPED` | The engine decided not to run this step — by policy, a false `when:` condition, or a gate's tier not applying. A **success** outcome for flow purposes: the job continues. See `skip_reason` below and `22-STEP-SEQUENCING-AND-POLICY.md` Parts B–D |
 | Custom | Any uppercase token, used by deciders for branching |
 
 `AWAITING_APPROVAL` matters. Human gates in this lifecycle take days (target state
@@ -53,6 +54,13 @@ request, an API call — which creates a new job execution continuing from the g
 `NOT_IMPLEMENTED` is what makes out-of-order construction possible. Every step in
 the lifecycle can be registered as a stub from day one, so a full pipeline is
 runnable end to end before most steps exist.
+
+`SKIPPED` is engine-assigned, never step-reported — unlike every other value in this
+table, no adapter is invoked to produce it. The engine decides before invocation
+(`22-STEP-SEQUENCING-AND-POLICY.md` Part B's precedence: policy, then `when:`, then
+`gate.tier_condition`, then `stub_policy`) and writes the `wf_step_executions` row
+itself. A skipped step still always gets a row — never an absent one — so the
+timeline never shows a gap indistinguishable from a step that never ran.
 
 ## Restart semantics
 
@@ -146,6 +154,7 @@ Unique on `(job_name, job_key)`.
 | `batch_status` | `TEXT` NOT NULL | |
 | `exit_status` | `TEXT` | |
 | `exit_message` | `TEXT` | |
+| `skip_reason` | `TEXT` | Null unless `exit_status` is `SKIPPED`. One of `POLICY_DISABLED`, `CONDITION_FALSE`, `TIER_NOT_APPLICABLE`, `UPSTREAM_SKIPPED`, `CASCADED_POLICY` — see `22-STEP-SEQUENCING-AND-POLICY.md` Part D |
 | `read_count` / `write_count` / `skip_count` / `commit_count` | `INTEGER` DEFAULT 0 | Chunk metrics |
 | `execution_context` | `JSONB` NOT NULL DEFAULT `'{}'` | Step-scoped state |
 | `stdout_tail` / `stderr_tail` | `TEXT` | Last 8KB, for diagnosis without leaving the UI |

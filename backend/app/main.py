@@ -13,6 +13,7 @@ from app.routers import (
     dashboard,
     decisions,
     engagement_patterns,
+    engagement_step_policies,
     engagements,
     health,
     patterns,
@@ -155,6 +156,15 @@ app = FastAPI(
             ),
         },
         {
+            "name": "Step Policies",
+            "description": (
+                "Engagement-scoped overrides disabling a lifecycle step — configuration, not "
+                "design. Absence of a row means enabled. Disabling a step whose non-optional "
+                "output another step still requires is refused unless the dependents are "
+                "disabled in the same request — see 22-STEP-SEQUENCING-AND-POLICY.md Part C."
+            ),
+        },
+        {
             "name": "Workflow Artifacts",
             "description": (
                 "Files a step produced and registered with the engine. `content` and "
@@ -237,6 +247,7 @@ app.include_router(patterns.router)
 app.include_router(target_states.router)
 app.include_router(engagements.router)
 app.include_router(engagement_patterns.router)
+app.include_router(engagement_step_policies.router)
 app.include_router(decisions.router)
 app.include_router(catalog.router)
 app.include_router(workflow_steps.router)

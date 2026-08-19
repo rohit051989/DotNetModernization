@@ -85,6 +85,7 @@ export interface DashboardStepBrief {
   display_name: string
   batch_status: string
   exit_status: string | null
+  skip_reason: string | null
 }
 
 export interface DashboardLatestExecution {
@@ -93,6 +94,7 @@ export interface DashboardLatestExecution {
   exit_status: string | null
   steps_completed: number
   steps_not_implemented: number
+  steps_skipped: number
   steps_failed: number
   steps_total: number
   current_step: string | null

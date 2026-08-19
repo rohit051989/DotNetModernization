@@ -28,6 +28,19 @@ public sealed record InventoryProject
     /// 19-STEP-002-SOLUTION-DISCOVERY.md's acceptance criteria. Both signals
     /// are checked; see <see cref="OutOfScopeStructuralTypes"/>.</summary>
     public required string StructuralType { get; init; }
+
+    /// <summary>Package references step 2 already recorded — read directly
+    /// here for FrameworkReferenceExtractor's package axis rather than
+    /// re-parsed from the project file (Part A7). Step 2's <c>version_raw</c>
+    /// and <c>declaration_source</c> fields are left unmodeled; only what
+    /// FrameworkReferenceExtractor needs is carried.</summary>
+    public IReadOnlyList<InventoryPackage> Packages { get; init; } = [];
+}
+
+public sealed record InventoryPackage
+{
+    public required string PackageName { get; init; }
+    public string? VersionRaw { get; init; }
 }
 
 public static class OutOfScopeStructuralTypes

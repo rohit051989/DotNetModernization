@@ -44,6 +44,15 @@ BATCH_STATUS = (
     "UNKNOWN",
 )
 TRIGGERED_BY = ("manual", "api", "resume", "schedule")
+# 22-STEP-SEQUENCING-AND-POLICY.md Part D. Null unless exit_status is SKIPPED
+# (enforced by ck_wf_step_executions_skip_reason_pairing below).
+SKIP_REASON = (
+    "POLICY_DISABLED",
+    "CONDITION_FALSE",
+    "TIER_NOT_APPLICABLE",
+    "UPSTREAM_SKIPPED",
+    "CASCADED_POLICY",
+)
 CLONE_URL_VERIFICATION = ("verified", "mismatch", "unverifiable")
 SOURCE_TYPE = ("local_path", "git_clone")
 CRITICALITY = ("low", "medium", "high", "critical")
@@ -315,6 +324,48 @@ class EngagementPattern(Base):
     )
 
 
+class EngagementStepPolicy(Base):
+    """A client's explicit override disabling one lifecycle step — see
+    22-STEP-SEQUENCING-AND-POLICY.md Part C. Absence of a row means enabled;
+    this table only ever holds deviations from default, so a newly
+    registered step needs no backfill."""
+
+    __tablename__ = "engagement_step_policies"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    engagement_id: Mapped[str] = mapped_column(Text, ForeignKey("engagements.id"), nullable=False)
+    step_name: Mapped[str] = mapped_column(
+        Text, ForeignKey("wf_step_registrations.step_name"), nullable=False
+    )
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
+    # Mandatory when enabled is false (app-layer validation); nullable at the
+    # DB level so a row explicitly re-recording "enabled" needs no reason.
+    # A cascade-created row's reason is always the literal
+    # "cascaded from disabling <step_name>" — the runtime distinguishes
+    # skip_reason CASCADED_POLICY from POLICY_DISABLED by that convention
+    # rather than a separate column (22-STEP-SEQUENCING-AND-POLICY.md Part C
+    # documents no such column).
+    reason: Mapped[str | None] = mapped_column(Text)
+    set_by: Mapped[str | None] = mapped_column(Text)
+    set_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        UniqueConstraint("engagement_id", "step_name", name="uq_engagement_step_policies_engagement_step"),
+        CheckConstraint("enabled OR reason IS NOT NULL", name="ck_engagement_step_policies_reason_required"),
+        Index("ix_engagement_step_policies_engagement_id", "engagement_id"),
+    )
+
+
 class WfStepRegistration(Base):
     """The registry of known engine steps — see 10-ENGINE-CONCEPTS.md."""
 
@@ -357,6 +408,10 @@ class WfJobDefinition(Base):
     job_name: Mapped[str] = mapped_column(Text, nullable=False)
     version: Mapped[int] = mapped_column(Integer, nullable=False)
     definition: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    # The exact YAML text this row was stored from — for the job definition
+    # viewer's "Raw YAML" panel (22-STEP-SEQUENCING-AND-POLICY.md Part E).
+    # Nullable only because rows stored before this column existed have none.
+    source_yaml: Mapped[str | None] = mapped_column(Text)
     checksum: Mapped[str] = mapped_column(Text, nullable=False)
     validation_status: Mapped[str] = mapped_column(Text, nullable=False)
     validation_errors: Mapped[list | None] = mapped_column(JSONB)
@@ -447,6 +502,7 @@ class WfStepExecution(Base):
     batch_status: Mapped[str] = mapped_column(Text, nullable=False)
     exit_status: Mapped[str | None] = mapped_column(Text)
     exit_message: Mapped[str | None] = mapped_column(Text)
+    skip_reason: Mapped[str | None] = mapped_column(Text)
     read_count: Mapped[int] = mapped_column(Integer, server_default="0")
     write_count: Mapped[int] = mapped_column(Integer, server_default="0")
     skip_count: Mapped[int] = mapped_column(Integer, server_default="0")
@@ -463,6 +519,11 @@ class WfStepExecution(Base):
 
     __table_args__ = (
         CheckConstraint(f"batch_status IN {BATCH_STATUS}", name="ck_wf_step_executions_batch_status"),
+        CheckConstraint(f"skip_reason IS NULL OR skip_reason IN {SKIP_REASON}", name="ck_wf_step_executions_skip_reason"),
+        CheckConstraint(
+            "skip_reason IS NULL OR exit_status = 'SKIPPED'",
+            name="ck_wf_step_executions_skip_reason_pairing",
+        ),
         Index("ix_wf_step_executions_job_execution_id_step_name", "job_execution_id", "step_name"),
     )
 

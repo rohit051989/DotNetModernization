@@ -11,6 +11,8 @@ from sqlalchemy.orm import Session
 
 from app import models
 from app.workflow import semver
+from app.workflow.definition.model import JobDefinitionFile
+from app.workflow.definition.validator import ValidationErrorItem, _flatten_flow, validate_job_definition
 from app.workflow.schemas import AffectedConsumer, ContractChangeWarning, StepDeclaration
 
 
@@ -78,12 +80,50 @@ def detect_contract_changes(
     return warnings
 
 
+def revalidate_active_definitions_for_step(
+    db: Session, step_name: str
+) -> list[tuple[models.WfJobDefinition, list[ValidationErrorItem]]]:
+    """Re-runs full validation against every ACTIVE job definition whose flow
+    references `step_name` — called after that step's registration changes,
+    per 22-STEP-SEQUENCING-AND-POLICY.md Part A: a step registering a new
+    non-optional `consumes` can silently invalidate an already-active
+    definition (rule 2 or the new rule 9), which would otherwise only
+    surface at the next launch.
+
+    A definition that becomes invalid this way is NOT deactivated — a
+    currently-active definition isn't yanked out from under anything just
+    because a later registration drifted; `validation_status` and
+    `validation_errors` are updated so the drift is visible immediately, and
+    it is returned here so the caller can report it. Only re-validates and
+    returns definitions that actually reference `step_name`; unrelated
+    active definitions are left untouched."""
+    changed: list[tuple[models.WfJobDefinition, list[ValidationErrorItem]]] = []
+
+    for row in db.query(models.WfJobDefinition).filter_by(is_active=True):
+        definition = JobDefinitionFile.model_validate(row.definition)
+        referenced_steps = {occ.step_name for occ in _flatten_flow(definition.flow)}
+        if step_name not in referenced_steps:
+            continue
+
+        errors = validate_job_definition(db, definition, exclude_definition_id=row.id)
+        row.validation_status = "invalid" if errors else "valid"
+        row.validation_errors = [e.to_dict() for e in errors] or None
+        if errors:
+            changed.append((row, errors))
+
+    if changed:
+        db.flush()
+
+    return changed
+
+
 def register_step(
     db: Session, declaration: StepDeclaration
-) -> tuple[models.WfStepRegistration, bool, list[ContractChangeWarning]]:
+) -> tuple[models.WfStepRegistration, bool, list[ContractChangeWarning], list[tuple[models.WfJobDefinition, list[ValidationErrorItem]]]]:
     """Upserts a step registration by step_name. Returns (row, created,
-    warnings). Registration always succeeds — warnings are informational,
-    not a rejection."""
+    warnings, invalidated_definitions). Registration always succeeds —
+    warnings and invalidated definitions are informational, not a
+    rejection."""
     warnings = detect_contract_changes(db, declaration)
 
     row = db.get(models.WfStepRegistration, declaration.step_name)
@@ -105,7 +145,10 @@ def register_step(
     row.updated_at = datetime.datetime.now(datetime.timezone.utc)
 
     db.flush()
-    return row, created, warnings
+
+    invalidated = revalidate_active_definitions_for_step(db, declaration.step_name)
+
+    return row, created, warnings, invalidated
 
 
 def list_steps(db: Session) -> list[models.WfStepRegistration]:

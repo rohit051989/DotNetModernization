@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { CopyButton } from '../../components/CopyButton'
-import { OwnerCodeBadge, StubChip, GateChip, CarriedForwardChip } from '../../components/WorkflowBadges'
+import { OwnerCodeBadge, StubChip, GateChip, CarriedForwardChip, SkipReasonChip } from '../../components/WorkflowBadges'
 import type { StepExecution } from '../../types/workflow'
 
 function formatDuration(seconds: number | null): string {
@@ -17,7 +17,17 @@ const MARKER_CLASS: Record<string, string> = {
   NOT_REACHED: 'border-2 border-neutral-200 bg-white',
 }
 
+/** 22-STEP-SEQUENCING-AND-POLICY.md Part D's timeline treatment table: a
+ * skipped step is always a hollow marker — never visually identical to a
+ * step that never ran (that's the empty NOT_REACHED marker, no border-2) —
+ * dashed specifically for POLICY_DISABLED, solid for the other four
+ * reasons. */
 function markerClass(step: StepExecution): string {
+  if (step.exit_status === 'SKIPPED') {
+    return step.skip_reason === 'POLICY_DISABLED'
+      ? 'border-2 border-dashed border-violet-400 bg-white'
+      : 'border-2 border-violet-300 bg-white'
+  }
   if (step.exit_status === 'NOT_IMPLEMENTED') return 'bg-neutral-300'
   if (step.carried_forward) return 'border-2 border-dashed border-teal-500 bg-white'
   return MARKER_CLASS[step.batch_status] ?? 'bg-neutral-200'
@@ -61,6 +71,7 @@ export function StepTimeline({ steps, onViewArtifact }: StepTimelineProps) {
               <OwnerCodeBadge code={step.owner_code} />
               {step.exit_status === 'NOT_IMPLEMENTED' && <StubChip />}
               {step.exit_status === 'AWAITING_APPROVAL' && <GateChip />}
+              {step.exit_status === 'SKIPPED' && <SkipReasonChip reason={step.skip_reason} />}
               {step.carried_forward && <CarriedForwardChip />}
               <span
                 className={`rounded-full border px-2 py-0.5 text-xs font-medium ${
@@ -73,6 +84,13 @@ export function StepTimeline({ steps, onViewArtifact }: StepTimelineProps) {
               >
                 {step.batch_status}
               </span>
+              {/* Skip reasons appear in the collapsed row, not only on expand
+                  (Part D) — someone scanning the timeline sees why immediately. */}
+              {step.exit_status === 'SKIPPED' && step.exit_message && (
+                <span className="max-w-xs truncate text-xs text-neutral-500" title={step.exit_message}>
+                  {step.exit_message}
+                </span>
+              )}
               <span className="text-xs text-neutral-400">{formatDuration(step.duration_seconds)}</span>
               <span className="text-xs text-neutral-400">
                 read {step.metrics.read_count} · write {step.metrics.write_count} · skip {step.metrics.skip_count}

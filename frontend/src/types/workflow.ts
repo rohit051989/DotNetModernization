@@ -8,7 +8,10 @@ export type BatchStatus =
   | 'ABANDONED'
   | 'UNKNOWN'
 
-export type ExitStatus = 'COMPLETED' | 'FAILED' | 'NOOP' | 'AWAITING_APPROVAL' | 'NOT_IMPLEMENTED' | string
+export type ExitStatus = 'COMPLETED' | 'FAILED' | 'NOOP' | 'AWAITING_APPROVAL' | 'NOT_IMPLEMENTED' | 'SKIPPED' | string
+
+/** Null unless exit_status is SKIPPED — see 22-STEP-SEQUENCING-AND-POLICY.md Part D. */
+export type SkipReason = 'POLICY_DISABLED' | 'CONDITION_FALSE' | 'TIER_NOT_APPLICABLE' | 'UPSTREAM_SKIPPED' | 'CASCADED_POLICY'
 
 export interface JobDefinitionSummary {
   job_name: string
@@ -38,6 +41,7 @@ export interface StepSummary {
   total: number
   completed: number
   not_implemented: number
+  skipped: number
   failed: number
   pending: number
 }
@@ -110,6 +114,7 @@ export interface StepExecution {
   batch_status: BatchStatus
   exit_status: ExitStatus | null
   exit_message: string | null
+  skip_reason: SkipReason | null
   metrics: StepMetrics
   started_at: string | null
   ended_at: string | null
@@ -159,4 +164,50 @@ const NON_TERMINAL_BATCH_STATUSES = new Set(['STARTING', 'STARTED', 'STOPPING'])
 
 export function isExecutionTerminal(batchStatus: string): boolean {
   return !NON_TERMINAL_BATCH_STATUSES.has(batchStatus)
+}
+
+// ---- Job definition viewer — 22-STEP-SEQUENCING-AND-POLICY.md Part E ----
+
+export interface ArtifactRefView {
+  artifact_type: string
+  artifact_version: string | null
+  version_range: string | null
+  optional: boolean | null
+}
+
+export interface FlowStepPolicy {
+  enabled: boolean
+  source: 'default' | 'engagement'
+  reason: string | null
+}
+
+export interface FlowStepView {
+  sequence: number
+  step_name: string
+  lifecycle_step_no: number | null
+  display_name: string
+  owner_code: string
+  adapter_type: string
+  implementation_status: string
+  step_version: string
+  consumes: ArtifactRefView[]
+  produces: ArtifactRefView[]
+  inputs: Record<string, string>
+  when: Record<string, unknown> | null
+  when_description: string | null
+  gate: Record<string, unknown> | null
+  policy: FlowStepPolicy
+}
+
+export interface JobDefinitionView {
+  job_name: string
+  version: number
+  is_active: boolean
+  validation_status: string
+  description: string | null
+  implemented_step_count: number
+  step_count: number
+  parameters: JobParameter[]
+  flow: FlowStepView[]
+  raw_yaml: string | null
 }

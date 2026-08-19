@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.errors import ErrorResponse, error
 from app.workflow import registration
+from app.workflow.definition.schemas import InvalidatedJobDefinition, ValidationErrorOut
 from app.workflow.schemas import StepDeclaration, StepRegistration, StepRegistrationResult
 
 router = APIRouter(prefix="/api/workflow/steps", tags=["Workflow Steps"])
@@ -23,14 +24,28 @@ def register_step(payload: StepDeclaration, db: Session = Depends(get_db)):
     `consumes` range can no longer accept it is reported in `warnings` — see
     10-ENGINE-CONCEPTS.md's contract-change detection. Registration succeeds
     regardless; warnings never block it.
+
+    Any **active** job definition referencing this step is also re-validated
+    against the new registration — e.g. a newly added non-optional `consumes`
+    can invalidate a definition that was valid before. Such definitions are
+    reported in `invalidated_definitions`, not deactivated — see
+    22-STEP-SEQUENCING-AND-POLICY.md Part A.
     """
-    row, created, warnings = registration.register_step(db, payload)
+    row, created, warnings, invalidated = registration.register_step(db, payload)
     db.commit()
     db.refresh(row)
     return StepRegistrationResult(
         step=StepRegistration.model_validate(row),
         created=created,
         warnings=warnings,
+        invalidated_definitions=[
+            InvalidatedJobDefinition(
+                job_name=def_row.job_name,
+                version=def_row.version,
+                errors=[ValidationErrorOut(**e.to_dict()) for e in errors],
+            )
+            for def_row, errors in invalidated
+        ],
     )
 
 

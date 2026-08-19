@@ -107,8 +107,12 @@ class StepExecutionOut(BaseModel):
     partition_key: str | None = Field(description="Null for unpartitioned steps — partitioning is deferred to E8.")
     attempt: int = Field(description="Attempt number for this step within this job instance, across all its executions.")
     batch_status: str = Field(description="The engine's own view: STARTING, STARTED, COMPLETED, FAILED, STOPPING, STOPPED, ABANDONED, or UNKNOWN.")
-    exit_status: str | None = Field(description="What the step reported: COMPLETED, FAILED, NOOP, AWAITING_APPROVAL, NOT_IMPLEMENTED, or a custom token.")
+    exit_status: str | None = Field(description="What the step reported: COMPLETED, FAILED, NOOP, AWAITING_APPROVAL, NOT_IMPLEMENTED, SKIPPED, or a custom token.")
     exit_message: str | None = Field(description="Human-readable detail about the outcome.")
+    skip_reason: str | None = Field(
+        description="Populated only when exit_status is SKIPPED: POLICY_DISABLED, CONDITION_FALSE, "
+        "TIER_NOT_APPLICABLE, UPSTREAM_SKIPPED, or CASCADED_POLICY — see 22-STEP-SEQUENCING-AND-POLICY.md Part D."
+    )
     metrics: dict[str, int] = Field(description="read_count, write_count, skip_count, commit_count.")
     started_at: datetime.datetime | None = Field(description="When this step began. Null for a step carried forward from a prior execution without its original timestamp.")
     ended_at: datetime.datetime | None = Field(description="When this step finished.")
@@ -126,6 +130,10 @@ class StepSummary(BaseModel):
     total: int = Field(description="Steps declared in the job's flow.")
     completed: int = Field(description="Steps whose exit_status is COMPLETED.")
     not_implemented: int = Field(description="Steps whose exit_status is NOT_IMPLEMENTED.")
+    skipped: int = Field(
+        description="Steps whose exit_status is SKIPPED — see skip_reason on each step for why "
+        "(POLICY_DISABLED, CONDITION_FALSE, TIER_NOT_APPLICABLE, UPSTREAM_SKIPPED, CASCADED_POLICY)."
+    )
     failed: int = Field(description="Steps whose batch_status is FAILED.")
     pending: int = Field(description="Steps not yet reached by this execution.")
 

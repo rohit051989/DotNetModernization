@@ -101,6 +101,9 @@ public sealed class FingerprintPipeline(SignalRegistry registry, IReadOnlyList<I
             RepositoryRoot = repositoryRoot,
             ProjectRelativePath = inventoryProject.RelativePath,
             ProjectDirectory = projectDirectory,
+            Packages = inventoryProject.Packages
+                .Select(p => new PackageReferenceInfo { PackageName = p.PackageName, VersionRaw = p.VersionRaw })
+                .ToList(),
         };
 
         var signals = new List<Signal>();
@@ -129,9 +132,10 @@ public sealed class FingerprintPipeline(SignalRegistry registry, IReadOnlyList<I
         {
             warnings.Add(new Warning
             {
-                Code = WarningCodes.ExtractorsPending,
-                Message = "Only FileIndicatorExtractor has run so far — every other fingerprint " +
-                          "dimension in step-3-application-fingerprinting.md section 19 awaits a future extractor.",
+                Code = WarningCodes.AnalysisLevelsPending,
+                Message = "MSBuild evaluation and project metadata parsing (Level 2) have not run yet — " +
+                          "projectSdk, nullableEnabled, implicitUsings and evaluatedProperties are unavailable. " +
+                          "Semantic analysis (Level 4) is disabled by default (Part A4).",
                 Severity = WarningSeverities.Info,
             });
         }
@@ -155,6 +159,8 @@ public sealed class FingerprintPipeline(SignalRegistry registry, IReadOnlyList<I
             AnalysisCapabilities = new AnalysisCapabilities
             {
                 FileDiscovery = directoryFound,
+                SyntaxAnalysis = directoryFound,
+                ConfigurationParsed = directoryFound,
                 GeneratedCodeExcluded = directoryFound,
             },
             Signals = signals,

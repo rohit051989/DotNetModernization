@@ -95,6 +95,61 @@ Inputs are wired explicitly by logical name. Three sources:
 Prefer the explicit `steps.<name>.outputs.<type>` form. The `artifacts.<type>`
 shorthand is convenient but ambiguous when several steps produce the same type.
 
+### Conditional execution — `when:`
+
+Optional on any flow step. Structured rather than free-form expressions — safe to
+evaluate, trivially validated, and introspectable by a viewer UI. Full semantics in
+`22-STEP-SEQUENCING-AND-POLICY.md` Part B; summarised here as part of the format.
+
+```yaml
+  - step: characterization-test-generation
+    when:
+      all:
+        - { context: "test_coverage_percent", lt: 60 }
+        - { param: "engagement_id", ne: "reference-engagement-b" }
+    inputs:
+      coverage_report: "${artifacts.test-coverage-report}"
+```
+
+**Combinators:** `all` (AND), `any` (OR), `not` (single nested condition). Nestable.
+
+**Leaf sources** — exactly one per leaf:
+
+- `param: "<name>"` — a declared job parameter
+- `context: "<key>"` — a job execution context key
+- `step_status: "<step_name>"` — a prior step's exit status in this execution
+
+**Operators** — exactly one per leaf: `eq`, `ne`, `lt`, `lte`, `gt`, `gte`, `in`,
+`not_in`, `exists` (boolean), `matches` (anchored regex, strings only).
+
+No arithmetic, no function calls, no free-form expressions. Logic beyond this
+belongs in a decider, which is deterministic Python with a named outcome.
+
+**Evaluation semantics** (side-effect free — no database access):
+
+- A missing `param` or an out-of-flow `step_status` fails **validation**, at load
+  time — see rule 10 below.
+- A missing `context` key evaluates `false` under `exists`. Under any other
+  operator it **fails the step** rather than skipping it — a typo'd context key
+  must never silently look like a deliberate skip.
+- A type mismatch (comparing a string to a number, or `matches` against a
+  non-string) fails the step, the same way.
+- `all`/`any` short-circuit natively, so a later leaf that would fail is never
+  reached once the combinator's outcome is already decided.
+
+A step whose `when:` is false is not invoked at all: the engine records a `SKIPPED`
+step execution with `skip_reason: CONDITION_FALSE` and continues the job — see
+`10-ENGINE-CONCEPTS.md`'s exit status table and `22-STEP-SEQUENCING-AND-POLICY.md`
+Part D.
+
+**Precedence when several skip/fail sources could apply to the same step** — the
+first that resolves to "do not run" wins:
+
+1. Engagement step policy (`22-STEP-SEQUENCING-AND-POLICY.md` Part C)
+2. `when:` condition
+3. `gate.tier_condition`, for gate steps
+4. `stub_policy`, for a step reporting `NOT_IMPLEMENTED`
+
 ### Split — parallel execution
 
 ```yaml
@@ -220,6 +275,22 @@ any of these fail. Report **all** errors at once, not just the first.
 6. Partitioned steps declare a partitioner that is importable.
 7. `job_name` + `version` is unique.
 8. Parameters referenced via `${params.x}` are declared.
+9. Every non-optional `consumes` entry is actually **wired** — the flow node's
+   `inputs` mapping must contain an entry that resolves to that artifact type, and
+   the reference must resolve (rule 4 covers that part). Rule 2 only checks that the
+   entry is *satisfiable* by something upstream; rule 9 checks it is *plumbed
+   through*. A `consumes` entry can pass rule 2 and still never be resolved at
+   runtime because nobody wrote the `inputs:` entry — this is `UNWIRED_INPUT`, and it
+   is exactly the gap that let step 3 pass validation and then fail at launch with
+   "input was not resolved" (`22-STEP-SEQUENCING-AND-POLICY.md` Part A). The check is
+   by resolved artifact type, not by the mapping's key name — a key can legitimately
+   differ from the artifact type it wires (see "Input wiring" above), so `UNWIRED_INPUT`
+   fires only when *no* entry in `inputs` resolves to the required type at all.
+10. Every `when:` leaf's `param` reference is declared, and every `step_status`
+    reference names a step earlier in the same flow (`INVALID_STEP_STATUS_REFERENCE`
+    if not). A `context` reference is **not** checked here — context keys are
+    runtime job-execution state, not statically knowable; a missing one is a
+    runtime concern (see "Conditional execution" above), not a load-time one.
 
 Error format:
 
@@ -235,6 +306,31 @@ Error format:
   ]
 }
 ```
+
+`UNWIRED_INPUT` looks like this:
+
+```json
+{
+  "code": "UNWIRED_INPUT",
+  "step": "application-fingerprinting",
+  "detail": "requires solution-project-inventory ^2.0.0 but the flow node declares no inputs mapping for it. Add inputs: { solution-project-inventory: \"${artifacts.solution-project-inventory}\" }",
+  "affected_steps": ["solution-discovery"]
+}
+```
+
+`affected_steps` names the upstream producer(s) that could satisfy it, same as
+`UNSATISFIED_INPUT` — the fix is adding the `inputs:` entry, not registering a new
+producer.
+
+### Re-validation on step registration change
+
+`POST /api/workflow/steps` re-validates every **active** job definition that
+references the step just registered, immediately — not lazily at next launch. A step
+adding a new non-optional `consumes` (or otherwise changing in a way that breaks rule
+2 or rule 9 for an active definition) marks that definition `validation_status:
+invalid` and reports it in the registration response's `invalidated_definitions`.
+The definition is **not deactivated** — an active definition drifting invalid is
+surfaced, not silently torn down — see `22-STEP-SEQUENCING-AND-POLICY.md` Part A.
 
 ## Building out of order
 

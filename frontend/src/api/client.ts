@@ -14,21 +14,30 @@ export interface FieldError {
 export class ApiError extends Error {
   status: number
   fieldErrors: FieldError[]
+  /** The raw `detail` array, verbatim, for endpoints whose error items carry
+   * fields beyond the generic {field, message, code} shape — e.g. the step
+   * policy dependency guard's `dependent_steps`/`blocking_steps`/`resolution`
+   * (see types/policy.ts's PolicyConflictDetail). Empty unless `detail` was
+   * an array. */
+  rawDetail: unknown[]
 
-  constructor(status: number, message: string, fieldErrors: FieldError[] = []) {
+  constructor(status: number, message: string, fieldErrors: FieldError[] = [], rawDetail: unknown[] = []) {
     super(message)
     this.name = 'ApiError'
     this.status = status
     this.fieldErrors = fieldErrors
+    this.rawDetail = rawDetail
   }
 }
 
-async function parseErrorDetail(response: Response): Promise<{ message: string; fieldErrors: FieldError[] }> {
+async function parseErrorDetail(
+  response: Response,
+): Promise<{ message: string; fieldErrors: FieldError[]; rawDetail: unknown[] }> {
   let body: unknown
   try {
     body = await response.json()
   } catch {
-    return { message: response.statusText || 'Request failed', fieldErrors: [] }
+    return { message: response.statusText || 'Request failed', fieldErrors: [], rawDetail: [] }
   }
 
   const detail = (body as { detail?: unknown })?.detail
@@ -38,14 +47,14 @@ async function parseErrorDetail(response: Response): Promise<{ message: string; 
       field: typeof item?.field === 'string' ? item.field : '__root__',
       message: typeof item?.message === 'string' ? item.message : String(item),
     }))
-    return { message: fieldErrors[0]?.message ?? 'Request failed', fieldErrors }
+    return { message: fieldErrors[0]?.message ?? 'Request failed', fieldErrors, rawDetail: detail }
   }
 
   if (typeof detail === 'string') {
-    return { message: detail, fieldErrors: [] }
+    return { message: detail, fieldErrors: [], rawDetail: [] }
   }
 
-  return { message: 'Request failed', fieldErrors: [] }
+  return { message: 'Request failed', fieldErrors: [], rawDetail: [] }
 }
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
@@ -58,8 +67,8 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   })
 
   if (!response.ok) {
-    const { message, fieldErrors } = await parseErrorDetail(response)
-    throw new ApiError(response.status, message, fieldErrors)
+    const { message, fieldErrors, rawDetail } = await parseErrorDetail(response)
+    throw new ApiError(response.status, message, fieldErrors, rawDetail)
   }
 
   if (response.status === 204) {

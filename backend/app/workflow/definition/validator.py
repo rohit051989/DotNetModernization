@@ -1,4 +1,4 @@
-"""The 8 static validation rules from 12-JOB-DEFINITION-FORMAT.md. Reports
+"""The 10 static validation rules from 12-JOB-DEFINITION-FORMAT.md. Reports
 ALL errors in one pass, in the documented shape:
 
     {"code": ..., "step": ..., "detail": ..., "affected_steps": [...]}
@@ -6,9 +6,18 @@ ALL errors in one pass, in the documented shape:
 Rule 2 (consumes satisfied by an upstream produces or an external input, with
 a compatible semver range) is the contract-change tripwire — the whole point
 of validating at job-definition load time per 10-ENGINE-CONCEPTS.md.
+
+Rule 9 (every non-optional consumes entry actually wired through the flow
+node's `inputs` mapping) is a distinct check from rule 2: rule 2 asks
+"could this be satisfied by something upstream?"; rule 9 asks "is it actually
+plumbed through?" A consumes entry can be satisfiable (rule 2 passes) and
+still never resolved at runtime because nobody wrote the `inputs:` entry —
+this is exactly what happened with step 3; see
+22-STEP-SEQUENCING-AND-POLICY.md Part A.
 """
 
 import importlib
+import uuid
 from dataclasses import dataclass, field
 
 from sqlalchemy.orm import Session
@@ -22,6 +31,11 @@ from app.workflow.definition.model import (
     JobDefinitionFile,
     SplitNode,
     StepNode,
+    WhenAll,
+    WhenAny,
+    WhenCondition,
+    WhenLeaf,
+    WhenNot,
 )
 from app.workflow.definition.references import Reference, extract_references
 
@@ -183,6 +197,44 @@ def _unsatisfied_detail(
     return f"consumes {artifact_type} {version_range} but no upstream producer satisfies it ({described})"
 
 
+def _wired_artifact_types(
+    step_name: str,
+    all_references: list[Reference],
+    external_inputs_by_name: dict[str, ExternalInputSpec],
+) -> set[str]:
+    """Every artifact_type that `step_name`'s `inputs` mapping actually wires,
+    derived from what each `${...}` reference resolves to — not the
+    mapping's logical keys, which are free-form labels the step's own code
+    chooses (12-JOB-DEFINITION-FORMAT.md's own minimal example wires
+    `repositories: "${steps.repository-ingest.outputs.repository-inventory}"`,
+    where the key does not match the artifact type at all)."""
+    types: set[str] = set()
+    for ref in all_references:
+        if ref.step_name != step_name or ref.field != "inputs":
+            continue
+        if ref.kind == "steps" and len(ref.parts) == 4 and ref.parts[2] == "outputs":
+            types.add(ref.parts[3])
+        elif ref.kind == "artifacts" and len(ref.parts) == 2:
+            types.add(ref.parts[1])
+        elif ref.kind == "external" and len(ref.parts) == 2:
+            ext = external_inputs_by_name.get(ref.parts[1])
+            if ext is not None:
+                types.add(ext.artifact_type)
+    return types
+
+
+def _when_leaves(condition: WhenCondition) -> list[WhenLeaf]:
+    """Every `WhenLeaf` anywhere in a (possibly nested) `when:` tree —
+    22-STEP-SEQUENCING-AND-POLICY.md Part B."""
+    if isinstance(condition, WhenAll):
+        return [leaf for c in condition.all for leaf in _when_leaves(c)]
+    if isinstance(condition, WhenAny):
+        return [leaf for c in condition.any for leaf in _when_leaves(c)]
+    if isinstance(condition, WhenNot):
+        return _when_leaves(condition.not_condition)
+    return [condition]
+
+
 def _detect_cycle(occurrences: list[FlowOccurrence], edges: set[tuple[str, str]]) -> list[str] | None:
     """Kahn's algorithm over (upstream, downstream) edges built from
     consumes/produces satisfaction and explicit steps.* references. Edges by
@@ -213,8 +265,15 @@ def _detect_cycle(occurrences: list[FlowOccurrence], edges: set[tuple[str, str]]
 
 
 def validate_job_definition(
-    db: Session, definition: JobDefinitionFile
+    db: Session, definition: JobDefinitionFile, *, exclude_definition_id: uuid.UUID | None = None
 ) -> list[ValidationErrorItem]:
+    """`exclude_definition_id` is for re-validating an already-stored
+    definition in place (registration.py's `revalidate_active_definitions_for_step`)
+    — without it, rule 7 would always find the row being re-checked and
+    report it as a duplicate of itself. Leave it unset when validating a new,
+    not-yet-stored submission (the normal /validate and store paths), where
+    any existing row with the same job_name + version is a genuine
+    duplicate."""
     errors: list[ValidationErrorItem] = []
 
     occurrences = _flatten_flow(definition.flow)
@@ -403,11 +462,12 @@ def validate_job_definition(
             )
 
     # Rule 7 — job_name + version is unique.
-    existing = (
-        db.query(models.WfJobDefinition)
-        .filter_by(job_name=definition.job_name, version=definition.version)
-        .first()
+    existing_query = db.query(models.WfJobDefinition).filter_by(
+        job_name=definition.job_name, version=definition.version
     )
+    if exclude_definition_id is not None:
+        existing_query = existing_query.filter(models.WfJobDefinition.id != exclude_definition_id)
+    existing = existing_query.first()
     if existing is not None:
         errors.append(
             ValidationErrorItem(
@@ -415,5 +475,69 @@ def validate_job_definition(
                 detail=f"'{definition.job_name}' version {definition.version} is already stored",
             )
         )
+
+    # Rule 9 — every non-optional consumes entry is actually wired through
+    # the flow node's inputs mapping, not merely satisfiable somewhere
+    # upstream (rule 2). This is the gap rule 2 alone cannot see: a consumes
+    # entry with no corresponding inputs entry passes rule 2 fine and then
+    # fails at runtime with "input was not resolved" — see
+    # 22-STEP-SEQUENCING-AND-POLICY.md Part A.
+    external_inputs_by_name = {e.logical_name: e for e in definition.external_inputs}
+    for occ in occurrences:
+        reg = registrations.get(occ.step_name)
+        if reg is None:
+            continue
+        wired_types = _wired_artifact_types(occ.step_name, all_references, external_inputs_by_name)
+        for consumed in reg.consumes:
+            if consumed.get("optional", False):
+                continue
+            artifact_type = consumed["artifact_type"]
+            if artifact_type in wired_types:
+                continue
+            producers = _producers_of(artifact_type, occ.ancestors, registrations)
+            errors.append(
+                ValidationErrorItem(
+                    code="UNWIRED_INPUT",
+                    step=occ.step_name,
+                    detail=(
+                        f"requires {artifact_type} {consumed['version_range']} but the flow node "
+                        "declares no inputs mapping for it. Add inputs: { "
+                        f'{artifact_type}: "${{artifacts.{artifact_type}}}"'
+                        " }"
+                    ),
+                    affected_steps=producers,
+                )
+            )
+
+    # Rule 10 — when: leaf validation. 22-STEP-SEQUENCING-AND-POLICY.md Part
+    # B: "A missing param fails validation at load time" and "step_status
+    # referencing a step not earlier in the flow fails validation." A
+    # missing `context` key is deliberately NOT checked here — context keys
+    # are runtime job-execution state, not statically knowable, and Part B's
+    # missing-context behaviour (false under `exists`, fail otherwise) is a
+    # runtime concern, not a load-time one.
+    for occ in occurrences:
+        if occ.node.when is None:
+            continue
+        for leaf in _when_leaves(occ.node.when):
+            if leaf.param is not None and leaf.param not in declared_param_names:
+                errors.append(
+                    ValidationErrorItem(
+                        code="UNDECLARED_PARAMETER",
+                        step=occ.step_name,
+                        detail=f"when: references undeclared parameter '{leaf.param}'",
+                    )
+                )
+            elif leaf.step_status is not None and leaf.step_status not in occ.ancestors:
+                errors.append(
+                    ValidationErrorItem(
+                        code="INVALID_STEP_STATUS_REFERENCE",
+                        step=occ.step_name,
+                        detail=(
+                            f"when: references step_status of '{leaf.step_status}', which is not "
+                            f"an upstream step of '{occ.step_name}'"
+                        ),
+                    )
+                )
 
     return errors

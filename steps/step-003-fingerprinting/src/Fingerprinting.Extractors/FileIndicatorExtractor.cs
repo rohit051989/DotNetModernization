@@ -15,9 +15,6 @@ public sealed class FileIndicatorExtractor : IFingerprintExtractor
 
     public string Name => ExtractorName;
 
-    private static readonly HashSet<string> SkipDirNames =
-        new(StringComparer.OrdinalIgnoreCase) { ".git", "node_modules", "bin", "obj", "packages" };
-
     private static readonly IReadOnlyDictionary<string, string> ExtensionSignals =
         new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
@@ -73,7 +70,7 @@ public sealed class FileIndicatorExtractor : IFingerprintExtractor
 
         var signals = new List<Signal>();
 
-        foreach (var filePath in EnumerateFiles(context.ProjectDirectory, cancellationToken))
+        foreach (var filePath in FileSystemWalk.EnumerateFiles(context.ProjectDirectory, cancellationToken))
         {
             var fileName = Path.GetFileName(filePath);
             var extension = Path.GetExtension(filePath);
@@ -84,16 +81,16 @@ public sealed class FileIndicatorExtractor : IFingerprintExtractor
 
             if (signalName is not null)
             {
-                signals.Add(BuildSignal(signalName, ToRepositoryRelativePath(context.RepositoryRoot, filePath)));
+                signals.Add(BuildSignal(signalName, FileSystemWalk.ToRepositoryRelativePath(context.RepositoryRoot, filePath)));
             }
         }
 
-        foreach (var directoryPath in EnumerateDirectories(context.ProjectDirectory, cancellationToken))
+        foreach (var directoryPath in FileSystemWalk.EnumerateDirectories(context.ProjectDirectory, cancellationToken))
         {
             var directoryName = Path.GetFileName(directoryPath.TrimEnd(Path.DirectorySeparatorChar));
             if (FolderSignals.TryGetValue(directoryName, out var signalName))
             {
-                signals.Add(BuildSignal(signalName, ToRepositoryRelativePath(context.RepositoryRoot, directoryPath)));
+                signals.Add(BuildSignal(signalName, FileSystemWalk.ToRepositoryRelativePath(context.RepositoryRoot, directoryPath)));
             }
         }
 
@@ -113,67 +110,4 @@ public sealed class FileIndicatorExtractor : IFingerprintExtractor
         Extractor = ExtractorName,
         ExtractionConfidence = 1.00m,
     };
-
-    private static IEnumerable<string> EnumerateFiles(string root, CancellationToken cancellationToken)
-    {
-        foreach (var directory in EnumerateDirectoriesIncludingRoot(root, cancellationToken))
-        {
-            IEnumerable<string> files;
-            try
-            {
-                files = Directory.EnumerateFiles(directory);
-            }
-            catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
-            {
-                continue;
-            }
-
-            foreach (var file in files)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                yield return file;
-            }
-        }
-    }
-
-    private static IEnumerable<string> EnumerateDirectories(string root, CancellationToken cancellationToken) =>
-        EnumerateDirectoriesIncludingRoot(root, cancellationToken)
-            .Where(d => !string.Equals(d, root, StringComparison.OrdinalIgnoreCase));
-
-    /// <summary>Iterative (not recursive) so a deeply nested repository cannot
-    /// blow the stack. Order is arbitrary — the CLI sorts signals centrally
-    /// before serialization (21-STEP-003-FINGERPRINTING.md Part B rule 2).</summary>
-    private static IEnumerable<string> EnumerateDirectoriesIncludingRoot(string root, CancellationToken cancellationToken)
-    {
-        var stack = new Stack<string>();
-        stack.Push(root);
-
-        while (stack.Count > 0)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            var current = stack.Pop();
-            yield return current;
-
-            IEnumerable<string> children;
-            try
-            {
-                children = Directory.EnumerateDirectories(current);
-            }
-            catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
-            {
-                continue;
-            }
-
-            foreach (var child in children)
-            {
-                if (!SkipDirNames.Contains(Path.GetFileName(child)))
-                {
-                    stack.Push(child);
-                }
-            }
-        }
-    }
-
-    private static string ToRepositoryRelativePath(string repositoryRoot, string absolutePath) =>
-        Path.GetRelativePath(repositoryRoot, absolutePath).Replace('\\', '/');
 }

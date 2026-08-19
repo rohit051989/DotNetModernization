@@ -185,6 +185,9 @@ class StepBrief(BaseModel):
     display_name: str
     batch_status: str
     exit_status: str | None
+    skip_reason: str | None = Field(
+        description="Populated only when exit_status is SKIPPED — see 22-STEP-SEQUENCING-AND-POLICY.md Part D."
+    )
 
 
 class LatestExecutionInfo(BaseModel):
@@ -193,6 +196,7 @@ class LatestExecutionInfo(BaseModel):
     exit_status: str | None
     steps_completed: int
     steps_not_implemented: int
+    steps_skipped: int = Field(description="Steps whose exit_status is SKIPPED.")
     steps_failed: int
     steps_total: int
     current_step: str | None = Field(description="The step currently STARTED, or null if none is running.")
@@ -243,17 +247,18 @@ def _iso_utc(dt: datetime.datetime) -> str:
     return dt.astimezone(datetime.timezone.utc).isoformat().replace("+00:00", "Z")
 
 
-def _step_progress(db: Session, execution_id: uuid.UUID) -> tuple[int, int, int, int, str | None]:
-    """(completed, not_implemented, failed, total, current_step). Buckets by
-    exit_status, not batch_status — a NOT_IMPLEMENTED step under
-    stub_policy: continue has batch_status COMPLETED in the engine's own
-    bookkeeping, but is not a real completion for dashboard purposes."""
+def _step_progress(db: Session, execution_id: uuid.UUID) -> tuple[int, int, int, int, int, str | None]:
+    """(completed, not_implemented, skipped, failed, total, current_step).
+    Buckets by exit_status, not batch_status — a NOT_IMPLEMENTED (or
+    SKIPPED) step has batch_status COMPLETED in the engine's own
+    bookkeeping, but neither is a real completion for dashboard purposes."""
     steps = db.query(models.WfStepExecution).filter_by(job_execution_id=execution_id).all()
     completed = sum(1 for s in steps if s.exit_status == "COMPLETED")
     not_implemented = sum(1 for s in steps if s.exit_status == "NOT_IMPLEMENTED")
+    skipped = sum(1 for s in steps if s.exit_status == "SKIPPED")
     failed = sum(1 for s in steps if s.batch_status == "FAILED")
     current_step = next((s.step_name for s in steps if s.batch_status == "STARTED"), None)
-    return completed, not_implemented, failed, len(steps), current_step
+    return completed, not_implemented, skipped, failed, len(steps), current_step
 
 
 def _step_briefs(db: Session, execution_id: uuid.UUID) -> list[StepBrief]:
@@ -275,6 +280,7 @@ def _step_briefs(db: Session, execution_id: uuid.UUID) -> list[StepBrief]:
             display_name=registrations[s.step_name].display_name if s.step_name in registrations else s.step_name,
             batch_status=s.batch_status,
             exit_status=s.exit_status,
+            skip_reason=s.skip_reason,
         )
         for s in steps
     ]
@@ -389,7 +395,7 @@ def get_dashboard(engagement_id: str, db: Session = Depends(get_db)):
     for execution in runtime_service.list_executions(db, engagement_id=engagement_id, limit=10):
         instance = db.get(models.WfJobInstance, execution.job_instance_id)
         repository_id = (instance.parameters or {}).get("repository_id") if instance else None
-        completed, _not_impl, _failed, total, _current = _step_progress(db, execution.id)
+        completed, _not_impl, _skipped, _failed, total, _current = _step_progress(db, execution.id)
         recent_executions.append(
             RecentExecution(
                 job_execution_id=str(execution.id),
@@ -492,13 +498,14 @@ def get_dashboard_repositories(
 
         latest_execution = None
         if execution is not None:
-            completed, not_implemented, failed, total, current_step = _step_progress(db, execution.id)
+            completed, not_implemented, skipped, failed, total, current_step = _step_progress(db, execution.id)
             latest_execution = LatestExecutionInfo(
                 job_execution_id=str(execution.id),
                 batch_status=execution.batch_status,
                 exit_status=execution.exit_status,
                 steps_completed=completed,
                 steps_not_implemented=not_implemented,
+                steps_skipped=skipped,
                 steps_failed=failed,
                 steps_total=total,
                 current_step=current_step,

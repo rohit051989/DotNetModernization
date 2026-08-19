@@ -3,6 +3,7 @@ import type {
   ArtifactDetail,
   ArtifactSummary,
   JobDefinitionSummary,
+  JobDefinitionView,
   JobExecution,
   JobExecutionDetail,
   JobParametersResponse,
@@ -16,6 +17,13 @@ export function listJobDefinitions() {
 
 export function getJobParameters(jobName: string) {
   return api.get<JobParametersResponse>(`/api/workflow/jobs/${encodeURIComponent(jobName)}/parameters`)
+}
+
+/** 22-STEP-SEQUENCING-AND-POLICY.md Part E — the active definition resolved
+ * for display, with policy state merged in when `engagementId` is given. */
+export function getJobDefinitionView(jobName: string, engagementId?: string) {
+  const query = engagementId ? `?engagement_id=${encodeURIComponent(engagementId)}` : ''
+  return api.get<JobDefinitionView>(`/api/workflow/jobs/${encodeURIComponent(jobName)}/definition${query}`)
 }
 
 export function launchJob(jobName: string, parameters: Record<string, unknown>) {

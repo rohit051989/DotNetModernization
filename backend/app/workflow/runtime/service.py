@@ -35,6 +35,27 @@ class PreconditionError(Exception):
         self.failures = failures
 
 
+def _compute_step_policy_snapshot(
+    db: Session, engagement_id: str | None, flow_step_names: list[str]
+) -> dict[str, dict]:
+    """Read once, at launch — 22-STEP-SEQUENCING-AND-POLICY.md Part C: "The
+    policy is read once at job launch and snapshotted into the job execution
+    context, so a policy change mid-execution cannot produce a run that
+    half-honoured it." Only steps with an explicit policy row are included;
+    absence means enabled, so most flows snapshot to `{}`."""
+    if not engagement_id:
+        return {}
+    rows = (
+        db.query(models.EngagementStepPolicy)
+        .filter(
+            models.EngagementStepPolicy.engagement_id == engagement_id,
+            models.EngagementStepPolicy.step_name.in_(flow_step_names),
+        )
+        .all()
+    )
+    return {row.step_name: {"enabled": row.enabled, "reason": row.reason} for row in rows}
+
+
 def _next_execution_number(db: Session, instance_id: uuid.UUID) -> int:
     current_max = (
         db.query(models.WfJobExecution.execution_number)
@@ -70,6 +91,10 @@ def create_execution(
 
     instance, _created = get_or_create_instance(db, job_name, parameters)
 
+    step_policy_snapshot = _compute_step_policy_snapshot(
+        db, parameters.get("engagement_id"), _flow_step_names(definition)
+    )
+
     job_execution = models.WfJobExecution(
         job_instance_id=instance.id,
         job_definition_id=definition_row.id,
@@ -77,7 +102,7 @@ def create_execution(
         batch_status="STARTING",
         engine_version=executor.ENGINE_VERSION,
         triggered_by=triggered_by,
-        execution_context={},
+        execution_context={"step_policy_snapshot": step_policy_snapshot},
     )
     db.add(job_execution)
     db.flush()
@@ -227,10 +252,18 @@ def _flow_step_names(definition: JobDefinitionFile) -> list[str]:
 def _compute_step_summary(step_rows: list[models.WfStepExecution], flow_step_names: list[str]) -> StepSummary:
     completed = sum(1 for s in step_rows if s.exit_status == "COMPLETED")
     not_implemented = sum(1 for s in step_rows if s.exit_status == "NOT_IMPLEMENTED")
+    skipped = sum(1 for s in step_rows if s.exit_status == "SKIPPED")
     failed = sum(1 for s in step_rows if s.batch_status == "FAILED")
     total = len(flow_step_names) or len(step_rows)
     pending = max(0, total - len(step_rows))
-    return StepSummary(total=total, completed=completed, not_implemented=not_implemented, failed=failed, pending=pending)
+    return StepSummary(
+        total=total,
+        completed=completed,
+        not_implemented=not_implemented,
+        skipped=skipped,
+        failed=failed,
+        pending=pending,
+    )
 
 
 def to_execution_out(db: Session, execution: models.WfJobExecution) -> JobExecutionOut:
@@ -351,6 +384,7 @@ def to_step_execution_out(
         batch_status=step_execution.batch_status,
         exit_status=step_execution.exit_status,
         exit_message=step_execution.exit_message,
+        skip_reason=step_execution.skip_reason,
         metrics={
             "read_count": step_execution.read_count,
             "write_count": step_execution.write_count,

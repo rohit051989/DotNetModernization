@@ -12,6 +12,17 @@ class ValidationErrorOut(BaseModel):
     affected_steps: list[str] = Field(description="Other steps implicated by this error, e.g. consumers broken by a contract change.")
 
 
+class InvalidatedJobDefinition(BaseModel):
+    """An active job definition that referenced a step whose registration
+    just changed, and is now invalid as a result — see
+    22-STEP-SEQUENCING-AND-POLICY.md Part A. Not deactivated; reported so
+    the drift is visible at registration time rather than at next launch."""
+
+    job_name: str = Field(description="The job whose active definition became invalid.")
+    version: int = Field(description="The now-invalid active definition's version.")
+    errors: list[ValidationErrorOut] = Field(description="Every rule violation the re-check found.")
+
+
 class JobDefinitionValidateRequest(BaseModel):
     model_config = ConfigDict(json_schema_extra={"examples": [{"yaml": "job_name: example-job\nversion: 1\nflow:\n  - step: repository-ingest\n"}]})
 
@@ -143,3 +154,84 @@ class JobParametersResponse(BaseModel):
     job_name: str = Field(description="The job these parameters belong to.")
     definition_version: int = Field(description="The active definition version these parameters were read from.")
     parameters: list[JobParameterOut] = Field(description="Declared parameters, in definition order.")
+
+
+class ArtifactRefOut(BaseModel):
+    artifact_type: str
+    artifact_version: str | None = Field(default=None, description="Null on a consumes entry — that's a range, not a concrete version.")
+    version_range: str | None = Field(default=None, description="Only present on a consumes entry.")
+    optional: bool | None = Field(default=None, description="Only present on a consumes entry.")
+
+
+class FlowStepPolicyOut(BaseModel):
+    enabled: bool = Field(description="Whether this step runs for the given engagement (or by default, if none was given).")
+    source: Literal["default", "engagement"] = Field(
+        description="'default' when no engagement_step_policies row exists (absence means enabled); "
+        "'engagement' when one does."
+    )
+    reason: str | None = Field(description="The policy row's reason, or null when source is 'default'.")
+
+
+class FlowStepOut(BaseModel):
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "sequence": 3,
+                    "step_name": "application-fingerprinting",
+                    "lifecycle_step_no": 3,
+                    "display_name": "Application fingerprinting",
+                    "owner_code": "P + S",
+                    "adapter_type": "process",
+                    "implementation_status": "implemented",
+                    "step_version": "1.0.0",
+                    "consumes": [{"artifact_type": "solution-project-inventory", "version_range": "^2.0.0", "optional": False}],
+                    "produces": [{"artifact_type": "application-fingerprint", "artifact_version": "1.0.0"}],
+                    "inputs": {"solution-project-inventory": "${artifacts.solution-project-inventory}"},
+                    "when": None,
+                    "when_description": None,
+                    "gate": None,
+                    "policy": {"enabled": True, "source": "default", "reason": None},
+                }
+            ]
+        }
+    )
+
+    sequence: int = Field(description="1-indexed position in the flow.")
+    step_name: str
+    lifecycle_step_no: int | None
+    display_name: str
+    owner_code: str
+    adapter_type: str
+    implementation_status: str
+    step_version: str
+    consumes: list[ArtifactRefOut] = Field(description="From the step's registration, not the YAML.")
+    produces: list[ArtifactRefOut] = Field(description="From the step's registration, not the YAML.")
+    inputs: dict[str, str] = Field(description="Logical name -> source expression, exactly as declared in the flow node.")
+    when: dict[str, Any] | None = Field(description="The raw when: condition tree, or null if this step has none.")
+    when_description: str | None = Field(
+        description="Readable prose rendering of `when`, e.g. "
+        "'Runs when test_coverage_percent < 60 and engagement_id ≠ reference-engagement-b'. Null if when is null."
+    )
+    gate: dict[str, Any] | None = Field(description="The raw gate: spec, or null if this step has none.")
+    policy: FlowStepPolicyOut
+
+
+class JobDefinitionViewOut(BaseModel):
+    """Read-only, resolved-for-display view of one job's active definition —
+    22-STEP-SEQUENCING-AND-POLICY.md Part E. An updater is explicitly future
+    work; definitions stay in git."""
+
+    job_name: str
+    version: int
+    is_active: bool
+    validation_status: str
+    description: str | None
+    implemented_step_count: int = Field(description="For the header counter, e.g. '1 of 7 steps implemented'.")
+    step_count: int
+    parameters: list[JobParameterOut]
+    flow: list[FlowStepOut]
+    raw_yaml: str | None = Field(
+        description="The exact YAML this version was stored from, for the collapsed 'Raw YAML' panel. "
+        "Null only for a version stored before this field existed."
+    )

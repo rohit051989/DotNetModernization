@@ -236,7 +236,7 @@ def seed_lifecycle_steps() -> dict:
                     "message": "Awaiting implementation by platform team",
                 },
             )
-            _row, was_created, _warnings = registration.register_step(db, declaration)
+            _row, was_created, _warnings, _invalidated = registration.register_step(db, declaration)
             if was_created:
                 created += 1
             else:

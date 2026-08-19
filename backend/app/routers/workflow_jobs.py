@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app import models
@@ -14,6 +14,7 @@ from app.workflow.definition.schemas import (
     JobDefinitionSummary,
     JobDefinitionValidateRequest,
     JobDefinitionValidateResponse,
+    JobDefinitionViewOut,
     JobParameterOut,
     JobParametersResponse,
     ValidationErrorOut,
@@ -221,6 +222,40 @@ def get_job_parameters(job_name: str, db: Session = Depends(get_db)):
             for p in definition.parameters
         ],
     )
+
+
+@router.get(
+    "/{job_name}/definition",
+    response_model=JobDefinitionViewOut,
+    summary="Get the active job definition, resolved for display",
+    response_description="The active definition's flow, with consumes/produces/inputs wiring, when: prose, and policy state.",
+    operation_id="get_job_definition_view",
+    responses={404: _NO_ACTIVE_DEFINITION},
+)
+def get_job_definition_view(
+    job_name: str,
+    engagement_id: str | None = Query(
+        default=None,
+        description="When supplied, merges each step's engagement_step_policies state into policy.source/enabled/reason. "
+        "Omit to see every step at its default (enabled).",
+    ),
+    db: Session = Depends(get_db),
+):
+    """
+    Read-only — see 22-STEP-SEQUENCING-AND-POLICY.md Part E. An updater is
+    explicitly future work; job definitions stay in git, where reviewable
+    change belongs.
+
+    Powers the Workflow tab's job definition viewer: the header counter
+    (`implemented_step_count` of `step_count`), the flow cards (consumes,
+    produces, `inputs` wiring — the thing that was silently missing for
+    step 3 — and `when_description`, a readable prose rendering of `when`),
+    and the collapsed raw YAML panel.
+    """
+    view = service.build_job_definition_view(db, job_name, engagement_id)
+    if view is None:
+        raise error(404, f"No active definition for job '{job_name}'", code="NOT_FOUND")
+    return view
 
 
 @router.post(

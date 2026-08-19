@@ -27,6 +27,8 @@ from app.workflow.adapters import create_adapter
 from app.workflow.adapters.base import local_path_from_uri
 from app.workflow.contract import ArtifactRef, StepContext, StepResult
 from app.workflow.definition.model import JobDefinitionFile, StepNode
+from app.workflow.policy import CASCADE_REASON_PREFIX
+from app.workflow.runtime.when_eval import WhenEvaluationError, describe_when, evaluate_when
 
 DEFAULT_START_LIMIT = 3
 ENGINE_VERSION = "0.1.0"
@@ -34,6 +36,7 @@ ENGINE_VERSION = "0.1.0"
 _INPUT_REF_RE = re.compile(r"^\$\{([a-zA-Z_][\w.\-]*)\}$")
 _PARAM_TOKEN_RE = re.compile(r"^\$\{params\.([\w-]+)\}$")
 _PARAM_INLINE_RE = re.compile(r"\$\{params\.([\w-]+)\}")
+_TIER_CONDITION_RE = re.compile(r"^\s*(\w+)\s*(>=|<=|==|!=|>|<)\s*(.+?)\s*$")
 
 
 class StepInvocationError(Exception):
@@ -264,6 +267,164 @@ def _resolve_batch_status(exit_status: str, stub_policy: str, on_failure: str) -
     return "FAILED", True
 
 
+def _tier_condition_satisfied(tier_condition: str, job_context: dict) -> bool:
+    """`gate.tier_condition` (12-JOB-DEFINITION-FORMAT.md's "Human gates") is
+    a free-form comparison string, e.g. `"tier >= 2"`, evaluated against job
+    context — a simpler, older mechanism than the structured `when:`
+    grammar, kept as-is here since full gate execution (AWAITING_APPROVAL,
+    resume) is not implemented by this engine yet and no current job
+    definition declares a gate. If the named key isn't in job context at
+    all, the condition is not satisfied (the gate does not yet apply) —
+    this predates and is distinct from `when:`'s stricter missing-context
+    semantics."""
+    match = _TIER_CONDITION_RE.match(tier_condition)
+    if not match:
+        raise ValueError(f"unrecognised tier_condition syntax: {tier_condition!r}")
+    key, op, raw_operand = match.groups()
+
+    actual = job_context.get(key)
+    if actual is None:
+        return False
+
+    try:
+        operand: object = int(raw_operand)
+    except ValueError:
+        try:
+            operand = float(raw_operand)
+        except ValueError:
+            operand = raw_operand.strip("'\"")
+
+    comparisons = {
+        ">=": lambda a, b: a >= b,
+        "<=": lambda a, b: a <= b,
+        "==": lambda a, b: a == b,
+        "!=": lambda a, b: a != b,
+        ">": lambda a, b: a > b,
+        "<": lambda a, b: a < b,
+    }
+    try:
+        return comparisons[op](actual, operand)
+    except TypeError as exc:
+        raise ValueError(f"cannot compare {actual!r} {op} {operand!r}: {exc}") from exc
+
+
+def _evaluate_run_decision(
+    node: StepNode,
+    job_execution: models.WfJobExecution,
+    params: dict,
+    step_statuses: dict[str, str],
+) -> tuple[str, str | None, str | None]:
+    """Precedence per 22-STEP-SEQUENCING-AND-POLICY.md Part B: **policy**,
+    then **when:**, then **gate.tier_condition**, then **stub_policy** — the
+    first check that resolves to "do not run" wins. `stub_policy` isn't
+    decided here: a step only reveals `NOT_IMPLEMENTED` by actually being
+    invoked, so it stays in `_resolve_batch_status`, applied after this
+    function has already said "run".
+
+    Returns `(decision, skip_reason, message)` where `decision` is one of
+    `'run'`, `'skip'`, `'fail'`. Side-effect free — no database access
+    beyond what the caller already resolved into `job_execution`."""
+    job_context = job_execution.execution_context or {}
+
+    # 1. Engagement policy — read only from the launch-time snapshot, never
+    # a live query: "Policy is read once at job launch and snapshotted into
+    # the job execution context, so a policy change mid-execution cannot
+    # produce a run that half-honoured it" (Part C).
+    snapshot = job_context.get("step_policy_snapshot") or {}
+    policy = snapshot.get(node.step)
+    if policy is not None and not policy.get("enabled", True):
+        reason = policy.get("reason") or "Disabled by engagement policy"
+        skip_reason = "CASCADED_POLICY" if reason.startswith(CASCADE_REASON_PREFIX) else "POLICY_DISABLED"
+        return "skip", skip_reason, reason
+
+    # 2. when:
+    if node.when is not None:
+        try:
+            satisfied = evaluate_when(
+                node.when, params=params, job_context=job_context, step_statuses=step_statuses
+            )
+        except WhenEvaluationError as exc:
+            return "fail", None, str(exc)
+        if not satisfied:
+            return "skip", "CONDITION_FALSE", f"when: condition not satisfied: {describe_when(node.when)}"
+
+    # 3. gate.tier_condition
+    if node.gate is not None and node.gate.tier_condition:
+        try:
+            tier_ok = _tier_condition_satisfied(node.gate.tier_condition, job_context)
+        except ValueError as exc:
+            return "fail", None, f"invalid tier_condition '{node.gate.tier_condition}': {exc}"
+        if not tier_ok:
+            return "skip", "TIER_NOT_APPLICABLE", f"tier_condition '{node.gate.tier_condition}' not satisfied"
+
+    return "run", None, None
+
+
+def _record_skip(
+    db: Session,
+    job_execution: models.WfJobExecution,
+    node: StepNode,
+    registration: models.WfStepRegistration,
+    attempt: int,
+    skip_reason: str,
+    message: str | None,
+) -> models.WfStepExecution:
+    """SKIPPED is a success outcome for flow purposes (10-ENGINE-CONCEPTS.md)
+    — batch_status COMPLETED — but always gets its own row so the timeline
+    never shows an absent step (22-STEP-SEQUENCING-AND-POLICY.md Part D:
+    "A skipped step always appears in the timeline. Never omit the row.").
+    Produces no artifacts and consumes no inputs."""
+    now = _now()
+    step_execution = models.WfStepExecution(
+        job_execution_id=job_execution.id,
+        step_name=node.step,
+        step_version=registration.version,
+        attempt=attempt,
+        batch_status="COMPLETED",
+        exit_status="SKIPPED",
+        skip_reason=skip_reason,
+        exit_message=message,
+        started_at=now,
+        ended_at=now,
+    )
+    db.add(step_execution)
+    db.flush()
+    return step_execution
+
+
+def _fail_precondition(
+    db: Session,
+    job_execution: models.WfJobExecution,
+    node: StepNode,
+    registration: models.WfStepRegistration,
+    attempt: int,
+    message: str,
+    stub_policy: str,
+) -> tuple[models.WfStepExecution, bool]:
+    """A `when:` evaluation error or an invalid `tier_condition` — a step
+    FAILURE, never a skip (Part B: "Fail loud"). Routed through the same
+    `_resolve_batch_status` as an adapter-reported failure so `on_failure:
+    continue` is honoured identically either way."""
+    step_execution = models.WfStepExecution(
+        job_execution_id=job_execution.id,
+        step_name=node.step,
+        step_version=registration.version,
+        attempt=attempt,
+        batch_status="STARTED",
+        started_at=_now(),
+    )
+    db.add(step_execution)
+    db.flush()
+
+    batch_status, should_halt = _resolve_batch_status("FAILED", stub_policy, node.on_failure)
+    step_execution.batch_status = batch_status
+    step_execution.exit_status = "FAILED"
+    step_execution.exit_message = message
+    step_execution.ended_at = _now()
+    db.flush()
+    return step_execution, should_halt
+
+
 def _carry_forward_step(
     db: Session, job_execution: models.WfJobExecution, prior: models.WfStepExecution
 ) -> models.WfStepExecution:
@@ -278,6 +439,7 @@ def _carry_forward_step(
         batch_status=prior.batch_status,
         exit_status=prior.exit_status,
         exit_message=prior.exit_message,
+        skip_reason=prior.skip_reason,
         read_count=prior.read_count,
         write_count=prior.write_count,
         skip_count=prior.skip_count,
@@ -473,9 +635,15 @@ def run_execution(
 
     run_base = _run_base_dir(db, instance, job_execution)
 
+    # step_name -> exit_status recorded so far in *this* execution — the
+    # data source for `when:`'s `step_status` leaves. Side-effect free by
+    # construction: built up as the loop goes, never re-queried.
+    step_statuses: dict[str, str] = {}
+
     for i, node in enumerate(flow_steps):
         if i < resume_index:
-            _carry_forward_step(db, job_execution, prior_steps_by_name[node.step])
+            carried = _carry_forward_step(db, job_execution, prior_steps_by_name[node.step])
+            step_statuses[node.step] = carried.exit_status
             continue
 
         registration = registrations.get(node.step)
@@ -500,9 +668,37 @@ def run_execution(
             db.flush()
             return job_execution
 
+        # Precedence per 22-STEP-SEQUENCING-AND-POLICY.md Part B: policy,
+        # then when:, then gate.tier_condition — each may skip or fail the
+        # step before it is ever invoked. stub_policy remains
+        # _resolve_batch_status's concern, reached only via the "run" path.
+        decision, skip_reason, message = _evaluate_run_decision(
+            node, job_execution, instance.parameters, step_statuses
+        )
+
+        if decision == "fail":
+            step_execution, should_halt = _fail_precondition(
+                db, job_execution, node, registration, attempt, message, definition.stub_policy
+            )
+            step_statuses[node.step] = "FAILED"
+            if should_halt:
+                job_execution.batch_status = step_execution.batch_status
+                job_execution.exit_status = "FAILED"
+                job_execution.exit_message = message
+                job_execution.ended_at = _now()
+                db.flush()
+                return job_execution
+            continue
+
+        if decision == "skip":
+            step_execution = _record_skip(db, job_execution, node, registration, attempt, skip_reason, message)
+            step_statuses[node.step] = step_execution.exit_status
+            continue
+
         step_execution, result, should_halt = _invoke_step(
             db, job_execution, instance, definition, node, registration, attempt, run_base
         )
+        step_statuses[node.step] = result.exit_status
 
         if should_halt:
             job_execution.batch_status = step_execution.batch_status

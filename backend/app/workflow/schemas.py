@@ -3,6 +3,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.workflow.definition.schemas import InvalidatedJobDefinition
+
 AdapterType = Literal["python", "process", "http", "event", "stub"]
 ImplementationStatus = Literal["stub", "implemented", "deprecated"]
 
@@ -132,6 +134,12 @@ class StepRegistrationResult(BaseModel):
     created: bool = Field(description="True if this call created a new registration; false if it updated an existing one.")
     warnings: list[ContractChangeWarning] = Field(
         description="Contract-change warnings triggered by this registration. Registration always succeeds regardless — these are informational."
+    )
+    invalidated_definitions: list[InvalidatedJobDefinition] = Field(
+        default_factory=list,
+        description="Active job definitions referencing this step that became invalid as a result of this "
+        "registration change — see 22-STEP-SEQUENCING-AND-POLICY.md Part A. Not deactivated; reported "
+        "so the drift is caught now rather than at the next launch.",
     )
 
 
