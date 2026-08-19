@@ -232,9 +232,27 @@ The requirements document uses "project or application candidate" (§3). To be
 unambiguous: step 3 fingerprints **projects**. Deciding which projects constitute
 deployable applications is interpretation and belongs to step 4.
 
-Projects with `parse_status` of `out_of_scope` from step 2 are skipped with
-`fingerprintStatus: SKIPPED`. Projects with `failed` are attempted anyway — Level 1
-and 2 analysis may still yield signals from a project whose XML would not parse.
+Out-of-scope projects are skipped with `fingerprintStatus: SKIPPED`. Step 2 signals
+this two different ways, both of which must be checked — `parse_status: out_of_scope`
+alone is not sufficient:
+
+- A **known non-.NET project type** (`.dcproj`, `.njsproj`, `.pyproj`, `.esproj`,
+  `.wapproj`, `.wixproj`, `.deployproj`, `.modelproj`) is recorded with
+  `parse_status: success` — it parsed fine, it just isn't a .NET project. The
+  out-of-scope-ness lives entirely in `structural_type`
+  (`docker_compose_project`, `nodejs_project`, `python_project`,
+  `javascript_project`, `windows_packaging_project`, `wix_installer_project`,
+  `deployment_project`, `modeling_project` — see
+  `discovery/project_parser.py`'s `OUT_OF_SCOPE_EXTENSION_MAP`).
+- A **genuinely unrecognised** `*proj` extension gets `structural_type:
+  unknown_project` and *that* case does carry `parse_status: out_of_scope`.
+
+So the skip check is: `parse_status == "out_of_scope"` **or** `structural_type` is one
+of the nine values above (`unknown_project` plus the eight known non-.NET types) —
+not `parse_status` alone, which misses the more common known-non-.NET case entirely.
+
+Projects with `parse_status: failed` are attempted anyway — Level 1 and 2 analysis
+may still yield signals from a project whose XML would not parse.
 
 Repository-level signals (§32's `repositorySignals`) cover evidence that belongs to
 no single project: pipeline files, repository-root scripts, scheduler definitions,

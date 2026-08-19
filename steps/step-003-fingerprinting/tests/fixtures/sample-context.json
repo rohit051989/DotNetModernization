@@ -1,0 +1,35 @@
+{
+  "envelope_version": "1.0",
+  "step_name": "application-fingerprinting",
+  "step_version": "1.0.0",
+  "job_name": "phase0-repository-discovery",
+  "job_execution_id": "8f2c1a3b-0000-4000-8000-000000000001",
+  "step_execution_id": "8f2c1a3b-0000-4000-8000-000000000003",
+  "attempt": 1,
+  "partition_key": null,
+
+  "parameters": {
+    "engagement_id": "client-a-ocp4",
+    "repository_id": "ba306cf3-01cc-4f3a-98ee-4a192c5c9684"
+  },
+
+  "config": {},
+
+  "inputs": {
+    "solution-project-inventory": {
+      "artifact_type": "solution-project-inventory",
+      "artifact_version": "2.0.0",
+      "uri": "file:///D:/Iris/practice/GenAI/squad/DotNetModernization/code/steps/step-003-fingerprinting/tests/fixtures/sample-input/solution-project-inventory.json",
+      "checksum": "sha256:a292e63fc82fec5e4d78d5049557e1c0463679e2e4d2bd3820c7d64cc24c6b93"
+    }
+  },
+
+  "job_context": {},
+  "step_context": {},
+
+  "working_dir": "D:/Iris/practice/GenAI/squad/DotNetModernization/code/steps/step-003-fingerprinting/tests/fixtures/sample-output/work",
+  "output_dir": "D:/Iris/practice/GenAI/squad/DotNetModernization/code/steps/step-003-fingerprinting/tests/fixtures/sample-output/out",
+
+  "database_url": "postgresql+psycopg://catalog:catalog_dev_pw@localhost:5433/modernization_catalog",
+  "log_level": "INFO"
+}

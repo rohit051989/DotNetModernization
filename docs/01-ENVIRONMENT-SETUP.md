@@ -198,3 +198,70 @@ Before moving on, confirm all of these:
 - [ ] `GET http://127.0.0.1:8001/api/health` returns `{"status":"ok","database":"connected"}`
 - [ ] Vite dev server serves the UI shell
 - [ ] The UI can reach the API without CORS errors
+
+## 8. .NET SDK (step 3 — application fingerprinting)
+
+Lifecycle step 3 (`steps/step-003-fingerprinting/`) is the first step written in
+C#/.NET rather than Python — see `21-STEP-003-FINGERPRINTING.md`. It is invoked via
+the `process` adapter, so nothing in the backend depends on the .NET SDK; only
+building and running that step directly does.
+
+### Prerequisite
+
+```powershell
+dotnet --list-sdks
+```
+
+Requires **.NET SDK 10.0.302** (or later within the same feature band — see
+`steps/step-003-fingerprinting/global.json`, which pins the exact version with
+`rollForward: latestPatch`). An older SDK, or only the .NET 9 SDK, is not enough —
+the step targets `net10.0` and its Microsoft.Build.\* / Microsoft.CodeAnalysis.\*
+packages are pinned to versions built against .NET 10's bundled MSBuild (18.9.x) and
+Roslyn (5.9.x). If `dotnet --list-sdks` does not list `10.0.302` or later, stop and
+tell the user to install it rather than attempting the install.
+
+### Build and publish
+
+Always publish before registering or running the step — the `process` adapter
+invokes the published executable directly, never `dotnet run` (which recompiles on
+every invocation):
+
+```powershell
+cd steps\step-003-fingerprinting
+dotnet publish src\Fingerprinting.Cli\Fingerprinting.Cli.csproj -c Release -o publish
+```
+
+This produces `steps\step-003-fingerprinting\publish\Fingerprinting.Cli.exe`, the
+exact path the step's `adapter_config.command` points at, plus the
+`schemas\signal-registry-1.0.0.json` and
+`schemas\application-fingerprint-1.0.0.schema.json` files it validates against at
+runtime (copied alongside the executable via each build).
+
+### Standalone invocation
+
+Per `11-STEP-CONTRACT.md`'s decoupling test:
+
+```powershell
+Get-Content sample-context.json | steps\step-003-fingerprinting\publish\Fingerprinting.Cli.exe
+```
+
+A developer-convenience mode also exists that bypasses the StepContext/StepResult
+envelope entirely, for iterating on extractors without the engine or the database:
+
+```powershell
+steps\step-003-fingerprinting\publish\Fingerprinting.Cli.exe `
+  --repo D:\path\to\repository `
+  --inventory D:\path\to\solution-project-inventory.json `
+  --out D:\path\to\output-folder
+```
+
+### `.gitignore`
+
+`publish/` and every project's `bin/`/`obj/` are build output, not source, and are
+already covered by the root `.gitignore`:
+
+```
+bin/
+obj/
+steps/*/publish/
+```

@@ -1,0 +1,1329 @@
+{
+  "artifact_type": "solution-project-inventory",
+  "artifact_version": "2.0.0",
+  "parse_warnings": [
+    {
+      "path": "docker-compose.dcproj",
+      "warning": "Docker Compose project, recorded but not analysed (not a .NET project)"
+    }
+  ],
+  "project_references": [
+    {
+      "is_cross_solution": false,
+      "raw_path": "..\\BlazorShared\\BlazorShared.csproj",
+      "referenced_relative_path": "src/BlazorShared/BlazorShared.csproj",
+      "resolution_status": "resolved",
+      "source_relative_path": "src/ApplicationCore/ApplicationCore.csproj"
+    },
+    {
+      "is_cross_solution": false,
+      "raw_path": "..\\BlazorShared\\BlazorShared.csproj",
+      "referenced_relative_path": "src/BlazorShared/BlazorShared.csproj",
+      "resolution_status": "resolved",
+      "source_relative_path": "src/BlazorAdmin/BlazorAdmin.csproj"
+    },
+    {
+      "is_cross_solution": false,
+      "raw_path": "..\\ApplicationCore\\ApplicationCore.csproj",
+      "referenced_relative_path": "src/ApplicationCore/ApplicationCore.csproj",
+      "resolution_status": "resolved",
+      "source_relative_path": "src/Infrastructure/Infrastructure.csproj"
+    },
+    {
+      "is_cross_solution": false,
+      "raw_path": "..\\ApplicationCore\\ApplicationCore.csproj",
+      "referenced_relative_path": "src/ApplicationCore/ApplicationCore.csproj",
+      "resolution_status": "resolved",
+      "source_relative_path": "src/PublicApi/PublicApi.csproj"
+    },
+    {
+      "is_cross_solution": false,
+      "raw_path": "..\\Infrastructure\\Infrastructure.csproj",
+      "referenced_relative_path": "src/Infrastructure/Infrastructure.csproj",
+      "resolution_status": "resolved",
+      "source_relative_path": "src/PublicApi/PublicApi.csproj"
+    },
+    {
+      "is_cross_solution": false,
+      "raw_path": "..\\ApplicationCore\\ApplicationCore.csproj",
+      "referenced_relative_path": "src/ApplicationCore/ApplicationCore.csproj",
+      "resolution_status": "resolved",
+      "source_relative_path": "src/Web/Web.csproj"
+    },
+    {
+      "is_cross_solution": false,
+      "raw_path": "..\\BlazorAdmin\\BlazorAdmin.csproj",
+      "referenced_relative_path": "src/BlazorAdmin/BlazorAdmin.csproj",
+      "resolution_status": "resolved",
+      "source_relative_path": "src/Web/Web.csproj"
+    },
+    {
+      "is_cross_solution": false,
+      "raw_path": "..\\BlazorShared\\BlazorShared.csproj",
+      "referenced_relative_path": "src/BlazorShared/BlazorShared.csproj",
+      "resolution_status": "resolved",
+      "source_relative_path": "src/Web/Web.csproj"
+    },
+    {
+      "is_cross_solution": false,
+      "raw_path": "..\\Infrastructure\\Infrastructure.csproj",
+      "referenced_relative_path": "src/Infrastructure/Infrastructure.csproj",
+      "resolution_status": "resolved",
+      "source_relative_path": "src/Web/Web.csproj"
+    },
+    {
+      "is_cross_solution": false,
+      "raw_path": "..\\..\\src\\ApplicationCore\\ApplicationCore.csproj",
+      "referenced_relative_path": "src/ApplicationCore/ApplicationCore.csproj",
+      "resolution_status": "resolved",
+      "source_relative_path": "tests/FunctionalTests/FunctionalTests.csproj"
+    },
+    {
+      "is_cross_solution": false,
+      "raw_path": "..\\..\\src\\PublicApi\\PublicApi.csproj",
+      "referenced_relative_path": "src/PublicApi/PublicApi.csproj",
+      "resolution_status": "resolved",
+      "source_relative_path": "tests/FunctionalTests/FunctionalTests.csproj"
+    },
+    {
+      "is_cross_solution": false,
+      "raw_path": "..\\..\\src\\Web\\Web.csproj",
+      "referenced_relative_path": "src/Web/Web.csproj",
+      "resolution_status": "resolved",
+      "source_relative_path": "tests/FunctionalTests/FunctionalTests.csproj"
+    },
+    {
+      "is_cross_solution": false,
+      "raw_path": "..\\..\\src\\Infrastructure\\Infrastructure.csproj",
+      "referenced_relative_path": "src/Infrastructure/Infrastructure.csproj",
+      "resolution_status": "resolved",
+      "source_relative_path": "tests/IntegrationTests/IntegrationTests.csproj"
+    },
+    {
+      "is_cross_solution": false,
+      "raw_path": "..\\UnitTests\\UnitTests.csproj",
+      "referenced_relative_path": "tests/UnitTests/UnitTests.csproj",
+      "resolution_status": "resolved",
+      "source_relative_path": "tests/IntegrationTests/IntegrationTests.csproj"
+    },
+    {
+      "is_cross_solution": false,
+      "raw_path": "..\\..\\src\\PublicApi\\PublicApi.csproj",
+      "referenced_relative_path": "src/PublicApi/PublicApi.csproj",
+      "resolution_status": "resolved",
+      "source_relative_path": "tests/PublicApiIntegrationTests/PublicApiIntegrationTests.csproj"
+    },
+    {
+      "is_cross_solution": false,
+      "raw_path": "..\\..\\src\\Web\\Web.csproj",
+      "referenced_relative_path": "src/Web/Web.csproj",
+      "resolution_status": "resolved",
+      "source_relative_path": "tests/PublicApiIntegrationTests/PublicApiIntegrationTests.csproj"
+    },
+    {
+      "is_cross_solution": false,
+      "raw_path": "..\\..\\src\\ApplicationCore\\ApplicationCore.csproj",
+      "referenced_relative_path": "src/ApplicationCore/ApplicationCore.csproj",
+      "resolution_status": "resolved",
+      "source_relative_path": "tests/UnitTests/UnitTests.csproj"
+    },
+    {
+      "is_cross_solution": false,
+      "raw_path": "..\\..\\src\\Web\\Web.csproj",
+      "referenced_relative_path": "src/Web/Web.csproj",
+      "resolution_status": "resolved",
+      "source_relative_path": "tests/UnitTests/UnitTests.csproj"
+    }
+  ],
+  "projects": [
+    {
+      "assembly_name": null,
+      "extension": ".dcproj",
+      "framework_family": null,
+      "framework_version": null,
+      "has_packages_config": false,
+      "is_multi_targeting": false,
+      "is_standalone": false,
+      "language": "unknown",
+      "name": "docker-compose",
+      "output_type": null,
+      "package_management_style": "none",
+      "package_reference_count": 0,
+      "packages": [],
+      "parse_status": "success",
+      "parse_warnings": [
+        "Docker Compose project, recorded but not analysed (not a .NET project)"
+      ],
+      "project_format": "unknown",
+      "project_reference_count": 0,
+      "relative_path": "docker-compose.dcproj",
+      "root_namespace": null,
+      "solution_membership_count": 1,
+      "structural_type": "docker_compose_project",
+      "target_framework_raw": null,
+      "target_frameworks_raw": null
+    },
+    {
+      "assembly_name": null,
+      "extension": ".csproj",
+      "framework_family": null,
+      "framework_version": null,
+      "has_packages_config": false,
+      "is_multi_targeting": false,
+      "is_standalone": false,
+      "language": "csharp",
+      "name": "ApplicationCore",
+      "output_type": null,
+      "package_management_style": "packagereference",
+      "package_reference_count": 5,
+      "packages": [
+        {
+          "declaration_source": "packagereference",
+          "is_malformed": false,
+          "package_name": "Ardalis.GuardClauses",
+          "target_framework_raw": null,
+          "version_raw": null
+        },
+        {
+          "declaration_source": "packagereference",
+          "is_malformed": false,
+          "package_name": "Ardalis.Result",
+          "target_framework_raw": null,
+          "version_raw": null
+        },
+        {
+          "declaration_source": "packagereference",
+          "is_malformed": false,
+          "package_name": "Ardalis.Specification",
+          "target_framework_raw": null,
+          "version_raw": null
+        },
+        {
+          "declaration_source": "packagereference",
+          "is_malformed": false,
+          "package_name": "System.Security.Claims",
+          "target_framework_raw": null,
+          "version_raw": null
+        },
+        {
+          "declaration_source": "packagereference",
+          "is_malformed": false,
+          "package_name": "System.Text.Json",
+          "target_framework_raw": null,
+          "version_raw": null
+        }
+      ],
+      "parse_status": "success",
+      "parse_warnings": [],
+      "project_format": "sdk_style",
+      "project_reference_count": 1,
+      "relative_path": "src/ApplicationCore/ApplicationCore.csproj",
+      "root_namespace": "Microsoft.eShopWeb.ApplicationCore",
+      "solution_membership_count": 2,
+      "structural_type": "csharp_project",
+      "target_framework_raw": null,
+      "target_frameworks_raw": null
+    },
+    {
+      "assembly_name": null,
+      "extension": ".csproj",
+      "framework_family": null,
+      "framework_version": null,
+      "has_packages_config": false,
+      "is_multi_targeting": false,
+      "is_standalone": false,
+      "language": "csharp",
+      "name": "BlazorAdmin",
+      "output_type": null,
+      "package_management_style": "packagereference",
+      "package_reference_count": 9,
+      "packages": [
+        {
+          "declaration_source": "packagereference",
+          "is_malformed": false,
+          "package_name": "BlazorInputFile",
+          "target_framework_raw": null,
+          "version_raw": null
+        },
+        {
+          "declaration_source": "packagereference",
+          "is_malformed": false,
+          "package_name": "Blazored.LocalStorage",
+          "target_framework_raw": null,
+          "version_raw": null
+        },
+        {
+          "declaration_source": "packagereference",
+          "is_malformed": false,
+          "package_name": "Microsoft.AspNetCore.Components.Authorization",
+          "target_framework_raw": null,
+          "version_raw": null
+        },
+        {
+          "declaration_source": "packagereference",
+          "is_malformed": false,
+          "package_name": "Microsoft.AspNetCore.Components.WebAssembly",
+          "target_framework_raw": null,
+          "version_raw": null
+        },
+        {
+          "declaration_source": "packagereference",
+          "is_malformed": false,
+          "package_name": "Microsoft.AspNetCore.Components.WebAssembly.Authentication",
+          "target_framework_raw": null,
+          "version_raw": null
+        },
+        {
+          "declaration_source": "packagereference",
+          "is_malformed": false,
+          "package_name": "Microsoft.AspNetCore.Components.WebAssembly.DevServer",
+          "target_framework_raw": null,
+          "version_raw": null
+        },
+        {
+          "declaration_source": "packagereference",
+          "is_malformed": false,
+          "package_name": "Microsoft.Extensions.Identity.Core",
+          "target_framework_raw": null,
+          "version_raw": null
+        },
+        {
+          "declaration_source": "packagereference",
+          "is_malformed": false,
+          "package_name": "Microsoft.Extensions.Logging.Configuration",
+          "target_framework_raw": null,
+          "version_raw": null
+        },
+        {
+          "declaration_source": "packagereference",
+          "is_malformed": false,
+          "package_name": "System.Net.Http.Json",
+          "target_framework_raw": null,
+          "version_raw": null
+        }
+      ],
+      "parse_status": "success",
+      "parse_warnings": [],
+      "project_format": "sdk_style",
+      "project_reference_count": 1,
+      "relative_path": "src/BlazorAdmin/BlazorAdmin.csproj",
+      "root_namespace": null,
+      "solution_membership_count": 2,
+      "structural_type": "csharp_project",
+      "target_framework_raw": null,
+      "target_frameworks_raw": null
+    },
+    {
+      "assembly_name": "BlazorShared",
+      "extension": ".csproj",
+      "framework_family": null,
+      "framework_version": null,
+      "has_packages_config": false,
+      "is_multi_targeting": false,
+      "is_standalone": false,
+      "language": "csharp",
+      "name": "BlazorShared",
+      "output_type": null,
+      "package_management_style": "packagereference",
+      "package_reference_count": 2,
+      "packages": [
+        {
+          "declaration_source": "packagereference",
+          "is_malformed": false,
+          "package_name": "BlazorInputFile",
+          "target_framework_raw": null,
+          "version_raw": null
+        },
+        {
+          "declaration_source": "packagereference",
+          "is_malformed": false,
+          "package_name": "FluentValidation",
+          "target_framework_raw": null,
+          "version_raw": null
+        }
+      ],
+      "parse_status": "success",
+      "parse_warnings": [],
+      "project_format": "sdk_style",
+      "project_reference_count": 0,
+      "relative_path": "src/BlazorShared/BlazorShared.csproj",
+      "root_namespace": "BlazorShared",
+      "solution_membership_count": 2,
+      "structural_type": "csharp_project",
+      "target_framework_raw": null,
+      "target_frameworks_raw": null
+    },
+    {
+      "assembly_name": null,
+      "extension": ".csproj",
+      "framework_family": null,
+      "framework_version": null,
+      "has_packages_config": false,
+      "is_multi_targeting": false,
+      "is_standalone": false,
+      "language": "csharp",
+      "name": "Infrastructure",
+      "output_type": null,
+      "package_management_style": "packagereference",
+      "package_reference_count": 5,
+      "packages": [
+        {
+          "declaration_source": "packagereference",
+          "is_malformed": false,
+          "package_name": "Ardalis.Specification.EntityFrameworkCore",
+          "target_framework_raw": null,
+          "version_raw": null
+        },
+        {
+          "declaration_source": "packagereference",
+          "is_malformed": false,
+          "package_name": "Microsoft.AspNetCore.Identity.EntityFrameworkCore",
+          "target_framework_raw": null,
+          "version_raw": null
+        },
+        {
+          "declaration_source": "packagereference",
+          "is_malformed": false,
+          "package_name": "Microsoft.EntityFrameworkCore.InMemory",
+          "target_framework_raw": null,
+          "version_raw": null
+        },
+        {
+          "declaration_source": "packagereference",
+          "is_malformed": false,
+          "package_name": "Microsoft.EntityFrameworkCore.SqlServer",
+          "target_framework_raw": null,
+          "version_raw": null
+        },
+        {
+          "declaration_source": "packagereference",
+          "is_malformed": false,
+          "package_name": "System.IdentityModel.Tokens.Jwt",
+          "target_framework_raw": null,
+          "version_raw": null
+        }
+      ],
+      "parse_status": "success",
+      "parse_warnings": [],
+      "project_format": "sdk_style",
+      "project_reference_count": 1,
+      "relative_path": "src/Infrastructure/Infrastructure.csproj",
+      "root_namespace": "Microsoft.eShopWeb.Infrastructure",
+      "solution_membership_count": 2,
+      "structural_type": "csharp_project",
+      "target_framework_raw": null,
+      "target_frameworks_raw": null
+    },
+    {
+      "assembly_name": null,
+      "extension": ".csproj",
+      "framework_family": null,
+      "framework_version": null,
+      "has_packages_config": false,
+      "is_multi_targeting": false,
+      "is_standalone": false,
+      "language": "csharp",
+      "name": "PublicApi",
+      "output_type": null,
+      "package_management_style": "packagereference",
+      "package_reference_count": 16,
+      "packages": [
+        {
+          "declaration_source": "packagereference",
+          "is_malformed": false,
+          "package_name": "Ardalis.ApiEndpoints",
+          "target_framework_raw": null,
+          "version_raw": null
+        },
+        {
+          "declaration_source": "packagereference",
+          "is_malformed": false,
+          "package_name": "AutoMapper.Extensions.Microsoft.DependencyInjection",
+          "target_framework_raw": null,
+          "version_raw": null
+        },
+        {
+          "declaration_source": "packagereference",
+          "is_malformed": false,
+          "package_name": "Microsoft.AspNetCore.Authentication.JwtBearer",
+          "target_framework_raw": null,
+          "version_raw": null
+        },
+        {
+          "declaration_source": "packagereference",
+          "is_malformed": false,
+          "package_name": "Microsoft.AspNetCore.Diagnostics.EntityFrameworkCore",
+          "target_framework_raw": null,
+          "version_raw": null
+        },
+        {
+          "declaration_source": "packagereference",
+          "is_malformed": false,
+          "package_name": "Microsoft.AspNetCore.Identity.EntityFrameworkCore",
+          "target_framework_raw": null,
+          "version_raw": null
+        },
+        {
+          "declaration_source": "packagereference",
+          "is_malformed": false,
+          "package_name": "Microsoft.AspNetCore.Identity.UI",
+          "target_framework_raw": null,
+          "version_raw": null
+        },
+        {
+          "declaration_source": "packagereference",
+          "is_malformed": false,
+          "package_name": "Microsoft.EntityFrameworkCore.InMemory",
+          "target_framework_raw": null,
+          "version_raw": null
+        },
+        {
+          "declaration_source": "packagereference",
+          "is_malformed": false,
+          "package_name": "Microsoft.EntityFrameworkCore.SqlServer",
+          "target_framework_raw": null,
+          "version_raw": null
+        },
+        {
+          "declaration_source": "packagereference",
+          "is_malformed": false,
+          "package_name": "Microsoft.EntityFrameworkCore.Tools",
+          "target_framework_raw": null,
+          "version_raw": null
+        },
+        {
+          "declaration_source": "packagereference",
+          "is_malformed": false,
+          "package_name": "Microsoft.VisualStudio.Azure.Containers.Tools.Targets",
+          "target_framework_raw": null,
+          "version_raw": null
+        },
+        {
+          "declaration_source": "packagereference",
+          "is_malformed": false,
+          "package_name": "Microsoft.VisualStudio.Web.CodeGeneration.Design",
+          "target_framework_raw": null,
+          "version_raw": null
+        },
+        {
+          "declaration_source": "packagereference",
+          "is_malformed": false,
+          "package_name": "MinimalApi.Endpoint",
+          "target_framework_raw": null,
+          "version_raw": null
+        },
+        {
+          "declaration_source": "packagereference",
+          "is_malformed": false,
+          "package_name": "Swashbuckle.AspNetCore",
+          "target_framework_raw": null,
+          "version_raw": null
+        },
+        {
+          "declaration_source": "packagereference",
+          "is_malformed": false,
+          "package_name": "Swashbuckle.AspNetCore.Annotations",
+          "target_framework_raw": null,
+          "version_raw": null
+        },
+        {
+          "declaration_source": "packagereference",
+          "is_malformed": false,
+          "package_name": "Swashbuckle.AspNetCore.SwaggerUI",
+          "target_framework_raw": null,
+          "version_raw": null
+        },
+        {
+          "declaration_source": "packagereference",
+          "is_malformed": false,
+          "package_name": "System.IdentityModel.Tokens.Jwt",
+          "target_framework_raw": null,
+          "version_raw": null
+        }
+      ],
+      "parse_status": "success",
+      "parse_warnings": [],
+      "project_format": "sdk_style",
+      "project_reference_count": 2,
+      "relative_path": "src/PublicApi/PublicApi.csproj",
+      "root_namespace": "Microsoft.eShopWeb.PublicApi",
+      "solution_membership_count": 2,
+      "structural_type": "csharp_project",
+      "target_framework_raw": null,
+      "target_frameworks_raw": null
+    },
+    {
+      "assembly_name": null,
+      "extension": ".csproj",
+      "framework_family": null,
+      "framework_version": null,
+      "has_packages_config": false,
+      "is_multi_targeting": false,
+      "is_standalone": false,
+      "language": "csharp",
+      "name": "Web",
+      "output_type": null,
+      "package_management_style": "packagereference",
+      "package_reference_count": 18,
+      "packages": [
+        {
+          "declaration_source": "packagereference",
+          "is_malformed": false,
+          "package_name": "Ardalis.ListStartupServices",
+          "target_framework_raw": null,
+          "version_raw": null
+        },
+        {
+          "declaration_source": "packagereference",
+          "is_malformed": false,
+          "package_name": "Ardalis.Specification",
+          "target_framework_raw": null,
+          "version_raw": null
+        },
+        {
+          "declaration_source": "packagereference",
+          "is_malformed": false,
+          "package_name": "AutoMapper.Extensions.Microsoft.DependencyInjection",
+          "target_framework_raw": null,
+          "version_raw": null
+        },
+        {
+          "declaration_source": "packagereference",
+          "is_malformed": false,
+          "package_name": "Azure.Extensions.AspNetCore.Configuration.Secrets",
+          "target_framework_raw": null,
+          "version_raw": null
+        },
+        {
+          "declaration_source": "packagereference",
+          "is_malformed": false,
+          "package_name": "Azure.Identity",
+          "target_framework_raw": null,
+          "version_raw": null
+        },
+        {
+          "declaration_source": "packagereference",
+          "is_malformed": false,
+          "package_name": "BuildBundlerMinifier",
+          "target_framework_raw": null,
+          "version_raw": null
+        },
+        {
+          "declaration_source": "packagereference",
+          "is_malformed": false,
+          "package_name": "MediatR",
+          "target_framework_raw": null,
+          "version_raw": null
+        },
+        {
+          "declaration_source": "packagereference",
+          "is_malformed": false,
+          "package_name": "Microsoft.AspNetCore.Authentication.JwtBearer",
+          "target_framework_raw": null,
+          "version_raw": null
+        },
+        {
+          "declaration_source": "packagereference",
+          "is_malformed": false,
+          "package_name": "Microsoft.AspNetCore.Components.WebAssembly.Server",
+          "target_framework_raw": null,
+          "version_raw": null
+        },
+        {
+          "declaration_source": "packagereference",
+          "is_malformed": false,
+          "package_name": "Microsoft.AspNetCore.Diagnostics.EntityFrameworkCore",
+          "target_framework_raw": null,
+          "version_raw": null
+        },
+        {
+          "declaration_source": "packagereference",
+          "is_malformed": false,
+          "package_name": "Microsoft.AspNetCore.Identity.EntityFrameworkCore",
+          "target_framework_raw": null,
+          "version_raw": null
+        },
+        {
+          "declaration_source": "packagereference",
+          "is_malformed": false,
+          "package_name": "Microsoft.AspNetCore.Identity.UI",
+          "target_framework_raw": null,
+          "version_raw": null
+        },
+        {
+          "declaration_source": "packagereference",
+          "is_malformed": false,
+          "package_name": "Microsoft.EntityFrameworkCore.InMemory",
+          "target_framework_raw": null,
+          "version_raw": null
+        },
+        {
+          "declaration_source": "packagereference",
+          "is_malformed": false,
+          "package_name": "Microsoft.EntityFrameworkCore.SqlServer",
+          "target_framework_raw": null,
+          "version_raw": null
+        },
+        {
+          "declaration_source": "packagereference",
+          "is_malformed": false,
+          "package_name": "Microsoft.EntityFrameworkCore.Tools",
+          "target_framework_raw": null,
+          "version_raw": null
+        },
+        {
+          "declaration_source": "packagereference",
+          "is_malformed": false,
+          "package_name": "Microsoft.VisualStudio.Web.CodeGeneration.Design",
+          "target_framework_raw": null,
+          "version_raw": null
+        },
+        {
+          "declaration_source": "packagereference",
+          "is_malformed": false,
+          "package_name": "Microsoft.Web.LibraryManager.Build",
+          "target_framework_raw": null,
+          "version_raw": null
+        },
+        {
+          "declaration_source": "packagereference",
+          "is_malformed": false,
+          "package_name": "System.IdentityModel.Tokens.Jwt",
+          "target_framework_raw": null,
+          "version_raw": null
+        }
+      ],
+      "parse_status": "success",
+      "parse_warnings": [],
+      "project_format": "sdk_style",
+      "project_reference_count": 4,
+      "relative_path": "src/Web/Web.csproj",
+      "root_namespace": "Microsoft.eShopWeb.Web",
+      "solution_membership_count": 2,
+      "structural_type": "csharp_project",
+      "target_framework_raw": null,
+      "target_frameworks_raw": null
+    },
+    {
+      "assembly_name": null,
+      "extension": ".csproj",
+      "framework_family": null,
+      "framework_version": null,
+      "has_packages_config": false,
+      "is_multi_targeting": false,
+      "is_standalone": false,
+      "language": "csharp",
+      "name": "FunctionalTests",
+      "output_type": null,
+      "package_management_style": "packagereference",
+      "package_reference_count": 5,
+      "packages": [
+        {
+          "declaration_source": "packagereference",
+          "is_malformed": false,
+          "package_name": "Microsoft.AspNetCore.Mvc.Testing",
+          "target_framework_raw": null,
+          "version_raw": null
+        },
+        {
+          "declaration_source": "packagereference",
+          "is_malformed": false,
+          "package_name": "Microsoft.EntityFrameworkCore.InMemory",
+          "target_framework_raw": null,
+          "version_raw": null
+        },
+        {
+          "declaration_source": "packagereference",
+          "is_malformed": false,
+          "package_name": "Microsoft.NET.Test.Sdk",
+          "target_framework_raw": null,
+          "version_raw": null
+        },
+        {
+          "declaration_source": "packagereference",
+          "is_malformed": false,
+          "package_name": "xunit",
+          "target_framework_raw": null,
+          "version_raw": null
+        },
+        {
+          "declaration_source": "packagereference",
+          "is_malformed": false,
+          "package_name": "xunit.runner.visualstudio",
+          "target_framework_raw": null,
+          "version_raw": null
+        }
+      ],
+      "parse_status": "success",
+      "parse_warnings": [],
+      "project_format": "sdk_style",
+      "project_reference_count": 3,
+      "relative_path": "tests/FunctionalTests/FunctionalTests.csproj",
+      "root_namespace": "Microsoft.eShopWeb.FunctionalTests",
+      "solution_membership_count": 2,
+      "structural_type": "csharp_project",
+      "target_framework_raw": null,
+      "target_frameworks_raw": null
+    },
+    {
+      "assembly_name": null,
+      "extension": ".csproj",
+      "framework_family": null,
+      "framework_version": null,
+      "has_packages_config": false,
+      "is_multi_targeting": false,
+      "is_standalone": false,
+      "language": "csharp",
+      "name": "IntegrationTests",
+      "output_type": null,
+      "package_management_style": "packagereference",
+      "package_reference_count": 6,
+      "packages": [
+        {
+          "declaration_source": "packagereference",
+          "is_malformed": false,
+          "package_name": "Microsoft.EntityFrameworkCore.InMemory",
+          "target_framework_raw": null,
+          "version_raw": null
+        },
+        {
+          "declaration_source": "packagereference",
+          "is_malformed": false,
+          "package_name": "Microsoft.NET.Test.Sdk",
+          "target_framework_raw": null,
+          "version_raw": null
+        },
+        {
+          "declaration_source": "packagereference",
+          "is_malformed": false,
+          "package_name": "NSubstitute",
+          "target_framework_raw": null,
+          "version_raw": null
+        },
+        {
+          "declaration_source": "packagereference",
+          "is_malformed": false,
+          "package_name": "NSubstitute.Analyzers.CSharp",
+          "target_framework_raw": null,
+          "version_raw": null
+        },
+        {
+          "declaration_source": "packagereference",
+          "is_malformed": false,
+          "package_name": "xunit",
+          "target_framework_raw": null,
+          "version_raw": null
+        },
+        {
+          "declaration_source": "packagereference",
+          "is_malformed": false,
+          "package_name": "xunit.runner.visualstudio",
+          "target_framework_raw": null,
+          "version_raw": null
+        }
+      ],
+      "parse_status": "success",
+      "parse_warnings": [],
+      "project_format": "sdk_style",
+      "project_reference_count": 2,
+      "relative_path": "tests/IntegrationTests/IntegrationTests.csproj",
+      "root_namespace": "Microsoft.eShopWeb.IntegrationTests",
+      "solution_membership_count": 2,
+      "structural_type": "csharp_project",
+      "target_framework_raw": null,
+      "target_frameworks_raw": null
+    },
+    {
+      "assembly_name": null,
+      "extension": ".csproj",
+      "framework_family": null,
+      "framework_version": null,
+      "has_packages_config": false,
+      "is_multi_targeting": false,
+      "is_standalone": false,
+      "language": "csharp",
+      "name": "PublicApiIntegrationTests",
+      "output_type": null,
+      "package_management_style": "packagereference",
+      "package_reference_count": 5,
+      "packages": [
+        {
+          "declaration_source": "packagereference",
+          "is_malformed": false,
+          "package_name": "MSTest.TestAdapter",
+          "target_framework_raw": null,
+          "version_raw": null
+        },
+        {
+          "declaration_source": "packagereference",
+          "is_malformed": false,
+          "package_name": "MSTest.TestFramework",
+          "target_framework_raw": null,
+          "version_raw": null
+        },
+        {
+          "declaration_source": "packagereference",
+          "is_malformed": false,
+          "package_name": "Microsoft.AspNetCore.Mvc.Testing",
+          "target_framework_raw": null,
+          "version_raw": null
+        },
+        {
+          "declaration_source": "packagereference",
+          "is_malformed": false,
+          "package_name": "Microsoft.NET.Test.Sdk",
+          "target_framework_raw": null,
+          "version_raw": null
+        },
+        {
+          "declaration_source": "packagereference",
+          "is_malformed": false,
+          "package_name": "coverlet.collector",
+          "target_framework_raw": null,
+          "version_raw": null
+        }
+      ],
+      "parse_status": "success",
+      "parse_warnings": [],
+      "project_format": "sdk_style",
+      "project_reference_count": 2,
+      "relative_path": "tests/PublicApiIntegrationTests/PublicApiIntegrationTests.csproj",
+      "root_namespace": null,
+      "solution_membership_count": 2,
+      "structural_type": "csharp_project",
+      "target_framework_raw": null,
+      "target_frameworks_raw": null
+    },
+    {
+      "assembly_name": null,
+      "extension": ".csproj",
+      "framework_family": null,
+      "framework_version": null,
+      "has_packages_config": false,
+      "is_multi_targeting": false,
+      "is_standalone": false,
+      "language": "csharp",
+      "name": "UnitTests",
+      "output_type": null,
+      "package_management_style": "packagereference",
+      "package_reference_count": 6,
+      "packages": [
+        {
+          "declaration_source": "packagereference",
+          "is_malformed": false,
+          "package_name": "Microsoft.NET.Test.Sdk",
+          "target_framework_raw": null,
+          "version_raw": null
+        },
+        {
+          "declaration_source": "packagereference",
+          "is_malformed": false,
+          "package_name": "NSubstitute",
+          "target_framework_raw": null,
+          "version_raw": null
+        },
+        {
+          "declaration_source": "packagereference",
+          "is_malformed": false,
+          "package_name": "NSubstitute.Analyzers.CSharp",
+          "target_framework_raw": null,
+          "version_raw": null
+        },
+        {
+          "declaration_source": "packagereference",
+          "is_malformed": false,
+          "package_name": "xunit",
+          "target_framework_raw": null,
+          "version_raw": null
+        },
+        {
+          "declaration_source": "packagereference",
+          "is_malformed": false,
+          "package_name": "xunit.runner.console",
+          "target_framework_raw": null,
+          "version_raw": null
+        },
+        {
+          "declaration_source": "packagereference",
+          "is_malformed": false,
+          "package_name": "xunit.runner.visualstudio",
+          "target_framework_raw": null,
+          "version_raw": null
+        }
+      ],
+      "parse_status": "success",
+      "parse_warnings": [],
+      "project_format": "sdk_style",
+      "project_reference_count": 2,
+      "relative_path": "tests/UnitTests/UnitTests.csproj",
+      "root_namespace": "Microsoft.eShopWeb.UnitTests",
+      "solution_membership_count": 2,
+      "structural_type": "csharp_project",
+      "target_framework_raw": null,
+      "target_frameworks_raw": null
+    }
+  ],
+  "repository_artifacts": [
+    {
+      "category": "documentation",
+      "file_name": "devcontainerreadme.md",
+      "relative_path": ".devcontainer/devcontainerreadme.md"
+    },
+    {
+      "category": "container",
+      "file_name": ".dockerignore",
+      "relative_path": ".dockerignore"
+    },
+    {
+      "category": "documentation",
+      "file_name": "copilot-instructions.md",
+      "relative_path": ".github/copilot-instructions.md"
+    },
+    {
+      "category": "pipeline",
+      "file_name": "dotnetcore.yml",
+      "relative_path": ".github/workflows/dotnetcore.yml"
+    },
+    {
+      "category": "pipeline",
+      "file_name": "richnav.yml",
+      "relative_path": ".github/workflows/richnav.yml"
+    },
+    {
+      "category": "build",
+      "file_name": "Directory.Packages.props",
+      "relative_path": "Directory.Packages.props"
+    },
+    {
+      "category": "build",
+      "file_name": "Everything.sln",
+      "relative_path": "Everything.sln"
+    },
+    {
+      "category": "documentation",
+      "file_name": "LICENSE",
+      "relative_path": "LICENSE"
+    },
+    {
+      "category": "documentation",
+      "file_name": "README.md",
+      "relative_path": "README.md"
+    },
+    {
+      "category": "container",
+      "file_name": "docker-compose.override.yml",
+      "relative_path": "docker-compose.override.yml"
+    },
+    {
+      "category": "container",
+      "file_name": "docker-compose.yml",
+      "relative_path": "docker-compose.yml"
+    },
+    {
+      "category": "build",
+      "file_name": "eShopOnWeb.sln",
+      "relative_path": "eShopOnWeb.sln"
+    },
+    {
+      "category": "build",
+      "file_name": "global.json",
+      "relative_path": "global.json"
+    },
+    {
+      "category": "configuration",
+      "file_name": "appsettings.Development.json",
+      "relative_path": "src/BlazorAdmin/wwwroot/appsettings.Development.json"
+    },
+    {
+      "category": "configuration",
+      "file_name": "appsettings.Docker.json",
+      "relative_path": "src/BlazorAdmin/wwwroot/appsettings.Docker.json"
+    },
+    {
+      "category": "configuration",
+      "file_name": "appsettings.json",
+      "relative_path": "src/BlazorAdmin/wwwroot/appsettings.json"
+    },
+    {
+      "category": "documentation",
+      "file_name": "README.md",
+      "relative_path": "src/BlazorAdmin/wwwroot/css/open-iconic/README.md"
+    },
+    {
+      "category": "container",
+      "file_name": "Dockerfile",
+      "relative_path": "src/PublicApi/Dockerfile"
+    },
+    {
+      "category": "documentation",
+      "file_name": "README.md",
+      "relative_path": "src/PublicApi/README.md"
+    },
+    {
+      "category": "configuration",
+      "file_name": "appsettings.Development.json",
+      "relative_path": "src/PublicApi/appsettings.Development.json"
+    },
+    {
+      "category": "configuration",
+      "file_name": "appsettings.Docker.json",
+      "relative_path": "src/PublicApi/appsettings.Docker.json"
+    },
+    {
+      "category": "configuration",
+      "file_name": "appsettings.json",
+      "relative_path": "src/PublicApi/appsettings.json"
+    },
+    {
+      "category": "container",
+      "file_name": "Dockerfile",
+      "relative_path": "src/Web/Dockerfile"
+    },
+    {
+      "category": "configuration",
+      "file_name": "appsettings.Development.json",
+      "relative_path": "src/Web/appsettings.Development.json"
+    },
+    {
+      "category": "configuration",
+      "file_name": "appsettings.Docker.json",
+      "relative_path": "src/Web/appsettings.Docker.json"
+    },
+    {
+      "category": "configuration",
+      "file_name": "appsettings.json",
+      "relative_path": "src/Web/appsettings.json"
+    },
+    {
+      "category": "configuration",
+      "file_name": "appsettings.test.json",
+      "relative_path": "tests/PublicApiIntegrationTests/appsettings.test.json"
+    }
+  ],
+  "repository_id": "ba306cf3-01cc-4f3a-98ee-4a192c5c9684",
+  "repository_slug": "eshoponweb",
+  "scan_status": "complete",
+  "solutions": [
+    {
+      "format_version": "12.00",
+      "minimum_vs_version": "10.0.40219.1",
+      "missing_project_count": 0,
+      "name": "Everything",
+      "parse_error": null,
+      "parse_status": "success",
+      "project_count": 10,
+      "projects": [
+        {
+          "project_guid": "1A5759FF-9990-4CF5-AD78-528452C5EFCC",
+          "project_type_guid": "9A19103F-16F7-4668-BE54-9A1E7A4F7556",
+          "raw_path": "src\\ApplicationCore\\ApplicationCore.csproj",
+          "relative_path": "src/ApplicationCore/ApplicationCore.csproj",
+          "resolution_status": "resolved",
+          "solution_folder": "src"
+        },
+        {
+          "project_guid": "7D7D0B73-4153-4E9B-BBD1-C9D7C8AEE970",
+          "project_type_guid": "9A19103F-16F7-4668-BE54-9A1E7A4F7556",
+          "raw_path": "src\\BlazorAdmin\\BlazorAdmin.csproj",
+          "relative_path": "src/BlazorAdmin/BlazorAdmin.csproj",
+          "resolution_status": "resolved",
+          "solution_folder": "src"
+        },
+        {
+          "project_guid": "6FD75683-D186-4BE3-ABD0-2324650B46B5",
+          "project_type_guid": "9A19103F-16F7-4668-BE54-9A1E7A4F7556",
+          "raw_path": "src\\BlazorShared\\BlazorShared.csproj",
+          "relative_path": "src/BlazorShared/BlazorShared.csproj",
+          "resolution_status": "resolved",
+          "solution_folder": "src"
+        },
+        {
+          "project_guid": "35457566-83CE-44FC-A650-265CC9C544DC",
+          "project_type_guid": "9A19103F-16F7-4668-BE54-9A1E7A4F7556",
+          "raw_path": "src\\Infrastructure\\Infrastructure.csproj",
+          "relative_path": "src/Infrastructure/Infrastructure.csproj",
+          "resolution_status": "resolved",
+          "solution_folder": "src"
+        },
+        {
+          "project_guid": "7F226129-E8B0-4274-87A7-347AA4F7D374",
+          "project_type_guid": "9A19103F-16F7-4668-BE54-9A1E7A4F7556",
+          "raw_path": "src\\PublicApi\\PublicApi.csproj",
+          "relative_path": "src/PublicApi/PublicApi.csproj",
+          "resolution_status": "resolved",
+          "solution_folder": "src"
+        },
+        {
+          "project_guid": "7559FA9E-7CFC-4615-8D09-3CDEFC765455",
+          "project_type_guid": "9A19103F-16F7-4668-BE54-9A1E7A4F7556",
+          "raw_path": "src\\Web\\Web.csproj",
+          "relative_path": "src/Web/Web.csproj",
+          "resolution_status": "resolved",
+          "solution_folder": "src"
+        },
+        {
+          "project_guid": "020545FF-D985-4274-9FDB-FD8B9B32D2ED",
+          "project_type_guid": "9A19103F-16F7-4668-BE54-9A1E7A4F7556",
+          "raw_path": "tests\\FunctionalTests\\FunctionalTests.csproj",
+          "relative_path": "tests/FunctionalTests/FunctionalTests.csproj",
+          "resolution_status": "resolved",
+          "solution_folder": "tests"
+        },
+        {
+          "project_guid": "D6829485-DD9C-42CE-BEDE-4EB0E81021AC",
+          "project_type_guid": "9A19103F-16F7-4668-BE54-9A1E7A4F7556",
+          "raw_path": "tests\\IntegrationTests\\IntegrationTests.csproj",
+          "relative_path": "tests/IntegrationTests/IntegrationTests.csproj",
+          "resolution_status": "resolved",
+          "solution_folder": "tests"
+        },
+        {
+          "project_guid": "698594AE-78D3-429F-B5CC-3A6F6BCE397A",
+          "project_type_guid": "9A19103F-16F7-4668-BE54-9A1E7A4F7556",
+          "raw_path": "tests\\PublicApiIntegrationTests\\PublicApiIntegrationTests.csproj",
+          "relative_path": "tests/PublicApiIntegrationTests/PublicApiIntegrationTests.csproj",
+          "resolution_status": "resolved",
+          "solution_folder": "tests"
+        },
+        {
+          "project_guid": "EAD6CF0B-2979-462C-BBB9-AF723B1EB570",
+          "project_type_guid": "9A19103F-16F7-4668-BE54-9A1E7A4F7556",
+          "raw_path": "tests\\UnitTests\\UnitTests.csproj",
+          "relative_path": "tests/UnitTests/UnitTests.csproj",
+          "resolution_status": "resolved",
+          "solution_folder": "tests"
+        }
+      ],
+      "relative_path": "Everything.sln",
+      "resolved_project_count": 10,
+      "shared_project_count": 10,
+      "solution_folder_count": 3,
+      "visual_studio_version": "17.0.31903.59"
+    },
+    {
+      "format_version": "12.00",
+      "minimum_vs_version": "10.0.40219.1",
+      "missing_project_count": 0,
+      "name": "eShopOnWeb",
+      "parse_error": null,
+      "parse_status": "success",
+      "project_count": 11,
+      "projects": [
+        {
+          "project_guid": "1FCBE191-34FE-4B2E-8915-CA81553958AD",
+          "project_type_guid": "E53339B2-1760-4266-BCC7-CA923CBCF16C",
+          "raw_path": "docker-compose.dcproj",
+          "relative_path": "docker-compose.dcproj",
+          "resolution_status": "resolved",
+          "solution_folder": null
+        },
+        {
+          "project_guid": "7FED7440-2311-4D1E-958B-3E887C585CD2",
+          "project_type_guid": "9A19103F-16F7-4668-BE54-9A1E7A4F7556",
+          "raw_path": "src\\ApplicationCore\\ApplicationCore.csproj",
+          "relative_path": "src/ApplicationCore/ApplicationCore.csproj",
+          "resolution_status": "resolved",
+          "solution_folder": "src"
+        },
+        {
+          "project_guid": "71368733-80A4-4869-B215-3A7001878577",
+          "project_type_guid": "9A19103F-16F7-4668-BE54-9A1E7A4F7556",
+          "raw_path": "src\\BlazorAdmin\\BlazorAdmin.csproj",
+          "relative_path": "src/BlazorAdmin/BlazorAdmin.csproj",
+          "resolution_status": "resolved",
+          "solution_folder": "src"
+        },
+        {
+          "project_guid": "715CF7AF-A1EE-40A6-94A0-8DA3F3B2CAE9",
+          "project_type_guid": "9A19103F-16F7-4668-BE54-9A1E7A4F7556",
+          "raw_path": "src\\BlazorShared\\BlazorShared.csproj",
+          "relative_path": "src/BlazorShared/BlazorShared.csproj",
+          "resolution_status": "resolved",
+          "solution_folder": "src"
+        },
+        {
+          "project_guid": "7C461394-ABDC-43CD-A798-71249C58BA67",
+          "project_type_guid": "9A19103F-16F7-4668-BE54-9A1E7A4F7556",
+          "raw_path": "src\\Infrastructure\\Infrastructure.csproj",
+          "relative_path": "src/Infrastructure/Infrastructure.csproj",
+          "resolution_status": "resolved",
+          "solution_folder": "src"
+        },
+        {
+          "project_guid": "B5E4F33C-4667-4A55-AF6A-740F84C4CF3A",
+          "project_type_guid": "9A19103F-16F7-4668-BE54-9A1E7A4F7556",
+          "raw_path": "src\\PublicApi\\PublicApi.csproj",
+          "relative_path": "src/PublicApi/PublicApi.csproj",
+          "resolution_status": "resolved",
+          "solution_folder": "src"
+        },
+        {
+          "project_guid": "227CF035-29B0-448D-97E4-944F9EA850E5",
+          "project_type_guid": "9A19103F-16F7-4668-BE54-9A1E7A4F7556",
+          "raw_path": "src\\Web\\Web.csproj",
+          "relative_path": "src/Web/Web.csproj",
+          "resolution_status": "resolved",
+          "solution_folder": "src"
+        },
+        {
+          "project_guid": "7EFB5482-F942-4C3D-94B0-9B70596E6D0A",
+          "project_type_guid": "9A19103F-16F7-4668-BE54-9A1E7A4F7556",
+          "raw_path": "tests\\FunctionalTests\\FunctionalTests.csproj",
+          "relative_path": "tests/FunctionalTests/FunctionalTests.csproj",
+          "resolution_status": "resolved",
+          "solution_folder": "tests"
+        },
+        {
+          "project_guid": "0F576306-7E2D-49B7-87B1-EB5D94CFD5FC",
+          "project_type_guid": "9A19103F-16F7-4668-BE54-9A1E7A4F7556",
+          "raw_path": "tests\\IntegrationTests\\IntegrationTests.csproj",
+          "relative_path": "tests/IntegrationTests/IntegrationTests.csproj",
+          "resolution_status": "resolved",
+          "solution_folder": "tests"
+        },
+        {
+          "project_guid": "D53EF010-8F8C-4337-A059-456E19D8AE63",
+          "project_type_guid": "9A19103F-16F7-4668-BE54-9A1E7A4F7556",
+          "raw_path": "tests\\PublicApiIntegrationTests\\PublicApiIntegrationTests.csproj",
+          "relative_path": "tests/PublicApiIntegrationTests/PublicApiIntegrationTests.csproj",
+          "resolution_status": "resolved",
+          "solution_folder": "tests"
+        },
+        {
+          "project_guid": "EF6877E6-59CB-43A7-8C2C-E70DD70CC5B6",
+          "project_type_guid": "9A19103F-16F7-4668-BE54-9A1E7A4F7556",
+          "raw_path": "tests\\UnitTests\\UnitTests.csproj",
+          "relative_path": "tests/UnitTests/UnitTests.csproj",
+          "resolution_status": "resolved",
+          "solution_folder": "tests"
+        }
+      ],
+      "relative_path": "eShopOnWeb.sln",
+      "resolved_project_count": 11,
+      "shared_project_count": 10,
+      "solution_folder_count": 3,
+      "visual_studio_version": "17.0.31903.59"
+    }
+  ],
+  "summary": {
+    "artifact_counts": {
+      "build": 4,
+      "configuration": 10,
+      "container": 5,
+      "documentation": 6,
+      "pipeline": 2
+    },
+    "failed_parse_count": 0,
+    "framework_families": {},
+    "legacy_project_count": 0,
+    "out_of_scope_project_count": 1,
+    "project_file_count": 11,
+    "projects_referenced_count": 11,
+    "sdk_project_count": 10,
+    "shared_project_count": 10,
+    "solution_count": 2,
+    "standalone_project_count": 0,
+    "unknown_project_count": 0,
+    "unresolved_reference_count": 0
+  }
+}

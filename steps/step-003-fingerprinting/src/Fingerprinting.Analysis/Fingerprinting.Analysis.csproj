@@ -1,0 +1,35 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Fingerprinting.Analysis</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Compile-time only, and private to this project. ExcludeAssets="runtime"
+         so these never get copy-local — the actual MSBuild assemblies come
+         from the SDK instance that MSBuildLocator.RegisterDefaults() finds
+         at startup, not from NuGet. PrivateAssets="all" keeps the reference
+         from flowing transitively into Fingerprinting.Cli, which never
+         touches a Microsoft.Build.* type directly (Part B rule 3 puts MSBuild
+         usage behind this project's own interface). Do not remove either
+         attribute; see Cli/Program.cs. -->
+    <PackageReference Include="Microsoft.Build" Version="18.9.6" ExcludeAssets="runtime" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.Build.Framework" Version="18.9.6" ExcludeAssets="runtime" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.Build.Utilities.Core" Version="18.9.6" ExcludeAssets="runtime" PrivateAssets="all" />
+
+    <!-- Roslyn — these DO ship normally; unlike MSBuild they are not resolved
+         via MSBuildLocator. -->
+    <PackageReference Include="Microsoft.CodeAnalysis" Version="5.9.0" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="5.9.0" />
+    <PackageReference Include="Microsoft.CodeAnalysis.VisualBasic" Version="5.9.0" />
+    <PackageReference Include="Microsoft.CodeAnalysis.Workspaces.MSBuild" Version="5.9.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Fingerprinting.Domain\Fingerprinting.Domain.csproj" />
+  </ItemGroup>
+
+</Project>

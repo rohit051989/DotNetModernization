@@ -204,6 +204,52 @@ Exit code handling:
 This adapter is how a colleague's script drops in with no engine change. Their only
 obligation is: read JSON from stdin, write JSON to stdout, exit 0.
 
+#### Path resolution — `command` and `cwd` are relative to `PLATFORM_ROOT`, never to the backend process's own working directory
+
+A relative `command[0]` (the executable) or a relative `cwd` is resolved against
+`settings.platform_root` — a config value defaulting to the repository root, resolved
+from the backend package's own location (`backend/app/config.py`'s directory, two
+levels up). This is deliberate: the backend is started from `backend/`
+(`01-ENVIRONMENT-SETUP.md`'s run commands), so a path written relative to the
+repository root — the natural way to write it in a job definition, since that's what
+every step's own directory layout is relative to — would otherwise resolve against
+the wrong directory and fail with an opaque `WinError 2` / `FileNotFoundError`,
+depending on what else happens to exist under `backend/`.
+
+Rules, implemented once in `ProcessAdapter.__init__` so no step author has to think
+about it:
+
+- `command[0]` is left untouched only if it has no path separator (`/` or `\`) —
+  a bare name like `python` is a deliberate PATH lookup and is not touched.
+- Otherwise (it contains a separator, i.e. it names a file), it is resolved against
+  `PLATFORM_ROOT` unless it is already absolute.
+- `cwd`, if given, is resolved the same way. If omitted, it defaults to
+  `PLATFORM_ROOT` itself — never to the backend process's ambient working directory.
+- If the resolved `command[0]` still does not exist on disk, the step fails with
+  `exit_message` naming both the resolved absolute path and the `PLATFORM_ROOT` value
+  used to resolve it, rather than a bare OS error — e.g. *"Step executable not found:
+  'D:\...\steps\step-003-fingerprinting\publish\Fingerprinting.Cli.exe' (resolved
+  against PLATFORM_ROOT='D:\...')"*. This is what used to surface as an opaque
+  `WinError 2` before the executable was even located.
+
+A bare command name (`python`, `node`, ...) still relies on `PATH`, and — on
+Windows — passing it as a list element to `subprocess.run` does not reliably resolve
+to an active virtualenv's interpreter, even with the venv activated (`CreateProcess`'s
+executable search does not behave like a shell's). Prefer a path relative to
+`PLATFORM_ROOT` for the interpreter itself (e.g.
+`["backend/.venv/Scripts/python.exe", "steps/step-002-solution-discovery/main.py"]`)
+over a bare `python`/`node` whenever the interpreter lives in a project-local
+virtualenv — this is what steps 2 and 3 both do, consistently, for exactly this
+reason.
+
+**Known constraint — command paths are currently Windows-resolved.** The examples
+above (and every `process`-adapter step registered today) use Windows path
+separators and, for compiled steps, a `.exe` suffix. This matches the single-machine,
+Windows-first operating model this build targets (`CLAUDE.md`); nothing here does
+POSIX-style path handling or extension-less executable resolution. A Linux worker
+profile — raised and deliberately deferred in `21-STEP-003-FINGERPRINTING.md` Part A5
+— would need this revisited, not just the step's own build output.
+
 ### `http` — remote service
 
 ```yaml

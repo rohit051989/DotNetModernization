@@ -9,9 +9,11 @@ obligation: read JSON from stdin, write a single JSON object to stdout, exit
 import json
 import os
 import subprocess
+from pathlib import Path
 
 from pydantic import ValidationError
 
+from app.config import settings
 from app.workflow.adapters.base import StepAdapter
 from app.workflow.contract import Diagnostic, StepContext, StepResult
 
@@ -22,13 +24,38 @@ def _tail(text: str) -> str:
     return text[-_TAIL_CHARS:] if text else text
 
 
+def _is_path_like(token: str) -> bool:
+    """A bare command name (`python`, `node`) is left for PATH search; a
+    relative or absolute path (contains a separator) is resolved against
+    PLATFORM_ROOT — see 11-STEP-CONTRACT.md's "process" adapter section."""
+    return "/" in token or "\\" in token
+
+
+def _resolve(token: str, platform_root: Path) -> str:
+    candidate = Path(token)
+    return str(candidate if candidate.is_absolute() else platform_root / candidate)
+
+
 class ProcessAdapter(StepAdapter):
     def __init__(self, adapter_config: dict):
         command = adapter_config.get("command")
         if not command or not isinstance(command, list):
             raise ValueError("process adapter_config.command must be a non-empty list")
-        self._command = command
-        self._cwd = adapter_config.get("cwd")
+
+        platform_root = Path(settings.platform_root)
+        self._platform_root = platform_root
+
+        executable = command[0]
+        resolved_executable = _resolve(executable, platform_root) if _is_path_like(executable) else executable
+        self._command = [resolved_executable, *command[1:]]
+
+        raw_cwd = adapter_config.get("cwd")
+        # No cwd declared: default to PLATFORM_ROOT rather than inheriting
+        # whatever directory the backend process happens to have been
+        # launched from (e.g. `backend/`, per 01-ENVIRONMENT-SETUP.md's run
+        # commands) — the mismatch this class used to have.
+        self._cwd = _resolve(raw_cwd, platform_root) if raw_cwd else str(platform_root)
+
         self._timeout_seconds = adapter_config.get("timeout_seconds")
         self._extra_env = adapter_config.get("env")
 
@@ -36,6 +63,16 @@ class ProcessAdapter(StepAdapter):
         env = None
         if self._extra_env:
             env = {**os.environ, **{k: str(v) for k, v in self._extra_env.items()}}
+
+        executable = self._command[0]
+        if _is_path_like(executable) and not Path(executable).exists():
+            return StepResult(
+                exit_status="FAILED",
+                exit_message=(
+                    f"Step executable not found: '{executable}' "
+                    f"(resolved against PLATFORM_ROOT='{self._platform_root}')"
+                ),
+            )
 
         try:
             completed = subprocess.run(

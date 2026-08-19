@@ -6,3 +6,9 @@ node_modules/
 dist/
 .vite/
 backend/runs/
+
+# .NET (steps/step-003-fingerprinting and any later .NET step)
+bin/
+obj/
+steps/*/publish/
+steps/*/tests/fixtures/sample-output/

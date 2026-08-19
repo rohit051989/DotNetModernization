@@ -10,6 +10,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    Numeric,
     Text,
     UniqueConstraint,
     func,
@@ -68,6 +69,55 @@ REPOSITORY_ARTIFACT_CATEGORY = (
     "configuration",
     "deployment",
     "documentation",
+)
+
+# ---- Step 3 — application fingerprinting (21-STEP-003-FINGERPRINTING.md Part E) ----
+FINGERPRINT_STATUS = ("complete", "partial", "failed", "skipped", "not_supported")
+# The sixteen categories from step-3-application-fingerprinting.md section 19,
+# SCREAMING_SNAKE_CASE per 21-STEP-003-FINGERPRINTING.md Part D. Renaming any of
+# these later means rewriting every signal registry entry and catalog detection
+# rule that references it — see that doc's note on step 4.
+SIGNAL_CATEGORY = (
+    "PROJECT_METADATA",
+    "FRAMEWORK_REFERENCE",
+    "PACKAGE_DEPENDENCY",
+    "SOURCE_CONSTRUCT",
+    "FILE_INDICATOR",
+    "CONFIGURATION_INDICATOR",
+    "ENTRY_POINT",
+    "ENDPOINT_INDICATOR",
+    "EXECUTION_INDICATOR",
+    "HOSTING_INDICATOR",
+    "UI_INDICATOR",
+    "DATA_ACCESS_INDICATOR",
+    "MESSAGING_INDICATOR",
+    "SCHEDULING_INDICATOR",
+    "DEPLOYMENT_INDICATOR",
+    "TESTING_INDICATOR",
+)
+SIGNAL_TYPE = (
+    "ATTRIBUTE",
+    "BASE_CLASS",
+    "FILE_PRESENCE",
+    "INVOCATION",
+    "CONFIG_ELEMENT",
+    "PACKAGE",
+    "ASSEMBLY",
+    "NAMESPACE",
+    "ROUTE",
+    "ENTRY_POINT",
+)
+# The nine source types from step-3-application-fingerprinting.md section 18.
+EVIDENCE_SOURCE_TYPE = (
+    "PROJECT_FILE",
+    "SOURCE_CODE",
+    "CONFIGURATION",
+    "FILE_STRUCTURE",
+    "PACKAGE_REFERENCE",
+    "ASSEMBLY_REFERENCE",
+    "PIPELINE",
+    "DEPLOYMENT_SCRIPT",
+    "SOLUTION_METADATA",
 )
 
 
@@ -774,4 +824,125 @@ class RepositoryArtifact(Base):
         UniqueConstraint("repository_id", "relative_path", name="uq_repository_artifacts_repository_relative_path"),
         CheckConstraint(f"category IN {REPOSITORY_ARTIFACT_CATEGORY}", name="ck_repository_artifacts_category"),
         Index("ix_repository_artifacts_repository_id", "repository_id"),
+    )
+
+
+class ProjectFingerprint(Base):
+    """1:1 with `projects` — written by step 3 (application-fingerprinting).
+    Replaced wholesale per repository on rescan, same pattern as
+    `repository_structure` for step 2. See
+    21-STEP-003-FINGERPRINTING.md Part E."""
+
+    __tablename__ = "project_fingerprints"
+
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), primary_key=True
+    )
+    repository_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("repositories.id", ondelete="CASCADE"), nullable=False
+    )
+    fingerprint_status: Mapped[str] = mapped_column(Text, nullable=False)
+    scanner_version: Mapped[str] = mapped_column(Text, nullable=False)
+    analysis_capabilities: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    project_sdk: Mapped[str | None] = mapped_column(Text)
+    nullable_enabled: Mapped[bool | None] = mapped_column(Boolean)
+    implicit_usings: Mapped[bool | None] = mapped_column(Boolean)
+    evaluated_properties: Mapped[dict | None] = mapped_column(JSONB)
+    signal_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    evidence_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    category_summary: Mapped[dict | None] = mapped_column(JSONB)
+    warnings: Mapped[list | None] = mapped_column(JSONB)
+    analysis_duration_ms: Mapped[int | None] = mapped_column(Integer)
+    step_execution_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    fingerprinted_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        CheckConstraint(f"fingerprint_status IN {FINGERPRINT_STATUS}", name="ck_project_fingerprints_status"),
+        Index("ix_project_fingerprints_repository_id", "repository_id"),
+    )
+
+
+class FingerprintSignal(Base):
+    """One row per `(project, signal_name, source_path)` — aggregated, not
+    per-occurrence; `occurrence_count` carries the true total and `evidence`
+    is capped at 20 entries. `project_id` is null for repository-level
+    signals. See 21-STEP-003-FINGERPRINTING.md Part E."""
+
+    __tablename__ = "fingerprint_signals"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    project_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE")
+    )
+    repository_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("repositories.id", ondelete="CASCADE"), nullable=False
+    )
+    signal_name: Mapped[str] = mapped_column(Text, nullable=False)
+    signal_category: Mapped[str] = mapped_column(Text, nullable=False)
+    signal_type: Mapped[str] = mapped_column(Text, nullable=False)
+    value: Mapped[str | None] = mapped_column(Text)
+    source_type: Mapped[str] = mapped_column(Text, nullable=False)
+    source_path: Mapped[str | None] = mapped_column(Text)
+    occurrence_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
+    evidence: Mapped[list | None] = mapped_column(JSONB)
+    extractor: Mapped[str] = mapped_column(Text, nullable=False)
+    extraction_confidence: Mapped[float] = mapped_column(Numeric(3, 2), nullable=False)
+
+    __table_args__ = (
+        CheckConstraint(f"signal_category IN {SIGNAL_CATEGORY}", name="ck_fingerprint_signals_category"),
+        CheckConstraint(f"signal_type IN {SIGNAL_TYPE}", name="ck_fingerprint_signals_type"),
+        CheckConstraint(f"source_type IN {EVIDENCE_SOURCE_TYPE}", name="ck_fingerprint_signals_source_type"),
+        Index(
+            "uq_fingerprint_signals_project_scope",
+            "project_id",
+            "signal_name",
+            "source_path",
+            "value",
+            unique=True,
+            postgresql_where=text("project_id IS NOT NULL"),
+        ),
+        Index(
+            "uq_fingerprint_signals_repository_scope",
+            "repository_id",
+            "signal_name",
+            "source_path",
+            "value",
+            unique=True,
+            postgresql_where=text("project_id IS NULL"),
+        ),
+        Index("ix_fingerprint_signals_repository_signal_name", "repository_id", "signal_name"),
+        Index("ix_fingerprint_signals_repository_signal_category", "repository_id", "signal_category"),
+    )
+
+
+class FingerprintScan(Base):
+    """1:1 with `repositories` — the repository-level summary written by
+    step 3 (application-fingerprinting). See 21-STEP-003-FINGERPRINTING.md
+    Part E."""
+
+    __tablename__ = "fingerprint_scans"
+
+    repository_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("repositories.id", ondelete="CASCADE"), primary_key=True
+    )
+    scan_status: Mapped[str] = mapped_column(Text, nullable=False)
+    scanner_version: Mapped[str] = mapped_column(Text, nullable=False)
+    signal_registry_version: Mapped[str] = mapped_column(Text, nullable=False)
+    projects_eligible: Mapped[int | None] = mapped_column(Integer)
+    projects_complete: Mapped[int | None] = mapped_column(Integer)
+    projects_partial: Mapped[int | None] = mapped_column(Integer)
+    projects_failed: Mapped[int | None] = mapped_column(Integer)
+    projects_skipped: Mapped[int | None] = mapped_column(Integer)
+    total_signals: Mapped[int | None] = mapped_column(Integer)
+    total_evidence: Mapped[int | None] = mapped_column(Integer)
+    semantic_analysis_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    repository_signal_count: Mapped[int | None] = mapped_column(Integer)
+    warnings: Mapped[list | None] = mapped_column(JSONB)
+    step_execution_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    scanned_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        CheckConstraint(f"scan_status IN {SCAN_STATUS}", name="ck_fingerprint_scans_scan_status"),
     )
