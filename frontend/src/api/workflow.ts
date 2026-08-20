@@ -2,6 +2,8 @@ import { api, apiUrl } from './client'
 import type {
   ArtifactDetail,
   ArtifactSummary,
+  JobDefinitionAdmin,
+  JobDefinitionFull,
   JobDefinitionSummary,
   JobDefinitionView,
   JobExecution,
@@ -13,6 +15,26 @@ import type {
 
 export function listJobDefinitions() {
   return api.get<JobDefinitionSummary[]>('/api/workflow/jobs')
+}
+
+/** Every stored version of every job, active or not, valid or not — the
+ * Workflow Administration tab's Job definitions section
+ * (23-WORKFLOW-ADMINISTRATION.md Part C2). */
+export function listAllJobDefinitions() {
+  return api.get<JobDefinitionAdmin[]>('/api/workflow/jobs/all-versions')
+}
+
+/** One stored version's full detail (definition, validation errors, raw
+ * YAML), active or not. */
+export function getJobDefinitionVersion(jobName: string, version: number) {
+  return api.get<JobDefinitionFull>(`/api/workflow/jobs/${encodeURIComponent(jobName)}/versions/${version}`)
+}
+
+/** Permanently discards a stored version — refused with 409 if it's active
+ * or if any execution still references it (12-JOB-DEFINITION-FORMAT.md:
+ * use validate, not store, for demonstrations and experiments). */
+export function deleteJobDefinitionVersion(jobName: string, version: number) {
+  return api.delete<void>(`/api/workflow/jobs/${encodeURIComponent(jobName)}/versions/${version}`)
 }
 
 export function getJobParameters(jobName: string) {

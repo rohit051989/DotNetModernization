@@ -20,11 +20,11 @@ const MARKER_CLASS: Record<string, string> = {
 /** 22-STEP-SEQUENCING-AND-POLICY.md Part D's timeline treatment table: a
  * skipped step is always a hollow marker — never visually identical to a
  * step that never ran (that's the empty NOT_REACHED marker, no border-2) —
- * dashed specifically for POLICY_DISABLED, solid for the other four
- * reasons. */
+ * dashed specifically for a policy disable (global or engagement — split by
+ * 23-WORKFLOW-ADMINISTRATION.md Part A), solid for the other reasons. */
 function markerClass(step: StepExecution): string {
   if (step.exit_status === 'SKIPPED') {
-    return step.skip_reason === 'POLICY_DISABLED'
+    return step.skip_reason === 'POLICY_DISABLED_GLOBAL' || step.skip_reason === 'POLICY_DISABLED_ENGAGEMENT'
       ? 'border-2 border-dashed border-violet-400 bg-white'
       : 'border-2 border-violet-300 bg-white'
   }

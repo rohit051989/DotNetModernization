@@ -355,18 +355,42 @@ job definition.
 ## Registration and activation
 
 ```
-POST /api/workflow/steps                       register or update a step
-GET  /api/workflow/steps                       list, with implementation_status
-POST /api/workflow/jobs/validate               validate YAML without storing
-POST /api/workflow/jobs                        store, validate, optionally activate
-POST /api/workflow/jobs/{name}/activate/{ver}  activate a validated version
-GET  /api/workflow/jobs/{name}                 current active definition
-GET  /api/workflow/jobs/{name}/parameters      declared parameters, for a launch form
-POST /api/workflow/jobs/{name}/launch          launch — see 18-API-CONVENTIONS.md Part B
+POST   /api/workflow/steps                       register or update a step
+GET    /api/workflow/steps                       list, with implementation_status
+POST   /api/workflow/jobs/validate               validate YAML without storing
+POST   /api/workflow/jobs                        store, validate, optionally activate
+POST   /api/workflow/jobs/{name}/activate/{ver}  activate a validated version
+GET    /api/workflow/jobs/{name}                 current active definition
+GET    /api/workflow/jobs/{name}/versions/{ver}  any stored version, active or not
+DELETE /api/workflow/jobs/{name}/versions/{ver}  discard a stored version
+GET    /api/workflow/jobs/{name}/parameters      declared parameters, for a launch form
+POST   /api/workflow/jobs/{name}/launch          launch — see 18-API-CONVENTIONS.md Part B
 ```
 
 Activation is refused for an invalid definition. Only one active version per
 `job_name`.
+
+**Storing is for definitions intended to be activated.** `POST /api/workflow/jobs`
+always persists the row, valid or not (so a broken definition can be inspected and
+fixed without losing the attempt) — but that persistence is exactly why it's the
+wrong tool for demonstrations and experiments: a stored-but-never-activated version
+sits there indefinitely, indistinguishable at a glance from a version genuinely
+waiting to be activated. **Use `POST /api/workflow/jobs/validate` instead** — it runs
+every rule and reports every violation with nothing stored, no version number
+consumed, and nothing left to clean up afterward.
+
+If a stored version does turn out to be scaffolding — a one-off demonstration, an
+experiment that was meant to be thrown away — `DELETE .../versions/{ver}` discards it.
+It refuses with 409 in two cases, both because deleting a `wf_job_definitions` row
+must never leave something dangling:
+
+- **The version is currently active.** Discarding the active definition would leave
+  the engine with nothing to launch against.
+- **At least one `wf_job_execution` references it.** Executions only ever run against
+  the active definition at launch time, so this can only happen if the version was
+  active at some point in its history — deleting it would orphan that execution's
+  `job_definition_id`. This is not always obvious from `is_active` alone: a version
+  can be inactive today and still have run for real in the past.
 
 `GET .../parameters` reads the *active* definition's `parameters` block — name,
 type, required, default, and description — so a launch form (or an integrator)

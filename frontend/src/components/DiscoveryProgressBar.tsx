@@ -15,7 +15,8 @@ interface DiscoveryProgressBarProps {
 }
 
 const SKIP_REASON_TITLES: Record<string, string> = {
-  POLICY_DISABLED: 'disabled by policy',
+  POLICY_DISABLED_GLOBAL: 'disabled globally',
+  POLICY_DISABLED_ENGAGEMENT: 'disabled for this engagement',
   CONDITION_FALSE: 'not applicable — condition false',
   TIER_NOT_APPLICABLE: 'not applicable for this tier',
   UPSTREAM_SKIPPED: 'skipped — upstream step skipped',

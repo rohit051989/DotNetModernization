@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { JobsList } from './workflow/JobsList'
+import { EngagementPolicySection } from './workflow/EngagementPolicySection'
 import { ExecutionsList } from './workflow/ExecutionsList'
 import { ExecutionDetail } from './workflow/ExecutionDetail'
 import { JobDefinitionViewer } from './workflow/definition/JobDefinitionViewer'
@@ -32,6 +33,7 @@ export function WorkflowPage({ engagementId, selectedExecutionId, onSelectExecut
         onSelectExecution={onSelectExecution}
         onSelectJob={(jobName) => setSelectedJobName((current) => (current === jobName ? null : jobName))}
       />
+      <EngagementPolicySection key={engagementId} engagementId={engagementId} />
       {selectedJobName && <JobDefinitionViewer jobName={selectedJobName} engagementId={engagementId} />}
       <ExecutionsList
         engagementId={engagementId}

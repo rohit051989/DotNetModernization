@@ -1,3 +1,5 @@
+import type { PolicySource, StepPolicy } from './policy'
+
 export type BatchStatus =
   | 'STARTING'
   | 'STARTED'
@@ -10,8 +12,17 @@ export type BatchStatus =
 
 export type ExitStatus = 'COMPLETED' | 'FAILED' | 'NOOP' | 'AWAITING_APPROVAL' | 'NOT_IMPLEMENTED' | 'SKIPPED' | string
 
-/** Null unless exit_status is SKIPPED — see 22-STEP-SEQUENCING-AND-POLICY.md Part D. */
-export type SkipReason = 'POLICY_DISABLED' | 'CONDITION_FALSE' | 'TIER_NOT_APPLICABLE' | 'UPSTREAM_SKIPPED' | 'CASCADED_POLICY'
+/** Null unless exit_status is SKIPPED — see 22-STEP-SEQUENCING-AND-POLICY.md
+ * Part D. `POLICY_DISABLED_GLOBAL`/`POLICY_DISABLED_ENGAGEMENT` replaced the
+ * original single `POLICY_DISABLED` value (23-WORKFLOW-ADMINISTRATION.md
+ * Part A) so the timeline can say which layer disabled the step. */
+export type SkipReason =
+  | 'POLICY_DISABLED_GLOBAL'
+  | 'POLICY_DISABLED_ENGAGEMENT'
+  | 'CONDITION_FALSE'
+  | 'TIER_NOT_APPLICABLE'
+  | 'UPSTREAM_SKIPPED'
+  | 'CASCADED_POLICY'
 
 export interface JobDefinitionSummary {
   job_name: string
@@ -21,6 +32,47 @@ export interface JobDefinitionSummary {
   step_count: number
   implemented_step_count: number
   stub_step_count: number
+}
+
+/** One row per stored version — not just the active one — for the Workflow
+ * Administration tab's Job definitions section
+ * (23-WORKFLOW-ADMINISTRATION.md Part C2: "Include definitions that are not
+ * active or not valid, clearly marked."). */
+export interface JobDefinitionAdmin {
+  job_name: string
+  version: number
+  is_active: boolean
+  validation_status: 'valid' | 'invalid'
+  description: string | null
+  scope: 'per_repository' | 'per_engagement' | 'other'
+  step_count: number
+  implemented_step_count: number
+  /** Whether any execution references this version. A discard is only ever
+   * offered when this is false — an inactive version with no executions
+   * has, by construction, never been activated. */
+  has_executions: boolean
+}
+
+export interface ValidationError {
+  code: string
+  step: string | null
+  detail: string
+  affected_steps: string[]
+}
+
+/** A single stored definition version's full detail, active or not — see
+ * `GET /api/workflow/jobs/{job_name}/versions/{version}`. */
+export interface JobDefinitionFull {
+  id: string
+  job_name: string
+  version: number
+  definition: Record<string, unknown>
+  checksum: string
+  validation_status: 'valid' | 'invalid'
+  validation_errors: ValidationError[] | null
+  is_active: boolean
+  created_at: string
+  source_yaml: string | null
 }
 
 export interface JobParameter {
@@ -177,8 +229,15 @@ export interface ArtifactRefView {
 
 export interface FlowStepPolicy {
   enabled: boolean
-  source: 'default' | 'engagement'
+  source: PolicySource
   reason: string | null
+  /** The raw global row, if one exists, regardless of which layer won —
+   * lets the client view show inheritance (23-WORKFLOW-ADMINISTRATION.md
+   * Part D): source === 'engagement' with a disabled global_policy reads
+   * "overrides global disable". */
+  global_policy: StepPolicy | null
+  /** The raw engagement row, if one exists, regardless of which layer won. */
+  engagement_policy: StepPolicy | null
 }
 
 export interface FlowStepView {

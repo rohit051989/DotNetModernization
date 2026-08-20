@@ -1,9 +1,12 @@
-"""Engagement step policy — see 22-STEP-SEQUENCING-AND-POLICY.md Part C.
+"""Engagement-layer step policy — see 22-STEP-SEQUENCING-AND-POLICY.md Part C,
+amended by 23-WORKFLOW-ADMINISTRATION.md Part A with a global layer above
+this one (`app/routers/workflow_policy.py`). Precedence is engagement beats
+global beats default: an engagement row here always wins, in either
+direction, over whatever the global layer says.
 
 Configuration, not design: "does this client want this step at all?" Kept
 separate from the job definition (which stays in git) precisely so an
-operator can turn a step off for one engagement with no version bump — see
-that doc's "two-layer principle".
+operator can turn a step off for one engagement with no version bump.
 """
 
 from fastapi import APIRouter, Depends, Query
@@ -40,7 +43,9 @@ def _require_engagement(db: Session, engagement_id: str) -> models.Engagement:
     "",
     response_model=list[StepPolicyOut],
     summary="List step policies for an engagement",
-    response_description="Every explicit policy row for this engagement. A step with no row here is enabled.",
+    response_description="Every explicit engagement-layer row for this engagement. A step with no row here "
+    "falls through to the global layer, then to enabled by default — see GET /api/workflow/effective-policies "
+    "for the resolved view.",
     operation_id="list_engagement_step_policies",
     responses={404: _NO_ENGAGEMENT},
 )
@@ -198,13 +203,14 @@ def delete_step_policy(
     db: Session = Depends(get_db),
 ):
     """
-    Deletes the policy row outright — the step reverts to enabled (absence
-    means enabled). Deleting a policy that was itself created by a cascade
-    does not **silently** re-enable an orphaned dependent: if this step is
-    currently disabled and re-enabling it would leave it without a required
-    input from another step still disabled by policy, this is refused
-    (`POLICY_REVERT_ORPHANS_STEP`, 409) unless `force=true` — see
-    22-STEP-SEQUENCING-AND-POLICY.md's acceptance criteria.
+    Deletes the policy row outright — the step reverts to its next-highest
+    layer (a global row if one exists, otherwise enabled by default).
+    Deleting a policy that was itself created by a cascade does not
+    **silently** re-enable an orphaned dependent: if this step is currently
+    disabled and re-enabling it would leave it without a required input from
+    another step still effectively disabled — by an engagement row *or* a
+    global one — this is refused (`POLICY_REVERT_ORPHANS_STEP`, 409) unless
+    `force=true` (23-WORKFLOW-ADMINISTRATION.md Part A).
     """
     _require_engagement(db, engagement_id)
     row = policy.get_policy(db, engagement_id, step_name)

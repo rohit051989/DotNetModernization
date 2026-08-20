@@ -8,6 +8,7 @@ import { CatalogPage } from './pages/CatalogPage'
 import { RepositoriesPage } from './pages/RepositoriesPage'
 import { DashboardPage } from './pages/DashboardPage'
 import { WorkflowPage } from './pages/WorkflowPage'
+import { WorkflowAdministrationPage } from './pages/admin/WorkflowAdministrationPage'
 import { ToastProvider } from './components/Toast'
 import { parseExecutionIdFromLocation, pushExecutionRoute, pushRootRoute } from './routing'
 
@@ -59,7 +60,12 @@ function App() {
     setSelectedEngagementId(engagementId)
     // Repositories/Dashboard/Workflow are engagement-only — Master Catalog has
     // nothing to show there, so fall back to the one tab that always exists.
-    if (engagementId === null && activeTab !== 'catalog') {
+    if (engagementId === null && activeTab !== 'catalog' && activeTab !== 'admin') {
+      setActiveTab('catalog')
+    }
+    // The mirror image: Workflow Administration is master-only — selecting
+    // an engagement leaves nothing to show there either.
+    if (engagementId !== null && activeTab === 'admin') {
       setActiveTab('catalog')
     }
   }
@@ -131,6 +137,8 @@ function App() {
             onSelectExecution={handleSelectExecution}
             onNavigateToRepositories={() => setActiveTab('repositories')}
           />
+        ) : activeTab === 'admin' && !selectedEngagementId ? (
+          <WorkflowAdministrationPage />
         ) : (
           <CatalogPage engagements={engagements} selectedEngagementId={selectedEngagementId} />
         )}

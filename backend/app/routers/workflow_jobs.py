@@ -9,6 +9,7 @@ from app.workflow.definition.loader import JobDefinitionParseError
 from app.workflow.definition.model import JobDefinitionFile
 from app.workflow.definition.schemas import (
     JobDefinition,
+    JobDefinitionAdminOut,
     JobDefinitionStoreRequest,
     JobDefinitionStoreResult,
     JobDefinitionSummary,
@@ -83,6 +84,58 @@ def list_job_definitions(db: Session = Depends(get_db)):
             )
         )
     return summaries
+
+
+@router.get(
+    "/all-versions",
+    response_model=list[JobDefinitionAdminOut],
+    summary="List every stored job definition version, active or not, valid or not",
+    response_description="One row per stored version — the Workflow Administration tab's Job definitions section.",
+    operation_id="list_all_job_definitions",
+)
+def list_all_job_definitions(db: Session = Depends(get_db)):
+    """
+    Unlike `GET /api/workflow/jobs` (active-only), this includes every
+    stored version of every job — inactive superseded versions and
+    definitions that failed validation — so a broken definition is
+    discoverable here instead of only via a direct API call
+    (23-WORKFLOW-ADMINISTRATION.md Part C2).
+    """
+    rows = service.list_all_definitions(db)
+    step_names: set[str] = set()
+    parsed: dict[int, JobDefinitionFile] = {}
+    for row in rows:
+        definition = JobDefinitionFile.model_validate(row.definition)
+        parsed[row.id] = definition
+        step_names.update(node.step for node in definition.flow)
+
+    registrations = {
+        reg.step_name: reg
+        for reg in db.query(models.WfStepRegistration).filter(models.WfStepRegistration.step_name.in_(step_names))
+    }
+    ids_with_executions = service.definition_ids_with_executions(db, [row.id for row in rows])
+
+    results = []
+    for row in rows:
+        definition = parsed[row.id]
+        flow_steps = [node.step for node in definition.flow]
+        implemented = sum(
+            1 for name in flow_steps if registrations.get(name) and registrations[name].implementation_status == "implemented"
+        )
+        results.append(
+            JobDefinitionAdminOut(
+                job_name=row.job_name,
+                version=row.version,
+                is_active=row.is_active,
+                validation_status=row.validation_status,
+                description=definition.description,
+                scope=_job_scope({p.name for p in definition.parameters}),
+                step_count=len(flow_steps),
+                implemented_step_count=implemented,
+                has_executions=row.id in ids_with_executions,
+            )
+        )
+    return results
 
 
 @router.post(
@@ -190,6 +243,62 @@ def get_active_job(job_name: str, db: Session = Depends(get_db)):
 
 
 @router.get(
+    "/{job_name}/versions/{version}",
+    response_model=JobDefinition,
+    summary="Get one stored job definition version, active or not",
+    response_description="That version's stored definition, validation status/errors, and raw YAML.",
+    operation_id="get_job_definition_version",
+    responses={404: {"model": ErrorResponse, "description": "No definition is stored for this job_name + version."}},
+)
+def get_job_definition_version(job_name: str, version: int, db: Session = Depends(get_db)):
+    """
+    Unlike `GET /{job_name}` (active only), this opens any stored version —
+    including an inactive or invalid one — for the Workflow Administration
+    tab's Job definitions section (23-WORKFLOW-ADMINISTRATION.md Part C2).
+    """
+    row = service.get_definition_version(db, job_name, version)
+    if row is None:
+        raise error(404, f"No definition stored for '{job_name}' version {version}", code="NOT_FOUND")
+    return JobDefinition.model_validate(row)
+
+
+@router.delete(
+    "/{job_name}/versions/{version}",
+    status_code=204,
+    summary="Discard a stored job definition version",
+    response_description="Deleted. Only ever succeeds for a version that is neither active nor referenced by any execution.",
+    operation_id="delete_job_definition_version",
+    responses={
+        404: {"model": ErrorResponse, "description": "No definition is stored for this job_name + version."},
+        409: {
+            "model": ErrorResponse,
+            "description": "This version is the active definition, or at least one execution still references "
+            "it. Either way, discarding is refused — an execution must never be orphaned, and the active "
+            "definition must never disappear out from under the engine.",
+        },
+    },
+)
+def delete_job_definition_version(job_name: str, version: int, db: Session = Depends(get_db)):
+    """
+    Permanently removes a stored version — for scaffolding from a
+    demonstration or experiment that was stored but never meant to be
+    activated (12-JOB-DEFINITION-FORMAT.md: use `POST .../validate` instead,
+    which never stores). Refuses with 409 if the version is currently active,
+    or if any `wf_job_executions` row references it — an execution's
+    `job_definition_id` must never be left dangling.
+    """
+    try:
+        service.delete_definition_version(db, job_name, version)
+    except LookupError as exc:
+        raise error(404, str(exc), code="NOT_FOUND") from exc
+    except service.DefinitionIsActiveError as exc:
+        raise error(409, str(exc), code="DEFINITION_IS_ACTIVE") from exc
+    except service.DefinitionHasExecutionsError as exc:
+        raise error(409, str(exc), code="DEFINITION_HAS_EXECUTIONS") from exc
+    db.commit()
+
+
+@router.get(
     "/{job_name}/parameters",
     response_model=JobParametersResponse,
     summary="Get the launch parameters a job declares",
@@ -236,8 +345,9 @@ def get_job_definition_view(
     job_name: str,
     engagement_id: str | None = Query(
         default=None,
-        description="When supplied, merges each step's engagement_step_policies state into policy.source/enabled/reason. "
-        "Omit to see every step at its default (enabled).",
+        description="When supplied, resolves each step's policy across the engagement and global layers into "
+        "policy.source/enabled/reason (23-WORKFLOW-ADMINISTRATION.md Part A). Omit to resolve the global layer "
+        "only.",
     ),
     db: Session = Depends(get_db),
 ):

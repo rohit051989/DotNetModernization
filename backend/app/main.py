@@ -13,17 +13,18 @@ from app.routers import (
     dashboard,
     decisions,
     engagement_patterns,
-    engagement_step_policies,
     engagements,
     health,
     patterns,
     repositories,
+    step_policies,
     structure,
     target_states,
     workflow_artifacts,
     workflow_capabilities,
     workflow_executions,
     workflow_jobs,
+    workflow_policy,
     workflow_steps,
 )
 
@@ -247,13 +248,14 @@ app.include_router(patterns.router)
 app.include_router(target_states.router)
 app.include_router(engagements.router)
 app.include_router(engagement_patterns.router)
-app.include_router(engagement_step_policies.router)
+app.include_router(step_policies.router)
 app.include_router(decisions.router)
 app.include_router(catalog.router)
 app.include_router(workflow_steps.router)
 app.include_router(workflow_capabilities.router)
 app.include_router(workflow_jobs.router)
 app.include_router(workflow_executions.router)
+app.include_router(workflow_policy.router)
 app.include_router(workflow_artifacts.router)
 app.include_router(repositories.router)
 app.include_router(structure.router)

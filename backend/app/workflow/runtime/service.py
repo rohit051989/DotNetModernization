@@ -9,6 +9,7 @@ import uuid
 from sqlalchemy.orm import Session
 
 from app import models
+from app.workflow import policy
 from app.workflow.definition import service as definition_service
 from app.workflow.definition.model import JobDefinitionFile
 from app.workflow.runtime import executor, preconditions
@@ -41,19 +42,18 @@ def _compute_step_policy_snapshot(
     """Read once, at launch — 22-STEP-SEQUENCING-AND-POLICY.md Part C: "The
     policy is read once at job launch and snapshotted into the job execution
     context, so a policy change mid-execution cannot produce a run that
-    half-honoured it." Only steps with an explicit policy row are included;
-    absence means enabled, so most flows snapshot to `{}`."""
-    if not engagement_id:
-        return {}
-    rows = (
-        db.query(models.EngagementStepPolicy)
-        .filter(
-            models.EngagementStepPolicy.engagement_id == engagement_id,
-            models.EngagementStepPolicy.step_name.in_(flow_step_names),
-        )
-        .all()
-    )
-    return {row.step_name: {"enabled": row.enabled, "reason": row.reason} for row in rows}
+    half-honoured it." Resolved across both the global and engagement layers
+    (23-WORKFLOW-ADMINISTRATION.md Part A: engagement beats global beats
+    default), with `source` recorded alongside `enabled` and `reason` so the
+    timeline can say which layer decided it. Only steps whose effective
+    state has an explicit row are included; absence means enabled, so most
+    flows snapshot to `{}`."""
+    resolved = policy.resolve_effective_policies(db, engagement_id, flow_step_names)
+    return {
+        name: {"enabled": effective.enabled, "reason": effective.reason, "source": effective.source}
+        for name, effective in resolved.items()
+        if effective.source != "default"
+    }
 
 
 def _next_execution_number(db: Session, instance_id: uuid.UUID) -> int:

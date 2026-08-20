@@ -9,10 +9,10 @@ class StepPolicyOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
-    engagement_id: str
+    engagement_id: str | None = Field(description="Null means this is a global row — see 23-WORKFLOW-ADMINISTRATION.md Part A.")
     step_name: str
     enabled: bool
-    reason: str | None = Field(description="Null unless this row records a disablement or an explicit note.")
+    reason: str = Field(description="Required whenever a row exists, in either direction.")
     set_by: str | None = Field(description="Operator name — free text until auth exists.")
     set_at: datetime.datetime
     created_at: datetime.datetime
@@ -34,10 +34,11 @@ class StepPolicyRequest(BaseModel):
     )
 
     step_name: str = Field(description="A registered step, e.g. 'application-fingerprinting'.")
-    enabled: bool = Field(description="False to disable this step for the engagement; true to (re-)enable it.")
-    reason: str | None = Field(
-        default=None,
-        description="Required when enabled is false — surfaces in the timeline and the policy summary strip.",
+    enabled: bool = Field(description="False to disable this step; true to (re-)enable it.")
+    reason: str = Field(
+        description="Required in either direction (23-WORKFLOW-ADMINISTRATION.md Part A) — surfaces in the "
+        "timeline and the policy summary strip. 'Why is this step running when it is globally off' needs an "
+        "answer as much as the reverse.",
     )
     set_by: str | None = Field(default=None, description="Operator name. Free text until auth exists.")
     cascade: bool = Field(
@@ -48,9 +49,9 @@ class StepPolicyRequest(BaseModel):
     )
 
     @model_validator(mode="after")
-    def _reason_required_when_disabling(self) -> "StepPolicyRequest":
-        if not self.enabled and not (self.reason and self.reason.strip()):
-            raise ValueError("reason is required when enabled is false")
+    def _reason_required(self) -> "StepPolicyRequest":
+        if not (self.reason and self.reason.strip()):
+            raise ValueError("reason is required, in either direction")
         return self
 
 
@@ -92,6 +93,12 @@ class StepPolicySetResult(BaseModel):
     cascaded: list[StepPolicyOut] = Field(
         default_factory=list,
         description="Additional policy rows created because cascade: true was set. Empty otherwise.",
+    )
+    overriding_engagements: list[str] = Field(
+        default_factory=list,
+        description="Set only by a global disable: engagement ids with their own row explicitly re-enabling this "
+        "step, and therefore unaffected by this change (23-WORKFLOW-ADMINISTRATION.md Part A). Always empty for "
+        "engagement-scoped requests and for global enables.",
     )
 
 
@@ -150,3 +157,83 @@ class StepPolicyValidateResponse(BaseModel):
         description="Steps that would lose a required input. Empty when would_orphan is false."
     )
     message: str | None = Field(description="Human-readable summary, or null when would_orphan is false.")
+
+
+PolicySource = Literal["default", "global", "engagement"]
+
+
+class EffectivePolicyOut(BaseModel):
+    """One step's resolved state — 23-WORKFLOW-ADMINISTRATION.md Part B:
+    "enabled, source, reason, and the raw layer rows, so the UI can show
+    inheritance without recomputing it." """
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "step_name": "application-fingerprinting",
+                    "enabled": False,
+                    "source": "global",
+                    "reason": "Not ready for any engagement yet.",
+                    "global_policy": {
+                        "id": "8f2c1a3b-0000-4000-8000-000000000020",
+                        "engagement_id": None,
+                        "step_name": "application-fingerprinting",
+                        "enabled": False,
+                        "reason": "Not ready for any engagement yet.",
+                        "set_by": "admin",
+                        "set_at": "2026-08-19T12:00:00Z",
+                        "created_at": "2026-08-19T12:00:00Z",
+                        "updated_at": "2026-08-19T12:00:00Z",
+                    },
+                    "engagement_policy": None,
+                }
+            ]
+        }
+    )
+
+    step_name: str
+    enabled: bool
+    source: PolicySource
+    reason: str | None = Field(description="Null only when source is 'default'.")
+    global_policy: StepPolicyOut | None = Field(description="The global row, if one exists, regardless of source.")
+    engagement_policy: StepPolicyOut | None = Field(
+        description="The engagement row, if one exists and an engagement_id was given, regardless of source."
+    )
+
+
+class PolicyStateOut(BaseModel):
+    """The minimal state shown per matrix cell — enough to render the four
+    cell states in 23-WORKFLOW-ADMINISTRATION.md Part C4 without a second
+    lookup."""
+
+    enabled: bool
+    source: PolicySource
+    reason: str | None = None
+
+
+class PolicyMatrixEngagementOut(BaseModel):
+    id: str
+    client_name: str
+
+
+class PolicyMatrixStepOut(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    step_name: str
+    lifecycle_step_no: int | None
+    display_name: str
+    implementation_status: str
+    global_state: PolicyStateOut = Field(alias="global")
+    engagements: dict[str, PolicyStateOut] = Field(
+        description="Every engagement's effective state for this step, keyed by engagement_id."
+    )
+
+
+class PolicyMatrixOut(BaseModel):
+    """`GET /api/workflow/policy-matrix` — 23-WORKFLOW-ADMINISTRATION.md Part
+    B. Only steps appearing in at least one active job definition are
+    included."""
+
+    engagements: list[PolicyMatrixEngagementOut]
+    steps: list[PolicyMatrixStepOut]

@@ -1,29 +1,56 @@
 import { useState } from 'react'
 import { ApiError } from '../../../api/client'
-import { deleteStepPolicy, setStepPolicy } from '../../../api/policies'
-import type { PolicyConflictDetail } from '../../../types/policy'
+import {
+  deleteGlobalStepPolicy,
+  deleteStepPolicy,
+  setGlobalStepPolicy,
+  setStepPolicy,
+} from '../../../api/policies'
+import type { PolicyConflictDetail, StepPolicy } from '../../../types/policy'
+
+export type PolicyScope = 'global' | { engagementId: string }
 
 interface StepPolicyDialogProps {
-  engagementId: string
+  scope: PolicyScope
   stepName: string
   displayName: string
-  currentlyEnabled: boolean
-  currentReason: string | null
+  /** The step's currently *effective* state — enabled/source/reason as
+   * resolved across whichever layers apply. */
+  effectiveEnabled: boolean
+  /** This scope's own row, if one exists — determines whether the dialog's
+   * action creates a new row (none exists yet) or reverts the existing one
+   * (23-WORKFLOW-ADMINISTRATION.md Part A precedence: engagement beats
+   * global beats default; the same "does a row exist at this scope" check
+   * drives both the global editor and the engagement editor). */
+  ownRow: StepPolicy | null
   onClose: () => void
   onChanged: () => void
 }
 
-/** The toggle dialog from the flow card's policy state — 22-STEP-SEQUENCING-AND-POLICY.md
- * Part E: "On toggle off, a required-reason dialog. If the API returns
- * POLICY_ORPHANS_DEPENDENTS, show the dependent steps and offer an explicit
- * 'also disable these' confirmation which resubmits with cascade: true." The
- * re-enable direction mirrors this with POLICY_REVERT_ORPHANS_STEP and `force`. */
+/** The toggle dialog from a flow card or a policy table row —
+ * 22-STEP-SEQUENCING-AND-POLICY.md Part E, extended across layers by
+ * 23-WORKFLOW-ADMINISTRATION.md Part A. Two modes, uniform across scopes:
+ *
+ * - **create** (no row at this scope yet): the action always flips the
+ *   current effective state. At default/global-enabled, that's "Disable".
+ *   At engagement scope with a global disable in effect, that's "Override
+ *   for this engagement" — an explicit enable, reason still required.
+ * - **revert** (a row exists at this scope): the action deletes it,
+ *   falling through to whatever the next layer down says. On the
+ *   engagement layer that may fall back to a global disable, not to
+ *   enabled — the dialog says so.
+ *
+ * On toggle off (create, disabling), a required-reason dialog. If the API
+ * returns `POLICY_ORPHANS_DEPENDENTS`, show the dependent steps and offer an
+ * explicit "also disable these" confirmation which resubmits with
+ * `cascade: true`. The revert direction mirrors this with
+ * `POLICY_REVERT_ORPHANS_STEP` and `force`. */
 export function StepPolicyDialog({
-  engagementId,
+  scope,
   stepName,
   displayName,
-  currentlyEnabled,
-  currentReason,
+  effectiveEnabled,
+  ownRow,
   onClose,
   onChanged,
 }: StepPolicyDialogProps) {
@@ -32,16 +59,23 @@ export function StepPolicyDialog({
   const [formError, setFormError] = useState<string | null>(null)
   const [conflict, setConflict] = useState<PolicyConflictDetail | null>(null)
 
+  const isGlobal = scope === 'global'
+  const scopeLabel = isGlobal ? 'globally' : 'for this engagement'
+  const mode: 'create' | 'revert' = ownRow ? 'revert' : 'create'
+  const desiredEnabled = !effectiveEnabled
+
   function conflictDetails(err: ApiError): PolicyConflictDetail | null {
     const detail = err.rawDetail[0] as PolicyConflictDetail | undefined
     return detail && typeof detail === 'object' && 'code' in detail ? detail : null
   }
 
-  async function handleDisable(cascade: boolean) {
+  async function handleCreate(cascade: boolean) {
     setBusy(true)
     setFormError(null)
     try {
-      await setStepPolicy(engagementId, { step_name: stepName, enabled: false, reason, cascade })
+      const payload = { step_name: stepName, enabled: desiredEnabled, reason, cascade }
+      if (isGlobal) await setGlobalStepPolicy(payload)
+      else await setStepPolicy(scope.engagementId, payload)
       onChanged()
       onClose()
     } catch (err) {
@@ -52,17 +86,18 @@ export function StepPolicyDialog({
           return
         }
       }
-      setFormError(err instanceof ApiError ? err.message : 'Could not disable this step.')
+      setFormError(err instanceof ApiError ? err.message : 'Could not save this policy.')
     } finally {
       setBusy(false)
     }
   }
 
-  async function handleReEnable(force: boolean) {
+  async function handleRevert(force: boolean) {
     setBusy(true)
     setFormError(null)
     try {
-      await deleteStepPolicy(engagementId, stepName, force)
+      if (isGlobal) await deleteGlobalStepPolicy(stepName, force)
+      else await deleteStepPolicy(scope.engagementId, stepName, force)
       onChanged()
       onClose()
     } catch (err) {
@@ -73,24 +108,32 @@ export function StepPolicyDialog({
           return
         }
       }
-      setFormError(err instanceof ApiError ? err.message : 'Could not re-enable this step.')
+      setFormError(err instanceof ApiError ? err.message : 'Could not revert this policy.')
     } finally {
       setBusy(false)
     }
   }
+
+  const title =
+    mode === 'create'
+      ? desiredEnabled
+        ? `Override ${displayName} for this engagement`
+        : `Disable ${displayName} ${scopeLabel}`
+      : ownRow?.enabled
+        ? `Remove this ${isGlobal ? 'global' : 'engagement'} override`
+        : `Re-enable ${displayName} ${scopeLabel}`
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="absolute inset-0 bg-neutral-900/30" onClick={onClose} aria-hidden="true" />
       <div className="relative w-full max-w-md rounded bg-white p-5 shadow-xl">
-        <h3 className="text-sm font-semibold text-neutral-900">
-          {currentlyEnabled ? `Disable ${displayName}` : `Re-enable ${displayName}`}
-        </h3>
+        <h3 className="text-sm font-semibold text-neutral-900">{title}</h3>
 
-        {!currentlyEnabled && (
+        {mode === 'revert' && ownRow && (
           <p className="mt-2 text-sm text-neutral-600">
-            Currently disabled{currentReason ? `: ${currentReason}` : '.'} Reverting deletes this policy row —
-            absence means enabled.
+            Currently {ownRow.enabled ? 'enabled' : 'disabled'}
+            {ownRow.reason ? `: ${ownRow.reason}` : '.'} Reverting deletes this policy row — the step falls back to{' '}
+            {isGlobal ? 'enabled by default' : 'whatever the global layer (or default) says'}.
           </p>
         )}
 
@@ -118,7 +161,7 @@ export function StepPolicyDialog({
                 <button
                   type="button"
                   disabled={busy}
-                  onClick={() => handleDisable(true)}
+                  onClick={() => handleCreate(true)}
                   className="rounded bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
                 >
                   {busy ? 'Disabling…' : 'Also disable these'}
@@ -127,7 +170,7 @@ export function StepPolicyDialog({
                 <button
                   type="button"
                   disabled={busy}
-                  onClick={() => handleReEnable(true)}
+                  onClick={() => handleRevert(true)}
                   className="rounded bg-violet-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50"
                 >
                   {busy ? 'Re-enabling…' : 'Re-enable anyway'}
@@ -135,7 +178,7 @@ export function StepPolicyDialog({
               )}
             </div>
           </div>
-        ) : currentlyEnabled ? (
+        ) : mode === 'create' ? (
           <div className="mt-3 space-y-3">
             <div>
               <label className="mb-1 block text-xs font-medium text-neutral-600">Reason *</label>
@@ -144,7 +187,11 @@ export function StepPolicyDialog({
                 onChange={(event) => setReason(event.target.value)}
                 rows={3}
                 className="w-full rounded border border-neutral-300 px-3 py-1.5 text-sm focus:border-violet-400 focus:outline-none"
-                placeholder="Why is this step disabled for this engagement? Surfaces in the timeline and the policy summary strip."
+                placeholder={
+                  desiredEnabled
+                    ? 'Why should this step run for this engagement despite the wider policy?'
+                    : `Why should this step stop running ${scopeLabel}? Surfaces in the timeline and the policy summary strip.`
+                }
               />
             </div>
             {formError && <p className="text-sm text-red-600">{formError}</p>}
@@ -159,10 +206,12 @@ export function StepPolicyDialog({
               <button
                 type="button"
                 disabled={busy || !reason.trim()}
-                onClick={() => handleDisable(false)}
-                className="rounded bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+                onClick={() => handleCreate(false)}
+                className={`rounded px-3 py-1.5 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50 ${
+                  desiredEnabled ? 'bg-violet-600 hover:bg-violet-700' : 'bg-red-600 hover:bg-red-700'
+                }`}
               >
-                {busy ? 'Disabling…' : 'Disable'}
+                {busy ? 'Saving…' : desiredEnabled ? 'Override' : 'Disable'}
               </button>
             </div>
           </div>
@@ -180,10 +229,10 @@ export function StepPolicyDialog({
               <button
                 type="button"
                 disabled={busy}
-                onClick={() => handleReEnable(false)}
+                onClick={() => handleRevert(false)}
                 className="rounded bg-violet-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50"
               >
-                {busy ? 'Re-enabling…' : 'Re-enable'}
+                {busy ? 'Reverting…' : 'Revert'}
               </button>
             </div>
           </div>

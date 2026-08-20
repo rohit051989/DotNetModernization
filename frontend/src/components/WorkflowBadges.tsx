@@ -64,10 +64,14 @@ export function AdapterTypeChip({ adapterType }: { adapterType: string }) {
   )
 }
 
-/** Part D's five skip reasons, each with its own chip label — the marker
- * itself is rendered by the caller (hollow, dashed for POLICY_DISABLED). */
+/** 22-STEP-SEQUENCING-AND-POLICY.md Part D's skip reasons, each with its own
+ * chip label — the marker itself is rendered by the caller (hollow, dashed
+ * for the two policy reasons). `POLICY_DISABLED_GLOBAL`/`_ENGAGEMENT` split
+ * the original single `POLICY_DISABLED` value per
+ * 23-WORKFLOW-ADMINISTRATION.md Part E's exact chip text. */
 const SKIP_REASON_LABELS: Record<string, string> = {
-  POLICY_DISABLED: 'SKIPPED',
+  POLICY_DISABLED_GLOBAL: 'SKIPPED — GLOBAL POLICY',
+  POLICY_DISABLED_ENGAGEMENT: 'SKIPPED — ENGAGEMENT POLICY',
   CONDITION_FALSE: 'NOT APPLICABLE',
   TIER_NOT_APPLICABLE: 'TIER N/A',
   UPSTREAM_SKIPPED: 'UPSTREAM SKIPPED',

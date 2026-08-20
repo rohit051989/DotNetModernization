@@ -1,4 +1,4 @@
-export type TabKey = 'catalog' | 'repositories' | 'applications' | 'dependencies' | 'waves' | 'dashboard' | 'workflow'
+export type TabKey = 'catalog' | 'repositories' | 'applications' | 'dependencies' | 'waves' | 'dashboard' | 'workflow' | 'admin'
 
 interface Tab {
   key: TabKey
@@ -7,17 +7,26 @@ interface Tab {
    * tabs hide entirely in Master Catalog view rather than just disabling —
    * there is nothing engagement-scoped to show there. */
   engagementOnly: boolean
+  /** The mirror image: hidden whenever an engagement IS selected —
+   * 23-WORKFLOW-ADMINISTRATION.md Part C: "New tab, visible only in Master
+   * Catalog view." There is nothing to gate behind auth yet
+   * (04-FRONTEND-SPEC.md "Future: access control"); see the TODO on the tab
+   * itself and at the global policy mutations. */
+  masterOnly: boolean
   implemented: boolean
 }
 
 const TABS: Tab[] = [
-  { key: 'catalog', label: 'Catalog', engagementOnly: false, implemented: true },
-  { key: 'repositories', label: 'Repositories', engagementOnly: true, implemented: true },
-  { key: 'applications', label: 'Applications', engagementOnly: true, implemented: false },
-  { key: 'dependencies', label: 'Dependencies', engagementOnly: true, implemented: false },
-  { key: 'waves', label: 'Waves', engagementOnly: true, implemented: false },
-  { key: 'dashboard', label: 'Dashboard', engagementOnly: true, implemented: true },
-  { key: 'workflow', label: 'Workflow', engagementOnly: true, implemented: true },
+  { key: 'catalog', label: 'Catalog', engagementOnly: false, masterOnly: false, implemented: true },
+  // TODO: gate this tab behind an admin check once auth exists — non-admins
+  // should not see it at all (04-FRONTEND-SPEC.md, "Future: access control").
+  { key: 'admin', label: 'Workflow Administration', engagementOnly: false, masterOnly: true, implemented: true },
+  { key: 'repositories', label: 'Repositories', engagementOnly: true, masterOnly: false, implemented: true },
+  { key: 'applications', label: 'Applications', engagementOnly: true, masterOnly: false, implemented: false },
+  { key: 'dependencies', label: 'Dependencies', engagementOnly: true, masterOnly: false, implemented: false },
+  { key: 'waves', label: 'Waves', engagementOnly: true, masterOnly: false, implemented: false },
+  { key: 'dashboard', label: 'Dashboard', engagementOnly: true, masterOnly: false, implemented: true },
+  { key: 'workflow', label: 'Workflow', engagementOnly: true, masterOnly: false, implemented: true },
 ]
 
 interface TabBarProps {
@@ -27,7 +36,7 @@ interface TabBarProps {
 }
 
 export function TabBar({ activeTab, onSelectTab, isMaster }: TabBarProps) {
-  const visibleTabs = TABS.filter((tab) => !tab.engagementOnly || !isMaster)
+  const visibleTabs = TABS.filter((tab) => (!tab.engagementOnly || !isMaster) && (!tab.masterOnly || isMaster))
 
   return (
     <nav className="flex gap-1 border-b border-neutral-200 bg-white px-6">

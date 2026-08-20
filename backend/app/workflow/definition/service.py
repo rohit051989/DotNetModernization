@@ -17,6 +17,7 @@ from app.workflow.definition.schemas import (
     JobParameterOut,
 )
 from app.workflow.definition.validator import ValidationErrorItem, validate_job_definition
+from app.workflow.policy_schemas import StepPolicyOut
 from app.workflow.runtime.when_eval import render_when_prose
 
 
@@ -30,6 +31,21 @@ class DuplicateJobVersionError(Exception):
     def __init__(self, errors: list[ValidationErrorItem]):
         super().__init__(errors[0].detail if errors else "duplicate job version")
         self.errors = errors
+
+
+class DefinitionIsActiveError(Exception):
+    """Refuses to discard the currently active version — see
+    `delete_definition_version`."""
+
+
+class DefinitionHasExecutionsError(Exception):
+    """Refuses to discard a version that at least one `wf_job_executions` row
+    still references — discarding it would orphan that row's
+    `job_definition_id` foreign key. See `delete_definition_version`."""
+
+    def __init__(self, execution_count: int):
+        super().__init__(f"{execution_count} execution(s) reference this definition version")
+        self.execution_count = execution_count
 
 
 def validate_yaml(
@@ -103,6 +119,13 @@ def get_active_definition(db: Session, job_name: str) -> models.WfJobDefinition 
     return db.query(models.WfJobDefinition).filter_by(job_name=job_name, is_active=True).first()
 
 
+def get_definition_version(db: Session, job_name: str, version: int) -> models.WfJobDefinition | None:
+    """Any stored version, active or not, valid or not — the Workflow
+    Administration tab's Job definitions section needs to open a version
+    that isn't currently active (23-WORKFLOW-ADMINISTRATION.md Part C2)."""
+    return db.query(models.WfJobDefinition).filter_by(job_name=job_name, version=version).first()
+
+
 def list_active_definitions(db: Session) -> list[models.WfJobDefinition]:
     """Every job with a currently-active definition — the Workflow tab's
     jobs list (20-WORKFLOW-OBSERVABILITY-UI.md Part B) iterates this rather
@@ -115,14 +138,68 @@ def list_active_definitions(db: Session) -> list[models.WfJobDefinition]:
     )
 
 
+def list_all_definitions(db: Session) -> list[models.WfJobDefinition]:
+    """Every stored version of every job, active or not, valid or not — the
+    Workflow Administration tab's Job definitions section
+    (23-WORKFLOW-ADMINISTRATION.md Part C2), which must surface an invalid
+    or inactive definition rather than let it be discoverable only via a
+    direct API call."""
+    return (
+        db.query(models.WfJobDefinition)
+        .order_by(models.WfJobDefinition.job_name, models.WfJobDefinition.version.desc())
+        .all()
+    )
+
+
+def definition_ids_with_executions(db: Session, definition_ids: list) -> set:
+    """Which of `definition_ids` have at least one `wf_job_executions` row
+    referencing them — one query for the whole list rather than one per row,
+    for the Job definitions admin listing (each row needs to know whether a
+    discard is even offerable)."""
+    if not definition_ids:
+        return set()
+    rows = (
+        db.query(models.WfJobExecution.job_definition_id)
+        .filter(models.WfJobExecution.job_definition_id.in_(definition_ids))
+        .distinct()
+        .all()
+    )
+    return {row[0] for row in rows}
+
+
+def delete_definition_version(db: Session, job_name: str, version: int) -> None:
+    """Permanently discards a stored version — for scaffolding from a demo
+    or experiment that was never meant to be activated
+    (12-JOB-DEFINITION-FORMAT.md: "demonstrations and experiments should use
+    validate, not store"). Refuses the active version
+    (`DefinitionIsActiveError`) and any version a `wf_job_executions` row
+    still references (`DefinitionHasExecutionsError`) — an execution must
+    never be orphaned."""
+    row = get_definition_version(db, job_name, version)
+    if row is None:
+        raise LookupError(f"'{job_name}' version {version} is not stored")
+    if row.is_active:
+        raise DefinitionIsActiveError(f"'{job_name}' version {version} is the active definition and cannot be discarded")
+
+    execution_count = (
+        db.query(models.WfJobExecution).filter_by(job_definition_id=row.id).count()
+    )
+    if execution_count > 0:
+        raise DefinitionHasExecutionsError(execution_count)
+
+    db.delete(row)
+    db.flush()
+
+
 def build_job_definition_view(
     db: Session, job_name: str, engagement_id: str | None
 ) -> JobDefinitionViewOut | None:
     """Read-only, resolved-for-display view of the active definition —
     22-STEP-SEQUENCING-AND-POLICY.md Part E. Returns None if there is no
-    active definition for `job_name`. Policy state is merged in per step only
-    when `engagement_id` is supplied; otherwise every step shows as enabled
-    by default (nothing to merge)."""
+    active definition for `job_name`. Policy state is resolved across the
+    global and engagement layers (23-WORKFLOW-ADMINISTRATION.md Part A:
+    engagement beats global beats default) — with no `engagement_id`, only
+    the global layer applies."""
     row = get_active_definition(db, job_name)
     if row is None:
         return None
@@ -135,9 +212,7 @@ def build_job_definition_view(
             models.WfStepRegistration.step_name.in_(step_names)
         )
     }
-    policies = (
-        {p.step_name: p for p in policy.list_policies(db, engagement_id)} if engagement_id else {}
-    )
+    effective_policies = policy.resolve_effective_policies(db, engagement_id, step_names)
 
     flow_out: list[FlowStepOut] = []
     implemented_count = 0
@@ -146,11 +221,13 @@ def build_job_definition_view(
         if reg is not None and reg.implementation_status == "implemented":
             implemented_count += 1
 
-        policy_row = policies.get(node.step)
-        policy_out = (
-            FlowStepPolicyOut(enabled=policy_row.enabled, source="engagement", reason=policy_row.reason)
-            if policy_row is not None
-            else FlowStepPolicyOut(enabled=True, source="default", reason=None)
+        effective = effective_policies[node.step]
+        policy_out = FlowStepPolicyOut(
+            enabled=effective.enabled,
+            source=effective.source,
+            reason=effective.reason,
+            global_policy=StepPolicyOut.model_validate(effective.global_policy) if effective.global_policy else None,
+            engagement_policy=StepPolicyOut.model_validate(effective.engagement_policy) if effective.engagement_policy else None,
         )
 
         flow_out.append(

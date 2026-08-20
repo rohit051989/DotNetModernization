@@ -326,15 +326,24 @@ def _evaluate_run_decision(
     beyond what the caller already resolved into `job_execution`."""
     job_context = job_execution.execution_context or {}
 
-    # 1. Engagement policy — read only from the launch-time snapshot, never
-    # a live query: "Policy is read once at job launch and snapshotted into
-    # the job execution context, so a policy change mid-execution cannot
-    # produce a run that half-honoured it" (Part C).
+    # 1. Policy (global or engagement layer) — read only from the
+    # launch-time snapshot, never a live query: "Policy is read once at job
+    # launch and snapshotted into the job execution context, so a policy
+    # change mid-execution cannot produce a run that half-honoured it"
+    # (22-STEP-SEQUENCING-AND-POLICY.md Part C). The snapshot records
+    # `source` (23-WORKFLOW-ADMINISTRATION.md Part A) so a disable can be
+    # attributed to the right layer even after the fact.
     snapshot = job_context.get("step_policy_snapshot") or {}
-    policy = snapshot.get(node.step)
-    if policy is not None and not policy.get("enabled", True):
-        reason = policy.get("reason") or "Disabled by engagement policy"
-        skip_reason = "CASCADED_POLICY" if reason.startswith(CASCADE_REASON_PREFIX) else "POLICY_DISABLED"
+    policy_state = snapshot.get(node.step)
+    if policy_state is not None and not policy_state.get("enabled", True):
+        reason = policy_state.get("reason") or "Disabled by policy"
+        if reason.startswith(CASCADE_REASON_PREFIX):
+            skip_reason = "CASCADED_POLICY"
+        else:
+            # Snapshots written before the global layer existed carry no
+            # `source` key; every policy row was engagement-scoped then.
+            source = policy_state.get("source", "engagement")
+            skip_reason = "POLICY_DISABLED_GLOBAL" if source == "global" else "POLICY_DISABLED_ENGAGEMENT"
         return "skip", skip_reason, reason
 
     # 2. when:

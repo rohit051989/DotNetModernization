@@ -4,6 +4,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.workflow.policy_schemas import StepPolicyOut
+
 
 class ValidationErrorOut(BaseModel):
     code: str = Field(description="One of the 8 rule codes from 12-JOB-DEFINITION-FORMAT.md, e.g. 'UNSATISFIED_INPUT'.")
@@ -67,6 +69,11 @@ class JobDefinition(BaseModel):
     validation_errors: list[ValidationErrorOut] | None = Field(description="Populated when validation_status is 'invalid'.")
     is_active: bool = Field(description="Whether this is the currently active version for job_name. At most one per job_name.")
     created_at: datetime.datetime = Field(description="When this version was stored.")
+    source_yaml: str | None = Field(
+        default=None,
+        description="The exact YAML text this version was stored from — null for rows stored before this field "
+        "existed.",
+    )
 
 
 class JobDefinitionStoreResult(BaseModel):
@@ -114,6 +121,47 @@ class JobDefinitionSummary(BaseModel):
     step_count: int = Field(description="Steps in this definition's flow.")
     implemented_step_count: int = Field(description="Of those, how many are registered with implementation_status 'implemented'.")
     stub_step_count: int = Field(description="Of those, how many are still 'stub'.")
+
+
+class JobDefinitionAdminOut(BaseModel):
+    """One row per **stored version** of every job — not just the active
+    one — for the Workflow Administration tab's Job definitions section
+    (23-WORKFLOW-ADMINISTRATION.md Part C2: "Include definitions that are
+    not active or not valid, clearly marked. A job that failed validation
+    should be visible here rather than only discoverable through an API
+    call.")."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "job_name": "phase0-repository-discovery",
+                    "version": 4,
+                    "is_active": True,
+                    "validation_status": "valid",
+                    "description": "Per-repository discovery and analysis. Lifecycle steps 1,2,3,4,8,9,10.",
+                    "scope": "per_repository",
+                    "step_count": 7,
+                    "implemented_step_count": 3,
+                    "has_executions": True,
+                }
+            ]
+        }
+    )
+
+    job_name: str
+    version: int
+    is_active: bool
+    validation_status: Literal["valid", "invalid"]
+    description: str | None
+    scope: Literal["per_repository", "per_engagement", "other"]
+    step_count: int
+    implemented_step_count: int
+    has_executions: bool = Field(
+        description="Whether any wf_job_executions row references this version. A discard is only ever offered "
+        "when this is false — an inactive version with no executions has, by construction, never been activated "
+        "(executions are only ever created against the active definition at launch)."
+    )
 
 
 class JobParametersResponse(BaseModel):
@@ -165,11 +213,20 @@ class ArtifactRefOut(BaseModel):
 
 class FlowStepPolicyOut(BaseModel):
     enabled: bool = Field(description="Whether this step runs for the given engagement (or by default, if none was given).")
-    source: Literal["default", "engagement"] = Field(
-        description="'default' when no engagement_step_policies row exists (absence means enabled); "
-        "'engagement' when one does."
+    source: Literal["default", "global", "engagement"] = Field(
+        description="'default' when no policy row applies (absence means enabled); 'global' when only a global "
+        "step_policies row applies; 'engagement' when an engagement-layer row overrides it — "
+        "23-WORKFLOW-ADMINISTRATION.md Part A: engagement beats global beats default."
     )
-    reason: str | None = Field(description="The policy row's reason, or null when source is 'default'.")
+    reason: str | None = Field(description="The winning policy row's reason, or null when source is 'default'.")
+    global_policy: StepPolicyOut | None = Field(
+        description="The global row, if one exists, regardless of which layer won — lets the client view show "
+        "inheritance (23-WORKFLOW-ADMINISTRATION.md Part D): an engagement row with source='engagement' but a "
+        "disabled global_policy reads 'overrides global disable'."
+    )
+    engagement_policy: StepPolicyOut | None = Field(
+        description="The engagement row, if one exists and an engagement_id was given, regardless of which layer won."
+    )
 
 
 class FlowStepOut(BaseModel):
@@ -191,7 +248,13 @@ class FlowStepOut(BaseModel):
                     "when": None,
                     "when_description": None,
                     "gate": None,
-                    "policy": {"enabled": True, "source": "default", "reason": None},
+                    "policy": {
+                        "enabled": True,
+                        "source": "default",
+                        "reason": None,
+                        "global_policy": None,
+                        "engagement_policy": None,
+                    },
                 }
             ]
         }

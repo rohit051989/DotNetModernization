@@ -44,10 +44,14 @@ BATCH_STATUS = (
     "UNKNOWN",
 )
 TRIGGERED_BY = ("manual", "api", "resume", "schedule")
-# 22-STEP-SEQUENCING-AND-POLICY.md Part D. Null unless exit_status is SKIPPED
-# (enforced by ck_wf_step_executions_skip_reason_pairing below).
+# 22-STEP-SEQUENCING-AND-POLICY.md Part D, split per
+# 23-WORKFLOW-ADMINISTRATION.md Part A: POLICY_DISABLED became
+# POLICY_DISABLED_GLOBAL / POLICY_DISABLED_ENGAGEMENT so the timeline can say
+# which layer disabled the step. Null unless exit_status is SKIPPED (enforced
+# by ck_wf_step_executions_skip_reason_pairing below).
 SKIP_REASON = (
-    "POLICY_DISABLED",
+    "POLICY_DISABLED_GLOBAL",
+    "POLICY_DISABLED_ENGAGEMENT",
     "CONDITION_FALSE",
     "TIER_NOT_APPLICABLE",
     "UPSTREAM_SKIPPED",
@@ -324,30 +328,35 @@ class EngagementPattern(Base):
     )
 
 
-class EngagementStepPolicy(Base):
-    """A client's explicit override disabling one lifecycle step — see
-    22-STEP-SEQUENCING-AND-POLICY.md Part C. Absence of a row means enabled;
-    this table only ever holds deviations from default, so a newly
+class StepPolicy(Base):
+    """One policy row, at either the global or engagement layer — see
+    23-WORKFLOW-ADMINISTRATION.md Part A. `engagement_id IS NULL` means
+    global ("nobody should run this yet"); a non-null `engagement_id` means
+    a client-specific override ("this client does not want this").
+    Precedence is engagement beats global beats default (absence of any row).
+    This table only ever holds deviations from default, so a newly
     registered step needs no backfill."""
 
-    __tablename__ = "engagement_step_policies"
+    __tablename__ = "step_policies"
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
     )
-    engagement_id: Mapped[str] = mapped_column(Text, ForeignKey("engagements.id"), nullable=False)
+    # Null means global — a row scoped to every engagement at once, not to
+    # one in particular.
+    engagement_id: Mapped[str | None] = mapped_column(Text, ForeignKey("engagements.id"), nullable=True)
     step_name: Mapped[str] = mapped_column(
         Text, ForeignKey("wf_step_registrations.step_name"), nullable=False
     )
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
-    # Mandatory when enabled is false (app-layer validation); nullable at the
-    # DB level so a row explicitly re-recording "enabled" needs no reason.
-    # A cascade-created row's reason is always the literal
+    # Required in either direction (Part A): "why is this step running for
+    # Client A when it is globally off" needs an answer as much as the
+    # reverse. A cascade-created row's reason is always the literal
     # "cascaded from disabling <step_name>" — the runtime distinguishes
-    # skip_reason CASCADED_POLICY from POLICY_DISABLED by that convention
-    # rather than a separate column (22-STEP-SEQUENCING-AND-POLICY.md Part C
-    # documents no such column).
-    reason: Mapped[str | None] = mapped_column(Text)
+    # skip_reason CASCADED_POLICY from POLICY_DISABLED_GLOBAL /
+    # POLICY_DISABLED_ENGAGEMENT by that convention rather than a separate
+    # column (spec documents no such column).
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
     set_by: Mapped[str | None] = mapped_column(Text)
     set_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -360,9 +369,23 @@ class EngagementStepPolicy(Base):
     )
 
     __table_args__ = (
-        UniqueConstraint("engagement_id", "step_name", name="uq_engagement_step_policies_engagement_step"),
-        CheckConstraint("enabled OR reason IS NOT NULL", name="ck_engagement_step_policies_reason_required"),
-        Index("ix_engagement_step_policies_engagement_id", "engagement_id"),
+        # A plain UNIQUE(engagement_id, step_name) would treat every NULL
+        # engagement_id as distinct, allowing duplicate global rows — two
+        # partial indexes instead, one per layer.
+        Index(
+            "uq_step_policies_global_step",
+            "step_name",
+            unique=True,
+            postgresql_where=text("engagement_id IS NULL"),
+        ),
+        Index(
+            "uq_step_policies_engagement_step",
+            "engagement_id",
+            "step_name",
+            unique=True,
+            postgresql_where=text("engagement_id IS NOT NULL"),
+        ),
+        Index("ix_step_policies_engagement_id", "engagement_id"),
     )
 
 

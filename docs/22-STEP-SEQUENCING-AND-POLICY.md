@@ -13,12 +13,15 @@ Amends `12-JOB-DEFINITION-FORMAT.md`, `10-ENGINE-CONCEPTS.md` and
 | Layer | Question it answers | Lives in | Changed by |
 |---|---|---|---|
 | **Design** | Does this step make sense to run here, given the data? | Job definition YAML — `when:` conditions | Engineer, via YAML plus a version bump |
-| **Configuration** | Does this client want this step at all? | `engagement_step_policies` table | Operator, from the UI, no version bump |
+| **Configuration** | Does this client (or every client) want this step at all? | `step_policies` table | Operator or admin, from the UI, no version bump |
 
 Keep these separate. "Only generate characterization tests when coverage is below
 threshold" is design — it belongs in the flow and applies to every client. "Client B
 is not modernizing SSIS" is configuration — it belongs in data and applies to one
-engagement.
+engagement. "Nobody should run this yet" is also configuration, one layer up —
+`23-WORKFLOW-ADMINISTRATION.md` Part A splits Configuration itself into a global and
+an engagement layer within this same table, distinguished by whether
+`engagement_id` is null.
 
 Per-engagement job definitions were considered and rejected: they fragment the
 definition set and every engine improvement then needs copying N times.
@@ -110,29 +113,57 @@ Evaluated in this order; the first that resolves to "do not run" wins:
 
 ---
 
-## Part C — Engagement step policy
+## Part C — Step policy: global and engagement layers
 
-### Table `engagement_step_policies`
+Amended by `23-WORKFLOW-ADMINISTRATION.md` Part A, which added the global layer
+below and renamed the table; this section reflects that current state rather than
+the two-layer design as first shipped.
+
+### Table `step_policies`
 
 | Column | Type | Notes |
 |---|---|---|
 | `id` | `UUID` PK | |
-| `engagement_id` | `TEXT` NOT NULL FK → `engagements.id` | |
+| `engagement_id` | `TEXT` NULL FK → `engagements.id` | **Null means global** |
 | `step_name` | `TEXT` NOT NULL FK → `wf_step_registrations.step_name` | |
 | `enabled` | `BOOLEAN` NOT NULL DEFAULT true | |
-| `reason` | `TEXT` NOT NULL | Mandatory when `enabled` is false |
+| `reason` | `TEXT` NOT NULL | Required whenever a row exists, in either direction |
 | `set_by` | `TEXT` | Operator name. Free text until auth exists |
 | `set_at` | `TIMESTAMPTZ` NOT NULL | |
 | `created_at` / `updated_at` | `TIMESTAMPTZ` | |
 
-Unique on `(engagement_id, step_name)`.
+Two partial unique indexes, not one plain unique constraint — a plain
+`UNIQUE(engagement_id, step_name)` treats every `NULL` engagement_id as distinct,
+which would let multiple global rows exist for the same step:
 
-**Absence means enabled.** No row is the default, so a newly registered step is
-active for every engagement with no backfill — the same lazy-overlay pattern used for
-`engagement_patterns`.
+- `(step_name) WHERE engagement_id IS NULL` — one global row per step
+- `(engagement_id, step_name) WHERE engagement_id IS NOT NULL` — one row per
+  engagement per step
 
-`reason` is required on disable and surfaces in the timeline. "Why didn't contract
-verification run on application 412" must be answerable from the UI.
+Was `engagement_step_policies`, `engagement_id NOT NULL`, `reason` required only
+when disabling. Renamed and widened by `23-WORKFLOW-ADMINISTRATION.md` Part A;
+existing rows migrated unchanged (they all had an `engagement_id` already).
+
+### Three layers, one table
+
+| Layer | Scope | Set by | Answers |
+|---|---|---|---|
+| **Default** | Everything | Nobody — absence of a row at either layer | Enabled |
+| **Global** | All engagements | Admin, master view | "Nobody should run this yet" |
+| **Engagement** | One engagement | Operator, client view | "This client does not want this" |
+
+**Precedence: engagement beats global beats default.** An engagement row is an
+explicit local decision and overrides a global one in either direction — an
+engagement can re-enable a step that is globally disabled, and can disable a step
+that is globally enabled.
+
+**Absence means enabled.** No row at either layer is the default, so a newly
+registered step is active everywhere with no backfill — the same lazy-overlay
+pattern used for `engagement_patterns`.
+
+`reason` is required whenever a row exists, in either direction. "Why didn't
+contract verification run on application 412" must be answerable from the UI —
+and so must "why is this step running for Client A when it is globally off."
 
 ### The dependency problem
 
@@ -163,23 +194,38 @@ POST /api/engagements/{eid}/step-policies
 
 The request may carry `cascade: true` plus the explicit dependent list, in which case
 the API creates a policy row for each with reason
-`"cascaded from disabling <step_name>"`. The operator confirms in the UI; nothing
-cascades implicitly.
+`"cascaded from disabling <step_name>"`, **at the same layer as the change being
+made** — a global disable's cascade rows are global; an engagement disable's are
+engagement-scoped. The operator confirms in the UI; nothing cascades implicitly.
 
 Downstream steps whose `consumes` is `optional: true` are unaffected — they run
 without that input, which is what optional means.
 
+This guard extends across layers (`23-WORKFLOW-ADMINISTRATION.md` Part A):
+
+- A **global** disable is validated against every active job definition the same
+  way, and additionally reports which engagements have their own row re-enabling
+  the step — those engagements are unaffected, and the admin should know the
+  change is partial.
+- An **engagement** re-enable of a globally disabled step is validated the same
+  way: re-enabling a step whose upstream producer is effectively disabled — by an
+  engagement row or a global one — is refused.
+
 ### Runtime behaviour
 
-When a step's policy is disabled, the engine still **creates a `wf_step_executions`
-row** with `batch_status: COMPLETED`, `exit_status: SKIPPED` and
-`skip_reason: POLICY_DISABLED`, carrying the policy reason in `exit_message`. It
-produces no artifacts and consumes no inputs.
+When a step's effective policy is disabled, the engine still **creates a
+`wf_step_executions` row** with `batch_status: COMPLETED`, `exit_status: SKIPPED`
+and `skip_reason: POLICY_DISABLED_GLOBAL` or `POLICY_DISABLED_ENGAGEMENT` — matching
+whichever layer's row is the one actually in effect — carrying the policy reason in
+`exit_message`. It produces no artifacts and consumes no inputs.
 
-The policy is read **once at job launch** and snapshotted into the job execution
-context, so a policy change mid-execution cannot produce a run that half-honoured it.
-Record the snapshot in `wf_job_executions.execution_context` under
-`step_policy_snapshot`.
+The policy is read **once at job launch**, resolved across both layers
+(engagement beats global beats default), and snapshotted into the job execution
+context, so a policy change mid-execution cannot produce a run that half-honoured
+it. Record the snapshot in `wf_job_executions.execution_context` under
+`step_policy_snapshot`, keyed by step name, each entry carrying `enabled`, `reason`,
+and `source` (`"global"` or `"engagement"`) so the timeline can say which layer
+decided it.
 
 ---
 
@@ -189,7 +235,11 @@ Record the snapshot in `wf_job_executions.execution_context` under
 
 | Column | Type | Notes |
 |---|---|---|
-| `skip_reason` | `TEXT` | Null unless `exit_status` is `SKIPPED`. CHECK IN (`POLICY_DISABLED`, `CONDITION_FALSE`, `TIER_NOT_APPLICABLE`, `UPSTREAM_SKIPPED`, `CASCADED_POLICY`) |
+| `skip_reason` | `TEXT` | Null unless `exit_status` is `SKIPPED`. CHECK IN (`POLICY_DISABLED_GLOBAL`, `POLICY_DISABLED_ENGAGEMENT`, `CONDITION_FALSE`, `TIER_NOT_APPLICABLE`, `UPSTREAM_SKIPPED`, `CASCADED_POLICY`) |
+
+`POLICY_DISABLED_GLOBAL` and `POLICY_DISABLED_ENGAGEMENT` replace the original
+single `POLICY_DISABLED` value (`23-WORKFLOW-ADMINISTRATION.md` Part A) — the
+timeline should say which layer disabled the step, not only that policy did.
 
 `SKIPPED` is added to the exit status vocabulary in `10-ENGINE-CONCEPTS.md`. It is a
 **success** outcome for flow purposes — the job continues.
@@ -209,7 +259,8 @@ Extend the visual treatment table in `20-WORKFLOW-OBSERVABILITY-UI.md`:
 
 | State | Treatment |
 |---|---|
-| `SKIPPED` — `POLICY_DISABLED` | Hollow marker, dashed outline, `SKIPPED` chip, reason inline in the collapsed row |
+| `SKIPPED` — `POLICY_DISABLED_GLOBAL` | Hollow marker, dashed outline, `SKIPPED — GLOBAL POLICY` chip, reason inline in the collapsed row |
+| `SKIPPED` — `POLICY_DISABLED_ENGAGEMENT` | Hollow marker, dashed outline, `SKIPPED — ENGAGEMENT POLICY` chip, reason inline in the collapsed row |
 | `SKIPPED` — `CONDITION_FALSE` | Hollow marker, `NOT APPLICABLE` chip, the condition that evaluated false shown when expanded |
 | `SKIPPED` — `TIER_NOT_APPLICABLE` | Hollow marker, `TIER N` chip |
 | `SKIPPED` — `UPSTREAM_SKIPPED` | Hollow marker, `UPSTREAM SKIPPED` chip, naming the upstream step |
@@ -262,7 +313,9 @@ Returns the active definition resolved for display, with policy state merged in 
 }
 ```
 
-`policy.source` is `default` when no row exists, `engagement` when one does.
+`policy.source` is `default` when no row applies at either layer, `global` when only
+a global row applies, and `engagement` when an engagement row overrides it — see
+`23-WORKFLOW-ADMINISTRATION.md` Part A for the precedence rule.
 
 ### UI — new section in the Workflow tab
 
@@ -309,12 +362,17 @@ and who set it, so the deviations from default are visible in one place.
 GET    /api/workflow/jobs/{job_name}/definition?engagement_id=
 GET    /api/engagements/{eid}/step-policies
 POST   /api/engagements/{eid}/step-policies          create or update; validates dependencies
-DELETE /api/engagements/{eid}/step-policies/{step_name}   revert to default (enabled)
+DELETE /api/engagements/{eid}/step-policies/{step_name}   revert to next layer (global, else default)
 POST   /api/engagements/{eid}/step-policies/validate      dry run, returns what would be orphaned
 ```
 
 All per `18-API-CONVENTIONS.md`. The `validate` endpoint lets the UI warn before the
 operator commits.
+
+The mirror-image global-layer endpoints (`GET`/`POST`/`DELETE`/`validate` under
+`/api/workflow/step-policies`), plus the cross-layer `effective-policies` and
+`policy-matrix` read views, are added by `23-WORKFLOW-ADMINISTRATION.md` Part B —
+listed there rather than duplicated here.
 
 ---
 
@@ -327,8 +385,8 @@ Deliberately out of scope, recorded so the boundary is explicit:
 - **Repository-level policy.** Engagement-level only. The table can gain a nullable
   `repository_id` later without restructuring.
 - **Policy history.** Current state only. If an audit trail of policy changes becomes
-  necessary, add an append-only `engagement_step_policy_events` table rather than
-  versioning rows.
+  necessary, add an append-only `step_policy_events` table rather than versioning
+  rows.
 - **Reordering steps per engagement.** Order is design and stays in YAML. A client
   wanting a different order needs a different job, and that should be a deliberate
   conversation.
@@ -346,8 +404,10 @@ Deliberately out of scope, recorded so the boundary is explicit:
       step; with a comparison operator it **fails** the step
 - [ ] A step with a false `when:` condition produces a `SKIPPED` row with
       `skip_reason: CONDITION_FALSE`
-- [ ] Disabling a step by policy produces a `SKIPPED` row with
-      `skip_reason: POLICY_DISABLED` and the reason in `exit_message`
+- [ ] Disabling a step by engagement policy produces a `SKIPPED` row with
+      `skip_reason: POLICY_DISABLED_ENGAGEMENT` and the reason in `exit_message`
+      (global-layer criteria — `POLICY_DISABLED_GLOBAL`, cross-layer overrides — are
+      in `23-WORKFLOW-ADMINISTRATION.md`'s acceptance criteria)
 - [ ] Disabling `solution-discovery` returns 409 naming `application-fingerprinting`
       as orphaned
 - [ ] The same request with `cascade: true` creates both policy rows, the second with

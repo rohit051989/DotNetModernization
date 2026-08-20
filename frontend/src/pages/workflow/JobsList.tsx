@@ -84,11 +84,15 @@ export function JobsList({ engagementId, selectedJobName, onSelectExecution, onS
                     <button
                       type="button"
                       onClick={() => onSelectJob(job.job_name)}
-                      className="text-left font-medium text-neutral-900 hover:text-violet-700 hover:underline"
+                      title="View flow, consumes/produces, and policy state"
+                      className="flex items-center gap-1.5 text-left font-medium text-violet-700 hover:text-violet-800 hover:underline"
                     >
+                      <span aria-hidden="true" className="text-neutral-400">
+                        {isSelected ? '▾' : '▸'}
+                      </span>
                       {job.job_name}
                     </button>
-                    {job.description && <div className="text-xs text-neutral-400">{job.description}</div>}
+                    {job.description && <div className="pl-4 text-xs text-neutral-400">{job.description}</div>}
                   </td>
                   <td className="px-3 py-2 text-neutral-600">v{job.active_version}</td>
                   <td className="px-3 py-2 text-neutral-500">{SCOPE_LABELS[job.scope]}</td>

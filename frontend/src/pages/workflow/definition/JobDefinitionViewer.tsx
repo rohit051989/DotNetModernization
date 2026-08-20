@@ -4,10 +4,15 @@ import { CopyButton } from '../../../components/CopyButton'
 import { AdapterTypeChip, ImplementationStatusChip, OwnerCodeBadge } from '../../../components/WorkflowBadges'
 import type { ArtifactRefView, FlowStepView, JobDefinitionView } from '../../../types/workflow'
 import { StepPolicyDialog } from './StepPolicyDialog'
+import { policyOwnRow, policyStatusText, policyToggleLabel } from './policyPresentation'
 
 interface JobDefinitionViewerProps {
   jobName: string
-  engagementId: string
+  /** Null (or omitted) selects master scope — policy state resolves only
+   * the global and default layers, per 23-WORKFLOW-ADMINISTRATION.md Part
+   * C2: "in master scope with no engagement selected — so policy state
+   * shows global and default only." */
+  engagementId?: string | null
 }
 
 interface ArtifactChipProps {
@@ -48,13 +53,15 @@ function ArtifactChip({ artifact, kind, hoveredType, onHoverType }: ArtifactChip
 
 interface FlowStepCardProps {
   step: FlowStepView
+  isMasterScope: boolean
   hoveredType: string | null
   onHoverType: (type: string | null) => void
   onTogglePolicy: () => void
 }
 
-function FlowStepCard({ step, hoveredType, onHoverType, onTogglePolicy }: FlowStepCardProps) {
+function FlowStepCard({ step, isMasterScope, hoveredType, onHoverType, onTogglePolicy }: FlowStepCardProps) {
   const inputEntries = Object.entries(step.inputs)
+  const toggleLabel = policyToggleLabel(step.policy, isMasterScope)
 
   return (
     <div
@@ -111,10 +118,10 @@ function FlowStepCard({ step, hoveredType, onHoverType, onTogglePolicy }: FlowSt
 
       <div className="mt-2 flex items-center justify-between border-t border-neutral-100 pt-2 text-xs">
         <span className={step.policy.enabled ? 'text-neutral-500' : 'font-medium text-red-600'}>
-          {step.policy.enabled ? 'Enabled' : `Disabled — ${step.policy.reason ?? 'no reason recorded'}`}
+          {policyStatusText(step.policy)}
         </span>
         <button type="button" onClick={onTogglePolicy} className="text-violet-600 hover:underline">
-          {step.policy.enabled ? 'Disable…' : 'Re-enable…'}
+          {toggleLabel}
         </button>
       </div>
     </div>
@@ -125,6 +132,7 @@ function FlowStepCard({ step, hoveredType, onHoverType, onTogglePolicy }: FlowSt
  * Read-only over the YAML; only policy state (engagement-scoped) is
  * editable, via StepPolicyDialog. */
 export function JobDefinitionViewer({ jobName, engagementId }: JobDefinitionViewerProps) {
+  const isMasterScope = !engagementId
   const [view, setView] = useState<JobDefinitionView | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -135,7 +143,7 @@ export function JobDefinitionViewer({ jobName, engagementId }: JobDefinitionView
   const load = useCallback(() => {
     setLoading(true)
     setLoadError(null)
-    getJobDefinitionView(jobName, engagementId)
+    getJobDefinitionView(jobName, engagementId ?? undefined)
       .then(setView)
       .catch(() => setLoadError('Could not load this job definition.'))
       .finally(() => setLoading(false))
@@ -148,7 +156,11 @@ export function JobDefinitionViewer({ jobName, engagementId }: JobDefinitionView
   if (loading) return <p className="p-4 text-sm text-neutral-400">Loading definition…</p>
   if (loadError || !view) return <p className="p-4 text-sm text-red-600">{loadError ?? 'Definition not found.'}</p>
 
-  const disabledSteps = view.flow.filter((s) => s.policy.source === 'engagement' && !s.policy.enabled)
+  // 23-WORKFLOW-ADMINISTRATION.md Part D: "The policy summary strip lists
+  // every step whose effective state differs from default, with the layer
+  // responsible." Not just engagement-sourced any more — a global disable
+  // is a deviation too.
+  const disabledSteps = view.flow.filter((s) => s.policy.source !== 'default' && !s.policy.enabled)
 
   return (
     <section className="space-y-4 rounded border border-neutral-200 bg-white p-4">
@@ -200,7 +212,10 @@ export function JobDefinitionViewer({ jobName, engagementId }: JobDefinitionView
           <ul className="space-y-1">
             {disabledSteps.map((s) => (
               <li key={s.step_name} className="text-amber-800">
-                <span className="font-medium">{s.display_name}</span> disabled
+                <span className="font-medium">{s.display_name}</span> disabled{' '}
+                <span className="rounded bg-amber-100 px-1 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700">
+                  {s.policy.source}
+                </span>
                 {s.policy.reason ? ` — ${s.policy.reason}` : ''}
               </li>
             ))}
@@ -215,6 +230,7 @@ export function JobDefinitionViewer({ jobName, engagementId }: JobDefinitionView
             <FlowStepCard
               key={step.step_name}
               step={step}
+              isMasterScope={isMasterScope}
               hoveredType={hoveredType}
               onHoverType={setHoveredType}
               onTogglePolicy={() => setPolicyTarget(step)}
@@ -248,11 +264,11 @@ export function JobDefinitionViewer({ jobName, engagementId }: JobDefinitionView
 
       {policyTarget && (
         <StepPolicyDialog
-          engagementId={engagementId}
+          scope={isMasterScope ? 'global' : { engagementId: engagementId as string }}
           stepName={policyTarget.step_name}
           displayName={policyTarget.display_name}
-          currentlyEnabled={policyTarget.policy.enabled}
-          currentReason={policyTarget.policy.reason}
+          effectiveEnabled={policyTarget.policy.enabled}
+          ownRow={policyOwnRow(policyTarget.policy, isMasterScope)}
           onClose={() => setPolicyTarget(null)}
           onChanged={load}
         />
