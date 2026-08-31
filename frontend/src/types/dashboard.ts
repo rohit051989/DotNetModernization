@@ -43,6 +43,20 @@ export interface DashboardRepositoryStructureBrief {
   framework_families: Record<string, number>
 }
 
+export interface DashboardTopPattern {
+  pattern_id: string
+  pattern_name: string
+  count: number
+}
+
+export interface DashboardPatternCounts {
+  projects_evaluated: number
+  projects_matched: number
+  projects_ambiguous: number
+  projects_no_pattern_matched: number
+  top_patterns: DashboardTopPattern[]
+}
+
 export interface DashboardCapabilities {
   application_count: boolean
   pattern_classification: boolean
@@ -72,7 +86,7 @@ export interface DashboardSummary {
   discovery: DashboardDiscoveryCounts
   structure: DashboardStructureCounts
   applications: Record<string, unknown> | null
-  patterns: Record<string, unknown> | null
+  patterns: DashboardPatternCounts | null
   risk_tiers: Record<string, unknown> | null
   waves: Record<string, unknown> | null
   decisions: DashboardDecisionCounts

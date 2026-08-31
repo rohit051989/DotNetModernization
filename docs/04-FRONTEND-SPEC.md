@@ -208,8 +208,9 @@ must not appear there at all.
 
 If a decision record exists for this pattern and engagement:
 - status badge (`parked` grey, `in_review` amber, `approved` green,
-  `superseded` muted)
-- selected target state, rationale, forcing factor if present, approver, date
+  `superseded` muted), alongside a `forcing_perspective` badge if one is set
+  (`25-STANDARDS-AND-VIEWPOINTS.md` Part A1)
+- selected target state, rationale, forcing rationale if present, approver, date
 - Edit and Supersede buttons
 
 If none exists: an empty state with **Record a decision**.
@@ -256,15 +257,18 @@ skills (tag input), gaps (tag input), custom skills required (tag input).
 Fields: pattern (read-only, from context), engagement (read-only, from selector),
 `candidates_considered` (multi-select of that pattern's target state options,
 defaulting to all active ones), `selected_target_state_id` (select, constrained to
-the candidates chosen), `evaluation_notes`, `rationale`, `forcing_factor`,
-`approver_name`, `approver_role`, `decision_date` (date), `status` (select).
+the candidates chosen), `evaluation_notes`, `rationale`, a `forcing_perspective`
+select (the seven values in `25-STANDARDS-AND-VIEWPOINTS.md` Part A1) positioned
+above `forcing_rationale`, `approver_name`, `approver_role`, `decision_date`
+(date), `status` (select).
 
 **Client-side mirror of the server rule:** when the selected option is not the
 lowest `consumer_impact` among the candidates, show an inline warning above the
-`forcing_factor` field and mark it required:
+`forcing_perspective` select and mark both it and `forcing_rationale` required:
 
 > CoreWCF on .NET 10 has lower consumer impact (none) than your selection
-> (high). Record the forcing factor that justifies the higher-impact option.
+> (high). Record the perspective and rationale that justify the higher-impact
+> option.
 
 Do not block submission client-side only — the server enforces it too. The client
 warning exists to make the governance rule visible during the demo.

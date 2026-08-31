@@ -2,20 +2,165 @@ export type LifecycleStatus = 'draft' | 'active' | 'deprecated'
 export type ConsumerImpact = 'none' | 'low' | 'medium' | 'high'
 export type EffortLevel = 'low' | 'medium' | 'high'
 export type DecisionStatus = 'parked' | 'in_review' | 'approved' | 'superseded'
+export type ForcingPerspective =
+  | 'SECURITY'
+  | 'EVOLUTION'
+  | 'REGULATION'
+  | 'PERFORMANCE_SCALABILITY'
+  | 'AVAILABILITY_RESILIENCE'
+  | 'LOCATION'
+  | 'DEVELOPMENT_RESOURCE'
 export type EngineCoverage = 'none' | 'partial' | 'strong'
 export type ScopeStatus = 'active' | 'deferred'
 
-export interface DetectionRules {
-  target_frameworks: string[]
-  required_namespaces: string[]
-  forbidden_namespaces: string[]
-  required_packages: string[]
-  file_globs: string[]
-  forbidden_file_globs: string[]
-  project_properties: Record<string, string>
-  config_markers: string[]
-  confidence_weight: number
-  notes: string | null
+// ---------- Step 4 classification schema (24-STEP-004-CLASSIFICATION.md Part C) ----------
+
+export type ClassificationRole = 'PRIMARY' | 'SECONDARY' | 'PROJECT_ROLE'
+export type PatternScope = 'PROJECT' | 'REPOSITORY'
+export type RulesStatus = 'active' | 'awaiting_signals' | 'draft'
+
+export interface ValueMatch {
+  equals?: string | null
+  in?: string[] | null
+  startsWith?: string | null
+  contains?: string | null
+  regex?: string | null
+}
+
+export interface SignalCondition {
+  name: string
+  category?: string | null
+  type?: string | null
+  sourceType?: string | null
+  value?: ValueMatch | null
+  minimumOccurrences?: number | null
+  maximumOccurrences?: number | null
+  minimumDistinctValues?: number | null
+  minimumDistinctSourceFiles?: number | null
+  minimumExtractionConfidence?: number | null
+}
+
+export interface RuleCondition {
+  id?: string
+  signal: SignalCondition
+}
+
+export interface SupportingCondition extends RuleCondition {
+  weight: number
+}
+
+export interface NoneCondition extends RuleCondition {
+  disqualify?: boolean
+  penalty?: number | null
+}
+
+export interface AtLeastGroup {
+  id?: string
+  count: number
+  of: RuleCondition[]
+}
+
+export interface MetadataCondition {
+  id?: string
+  field: string
+  equals?: string | null
+  in?: string[] | null
+  startsWith?: string | null
+  contains?: string | null
+  regex?: string | null
+}
+
+export interface SignalRuleSet {
+  schema: 'signal-rules/1.0'
+  all: RuleCondition[]
+  any: RuleCondition[]
+  atLeast: AtLeastGroup[]
+  supporting: SupportingCondition[]
+  none: NoneCondition[]
+  metadata: MetadataCondition[]
+}
+
+export function emptySignalRuleSet(): SignalRuleSet {
+  return { schema: 'signal-rules/1.0', all: [], any: [], atLeast: [], supporting: [], none: [], metadata: [] }
+}
+
+export interface PatternEligibility {
+  fingerprintStatuses: string[]
+  excludedProjectRoles: string[]
+}
+
+export interface AnalysisRequirementSet {
+  required: Record<string, boolean>
+  preferred: Record<string, boolean>
+}
+
+export interface PatternThresholds {
+  minimumScore: number
+  highConfidenceScore: number
+}
+
+export interface RequiredSignalPending {
+  signal_name: string
+  purpose: string
+  expected_extractor: string
+  blocking: boolean
+}
+
+export interface SignalRegistryEntry {
+  name: string
+  category: string
+  type: string
+  description: string
+  extractor: string
+  value_semantics: string
+  weak_anchor: boolean
+}
+
+export interface SignalRegistry {
+  registry_version: string
+  signals: SignalRegistryEntry[]
+}
+
+/** Part B1 classification fields as they appear on PatternDetail — always
+ * populated (the backend defaults every one of these at write time). See
+ * PatternClassificationInput below for the create/update payload shape,
+ * where every field is optional instead ('omit to leave unchanged/default'). */
+export interface PatternClassificationFields {
+  classification_role: ClassificationRole
+  classification_family: string | null
+  classification_value: string | null
+  scope: PatternScope
+  priority: number
+  compatible_with: string[]
+  conflicts_with: string[]
+  anchor_signals: string[]
+  eligibility: PatternEligibility | null
+  analysis_requirements: AnalysisRequirementSet | null
+  thresholds: PatternThresholds
+  rules_status: RulesStatus
+  required_signals_pending: RequiredSignalPending[]
+  detection_rules: SignalRuleSet
+}
+
+/** Same fields, all optional — the create/update payload shape. Omitting a
+ * field on create applies the same default the J1 migration gave existing
+ * patterns; omitting it on update leaves the pattern's current value
+ * untouched (see backend/app/routers/patterns.py's `_resolve_classification_fields`). */
+export interface PatternClassificationInput {
+  classification_role?: ClassificationRole
+  classification_family?: string | null
+  classification_value?: string | null
+  scope?: PatternScope
+  priority?: number
+  compatible_with?: string[]
+  conflicts_with?: string[]
+  anchor_signals?: string[]
+  eligibility?: PatternEligibility | null
+  analysis_requirements?: AnalysisRequirementSet | null
+  thresholds?: PatternThresholds
+  rules_status?: RulesStatus
+  required_signals_pending?: RequiredSignalPending[]
+  detection_rules?: SignalRuleSet
 }
 
 export interface EngineSupport {
@@ -41,14 +186,13 @@ export interface PatternSummary {
   deleted_by: string | null
 }
 
-export interface PatternDetail {
+export interface PatternDetail extends PatternClassificationFields {
   id: string
   name: string
   summary: string
   description: string | null
   legacy_stack: string
   category: string
-  detection_rules: DetectionRules
   typical_indicators: string | null
   known_risks: string | null
   status: LifecycleStatus
@@ -122,6 +266,7 @@ export interface CoverageSummary {
   parked: number
   deferred: number
   patterns_without_decision: string[]
+  perspective_breakdown: Record<string, number>
 }
 
 export interface DecisionRecord {
@@ -133,7 +278,8 @@ export interface DecisionRecord {
   selected_target_state_name: string | null
   candidates_considered: string[] | null
   evaluation_notes: string | null
-  forcing_factor: string | null
+  forcing_perspective: ForcingPerspective | null
+  forcing_rationale: string | null
   rationale: string | null
   approver_name: string | null
   approver_role: string | null
@@ -153,16 +299,14 @@ export interface HealthStatus {
 
 // ---------- Request payloads (mirror the backend's Create/Update schemas) ----------
 
-export type DetectionRulesInput = DetectionRules
 export type EngineSupportInput = EngineSupport
 
-export interface PatternInput {
+export interface PatternInput extends PatternClassificationInput {
   name: string
   summary: string
   description: string | null
   legacy_stack: string
   category: string
-  detection_rules: DetectionRulesInput
   typical_indicators: string | null
   known_risks: string | null
   status: LifecycleStatus
@@ -222,7 +366,8 @@ export interface DecisionRecordInput {
   selected_target_state_id: string | null
   candidates_considered: string[] | null
   evaluation_notes: string | null
-  forcing_factor: string | null
+  forcing_perspective: ForcingPerspective | null
+  forcing_rationale: string | null
   rationale: string | null
   approver_name: string | null
   approver_role: string | null
@@ -251,7 +396,7 @@ export interface EngagementPatternView {
   description: string | null
   legacy_stack: string
   category: string
-  detection_rules: DetectionRules
+  detection_rules: SignalRuleSet
   typical_indicators: string | null
   known_risks: string | null
   status: LifecycleStatus
@@ -265,6 +410,7 @@ export interface EngagementPatternView {
   deleted_by: string | null
   decision_status: DecisionStatus | null
   selected_target_state_name: string | null
+  forcing_perspective: ForcingPerspective | null
 }
 
 export interface EngagementPatternSoftDeleteResponse {

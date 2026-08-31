@@ -12,15 +12,71 @@ patterns:
     category: web-api
     typical_indicators: "Startup.cs with ConfigureServices/Configure, Program.cs with WebHost.CreateDefaultBuilder, controllers deriving from ControllerBase."
     known_risks: "Default JSON serializer changes from Newtonsoft to System.Text.Json on modern .NET, which can silently alter payload casing, null handling and date formats. Contract snapshot before migration is essential."
-    detection_rules:
-      target_frameworks: ["netcoreapp2.0", "netcoreapp2.1", "netcoreapp2.2"]
-      required_namespaces: ["Microsoft.AspNetCore.Mvc"]
-      required_packages: ["Microsoft.AspNetCore.App", "Microsoft.AspNetCore.Mvc"]
-      file_globs: ["**/Startup.cs", "**/Controllers/*Controller.cs"]
-      forbidden_file_globs: ["**/*.svc", "**/*.aspx"]
-      config_markers: []
-      confidence_weight: 1.0
-      notes: "Highest-confidence pattern in the estate. Simplest migration path and requires no contested target-state decision."
+    classification_role: PRIMARY
+    classification_family: APPLICATION_TYPE
+    classification_value: REST_API
+    priority: 50
+    compatible_with: []
+    conflicts_with: []
+    anchor_signals: ["WEBHOST_CREATE_DEFAULT_BUILDER_ENTRY_POINT", "STARTUP_CLASS_ENTRY_POINT"]
+    eligibility:
+      fingerprintStatuses: ["COMPLETE", "PARTIAL"]
+      excludedProjectRoles: ["TEST", "DEPLOYMENT"]
+    analysis_requirements:
+      required:
+        syntaxAnalysis: true
+      preferred: {}
+    thresholds:
+      minimumScore: 70
+      highConfidenceScore: 90
+    rules_status: active
+    required_signals_pending: []
+    rules:
+      schema: signal-rules/1.0
+      all: []
+      any:
+        - id: webhost-builder
+          signal:
+            name: WEBHOST_CREATE_DEFAULT_BUILDER_ENTRY_POINT
+        - id: startup-class
+          signal:
+            name: STARTUP_CLASS_ENTRY_POINT
+      atLeast: []
+      supporting:
+        - id: mvc-namespace
+          signal:
+            name: MICROSOFT_ASPNETCORE_MVC_NAMESPACE
+          weight: 15
+        - id: api-controller-attr
+          signal:
+            name: API_CONTROLLER_ATTRIBUTE
+          weight: 15
+        - id: controllerbase-class
+          signal:
+            name: CONTROLLER_BASE_BASE_CLASS
+          weight: 15
+        - id: route-attr
+          signal:
+            name: ROUTE_ATTRIBUTE
+          weight: 10
+        - id: http-get
+          signal:
+            name: HTTP_GET_ATTRIBUTE
+          weight: 5
+        - id: http-post
+          signal:
+            name: HTTP_POST_ATTRIBUTE
+          weight: 5
+        - id: controllers-folder
+          signal:
+            name: CONTROLLERS_FOLDER
+          weight: 5
+        - id: aspnetcore-package
+          signal:
+            name: MICROSOFT_ASPNETCORE_PACKAGE
+          weight: 5
+      none: []
+      metadata: []
     target_states:
       - id: net10-api-controllers-preserved
         name: ".NET 10 Web API, controllers preserved"
@@ -91,14 +147,83 @@ patterns:
     category: library
     typical_indicators: "Legacy csproj with <TargetFrameworkVersion>, packages.config, AssemblyInfo.cs, OutputType Library."
     known_risks: "Shared libraries fan out. Migrating one can break every consumer simultaneously, so these must be sequenced first within a wave and verified across all dependents."
-    detection_rules:
-      target_frameworks: ["net47", "net471", "net472"]
-      forbidden_namespaces: ["System.Web", "System.ServiceModel", "System.ServiceProcess"]
-      file_globs: ["**/Properties/AssemblyInfo.cs"]
-      project_properties:
-        OutputType: "Library"
-      confidence_weight: 0.8
-      notes: "Lower confidence weight because many patterns share these markers. Apply after more specific patterns have been matched."
+    classification_role: PRIMARY
+    classification_family: APPLICATION_TYPE
+    classification_value: LIBRARY
+    priority: 30
+    compatible_with: []
+    conflicts_with: []
+    anchor_signals: []
+    eligibility:
+      fingerprintStatuses: ["COMPLETE", "PARTIAL"]
+      excludedProjectRoles: ["TEST", "DEPLOYMENT"]
+    analysis_requirements:
+      required:
+        syntaxAnalysis: true
+      preferred:
+        projectMetadataParsed: true
+    thresholds:
+      minimumScore: 50
+      highConfidenceScore: 70
+    rules_status: active
+    required_signals_pending: []
+    rules:
+      # No positive anchor exists in the registry for "plain legacy library" —
+      # on classic net4x, OutputType=Library also appears on Web Forms, MVC5,
+      # WebAPI2 and WCF-in-IIS projects (IIS hosts them, not a self-hosted
+      # process), so metadata.outputType can't discriminate. This pattern is
+      # therefore purely a metadata + negative-evidence match: net-framework,
+      # and none of the other seven patterns' decisive evidence present.
+      schema: signal-rules/1.0
+      all: []
+      any: []
+      atLeast: []
+      supporting: []
+      none:
+        - id: no-aspx
+          signal:
+            name: ASPX_FILE
+          disqualify: true
+        - id: no-page-base
+          signal:
+            name: PAGE_BASE_CLASS
+          disqualify: true
+        - id: no-svc
+          signal:
+            name: SVC_FILE
+          disqualify: true
+        - id: no-service-contract
+          signal:
+            name: SERVICE_CONTRACT_ATTRIBUTE
+          disqualify: true
+        - id: no-mvc-controller
+          signal:
+            name: CONTROLLER_BASE_CLASS
+          disqualify: true
+        - id: no-webapi-controller
+          signal:
+            name: API_CONTROLLER_BASE_CLASS
+          disqualify: true
+        - id: no-global-asax
+          signal:
+            name: GLOBAL_ASAX_FILE
+          disqualify: true
+        - id: no-service-base
+          signal:
+            name: SERVICE_BASE_BASE_CLASS
+          disqualify: true
+        - id: no-main-entry
+          signal:
+            name: MAIN_METHOD_ENTRY_POINT
+          disqualify: true
+        - id: no-toplevel-entry
+          signal:
+            name: TOP_LEVEL_STATEMENTS_ENTRY_POINT
+          disqualify: true
+      metadata:
+        - id: legacy-framework
+          field: frameworkFamily
+          equals: net-framework
     target_states:
       - id: netstandard20-bridge
         name: ".NET Standard 2.0 bridge"
@@ -159,14 +284,86 @@ patterns:
     category: web-api
     typical_indicators: "Global.asax, App_Start/RouteConfig.cs, App_Start/WebApiConfig.cs, web.config with system.web section, references to System.Web.Mvc."
     known_risks: "HttpContext usage is often pervasive and does not map cleanly. Session state, request-scoped statics and web.config transforms all need deliberate handling."
-    detection_rules:
-      target_frameworks: ["net46", "net461", "net462", "net47", "net471", "net472", "net48"]
-      required_namespaces: ["System.Web.Mvc", "System.Web.Http"]
-      forbidden_file_globs: ["**/*.aspx"]
-      file_globs: ["**/Global.asax", "**/App_Start/*.cs"]
-      config_markers: ["system.web", "system.webServer"]
-      confidence_weight: 1.0
-      notes: "Distinguish from Web Forms by the absence of .aspx files. An application may contain both, in which case record two impact-map regions."
+    classification_role: PRIMARY
+    classification_family: WEB_APPLICATION
+    classification_value: MVC_WEB_APPLICATION
+    priority: 55
+    compatible_with: ["aspnet-webforms"]
+    conflicts_with: []
+    anchor_signals: ["CONTROLLER_BASE_CLASS", "API_CONTROLLER_BASE_CLASS", "SYSTEM_WEB_MVC_NAMESPACE"]
+    eligibility:
+      fingerprintStatuses: ["COMPLETE", "PARTIAL"]
+      excludedProjectRoles: ["TEST", "DEPLOYMENT"]
+    analysis_requirements:
+      required:
+        syntaxAnalysis: true
+      preferred:
+        projectMetadataParsed: true
+        semanticAnalysis: true
+    thresholds:
+      minimumScore: 70
+      highConfidenceScore: 90
+    rules_status: active
+    required_signals_pending: []
+    rules:
+      # Compatible with aspnet-webforms rather than mutually exclusive — the
+      # old forbidden_file_globs on .aspx is dropped; a hybrid app genuinely
+      # can contain both (see the note above), and step 5 wants that surfaced,
+      # not hidden by one pattern crowding the other out.
+      schema: signal-rules/1.0
+      all: []
+      any:
+        - id: mvc-controller
+          signal:
+            name: CONTROLLER_BASE_CLASS
+        - id: webapi-controller
+          signal:
+            name: API_CONTROLLER_BASE_CLASS
+        - id: mvc-namespace
+          signal:
+            name: SYSTEM_WEB_MVC_NAMESPACE
+        - id: webapi-namespace
+          signal:
+            name: SYSTEM_WEB_HTTP_NAMESPACE
+      atLeast: []
+      supporting:
+        - id: global-asax
+          signal:
+            name: GLOBAL_ASAX_FILE
+          weight: 10
+        - id: app-start-folder
+          signal:
+            name: APP_START_FOLDER
+          weight: 10
+        - id: route-attr
+          signal:
+            name: ROUTE_ATTRIBUTE
+          weight: 10
+        - id: route-prefix-attr
+          signal:
+            name: ROUTE_PREFIX_ATTRIBUTE
+          weight: 10
+        - id: http-get
+          signal:
+            name: HTTP_GET_ATTRIBUTE
+          weight: 5
+        - id: http-post
+          signal:
+            name: HTTP_POST_ATTRIBUTE
+          weight: 5
+        - id: controllers-folder
+          signal:
+            name: CONTROLLERS_FOLDER
+          weight: 5
+        - id: views-folder
+          signal:
+            name: VIEWS_FOLDER
+          weight: 5
+      none: []
+      metadata:
+        - id: legacy-framework
+          field: frameworkFamily
+          equals: net-framework
     target_states:
       - id: aspnetcore-incremental-adapters
         name: "Incremental migration with System.Web adapters"
@@ -231,13 +428,64 @@ patterns:
     category: web-ui
     typical_indicators: ".aspx and .aspx.cs pairs, .ascx user controls, Site.Master, ViewState in rendered output, references to System.Web.UI."
     known_risks: "This is the one pattern where the engagement's lift-and-shift default cannot be honoured. Surface it to the client early rather than discovering it mid-programme. Effort estimates for Web Forms rewrites are routinely underestimated."
-    detection_rules:
-      target_frameworks: ["net46", "net461", "net462", "net47", "net471", "net472", "net48"]
-      required_namespaces: ["System.Web.UI"]
-      file_globs: ["**/*.aspx", "**/*.ascx", "**/*.Master"]
-      config_markers: ["system.web"]
-      confidence_weight: 1.0
-      notes: "Presence of .aspx files is decisive. Flag for a mandatory rewrite decision."
+    classification_role: PRIMARY
+    classification_family: WEB_APPLICATION
+    classification_value: WEB_FORMS_APPLICATION
+    priority: 55
+    compatible_with: ["fx-aspnet-mvc"]
+    conflicts_with: []
+    anchor_signals: ["ASPX_FILE", "PAGE_BASE_CLASS"]
+    eligibility:
+      fingerprintStatuses: ["COMPLETE", "PARTIAL"]
+      excludedProjectRoles: ["TEST", "DEPLOYMENT"]
+    analysis_requirements:
+      required:
+        syntaxAnalysis: true
+      preferred:
+        projectMetadataParsed: true
+    thresholds:
+      minimumScore: 70
+      highConfidenceScore: 90
+    rules_status: active
+    required_signals_pending: []
+    rules:
+      schema: signal-rules/1.0
+      all: []
+      any:
+        - id: aspx-file
+          signal:
+            name: ASPX_FILE
+            minimumOccurrences: 1
+        - id: page-base
+          signal:
+            name: PAGE_BASE_CLASS
+      atLeast: []
+      supporting:
+        - id: ascx-file
+          signal:
+            name: ASCX_FILE
+          weight: 10
+        - id: user-control-base
+          signal:
+            name: USER_CONTROL_BASE_CLASS
+          weight: 10
+        - id: master-page-base
+          signal:
+            name: MASTER_PAGE_BASE_CLASS
+          weight: 10
+        - id: system-web-ui-namespace
+          signal:
+            name: SYSTEM_WEB_UI_NAMESPACE
+          weight: 10
+        - id: global-asax
+          signal:
+            name: GLOBAL_ASAX_FILE
+          weight: 5
+      none: []
+      metadata:
+        - id: legacy-framework
+          field: frameworkFamily
+          equals: net-framework
     target_states:
       - id: blazor-server-net10
         name: "Blazor Server on .NET 10"
@@ -299,13 +547,70 @@ patterns:
     category: service
     typical_indicators: ".svc files, [ServiceContract] and [OperationContract] attributes, system.serviceModel section in web.config, generated WSDL endpoints."
     known_risks: "External consumers are the dominant constraint. Establish before any decision whether callers can change. A silently altered WSDL is the highest-consequence failure mode in this estate."
-    detection_rules:
-      target_frameworks: ["net46", "net461", "net462", "net47", "net471", "net472", "net48"]
-      required_namespaces: ["System.ServiceModel"]
-      file_globs: ["**/*.svc"]
-      config_markers: ["system.serviceModel"]
-      confidence_weight: 1.0
-      notes: "Server-side WCF only. Client-side WCF proxies are a separate concern and are handled as part of the consuming application."
+    classification_role: PRIMARY
+    classification_family: APPLICATION_TYPE
+    classification_value: WCF_SERVICE
+    priority: 60
+    compatible_with: []
+    conflicts_with: []
+    anchor_signals: ["SVC_FILE", "SERVICE_CONTRACT_ATTRIBUTE"]
+    eligibility:
+      fingerprintStatuses: ["COMPLETE", "PARTIAL"]
+      excludedProjectRoles: ["TEST", "DEPLOYMENT"]
+    analysis_requirements:
+      required:
+        syntaxAnalysis: true
+      preferred:
+        projectMetadataParsed: true
+    thresholds:
+      minimumScore: 70
+      highConfidenceScore: 90
+    rules_status: active
+    required_signals_pending: []
+    rules:
+      # Mirrors the worked example in step-4-pattern-classification-against-catalog.md
+      # section 8 almost exactly — this pattern is what that example describes.
+      schema: signal-rules/1.0
+      all:
+        - id: service-contract
+          signal:
+            name: SERVICE_CONTRACT_ATTRIBUTE
+            minimumOccurrences: 1
+      any:
+        - id: svc-host
+          signal:
+            name: SVC_FILE
+            minimumOccurrences: 1
+        - id: svc-config
+          signal:
+            name: SYSTEM_SERVICE_MODEL_CONFIG
+      atLeast: []
+      supporting:
+        - id: operation-contract
+          signal:
+            name: OPERATION_CONTRACT_ATTRIBUTE
+          weight: 15
+        - id: data-contract
+          signal:
+            name: DATA_CONTRACT_ATTRIBUTE
+          weight: 10
+        - id: wcf-endpoint-config
+          signal:
+            name: WCF_SERVICE_ENDPOINT_CONFIG
+          weight: 10
+        - id: wcf-binding-config
+          signal:
+            name: WCF_BINDING_CONFIG
+          weight: 10
+        - id: hosting-environment
+          signal:
+            name: SERVICE_HOSTING_ENVIRONMENT_CONFIG
+          weight: 5
+      none: []
+      metadata:
+        - id: legacy-framework
+          field: frameworkFamily
+          equals: net-framework
     target_states:
       - id: corewcf-net10
         name: "CoreWCF on .NET 10"
@@ -395,13 +700,88 @@ patterns:
     category: batch
     typical_indicators: "OutputType Exe, Main entry point, no web packages, app.config, frequent use of local file paths and drive letters."
     known_risks: "Hardcoded Windows paths, drive-letter mappings, UNC shares and Windows-only scheduling assumptions. Scheduling itself moves out of the application and into the platform, which is a change of operational ownership as much as a code change."
-    detection_rules:
-      target_frameworks: ["net47", "net471", "net472", "net48", "netcoreapp2.1", "netcoreapp3.1"]
-      forbidden_namespaces: ["System.Web", "System.ServiceModel", "System.ServiceProcess"]
-      project_properties:
-        OutputType: "Exe"
-      confidence_weight: 0.9
-      notes: "Distinguish from Windows Service by the absence of System.ServiceProcess and ServiceBase."
+    classification_role: PRIMARY
+    classification_family: APPLICATION_TYPE
+    classification_value: BATCH_APPLICATION
+    priority: 30
+    compatible_with: []
+    conflicts_with: ["windows-service"]
+    anchor_signals: ["MAIN_METHOD_ENTRY_POINT", "TOP_LEVEL_STATEMENTS_ENTRY_POINT"]
+    eligibility:
+      fingerprintStatuses: ["COMPLETE", "PARTIAL"]
+      excludedProjectRoles: ["TEST", "DEPLOYMENT"]
+    analysis_requirements:
+      required:
+        syntaxAnalysis: true
+      preferred: {}
+    thresholds:
+      minimumScore: 50
+      highConfidenceScore: 70
+    rules_status: active
+    required_signals_pending: []
+    rules:
+      # No signal registers "runs on a schedule" (registry has no
+      # SCHEDULING_INDICATOR entries at all) — this pattern can only confirm
+      # "plain console entry point, not a web/service host," never the
+      # scheduling half of its own name. That gap is real, not yet
+      # actionable as a required_signals_pending entry (no extractor is
+      # named for it anywhere in the spec), so it's noted here in prose
+      # instead of invented. Threshold lowered to 50 because there is no
+      # supporting evidence source strong enough to reliably clear 70 —
+      # JOBS_FOLDER/TASKS_FOLDER are a convention, not a guarantee.
+      schema: signal-rules/1.0
+      all: []
+      any:
+        - id: main-entry
+          signal:
+            name: MAIN_METHOD_ENTRY_POINT
+        - id: toplevel-entry
+          signal:
+            name: TOP_LEVEL_STATEMENTS_ENTRY_POINT
+      atLeast: []
+      supporting:
+        - id: jobs-folder
+          signal:
+            name: JOBS_FOLDER
+          weight: 15
+        - id: tasks-folder
+          signal:
+            name: TASKS_FOLDER
+          weight: 15
+      none:
+        - id: not-service-base
+          signal:
+            name: SERVICE_BASE_BASE_CLASS
+          disqualify: true
+        - id: not-servicebase-run
+          signal:
+            name: SERVICEBASE_RUN_ENTRY_POINT
+          disqualify: true
+        - id: not-web-builder
+          signal:
+            name: WEB_APPLICATION_CREATE_BUILDER_ENTRY_POINT
+          disqualify: true
+        - id: not-webhost-builder
+          signal:
+            name: WEBHOST_CREATE_DEFAULT_BUILDER_ENTRY_POINT
+          disqualify: true
+        - id: not-global-asax
+          signal:
+            name: GLOBAL_ASAX_ENTRY_POINT
+          disqualify: true
+        - id: not-startup-class
+          signal:
+            name: STARTUP_CLASS_ENTRY_POINT
+          disqualify: true
+        - id: not-razor-file
+          signal:
+            name: RAZOR_FILE
+          disqualify: true
+        - id: not-cshtml-file
+          signal:
+            name: CSHTML_FILE
+          disqualify: true
+      metadata: []
     target_states:
       - id: ocp4-cronjob-container
         name: "OCP4 CronJob container"
@@ -465,13 +845,54 @@ patterns:
     category: service
     typical_indicators: "ServiceBase subclass, ProjectInstaller.cs, System.ServiceProcess reference, OnStart/OnStop overrides."
     known_risks: "Service account identity often carries Windows-integrated permissions to file shares and databases. The identity model must be redesigned for Linux, not merely ported."
-    detection_rules:
-      target_frameworks: ["net47", "net471", "net472", "net48"]
-      required_namespaces: ["System.ServiceProcess"]
-      project_properties:
-        OutputType: "Exe"
-      confidence_weight: 1.0
-      notes: "ServiceBase inheritance is decisive."
+    classification_role: PRIMARY
+    classification_family: APPLICATION_TYPE
+    classification_value: WINDOWS_SERVICE
+    priority: 60
+    compatible_with: []
+    conflicts_with: ["console-batch-job"]
+    anchor_signals: ["SERVICE_BASE_BASE_CLASS", "SERVICEBASE_RUN_ENTRY_POINT"]
+    eligibility:
+      fingerprintStatuses: ["COMPLETE", "PARTIAL"]
+      excludedProjectRoles: ["TEST", "DEPLOYMENT"]
+    analysis_requirements:
+      required:
+        syntaxAnalysis: true
+      preferred:
+        projectMetadataParsed: true
+    thresholds:
+      minimumScore: 70
+      highConfidenceScore: 90
+    rules_status: active
+    required_signals_pending: []
+    rules:
+      # Higher priority than console-batch-job so this wins their conflict —
+      # a bare Main() alone can satisfy both patterns' entry-point evidence,
+      # but ServiceBase inheritance is the more specific, decisive signal.
+      schema: signal-rules/1.0
+      all: []
+      any:
+        - id: service-base
+          signal:
+            name: SERVICE_BASE_BASE_CLASS
+        - id: servicebase-run
+          signal:
+            name: SERVICEBASE_RUN_ENTRY_POINT
+      atLeast: []
+      supporting:
+        - id: serviceprocess-namespace
+          signal:
+            name: SYSTEM_SERVICEPROCESS_NAMESPACE
+          weight: 20
+        - id: serviceprocess-assembly
+          signal:
+            name: SYSTEM_SERVICEPROCESS_ASSEMBLY
+          weight: 20
+      none: []
+      metadata:
+        - id: legacy-framework
+          field: frameworkFamily
+          equals: net-framework
     target_states:
       - id: worker-service-daemon-container
         name: ".NET Worker Service container"
@@ -512,10 +933,54 @@ patterns:
     category: data-etl
     typical_indicators: ".dtsx files, .dtproj project files, connection managers, Execute SQL and Data Flow tasks, Script Task components."
     known_risks: "No market tooling covers this conversion. Package XML is highly structured and parseable, which favours a deterministic-first accelerator, but transaction and checkpoint semantics, package variables and expression evaluation carry real behavioural risk. Row-level output equivalence testing is the only credible verification."
-    detection_rules:
-      file_globs: ["**/*.dtsx", "**/*.dtproj"]
-      confidence_weight: 1.0
-      notes: "File extension is decisive. Complexity varies enormously between packages, so the impact map should record per-package complexity, not just presence."
+    classification_role: PRIMARY
+    classification_family: APPLICATION_TYPE
+    classification_value: SSIS_PACKAGE
+    priority: 50
+    compatible_with: []
+    conflicts_with: []
+    anchor_signals: ["SSIS_PACKAGE_FILE"]
+    eligibility:
+      fingerprintStatuses: ["COMPLETE", "PARTIAL"]
+      excludedProjectRoles: ["TEST", "DEPLOYMENT"]
+    analysis_requirements:
+      required:
+        syntaxAnalysis: true
+      preferred: {}
+    thresholds:
+      minimumScore: 70
+      highConfidenceScore: 90
+    rules_status: awaiting_signals
+    required_signals_pending:
+      - signal_name: SSIS_PACKAGE_FILE
+        purpose: "Anchor signal — identifies a .dtsx package"
+        expected_extractor: SsisExtractor
+        blocking: true
+      - signal_name: SSIS_CONNECTION_MANAGER
+        purpose: "Supporting evidence for connection topology"
+        expected_extractor: SsisExtractor
+        blocking: false
+    rules:
+      # Step 3 emits no SSIS signals at all (registry v1.1.0 has zero entries
+      # in any category for .dtsx/.dtproj content) — this rule authors the
+      # intended shape now so it activates the moment SsisExtractor lands,
+      # per Part B2's own worked example. Excluded from evaluation until
+      # promoted to active; GET /api/catalog/pending-signals reports when
+      # that becomes possible.
+      schema: signal-rules/1.0
+      all: []
+      any:
+        - id: dtsx-file
+          signal:
+            name: SSIS_PACKAGE_FILE
+      atLeast: []
+      supporting:
+        - id: connection-manager
+          signal:
+            name: SSIS_CONNECTION_MANAGER
+          weight: 20
+      none: []
+      metadata: []
     target_states:
       - id: csharp-worker-container
         name: "C# worker with in-process pipeline"
@@ -570,3 +1035,940 @@ patterns:
           Assess per package during inventory rather than choosing once for the whole
           estate — the two SSIS options are likely to be mixed across several hundred
           packages, and the segmentation rule should be recorded in the decision.
+
+  # ---------------------------------------------------------------- 9
+  # "Already modern" patterns — classification_family ALREADY_MODERN. Not a
+  # migration target: the single target state option on each just records
+  # "verify and confirm scope", so a genuinely modern project gets a MATCHED
+  # result of its own instead of falling through to NO_PATTERN_MATCHED and
+  # entering step 5's clustering queue as if it were unclassified legacy
+  # code. Anchored on the *modern* hosting/component entry points, which are
+  # structurally disjoint from every legacy pattern's anchors above (a
+  # Program.cs calls either WebHost.CreateDefaultBuilder/Startup.cs or
+  # WebApplication.CreateBuilder, never both) — so these never compete with
+  # the legacy patterns for the same project. aspnetcore-minimal-api and
+  # aspnetcore-mvc-modern are kept mutually exclusive by construction
+  # (minimal-api disqualifies itself on CSHTML_FILE) rather than via
+  # conflicts_with, so a hybrid API+MVC host like eShopOnWeb's Web project
+  # resolves to the more specific mvc-modern match instead of MULTIPLE_MATCHES.
+  - id: aspnetcore-minimal-api
+    name: "Modern ASP.NET Core minimal-hosting API"
+    summary: "ASP.NET Core Web API on the modern WebApplication.CreateBuilder hosting model, net6.0 or later."
+    description: |
+      REST API built on the minimal hosting model introduced in .NET 6 —
+      `WebApplication.CreateBuilder(...)` in `Program.cs`, with either
+      attribute-routed controllers or `MapGet`/`MapPost`-style endpoints.
+      Already on a fully supported, actively maintained .NET target. Not a
+      migration candidate — verify the classification and move on.
+    legacy_stack: "Already modern"
+    category: web-api
+    typical_indicators: "Program.cs with WebApplication.CreateBuilder, no Startup.cs, controllers deriving from ControllerBase or mapped minimal-API endpoints, net6.0 or later."
+    known_risks: "None — already on a supported modern target. The only risk is misclassification: confirm no residual legacy dependency was missed before closing this out of the backlog."
+    classification_role: PRIMARY
+    classification_family: ALREADY_MODERN
+    classification_value: MODERN_ASPNETCORE_API
+    priority: 50
+    compatible_with: []
+    conflicts_with: []
+    anchor_signals: ["WEB_APPLICATION_CREATE_BUILDER_ENTRY_POINT"]
+    eligibility:
+      fingerprintStatuses: ["COMPLETE", "PARTIAL"]
+      excludedProjectRoles: ["TEST", "DEPLOYMENT"]
+    analysis_requirements:
+      required:
+        syntaxAnalysis: true
+      preferred: {}
+    thresholds:
+      minimumScore: 60
+      highConfidenceScore: 85
+    rules_status: active
+    required_signals_pending: []
+    rules:
+      schema: signal-rules/1.0
+      all:
+        - id: webapp-builder
+          signal:
+            name: WEB_APPLICATION_CREATE_BUILDER_ENTRY_POINT
+      any: []
+      atLeast: []
+      supporting:
+        - id: api-controller-attr
+          signal:
+            name: API_CONTROLLER_ATTRIBUTE
+          weight: 15
+        - id: controllerbase-class
+          signal:
+            name: CONTROLLER_BASE_BASE_CLASS
+          weight: 15
+        - id: route-attr
+          signal:
+            name: ROUTE_ATTRIBUTE
+          weight: 10
+        - id: http-get
+          signal:
+            name: HTTP_GET_ATTRIBUTE
+          weight: 10
+        - id: http-post
+          signal:
+            name: HTTP_POST_ATTRIBUTE
+          weight: 10
+        - id: mvc-namespace
+          signal:
+            name: MICROSOFT_ASPNETCORE_MVC_NAMESPACE
+          weight: 10
+        - id: aspnetcore-package
+          signal:
+            name: MICROSOFT_ASPNETCORE_PACKAGE
+          weight: 5
+      none:
+        - id: no-razor-views
+          signal:
+            name: CSHTML_FILE
+          disqualify: true
+      metadata: []
+    target_states:
+      - id: aspnetcore-minimal-api-verify-scope
+        name: "No migration required — verify and confirm scope"
+        summary: "Already on the modern ASP.NET Core hosting model. Confirm the classification and close it out of the modernization backlog."
+        target_stack: "Already modern — no retarget needed"
+        consumer_impact: none
+        effort: low
+        linux_compatible: true
+        container_ready: true
+        is_lift_and_shift: true
+        is_recommended: true
+        prerequisites: "None — this is a verification step, not a migration."
+        known_limitations: "Confirms only what step 3/4 could observe from source and package evidence. Spot-check for a stray legacy dependency before formally closing the item."
+        playbook_md: |
+          ## Steps
+          1. Spot-check for any residual legacy dependency the automated
+             signals wouldn't catch (a vestigial reference kept for
+             compatibility, an out-of-support intermediate target framework).
+          2. Confirm the target framework is genuinely a supported, current
+             .NET release.
+          3. Record the verification and close this project out of the
+             modernization backlog — no transformation work is queued.
+
+  # ---------------------------------------------------------------- 10
+  - id: aspnetcore-mvc-modern
+    name: "Modern ASP.NET Core MVC / Razor application"
+    summary: "ASP.NET Core MVC or Razor Pages on the modern hosting model, net6.0 or later."
+    description: |
+      Server-rendered web application on the minimal hosting model —
+      `WebApplication.CreateBuilder(...)` plus Razor views, Razor Pages, or
+      MVC controllers. Already on a fully supported, actively maintained
+      .NET target. Not a migration candidate — verify the classification and
+      move on.
+    legacy_stack: "Already modern"
+    category: web-ui
+    typical_indicators: "Program.cs with WebApplication.CreateBuilder, .cshtml views or pages, controllers deriving from Controller or ControllerBase, net6.0 or later."
+    known_risks: "None — already on a supported modern target. The only risk is misclassification: confirm no residual legacy dependency was missed before closing this out of the backlog."
+    classification_role: PRIMARY
+    classification_family: ALREADY_MODERN
+    classification_value: MODERN_MVC_APPLICATION
+    priority: 50
+    compatible_with: []
+    conflicts_with: []
+    anchor_signals: ["WEB_APPLICATION_CREATE_BUILDER_ENTRY_POINT", "CSHTML_FILE"]
+    eligibility:
+      fingerprintStatuses: ["COMPLETE", "PARTIAL"]
+      excludedProjectRoles: ["TEST", "DEPLOYMENT"]
+    analysis_requirements:
+      required:
+        syntaxAnalysis: true
+      preferred: {}
+    thresholds:
+      minimumScore: 60
+      highConfidenceScore: 85
+    rules_status: active
+    required_signals_pending: []
+    rules:
+      schema: signal-rules/1.0
+      all:
+        - id: webapp-builder
+          signal:
+            name: WEB_APPLICATION_CREATE_BUILDER_ENTRY_POINT
+      any: []
+      atLeast:
+        - id: razor-or-mvc-evidence
+          count: 1
+          of:
+            - id: cshtml-file
+              signal:
+                name: CSHTML_FILE
+            - id: views-folder
+              signal:
+                name: VIEWS_FOLDER
+            - id: pages-folder
+              signal:
+                name: PAGES_FOLDER
+            - id: controller-class
+              signal:
+                name: CONTROLLER_BASE_CLASS
+            - id: controllerbase-class
+              signal:
+                name: CONTROLLER_BASE_BASE_CLASS
+      supporting:
+        - id: controllers-folder
+          signal:
+            name: CONTROLLERS_FOLDER
+          weight: 10
+        - id: views-folder-support
+          signal:
+            name: VIEWS_FOLDER
+          weight: 10
+        - id: pages-folder-support
+          signal:
+            name: PAGES_FOLDER
+          weight: 10
+        - id: mvc-namespace
+          signal:
+            name: MICROSOFT_ASPNETCORE_MVC_NAMESPACE
+          weight: 10
+        - id: route-attr
+          signal:
+            name: ROUTE_ATTRIBUTE
+          weight: 5
+        - id: aspnetcore-package
+          signal:
+            name: MICROSOFT_ASPNETCORE_PACKAGE
+          weight: 5
+      none: []
+      metadata: []
+    target_states:
+      - id: aspnetcore-mvc-modern-verify-scope
+        name: "No migration required — verify and confirm scope"
+        summary: "Already on the modern ASP.NET Core hosting model. Confirm the classification and close it out of the modernization backlog."
+        target_stack: "Already modern — no retarget needed"
+        consumer_impact: none
+        effort: low
+        linux_compatible: true
+        container_ready: true
+        is_lift_and_shift: true
+        is_recommended: true
+        prerequisites: "None — this is a verification step, not a migration."
+        known_limitations: "Confirms only what step 3/4 could observe from source and package evidence. Spot-check for a stray legacy dependency before formally closing the item."
+        playbook_md: |
+          ## Steps
+          1. Spot-check for any residual legacy dependency the automated
+             signals wouldn't catch.
+          2. Confirm the target framework is genuinely a supported, current
+             .NET release.
+          3. Record the verification and close this project out of the
+             modernization backlog — no transformation work is queued.
+
+  # ---------------------------------------------------------------- 11
+  - id: blazor-webassembly-modern
+    name: "Blazor WebAssembly application (modern)"
+    summary: "Blazor client compiled to WebAssembly, running in the browser, on a modern .NET target."
+    description: |
+      Blazor WebAssembly client — `.razor` components hosted by
+      `Microsoft.AspNetCore.Components.WebAssembly*`, compiled to run in the
+      browser rather than on an ASP.NET Core host. Already on a fully
+      supported, actively maintained .NET target. Not a migration candidate
+      — verify the classification and move on.
+    legacy_stack: "Already modern"
+    category: web-ui
+    typical_indicators: ".razor component files, a Microsoft.AspNetCore.Components.WebAssembly* package reference, no WebApplication.CreateBuilder (client apps use WebAssemblyHostBuilder instead)."
+    known_risks: "None — already on a supported modern target. The only risk is misclassification: confirm no residual legacy dependency was missed before closing this out of the backlog."
+    classification_role: PRIMARY
+    classification_family: ALREADY_MODERN
+    classification_value: MODERN_BLAZOR_WASM
+    priority: 50
+    compatible_with: []
+    conflicts_with: []
+    anchor_signals: ["RAZOR_FILE", "BLAZOR_WEBASSEMBLY_PACKAGE"]
+    eligibility:
+      fingerprintStatuses: ["COMPLETE", "PARTIAL"]
+      excludedProjectRoles: ["TEST", "DEPLOYMENT"]
+    analysis_requirements:
+      required:
+        syntaxAnalysis: true
+      preferred: {}
+    thresholds:
+      minimumScore: 60
+      highConfidenceScore: 85
+    rules_status: active
+    required_signals_pending: []
+    rules:
+      schema: signal-rules/1.0
+      all:
+        - id: razor-file
+          signal:
+            name: RAZOR_FILE
+        - id: wasm-package
+          signal:
+            name: BLAZOR_WEBASSEMBLY_PACKAGE
+      any: []
+      atLeast: []
+      supporting:
+        - id: wasm-package-support
+          signal:
+            name: BLAZOR_WEBASSEMBLY_PACKAGE
+          weight: 15
+        - id: components-namespace
+          signal:
+            name: MICROSOFT_ASPNETCORE_NAMESPACE
+            value:
+              contains: "Components"
+          weight: 10
+        - id: pages-folder
+          signal:
+            name: PAGES_FOLDER
+          weight: 5
+        - id: services-folder
+          signal:
+            name: SERVICES_FOLDER
+          weight: 5
+      none: []
+      metadata: []
+    target_states:
+      - id: blazor-webassembly-modern-verify-scope
+        name: "No migration required — verify and confirm scope"
+        summary: "Already a modern Blazor WebAssembly client. Confirm the classification and close it out of the modernization backlog."
+        target_stack: "Already modern — no retarget needed"
+        consumer_impact: none
+        effort: low
+        linux_compatible: true
+        container_ready: true
+        is_lift_and_shift: true
+        is_recommended: true
+        prerequisites: "None — this is a verification step, not a migration."
+        known_limitations: "Confirms only what step 3/4 could observe from source and package evidence. Spot-check for a stray legacy dependency before formally closing the item."
+        playbook_md: |
+          ## Steps
+          1. Spot-check for any residual legacy dependency the automated
+             signals wouldn't catch.
+          2. Confirm the target framework is genuinely a supported, current
+             .NET release.
+          3. Record the verification and close this project out of the
+             modernization backlog — no transformation work is queued.
+
+  # ---------------------------------------------------------------- 12
+  - id: blazor-server-modern
+    name: "Blazor Server application (modern)"
+    summary: "Blazor Server on the modern ASP.NET Core hosting model — components render server-side over a SignalR circuit."
+    description: |
+      Blazor Server — `.razor` components hosted inside
+      `WebApplication.CreateBuilder(...)`, rendered server-side and streamed
+      to the browser over a SignalR circuit, distinct from the WebAssembly
+      client model. Already on a fully supported, actively maintained .NET
+      target. Not a migration candidate — verify the classification and
+      move on. No sample in the current corpus exercises this rule; it is
+      authored from the registry the same way the WebAssembly pattern is.
+    legacy_stack: "Already modern"
+    category: web-ui
+    typical_indicators: "Program.cs with WebApplication.CreateBuilder, .razor component files, no Microsoft.AspNetCore.Components.WebAssembly* package reference."
+    known_risks: "None — already on a supported modern target. The only risk is misclassification: confirm no residual legacy dependency was missed before closing this out of the backlog."
+    classification_role: PRIMARY
+    classification_family: ALREADY_MODERN
+    classification_value: MODERN_BLAZOR_SERVER
+    priority: 50
+    compatible_with: []
+    conflicts_with: []
+    anchor_signals: ["RAZOR_FILE", "WEB_APPLICATION_CREATE_BUILDER_ENTRY_POINT"]
+    eligibility:
+      fingerprintStatuses: ["COMPLETE", "PARTIAL"]
+      excludedProjectRoles: ["TEST", "DEPLOYMENT"]
+    analysis_requirements:
+      required:
+        syntaxAnalysis: true
+      preferred: {}
+    thresholds:
+      minimumScore: 60
+      highConfidenceScore: 85
+    rules_status: active
+    required_signals_pending: []
+    rules:
+      schema: signal-rules/1.0
+      all:
+        - id: razor-file
+          signal:
+            name: RAZOR_FILE
+        - id: webapp-builder
+          signal:
+            name: WEB_APPLICATION_CREATE_BUILDER_ENTRY_POINT
+      any: []
+      atLeast: []
+      supporting:
+        - id: components-namespace
+          signal:
+            name: MICROSOFT_ASPNETCORE_NAMESPACE
+            value:
+              contains: "Components"
+          weight: 15
+        - id: aspnetcore-package
+          signal:
+            name: MICROSOFT_ASPNETCORE_PACKAGE
+          weight: 10
+        - id: pages-folder
+          signal:
+            name: PAGES_FOLDER
+          weight: 10
+      none:
+        - id: no-wasm-package
+          signal:
+            name: BLAZOR_WEBASSEMBLY_PACKAGE
+          disqualify: true
+      metadata: []
+    target_states:
+      - id: blazor-server-modern-verify-scope
+        name: "No migration required — verify and confirm scope"
+        summary: "Already a modern Blazor Server application. Confirm the classification and close it out of the modernization backlog."
+        target_stack: "Already modern — no retarget needed"
+        consumer_impact: none
+        effort: low
+        linux_compatible: true
+        container_ready: true
+        is_lift_and_shift: true
+        is_recommended: true
+        prerequisites: "None — this is a verification step, not a migration."
+        known_limitations: "Confirms only what step 3/4 could observe from source and package evidence. Spot-check for a stray legacy dependency before formally closing the item."
+        playbook_md: |
+          ## Steps
+          1. Spot-check for any residual legacy dependency the automated
+             signals wouldn't catch.
+          2. Confirm the target framework is genuinely a supported, current
+             .NET release.
+          3. Record the verification and close this project out of the
+             modernization backlog — no transformation work is queued.
+
+  # ---------------------------------------------------------------- 13
+  - id: netstandard-modern-library
+    name: "Modern class library"
+    summary: "Class library targeting net6.0+ or netstandard2.1 — already portable, already supported."
+    description: |
+      A library with no entry point of its own (same absence-of-entry-point
+      basis as role-library-project) whose target framework is already
+      net6.0 or later, or netstandard2.1. Already on a fully supported
+      target. Not a migration candidate — verify the classification and
+      move on. Requires msbuild-evaluated project metadata
+      (`projectMetadataParsed`) to confirm the target framework moniker; on a
+      fingerprint without that capability this pattern correctly falls back
+      rather than asserting modernity it cannot verify.
+    legacy_stack: "Already modern"
+    category: library
+    typical_indicators: "SDK-style csproj, no Main method, no top-level statements, no host-builder call; TargetFramework of net6.0 or later, or netstandard2.1."
+    known_risks: "None — already on a supported modern target. The only risk is misclassification: confirm no residual legacy dependency was missed before closing this out of the backlog."
+    classification_role: PRIMARY
+    classification_family: ALREADY_MODERN
+    classification_value: MODERN_LIBRARY
+    priority: 45
+    compatible_with: []
+    conflicts_with: []
+    anchor_signals: []
+    eligibility:
+      fingerprintStatuses: ["COMPLETE", "PARTIAL"]
+      excludedProjectRoles: ["TEST", "DEPLOYMENT"]
+    analysis_requirements:
+      required:
+        syntaxAnalysis: true
+        projectMetadataParsed: true
+      preferred: {}
+    thresholds:
+      minimumScore: 50
+      highConfidenceScore: 70
+    rules_status: active
+    required_signals_pending: []
+    rules:
+      schema: signal-rules/1.0
+      all: []
+      any: []
+      atLeast: []
+      supporting: []
+      none:
+        - id: no-main-entry
+          signal:
+            name: MAIN_METHOD_ENTRY_POINT
+          disqualify: true
+        - id: no-toplevel-entry
+          signal:
+            name: TOP_LEVEL_STATEMENTS_ENTRY_POINT
+          disqualify: true
+        - id: no-web-builder
+          signal:
+            name: WEB_APPLICATION_CREATE_BUILDER_ENTRY_POINT
+          disqualify: true
+        - id: no-host-builder
+          signal:
+            name: HOST_CREATE_DEFAULT_BUILDER_ENTRY_POINT
+          disqualify: true
+        - id: no-webhost-builder
+          signal:
+            name: WEBHOST_CREATE_DEFAULT_BUILDER_ENTRY_POINT
+          disqualify: true
+        - id: no-global-asax
+          signal:
+            name: GLOBAL_ASAX_ENTRY_POINT
+          disqualify: true
+        - id: no-startup-class
+          signal:
+            name: STARTUP_CLASS_ENTRY_POINT
+          disqualify: true
+        - id: no-servicebase-run
+          signal:
+            name: SERVICEBASE_RUN_ENTRY_POINT
+          disqualify: true
+        - id: no-hosted-service
+          signal:
+            name: ADD_HOSTED_SERVICE_ENTRY_POINT
+          disqualify: true
+      metadata:
+        - id: modern-framework-version
+          field: frameworkVersion
+          regex: "^net(6|7|8|9|10)\\.0$|^netstandard2\\.1$"
+    target_states:
+      - id: netstandard-modern-library-verify-scope
+        name: "No migration required — verify and confirm scope"
+        summary: "Already targets a modern, supported framework. Confirm the classification and close it out of the modernization backlog."
+        target_stack: "Already modern — no retarget needed"
+        consumer_impact: none
+        effort: low
+        linux_compatible: true
+        container_ready: true
+        is_lift_and_shift: true
+        is_recommended: true
+        prerequisites: "None — this is a verification step, not a migration."
+        known_limitations: "Confirms only what step 3/4 could observe from source and package evidence. Spot-check for a stray legacy dependency before formally closing the item."
+        playbook_md: |
+          ## Steps
+          1. Spot-check for any residual legacy dependency the automated
+             signals wouldn't catch.
+          2. Confirm the target framework is genuinely a supported, current
+             release, not an out-of-support intermediate one.
+          3. Record the verification and close this project out of the
+             modernization backlog — no transformation work is queued.
+
+  # ---------------------------------------------------------- role patterns
+  # 24-STEP-004-CLASSIFICATION.md Part D. Evaluated in a first pass, ahead of
+  # the application patterns above, to determine project_role — which then
+  # gates eligibility via each application pattern's
+  # eligibility.excludedProjectRoles. No target_state_options: these exist
+  # only for classification, not migration guidance.
+  - id: role-test-project
+    name: "Test project"
+    summary: "A project whose purpose is testing another project, not shipping a runtime application."
+    description: |
+      Identified by test-framework attributes (MSTest, xUnit, NUnit). May
+      legitimately contain ASP.NET Core, MVC, or Entity Framework signals
+      because it tests those technologies — that must not make it look like a
+      production web application.
+    legacy_stack: "Any"
+    category: library
+    typical_indicators: "[TestMethod], [Fact], [Test] or [TestFixture] attributes; a test-framework package reference."
+    known_risks: "None — this is a classification input, not a migration target."
+    classification_role: PROJECT_ROLE
+    classification_family: PROJECT_ROLE
+    classification_value: TEST
+    priority: 90
+    compatible_with: []
+    conflicts_with: []
+    anchor_signals: ["TEST_METHOD_ATTRIBUTE", "FACT_ATTRIBUTE", "TEST_ATTRIBUTE", "TEST_FIXTURE_ATTRIBUTE"]
+    eligibility: null
+    analysis_requirements:
+      required:
+        syntaxAnalysis: true
+      preferred: {}
+    thresholds:
+      minimumScore: 50
+      highConfidenceScore: 70
+    rules_status: active
+    required_signals_pending: []
+    rules:
+      # signal-registry 1.2.0 added XUNIT_PACKAGE/NUNIT_PACKAGE/MSTEST_PACKAGE
+      # (FrameworkReferenceExtractor), closing the gap noted here through
+      # 1.1.0: Part D's "test framework packages" half of the basis is now
+      # expressible alongside the four attributes. Supporting weights let a
+      # project with both a test-framework package reference AND a healthy
+      # number of test-attribute occurrences score above one with only a
+      # single weak attribute match, per 24-STEP-004-CLASSIFICATION.md Part D.
+      schema: signal-rules/1.0
+      all: []
+      any:
+        - id: test-method-attr
+          signal:
+            name: TEST_METHOD_ATTRIBUTE
+        - id: fact-attr
+          signal:
+            name: FACT_ATTRIBUTE
+        - id: test-attr
+          signal:
+            name: TEST_ATTRIBUTE
+        - id: test-fixture-attr
+          signal:
+            name: TEST_FIXTURE_ATTRIBUTE
+      atLeast: []
+      supporting:
+        - id: xunit-package
+          signal:
+            name: XUNIT_PACKAGE
+          weight: 20
+        - id: nunit-package
+          signal:
+            name: NUNIT_PACKAGE
+          weight: 20
+        - id: mstest-package
+          signal:
+            name: MSTEST_PACKAGE
+          weight: 20
+        - id: fact-attr-present
+          signal:
+            name: FACT_ATTRIBUTE
+          weight: 10
+        - id: test-method-attr-present
+          signal:
+            name: TEST_METHOD_ATTRIBUTE
+          weight: 10
+        - id: test-attr-present
+          signal:
+            name: TEST_ATTRIBUTE
+          weight: 10
+        - id: test-fixture-attr-present
+          signal:
+            name: TEST_FIXTURE_ATTRIBUTE
+          weight: 10
+        - id: fact-attr-substantial
+          signal:
+            name: FACT_ATTRIBUTE
+            minimumOccurrences: 5
+          weight: 10
+        - id: test-method-attr-substantial
+          signal:
+            name: TEST_METHOD_ATTRIBUTE
+            minimumOccurrences: 5
+          weight: 10
+        - id: test-attr-substantial
+          signal:
+            name: TEST_ATTRIBUTE
+            minimumOccurrences: 5
+          weight: 10
+        - id: test-fixture-attr-substantial
+          signal:
+            name: TEST_FIXTURE_ATTRIBUTE
+            minimumOccurrences: 5
+          weight: 10
+      none: []
+      metadata: []
+
+  - id: role-database-project
+    name: "Database project"
+    summary: "A SQL Server database project (.sqlproj), not a compiled .NET application."
+    description: |
+      Identified structurally by step 2 from the .sqlproj extension alone —
+      no step 3 signal is needed or possible for this project type.
+    legacy_stack: "SQL Server Database Project"
+    category: data-etl
+    typical_indicators: ".sqlproj file, schema objects (.sql files), no compiled output."
+    known_risks: "None — this is a classification input, not a migration target."
+    classification_role: PROJECT_ROLE
+    classification_family: PROJECT_ROLE
+    classification_value: DATABASE
+    priority: 85
+    compatible_with: []
+    conflicts_with: []
+    anchor_signals: []
+    eligibility: null
+    analysis_requirements:
+      required: {}
+      preferred: {}
+    thresholds:
+      minimumScore: 50
+      highConfidenceScore: 70
+    rules_status: active
+    required_signals_pending: []
+    rules:
+      schema: signal-rules/1.0
+      all: []
+      any: []
+      atLeast: []
+      supporting: []
+      none: []
+      metadata:
+        - id: sql-database-project
+          field: structuralType
+          equals: sql_database_project
+
+  - id: role-deployment-project
+    name: "Deployment/packaging project"
+    summary: "A project whose job is packaging or deploying other projects, not running code itself."
+    description: |
+      Covers the out-of-scope structural types step 2 records from
+      extension alone: Docker Compose, WiX installer, and Windows
+      Application Packaging projects.
+    legacy_stack: "Any"
+    category: batch
+    typical_indicators: ".dcproj, .wixproj, .wapproj or .deployproj file; no compiled application code."
+    known_risks: "None — this is a classification input, not a migration target."
+    classification_role: PROJECT_ROLE
+    classification_family: PROJECT_ROLE
+    classification_value: DEPLOYMENT
+    priority: 80
+    compatible_with: []
+    conflicts_with: []
+    anchor_signals: []
+    eligibility: null
+    analysis_requirements:
+      required: {}
+      preferred: {}
+    thresholds:
+      minimumScore: 50
+      highConfidenceScore: 70
+    rules_status: active
+    required_signals_pending: []
+    rules:
+      schema: signal-rules/1.0
+      all: []
+      any: []
+      atLeast: []
+      supporting: []
+      none: []
+      metadata:
+        - id: out-of-scope-structural-type
+          field: structuralType
+          in: ["deployment_project", "windows_packaging_project", "wix_installer_project", "docker_compose_project"]
+
+  - id: role-library-project
+    name: "Library project"
+    summary: "A project with no entry point of its own — consumed by other projects, not run directly."
+    description: |
+      Identified by the absence of every registered entry-point signal.
+      OutputType=Library isn't used as a positive gate: on classic
+      net4x it is equally true of Web Forms, MVC5, WebAPI2 and WCF-in-IIS
+      projects (IIS hosts them), so it can't discriminate a genuine library
+      from those. Absence of entry-point evidence is decisive on its own.
+      Also disqualified by any test-indicator signal: per Part D, "highest
+      score wins" compares raw scores across role patterns, and a test
+      project that exercises a data layer (EF Core, a DbContext — completely
+      normal in integration tests) would otherwise accumulate enough
+      library-shaped supporting evidence to outscore role-test-project's own
+      unweighted anchor match. role-test-project's own docstring already
+      warns that test code legitimately contains the technology it tests;
+      this disqualifier is the library side of that same guarantee.
+    legacy_stack: "Any"
+    category: library
+    typical_indicators: "No Main method, no top-level statements, no host-builder call, no ServiceBase.Run, no Global.asax."
+    known_risks: "None — this is a classification input, not a migration target."
+    classification_role: PROJECT_ROLE
+    classification_family: PROJECT_ROLE
+    classification_value: LIBRARY
+    priority: 65
+    compatible_with: []
+    conflicts_with: []
+    anchor_signals: []
+    eligibility: null
+    analysis_requirements:
+      required:
+        syntaxAnalysis: true
+      preferred: {}
+    thresholds:
+      minimumScore: 50
+      highConfidenceScore: 70
+    rules_status: active
+    required_signals_pending: []
+    rules:
+      # Absence of entry-point evidence is what determines the role (see the
+      # description above) — supporting weights below don't change that, they
+      # only grade *how substantively* library-shaped the surviving evidence
+      # is, so a library with a real data-access layer (a DbContext, EF Core
+      # usage) scores above a library that's just a bag of DTOs.
+      schema: signal-rules/1.0
+      all: []
+      any: []
+      atLeast: []
+      supporting:
+        - id: db-context-class
+          signal:
+            name: DB_CONTEXT_BASE_CLASS
+          weight: 20
+        - id: ef-core-namespace
+          signal:
+            name: MICROSOFT_ENTITYFRAMEWORKCORE_NAMESPACE
+          weight: 15
+        - id: services-folder
+          signal:
+            name: SERVICES_FOLDER
+          weight: 15
+      none:
+        - id: no-main-entry
+          signal:
+            name: MAIN_METHOD_ENTRY_POINT
+          disqualify: true
+        - id: no-toplevel-entry
+          signal:
+            name: TOP_LEVEL_STATEMENTS_ENTRY_POINT
+          disqualify: true
+        - id: no-web-builder
+          signal:
+            name: WEB_APPLICATION_CREATE_BUILDER_ENTRY_POINT
+          disqualify: true
+        - id: no-host-builder
+          signal:
+            name: HOST_CREATE_DEFAULT_BUILDER_ENTRY_POINT
+          disqualify: true
+        - id: no-webhost-builder
+          signal:
+            name: WEBHOST_CREATE_DEFAULT_BUILDER_ENTRY_POINT
+          disqualify: true
+        - id: no-global-asax
+          signal:
+            name: GLOBAL_ASAX_ENTRY_POINT
+          disqualify: true
+        - id: no-startup-class
+          signal:
+            name: STARTUP_CLASS_ENTRY_POINT
+          disqualify: true
+        - id: no-servicebase-run
+          signal:
+            name: SERVICEBASE_RUN_ENTRY_POINT
+          disqualify: true
+        - id: no-hosted-service
+          signal:
+            name: ADD_HOSTED_SERVICE_ENTRY_POINT
+          disqualify: true
+        - id: no-test-method-attr
+          signal:
+            name: TEST_METHOD_ATTRIBUTE
+          disqualify: true
+        - id: no-fact-attr
+          signal:
+            name: FACT_ATTRIBUTE
+          disqualify: true
+        - id: no-test-attr
+          signal:
+            name: TEST_ATTRIBUTE
+          disqualify: true
+        - id: no-test-fixture-attr
+          signal:
+            name: TEST_FIXTURE_ATTRIBUTE
+          disqualify: true
+      metadata: []
+
+  - id: role-application-project
+    name: "Application project"
+    summary: "A project with its own entry point — runs as a standalone application, not merely consumed."
+    description: |
+      Identified by the presence of any registered entry-point signal.
+      Part D's alternative basis, "outputType Exe/WinExe, or a web SDK",
+      isn't included: step 2's raw-only parser leaves output_type null
+      whenever a project relies on an SDK-implied default or a centralized
+      Directory.Build.props (common even in modern, well-structured repos —
+      confirmed against the eShopOnWeb sample, where every SDK-style project
+      has a null output_type), and no step 2/3 field captures the actual SDK
+      string at all. Entry-point signals cover the real cases directly.
+    legacy_stack: "Any"
+    category: library
+    typical_indicators: "Main method, top-level statements, a host-builder call, ServiceBase.Run, or Global.asax."
+    known_risks: "None — this is a classification input, not a migration target."
+    classification_role: PROJECT_ROLE
+    classification_family: PROJECT_ROLE
+    classification_value: APPLICATION
+    priority: 60
+    compatible_with: []
+    conflicts_with: []
+    anchor_signals: ["MAIN_METHOD_ENTRY_POINT", "TOP_LEVEL_STATEMENTS_ENTRY_POINT", "WEB_APPLICATION_CREATE_BUILDER_ENTRY_POINT"]
+    eligibility: null
+    analysis_requirements:
+      required:
+        syntaxAnalysis: true
+      preferred: {}
+    thresholds:
+      minimumScore: 50
+      highConfidenceScore: 70
+    rules_status: active
+    required_signals_pending: []
+    rules:
+      schema: signal-rules/1.0
+      all: []
+      any:
+        - id: main-entry
+          signal:
+            name: MAIN_METHOD_ENTRY_POINT
+        - id: toplevel-entry
+          signal:
+            name: TOP_LEVEL_STATEMENTS_ENTRY_POINT
+        - id: web-builder
+          signal:
+            name: WEB_APPLICATION_CREATE_BUILDER_ENTRY_POINT
+        - id: host-builder
+          signal:
+            name: HOST_CREATE_DEFAULT_BUILDER_ENTRY_POINT
+        - id: webhost-builder
+          signal:
+            name: WEBHOST_CREATE_DEFAULT_BUILDER_ENTRY_POINT
+        - id: global-asax-entry
+          signal:
+            name: GLOBAL_ASAX_ENTRY_POINT
+        - id: startup-class-entry
+          signal:
+            name: STARTUP_CLASS_ENTRY_POINT
+        - id: servicebase-run-entry
+          signal:
+            name: SERVICEBASE_RUN_ENTRY_POINT
+        - id: hosted-service-entry
+          signal:
+            name: ADD_HOSTED_SERVICE_ENTRY_POINT
+      atLeast: []
+      supporting:
+        - id: aspnetcore-package
+          signal:
+            name: MICROSOFT_ASPNETCORE_PACKAGE
+          weight: 10
+        - id: controllers-folder
+          signal:
+            name: CONTROLLERS_FOLDER
+          weight: 10
+        - id: views-folder
+          signal:
+            name: VIEWS_FOLDER
+          weight: 10
+        - id: pages-folder
+          signal:
+            name: PAGES_FOLDER
+          weight: 10
+        - id: hosted-service-support
+          signal:
+            name: ADD_HOSTED_SERVICE_ENTRY_POINT
+          weight: 10
+        - id: servicebase-run-support
+          signal:
+            name: SERVICEBASE_RUN_ENTRY_POINT
+          weight: 10
+      none: []
+      metadata: []
+
+  - id: role-unknown
+    name: "Unknown role"
+    summary: "Fallback role when no other role pattern matches — lowest priority, always matches."
+    description: |
+      The ultimate fallback so role determination always produces a value.
+      Deliberately the same empty rule shape J1's migration gave every
+      unmigrated pattern, but here it is the real, active, intended rule —
+      not a placeholder.
+    legacy_stack: "Any"
+    category: library
+    typical_indicators: "None — reached only when no other role pattern matched."
+    known_risks: "None — this is a classification input, not a migration target."
+    classification_role: PROJECT_ROLE
+    classification_family: PROJECT_ROLE
+    classification_value: UNKNOWN
+    priority: 0
+    compatible_with: []
+    conflicts_with: []
+    anchor_signals: []
+    eligibility: null
+    analysis_requirements:
+      required: {}
+      preferred: {}
+    thresholds:
+      minimumScore: 50
+      highConfidenceScore: 70
+    rules_status: active
+    required_signals_pending: []
+    rules:
+      schema: signal-rules/1.0
+      all: []
+      any: []
+      atLeast: []
+      supporting: []
+      none: []
+      metadata: []

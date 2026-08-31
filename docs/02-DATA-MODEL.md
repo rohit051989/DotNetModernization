@@ -164,7 +164,8 @@ Layer 3. Engagement-specific. Never referenced by patterns or target states.
 | `selected_target_state_id` | `TEXT` NULL FK → `target_state_options.id` | NULL while `parked` |
 | `candidates_considered` | `JSONB` | Array of target state option ids presented |
 | `evaluation_notes` | `TEXT` | OCP4 fit, contract constraints, effort, readiness |
-| `forcing_factor` | `TEXT` | Required when the selected option is not the lowest-impact candidate |
+| `forcing_perspective` | `TEXT` | CHECK IN (`SECURITY`, `EVOLUTION`, `REGULATION`, `PERFORMANCE_SCALABILITY`, `AVAILABILITY_RESILIENCE`, `LOCATION`, `DEVELOPMENT_RESOURCE`). Required, with `forcing_rationale`, when the selected option is not the lowest-impact candidate — see `25-STANDARDS-AND-VIEWPOINTS.md` Part A1 |
+| `forcing_rationale` | `TEXT` | The narrative — required, with `forcing_perspective`, when the selected option is not the lowest-impact candidate. Renamed from `forcing_factor`: the perspective holds the classification, this holds the story |
 | `rationale` | `TEXT` | |
 | `approver_name` | `TEXT` | |
 | `approver_role` | `TEXT` | |
@@ -187,8 +188,12 @@ superseding it does, so a new decision can be recorded in its place.
 2. `selected_target_state_id` must belong to the same `pattern_id`. Reject
    cross-pattern references with a 422.
 3. If the selected option is **not** the lowest `consumer_impact` among
-   `candidates_considered`, `forcing_factor` is required. This is the
-   lift-and-shift default made enforceable rather than advisory.
+   `candidates_considered`, **both** `forcing_perspective` and `forcing_rationale`
+   are required — the 422 names both missing fields. This is the lift-and-shift
+   default made enforceable rather than advisory, and tagging the perspective is
+   what makes deviations aggregable across an engagement (`25-STANDARDS-AND-
+   VIEWPOINTS.md` Part A1): "of 47 patterns deviating from lift-and-shift, 31
+   were security-driven and 12 regulatory."
 4. Soft-deleting or deprecating a **master** pattern is refused only by
    non-superseded, non-deleted decision records against it, in **any**
    engagement — never by the mere existence of its target state options. When a

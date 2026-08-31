@@ -60,9 +60,14 @@ public sealed class SignalRegistry
 
     public string RegistryVersion { get; }
 
+    /// <summary>Every registered entry, full metadata included — the source
+    /// for SARIF's <c>tool.driver.rules</c> (Part A3).</summary>
+    public IReadOnlyList<SignalRegistryEntry> Entries { get; }
+
     private SignalRegistry(string registryVersion, IReadOnlyList<SignalRegistryEntry> entries)
     {
         RegistryVersion = registryVersion;
+        Entries = entries;
         _registeredNames = new HashSet<string>(entries.Select(e => e.Name), StringComparer.Ordinal);
     }
 

@@ -13,7 +13,25 @@ from app import models
 from app.workflow import semver
 from app.workflow.definition.model import JobDefinitionFile
 from app.workflow.definition.validator import ValidationErrorItem, _flatten_flow, validate_job_definition
-from app.workflow.schemas import AffectedConsumer, ContractChangeWarning, StepDeclaration
+from app.workflow.schemas import (
+    AffectedConsumer,
+    ContractChangeWarning,
+    StepDeclaration,
+    ViewpointCoverage,
+    ViewpointCoverageEntry,
+)
+
+# Fixed report order — 25-STANDARDS-AND-VIEWPOINTS.md Part A2. 'NONE' is
+# deliberately excluded: it means "no viewpoint", not a coverage dimension.
+_REPORTED_VIEWPOINTS = (
+    "CONTEXT",
+    "FUNCTIONAL",
+    "INFORMATION",
+    "CONCURRENCY",
+    "DEVELOPMENT",
+    "DEPLOYMENT",
+    "OPERATIONAL",
+)
 
 
 def _max_produced_major(db: Session, artifact_type: str, exclude_step_name: str) -> int | None:
@@ -137,6 +155,7 @@ def register_step(
     row.owner_code = declaration.owner_code
     row.version = declaration.version
     row.owner_team = declaration.owner_team
+    row.viewpoint = declaration.viewpoint
     row.adapter_type = declaration.adapter_type
     row.adapter_config = declaration.adapter_config
     row.consumes = [c.model_dump() for c in declaration.consumes]
@@ -172,3 +191,50 @@ def delete_step(db: Session, step_name: str) -> bool:
     db.delete(row)
     db.flush()
     return True
+
+
+def _coverage_label(implemented_count: int, total_contributing: int) -> str:
+    if total_contributing == 0 or implemented_count == 0:
+        return "none"
+    ratio = implemented_count / total_contributing
+    if ratio >= 0.75:
+        return "strong"
+    if ratio >= 0.4:
+        return "partial"
+    return "thin"
+
+
+def viewpoint_coverage(db: Session, engagement_id: str) -> ViewpointCoverage:
+    """GET /api/engagements/{eid}/viewpoint-coverage — 25-STANDARDS-AND-
+    VIEWPOINTS.md Part A2. Honest scoping, not a completeness claim: which
+    viewpoints this platform's *implemented* steps actually address, and how
+    much of that ran for this one engagement."""
+    all_steps = list_steps(db)
+
+    ran_step_names: set[str] = set(
+        row[0]
+        for row in db.query(models.WfStepExecution.step_name)
+        .join(models.WfJobExecution, models.WfJobExecution.id == models.WfStepExecution.job_execution_id)
+        .join(models.WfJobInstance, models.WfJobInstance.id == models.WfJobExecution.job_instance_id)
+        .filter(models.WfJobInstance.parameters["engagement_id"].astext == engagement_id)
+        .distinct()
+    )
+
+    entries = []
+    for viewpoint in _REPORTED_VIEWPOINTS:
+        contributing = [s for s in all_steps if s.viewpoint == viewpoint]
+        contributing_names = [s.step_name for s in contributing]
+        implemented_count = sum(1 for s in contributing if s.implementation_status == "implemented")
+        ran_count = sum(1 for name in contributing_names if name in ran_step_names)
+        entries.append(
+            ViewpointCoverageEntry(
+                viewpoint=viewpoint,
+                contributing_steps=contributing_names,
+                total_contributing=len(contributing_names),
+                implemented_count=implemented_count,
+                ran_count=ran_count,
+                coverage_label=_coverage_label(implemented_count, len(contributing_names)),
+            )
+        )
+
+    return ViewpointCoverage(engagement_id=engagement_id, viewpoints=entries)

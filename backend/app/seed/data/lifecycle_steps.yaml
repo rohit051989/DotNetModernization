@@ -6,6 +6,21 @@
 # Every step here seeds as a stub: adapter_type stub, empty consumes/produces,
 # implementation_status stub. That invariant lives in seed_data.py, not here,
 # so this file stays a pure transcription of the doc.
+#
+# `viewpoint` (25-STANDARDS-AND-VIEWPOINTS.md Part A2) is NOT a transcription
+# — docs/25 says "populate from the Appendix F mapping", but no Appendix F
+# exists anywhere in this repository. Each value here is a first-pass
+# Rozanski & Woods classification derived directly from this step's own
+# description in 17-LIFECYCLE-STEPS.md, reasoned through by hand rather than
+# copied from a source. Two viewpoints are deliberately never assigned:
+# CONTEXT (external-actor relationships — the capability gap Part B1 names
+# explicitly; no step produces this today) and INFORMATION (no step here
+# documents estate data/storage architecture). FUNCTIONAL is assigned only
+# to the three steps that snapshot or verify an API's interface surface
+# (19, 32, 48) — business-capability mapping, the other half of "functional",
+# is Part B4's separate, deliberate gap. Review this mapping before treating
+# it as authoritative; it is the platform's best current answer, not a
+# transcribed spec.
 
 steps:
 
@@ -14,209 +29,260 @@ steps:
     lifecycle_step_no: 1
     display_name: "Repository estate ingest & inventory creation"
     owner_code: "P"
+    viewpoint: NONE
   - step_name: solution-discovery
     lifecycle_step_no: 2
     display_name: "Solution & project discovery per repository"
     owner_code: "P"
+    viewpoint: DEVELOPMENT
   - step_name: application-fingerprinting
     lifecycle_step_no: 3
     display_name: "Application fingerprinting"
     owner_code: "P"
+    viewpoint: DEVELOPMENT
   - step_name: pattern-classification
     lifecycle_step_no: 4
     display_name: "Pattern classification against catalog"
     owner_code: "P + S"
+    viewpoint: DEVELOPMENT
   - step_name: pattern-discovery-clustering
     lifecycle_step_no: 5
     display_name: "Pattern discovery clustering for unmatched applications"
     owner_code: "P + S"
+    viewpoint: DEVELOPMENT
   - step_name: pattern-validation
     lifecycle_step_no: 6
     display_name: "Pattern validation"
     owner_code: "H"
+    viewpoint: NONE
   - step_name: dependency-graph-construction
     lifecycle_step_no: 7
     display_name: "Dependency graph construction"
     owner_code: "P"
+    viewpoint: DEVELOPMENT
   - step_name: impact-map-generation
     lifecycle_step_no: 8
     display_name: "Impact map generation"
     owner_code: "P + S"
+    viewpoint: DEVELOPMENT
   - step_name: test-coverage-assessment
     lifecycle_step_no: 9
     display_name: "Test coverage & CI maturity assessment"
     owner_code: "P"
+    viewpoint: DEVELOPMENT
   - step_name: risk-scoring-tier-assignment
     lifecycle_step_no: 10
     display_name: "Risk scoring & review tier assignment"
     owner_code: "P"
+    viewpoint: NONE
   - step_name: inventory-dashboard-population
     lifecycle_step_no: 11
     display_name: "Inventory dashboard population"
     owner_code: "P"
+    viewpoint: NONE
   - step_name: migration-wave-planning
     lifecycle_step_no: 12
     display_name: "Migration wave planning"
     owner_code: "P + H"
+    viewpoint: NONE
 
   # ---- Phase 1 — Target state governance ----
   - step_name: target-state-options-retrieval
     lifecycle_step_no: 13
     display_name: "Target state options retrieval"
     owner_code: "P"
+    viewpoint: NONE
   - step_name: target-state-approval
     lifecycle_step_no: 14
     display_name: "Target state selection & approval"
     owner_code: "H"
+    viewpoint: NONE
   - step_name: decision-record-capture
     lifecycle_step_no: 15
     display_name: "Decision record capture"
     owner_code: "P"
+    viewpoint: NONE
   - step_name: accelerator-binding
     lifecycle_step_no: 16
     display_name: "Accelerator binding"
     owner_code: "P"
+    viewpoint: NONE
 
   # ---- Track A — Dev track (per application) ----
   - step_name: branch-baseline-record
     lifecycle_step_no: 17
     display_name: "Branch creation & baseline SHA record"
     owner_code: "P"
+    viewpoint: DEVELOPMENT
   - step_name: baseline-verification
     lifecycle_step_no: 18
     display_name: "Baseline verification"
     owner_code: "P"
+    viewpoint: DEVELOPMENT
   - step_name: api-contract-snapshot
     lifecycle_step_no: 19
     display_name: "API contract snapshot"
     owner_code: "P"
+    viewpoint: FUNCTIONAL
   - step_name: characterization-test-generation
     lifecycle_step_no: 20
     display_name: "Characterization test generation"
     owner_code: "S"
+    viewpoint: DEVELOPMENT
   - step_name: guardrail-playbook-generation
     lifecycle_step_no: 21
     display_name: "Guardrail playbook generation"
     owner_code: "P + S"
+    viewpoint: NONE
   - step_name: plan-approval-gate
     lifecycle_step_no: 22
     display_name: "Plan approval gate"
     owner_code: "H"
+    viewpoint: NONE
   - step_name: engine-assessment
     lifecycle_step_no: 23
     display_name: "Assessment"
     owner_code: "C"
+    viewpoint: NONE
   - step_name: plan-validation
     lifecycle_step_no: 24
     display_name: "Plan validation"
     owner_code: "P + H"
+    viewpoint: NONE
   - step_name: framework-retarget-package-upgrade
     lifecycle_step_no: 25
     display_name: "Framework retarget & package upgrade"
     owner_code: "C"
+    viewpoint: DEVELOPMENT
   - step_name: build-fix-loop
     lifecycle_step_no: 26
     display_name: "Build-fix loop"
     owner_code: "C"
+    viewpoint: DEVELOPMENT
   - step_name: breaking-change-remediation
     lifecycle_step_no: 27
     display_name: "Breaking-change remediation"
     owner_code: "C"
+    viewpoint: DEVELOPMENT
   - step_name: windows-to-linux-remediation
     lifecycle_step_no: 28
     display_name: "Windows-to-Linux remediation"
     owner_code: "S"
+    viewpoint: DEPLOYMENT
   - step_name: configuration-externalization
     lifecycle_step_no: 29
     display_name: "Configuration externalization"
     owner_code: "P + S"
+    viewpoint: DEPLOYMENT
   - step_name: logging-health-endpoint-adaptation
     lifecycle_step_no: 30
     display_name: "Logging & health endpoint adaptation"
     owner_code: "S"
+    viewpoint: OPERATIONAL
   - step_name: independent-build-test-verification
     lifecycle_step_no: 31
     display_name: "Independent build & test verification"
     owner_code: "P"
+    viewpoint: DEVELOPMENT
   - step_name: contract-parity-verification
     lifecycle_step_no: 32
     display_name: "Contract parity verification"
     owner_code: "P"
+    viewpoint: FUNCTIONAL
   - step_name: characterization-test-execution
     lifecycle_step_no: 33
     display_name: "Characterization test execution"
     owner_code: "P"
+    viewpoint: DEVELOPMENT
   - step_name: linux-compatibility-security-scan
     lifecycle_step_no: 34
     display_name: "Linux compatibility & security scan"
     owner_code: "P"
+    viewpoint: DEPLOYMENT
   - step_name: container-build-file-generation
     lifecycle_step_no: 35
     display_name: "Container build file generation"
     owner_code: "P"
+    viewpoint: DEPLOYMENT
   - step_name: evidence-bundle-assembly
     lifecycle_step_no: 36
     display_name: "Evidence bundle assembly"
     owner_code: "P + S"
+    viewpoint: NONE
   - step_name: pr-creation
     lifecycle_step_no: 37
     display_name: "PR creation with structured summary"
     owner_code: "P + S"
+    viewpoint: DEVELOPMENT
   - step_name: code-review
     lifecycle_step_no: 38
     display_name: "Code review"
     owner_code: "H"
+    viewpoint: NONE
   - step_name: feedback-capture
     lifecycle_step_no: 39
     display_name: "Feedback capture"
     owner_code: "P"
+    viewpoint: NONE
   - step_name: merge-version-record
     lifecycle_step_no: 40
     display_name: "Merge, version record, dashboard update"
     owner_code: "P"
+    viewpoint: DEVELOPMENT
 
   # ---- Track B — DevOps track (per wave) ----
   - step_name: wave-readiness-check
     lifecycle_step_no: 41
     display_name: "Wave readiness check"
     owner_code: "P"
+    viewpoint: NONE
   - step_name: ocp4-manifest-generation
     lifecycle_step_no: 42
     display_name: "OCP4 manifest & Helm chart generation"
     owner_code: "P"
+    viewpoint: DEPLOYMENT
   - step_name: container-image-build-push
     lifecycle_step_no: 43
     display_name: "Container image build & registry push"
     owner_code: "P"
+    viewpoint: DEPLOYMENT
   - step_name: container-smoke-test
     lifecycle_step_no: 44
     display_name: "Container smoke test"
     owner_code: "P"
+    viewpoint: DEPLOYMENT
   - step_name: cicd-pipeline-update
     lifecycle_step_no: 45
     display_name: "CI/CD pipeline update"
     owner_code: "P"
+    viewpoint: DEVELOPMENT
   - step_name: deploy-non-production-ocp4
     lifecycle_step_no: 46
     display_name: "Deploy to non-production OCP4"
     owner_code: "P"
+    viewpoint: DEPLOYMENT
   - step_name: cross-application-integration-testing
     lifecycle_step_no: 47
     display_name: "Cross-application integration testing"
     owner_code: "P"
+    viewpoint: CONCURRENCY
   - step_name: consumer-regression-verification
     lifecycle_step_no: 48
     display_name: "Consumer regression verification"
     owner_code: "P"
+    viewpoint: FUNCTIONAL
   - step_name: performance-resource-baseline
     lifecycle_step_no: 49
     display_name: "Performance & resource baseline"
     owner_code: "P"
+    viewpoint: OPERATIONAL
   - step_name: release-approval
     lifecycle_step_no: 50
     display_name: "Release approval"
     owner_code: "H"
+    viewpoint: NONE
   - step_name: production-cutover
     lifecycle_step_no: 51
     display_name: "Production cutover, parallel run & rollback readiness"
     owner_code: "P + H"
+    viewpoint: OPERATIONAL

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { getEngagementPatternDecision, supersedeDecision } from '../../api/catalog'
 import { ApiError } from '../../api/client'
-import { DecisionStatusBadge } from '../../components/Badge'
+import { DecisionStatusBadge, PerspectiveBadge } from '../../components/Badge'
 import { ConfirmDialog } from '../../components/ConfirmDialog'
 import { EmptyState } from '../../components/EmptyState'
 import { useToast } from '../../components/Toast'
@@ -88,7 +88,10 @@ export function DecisionPanel({
 
       {!loading && !error && decision && (
         <div className="space-y-3">
-          <DecisionStatusBadge status={decision.status} />
+          <div className="flex flex-wrap items-center gap-1.5">
+            <DecisionStatusBadge status={decision.status} />
+            {decision.forcing_perspective && <PerspectiveBadge perspective={decision.forcing_perspective} />}
+          </div>
 
           <p className="text-sm text-neutral-700">
             Selected:{' '}
@@ -106,10 +109,10 @@ export function DecisionPanel({
             </div>
           )}
 
-          {decision.forcing_factor && (
+          {decision.forcing_rationale && (
             <div>
-              <p className="text-xs font-medium text-neutral-500">Forcing factor</p>
-              <p className="text-sm text-neutral-700">{decision.forcing_factor}</p>
+              <p className="text-xs font-medium text-neutral-500">Forcing rationale</p>
+              <p className="text-sm text-neutral-700">{decision.forcing_rationale}</p>
             </div>
           )}
 

@@ -1,40 +1,115 @@
 {
-  "catalog_version": "1.0",
+  "catalog_revision": 0,
+  "catalog_version": "2.0",
   "decision_records": [],
   "engagements": [],
-  "exported_at": "2026-08-13T08:14:42.848248Z",
+  "exported_at": "2026-08-21T04:16:46.707516Z",
   "patterns": [
     {
+      "analysis_requirements": {
+        "preferred": {
+          "projectMetadataParsed": true
+        },
+        "required": {
+          "syntaxAnalysis": true
+        }
+      },
+      "anchor_signals": [
+        "ASPX_FILE",
+        "PAGE_BASE_CLASS"
+      ],
       "category": "web-ui",
+      "classification_family": "WEB_APPLICATION",
+      "classification_role": "PRIMARY",
+      "classification_value": "WEB_FORMS_APPLICATION",
+      "compatible_with": [
+        "fx-aspnet-mvc"
+      ],
+      "conflicts_with": [],
       "description": "Web Forms application using the page lifecycle, ViewState, server controls\nand code-behind. There is no lift-and-shift path: Web Forms does not exist on\nmodern .NET, so any migration is a rewrite by definition.\n",
       "detection_rules": {
-        "confidence_weight": 1.0,
-        "config_markers": [
-          "system.web"
+        "all": [],
+        "any": [
+          {
+            "id": "aspx-file",
+            "signal": {
+              "minimumOccurrences": 1,
+              "name": "ASPX_FILE"
+            }
+          },
+          {
+            "id": "page-base",
+            "signal": {
+              "name": "PAGE_BASE_CLASS"
+            }
+          }
         ],
-        "file_globs": [
-          "**/*.aspx",
-          "**/*.ascx",
-          "**/*.Master"
+        "atLeast": [],
+        "metadata": [
+          {
+            "equals": "net-framework",
+            "field": "frameworkFamily",
+            "id": "legacy-framework"
+          }
         ],
-        "notes": "Presence of .aspx files is decisive. Flag for a mandatory rewrite decision.",
-        "required_namespaces": [
-          "System.Web.UI"
+        "none": [],
+        "schema": "signal-rules/1.0",
+        "supporting": [
+          {
+            "id": "ascx-file",
+            "signal": {
+              "name": "ASCX_FILE"
+            },
+            "weight": 10
+          },
+          {
+            "id": "user-control-base",
+            "signal": {
+              "name": "USER_CONTROL_BASE_CLASS"
+            },
+            "weight": 10
+          },
+          {
+            "id": "master-page-base",
+            "signal": {
+              "name": "MASTER_PAGE_BASE_CLASS"
+            },
+            "weight": 10
+          },
+          {
+            "id": "system-web-ui-namespace",
+            "signal": {
+              "name": "SYSTEM_WEB_UI_NAMESPACE"
+            },
+            "weight": 10
+          },
+          {
+            "id": "global-asax",
+            "signal": {
+              "name": "GLOBAL_ASAX_FILE"
+            },
+            "weight": 5
+          }
+        ]
+      },
+      "eligibility": {
+        "excludedProjectRoles": [
+          "TEST",
+          "DEPLOYMENT"
         ],
-        "target_frameworks": [
-          "net46",
-          "net461",
-          "net462",
-          "net47",
-          "net471",
-          "net472",
-          "net48"
+        "fingerprintStatuses": [
+          "COMPLETE",
+          "PARTIAL"
         ]
       },
       "id": "aspnet-webforms",
       "known_risks": "This is the one pattern where the engagement's lift-and-shift default cannot be honoured. Surface it to the client early rather than discovering it mid-programme. Effort estimates for Web Forms rewrites are routinely underestimated.",
       "legacy_stack": ".NET Framework 4.x, ASP.NET Web Forms",
       "name": "ASP.NET Web Forms",
+      "priority": 55,
+      "required_signals_pending": [],
+      "rules_status": "active",
+      "scope": "PROJECT",
       "status": "active",
       "summary": "Server-rendered Web Forms application with .aspx pages and code-behind.",
       "target_state_options": [
@@ -63,6 +138,7 @@
           },
           "id": "aspnetcore-mvc-rewrite",
           "is_lift_and_shift": false,
+          "is_recommended": false,
           "known_limitations": "Requires explicit reimplementation of state that ViewState previously handled implicitly.",
           "linux_compatible": true,
           "name": "ASP.NET Core MVC rewrite",
@@ -100,6 +176,7 @@
           },
           "id": "blazor-server-net10",
           "is_lift_and_shift": false,
+          "is_recommended": false,
           "known_limitations": "No automated path preserves ViewState or the page lifecycle. Expect genuine redesign of stateful screens. Requires a persistent connection, which changes load-balancer and session-affinity requirements on OCP4.",
           "linux_compatible": true,
           "name": "Blazor Server on .NET 10",
@@ -112,36 +189,145 @@
           "version": 1
         }
       ],
+      "thresholds": {
+        "highConfidenceScore": 90,
+        "minimumScore": 70
+      },
       "typical_indicators": ".aspx and .aspx.cs pairs, .ascx user controls, Site.Master, ViewState in rendered output, references to System.Web.UI.",
       "version": 1
     },
     {
+      "analysis_requirements": {
+        "preferred": {},
+        "required": {
+          "syntaxAnalysis": true
+        }
+      },
+      "anchor_signals": [
+        "MAIN_METHOD_ENTRY_POINT",
+        "TOP_LEVEL_STATEMENTS_ENTRY_POINT"
+      ],
       "category": "batch",
+      "classification_family": "APPLICATION_TYPE",
+      "classification_role": "PRIMARY",
+      "classification_value": "BATCH_APPLICATION",
+      "compatible_with": [],
+      "conflicts_with": [
+        "windows-service"
+      ],
       "description": "Console application with a Main entry point performing batch work — file\nprocessing, data loads, report generation — invoked on a schedule rather than\nrun continuously.\n",
       "detection_rules": {
-        "confidence_weight": 0.9,
-        "forbidden_namespaces": [
-          "System.Web",
-          "System.ServiceModel",
-          "System.ServiceProcess"
+        "all": [],
+        "any": [
+          {
+            "id": "main-entry",
+            "signal": {
+              "name": "MAIN_METHOD_ENTRY_POINT"
+            }
+          },
+          {
+            "id": "toplevel-entry",
+            "signal": {
+              "name": "TOP_LEVEL_STATEMENTS_ENTRY_POINT"
+            }
+          }
         ],
-        "notes": "Distinguish from Windows Service by the absence of System.ServiceProcess and ServiceBase.",
-        "project_properties": {
-          "OutputType": "Exe"
-        },
-        "target_frameworks": [
-          "net47",
-          "net471",
-          "net472",
-          "net48",
-          "netcoreapp2.1",
-          "netcoreapp3.1"
+        "atLeast": [],
+        "metadata": [],
+        "none": [
+          {
+            "disqualify": true,
+            "id": "not-service-base",
+            "signal": {
+              "name": "SERVICE_BASE_BASE_CLASS"
+            }
+          },
+          {
+            "disqualify": true,
+            "id": "not-servicebase-run",
+            "signal": {
+              "name": "SERVICEBASE_RUN_ENTRY_POINT"
+            }
+          },
+          {
+            "disqualify": true,
+            "id": "not-web-builder",
+            "signal": {
+              "name": "WEB_APPLICATION_CREATE_BUILDER_ENTRY_POINT"
+            }
+          },
+          {
+            "disqualify": true,
+            "id": "not-webhost-builder",
+            "signal": {
+              "name": "WEBHOST_CREATE_DEFAULT_BUILDER_ENTRY_POINT"
+            }
+          },
+          {
+            "disqualify": true,
+            "id": "not-global-asax",
+            "signal": {
+              "name": "GLOBAL_ASAX_ENTRY_POINT"
+            }
+          },
+          {
+            "disqualify": true,
+            "id": "not-startup-class",
+            "signal": {
+              "name": "STARTUP_CLASS_ENTRY_POINT"
+            }
+          },
+          {
+            "disqualify": true,
+            "id": "not-razor-file",
+            "signal": {
+              "name": "RAZOR_FILE"
+            }
+          },
+          {
+            "disqualify": true,
+            "id": "not-cshtml-file",
+            "signal": {
+              "name": "CSHTML_FILE"
+            }
+          }
+        ],
+        "schema": "signal-rules/1.0",
+        "supporting": [
+          {
+            "id": "jobs-folder",
+            "signal": {
+              "name": "JOBS_FOLDER"
+            },
+            "weight": 15
+          },
+          {
+            "id": "tasks-folder",
+            "signal": {
+              "name": "TASKS_FOLDER"
+            },
+            "weight": 15
+          }
+        ]
+      },
+      "eligibility": {
+        "excludedProjectRoles": [
+          "TEST",
+          "DEPLOYMENT"
+        ],
+        "fingerprintStatuses": [
+          "COMPLETE",
+          "PARTIAL"
         ]
       },
       "id": "console-batch-job",
       "known_risks": "Hardcoded Windows paths, drive-letter mappings, UNC shares and Windows-only scheduling assumptions. Scheduling itself moves out of the application and into the platform, which is a change of operational ownership as much as a code change.",
       "legacy_stack": ".NET Framework 4.x or .NET Core 2.x console",
       "name": "Console batch application",
+      "priority": 30,
+      "required_signals_pending": [],
+      "rules_status": "active",
+      "scope": "PROJECT",
       "status": "active",
       "summary": "Console executable run on a schedule, typically by Windows Task Scheduler.",
       "target_state_options": [
@@ -172,6 +358,7 @@
           },
           "id": "ocp4-cronjob-container",
           "is_lift_and_shift": true,
+          "is_recommended": true,
           "known_limitations": "Scheduling moves from Windows Task Scheduler to OpenShift, changing who owns the schedule. Local file dependencies must move to a mounted volume or object storage.",
           "linux_compatible": true,
           "name": "OCP4 CronJob container",
@@ -207,6 +394,7 @@
           },
           "id": "worker-service-container",
           "is_lift_and_shift": false,
+          "is_recommended": false,
           "known_limitations": "Consumes resources continuously. Scheduling logic moves into the application, which makes it less visible to platform operators than a CronJob.",
           "linux_compatible": true,
           "name": ".NET Worker Service container",
@@ -219,41 +407,128 @@
           "version": 1
         }
       ],
+      "thresholds": {
+        "highConfidenceScore": 70,
+        "minimumScore": 50
+      },
       "typical_indicators": "OutputType Exe, Main entry point, no web packages, app.config, frequent use of local file paths and drive letters.",
       "version": 1
     },
     {
+      "analysis_requirements": {
+        "preferred": {},
+        "required": {
+          "syntaxAnalysis": true
+        }
+      },
+      "anchor_signals": [
+        "WEBHOST_CREATE_DEFAULT_BUILDER_ENTRY_POINT",
+        "STARTUP_CLASS_ENTRY_POINT"
+      ],
       "category": "web-api",
+      "classification_family": "APPLICATION_TYPE",
+      "classification_role": "PRIMARY",
+      "classification_value": "REST_API",
+      "compatible_with": [],
+      "conflicts_with": [],
       "description": "REST API built on ASP.NET Core 2.0-2.2 using the classic `Startup.cs`\n`ConfigureServices` / `Configure` pair and `IWebHostBuilder`. Typically\nhosted in IIS behind the ASP.NET Core Module. Out of support since 2019.\n",
       "detection_rules": {
-        "confidence_weight": 1.0,
-        "config_markers": [],
-        "file_globs": [
-          "**/Startup.cs",
-          "**/Controllers/*Controller.cs"
+        "all": [],
+        "any": [
+          {
+            "id": "webhost-builder",
+            "signal": {
+              "name": "WEBHOST_CREATE_DEFAULT_BUILDER_ENTRY_POINT"
+            }
+          },
+          {
+            "id": "startup-class",
+            "signal": {
+              "name": "STARTUP_CLASS_ENTRY_POINT"
+            }
+          }
         ],
-        "forbidden_file_globs": [
-          "**/*.svc",
-          "**/*.aspx"
+        "atLeast": [],
+        "metadata": [],
+        "none": [],
+        "schema": "signal-rules/1.0",
+        "supporting": [
+          {
+            "id": "mvc-namespace",
+            "signal": {
+              "name": "MICROSOFT_ASPNETCORE_MVC_NAMESPACE"
+            },
+            "weight": 15
+          },
+          {
+            "id": "api-controller-attr",
+            "signal": {
+              "name": "API_CONTROLLER_ATTRIBUTE"
+            },
+            "weight": 15
+          },
+          {
+            "id": "controllerbase-class",
+            "signal": {
+              "name": "CONTROLLER_BASE_BASE_CLASS"
+            },
+            "weight": 15
+          },
+          {
+            "id": "route-attr",
+            "signal": {
+              "name": "ROUTE_ATTRIBUTE"
+            },
+            "weight": 10
+          },
+          {
+            "id": "http-get",
+            "signal": {
+              "name": "HTTP_GET_ATTRIBUTE"
+            },
+            "weight": 5
+          },
+          {
+            "id": "http-post",
+            "signal": {
+              "name": "HTTP_POST_ATTRIBUTE"
+            },
+            "weight": 5
+          },
+          {
+            "id": "controllers-folder",
+            "signal": {
+              "name": "CONTROLLERS_FOLDER"
+            },
+            "weight": 5
+          },
+          {
+            "id": "aspnetcore-package",
+            "signal": {
+              "name": "MICROSOFT_ASPNETCORE_PACKAGE"
+            },
+            "weight": 5
+          }
+        ]
+      },
+      "eligibility": {
+        "excludedProjectRoles": [
+          "TEST",
+          "DEPLOYMENT"
         ],
-        "notes": "Highest-confidence pattern in the estate. Simplest migration path and requires no contested target-state decision.",
-        "required_namespaces": [
-          "Microsoft.AspNetCore.Mvc"
-        ],
-        "required_packages": [
-          "Microsoft.AspNetCore.App",
-          "Microsoft.AspNetCore.Mvc"
-        ],
-        "target_frameworks": [
-          "netcoreapp2.0",
-          "netcoreapp2.1",
-          "netcoreapp2.2"
+        "fingerprintStatuses": [
+          "COMPLETE",
+          "PARTIAL"
         ]
       },
       "id": "core2-rest-api",
       "known_risks": "Default JSON serializer changes from Newtonsoft to System.Text.Json on modern .NET, which can silently alter payload casing, null handling and date formats. Contract snapshot before migration is essential.",
       "legacy_stack": ".NET Core 2.0 - 2.2",
       "name": ".NET Core 2.x REST API",
+      "priority": 50,
+      "required_signals_pending": [],
+      "rules_status": "active",
+      "scope": "PROJECT",
       "status": "active",
       "summary": "ASP.NET Core 2.x Web API with Startup-based hosting, running on IIS.",
       "target_state_options": [
@@ -283,6 +558,7 @@
           },
           "id": "net10-api-controllers-preserved",
           "is_lift_and_shift": true,
+          "is_recommended": true,
           "known_limitations": "Pins Newtonsoft.Json explicitly rather than adopting System.Text.Json, to guarantee payload parity. Serializer modernization is deferred to a later pass.",
           "linux_compatible": true,
           "name": ".NET 10 Web API, controllers preserved",
@@ -318,6 +594,7 @@
           },
           "id": "net10-api-minimal",
           "is_lift_and_shift": false,
+          "is_recommended": false,
           "known_limitations": "External contract is unchanged but internal structure churns significantly, enlarging the review surface for no consumer-visible benefit. Not the default choice under a lift-and-shift posture.",
           "linux_compatible": true,
           "name": ".NET 10 Minimal API",
@@ -330,36 +607,134 @@
           "version": 1
         }
       ],
+      "thresholds": {
+        "highConfidenceScore": 90,
+        "minimumScore": 70
+      },
       "typical_indicators": "Startup.cs with ConfigureServices/Configure, Program.cs with WebHost.CreateDefaultBuilder, controllers deriving from ControllerBase.",
       "version": 1
     },
     {
+      "analysis_requirements": {
+        "preferred": {
+          "projectMetadataParsed": true
+        },
+        "required": {
+          "syntaxAnalysis": true
+        }
+      },
+      "anchor_signals": [],
       "category": "library",
+      "classification_family": "APPLICATION_TYPE",
+      "classification_role": "PRIMARY",
+      "classification_value": "LIBRARY",
+      "compatible_with": [],
+      "conflicts_with": [],
       "description": "Non-SDK-style class library on .NET Framework 4.7x. Frequently a shared\ndependency across several applications in the same repository, which makes it\na coordination point rather than an isolated migration.\n",
       "detection_rules": {
-        "confidence_weight": 0.8,
-        "file_globs": [
-          "**/Properties/AssemblyInfo.cs"
+        "all": [],
+        "any": [],
+        "atLeast": [],
+        "metadata": [
+          {
+            "equals": "net-framework",
+            "field": "frameworkFamily",
+            "id": "legacy-framework"
+          }
         ],
-        "forbidden_namespaces": [
-          "System.Web",
-          "System.ServiceModel",
-          "System.ServiceProcess"
+        "none": [
+          {
+            "disqualify": true,
+            "id": "no-aspx",
+            "signal": {
+              "name": "ASPX_FILE"
+            }
+          },
+          {
+            "disqualify": true,
+            "id": "no-page-base",
+            "signal": {
+              "name": "PAGE_BASE_CLASS"
+            }
+          },
+          {
+            "disqualify": true,
+            "id": "no-svc",
+            "signal": {
+              "name": "SVC_FILE"
+            }
+          },
+          {
+            "disqualify": true,
+            "id": "no-service-contract",
+            "signal": {
+              "name": "SERVICE_CONTRACT_ATTRIBUTE"
+            }
+          },
+          {
+            "disqualify": true,
+            "id": "no-mvc-controller",
+            "signal": {
+              "name": "CONTROLLER_BASE_CLASS"
+            }
+          },
+          {
+            "disqualify": true,
+            "id": "no-webapi-controller",
+            "signal": {
+              "name": "API_CONTROLLER_BASE_CLASS"
+            }
+          },
+          {
+            "disqualify": true,
+            "id": "no-global-asax",
+            "signal": {
+              "name": "GLOBAL_ASAX_FILE"
+            }
+          },
+          {
+            "disqualify": true,
+            "id": "no-service-base",
+            "signal": {
+              "name": "SERVICE_BASE_BASE_CLASS"
+            }
+          },
+          {
+            "disqualify": true,
+            "id": "no-main-entry",
+            "signal": {
+              "name": "MAIN_METHOD_ENTRY_POINT"
+            }
+          },
+          {
+            "disqualify": true,
+            "id": "no-toplevel-entry",
+            "signal": {
+              "name": "TOP_LEVEL_STATEMENTS_ENTRY_POINT"
+            }
+          }
         ],
-        "notes": "Lower confidence weight because many patterns share these markers. Apply after more specific patterns have been matched.",
-        "project_properties": {
-          "OutputType": "Library"
-        },
-        "target_frameworks": [
-          "net47",
-          "net471",
-          "net472"
+        "schema": "signal-rules/1.0",
+        "supporting": []
+      },
+      "eligibility": {
+        "excludedProjectRoles": [
+          "TEST",
+          "DEPLOYMENT"
+        ],
+        "fingerprintStatuses": [
+          "COMPLETE",
+          "PARTIAL"
         ]
       },
       "id": "fx47-class-library",
       "known_risks": "Shared libraries fan out. Migrating one can break every consumer simultaneously, so these must be sequenced first within a wave and verified across all dependents.",
       "legacy_stack": ".NET Framework 4.7 / 4.7.1 / 4.7.2",
       "name": ".NET Framework 4.7 class library",
+      "priority": 30,
+      "required_signals_pending": [],
+      "rules_status": "active",
+      "scope": "PROJECT",
       "status": "active",
       "summary": "Shared class library targeting .NET Framework 4.7, consumed by multiple applications.",
       "target_state_options": [
@@ -384,6 +759,7 @@
           },
           "id": "net10-class-library",
           "is_lift_and_shift": true,
+          "is_recommended": false,
           "known_limitations": "Legacy Framework consumers cannot reference a net10.0 library. Sequencing is mandatory, not optional.",
           "linux_compatible": true,
           "name": ".NET 10 class library",
@@ -415,6 +791,7 @@
           },
           "id": "netstandard20-bridge",
           "is_lift_and_shift": true,
+          "is_recommended": true,
           "known_limitations": "Interim state, not a destination. Some Framework APIs have no .NET Standard equivalent. Plan a later move to net10.0 once all consumers are migrated.",
           "linux_compatible": true,
           "name": ".NET Standard 2.0 bridge",
@@ -427,44 +804,152 @@
           "version": 1
         }
       ],
+      "thresholds": {
+        "highConfidenceScore": 70,
+        "minimumScore": 50
+      },
       "typical_indicators": "Legacy csproj with <TargetFrameworkVersion>, packages.config, AssemblyInfo.cs, OutputType Library.",
       "version": 1
     },
     {
+      "analysis_requirements": {
+        "preferred": {
+          "projectMetadataParsed": true,
+          "semanticAnalysis": true
+        },
+        "required": {
+          "syntaxAnalysis": true
+        }
+      },
+      "anchor_signals": [
+        "CONTROLLER_BASE_CLASS",
+        "API_CONTROLLER_BASE_CLASS",
+        "SYSTEM_WEB_MVC_NAMESPACE"
+      ],
       "category": "web-api",
+      "classification_family": "WEB_APPLICATION",
+      "classification_role": "PRIMARY",
+      "classification_value": "MVC_WEB_APPLICATION",
+      "compatible_with": [
+        "aspnet-webforms"
+      ],
+      "conflicts_with": [],
       "description": "System.Web-based MVC or Web API application with Global.asax, App_Start\nconfiguration classes and web.config. Tightly coupled to IIS and the\nSystem.Web pipeline.\n",
       "detection_rules": {
-        "confidence_weight": 1.0,
-        "config_markers": [
-          "system.web",
-          "system.webServer"
+        "all": [],
+        "any": [
+          {
+            "id": "mvc-controller",
+            "signal": {
+              "name": "CONTROLLER_BASE_CLASS"
+            }
+          },
+          {
+            "id": "webapi-controller",
+            "signal": {
+              "name": "API_CONTROLLER_BASE_CLASS"
+            }
+          },
+          {
+            "id": "mvc-namespace",
+            "signal": {
+              "name": "SYSTEM_WEB_MVC_NAMESPACE"
+            }
+          },
+          {
+            "id": "webapi-namespace",
+            "signal": {
+              "name": "SYSTEM_WEB_HTTP_NAMESPACE"
+            }
+          }
         ],
-        "file_globs": [
-          "**/Global.asax",
-          "**/App_Start/*.cs"
+        "atLeast": [],
+        "metadata": [
+          {
+            "equals": "net-framework",
+            "field": "frameworkFamily",
+            "id": "legacy-framework"
+          }
         ],
-        "forbidden_file_globs": [
-          "**/*.aspx"
+        "none": [],
+        "schema": "signal-rules/1.0",
+        "supporting": [
+          {
+            "id": "global-asax",
+            "signal": {
+              "name": "GLOBAL_ASAX_FILE"
+            },
+            "weight": 10
+          },
+          {
+            "id": "app-start-folder",
+            "signal": {
+              "name": "APP_START_FOLDER"
+            },
+            "weight": 10
+          },
+          {
+            "id": "route-attr",
+            "signal": {
+              "name": "ROUTE_ATTRIBUTE"
+            },
+            "weight": 10
+          },
+          {
+            "id": "route-prefix-attr",
+            "signal": {
+              "name": "ROUTE_PREFIX_ATTRIBUTE"
+            },
+            "weight": 10
+          },
+          {
+            "id": "http-get",
+            "signal": {
+              "name": "HTTP_GET_ATTRIBUTE"
+            },
+            "weight": 5
+          },
+          {
+            "id": "http-post",
+            "signal": {
+              "name": "HTTP_POST_ATTRIBUTE"
+            },
+            "weight": 5
+          },
+          {
+            "id": "controllers-folder",
+            "signal": {
+              "name": "CONTROLLERS_FOLDER"
+            },
+            "weight": 5
+          },
+          {
+            "id": "views-folder",
+            "signal": {
+              "name": "VIEWS_FOLDER"
+            },
+            "weight": 5
+          }
+        ]
+      },
+      "eligibility": {
+        "excludedProjectRoles": [
+          "TEST",
+          "DEPLOYMENT"
         ],
-        "notes": "Distinguish from Web Forms by the absence of .aspx files. An application may contain both, in which case record two impact-map regions.",
-        "required_namespaces": [
-          "System.Web.Mvc",
-          "System.Web.Http"
-        ],
-        "target_frameworks": [
-          "net46",
-          "net461",
-          "net462",
-          "net47",
-          "net471",
-          "net472",
-          "net48"
+        "fingerprintStatuses": [
+          "COMPLETE",
+          "PARTIAL"
         ]
       },
       "id": "fx-aspnet-mvc",
       "known_risks": "HttpContext usage is often pervasive and does not map cleanly. Session state, request-scoped statics and web.config transforms all need deliberate handling.",
       "legacy_stack": ".NET Framework 4.6 - 4.8, ASP.NET MVC 5 / Web API 2",
       "name": "Classic ASP.NET MVC / Web API on .NET Framework",
+      "priority": 55,
+      "required_signals_pending": [],
+      "rules_status": "active",
+      "scope": "PROJECT",
       "status": "active",
       "summary": "ASP.NET MVC 5 or Web API 2 application on .NET Framework, hosted in IIS.",
       "target_state_options": [
@@ -496,6 +981,7 @@
           },
           "id": "aspnetcore-incremental-adapters",
           "is_lift_and_shift": true,
+          "is_recommended": true,
           "known_limitations": "Temporarily increases operational complexity by running two applications. Requires a defined end date or the interim state becomes permanent.",
           "linux_compatible": true,
           "name": "Incremental migration with System.Web adapters",
@@ -536,6 +1022,7 @@
           },
           "id": "aspnetcore-mvc-net10",
           "is_lift_and_shift": false,
+          "is_recommended": false,
           "known_limitations": "Big-bang cutover with a large review surface. Only appropriate for small or well-tested applications.",
           "linux_compatible": true,
           "name": "Direct migration to ASP.NET Core MVC on .NET 10",
@@ -548,24 +1035,507 @@
           "version": 1
         }
       ],
+      "thresholds": {
+        "highConfidenceScore": 90,
+        "minimumScore": 70
+      },
       "typical_indicators": "Global.asax, App_Start/RouteConfig.cs, App_Start/WebApiConfig.cs, web.config with system.web section, references to System.Web.Mvc.",
       "version": 1
     },
     {
+      "analysis_requirements": {
+        "preferred": {},
+        "required": {
+          "syntaxAnalysis": true
+        }
+      },
+      "anchor_signals": [
+        "MAIN_METHOD_ENTRY_POINT",
+        "TOP_LEVEL_STATEMENTS_ENTRY_POINT",
+        "WEB_APPLICATION_CREATE_BUILDER_ENTRY_POINT"
+      ],
+      "category": "library",
+      "classification_family": "PROJECT_ROLE",
+      "classification_role": "PROJECT_ROLE",
+      "classification_value": "APPLICATION",
+      "compatible_with": [],
+      "conflicts_with": [],
+      "description": "Identified by the presence of any registered entry-point signal.\nPart D's alternative basis, \"outputType Exe/WinExe, or a web SDK\",\nisn't included: step 2's raw-only parser leaves output_type null\nwhenever a project relies on an SDK-implied default or a centralized\nDirectory.Build.props (common even in modern, well-structured repos —\nconfirmed against the eShopOnWeb sample, where every SDK-style project\nhas a null output_type), and no step 2/3 field captures the actual SDK\nstring at all. Entry-point signals cover the real cases directly.\n",
+      "detection_rules": {
+        "all": [],
+        "any": [
+          {
+            "id": "main-entry",
+            "signal": {
+              "name": "MAIN_METHOD_ENTRY_POINT"
+            }
+          },
+          {
+            "id": "toplevel-entry",
+            "signal": {
+              "name": "TOP_LEVEL_STATEMENTS_ENTRY_POINT"
+            }
+          },
+          {
+            "id": "web-builder",
+            "signal": {
+              "name": "WEB_APPLICATION_CREATE_BUILDER_ENTRY_POINT"
+            }
+          },
+          {
+            "id": "host-builder",
+            "signal": {
+              "name": "HOST_CREATE_DEFAULT_BUILDER_ENTRY_POINT"
+            }
+          },
+          {
+            "id": "webhost-builder",
+            "signal": {
+              "name": "WEBHOST_CREATE_DEFAULT_BUILDER_ENTRY_POINT"
+            }
+          },
+          {
+            "id": "global-asax-entry",
+            "signal": {
+              "name": "GLOBAL_ASAX_ENTRY_POINT"
+            }
+          },
+          {
+            "id": "startup-class-entry",
+            "signal": {
+              "name": "STARTUP_CLASS_ENTRY_POINT"
+            }
+          },
+          {
+            "id": "servicebase-run-entry",
+            "signal": {
+              "name": "SERVICEBASE_RUN_ENTRY_POINT"
+            }
+          },
+          {
+            "id": "hosted-service-entry",
+            "signal": {
+              "name": "ADD_HOSTED_SERVICE_ENTRY_POINT"
+            }
+          }
+        ],
+        "atLeast": [],
+        "metadata": [],
+        "none": [],
+        "schema": "signal-rules/1.0",
+        "supporting": []
+      },
+      "eligibility": null,
+      "id": "role-application-project",
+      "known_risks": "None — this is a classification input, not a migration target.",
+      "legacy_stack": "Any",
+      "name": "Application project",
+      "priority": 60,
+      "required_signals_pending": [],
+      "rules_status": "active",
+      "scope": "PROJECT",
+      "status": "active",
+      "summary": "A project with its own entry point — runs as a standalone application, not merely consumed.",
+      "target_state_options": [],
+      "thresholds": {
+        "highConfidenceScore": 70,
+        "minimumScore": 50
+      },
+      "typical_indicators": "Main method, top-level statements, a host-builder call, ServiceBase.Run, or Global.asax.",
+      "version": 1
+    },
+    {
+      "analysis_requirements": {
+        "preferred": {},
+        "required": {}
+      },
+      "anchor_signals": [],
       "category": "data-etl",
+      "classification_family": "PROJECT_ROLE",
+      "classification_role": "PROJECT_ROLE",
+      "classification_value": "DATABASE",
+      "compatible_with": [],
+      "conflicts_with": [],
+      "description": "Identified structurally by step 2 from the .sqlproj extension alone —\nno step 3 signal is needed or possible for this project type.\n",
+      "detection_rules": {
+        "all": [],
+        "any": [],
+        "atLeast": [],
+        "metadata": [
+          {
+            "equals": "sql_database_project",
+            "field": "structuralType",
+            "id": "sql-database-project"
+          }
+        ],
+        "none": [],
+        "schema": "signal-rules/1.0",
+        "supporting": []
+      },
+      "eligibility": null,
+      "id": "role-database-project",
+      "known_risks": "None — this is a classification input, not a migration target.",
+      "legacy_stack": "SQL Server Database Project",
+      "name": "Database project",
+      "priority": 85,
+      "required_signals_pending": [],
+      "rules_status": "active",
+      "scope": "PROJECT",
+      "status": "active",
+      "summary": "A SQL Server database project (.sqlproj), not a compiled .NET application.",
+      "target_state_options": [],
+      "thresholds": {
+        "highConfidenceScore": 70,
+        "minimumScore": 50
+      },
+      "typical_indicators": ".sqlproj file, schema objects (.sql files), no compiled output.",
+      "version": 1
+    },
+    {
+      "analysis_requirements": {
+        "preferred": {},
+        "required": {}
+      },
+      "anchor_signals": [],
+      "category": "batch",
+      "classification_family": "PROJECT_ROLE",
+      "classification_role": "PROJECT_ROLE",
+      "classification_value": "DEPLOYMENT",
+      "compatible_with": [],
+      "conflicts_with": [],
+      "description": "Covers the out-of-scope structural types step 2 records from\nextension alone: Docker Compose, WiX installer, and Windows\nApplication Packaging projects.\n",
+      "detection_rules": {
+        "all": [],
+        "any": [],
+        "atLeast": [],
+        "metadata": [
+          {
+            "field": "structuralType",
+            "id": "out-of-scope-structural-type",
+            "in": [
+              "deployment_project",
+              "windows_packaging_project",
+              "wix_installer_project",
+              "docker_compose_project"
+            ]
+          }
+        ],
+        "none": [],
+        "schema": "signal-rules/1.0",
+        "supporting": []
+      },
+      "eligibility": null,
+      "id": "role-deployment-project",
+      "known_risks": "None — this is a classification input, not a migration target.",
+      "legacy_stack": "Any",
+      "name": "Deployment/packaging project",
+      "priority": 80,
+      "required_signals_pending": [],
+      "rules_status": "active",
+      "scope": "PROJECT",
+      "status": "active",
+      "summary": "A project whose job is packaging or deploying other projects, not running code itself.",
+      "target_state_options": [],
+      "thresholds": {
+        "highConfidenceScore": 70,
+        "minimumScore": 50
+      },
+      "typical_indicators": ".dcproj, .wixproj, .wapproj or .deployproj file; no compiled application code.",
+      "version": 1
+    },
+    {
+      "analysis_requirements": {
+        "preferred": {},
+        "required": {
+          "syntaxAnalysis": true
+        }
+      },
+      "anchor_signals": [],
+      "category": "library",
+      "classification_family": "PROJECT_ROLE",
+      "classification_role": "PROJECT_ROLE",
+      "classification_value": "LIBRARY",
+      "compatible_with": [],
+      "conflicts_with": [],
+      "description": "Identified by the absence of every registered entry-point signal.\nOutputType=Library isn't used as a positive gate: on classic\nnet4x it is equally true of Web Forms, MVC5, WebAPI2 and WCF-in-IIS\nprojects (IIS hosts them), so it can't discriminate a genuine library\nfrom those. Absence of entry-point evidence is decisive on its own.\n",
+      "detection_rules": {
+        "all": [],
+        "any": [],
+        "atLeast": [],
+        "metadata": [],
+        "none": [
+          {
+            "disqualify": true,
+            "id": "no-main-entry",
+            "signal": {
+              "name": "MAIN_METHOD_ENTRY_POINT"
+            }
+          },
+          {
+            "disqualify": true,
+            "id": "no-toplevel-entry",
+            "signal": {
+              "name": "TOP_LEVEL_STATEMENTS_ENTRY_POINT"
+            }
+          },
+          {
+            "disqualify": true,
+            "id": "no-web-builder",
+            "signal": {
+              "name": "WEB_APPLICATION_CREATE_BUILDER_ENTRY_POINT"
+            }
+          },
+          {
+            "disqualify": true,
+            "id": "no-host-builder",
+            "signal": {
+              "name": "HOST_CREATE_DEFAULT_BUILDER_ENTRY_POINT"
+            }
+          },
+          {
+            "disqualify": true,
+            "id": "no-webhost-builder",
+            "signal": {
+              "name": "WEBHOST_CREATE_DEFAULT_BUILDER_ENTRY_POINT"
+            }
+          },
+          {
+            "disqualify": true,
+            "id": "no-global-asax",
+            "signal": {
+              "name": "GLOBAL_ASAX_ENTRY_POINT"
+            }
+          },
+          {
+            "disqualify": true,
+            "id": "no-startup-class",
+            "signal": {
+              "name": "STARTUP_CLASS_ENTRY_POINT"
+            }
+          },
+          {
+            "disqualify": true,
+            "id": "no-servicebase-run",
+            "signal": {
+              "name": "SERVICEBASE_RUN_ENTRY_POINT"
+            }
+          },
+          {
+            "disqualify": true,
+            "id": "no-hosted-service",
+            "signal": {
+              "name": "ADD_HOSTED_SERVICE_ENTRY_POINT"
+            }
+          }
+        ],
+        "schema": "signal-rules/1.0",
+        "supporting": []
+      },
+      "eligibility": null,
+      "id": "role-library-project",
+      "known_risks": "None — this is a classification input, not a migration target.",
+      "legacy_stack": "Any",
+      "name": "Library project",
+      "priority": 65,
+      "required_signals_pending": [],
+      "rules_status": "active",
+      "scope": "PROJECT",
+      "status": "active",
+      "summary": "A project with no entry point of its own — consumed by other projects, not run directly.",
+      "target_state_options": [],
+      "thresholds": {
+        "highConfidenceScore": 70,
+        "minimumScore": 50
+      },
+      "typical_indicators": "No Main method, no top-level statements, no host-builder call, no ServiceBase.Run, no Global.asax.",
+      "version": 1
+    },
+    {
+      "analysis_requirements": {
+        "preferred": {},
+        "required": {
+          "syntaxAnalysis": true
+        }
+      },
+      "anchor_signals": [
+        "TEST_METHOD_ATTRIBUTE",
+        "FACT_ATTRIBUTE",
+        "TEST_ATTRIBUTE",
+        "TEST_FIXTURE_ATTRIBUTE"
+      ],
+      "category": "library",
+      "classification_family": "PROJECT_ROLE",
+      "classification_role": "PROJECT_ROLE",
+      "classification_value": "TEST",
+      "compatible_with": [],
+      "conflicts_with": [],
+      "description": "Identified by test-framework attributes (MSTest, xUnit, NUnit). May\nlegitimately contain ASP.NET Core, MVC, or Entity Framework signals\nbecause it tests those technologies — that must not make it look like a\nproduction web application.\n",
+      "detection_rules": {
+        "all": [],
+        "any": [
+          {
+            "id": "test-method-attr",
+            "signal": {
+              "name": "TEST_METHOD_ATTRIBUTE"
+            }
+          },
+          {
+            "id": "fact-attr",
+            "signal": {
+              "name": "FACT_ATTRIBUTE"
+            }
+          },
+          {
+            "id": "test-attr",
+            "signal": {
+              "name": "TEST_ATTRIBUTE"
+            }
+          },
+          {
+            "id": "test-fixture-attr",
+            "signal": {
+              "name": "TEST_FIXTURE_ATTRIBUTE"
+            }
+          }
+        ],
+        "atLeast": [],
+        "metadata": [],
+        "none": [],
+        "schema": "signal-rules/1.0",
+        "supporting": []
+      },
+      "eligibility": null,
+      "id": "role-test-project",
+      "known_risks": "None — this is a classification input, not a migration target.",
+      "legacy_stack": "Any",
+      "name": "Test project",
+      "priority": 90,
+      "required_signals_pending": [],
+      "rules_status": "active",
+      "scope": "PROJECT",
+      "status": "active",
+      "summary": "A project whose purpose is testing another project, not shipping a runtime application.",
+      "target_state_options": [],
+      "thresholds": {
+        "highConfidenceScore": 70,
+        "minimumScore": 50
+      },
+      "typical_indicators": "[TestMethod], [Fact], [Test] or [TestFixture] attributes; a test-framework package reference.",
+      "version": 1
+    },
+    {
+      "analysis_requirements": {
+        "preferred": {},
+        "required": {}
+      },
+      "anchor_signals": [],
+      "category": "library",
+      "classification_family": "PROJECT_ROLE",
+      "classification_role": "PROJECT_ROLE",
+      "classification_value": "UNKNOWN",
+      "compatible_with": [],
+      "conflicts_with": [],
+      "description": "The ultimate fallback so role determination always produces a value.\nDeliberately the same empty rule shape J1's migration gave every\nunmigrated pattern, but here it is the real, active, intended rule —\nnot a placeholder.\n",
+      "detection_rules": {
+        "all": [],
+        "any": [],
+        "atLeast": [],
+        "metadata": [],
+        "none": [],
+        "schema": "signal-rules/1.0",
+        "supporting": []
+      },
+      "eligibility": null,
+      "id": "role-unknown",
+      "known_risks": "None — this is a classification input, not a migration target.",
+      "legacy_stack": "Any",
+      "name": "Unknown role",
+      "priority": 0,
+      "required_signals_pending": [],
+      "rules_status": "active",
+      "scope": "PROJECT",
+      "status": "active",
+      "summary": "Fallback role when no other role pattern matches — lowest priority, always matches.",
+      "target_state_options": [],
+      "thresholds": {
+        "highConfidenceScore": 70,
+        "minimumScore": 50
+      },
+      "typical_indicators": "None — reached only when no other role pattern matched.",
+      "version": 1
+    },
+    {
+      "analysis_requirements": {
+        "preferred": {},
+        "required": {
+          "syntaxAnalysis": true
+        }
+      },
+      "anchor_signals": [
+        "SSIS_PACKAGE_FILE"
+      ],
+      "category": "data-etl",
+      "classification_family": "APPLICATION_TYPE",
+      "classification_role": "PRIMARY",
+      "classification_value": "SSIS_PACKAGE",
+      "compatible_with": [],
+      "conflicts_with": [],
       "description": "Integration Services package with control flow and data flow tasks,\nconnection managers, and frequently embedded script tasks containing C# or\nVB.NET. Executed by SQL Server Agent or the SSIS catalog.\n",
       "detection_rules": {
-        "confidence_weight": 1.0,
-        "file_globs": [
-          "**/*.dtsx",
-          "**/*.dtproj"
+        "all": [],
+        "any": [
+          {
+            "id": "dtsx-file",
+            "signal": {
+              "name": "SSIS_PACKAGE_FILE"
+            }
+          }
         ],
-        "notes": "File extension is decisive. Complexity varies enormously between packages, so the impact map should record per-package complexity, not just presence."
+        "atLeast": [],
+        "metadata": [],
+        "none": [],
+        "schema": "signal-rules/1.0",
+        "supporting": [
+          {
+            "id": "connection-manager",
+            "signal": {
+              "name": "SSIS_CONNECTION_MANAGER"
+            },
+            "weight": 20
+          }
+        ]
+      },
+      "eligibility": {
+        "excludedProjectRoles": [
+          "TEST",
+          "DEPLOYMENT"
+        ],
+        "fingerprintStatuses": [
+          "COMPLETE",
+          "PARTIAL"
+        ]
       },
       "id": "ssis-package",
       "known_risks": "No market tooling covers this conversion. Package XML is highly structured and parseable, which favours a deterministic-first accelerator, but transaction and checkpoint semantics, package variables and expression evaluation carry real behavioural risk. Row-level output equivalence testing is the only credible verification.",
       "legacy_stack": "SQL Server Integration Services",
       "name": "SSIS package",
+      "priority": 50,
+      "required_signals_pending": [
+        {
+          "blocking": true,
+          "expected_extractor": "SsisExtractor",
+          "purpose": "Anchor signal — identifies a .dtsx package",
+          "signal_name": "SSIS_PACKAGE_FILE"
+        },
+        {
+          "blocking": false,
+          "expected_extractor": "SsisExtractor",
+          "purpose": "Supporting evidence for connection topology",
+          "signal_name": "SSIS_CONNECTION_MANAGER"
+        }
+      ],
+      "rules_status": "awaiting_signals",
+      "scope": "PROJECT",
       "status": "active",
       "summary": "SQL Server Integration Services package performing ETL, defined in a .dtsx file.",
       "target_state_options": [
@@ -589,6 +1559,7 @@
           },
           "id": "csharp-sql-pushdown",
           "is_lift_and_shift": false,
+          "is_recommended": false,
           "known_limitations": "Only applies where transformations are set-based. Row-by-row logic, external service calls and file-based sources still need application code. Moves load onto the database server.",
           "linux_compatible": true,
           "name": "C# orchestrator with SQL pushdown",
@@ -621,6 +1592,7 @@
           },
           "id": "csharp-worker-container",
           "is_lift_and_shift": false,
+          "is_recommended": false,
           "known_limitations": "Complex data flows with many transformations translate poorly to straight-line code. Package-level variables and expression evaluation need explicit reimplementation. Script tasks require porting on their own terms.",
           "linux_compatible": true,
           "name": "C# worker with in-process pipeline",
@@ -633,38 +1605,124 @@
           "version": 1
         }
       ],
+      "thresholds": {
+        "highConfidenceScore": 90,
+        "minimumScore": 70
+      },
       "typical_indicators": ".dtsx files, .dtproj project files, connection managers, Execute SQL and Data Flow tasks, Script Task components.",
       "version": 1
     },
     {
+      "analysis_requirements": {
+        "preferred": {
+          "projectMetadataParsed": true
+        },
+        "required": {
+          "syntaxAnalysis": true
+        }
+      },
+      "anchor_signals": [
+        "SVC_FILE",
+        "SERVICE_CONTRACT_ATTRIBUTE"
+      ],
       "category": "service",
+      "classification_family": "APPLICATION_TYPE",
+      "classification_role": "PRIMARY",
+      "classification_value": "WCF_SERVICE",
+      "compatible_with": [],
+      "conflicts_with": [],
       "description": "WCF service using ServiceContract and OperationContract attributes, with\nbindings and behaviours configured in web.config, hosted in IIS. Frequently\nconsumed by external parties whose contracts cannot change.\n",
       "detection_rules": {
-        "confidence_weight": 1.0,
-        "config_markers": [
-          "system.serviceModel"
+        "all": [
+          {
+            "id": "service-contract",
+            "signal": {
+              "minimumOccurrences": 1,
+              "name": "SERVICE_CONTRACT_ATTRIBUTE"
+            }
+          }
         ],
-        "file_globs": [
-          "**/*.svc"
+        "any": [
+          {
+            "id": "svc-host",
+            "signal": {
+              "minimumOccurrences": 1,
+              "name": "SVC_FILE"
+            }
+          },
+          {
+            "id": "svc-config",
+            "signal": {
+              "name": "SYSTEM_SERVICE_MODEL_CONFIG"
+            }
+          }
         ],
-        "notes": "Server-side WCF only. Client-side WCF proxies are a separate concern and are handled as part of the consuming application.",
-        "required_namespaces": [
-          "System.ServiceModel"
+        "atLeast": [],
+        "metadata": [
+          {
+            "equals": "net-framework",
+            "field": "frameworkFamily",
+            "id": "legacy-framework"
+          }
         ],
-        "target_frameworks": [
-          "net46",
-          "net461",
-          "net462",
-          "net47",
-          "net471",
-          "net472",
-          "net48"
+        "none": [],
+        "schema": "signal-rules/1.0",
+        "supporting": [
+          {
+            "id": "operation-contract",
+            "signal": {
+              "name": "OPERATION_CONTRACT_ATTRIBUTE"
+            },
+            "weight": 15
+          },
+          {
+            "id": "data-contract",
+            "signal": {
+              "name": "DATA_CONTRACT_ATTRIBUTE"
+            },
+            "weight": 10
+          },
+          {
+            "id": "wcf-endpoint-config",
+            "signal": {
+              "name": "WCF_SERVICE_ENDPOINT_CONFIG"
+            },
+            "weight": 10
+          },
+          {
+            "id": "wcf-binding-config",
+            "signal": {
+              "name": "WCF_BINDING_CONFIG"
+            },
+            "weight": 10
+          },
+          {
+            "id": "hosting-environment",
+            "signal": {
+              "name": "SERVICE_HOSTING_ENVIRONMENT_CONFIG"
+            },
+            "weight": 5
+          }
+        ]
+      },
+      "eligibility": {
+        "excludedProjectRoles": [
+          "TEST",
+          "DEPLOYMENT"
+        ],
+        "fingerprintStatuses": [
+          "COMPLETE",
+          "PARTIAL"
         ]
       },
       "id": "wcf-iis-servicemodel",
       "known_risks": "External consumers are the dominant constraint. Establish before any decision whether callers can change. A silently altered WSDL is the highest-consequence failure mode in this estate.",
       "legacy_stack": ".NET Framework 4.x, WCF / System.ServiceModel",
       "name": "WCF service hosted in IIS",
+      "priority": 60,
+      "required_signals_pending": [],
+      "rules_status": "active",
+      "scope": "PROJECT",
       "status": "active",
       "summary": "SOAP service built on System.ServiceModel and hosted in IIS via .svc endpoints.",
       "target_state_options": [
@@ -694,6 +1752,7 @@
           },
           "id": "corewcf-net10",
           "is_lift_and_shift": true,
+          "is_recommended": true,
           "known_limitations": "CoreWCF does not support every WCF binding. WS-* protocols, MSMQ transport and some Windows-integrated security modes need case-by-case assessment. Windows authentication requires an alternative on Linux.",
           "linux_compatible": true,
           "name": "CoreWCF on .NET 10",
@@ -724,6 +1783,7 @@
           },
           "id": "grpc-net10",
           "is_lift_and_shift": false,
+          "is_recommended": false,
           "known_limitations": "All callers must change. Only viable where consumers are internal and in scope for coordinated change.",
           "linux_compatible": true,
           "name": "gRPC service on .NET 10",
@@ -754,6 +1814,7 @@
           },
           "id": "rest-net10",
           "is_lift_and_shift": false,
+          "is_recommended": false,
           "known_limitations": "The largest change of the three options. SOAP faults, message-level security and transactional semantics have no direct REST equivalent.",
           "linux_compatible": true,
           "name": "REST API on .NET 10",
@@ -766,32 +1827,96 @@
           "version": 1
         }
       ],
+      "thresholds": {
+        "highConfidenceScore": 90,
+        "minimumScore": 70
+      },
       "typical_indicators": ".svc files, [ServiceContract] and [OperationContract] attributes, system.serviceModel section in web.config, generated WSDL endpoints.",
       "version": 1
     },
     {
+      "analysis_requirements": {
+        "preferred": {
+          "projectMetadataParsed": true
+        },
+        "required": {
+          "syntaxAnalysis": true
+        }
+      },
+      "anchor_signals": [
+        "SERVICE_BASE_BASE_CLASS",
+        "SERVICEBASE_RUN_ENTRY_POINT"
+      ],
       "category": "service",
+      "classification_family": "APPLICATION_TYPE",
+      "classification_role": "PRIMARY",
+      "classification_value": "WINDOWS_SERVICE",
+      "compatible_with": [],
+      "conflicts_with": [
+        "console-batch-job"
+      ],
       "description": "Background service installed on Windows via ServiceBase and InstallUtil,\nrunning continuously under a service account.\n",
       "detection_rules": {
-        "confidence_weight": 1.0,
-        "notes": "ServiceBase inheritance is decisive.",
-        "project_properties": {
-          "OutputType": "Exe"
-        },
-        "required_namespaces": [
-          "System.ServiceProcess"
+        "all": [],
+        "any": [
+          {
+            "id": "service-base",
+            "signal": {
+              "name": "SERVICE_BASE_BASE_CLASS"
+            }
+          },
+          {
+            "id": "servicebase-run",
+            "signal": {
+              "name": "SERVICEBASE_RUN_ENTRY_POINT"
+            }
+          }
         ],
-        "target_frameworks": [
-          "net47",
-          "net471",
-          "net472",
-          "net48"
+        "atLeast": [],
+        "metadata": [
+          {
+            "equals": "net-framework",
+            "field": "frameworkFamily",
+            "id": "legacy-framework"
+          }
+        ],
+        "none": [],
+        "schema": "signal-rules/1.0",
+        "supporting": [
+          {
+            "id": "serviceprocess-namespace",
+            "signal": {
+              "name": "SYSTEM_SERVICEPROCESS_NAMESPACE"
+            },
+            "weight": 20
+          },
+          {
+            "id": "serviceprocess-assembly",
+            "signal": {
+              "name": "SYSTEM_SERVICEPROCESS_ASSEMBLY"
+            },
+            "weight": 20
+          }
+        ]
+      },
+      "eligibility": {
+        "excludedProjectRoles": [
+          "TEST",
+          "DEPLOYMENT"
+        ],
+        "fingerprintStatuses": [
+          "COMPLETE",
+          "PARTIAL"
         ]
       },
       "id": "windows-service",
       "known_risks": "Service account identity often carries Windows-integrated permissions to file shares and databases. The identity model must be redesigned for Linux, not merely ported.",
       "legacy_stack": ".NET Framework 4.x, System.ServiceProcess",
       "name": "Windows Service",
+      "priority": 60,
+      "required_signals_pending": [],
+      "rules_status": "active",
+      "scope": "PROJECT",
       "status": "active",
       "summary": "Long-running Windows Service built on ServiceBase.",
       "target_state_options": [
@@ -821,6 +1946,7 @@
           },
           "id": "worker-service-daemon-container",
           "is_lift_and_shift": true,
+          "is_recommended": true,
           "known_limitations": "Windows-integrated authentication to SQL Server or file shares has no direct Linux equivalent. Expect a security-driven forcing factor here rather than a pure lift-and-shift.",
           "linux_compatible": true,
           "name": ".NET Worker Service container",
@@ -833,6 +1959,10 @@
           "version": 1
         }
       ],
+      "thresholds": {
+        "highConfidenceScore": 90,
+        "minimumScore": 70
+      },
       "typical_indicators": "ServiceBase subclass, ProjectInstaller.cs, System.ServiceProcess reference, OnStart/OnStop overrides.",
       "version": 1
     }

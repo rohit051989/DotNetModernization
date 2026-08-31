@@ -49,7 +49,7 @@ def _get_or_create_overlay(
 
 def _decision_summary(
     db: Session, engagement_id: str, pattern_id: str
-) -> tuple[str | None, str | None]:
+) -> tuple[str | None, str | None, str | None]:
     decision = (
         db.query(models.DecisionRecord)
         .filter(
@@ -61,13 +61,13 @@ def _decision_summary(
         .first()
     )
     if decision is None:
-        return None, None
+        return None, None, None
 
     selected_target_state_name = None
     if decision.selected_target_state_id:
         target_state = db.get(models.TargetStateOption, decision.selected_target_state_id)
         selected_target_state_name = target_state.name if target_state else None
-    return decision.status, selected_target_state_name
+    return decision.status, selected_target_state_name, decision.forcing_perspective
 
 
 def _to_view(
@@ -76,7 +76,7 @@ def _to_view(
     overlay: models.EngagementPattern | None,
     engagement_id: str,
 ) -> schemas.EngagementPatternView:
-    decision_status, selected_target_state_name = _decision_summary(db, engagement_id, pattern.id)
+    decision_status, selected_target_state_name, forcing_perspective = _decision_summary(db, engagement_id, pattern.id)
     options = get_target_states_for_pattern(db, pattern.id)
     return schemas.EngagementPatternView(
         engagement_id=engagement_id,
@@ -100,6 +100,7 @@ def _to_view(
         deleted_by=overlay.deleted_by if overlay else None,
         decision_status=decision_status,
         selected_target_state_name=selected_target_state_name,
+        forcing_perspective=forcing_perspective,
     )
 
 

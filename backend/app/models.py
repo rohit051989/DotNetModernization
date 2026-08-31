@@ -26,6 +26,37 @@ CONSUMER_IMPACT = ("none", "low", "medium", "high")
 EFFORT = ("low", "medium", "high")
 DECISION_STATUS = ("parked", "in_review", "approved", "superseded")
 SCOPE_STATUS = ("active", "deferred")
+# 25-STANDARDS-AND-VIEWPOINTS.md Part A1 — the quality concern that forced a
+# higher-impact selection over the lift-and-shift default.
+FORCING_PERSPECTIVE = (
+    "SECURITY",
+    "EVOLUTION",
+    "REGULATION",
+    "PERFORMANCE_SCALABILITY",
+    "AVAILABILITY_RESILIENCE",
+    "LOCATION",
+    "DEVELOPMENT_RESOURCE",
+)
+
+# ---- Step 4 — pattern classification, catalog schema (24-STEP-004-CLASSIFICATION.md Part B1) ----
+CLASSIFICATION_ROLE = ("PRIMARY", "SECONDARY", "PROJECT_ROLE")
+PATTERN_SCOPE = ("PROJECT", "REPOSITORY")
+RULES_STATUS = ("active", "awaiting_signals", "draft")
+CATALOG_REVISION_ENTITY_TYPE = ("pattern", "target_state_option")
+CATALOG_REVISION_OPERATION = ("insert", "update", "soft_delete")
+
+# 25-STANDARDS-AND-VIEWPOINTS.md Part A2 — Rozanski & Woods. Nullable:
+# governance and orchestration steps map to no viewpoint.
+VIEWPOINT = (
+    "CONTEXT",
+    "FUNCTIONAL",
+    "INFORMATION",
+    "CONCURRENCY",
+    "DEVELOPMENT",
+    "DEPLOYMENT",
+    "OPERATIONAL",
+    "NONE",
+)
 
 ADAPTER_TYPE = ("python", "process", "http", "event", "stub")
 # Combined codes (e.g. "P + S") denote shared authorship within one step and are
@@ -120,6 +151,19 @@ SIGNAL_TYPE = (
     "ROUTE",
     "ENTRY_POINT",
 )
+# ---- Step 4 — pattern classification (24-STEP-004-CLASSIFICATION.md Part E/F) ----
+CLASSIFICATION_STATUS = (
+    "SKIPPED",
+    "NOT_ELIGIBLE",
+    "INSUFFICIENT_FINGERPRINT",
+    "AMBIGUOUS",
+    "MULTIPLE_MATCHES",
+    "MATCHED",
+    "NO_PATTERN_MATCHED",
+    "CLASSIFICATION_FAILED",
+)
+MATCH_ENGAGEMENT_SCOPE_STATUS = ("active", "deferred", "deleted")
+
 # The nine source types from step-3-application-fingerprinting.md section 18.
 EVIDENCE_SOURCE_TYPE = (
     "PROJECT_FILE",
@@ -148,6 +192,28 @@ class Pattern(Base):
     known_risks: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default="active")
     version: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
+
+    # ---- Step 4 classification schema (24-STEP-004-CLASSIFICATION.md Part B1) ----
+    # `detection_rules` holds the Part C signal-rules/1.0 structure. The
+    # pre-step-4 tag-input rules this superseded lived in
+    # `detection_rules_legacy` through J1-J4's transition; dropped once the
+    # rule builder (J4) was verified (Part B4).
+    classification_role: Mapped[str] = mapped_column(Text, nullable=False, server_default="PRIMARY")
+    classification_family: Mapped[str | None] = mapped_column(Text)
+    classification_value: Mapped[str | None] = mapped_column(Text)
+    scope: Mapped[str] = mapped_column(Text, nullable=False, server_default="PROJECT")
+    priority: Mapped[int] = mapped_column(Integer, nullable=False, server_default="50")
+    compatible_with: Mapped[list] = mapped_column(JSONB, nullable=False, server_default="[]")
+    conflicts_with: Mapped[list] = mapped_column(JSONB, nullable=False, server_default="[]")
+    anchor_signals: Mapped[list] = mapped_column(JSONB, nullable=False, server_default="[]")
+    eligibility: Mapped[dict | None] = mapped_column(JSONB)
+    analysis_requirements: Mapped[dict | None] = mapped_column(JSONB)
+    thresholds: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, server_default='{"minimumScore": 70, "highConfidenceScore": 90}'
+    )
+    rules_status: Mapped[str] = mapped_column(Text, nullable=False, server_default="draft")
+    required_signals_pending: Mapped[list] = mapped_column(JSONB, nullable=False, server_default="[]")
+
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -161,9 +227,15 @@ class Pattern(Base):
         CheckConstraint(
             f"status IN {LIFECYCLE_STATUS}", name="ck_patterns_status"
         ),
+        CheckConstraint(
+            f"classification_role IN {CLASSIFICATION_ROLE}", name="ck_patterns_classification_role"
+        ),
+        CheckConstraint(f"scope IN {PATTERN_SCOPE}", name="ck_patterns_scope"),
+        CheckConstraint(f"rules_status IN {RULES_STATUS}", name="ck_patterns_rules_status"),
         Index("ix_patterns_status", "status"),
         Index("ix_patterns_category", "category"),
         Index("ix_patterns_not_deleted", "id", postgresql_where=text("deleted_at IS NULL")),
+        Index("ix_patterns_rules_status", "rules_status"),
     )
 
 
@@ -224,6 +296,34 @@ class TargetStateOption(Base):
     )
 
 
+class CatalogRevision(Base):
+    """One row per mutating write to `patterns` or `target_state_options`.
+    The current catalog revision is `MAX(id)` — a monotonic integer that never
+    goes backwards, since nothing here is ever hard-deleted. Recorded on every
+    classification (step 4) so a result can always be traced back to the exact
+    catalog state that produced it (24-STEP-004-CLASSIFICATION.md Part H)."""
+
+    __tablename__ = "catalog_revisions"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    entity_type: Mapped[str] = mapped_column(Text, nullable=False)
+    entity_id: Mapped[str] = mapped_column(Text, nullable=False)
+    operation: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            f"entity_type IN {CATALOG_REVISION_ENTITY_TYPE}", name="ck_catalog_revisions_entity_type"
+        ),
+        CheckConstraint(
+            f"operation IN {CATALOG_REVISION_OPERATION}", name="ck_catalog_revisions_operation"
+        ),
+        Index("ix_catalog_revisions_entity", "entity_type", "entity_id"),
+    )
+
+
 class Engagement(Base):
     __tablename__ = "engagements"
 
@@ -266,7 +366,8 @@ class DecisionRecord(Base):
     )
     candidates_considered: Mapped[list | None] = mapped_column(JSONB)
     evaluation_notes: Mapped[str | None] = mapped_column(Text)
-    forcing_factor: Mapped[str | None] = mapped_column(Text)
+    forcing_perspective: Mapped[str | None] = mapped_column(Text)
+    forcing_rationale: Mapped[str | None] = mapped_column(Text)
     rationale: Mapped[str | None] = mapped_column(Text)
     approver_name: Mapped[str | None] = mapped_column(Text)
     approver_role: Mapped[str | None] = mapped_column(Text)
@@ -284,6 +385,10 @@ class DecisionRecord(Base):
     __table_args__ = (
         CheckConstraint(
             f"status IN {DECISION_STATUS}", name="ck_decision_records_status"
+        ),
+        CheckConstraint(
+            f"forcing_perspective IS NULL OR forcing_perspective IN {FORCING_PERSPECTIVE}",
+            name="ck_decision_records_forcing_perspective",
         ),
         Index("ix_decision_records_engagement_id", "engagement_id"),
         Index("ix_decision_records_pattern_id", "pattern_id"),
@@ -405,6 +510,7 @@ class WfStepRegistration(Base):
     produces: Mapped[list] = mapped_column(JSONB, nullable=False)
     implementation_status: Mapped[str] = mapped_column(Text, nullable=False)
     owner_team: Mapped[str | None] = mapped_column(Text)
+    viewpoint: Mapped[str | None] = mapped_column(Text)
     registered_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -418,6 +524,9 @@ class WfStepRegistration(Base):
         CheckConstraint(
             f"implementation_status IN {IMPLEMENTATION_STATUS}",
             name="ck_wf_step_registrations_implementation_status",
+        ),
+        CheckConstraint(
+            f"viewpoint IS NULL OR viewpoint IN {VIEWPOINT}", name="ck_wf_step_registrations_viewpoint"
         ),
     )
 
@@ -1029,4 +1138,120 @@ class FingerprintScan(Base):
 
     __table_args__ = (
         CheckConstraint(f"scan_status IN {SCAN_STATUS}", name="ck_fingerprint_scans_scan_status"),
+    )
+
+
+class ProjectClassification(Base):
+    """1:1 with `projects` — written by step 4 (pattern-classification).
+    Replaced wholesale per repository on rescan, same pattern as
+    `project_fingerprints` for step 3. See
+    24-STEP-004-CLASSIFICATION.md Part F."""
+
+    __tablename__ = "project_classifications"
+
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), primary_key=True
+    )
+    repository_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("repositories.id", ondelete="CASCADE"), nullable=False
+    )
+    classification_status: Mapped[str] = mapped_column(Text, nullable=False)
+    project_role: Mapped[str | None] = mapped_column(Text)
+    project_role_confidence: Mapped[float | None] = mapped_column(Numeric(3, 2))
+    catalog_revision: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    signal_registry_version: Mapped[str | None] = mapped_column(Text)
+    config_version: Mapped[str] = mapped_column(Text, nullable=False)
+    evaluated_pattern_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    primary_pattern_id: Mapped[str | None] = mapped_column(Text, ForeignKey("patterns.id", ondelete="SET NULL"))
+    warnings: Mapped[list | None] = mapped_column(JSONB)
+    step_execution_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    classified_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            f"classification_status IN {CLASSIFICATION_STATUS}", name="ck_project_classifications_status"
+        ),
+        Index("ix_project_classifications_repository_id", "repository_id"),
+    )
+
+
+class ClassificationMatch(Base):
+    """One row per pattern **evaluated** for a project, matched or not —
+    near-misses are the tuning input. See 24-STEP-004-CLASSIFICATION.md
+    Part F."""
+
+    __tablename__ = "classification_matches"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+    )
+    repository_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("repositories.id", ondelete="CASCADE"), nullable=False
+    )
+    pattern_id: Mapped[str] = mapped_column(Text, ForeignKey("patterns.id", ondelete="CASCADE"), nullable=False)
+    pattern_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    matched: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    classification_role: Mapped[str] = mapped_column(Text, nullable=False)
+    match_score: Mapped[int] = mapped_column(Integer, nullable=False)
+    confidence: Mapped[float] = mapped_column(Numeric(3, 2), nullable=False)
+    confidence_level: Mapped[str] = mapped_column(Text, nullable=False)
+    is_primary_selected: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    rejection_reason: Mapped[str | None] = mapped_column(Text)
+    engagement_scope_status: Mapped[str | None] = mapped_column(Text)
+    matched_rules: Mapped[list | None] = mapped_column(JSONB)
+    failed_rules: Mapped[list | None] = mapped_column(JSONB)
+    missing_preferred: Mapped[list | None] = mapped_column(JSONB)
+    negative_triggered: Mapped[list | None] = mapped_column(JSONB)
+    explanation: Mapped[str | None] = mapped_column(Text)
+
+    __table_args__ = (
+        UniqueConstraint("project_id", "pattern_id", name="uq_classification_matches_project_pattern"),
+        CheckConstraint(
+            f"classification_role IN {CLASSIFICATION_ROLE}", name="ck_classification_matches_role"
+        ),
+        CheckConstraint(
+            f"engagement_scope_status IS NULL OR engagement_scope_status IN {MATCH_ENGAGEMENT_SCOPE_STATUS}",
+            name="ck_classification_matches_engagement_scope_status",
+        ),
+        Index("ix_classification_matches_repository_matched", "repository_id", "matched"),
+        Index("ix_classification_matches_repository_pattern", "repository_id", "pattern_id"),
+    )
+
+
+class CatalogCoverageReport(Base):
+    """Per scan, per repository — 24-STEP-004-CLASSIFICATION.md Part F,
+    metrics per step-4-pattern-classification-against-catalog.md section 18."""
+
+    __tablename__ = "catalog_coverage_reports"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    repository_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("repositories.id", ondelete="CASCADE"), nullable=False
+    )
+    catalog_version: Mapped[str] = mapped_column(Text, nullable=False)
+    catalog_revision: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    signal_registry_version: Mapped[str | None] = mapped_column(Text)
+    registered_signal_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    referenced_signal_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    unreferenced_signal_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    active_pattern_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    evaluated_pattern_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    matched_pattern_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    never_matched_pattern_ids: Mapped[list | None] = mapped_column(JSONB)
+    patterns_awaiting_signals_by_extractor: Mapped[dict | None] = mapped_column(JSONB)
+    most_frequent_unmatched_signal_combinations: Mapped[list | None] = mapped_column(JSONB)
+    step_execution_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    generated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        Index("ix_catalog_coverage_reports_repository_id", "repository_id"),
     )

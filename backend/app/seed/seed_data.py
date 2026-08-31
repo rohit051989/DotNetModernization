@@ -6,12 +6,17 @@ import yaml
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app import models
+from app import catalog_rules, models
 from app.db import SessionLocal
+from app.schemas import SignalRuleSet
 from app.workflow import registration
 from app.workflow.schemas import StepDeclaration
 
 DATA_DIR = Path(__file__).parent / "data"
+
+# A pattern added to the YAML without its own `rules` gets this inert empty
+# rule set (rules_status defaults to 'draft', so it's never evaluated).
+_EMPTY_SIGNAL_RULE_SET = SignalRuleSet.empty().model_dump(by_alias=True)
 
 
 def _load(filename: str) -> dict:
@@ -23,7 +28,7 @@ def reset_tables(db: Session) -> None:
     db.execute(
         text(
             "TRUNCATE engagement_patterns, decision_records, target_state_options, "
-            "engagements, patterns CASCADE"
+            "engagements, patterns, catalog_revisions CASCADE"
         )
     )
     db.commit()
@@ -42,7 +47,28 @@ def _upsert_pattern(db: Session, data: dict) -> bool:
     pattern.description = data.get("description")
     pattern.legacy_stack = data["legacy_stack"]
     pattern.category = data["category"]
-    pattern.detection_rules = data["detection_rules"]
+
+    if "rules" in data:
+        pattern.detection_rules = data["rules"]
+    elif created:
+        pattern.detection_rules = dict(_EMPTY_SIGNAL_RULE_SET)
+    pattern.classification_role = data.get("classification_role", pattern.classification_role if not created else "PRIMARY")
+    pattern.classification_family = data.get("classification_family")
+    pattern.classification_value = data.get("classification_value")
+    pattern.scope = data.get("scope", pattern.scope if not created else "PROJECT")
+    pattern.priority = data.get("priority", pattern.priority if not created else 50)
+    pattern.compatible_with = data.get("compatible_with", [])
+    pattern.conflicts_with = data.get("conflicts_with", [])
+    pattern.anchor_signals = data.get("anchor_signals", [])
+    pattern.eligibility = data.get("eligibility")
+    pattern.analysis_requirements = data.get("analysis_requirements")
+    if "thresholds" in data:
+        pattern.thresholds = data["thresholds"]
+    elif created:
+        pattern.thresholds = {"minimumScore": 70, "highConfidenceScore": 90}
+    pattern.rules_status = data.get("rules_status", pattern.rules_status if not created else "draft")
+    pattern.required_signals_pending = data.get("required_signals_pending", [])
+
     pattern.typical_indicators = data.get("typical_indicators")
     pattern.known_risks = data.get("known_risks")
     pattern.status = data.get("status", "active")
@@ -116,7 +142,8 @@ def _upsert_decision(db: Session, data: dict) -> bool:
     decision.selected_target_state_id = data.get("selected_target_state_id")
     decision.candidates_considered = data.get("candidates_considered")
     decision.evaluation_notes = data.get("evaluation_notes")
-    decision.forcing_factor = data.get("forcing_factor")
+    decision.forcing_perspective = data.get("forcing_perspective")
+    decision.forcing_rationale = data.get("forcing_rationale")
     decision.rationale = data.get("rationale")
     decision.approver_name = data.get("approver_name")
     decision.approver_role = data.get("approver_role")
@@ -151,10 +178,19 @@ def seed(reset: bool = False) -> dict:
         patterns_data = _load("patterns.yaml")["patterns"]
         for pattern_data in patterns_data:
             target_states_data = pattern_data.get("target_states", [])
-            if _upsert_pattern(db, pattern_data):
+            created = _upsert_pattern(db, pattern_data)
+            if created:
                 counts["patterns_created"] += 1
             else:
                 counts["patterns_updated"] += 1
+            # Bulk seeding writes to `patterns` exactly like the API does, so it
+            # must bump catalog_revision the same way (Part H) — otherwise a
+            # reseed silently leaves classification runs pointing at a stale
+            # revision number, or (after `--reset`, which truncates
+            # catalog_revisions) at 0.
+            catalog_rules.bump_catalog_revision(
+                db, "pattern", pattern_data["id"], "insert" if created else "update"
+            )
             db.flush()
             for ts_data in target_states_data:
                 if _upsert_target_state(db, pattern_data["id"], ts_data):
@@ -226,6 +262,7 @@ def seed_lifecycle_steps() -> dict:
                 lifecycle_step_no=step_data["lifecycle_step_no"],
                 display_name=step_data["display_name"],
                 owner_code=step_data["owner_code"],
+                viewpoint=step_data.get("viewpoint"),
                 version="0.0.0",
                 implementation_status="stub",
                 consumes=[],

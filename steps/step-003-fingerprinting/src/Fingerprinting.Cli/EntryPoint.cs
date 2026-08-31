@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Fingerprinting.Domain;
 using Fingerprinting.Extractors;
 
@@ -92,7 +93,12 @@ public static class EntryPoint
             var outputPath = Path.Combine(outDir, "application-fingerprint.json");
             await File.WriteAllTextAsync(outputPath, artifactJson, new UTF8Encoding(false));
 
+            var sarifJson = BuildAndValidateSarif(artifact, registry);
+            var sarifPath = Path.Combine(outDir, "application-fingerprint.sarif");
+            await File.WriteAllTextAsync(sarifPath, sarifJson, new UTF8Encoding(false));
+
             error.WriteLine($"Wrote {outputPath}");
+            error.WriteLine($"Wrote {sarifPath}");
             return 0;
         }
         catch (Exception ex)
@@ -194,6 +200,11 @@ public static class EntryPoint
         await File.WriteAllTextAsync(outputPath, artifactJson, new UTF8Encoding(false));
         var checksum = ArtifactUri.Sha256File(outputPath);
 
+        var sarifJson = BuildAndValidateSarif(artifact, registry);
+        var sarifPath = Path.Combine(context.OutputDir, "application-fingerprint.sarif");
+        await File.WriteAllTextAsync(sarifPath, sarifJson, new UTF8Encoding(false));
+        var sarifChecksum = ArtifactUri.Sha256File(sarifPath);
+
         var stepExecutionId = TryParseGuid(context.StepExecutionId);
         await db.ReplaceAllAsync(inventory.RepositoryId, artifact, stepExecutionId, CancellationToken.None);
 
@@ -223,6 +234,18 @@ public static class EntryPoint
                     ArtifactVersion = "1.0.0",
                     Uri = ArtifactUri.FromLocalPath(outputPath),
                     Checksum = checksum,
+                    Metadata = new Dictionary<string, object?> { ["generated_at"] = generatedAt },
+                },
+                new StepOutput
+                {
+                    // Additive per Part A3 — the native artifact above stays
+                    // the primary output; this is the same evidence
+                    // re-projected into the OASIS-standard interchange
+                    // format so it opens in any SARIF viewer.
+                    ArtifactType = "fingerprint-sarif",
+                    ArtifactVersion = "2.1.0",
+                    Uri = ArtifactUri.FromLocalPath(sarifPath),
+                    Checksum = sarifChecksum,
                     Metadata = new Dictionary<string, object?> { ["generated_at"] = generatedAt },
                 },
             ],
@@ -257,8 +280,57 @@ public static class EntryPoint
         new ConfigurationExtractor(),
     ];
 
-    private static string RegistryPath() => Path.Combine(AppContext.BaseDirectory, "schemas", "signal-registry-1.1.0.json");
+    // Highest-versioned signal-registry-*.json wins — mirrors the backend's
+    // and step 4's own "latest registry" resolution (app/catalog_rules.py,
+    // steps/step-004-classification/engine/registry.py), so a registry bump
+    // only ever means adding a new file, never a matching code change here.
+    private static readonly Regex RegistryFileNamePattern = new(@"^signal-registry-(\d+)\.(\d+)\.(\d+)\.json$");
+
+    private static string RegistryPath()
+    {
+        var schemasDir = Path.Combine(AppContext.BaseDirectory, "schemas");
+        var latest = Directory.EnumerateFiles(schemasDir, "signal-registry-*.json")
+            .Select(path => (Path: path, Match: RegistryFileNamePattern.Match(Path.GetFileName(path))))
+            .Where(entry => entry.Match.Success)
+            .Select(entry => (
+                entry.Path,
+                Version: (
+                    int.Parse(entry.Match.Groups[1].Value),
+                    int.Parse(entry.Match.Groups[2].Value),
+                    int.Parse(entry.Match.Groups[3].Value))))
+            .OrderByDescending(entry => entry.Version)
+            .Select(entry => entry.Path)
+            .FirstOrDefault();
+
+        return latest ?? throw new FileNotFoundException($"No signal-registry-*.json found under '{schemasDir}'.");
+    }
 
     private static string SchemaPath() =>
         Path.Combine(AppContext.BaseDirectory, "schemas", "application-fingerprint-1.0.0.schema.json");
+
+    // The canonical file (Microsoft's Sarif.Sdk NuGet package ships the
+    // exact OASIS-published copy) declares itself "$schema": draft-04 and
+    // "id" rather than "$id" — JsonSchema.Net (this project's validator,
+    // draft 2020-12-first) has no draft-04 dialect registered and fails to
+    // even load it. The two lines were rewritten to "$schema": 2020-12 /
+    // "$id" so it loads; every constraint keyword the schema actually uses
+    // (type, required, properties, enum, additionalProperties, $ref,
+    // definitions, minItems, uniqueItems, format) means the same thing under
+    // both drafts — confirmed no draft-04-only construct (a boolean
+    // exclusiveMinimum/Maximum) appears anywhere in it — so this changes
+    // which parser accepts the file, not what it validates.
+    private static string SarifSchemaPath() =>
+        Path.Combine(AppContext.BaseDirectory, "schemas", "sarif-schema-2.1.0.json");
+
+    /// <summary>Builds the SARIF re-projection of an already-computed
+    /// artifact, validates it against the published SARIF 2.1.0 schema —
+    /// "a validation failure is a step failure" (Part A3) — and returns the
+    /// serialized, ready-to-write text.</summary>
+    private static string BuildAndValidateSarif(ApplicationFingerprintArtifact artifact, SignalRegistry registry)
+    {
+        var sarif = SarifBuilder.Build(artifact, registry);
+        var sarifJson = DeterministicJson.SerializeOmitNulls(sarif);
+        ArtifactSchemaValidator.Load(SarifSchemaPath()).Validate(sarifJson);
+        return sarifJson;
+    }
 }

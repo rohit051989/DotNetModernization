@@ -1,5 +1,5 @@
 job_name: phase0-repository-discovery
-version: 4
+version: 5
 description: "Per-repository discovery and analysis. Lifecycle steps 1,2,3,4,8,9,10."
 
 parameters:
@@ -30,6 +30,8 @@ flow:
     inputs:
       solution-project-inventory: "${artifacts.solution-project-inventory}"
   - step: pattern-classification
+    inputs:
+      application-fingerprint: "${artifacts.application-fingerprint}"
   - step: impact-map-generation
   - step: test-coverage-assessment
   - step: risk-scoring-tier-assignment

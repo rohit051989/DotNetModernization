@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import case
 from sqlalchemy.orm import Session
 
-from app import models, schemas
+from app import catalog_rules, models, schemas
 from app.db import get_db
 from app.errors import ErrorResponse, error
 
@@ -138,6 +138,7 @@ def create_target_state(
     if payload.is_recommended:
         db.flush()  # option must exist before excluding its id from the clear
         _clear_other_recommendations(db, pattern_id, option.id)
+    catalog_rules.bump_catalog_revision(db, "target_state_option", option.id, "insert")
     db.commit()
     db.refresh(option)
     return option
@@ -228,6 +229,7 @@ def update_target_state(
     if payload.is_recommended:
         _clear_other_recommendations(db, option.pattern_id, option.id)
 
+    catalog_rules.bump_catalog_revision(db, "target_state_option", option.id, "update")
     db.commit()
     db.refresh(option)
     return option
@@ -275,6 +277,7 @@ def deprecate_target_state(target_state_id: str, db: Session = Depends(get_db)):
 
     option.status = "deprecated"
     option.updated_at = datetime.datetime.now(datetime.timezone.utc)
+    catalog_rules.bump_catalog_revision(db, "target_state_option", option.id, "update")
     db.commit()
     return schemas.TargetStateDeprecateResponse(id=option.id, status=option.status)
 
@@ -325,6 +328,7 @@ def delete_target_state(
 
     option.deleted_at = datetime.datetime.now(datetime.timezone.utc)
     option.deleted_by = deleted_by
+    catalog_rules.bump_catalog_revision(db, "target_state_option", option.id, "soft_delete")
     db.commit()
     return schemas.TargetStateSoftDeleteResponse(id=option.id, deleted_at=option.deleted_at)
 
@@ -347,5 +351,6 @@ def restore_target_state(target_state_id: str, db: Session = Depends(get_db)):
 
     option.deleted_at = None
     option.deleted_by = None
+    catalog_rules.bump_catalog_revision(db, "target_state_option", option.id, "update")
     db.commit()
     return schemas.TargetStateSoftDeleteResponse(id=option.id, deleted_at=None)

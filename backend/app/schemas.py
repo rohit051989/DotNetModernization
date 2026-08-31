@@ -10,6 +10,18 @@ EffortLevel = Literal["low", "medium", "high"]
 DecisionStatus = Literal["parked", "in_review", "approved", "superseded"]
 EngineCoverage = Literal["none", "partial", "strong"]
 ScopeStatus = Literal["active", "deferred"]
+ClassificationRole = Literal["PRIMARY", "SECONDARY", "PROJECT_ROLE"]
+PatternScope = Literal["PROJECT", "REPOSITORY"]
+RulesStatus = Literal["active", "awaiting_signals", "draft"]
+ForcingPerspective = Literal[
+    "SECURITY",
+    "EVOLUTION",
+    "REGULATION",
+    "PERFORMANCE_SCALABILITY",
+    "AVAILABILITY_RESILIENCE",
+    "LOCATION",
+    "DEVELOPMENT_RESOURCE",
+]
 
 CONSUMER_IMPACT_RANK = {"none": 0, "low": 1, "medium": 2, "high": 3}
 EFFORT_RANK = {"low": 0, "medium": 1, "high": 2}
@@ -26,60 +38,235 @@ def _validate_slug(value: str) -> str:
     return value
 
 
-class DetectionRules(BaseModel):
-    """The rules a future scanning step will match a repository against to
-    suggest this pattern. Purely declarative today — nothing evaluates these
-    yet; see 10-ENGINE-CONCEPTS.md for the step that eventually will."""
+# ---------- Step 4 classification schema (24-STEP-004-CLASSIFICATION.md Part C) ----------
+# Stored in `patterns.detection_rules`, evaluated by the classification
+# engine at steps/step-004-classification/.
+
+
+class ValueMatch(BaseModel):
+    """One value-matching operator for a signal or metadata condition. At
+    most one field is expected to be set."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    equals: str | None = Field(default=None, description="Exact match.")
+    in_: list[str] | None = Field(default=None, alias="in", description="Membership match against a list of values.")
+    startsWith: str | None = Field(default=None, description="Prefix match.")
+    contains: str | None = Field(default=None, description="Substring match.")
+    regex: str | None = Field(
+        default=None,
+        description="Anchored regular expression. Checked for catastrophic backtracking at save time.",
+    )
+
+
+class SignalCondition(BaseModel):
+    """A reference to one registered step 3 signal, with optional narrowing
+    conditions (Part C 'Signal condition fields')."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(
+        description="Registered signal name, e.g. 'SVC_FILE'. Checked against the active registry — see Part B3."
+    )
+    category: str | None = Field(default=None, description="Narrows to signals of this category.")
+    type: str | None = Field(default=None, description="Narrows to signals of this type.")
+    sourceType: str | None = Field(default=None, description="Narrows to signals observed from this evidence source type.")
+    value: ValueMatch | None = Field(default=None, description="Narrows by the signal's captured value.")
+    minimumOccurrences: int | None = Field(default=None, ge=1, description="Minimum occurrence count required.")
+    maximumOccurrences: int | None = Field(default=None, ge=0, description="Maximum occurrence count allowed.")
+    minimumDistinctValues: int | None = Field(default=None, ge=1)
+    minimumDistinctSourceFiles: int | None = Field(default=None, ge=1)
+    minimumExtractionConfidence: float | None = Field(default=None, ge=0.0, le=1.0)
+
+
+class RuleCondition(BaseModel):
+    """One entry in an `all` / `any` / `atLeast.of` group."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str | None = Field(
+        default=None,
+        description="Stable id referenced in matched_rules/failed_rules. Auto-generated positionally "
+        "(e.g. 'all[0]') with a warning when omitted; required in practice for 'active' patterns.",
+    )
+    signal: SignalCondition
+
+
+class SupportingCondition(RuleCondition):
+    weight: float = Field(
+        description="Added to the score when this condition matches. Summed across all matched supporting "
+        "conditions and capped at 50 (Part E)."
+    )
+
+
+class NoneCondition(RuleCondition):
+    disqualify: bool = Field(
+        default=False,
+        description="When true and this condition matches, the pattern cannot match regardless of score.",
+    )
+    penalty: float | None = Field(
+        default=None,
+        description="Subtracted from the score when this condition matches. Distinct from disqualify — "
+        "Part C 'Negative conditions'.",
+    )
+
+
+class AtLeastGroup(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str | None = Field(
+        default=None, description="Auto-generated positionally (e.g. 'atLeast[0]') when omitted."
+    )
+    count: int = Field(ge=1, description="Minimum number of `of` entries that must match.")
+    of: list[RuleCondition] = Field(description="Candidate conditions; at least `count` of these must match.")
+
+
+class MetadataCondition(BaseModel):
+    """A condition against step 2/3 project metadata rather than a signal
+    (Part C 'Metadata conditions'), e.g. `{"field": "outputType", "equals": "Library"}`."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    id: str | None = Field(
+        default=None, description="Auto-generated positionally (e.g. 'metadata[0]') when omitted."
+    )
+    field: str = Field(description="Project metadata field, e.g. 'outputType', 'projectSdk', 'fingerprintStatus'.")
+    equals: str | None = Field(default=None, description="Exact match.")
+    in_: list[str] | None = Field(default=None, alias="in", description="Membership match.")
+    startsWith: str | None = Field(default=None, description="Prefix match.")
+    contains: str | None = Field(default=None, description="Substring match.")
+    regex: str | None = Field(default=None, description="Anchored regular expression.")
+
+
+class SignalRuleSet(BaseModel):
+    """The Part C detection rule schema stored in `patterns.detection_rules`.
+    All groups are optional; an absent or empty group imposes no constraint."""
 
     model_config = ConfigDict(
         extra="forbid",
+        populate_by_name=True,
         json_schema_extra={
             "examples": [
                 {
-                    "target_frameworks": ["net48"],
-                    "required_namespaces": ["System.ServiceModel"],
-                    "forbidden_namespaces": [],
-                    "required_packages": [],
-                    "file_globs": ["**/*.svc"],
-                    "forbidden_file_globs": [],
-                    "project_properties": {"OutputType": "Library"},
-                    "config_markers": ["<system.serviceModel>"],
-                    "confidence_weight": 1.0,
-                    "notes": "High confidence when a .svc file and a system.serviceModel config section co-occur.",
+                    "schema": "signal-rules/1.0",
+                    "all": [{"id": "wcf-contract", "signal": {"name": "SERVICE_CONTRACT_ATTRIBUTE", "minimumOccurrences": 1}}],
+                    "any": [{"id": "svc-host", "signal": {"name": "SVC_FILE", "minimumOccurrences": 1}}],
+                    "atLeast": [],
+                    "supporting": [{"id": "operation-contract", "signal": {"name": "OPERATION_CONTRACT_ATTRIBUTE"}, "weight": 15}],
+                    "none": [{"id": "is-test", "signal": {"name": "FACT_ATTRIBUTE", "minimumOccurrences": 1}, "disqualify": True}],
+                    "metadata": [],
                 }
             ]
         },
     )
 
-    target_frameworks: list[str] = Field(
+    schema_: Literal["signal-rules/1.0"] = Field(alias="schema", description="Rule schema version tag.")
+    all: list[RuleCondition] = Field(default_factory=list, description="Every condition here must match.")
+    any: list[RuleCondition] = Field(default_factory=list, description="At least one condition here must match.")
+    atLeast: list[AtLeastGroup] = Field(
+        default_factory=list, description="Each group requires at least `count` of its `of` conditions to match."
+    )
+    supporting: list[SupportingCondition] = Field(
+        default_factory=list, description="Weighted evidence that lifts the score above the base 50 (Part E)."
+    )
+    none: list[NoneCondition] = Field(default_factory=list, description="Negative evidence — disqualifying or penalizing.")
+    metadata: list[MetadataCondition] = Field(
+        default_factory=list, description="Conditions against project metadata rather than signals."
+    )
+
+    @classmethod
+    def empty(cls) -> "SignalRuleSet":
+        """The stub every pre-existing pattern is migrated to in J1 — inert
+        until J2 re-authors real rules onto it."""
+        return cls(schema="signal-rules/1.0")
+
+
+class PatternEligibility(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    fingerprintStatuses: list[str] = Field(
         default_factory=list,
-        description="TFMs this pattern applies to, e.g. 'net48' or 'netcoreapp2.1'. Empty means framework-independent.",
+        description="Fingerprint statuses this pattern may be evaluated against, e.g. ['COMPLETE', 'PARTIAL']. Empty means no constraint.",
     )
-    required_namespaces: list[str] = Field(
-        default_factory=list, description="Namespaces whose presence in source is a positive signal."
+    excludedProjectRoles: list[str] = Field(
+        default_factory=list,
+        description="Project roles (Part D) excluded from this pattern, e.g. ['TEST', 'DEPLOYMENT'].",
     )
-    forbidden_namespaces: list[str] = Field(
-        default_factory=list, description="Namespaces whose presence rules this pattern out."
+
+
+class PatternAnalysisRequirements(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    required: dict[str, bool] = Field(
+        default_factory=dict,
+        description="Analysis capabilities without which the pattern cannot be evaluated at all — capability_factor is 0 when absent (Part E).",
     )
-    required_packages: list[str] = Field(
-        default_factory=list, description="NuGet package ids expected to be referenced."
+    preferred: dict[str, bool] = Field(
+        default_factory=dict,
+        description="Analysis capabilities whose absence lowers confidence (capability_factor 0.9) but does not block evaluation.",
     )
-    file_globs: list[str] = Field(
-        default_factory=list, description="Glob patterns whose presence is a positive signal, e.g. '**/*.svc'."
+
+
+class PatternThresholds(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={"examples": [{"minimumScore": 70, "highConfidenceScore": 90}]},
     )
-    forbidden_file_globs: list[str] = Field(
-        default_factory=list, description="Glob patterns whose presence rules this pattern out."
+
+    minimumScore: int = Field(ge=0, le=100, description="Minimum match_score (Part E) for this pattern to count as matched.")
+    highConfidenceScore: int = Field(
+        ge=0, le=100, description="match_score at or above which a match is considered high-confidence."
     )
-    project_properties: dict[str, str] = Field(
-        default_factory=dict, description="MSBuild properties (name -> expected value) that support the match."
+
+
+class RequiredSignalPending(BaseModel):
+    """One entry in `required_signals_pending` — a signal this pattern's
+    rules need but that step 3 does not yet produce (Part B2)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    signal_name: str = Field(description="The not-yet-registered signal name this pattern is waiting on.")
+    purpose: str = Field(description="Why this signal matters to the pattern's rules.")
+    expected_extractor: str = Field(description="The step 3 extractor expected to eventually produce this signal.")
+    blocking: bool = Field(
+        default=True,
+        description="True if the pattern cannot be evaluated at all without this signal; false if it is enrichment only.",
     )
-    config_markers: list[str] = Field(
-        default_factory=list, description="Literal strings expected in config files, e.g. an XML element name."
+
+
+class SignalRegistryEntry(BaseModel):
+    """One registered step 3 signal — Part B4: 'Every signal select shows
+    its registry description.'"""
+
+    name: str
+    category: str
+    type: str
+    description: str
+    extractor: str
+    value_semantics: str
+    weak_anchor: bool = Field(
+        description="True for signals §7 says must not be a pattern's only anchor (e.g. PROGRAM_CS_FILE)."
     )
-    confidence_weight: float = Field(
-        default=1.0, description="Relative weight this rule set contributes to an overall match score."
+
+
+class SignalRegistryOut(BaseModel):
+    registry_version: str
+    signals: list[SignalRegistryEntry]
+
+
+class PendingSignalPromotion(BaseModel):
+    """One `awaiting_signals` pattern's promotion status against the
+    currently active signal registry (Part B3)."""
+
+    pattern_id: str = Field(description="The pattern's id.")
+    name: str = Field(description="The pattern's display name.")
+    required_signals_pending: list[dict] = Field(description="This pattern's full required_signals_pending list.")
+    still_missing_blocking: list[str] = Field(
+        description="Blocking pending signal names not yet in the active registry. Empty means the pattern is promotable."
     )
-    notes: str | None = Field(default=None, description="Free-text notes on why these rules were chosen.")
+    promotable: bool = Field(
+        description="True when every blocking pending signal is now registered. Promotion to 'active' remains a human action."
+    )
 
 
 class EngineSupport(BaseModel):
@@ -139,12 +326,67 @@ class PatternBase(BaseModel):
         description="Free-text grouping used for filtering, e.g. 'web-api', 'wcf', 'batch'.",
         examples=["web-api"],
     )
-    detection_rules: DetectionRules = Field(description="Structured rules a future scan step matches against.")
     typical_indicators: str | None = Field(
-        default=None, description="Human-readable cues an engineer would notice, distinct from `detection_rules`."
+        default=None, description="Human-readable cues an engineer would notice, distinct from the detection rules."
     )
     known_risks: str | None = Field(
         default=None, description="Risks or gotchas worth knowing before migrating this pattern."
+    )
+
+    # ---- Step 4 classification schema (24-STEP-004-CLASSIFICATION.md Part B1) ----
+    # Every field below is optional here: on create, omitting one applies the
+    # same default the J1 migration gave existing patterns; on update,
+    # omitting one leaves the current value untouched. None is never a valid
+    # value to persist for these — it is purely the "not supplied" sentinel.
+    detection_rules: SignalRuleSet | None = Field(
+        default=None,
+        description="Part C signal-rules/1.0 structure. Omit on create for an inert empty rule set; "
+        "omit on update to leave the current rules untouched.",
+    )
+    classification_role: ClassificationRole | None = Field(
+        default=None, description="'PRIMARY' (competes for the project's primary pattern), 'SECONDARY' "
+        "(a coexisting capability), or 'PROJECT_ROLE' (Part D role determination). Defaults to 'PRIMARY'."
+    )
+    classification_family: str | None = Field(
+        default=None, description="e.g. 'APPLICATION_TYPE', 'WEB_APPLICATION', 'CAPABILITY', 'PROJECT_ROLE'."
+    )
+    classification_value: str | None = Field(default=None, description="e.g. 'REST_API', 'WCF_SERVICE', 'TEST'.")
+    scope: PatternScope | None = Field(
+        default=None,
+        description="'PROJECT' or 'REPOSITORY'. v1 evaluates PROJECT scope only (Part A8). Defaults to 'PROJECT'.",
+    )
+    priority: int | None = Field(default=None, description="Conflict tiebreak — higher wins. Defaults to 50.")
+    compatible_with: list[str] | None = Field(
+        default=None, description="Pattern ids this pattern may coexist with as a primary match. Defaults to []."
+    )
+    conflicts_with: list[str] | None = Field(
+        default=None,
+        description="Pattern ids this pattern cannot coexist with as a primary match. Rejected if any id also "
+        "appears in `compatible_with`. Defaults to [].",
+    )
+    anchor_signals: list[str] | None = Field(
+        default=None, description="Signal names used for the inverted candidate index. Defaults to []."
+    )
+    eligibility: PatternEligibility | None = Field(
+        default=None, description="Fingerprint statuses and excluded project roles this pattern may be evaluated under."
+    )
+    analysis_requirements: PatternAnalysisRequirements | None = Field(
+        default=None, description="Required vs preferred step 3 analysis capabilities."
+    )
+    thresholds: PatternThresholds | None = Field(
+        default=None,
+        description="{minimumScore, highConfidenceScore}. Defaults to {70, 90} on create, matching the "
+        "worked example in the classification spec.",
+    )
+    rules_status: RulesStatus | None = Field(
+        default=None,
+        description="'active' (evaluated, signals must be registered), 'awaiting_signals' (evaluated once its "
+        "pending signals land, may reference them early), or 'draft' (never evaluated). Defaults to 'draft'.",
+    )
+    required_signals_pending: list[RequiredSignalPending] | None = Field(
+        default=None,
+        description="Structured list of not-yet-registered signals this pattern's rules need. Required when "
+        "`rules_status` is 'awaiting_signals' and the rules reference an unregistered signal. Defaults to [].",
     )
 
 
@@ -159,15 +401,6 @@ class PatternCreate(PatternBase):
                     "description": "REST API built on ASP.NET Core 2.0-2.2 using the classic Startup.cs ConfigureServices/Configure pair.",
                     "legacy_stack": ".NET Core 2.0 - 2.2",
                     "category": "web-api",
-                    "detection_rules": {
-                        "target_frameworks": ["netcoreapp2.0", "netcoreapp2.1", "netcoreapp2.2"],
-                        "required_namespaces": ["Microsoft.AspNetCore.Mvc"],
-                        "required_packages": [],
-                        "file_globs": ["**/Startup.cs"],
-                        "forbidden_file_globs": [],
-                        "config_markers": [],
-                        "confidence_weight": 1.0,
-                    },
                     "typical_indicators": "Startup.cs with ConfigureServices/Configure, Program.cs with WebHost.CreateDefaultBuilder.",
                     "known_risks": "Default JSON serializer changes from Newtonsoft to System.Text.Json on modern .NET.",
                     "status": "active",
@@ -256,11 +489,26 @@ class PatternDetail(BaseModel):
     description: str | None = Field(description="Longer explanation, markdown supported.")
     legacy_stack: str = Field(description="The legacy technology stack this pattern identifies.")
     category: str = Field(description="Free-text grouping used for filtering.")
-    detection_rules: dict = Field(description="Structured rules a future scan step matches against.")
+    detection_rules: dict = Field(description="Part C signal-rules/1.0 structure, evaluated by the classification engine.")
     typical_indicators: str | None = Field(description="Human-readable cues an engineer would notice.")
     known_risks: str | None = Field(description="Risks or gotchas worth knowing before migrating this pattern.")
     status: LifecycleStatus = Field(description="Lifecycle state: 'draft', 'active', or 'deprecated'.")
-    version: int = Field(description="Increments on any material change (detection_rules, name, legacy_stack, category).")
+    version: int = Field(description="Increments on any material change (detection rules, name, legacy_stack, category).")
+    classification_role: ClassificationRole = Field(description="'PRIMARY', 'SECONDARY', or 'PROJECT_ROLE'.")
+    classification_family: str | None = Field(description="e.g. 'APPLICATION_TYPE', 'WEB_APPLICATION', 'CAPABILITY', 'PROJECT_ROLE'.")
+    classification_value: str | None = Field(description="e.g. 'REST_API', 'WCF_SERVICE', 'TEST'.")
+    scope: PatternScope = Field(description="'PROJECT' or 'REPOSITORY'. v1 evaluates PROJECT scope only.")
+    priority: int = Field(description="Conflict tiebreak — higher wins.")
+    compatible_with: list[str] = Field(description="Pattern ids this pattern may coexist with as a primary match.")
+    conflicts_with: list[str] = Field(description="Pattern ids this pattern cannot coexist with as a primary match.")
+    anchor_signals: list[str] = Field(description="Signal names used for the inverted candidate index.")
+    eligibility: dict | None = Field(description="Fingerprint statuses and excluded project roles this pattern may be evaluated under.")
+    analysis_requirements: dict | None = Field(description="Required vs preferred step 3 analysis capabilities.")
+    thresholds: dict = Field(description="{minimumScore, highConfidenceScore} used by the classification engine.")
+    rules_status: RulesStatus = Field(description="'active', 'awaiting_signals', or 'draft'. Only 'active' patterns are evaluated.")
+    required_signals_pending: list[dict] = Field(
+        description="Structured list of not-yet-registered signals this pattern's rules need."
+    )
     created_at: datetime.datetime = Field(description="When this pattern was created.")
     updated_at: datetime.datetime = Field(description="When this pattern was last modified.")
     deleted_at: datetime.datetime | None = Field(description="When this pattern was soft-deleted, or null if live.")
@@ -450,6 +698,7 @@ class CoverageSummary(BaseModel):
                     "parked": 2,
                     "deferred": 1,
                     "patterns_without_decision": ["ssis-package"],
+                    "perspective_breakdown": {"SECURITY": 1, "EVOLUTION": 1},
                 }
             ]
         }
@@ -465,6 +714,9 @@ class CoverageSummary(BaseModel):
     deferred: int = Field(description="Patterns this engagement has deferred, regardless of decision status.")
     patterns_without_decision: list[str] = Field(
         description="Master pattern ids with neither a decision record nor a defer/delete overlay in this engagement."
+    )
+    perspective_breakdown: dict[str, int] = Field(
+        description="Count of this engagement's non-superseded, non-deleted decisions per forcing_perspective — 25-STANDARDS-AND-VIEWPOINTS.md Part A1. Only perspectives with at least one decision appear."
     )
 
 
@@ -484,7 +736,8 @@ class DecisionRecordUpsert(BaseModel):
                     "selected_target_state_id": "net10-api-controllers-preserved",
                     "candidates_considered": ["net10-api-controllers-preserved", "grpc-rewrite"],
                     "evaluation_notes": "gRPC rewrite was considered but adds unnecessary consumer impact.",
-                    "forcing_factor": None,
+                    "forcing_perspective": None,
+                    "forcing_rationale": None,
                     "rationale": "Lowest-impact option; no forcing factor applies.",
                     "approver_name": "J. Rivera",
                     "approver_role": "Engagement Lead",
@@ -502,9 +755,13 @@ class DecisionRecordUpsert(BaseModel):
         default=None, description="Target state option ids weighed before choosing."
     )
     evaluation_notes: str | None = Field(default=None, description="Free-text notes on the evaluation.")
-    forcing_factor: str | None = Field(
+    forcing_perspective: ForcingPerspective | None = Field(
         default=None,
-        description="Required when the selection is not the lowest consumer_impact among candidates_considered — the security requirement or decommissioned dependency that justifies the deviation.",
+        description="Required (with forcing_rationale) when the selection is not the lowest consumer_impact among candidates_considered — which quality concern forced the deviation.",
+    )
+    forcing_rationale: str | None = Field(
+        default=None,
+        description="Required (with forcing_perspective) when the selection is not the lowest consumer_impact among candidates_considered — the narrative explaining the deviation.",
     )
     rationale: str | None = Field(default=None, description="Required when status is 'approved'.")
     approver_name: str | None = Field(default=None, description="Required when status is 'approved'.")
@@ -527,7 +784,8 @@ class DecisionRecordUpdate(BaseModel):
                     "selected_target_state_id": "net10-api-controllers-preserved",
                     "candidates_considered": ["net10-api-controllers-preserved"],
                     "evaluation_notes": None,
-                    "forcing_factor": None,
+                    "forcing_perspective": None,
+                    "forcing_rationale": None,
                     "rationale": "Lowest-impact option; no forcing factor applies.",
                     "approver_name": "J. Rivera",
                     "approver_role": "Engagement Lead",
@@ -545,9 +803,13 @@ class DecisionRecordUpdate(BaseModel):
         default=None, description="Target state option ids weighed before choosing."
     )
     evaluation_notes: str | None = Field(default=None, description="Free-text notes on the evaluation.")
-    forcing_factor: str | None = Field(
+    forcing_perspective: ForcingPerspective | None = Field(
         default=None,
-        description="Required when the selection is not the lowest consumer_impact among candidates_considered.",
+        description="Required (with forcing_rationale) when the selection is not the lowest consumer_impact among candidates_considered.",
+    )
+    forcing_rationale: str | None = Field(
+        default=None,
+        description="Required (with forcing_perspective) when the selection is not the lowest consumer_impact among candidates_considered.",
     )
     rationale: str | None = Field(default=None, description="Required when status is 'approved'.")
     approver_name: str | None = Field(default=None, description="Required when status is 'approved'.")
@@ -573,7 +835,10 @@ class DecisionRecord(BaseModel):
     selected_target_state_name: str | None = Field(description="Denormalised for display.")
     candidates_considered: list[str] | None = Field(description="Target state option ids weighed before choosing.")
     evaluation_notes: str | None = Field(description="Free-text notes on the evaluation.")
-    forcing_factor: str | None = Field(
+    forcing_perspective: ForcingPerspective | None = Field(
+        description="Which quality concern forced a higher-impact choice over the lift-and-shift default, if any."
+    )
+    forcing_rationale: str | None = Field(
         description="The security requirement or decommissioned dependency that justified a higher-impact choice, if any."
     )
     rationale: str | None = Field(description="Why this choice was made.")
@@ -614,7 +879,7 @@ class EngagementPatternView(BaseModel):
                     "description": None,
                     "legacy_stack": ".NET Core 2.0 - 2.2",
                     "category": "web-api",
-                    "detection_rules": {},
+                    "detection_rules": {"schema": "signal-rules/1.0"},
                     "typical_indicators": None,
                     "known_risks": None,
                     "status": "active",
@@ -626,6 +891,7 @@ class EngagementPatternView(BaseModel):
                     "deleted_by": None,
                     "decision_status": "approved",
                     "selected_target_state_name": ".NET 10 Web API, controllers preserved",
+                    "forcing_perspective": None,
                 }
             ]
         }
@@ -638,7 +904,7 @@ class EngagementPatternView(BaseModel):
     description: str | None = Field(description="Master pattern description.")
     legacy_stack: str = Field(description="Master pattern legacy stack.")
     category: str = Field(description="Master pattern category.")
-    detection_rules: dict = Field(description="Master pattern detection rules.")
+    detection_rules: dict = Field(description="Master pattern's Part C signal-rules/1.0 structure.")
     typical_indicators: str | None = Field(description="Master pattern typical indicators.")
     known_risks: str | None = Field(description="Master pattern known risks.")
     status: LifecycleStatus = Field(description="Master pattern lifecycle state.")
@@ -659,6 +925,9 @@ class EngagementPatternView(BaseModel):
     )
     selected_target_state_name: str | None = Field(
         description="Denormalised name of the live decision's selected target state, if any."
+    )
+    forcing_perspective: ForcingPerspective | None = Field(
+        description="The live decision's forcing perspective, if any was recorded."
     )
 
 

@@ -31,7 +31,8 @@ def _decision_response(db: Session, decision: models.DecisionRecord) -> schemas.
         selected_target_state_name=target_state.name if target_state else None,
         candidates_considered=decision.candidates_considered,
         evaluation_notes=decision.evaluation_notes,
-        forcing_factor=decision.forcing_factor,
+        forcing_perspective=decision.forcing_perspective,
+        forcing_rationale=decision.forcing_rationale,
         rationale=decision.rationale,
         approver_name=decision.approver_name,
         approver_role=decision.approver_role,
@@ -49,7 +50,8 @@ def _validate_decision(
     pattern_id: str,
     selected_target_state_id: str | None,
     candidates_considered: list[str] | None,
-    forcing_factor: str | None,
+    forcing_perspective: str | None,
+    forcing_rationale: str | None,
     rationale: str | None,
     approver_name: str | None,
     decision_date: datetime.date | None,
@@ -127,18 +129,24 @@ def _validate_decision(
                 )
                 selected_rank = CONSUMER_IMPACT_RANK[selected_option.consumer_impact]
                 lowest_rank = CONSUMER_IMPACT_RANK[lowest.consumer_impact]
-                if selected_rank > lowest_rank and not forcing_factor:
-                    problems.append(
-                        {
-                            "field": "forcing_factor",
-                            "message": (
-                                f"{selected_option.name} has higher consumer impact "
-                                f"({selected_option.consumer_impact}) than the lowest candidate "
-                                f"{lowest.name} ({lowest.consumer_impact}). A forcing factor is "
-                                "required to justify the deviation."
-                            ),
-                            "code": "FORCING_FACTOR_REQUIRED",
-                        }
+                if selected_rank > lowest_rank and not (forcing_perspective and forcing_rationale):
+                    missing = [
+                        field
+                        for field, value in (
+                            ("forcing_perspective", forcing_perspective),
+                            ("forcing_rationale", forcing_rationale),
+                        )
+                        if not value
+                    ]
+                    message = (
+                        f"{selected_option.name} has higher consumer impact "
+                        f"({selected_option.consumer_impact}) than the lowest candidate "
+                        f"{lowest.name} ({lowest.consumer_impact}). Both forcing_perspective and "
+                        "forcing_rationale are required to justify the deviation."
+                    )
+                    problems.extend(
+                        {"field": field, "message": message, "code": "FORCING_PERSPECTIVE_AND_RATIONALE_REQUIRED"}
+                        for field in missing
                     )
 
     if problems:
@@ -155,8 +163,10 @@ def _apply_decision_fields(decision: models.DecisionRecord, payload) -> None:
         decision.candidates_considered = payload.candidates_considered
     if payload.evaluation_notes is not None:
         decision.evaluation_notes = payload.evaluation_notes
-    if payload.forcing_factor is not None:
-        decision.forcing_factor = payload.forcing_factor
+    if payload.forcing_perspective is not None:
+        decision.forcing_perspective = payload.forcing_perspective
+    if payload.forcing_rationale is not None:
+        decision.forcing_rationale = payload.forcing_rationale
     if payload.rationale is not None:
         decision.rationale = payload.rationale
     if payload.approver_name is not None:
@@ -264,8 +274,8 @@ def upsert_engagement_pattern_decision(
     02-DATA-MODEL.md for a transition to `status: "approved"`: a selected
     target state belonging to this pattern, a rationale, an approver name, a
     decision date, and — when the selection is not the lowest
-    `consumer_impact` among `candidates_considered` — a `forcing_factor`
-    justifying the deviation.
+    `consumer_impact` among `candidates_considered` — both `forcing_perspective`
+    and `forcing_rationale` justifying the deviation.
     """
 
     engagement = db.get(models.Engagement, engagement_id)
@@ -291,7 +301,8 @@ def upsert_engagement_pattern_decision(
         pattern_id=pattern_id,
         selected_target_state_id=payload.selected_target_state_id,
         candidates_considered=payload.candidates_considered,
-        forcing_factor=payload.forcing_factor,
+        forcing_perspective=payload.forcing_perspective,
+        forcing_rationale=payload.forcing_rationale,
         rationale=payload.rationale,
         approver_name=payload.approver_name,
         decision_date=payload.decision_date,
@@ -306,7 +317,8 @@ def upsert_engagement_pattern_decision(
             selected_target_state_id=payload.selected_target_state_id,
             candidates_considered=payload.candidates_considered,
             evaluation_notes=payload.evaluation_notes,
-            forcing_factor=payload.forcing_factor,
+            forcing_perspective=payload.forcing_perspective,
+            forcing_rationale=payload.forcing_rationale,
             rationale=payload.rationale,
             approver_name=payload.approver_name,
             approver_role=payload.approver_role,
@@ -377,8 +389,11 @@ def update_decision(
         if payload.candidates_considered is not None
         else decision.candidates_considered
     )
-    new_forcing_factor = (
-        payload.forcing_factor if payload.forcing_factor is not None else decision.forcing_factor
+    new_forcing_perspective = (
+        payload.forcing_perspective if payload.forcing_perspective is not None else decision.forcing_perspective
+    )
+    new_forcing_rationale = (
+        payload.forcing_rationale if payload.forcing_rationale is not None else decision.forcing_rationale
     )
     new_rationale = payload.rationale if payload.rationale is not None else decision.rationale
     new_approver_name = (
@@ -393,7 +408,8 @@ def update_decision(
         pattern_id=decision.pattern_id,
         selected_target_state_id=new_selected,
         candidates_considered=new_candidates,
-        forcing_factor=new_forcing_factor,
+        forcing_perspective=new_forcing_perspective,
+        forcing_rationale=new_forcing_rationale,
         rationale=new_rationale,
         approver_name=new_approver_name,
         decision_date=new_decision_date,

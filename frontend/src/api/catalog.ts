@@ -14,6 +14,7 @@ import type {
   PatternSoftDeleteResponse,
   PatternSummary,
   PatternUpdateInput,
+  SignalRegistry,
   TargetStateCreateInput,
   TargetStateDeprecateResponse,
   TargetStateDetail,
@@ -27,6 +28,10 @@ export function getHealth() {
 
 export function listEngagements() {
   return api.get<Engagement[]>('/api/engagements')
+}
+
+export function getSignalRegistry() {
+  return api.get<SignalRegistry>('/api/catalog/signal-registry')
 }
 
 export function listPatterns(params: { q?: string } = {}) {

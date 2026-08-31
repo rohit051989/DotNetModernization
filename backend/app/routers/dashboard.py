@@ -11,9 +11,11 @@ import uuid
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app import models
+from app.classification import service as classification_service
 from app.db import get_db
 from app.errors import ErrorResponse, error
 from app.routers.engagements import compute_coverage
@@ -79,6 +81,25 @@ class StructureCounts(BaseModel):
     legacy_project_count: int = Field(description="Sum of projects with project_format 'legacy_msbuild'.")
     sdk_project_count: int = Field(description="Sum of projects with project_format 'sdk_style'.")
     framework_families: dict[str, int] = Field(description="Project count per normalised framework family, summed across repositories.")
+
+
+class TopPattern(BaseModel):
+    pattern_id: str
+    pattern_name: str
+    count: int
+
+
+class PatternCounts(BaseModel):
+    """The dashboard's Patterns card, real once pattern-classification (step
+    4) is implemented. Deliberately labelled 'projects classified as', never
+    'applications' — deployable-application aggregation is a different,
+    still-unimplemented rollup (see `applications` above)."""
+
+    projects_evaluated: int = Field(description="Projects with any classification result, across every repository in this engagement.")
+    projects_matched: int = Field(description="Projects with classification_status MATCHED or MULTIPLE_MATCHES.")
+    projects_ambiguous: int = Field(description="Projects with classification_status AMBIGUOUS.")
+    projects_no_pattern_matched: int = Field(description="Projects with classification_status NO_PATTERN_MATCHED — step 5 candidates.")
+    top_patterns: list[TopPattern] = Field(description="Most common primary patterns, highest count first.")
 
 
 class DashboardCapabilities(BaseModel):
@@ -168,7 +189,7 @@ class DashboardSummary(BaseModel):
     discovery: DiscoveryCounts
     structure: StructureCounts = Field(description="Solution/project discovery rollup — see 19-STEP-002-SOLUTION-DISCOVERY.md.")
     applications: dict | None = Field(default=None, description="Null — no step producing application rollups is implemented yet.")
-    patterns: dict | None = Field(default=None, description="Null — no step producing pattern rollups is implemented yet.")
+    patterns: PatternCounts | None = Field(default=None, description="Null until pattern-classification (step 4) is implemented; real thereafter.")
     risk_tiers: dict | None = Field(default=None, description="Null — no step producing risk tiers is implemented yet.")
     waves: dict | None = Field(default=None, description="Null — no step producing wave status is implemented yet.")
     decisions: DecisionCounts = Field(description="Real now — computed the same way as GET /api/engagements/{eid}/coverage.")
@@ -390,6 +411,19 @@ def get_dashboard(engagement_id: str, db: Session = Depends(get_db)):
     structure_summary = structure_service.get_engagement_structure_summary(db, engagement_id)
     structure_counts = StructureCounts(**{k: v for k, v in structure_summary.items() if k != "engagement_id"})
 
+    pattern_counts = None
+    if capabilities.pattern_classification:
+        distribution = classification_service.pattern_distribution(db, engagement_id)
+        if distribution["projects_evaluated"] > 0:
+            summary = classification_service.classification_summary_across(db, engagement_id)
+            pattern_counts = PatternCounts(
+                projects_evaluated=distribution["projects_evaluated"],
+                projects_matched=summary["matched"] + summary["multiple_matches"],
+                projects_ambiguous=summary["ambiguous"],
+                projects_no_pattern_matched=summary["no_pattern_matched"],
+                top_patterns=[TopPattern(**p) for p in distribution["primary_pattern_distribution"][:5]],
+            )
+
     slugs_by_id = {str(r.id): r.slug for r in repos}
     recent_executions = []
     for execution in runtime_service.list_executions(db, engagement_id=engagement_id, limit=10):
@@ -418,7 +452,7 @@ def get_dashboard(engagement_id: str, db: Session = Depends(get_db)):
         discovery=discovery_counts,
         structure=structure_counts,
         applications=None,
-        patterns=None,
+        patterns=pattern_counts,
         risk_tiers=None,
         waves=None,
         decisions=decisions,
@@ -476,6 +510,21 @@ def get_dashboard_repositories(
         )
     } if repos else {}
 
+    pattern_counts_implemented = (
+        db.get(models.WfStepRegistration, "pattern-classification").implementation_status == "implemented"
+    )
+    patterns_identified_by_repo: dict[uuid.UUID, int] = {}
+    if repos and pattern_counts_implemented:
+        for repo_id, count in (
+            db.query(models.ProjectClassification.repository_id, func.count(models.ProjectClassification.project_id))
+            .filter(
+                models.ProjectClassification.repository_id.in_([r.id for r in repos]),
+                models.ProjectClassification.classification_status.in_(["MATCHED", "MULTIPLE_MATCHES"]),
+            )
+            .group_by(models.ProjectClassification.repository_id)
+        ):
+            patterns_identified_by_repo[repo_id] = count
+
     rows = []
     for repo in repos:
         execution = latest_by_repo.get(str(repo.id))
@@ -529,6 +578,7 @@ def get_dashboard_repositories(
                 last_ingested_at=repo.last_scanned_at,
                 latest_execution=latest_execution,
                 structure=structure_brief,
+                patterns_identified=patterns_identified_by_repo.get(repo.id, 0) if pattern_counts_implemented else None,
             )
         )
 

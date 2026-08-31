@@ -1,4 +1,5 @@
 import datetime
+from collections import Counter
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
@@ -6,8 +7,10 @@ from sqlalchemy.orm import Session
 from app import models, schemas
 from app.db import get_db
 from app.errors import ErrorResponse, error
+from app.workflow import registration
 from app.workflow.runtime import service as runtime_service
 from app.workflow.runtime.schemas import JobExecutionOut
+from app.workflow.schemas import ViewpointCoverage
 
 router = APIRouter(prefix="/api/engagements", tags=["Engagements"])
 
@@ -176,6 +179,17 @@ def compute_coverage(db: Session, engagement_id: str) -> schemas.CoverageSummary
         pid for pid in counted_pattern_ids if pid not in decisions_by_pattern and pid not in overlays
     )
 
+    # 25-STANDARDS-AND-VIEWPOINTS.md Part A1 — the programme-level rollup a
+    # free-text forcing_factor could never answer: "of N deviations from
+    # lift-and-shift, how many were security-driven?"
+    perspective_breakdown = dict(
+        Counter(
+            d.forcing_perspective
+            for d in live_decisions
+            if d.forcing_perspective and d.pattern_id in counted_pattern_ids
+        )
+    )
+
     return schemas.CoverageSummary(
         engagement_id=engagement_id,
         total_patterns=len(counted_pattern_ids),
@@ -184,7 +198,29 @@ def compute_coverage(db: Session, engagement_id: str) -> schemas.CoverageSummary
         parked=parked,
         deferred=len(deferred_pattern_ids),
         patterns_without_decision=patterns_without_decision,
+        perspective_breakdown=perspective_breakdown,
     )
+
+
+@router.get(
+    "/{engagement_id}/viewpoint-coverage",
+    response_model=ViewpointCoverage,
+    summary="Get architecture-viewpoint coverage for an engagement",
+    response_description="Per-viewpoint contributing steps, implemented count, ran count, and a coverage label.",
+    operation_id="get_engagement_viewpoint_coverage",
+    responses={404: _NOT_FOUND},
+)
+def get_engagement_viewpoint_coverage(engagement_id: str, db: Session = Depends(get_db)):
+    """
+    25-STANDARDS-AND-VIEWPOINTS.md Part A2 — honest scoping over implying
+    complete coverage. `total_contributing`/`implemented_count` are catalog
+    facts (which steps map to this viewpoint, how many are built);
+    `ran_count` is scoped to this one engagement's own executions.
+    """
+    engagement = db.get(models.Engagement, engagement_id)
+    if engagement is None:
+        raise error(404, f"Engagement '{engagement_id}' not found", code="NOT_FOUND")
+    return registration.viewpoint_coverage(db, engagement_id)
 
 
 @router.get(

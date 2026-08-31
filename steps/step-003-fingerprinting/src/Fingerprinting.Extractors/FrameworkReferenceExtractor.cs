@@ -64,6 +64,14 @@ public sealed class FrameworkReferenceExtractor : IFingerprintExtractor
         new("Microsoft.EntityFrameworkCore", "MICROSOFT_ENTITYFRAMEWORKCORE_PACKAGE", IsPrefix: true),
         new("EntityFramework", "ENTITYFRAMEWORK_PACKAGE", IsPrefix: false),
         new("Dapper", "DAPPER_PACKAGE", IsPrefix: false),
+        new("xunit", "XUNIT_PACKAGE", IsPrefix: true),
+        new("NUnit", "NUNIT_PACKAGE", IsPrefix: true),
+        new("MSTest", "MSTEST_PACKAGE", IsPrefix: true),
+        // A Microsoft.AspNetCore.Components.WebAssembly* package also matches
+        // the generic "Microsoft.AspNetCore" rule above — ExtractPackageSignals
+        // checks every rule per package, so both MICROSOFT_ASPNETCORE_PACKAGE
+        // and this more specific signal are emitted for it.
+        new("Microsoft.AspNetCore.Components.WebAssembly", "BLAZOR_WEBASSEMBLY_PACKAGE", IsPrefix: true),
     ];
 
     public bool CanProcess(ProjectContext context) => Directory.Exists(context.ProjectDirectory);

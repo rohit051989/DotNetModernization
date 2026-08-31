@@ -619,7 +619,8 @@ decision_records:
     selected_target_state_id: net10-api-controllers-preserved
     evaluation_notes: "Both options leave the external contract unchanged. Controllers-preserved produces a far smaller diff and a smaller review surface across an estimated 40+ applications matching this pattern."
     rationale: "Lowest consumer impact and lowest effort. No forcing factor to justify restructuring to minimal APIs."
-    forcing_factor: null
+    forcing_perspective: null
+    forcing_rationale: null
     approver_name: "TBD"
     approver_role: "Lead Architect, Client A"
     decision_date: "2026-08-01"
@@ -631,7 +632,8 @@ decision_records:
     selected_target_state_id: netstandard20-bridge
     evaluation_notes: "Dependency graph shows shared libraries consumed by applications scheduled across different waves. A direct net10.0 retarget would break Framework consumers still awaiting migration."
     rationale: "Bridge target keeps both legacy and migrated consumers working during phased waves. Move to net10.0 once all consumers are migrated."
-    forcing_factor: null
+    forcing_perspective: null
+    forcing_rationale: null
     approver_name: "TBD"
     approver_role: "Lead Architect, Client A"
     decision_date: "2026-08-01"
@@ -643,7 +645,8 @@ decision_records:
     selected_target_state_id: aspnetcore-incremental-adapters
     evaluation_notes: "Applications matching this pattern are large and test coverage is unknown pending assessment. Incremental migration allows route-by-route verification."
     rationale: "Zero consumer impact and progressive verification. Big-bang migration carries unacceptable risk at the observed application size."
-    forcing_factor: null
+    forcing_perspective: null
+    forcing_rationale: null
     approver_name: "TBD"
     approver_role: "Lead Architect, Client A"
     decision_date: "2026-08-02"
@@ -655,7 +658,8 @@ decision_records:
     selected_target_state_id: corewcf-net10
     evaluation_notes: "External consumers confirmed present and unable to change their contracts within the programme timeline. WSDL must remain byte-identical."
     rationale: "Only option with zero consumer impact. gRPC and REST both require every caller to change, which is out of scope."
-    forcing_factor: null
+    forcing_perspective: null
+    forcing_rationale: null
     approver_name: "TBD"
     approver_role: "Integration Architect, Client A"
     decision_date: "2026-08-02"
@@ -667,7 +671,8 @@ decision_records:
     selected_target_state_id: ocp4-cronjob-container
     evaluation_notes: "Most batch jobs run daily or less frequently. A persistently running pod is not justified for that duty cycle."
     rationale: "Keeps scheduling visible to platform operators and consumes no resources between runs."
-    forcing_factor: null
+    forcing_perspective: null
+    forcing_rationale: null
     approver_name: "TBD"
     approver_role: "Platform Architect, Client A"
     decision_date: "2026-08-02"
@@ -679,7 +684,8 @@ decision_records:
     selected_target_state_id: worker-service-daemon-container
     evaluation_notes: "Only one viable target. Open question remains on replacing Windows-integrated authentication to SQL Server, which is a security-driven change rather than a pure port."
     rationale: "Pending confirmation of the replacement identity mechanism on OCP4."
-    forcing_factor: null
+    forcing_perspective: null
+    forcing_rationale: null
     approver_name: null
     approver_role: null
     decision_date: null
@@ -691,7 +697,8 @@ decision_records:
     selected_target_state_id: null
     evaluation_notes: "No lift-and-shift option exists — Web Forms has no modern .NET equivalent, so any target is a rewrite. Requires business sign-off on UI change and a screen inventory before a decision can be taken."
     rationale: null
-    forcing_factor: null
+    forcing_perspective: null
+    forcing_rationale: null
     approver_name: null
     approver_role: null
     decision_date: null
@@ -703,7 +710,8 @@ decision_records:
     selected_target_state_id: null
     evaluation_notes: "Target runtime and orchestration model on OCP4 not yet agreed. Likely to require a segmentation rule rather than a single choice, since simple load packages and complex data flows suit different targets."
     rationale: null
-    forcing_factor: null
+    forcing_perspective: null
+    forcing_rationale: null
     approver_name: null
     approver_role: null
     decision_date: null
@@ -716,7 +724,8 @@ decision_records:
     selected_target_state_id: grpc-net10
     evaluation_notes: "All consumers are internal and in scope for coordinated change. Existing WCF bindings rely on WS-Security modes that CoreWCF does not support, so a like-for-like port is not available."
     rationale: "Unsupported bindings rule out CoreWCF. gRPC selected over REST for streaming requirements and internal tooling alignment."
-    forcing_factor: "CoreWCF does not support the WS-Security binding modes currently in use, and the security team has mandated removal of the legacy authentication mechanism. A like-for-like port is therefore not available."
+    forcing_perspective: SECURITY
+    forcing_rationale: "CoreWCF does not support the WS-Security binding modes currently in use, and the security team has mandated removal of the legacy authentication mechanism. A like-for-like port is therefore not available."
     approver_name: "TBD"
     approver_role: "Chief Architect, Reference Engagement B"
     decision_date: "2026-07-15"
@@ -728,7 +737,8 @@ decision_records:
     selected_target_state_id: net10-api-minimal
     evaluation_notes: "Small application count with strong test coverage. Client explicitly requested adoption of the modern minimal API idiom as part of a wider standards refresh."
     rationale: "Client preference for the modern idiom, accepted because the estate is small and well tested."
-    forcing_factor: "Client standards mandate minimal APIs for all new and modernized services. This is a client-directed deviation from the lowest-diff option, not a technical constraint."
+    forcing_perspective: EVOLUTION
+    forcing_rationale: "Client standards mandate minimal APIs for all new and modernized services. This is a client-directed deviation from the lowest-diff option, not a technical constraint."
     approver_name: "TBD"
     approver_role: "Chief Architect, Reference Engagement B"
     decision_date: "2026-07-15"
@@ -741,13 +751,15 @@ decision_records:
   approvers are captured during the engagement.
 - The Reference Engagement B **WCF** record is the one that exercises the
   validation rule in `02-DATA-MODEL.md`: it selects gRPC (`high` impact) over
-  CoreWCF (`none`), so `forcing_factor` is mandatory. Use this record to
-  demonstrate governance working in the UI.
+  CoreWCF (`none`), so both `forcing_perspective` and `forcing_rationale` are
+  mandatory — tagged `SECURITY`. Use this record to demonstrate governance
+  working in the UI.
 - The Reference Engagement B **core2** record selects between two options that are
-  both `none` impact, so the rule does not trigger. Its `forcing_factor` is
-  recorded voluntarily to explain a client-directed deviation on diff size rather
-  than consumer impact. Keep it — it shows the field is useful beyond the
-  mandatory case — but do not use it as the validation demo.
+  both `none` impact, so the rule does not trigger. Its `forcing_perspective`
+  (`EVOLUTION`) and `forcing_rationale` are recorded voluntarily to explain a
+  client-directed deviation on diff size rather than consumer impact. Keep it —
+  it shows the fields are useful beyond the mandatory case — but do not use it
+  as the validation demo.
 - Both SSIS target states declare `engine: none` and `coverage: none`. This is the
   single strongest differentiation point in the catalog — verify it renders
   prominently in the UI.

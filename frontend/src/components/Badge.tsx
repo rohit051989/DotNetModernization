@@ -4,6 +4,7 @@ import type {
   DecisionStatus,
   EffortLevel,
   EngineCoverage,
+  ForcingPerspective,
   LifecycleStatus,
 } from '../types/catalog'
 
@@ -76,6 +77,13 @@ const DECISION_STATUS_TONE: Record<DecisionStatus, BadgeTone> = {
 
 export function DecisionStatusBadge({ status }: { status: DecisionStatus }) {
   return <Badge tone={DECISION_STATUS_TONE[status]}>{status.replace('_', ' ')}</Badge>
+}
+
+/** 25-STANDARDS-AND-VIEWPOINTS.md Part A1 — which quality concern forced a
+ * higher-impact selection over the lift-and-shift default. One neutral tone
+ * for all seven values: this is a classification tag, not a status. */
+export function PerspectiveBadge({ perspective }: { perspective: ForcingPerspective }) {
+  return <Badge tone="teal">{perspective.replace('_', ' ').toLowerCase()}</Badge>
 }
 
 export function LiftAndShiftPill() {

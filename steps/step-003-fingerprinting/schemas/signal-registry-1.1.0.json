@@ -469,7 +469,7 @@
       "name": "CONTROLLER_BASE_CLASS",
       "category": "SOURCE_CONSTRUCT",
       "type": "BASE_CLASS",
-      "description": "A type inheriting Controller (System.Web.Mvc.Controller — ASP.NET MVC 5)",
+      "description": "A type inheriting a base class literally named 'Controller'. InheritanceExtractor matches on the simple name only (no semantic analysis in v1), so this fires for both System.Web.Mvc.Controller (ASP.NET MVC 5) and Microsoft.AspNetCore.Mvc.Controller (modern ASP.NET Core MVC) — rules relying on this signal to mean 'legacy MVC5' must gate on a metadata condition (e.g. frameworkFamily) as well.",
       "extractor": "InheritanceExtractor",
       "value_semantics": "count of matching types per file"
     },

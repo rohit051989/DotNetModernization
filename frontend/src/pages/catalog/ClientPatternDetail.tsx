@@ -7,7 +7,7 @@ import {
   reactivateEngagementPattern,
 } from '../../api/catalog'
 import { ApiError } from '../../api/client'
-import type { DetectionRules, EngagementPatternView, TargetStateDetail } from '../../types/catalog'
+import type { EngagementPatternView, TargetStateDetail } from '../../types/catalog'
 import { CategoryBadge, DeferredBadge } from '../../components/Badge'
 import { ConfirmDialog } from '../../components/ConfirmDialog'
 import { Drawer } from '../../components/Drawer'
@@ -25,16 +25,6 @@ interface ClientPatternDetailProps {
   onCatalogChanged: () => void
   onDeleted: () => void
 }
-
-const DETECTION_RULE_LIST_FIELDS: { key: keyof DetectionRules; label: string }[] = [
-  { key: 'target_frameworks', label: 'Target frameworks' },
-  { key: 'required_namespaces', label: 'Required namespaces' },
-  { key: 'forbidden_namespaces', label: 'Forbidden namespaces' },
-  { key: 'required_packages', label: 'Required packages' },
-  { key: 'file_globs', label: 'File globs' },
-  { key: 'forbidden_file_globs', label: 'Forbidden file globs' },
-  { key: 'config_markers', label: 'Config markers' },
-]
 
 export function ClientPatternDetail({
   engagementId,
@@ -245,30 +235,11 @@ export function ClientPatternDetail({
             {JSON.stringify(pattern.detection_rules, null, 2)}
           </pre>
         ) : (
-          <div className="space-y-3">
-            {DETECTION_RULE_LIST_FIELDS.map(({ key, label }) => {
-              const values = pattern.detection_rules[key]
-              if (!Array.isArray(values) || values.length === 0) return null
-              return (
-                <div key={key}>
-                  <p className="text-xs font-medium text-neutral-500">{label}</p>
-                  <ul className="mt-1 flex flex-wrap gap-1.5">
-                    {values.map((value) => (
-                      <li
-                        key={value}
-                        className="rounded bg-neutral-100 px-2 py-0.5 font-mono text-xs text-neutral-700"
-                      >
-                        {value}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )
-            })}
-            {pattern.detection_rules.notes && (
-              <p className="text-sm italic text-neutral-500">{pattern.detection_rules.notes}</p>
-            )}
-          </div>
+          <p className="text-xs text-neutral-400">
+            {pattern.detection_rules.all.length} all · {pattern.detection_rules.any.length} any ·{' '}
+            {pattern.detection_rules.atLeast.length} atLeast · {pattern.detection_rules.supporting.length} supporting ·{' '}
+            {pattern.detection_rules.none.length} none · {pattern.detection_rules.metadata.length} metadata condition(s)
+          </p>
         )}
       </section>
 

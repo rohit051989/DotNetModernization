@@ -150,6 +150,7 @@ export function StepRegistrySection() {
                   <th className="px-3 py-2 font-medium">Step name</th>
                   <th className="px-3 py-2 font-medium">Display name</th>
                   <th className="px-3 py-2 font-medium">Owner</th>
+                  <th className="px-3 py-2 font-medium">Viewpoint</th>
                   <th className="px-3 py-2 font-medium">Adapter</th>
                   <th className="px-3 py-2 font-medium">Status</th>
                   <th className="px-3 py-2 font-medium">Version</th>
@@ -171,6 +172,9 @@ export function StepRegistrySection() {
                       <td className="px-3 py-2">
                         <OwnerCodeBadge code={step.owner_code} />
                       </td>
+                      <td className="px-3 py-2 text-xs text-neutral-500">
+                        {step.viewpoint && step.viewpoint !== 'NONE' ? step.viewpoint : '—'}
+                      </td>
                       <td className="px-3 py-2">
                         <AdapterTypeChip adapterType={step.adapter_type} />
                       </td>
@@ -188,7 +192,7 @@ export function StepRegistrySection() {
                     </tr>
                     {expanded[step.step_name] && (
                       <tr className="border-b border-neutral-100 bg-neutral-50">
-                        <td colSpan={10} className="px-4 py-3">
+                        <td colSpan={11} className="px-4 py-3">
                           <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-neutral-400">
                             adapter_config — where this step actually runs from
                           </p>

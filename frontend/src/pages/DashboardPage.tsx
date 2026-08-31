@@ -1,8 +1,58 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { getDashboard, getDashboardRepositories } from '../api/dashboard'
+import { getViewpointCoverage } from '../api/registration'
 import { isExecutionTerminal, type DashboardRepositoryRow, type DashboardSummary } from '../types/dashboard'
+import type { ViewpointCoverage } from '../types/registration'
 import { EmptyState } from '../components/EmptyState'
 import { DiscoveryProgressBar } from '../components/DiscoveryProgressBar'
+
+const COVERAGE_LABEL_TONE: Record<string, string> = {
+  strong: 'bg-emerald-100 text-emerald-700',
+  partial: 'bg-amber-100 text-amber-700',
+  thin: 'bg-orange-100 text-orange-700',
+  none: 'bg-neutral-100 text-neutral-500',
+}
+
+/** 25-STANDARDS-AND-VIEWPOINTS.md Part A2 — a compact, honest-scoping strip.
+ * Full detail (contributing steps, ran counts) lives in Workflow
+ * Administration; this is the "what does this assessment actually cover"
+ * glance for the engagement dashboard. */
+function ViewpointCoverageStrip({ engagementId }: { engagementId: string }) {
+  const [coverage, setCoverage] = useState<ViewpointCoverage | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    getViewpointCoverage(engagementId)
+      .then((result) => {
+        if (!cancelled) setCoverage(result)
+      })
+      .catch(() => {
+        if (!cancelled) setCoverage(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [engagementId])
+
+  if (!coverage) return null
+
+  return (
+    <section className="rounded border border-neutral-200 bg-white p-4">
+      <h2 className="mb-2 text-sm font-semibold text-neutral-900">Viewpoint coverage</h2>
+      <div className="flex flex-wrap gap-1.5">
+        {coverage.viewpoints.map((v) => (
+          <span
+            key={v.viewpoint}
+            title={`${v.implemented_count} of ${v.total_contributing} contributing steps implemented; ${v.ran_count} ran for this engagement`}
+            className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ${COVERAGE_LABEL_TONE[v.coverage_label] ?? COVERAGE_LABEL_TONE.none}`}
+          >
+            {v.viewpoint.toLowerCase()} · {v.coverage_label}
+          </span>
+        ))}
+      </div>
+    </section>
+  )
+}
 
 const POLL_INTERVAL_MS = 5000
 
@@ -151,7 +201,19 @@ export function DashboardPage({ engagementId, onNavigateToRepositories, onNaviga
           <p className="text-xs text-neutral-400">legacy_msbuild vs sdk_style</p>
         </SummaryCard>
         <UnavailableCard title="Applications" awaiting="application fingerprinting (step 3)" />
-        <UnavailableCard title="Patterns identified" awaiting="pattern classification (step 4)" />
+        {summary.patterns ? (
+          <SummaryCard title="Patterns identified">
+            <p className="text-2xl font-semibold text-neutral-900">{summary.patterns.projects_matched}</p>
+            <p className="text-xs text-neutral-400">
+              of {summary.patterns.projects_evaluated} evaluated
+              {summary.patterns.top_patterns[0]
+                ? ` · top: ${summary.patterns.top_patterns[0].pattern_name}`
+                : ''}
+            </p>
+          </SummaryCard>
+        ) : (
+          <UnavailableCard title="Patterns identified" awaiting="pattern classification (step 4)" />
+        )}
         <SummaryCard title="Target state decisions">
           <p className="text-2xl font-semibold text-neutral-900">{summary.decisions.approved}</p>
           <p className="text-xs text-neutral-400">
@@ -220,9 +282,13 @@ export function DashboardPage({ engagementId, onNavigateToRepositories, onNaviga
                   <td className="px-3 py-2 text-neutral-300" title="Awaiting application fingerprinting (step 3)">
                     —
                   </td>
-                  <td className="px-3 py-2 text-neutral-300" title="Awaiting pattern classification (step 4)">
-                    —
-                  </td>
+                  {row.patterns_identified !== null ? (
+                    <td className="px-3 py-2 text-neutral-700">{row.patterns_identified}</td>
+                  ) : (
+                    <td className="px-3 py-2 text-neutral-300" title="Awaiting pattern classification (step 4)">
+                      —
+                    </td>
+                  )}
                   <td className="px-3 py-2">
                     {latest ? (
                       <DiscoveryProgressBar
@@ -245,10 +311,28 @@ export function DashboardPage({ engagementId, onNavigateToRepositories, onNaviga
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <section className="rounded border border-neutral-200 bg-white p-4">
           <h2 className="mb-2 text-sm font-semibold text-neutral-900">Pattern distribution</h2>
-          <p className="text-xs text-neutral-400">
-            Awaiting pattern classification (step 4). {summary.decisions.total_patterns_in_scope} patterns currently
-            in scope for this engagement.
-          </p>
+          {summary.patterns ? (
+            summary.patterns.top_patterns.length > 0 ? (
+              <ul className="space-y-1.5">
+                {summary.patterns.top_patterns.map((p) => (
+                  <li key={p.pattern_id} className="flex items-center justify-between text-sm">
+                    <span className="text-neutral-700">Projects classified as {p.pattern_name}</span>
+                    <span className="font-medium text-neutral-900">{p.count}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-xs text-neutral-400">
+                No projects matched a catalog pattern yet ({summary.patterns.projects_no_pattern_matched} evaluated
+                with no match).
+              </p>
+            )
+          ) : (
+            <p className="text-xs text-neutral-400">
+              Awaiting pattern classification (step 4). {summary.decisions.total_patterns_in_scope} patterns currently
+              in scope for this engagement.
+            </p>
+          )}
         </section>
         <section className="rounded border border-neutral-200 bg-white p-4">
           <h2 className="mb-2 text-sm font-semibold text-neutral-900">Recent activity</h2>
@@ -288,6 +372,8 @@ export function DashboardPage({ engagementId, onNavigateToRepositories, onNaviga
           </ul>
         </section>
       </div>
+
+      <ViewpointCoverageStrip engagementId={engagementId} />
     </div>
   )
 }

@@ -10,6 +10,7 @@ from sqlalchemy.exc import IntegrityError
 from app.config import settings
 from app.routers import (
     catalog,
+    classifications,
     dashboard,
     decisions,
     engagement_patterns,
@@ -129,6 +130,15 @@ app = FastAPI(
                 "Deterministic export/import of the master catalog — and, optionally, one "
                 "engagement's overlay and decisions — as versionable, diffable JSON, so it "
                 "can be committed to git and reviewed as a pull request."
+            ),
+        },
+        {
+            "name": "Classification",
+            "description": (
+                "Read-only results from lifecycle step 4 (pattern-classification): per-project "
+                "status and matched/near-miss patterns, engagement-wide pattern distribution, "
+                "and catalog coverage. Nothing here mutates — the classification step itself "
+                "owns these rows."
             ),
         },
         {
@@ -260,3 +270,4 @@ app.include_router(workflow_artifacts.router)
 app.include_router(repositories.router)
 app.include_router(structure.router)
 app.include_router(dashboard.router)
+app.include_router(classifications.router)

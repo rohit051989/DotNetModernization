@@ -5,28 +5,18 @@ import { Drawer } from '../../components/Drawer'
 import { ConfirmDialog } from '../../components/ConfirmDialog'
 import { Field, inputClass } from '../../components/FormField'
 import { useToast } from '../../components/Toast'
-import type { DetectionRulesInput, LifecycleStatus, PatternDetail as PatternDetailModel } from '../../types/catalog'
-import { DetectionRulesEditor } from './DetectionRulesEditor'
+import type {
+  LifecycleStatus,
+  PatternClassificationFields,
+  PatternDetail as PatternDetailModel,
+} from '../../types/catalog'
+import { emptySignalRuleSet } from '../../types/catalog'
+import { RuleBuilder } from './RuleBuilder'
 
 const CATEGORIES = ['web-api', 'web-ui', 'service', 'batch', 'library', 'data-etl']
 const STATUSES: LifecycleStatus[] = ['draft', 'active', 'deprecated']
 const SLUG_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/
 const SLUG_HINT = "Must be lowercase, hyphenated (e.g. 'wcf-iis-servicemodel')."
-
-function emptyDetectionRules(): DetectionRulesInput {
-  return {
-    target_frameworks: [],
-    required_namespaces: [],
-    forbidden_namespaces: [],
-    required_packages: [],
-    file_globs: [],
-    forbidden_file_globs: [],
-    project_properties: {},
-    config_markers: [],
-    confidence_weight: 1,
-    notes: null,
-  }
-}
 
 interface PatternFormState {
   id: string
@@ -38,7 +28,26 @@ interface PatternFormState {
   typical_indicators: string
   known_risks: string
   status: LifecycleStatus
-  detection_rules: DetectionRulesInput
+  classification: PatternClassificationFields
+}
+
+function defaultClassification(): PatternClassificationFields {
+  return {
+    classification_role: 'PRIMARY',
+    classification_family: null,
+    classification_value: null,
+    scope: 'PROJECT',
+    priority: 50,
+    compatible_with: [],
+    conflicts_with: [],
+    anchor_signals: [],
+    eligibility: { fingerprintStatuses: [], excludedProjectRoles: [] },
+    analysis_requirements: { required: {}, preferred: {} },
+    thresholds: { minimumScore: 70, highConfidenceScore: 90 },
+    rules_status: 'draft',
+    required_signals_pending: [],
+    detection_rules: emptySignalRuleSet(),
+  }
 }
 
 function toFormState(pattern?: PatternDetailModel): PatternFormState {
@@ -53,7 +62,7 @@ function toFormState(pattern?: PatternDetailModel): PatternFormState {
       typical_indicators: '',
       known_risks: '',
       status: 'active',
-      detection_rules: emptyDetectionRules(),
+      classification: defaultClassification(),
     }
   }
   return {
@@ -66,7 +75,22 @@ function toFormState(pattern?: PatternDetailModel): PatternFormState {
     typical_indicators: pattern.typical_indicators ?? '',
     known_risks: pattern.known_risks ?? '',
     status: pattern.status,
-    detection_rules: pattern.detection_rules,
+    classification: {
+      classification_role: pattern.classification_role,
+      classification_family: pattern.classification_family,
+      classification_value: pattern.classification_value,
+      scope: pattern.scope,
+      priority: pattern.priority,
+      compatible_with: pattern.compatible_with,
+      conflicts_with: pattern.conflicts_with,
+      anchor_signals: pattern.anchor_signals,
+      eligibility: pattern.eligibility,
+      analysis_requirements: pattern.analysis_requirements,
+      thresholds: pattern.thresholds,
+      rules_status: pattern.rules_status,
+      required_signals_pending: pattern.required_signals_pending,
+      detection_rules: pattern.detection_rules,
+    },
   }
 }
 
@@ -116,10 +140,10 @@ export function PatternForm({ mode, pattern, onClose, onSaved }: PatternFormProp
       description: form.description || null,
       legacy_stack: form.legacy_stack,
       category: form.category,
-      detection_rules: form.detection_rules,
       typical_indicators: form.typical_indicators || null,
       known_risks: form.known_risks || null,
       status: form.status,
+      ...form.classification,
     }
 
     try {
@@ -251,9 +275,10 @@ export function PatternForm({ mode, pattern, onClose, onSaved }: PatternFormProp
             </Field>
 
             <div className="border-t border-neutral-200 pt-4">
-              <DetectionRulesEditor
-                value={form.detection_rules}
-                onChange={(value) => update('detection_rules', value)}
+              <RuleBuilder
+                patternId={mode === 'edit' ? pattern!.id : null}
+                value={form.classification}
+                onChange={(value) => update('classification', value)}
               />
               {fieldErrors.detection_rules && (
                 <p className="mt-1 text-xs text-red-600">{fieldErrors.detection_rules}</p>

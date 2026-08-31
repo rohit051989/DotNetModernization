@@ -46,6 +46,7 @@ class StepDeclaration(BaseModel):
                     "produces": [{"artifact_type": "repository-inventory", "artifact_version": "1.0.0"}],
                     "adapter_type": "python",
                     "adapter_config": {"entrypoint": "app.steps.repository_ingest:run"},
+                    "viewpoint": None,
                 }
             ]
         }
@@ -59,6 +60,10 @@ class StepDeclaration(BaseModel):
     )
     version: str = Field(description="Semver of this step's implementation.")
     owner_team: str | None = Field(default=None, description="Team that built this step, when known.")
+    viewpoint: str | None = Field(
+        default=None,
+        description="Rozanski & Woods viewpoint this step contributes to — 'CONTEXT', 'FUNCTIONAL', 'INFORMATION', 'CONCURRENCY', 'DEVELOPMENT', 'DEPLOYMENT', 'OPERATIONAL', or 'NONE'. Null for a step not yet classified.",
+    )
     implementation_status: ImplementationStatus = Field(
         description="'stub' (not yet built), 'implemented', or 'deprecated'."
     )
@@ -107,6 +112,7 @@ class StepRegistration(BaseModel):
                     "consumes": [],
                     "produces": [],
                     "implementation_status": "stub",
+                    "viewpoint": None,
                     "registered_at": "2026-08-14T10:29:29.366121Z",
                     "updated_at": "2026-08-14T10:29:29.366121Z",
                 }
@@ -120,6 +126,9 @@ class StepRegistration(BaseModel):
     owner_code: str = Field(description="'P', 'C', 'S', 'H', or a combined code like 'P + S'.")
     version: str = Field(description="Semver of this step's implementation.")
     owner_team: str | None = Field(description="Team that built this step, when known.")
+    viewpoint: str | None = Field(
+        description="Rozanski & Woods viewpoint this step contributes to, or null if not yet classified — 25-STANDARDS-AND-VIEWPOINTS.md Part A2."
+    )
     adapter_type: str = Field(description="How the engine invokes this step.")
     adapter_config: dict = Field(description="Adapter-specific configuration.")
     consumes: list[dict] = Field(description="Artifact types (with version ranges) this step requires as input.")
@@ -140,6 +149,43 @@ class StepRegistrationResult(BaseModel):
         description="Active job definitions referencing this step that became invalid as a result of this "
         "registration change — see 22-STEP-SEQUENCING-AND-POLICY.md Part A. Not deactivated; reported "
         "so the drift is caught now rather than at the next launch.",
+    )
+
+
+class ViewpointCoverageEntry(BaseModel):
+    """One Rozanski & Woods viewpoint's coverage — 25-STANDARDS-AND-VIEWPOINTS.md
+    Part A2. `NONE` (governance/orchestration steps with no viewpoint) is
+    never reported here; it isn't a coverage dimension."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "viewpoint": "DEVELOPMENT",
+                    "contributing_steps": ["solution-discovery", "application-fingerprinting"],
+                    "total_contributing": 18,
+                    "implemented_count": 3,
+                    "ran_count": 3,
+                    "coverage_label": "thin",
+                }
+            ]
+        }
+    )
+
+    viewpoint: str = Field(description="'CONTEXT', 'FUNCTIONAL', 'INFORMATION', 'CONCURRENCY', 'DEVELOPMENT', 'DEPLOYMENT', or 'OPERATIONAL'.")
+    contributing_steps: list[str] = Field(description="step_names mapped to this viewpoint, in lifecycle order.")
+    total_contributing: int = Field(description="len(contributing_steps).")
+    implemented_count: int = Field(description="Of the contributing steps, how many are implementation_status='implemented'.")
+    ran_count: int = Field(description="Of the contributing steps, how many produced at least one step execution for this engagement.")
+    coverage_label: Literal["strong", "partial", "thin", "none"] = Field(
+        description="Derived from implemented_count/total_contributing: 'none' if there are no contributing steps at all or none are implemented, 'thin' if some are, 'partial' at 40%+, 'strong' at 75%+."
+    )
+
+
+class ViewpointCoverage(BaseModel):
+    engagement_id: str = Field(description="The engagement this coverage is for.")
+    viewpoints: list[ViewpointCoverageEntry] = Field(
+        description="One entry per architectural viewpoint, in a fixed order (CONTEXT, FUNCTIONAL, INFORMATION, CONCURRENCY, DEVELOPMENT, DEPLOYMENT, OPERATIONAL) regardless of coverage."
     )
 
 

@@ -5,13 +5,13 @@ import uuid
 from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.orm import Session
 
-from app import models, schemas
+from app import catalog_rules, models, schemas
 from app.db import get_db
 from app.errors import ErrorResponse, errors
 
 router = APIRouter(prefix="/api/catalog", tags=["Catalog"])
 
-CATALOG_VERSION = "1.0"
+CATALOG_VERSION = "2.0"
 
 _PATTERN_FIELDS = [
     "id",
@@ -25,6 +25,19 @@ _PATTERN_FIELDS = [
     "known_risks",
     "status",
     "version",
+    "classification_role",
+    "classification_family",
+    "classification_value",
+    "scope",
+    "priority",
+    "compatible_with",
+    "conflicts_with",
+    "anchor_signals",
+    "eligibility",
+    "analysis_requirements",
+    "thresholds",
+    "rules_status",
+    "required_signals_pending",
 ]
 _TARGET_STATE_FIELDS = [
     "id",
@@ -60,7 +73,8 @@ _DECISION_FIELDS = [
     "selected_target_state_id",
     "candidates_considered",
     "evaluation_notes",
-    "forcing_factor",
+    "forcing_perspective",
+    "forcing_rationale",
     "rationale",
     "approver_name",
     "approver_role",
@@ -220,6 +234,7 @@ def export_catalog(
 
     export = {
         "catalog_version": CATALOG_VERSION,
+        "catalog_revision": catalog_rules.current_catalog_revision(db),
         "exported_at": _iso_utc(datetime.datetime.now(datetime.timezone.utc)),
         "patterns": pattern_payload,
         "engagements": engagement_payload,
@@ -228,6 +243,43 @@ def export_catalog(
 
     body = json.dumps(export, sort_keys=True, indent=2, ensure_ascii=False) + "\n"
     return Response(content=body, media_type="application/json")
+
+
+@router.get(
+    "/signal-registry",
+    response_model=schemas.SignalRegistryOut,
+    summary="Get the active step 3 signal registry",
+    response_description="Every registered signal with its category, type, description and extractor — what the rule builder's signal selects are populated from.",
+    operation_id="get_signal_registry",
+)
+def get_signal_registry():
+    """The active registry is the highest-versioned
+    steps/step-003-fingerprinting/schemas/signal-registry-*.json file on
+    disk. `weak_anchor: true` flags a signal §7 says must not be a
+    pattern's only anchor."""
+    return schemas.SignalRegistryOut(
+        registry_version=catalog_rules.registry_version(),
+        signals=catalog_rules.registered_signals_full(),
+    )
+
+
+@router.get(
+    "/pending-signals",
+    response_model=list[schemas.PendingSignalPromotion],
+    summary="Report which awaiting_signals patterns are now promotable",
+    response_description="Every non-deleted 'awaiting_signals' pattern, with its promotion status against the currently active signal registry.",
+    operation_id="get_pending_signal_promotions",
+)
+def get_pending_signal_promotions(db: Session = Depends(get_db)):
+    """
+    Re-checks every `rules_status: 'awaiting_signals'` pattern's
+    `required_signals_pending` against the active step 3 signal registry.
+    `promotable: true` means every *blocking* pending signal is now
+    registered — promoting the pattern to `active` (via `PUT
+    /api/patterns/{id}`) stays a human action; this endpoint only reports
+    readiness (24-STEP-004-CLASSIFICATION.md Part B3).
+    """
+    return catalog_rules.pending_signal_promotions(db)
 
 
 @router.post(
@@ -365,7 +417,8 @@ def import_catalog(
         decision.selected_target_state_id = decision_data.get("selected_target_state_id")
         decision.candidates_considered = decision_data.get("candidates_considered")
         decision.evaluation_notes = decision_data.get("evaluation_notes")
-        decision.forcing_factor = decision_data.get("forcing_factor")
+        decision.forcing_perspective = decision_data.get("forcing_perspective")
+        decision.forcing_rationale = decision_data.get("forcing_rationale")
         decision.rationale = decision_data.get("rationale")
         decision.approver_name = decision_data.get("approver_name")
         decision.approver_role = decision_data.get("approver_role")

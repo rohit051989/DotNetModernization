@@ -242,7 +242,8 @@ POST   /api/engagements/{eid}/patterns/{pid}/restore
 pattern fields (the same shape as `PatternSummary`, plus `target_state_options`
 the same as in `PatternDetail`) joined with the overlay's `scope_status` /
 `deferred_reason` and a decision summary (`decision_status`,
-`selected_target_state_name`, or `null` if no decision has been recorded yet for
+`selected_target_state_name`, `forcing_perspective` — `25-STANDARDS-AND-
+VIEWPOINTS.md` Part A1 — or `null` if no decision has been recorded yet for
 this pattern in this engagement). Remember the overlay is lazy (see
 `02-DATA-MODEL.md`): when no `engagement_patterns` row exists,
 `scope_status` reads as `"active"` and `deleted_at` as `null` in the merged view,
@@ -315,7 +316,8 @@ job *parameter*, not an owner, and a future wave-scoped job may have no
   "in_review": 1,
   "parked": 2,
   "deferred": 1,
-  "patterns_without_decision": ["ssis-package"]
+  "patterns_without_decision": ["ssis-package"],
+  "perspective_breakdown": {"SECURITY": 1, "EVOLUTION": 1}
 }
 ```
 
@@ -327,7 +329,11 @@ decision, and both facts should be visible). `approved` / `in_review` / `parked`
 count this engagement's non-superseded, non-deleted decision records by status,
 as before. `patterns_without_decision` lists master patterns with neither a
 decision record nor a client-delete/defer overlay row — i.e. patterns still
-genuinely untouched by this engagement.
+genuinely untouched by this engagement. `perspective_breakdown` counts this
+engagement's non-superseded, non-deleted decisions per `forcing_perspective`
+(`25-STANDARDS-AND-VIEWPOINTS.md` Part A1) — only perspectives with at least
+one decision appear; this is the programme-level rollup a free-text
+`forcing_factor` could never answer.
 
 ### Decision records
 
@@ -371,24 +377,39 @@ particular, when transitioning to `approved`:
 1. `selected_target_state_id` present and belonging to the same pattern
 2. `rationale`, `approver_name`, `decision_date` present
 3. If the selected option is not the lowest `consumer_impact` among
-   `candidates_considered`, `forcing_factor` must be present
+   `candidates_considered`, both `forcing_perspective` and `forcing_rationale`
+   must be present
 
 Return a clear message for each failure — this validation is a demo talking point,
-so the errors should read well:
+so the errors should read well. Both missing fields are named, one problem entry
+each, sharing the same message text:
 
 ```json
-{"detail": [{
-  "field": "forcing_factor",
-  "message": "gRPC rewrite has higher consumer impact (high) than the lowest candidate CoreWCF on .NET 10 (none). A forcing factor is required to justify the deviation.",
-  "code": "FORCING_FACTOR_REQUIRED"
-}]}
+{"detail": [
+  {
+    "field": "forcing_perspective",
+    "message": "gRPC rewrite has higher consumer impact (high) than the lowest candidate CoreWCF on .NET 10 (none). Both forcing_perspective and forcing_rationale are required to justify the deviation.",
+    "code": "FORCING_PERSPECTIVE_AND_RATIONALE_REQUIRED"
+  },
+  {
+    "field": "forcing_rationale",
+    "message": "gRPC rewrite has higher consumer impact (high) than the lowest candidate CoreWCF on .NET 10 (none). Both forcing_perspective and forcing_rationale are required to justify the deviation.",
+    "code": "FORCING_PERSPECTIVE_AND_RATIONALE_REQUIRED"
+  }
+]}
 ```
 
 `POST /supersede` sets `status = 'superseded'`, freeing the partial unique index so
 a new decision can be recorded for that pattern.
 
 **DecisionRecord** response embeds `pattern_name` and `selected_target_state_name`
-so the UI does not need extra lookups.
+so the UI does not need extra lookups. It also carries `forcing_perspective`
+(`25-STANDARDS-AND-VIEWPOINTS.md` Part A1) alongside the renamed
+`forcing_rationale` — the perspective is what makes deviations from
+lift-and-shift aggregable across an engagement; the rationale stays the
+free-text narrative. `EngagementPatternView`'s decision summary carries
+`forcing_perspective` too, so the client catalog can show it without a second
+fetch.
 
 ### Catalog export / import
 

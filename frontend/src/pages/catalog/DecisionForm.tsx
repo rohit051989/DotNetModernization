@@ -6,17 +6,33 @@ import { ConfirmDialog } from '../../components/ConfirmDialog'
 import { Field, inputClass } from '../../components/FormField'
 import { ImpactBadge } from '../../components/Badge'
 import { useToast } from '../../components/Toast'
-import type { ConsumerImpact, DecisionRecord, DecisionStatus, TargetStateSummary } from '../../types/catalog'
+import type {
+  ConsumerImpact,
+  DecisionRecord,
+  DecisionStatus,
+  ForcingPerspective,
+  TargetStateSummary,
+} from '../../types/catalog'
 
 const STATUSES: DecisionStatus[] = ['parked', 'in_review', 'approved', 'superseded']
 const IMPACT_RANK: Record<ConsumerImpact, number> = { none: 0, low: 1, medium: 2, high: 3 }
+const FORCING_PERSPECTIVES: ForcingPerspective[] = [
+  'SECURITY',
+  'EVOLUTION',
+  'REGULATION',
+  'PERFORMANCE_SCALABILITY',
+  'AVAILABILITY_RESILIENCE',
+  'LOCATION',
+  'DEVELOPMENT_RESOURCE',
+]
 
 interface DecisionFormState {
   candidates_considered: string[]
   selected_target_state_id: string
   evaluation_notes: string
   rationale: string
-  forcing_factor: string
+  forcing_perspective: ForcingPerspective | ''
+  forcing_rationale: string
   approver_name: string
   approver_role: string
   decision_date: string
@@ -30,7 +46,8 @@ function toFormState(decision: DecisionRecord | null, targetStates: TargetStateS
     selected_target_state_id: decision?.selected_target_state_id ?? '',
     evaluation_notes: decision?.evaluation_notes ?? '',
     rationale: decision?.rationale ?? '',
-    forcing_factor: decision?.forcing_factor ?? '',
+    forcing_perspective: decision?.forcing_perspective ?? '',
+    forcing_rationale: decision?.forcing_rationale ?? '',
     approver_name: decision?.approver_name ?? '',
     approver_role: decision?.approver_role ?? '',
     decision_date: decision?.decision_date ?? '',
@@ -94,7 +111,7 @@ export function DecisionForm({
           IMPACT_RANK[current.consumer_impact] < IMPACT_RANK[lowest.consumer_impact] ? current : lowest,
         )
       : null
-  const forcingFactorRequired =
+  const forcingRequired =
     !!selectedOption &&
     !!lowestCandidate &&
     IMPACT_RANK[selectedOption.consumer_impact] > IMPACT_RANK[lowestCandidate.consumer_impact]
@@ -114,7 +131,8 @@ export function DecisionForm({
       selected_target_state_id: form.selected_target_state_id || null,
       candidates_considered: form.candidates_considered,
       evaluation_notes: form.evaluation_notes || null,
-      forcing_factor: form.forcing_factor || null,
+      forcing_perspective: form.forcing_perspective || null,
+      forcing_rationale: form.forcing_rationale || null,
       rationale: form.rationale || null,
       approver_name: form.approver_name || null,
       approver_role: form.approver_role || null,
@@ -214,23 +232,41 @@ export function DecisionForm({
               />
             </Field>
 
-            {forcingFactorRequired && selectedOption && lowestCandidate && (
+            {forcingRequired && selectedOption && lowestCandidate && (
               <p className="rounded bg-amber-50 px-3 py-2 text-sm text-amber-800">
                 {lowestCandidate.name} has lower consumer impact ({lowestCandidate.consumer_impact}) than
-                your selection ({selectedOption.consumer_impact}). Record the forcing factor that
-                justifies the higher-impact option.
+                your selection ({selectedOption.consumer_impact}). Record the perspective and rationale
+                that justify the higher-impact option.
               </p>
             )}
 
             <Field
-              label={forcingFactorRequired ? 'Forcing factor (required)' : 'Forcing factor'}
-              error={fieldErrors.forcing_factor}
+              label={forcingRequired ? 'Forcing perspective (required)' : 'Forcing perspective'}
+              error={fieldErrors.forcing_perspective}
+            >
+              <select
+                value={form.forcing_perspective}
+                onChange={(event) => update('forcing_perspective', event.target.value as ForcingPerspective | '')}
+                className={inputClass(!!fieldErrors.forcing_perspective || (forcingRequired && !form.forcing_perspective))}
+              >
+                <option value="">— none —</option>
+                {FORCING_PERSPECTIVES.map((perspective) => (
+                  <option key={perspective} value={perspective}>
+                    {perspective.replace('_', ' ')}
+                  </option>
+                ))}
+              </select>
+            </Field>
+
+            <Field
+              label={forcingRequired ? 'Forcing rationale (required)' : 'Forcing rationale'}
+              error={fieldErrors.forcing_rationale}
             >
               <textarea
-                value={form.forcing_factor}
-                onChange={(event) => update('forcing_factor', event.target.value)}
+                value={form.forcing_rationale}
+                onChange={(event) => update('forcing_rationale', event.target.value)}
                 rows={2}
-                className={inputClass(!!fieldErrors.forcing_factor || forcingFactorRequired)}
+                className={inputClass(!!fieldErrors.forcing_rationale || (forcingRequired && !form.forcing_rationale))}
               />
             </Field>
 

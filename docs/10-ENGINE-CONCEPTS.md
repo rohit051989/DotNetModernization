@@ -94,6 +94,7 @@ reference it. This table is what makes contract change detectable.
 | `produces` | `JSONB` NOT NULL | Array of `{type, version}` |
 | `implementation_status` | `TEXT` NOT NULL | `stub`, `implemented`, `deprecated` |
 | `owner_team` | `TEXT` | Who built it — relevant when steps come from other devs |
+| `viewpoint` | `TEXT` | CHECK IN (`CONTEXT`, `FUNCTIONAL`, `INFORMATION`, `CONCURRENCY`, `DEVELOPMENT`, `DEPLOYMENT`, `OPERATIONAL`, `NONE`). Nullable — governance and orchestration steps map to no viewpoint. `25-STANDARDS-AND-VIEWPOINTS.md` Part A2 |
 | `registered_at` / `updated_at` | `TIMESTAMPTZ` | |
 
 ### `wf_job_definitions`

@@ -1,11 +1,7 @@
 import { useEffect, useState } from 'react'
 import { deletePattern, deprecatePattern, getPattern, listTargetStates } from '../../api/catalog'
 import { ApiError } from '../../api/client'
-import type {
-  DetectionRules,
-  PatternDetail as PatternDetailModel,
-  TargetStateDetail,
-} from '../../types/catalog'
+import type { PatternDetail as PatternDetailModel, TargetStateDetail } from '../../types/catalog'
 import { CategoryBadge, StatusBadge } from '../../components/Badge'
 import { ConfirmDialog } from '../../components/ConfirmDialog'
 import { Markdown } from '../../components/Markdown'
@@ -20,16 +16,6 @@ interface PatternDetailProps {
   onCatalogChanged: () => void
   onDeleted: () => void
 }
-
-const DETECTION_RULE_LIST_FIELDS: { key: keyof DetectionRules; label: string }[] = [
-  { key: 'target_frameworks', label: 'Target frameworks' },
-  { key: 'required_namespaces', label: 'Required namespaces' },
-  { key: 'forbidden_namespaces', label: 'Forbidden namespaces' },
-  { key: 'required_packages', label: 'Required packages' },
-  { key: 'file_globs', label: 'File globs' },
-  { key: 'forbidden_file_globs', label: 'Forbidden file globs' },
-  { key: 'config_markers', label: 'Config markers' },
-]
 
 type TargetStateFormMode = { kind: 'create' } | { kind: 'edit'; option: TargetStateDetail } | null
 
@@ -199,7 +185,7 @@ export function PatternDetail({ patternId, refreshToken, onCatalogChanged, onDel
 
       <section className="rounded border border-neutral-200 bg-white p-5">
         <div className="mb-3 flex items-center justify-between">
-          <h3 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Detection rules</h3>
+          <h3 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Classification & detection rules</h3>
           <button
             type="button"
             onClick={() => setShowRawJson((value) => !value)}
@@ -214,25 +200,68 @@ export function PatternDetail({ patternId, refreshToken, onCatalogChanged, onDel
             {JSON.stringify(pattern.detection_rules, null, 2)}
           </pre>
         ) : (
-          <div className="space-y-3">
-            {DETECTION_RULE_LIST_FIELDS.map(({ key, label }) => {
-              const values = pattern.detection_rules[key]
-              if (!Array.isArray(values) || values.length === 0) return null
-              return (
-                <div key={key}>
-                  <p className="text-xs font-medium text-neutral-500">{label}</p>
-                  <ul className="mt-1 flex flex-wrap gap-1.5">
-                    {values.map((value) => (
-                      <li key={value} className="rounded bg-neutral-100 px-2 py-0.5 font-mono text-xs text-neutral-700">
-                        {value}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )
-            })}
-            {pattern.detection_rules.notes && (
-              <p className="text-sm italic text-neutral-500">{pattern.detection_rules.notes}</p>
+          <div className="space-y-3 text-sm">
+            <dl className="grid grid-cols-2 gap-x-6 gap-y-2 sm:grid-cols-4">
+              <div>
+                <dt className="text-xs text-neutral-400">Role</dt>
+                <dd className="text-neutral-700">{pattern.classification_role}</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-neutral-400">Family</dt>
+                <dd className="text-neutral-700">{pattern.classification_family ?? '—'}</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-neutral-400">Value</dt>
+                <dd className="text-neutral-700">{pattern.classification_value ?? '—'}</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-neutral-400">Rules status</dt>
+                <dd className="text-neutral-700">{pattern.rules_status}</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-neutral-400">Thresholds</dt>
+                <dd className="text-neutral-700">
+                  {pattern.thresholds.minimumScore} / {pattern.thresholds.highConfidenceScore}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs text-neutral-400">Priority</dt>
+                <dd className="text-neutral-700">{pattern.priority}</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-neutral-400">Scope</dt>
+                <dd className="text-neutral-700">{pattern.scope}</dd>
+              </div>
+            </dl>
+            {pattern.anchor_signals.length > 0 && (
+              <div>
+                <p className="text-xs font-medium text-neutral-500">Anchor signals</p>
+                <ul className="mt-1 flex flex-wrap gap-1.5">
+                  {pattern.anchor_signals.map((s) => (
+                    <li key={s} className="rounded bg-neutral-100 px-2 py-0.5 font-mono text-xs text-neutral-700">
+                      {s}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            <p className="text-xs text-neutral-400">
+              {pattern.detection_rules.all.length} all · {pattern.detection_rules.any.length} any ·{' '}
+              {pattern.detection_rules.atLeast.length} atLeast · {pattern.detection_rules.supporting.length} supporting ·{' '}
+              {pattern.detection_rules.none.length} none · {pattern.detection_rules.metadata.length} metadata condition(s)
+            </p>
+            {pattern.rules_status === 'awaiting_signals' && pattern.required_signals_pending.length > 0 && (
+              <div>
+                <p className="text-xs font-medium text-amber-600">Awaiting signals</p>
+                <ul className="mt-1 space-y-0.5 text-xs text-neutral-600">
+                  {pattern.required_signals_pending.map((p) => (
+                    <li key={p.signal_name}>
+                      <span className="font-mono">{p.signal_name}</span> ({p.expected_extractor}
+                      {p.blocking ? ', blocking' : ''}) — {p.purpose}
+                    </li>
+                  ))}
+                </ul>
+              </div>
             )}
           </div>
         )}
