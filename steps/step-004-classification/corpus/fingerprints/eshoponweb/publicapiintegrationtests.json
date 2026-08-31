@@ -1,0 +1,118 @@
+{
+  "analysis_capabilities": {
+    "configurationParsed": true,
+    "deploymentArtifactsParsed": false,
+    "fileDiscovery": true,
+    "generatedCodeExcluded": true,
+    "msbuildEvaluated": false,
+    "projectMetadataParsed": false,
+    "semanticAnalysis": false,
+    "syntaxAnalysis": true
+  },
+  "fingerprint_status": "PARTIAL",
+  "metadata": {
+    "extension": ".csproj",
+    "fingerprintStatus": "PARTIAL",
+    "frameworkFamily": null,
+    "frameworkVersion": null,
+    "outputType": null,
+    "projectFormat": "sdk_style",
+    "projectSdk": null,
+    "structuralType": "csharp_project"
+  },
+  "project_id": "674c90ad-c8d1-466d-9bc0-456ae49a1cc6",
+  "project_path": "tests/PublicApiIntegrationTests/PublicApiIntegrationTests.csproj",
+  "project_slug": "publicapiintegrationtests",
+  "signals": [
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FRAMEWORK_REFERENCE",
+      "signal_name": "MICROSOFT_ASPNETCORE_MVC_NAMESPACE",
+      "signal_type": "NAMESPACE",
+      "source_path": "tests/PublicApiIntegrationTests/ProgramTest.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Microsoft.AspNetCore.Mvc.Testing"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "PACKAGE_DEPENDENCY",
+      "signal_name": "MICROSOFT_ASPNETCORE_PACKAGE",
+      "signal_type": "PACKAGE",
+      "source_path": "tests/PublicApiIntegrationTests/PublicApiIntegrationTests.csproj",
+      "source_type": "PACKAGE_REFERENCE",
+      "value": "Microsoft.AspNetCore.Mvc.Testing"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "PACKAGE_DEPENDENCY",
+      "signal_name": "MSTEST_PACKAGE",
+      "signal_type": "PACKAGE",
+      "source_path": "tests/PublicApiIntegrationTests/PublicApiIntegrationTests.csproj",
+      "source_type": "PACKAGE_REFERENCE",
+      "value": "MSTest.TestAdapter"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "PACKAGE_DEPENDENCY",
+      "signal_name": "MSTEST_PACKAGE",
+      "signal_type": "PACKAGE",
+      "source_path": "tests/PublicApiIntegrationTests/PublicApiIntegrationTests.csproj",
+      "source_type": "PACKAGE_REFERENCE",
+      "value": "MSTest.TestFramework"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "TESTING_INDICATOR",
+      "signal_name": "TEST_METHOD_ATTRIBUTE",
+      "signal_type": "ATTRIBUTE",
+      "source_path": "tests/PublicApiIntegrationTests/AuthEndpoints/AuthenticateEndpointTest.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "TestMethod"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 2,
+      "signal_category": "TESTING_INDICATOR",
+      "signal_name": "TEST_METHOD_ATTRIBUTE",
+      "signal_type": "ATTRIBUTE",
+      "source_path": "tests/PublicApiIntegrationTests/CatalogItemEndpoints/CatalogItemGetByIdEndpointTest.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "TestMethod"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 2,
+      "signal_category": "TESTING_INDICATOR",
+      "signal_name": "TEST_METHOD_ATTRIBUTE",
+      "signal_type": "ATTRIBUTE",
+      "source_path": "tests/PublicApiIntegrationTests/CatalogItemEndpoints/CatalogItemListPagedEndpoint.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "TestMethod"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 2,
+      "signal_category": "TESTING_INDICATOR",
+      "signal_name": "TEST_METHOD_ATTRIBUTE",
+      "signal_type": "ATTRIBUTE",
+      "source_path": "tests/PublicApiIntegrationTests/CatalogItemEndpoints/CreateCatalogItemEndpointTest.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "TestMethod"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 2,
+      "signal_category": "TESTING_INDICATOR",
+      "signal_name": "TEST_METHOD_ATTRIBUTE",
+      "signal_type": "ATTRIBUTE",
+      "source_path": "tests/PublicApiIntegrationTests/CatalogItemEndpoints/DeleteCatalogItemEndpointTest.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "TestMethod"
+    }
+  ]
+}

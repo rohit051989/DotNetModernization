@@ -1,0 +1,22 @@
+{
+  "config_version": "1.0.0",
+  "ambiguityMargin": 10,
+  "completenessFactor": {
+    "COMPLETE": 1.0,
+    "PARTIAL": 0.85,
+    "FAILED": 0.0,
+    "SKIPPED": 0.0,
+    "NOT_SUPPORTED": 0.0
+  },
+  "capabilityFactor": {
+    "preferredMissing": 0.9
+  },
+  "ambiguityFactor": {
+    "conflictWithinMargin": 0.8
+  },
+  "confidenceLevels": {
+    "HIGH": 0.85,
+    "MEDIUM": 0.60,
+    "LOW": 0.40
+  }
+}

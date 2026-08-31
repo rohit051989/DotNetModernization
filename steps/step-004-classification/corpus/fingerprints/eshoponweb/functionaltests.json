@@ -1,0 +1,278 @@
+{
+  "analysis_capabilities": {
+    "configurationParsed": true,
+    "deploymentArtifactsParsed": false,
+    "fileDiscovery": true,
+    "generatedCodeExcluded": true,
+    "msbuildEvaluated": false,
+    "projectMetadataParsed": false,
+    "semanticAnalysis": false,
+    "syntaxAnalysis": true
+  },
+  "fingerprint_status": "PARTIAL",
+  "metadata": {
+    "extension": ".csproj",
+    "fingerprintStatus": "PARTIAL",
+    "frameworkFamily": null,
+    "frameworkVersion": null,
+    "outputType": null,
+    "projectFormat": "sdk_style",
+    "projectSdk": null,
+    "structuralType": "csharp_project"
+  },
+  "project_id": "fe848eed-fb1b-440f-a957-9c94257ce40e",
+  "project_path": "tests/FunctionalTests/FunctionalTests.csproj",
+  "project_slug": "functionaltests",
+  "signals": [
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FILE_INDICATOR",
+      "signal_name": "CONTROLLERS_FOLDER",
+      "signal_type": "FILE_PRESENCE",
+      "source_path": "tests/FunctionalTests/Web/Controllers",
+      "source_type": "FILE_STRUCTURE",
+      "value": null
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 5,
+      "signal_category": "TESTING_INDICATOR",
+      "signal_name": "FACT_ATTRIBUTE",
+      "signal_type": "ATTRIBUTE",
+      "source_path": "tests/FunctionalTests/Web/Controllers/AccountControllerSignIn.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Fact"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "TESTING_INDICATOR",
+      "signal_name": "FACT_ATTRIBUTE",
+      "signal_type": "ATTRIBUTE",
+      "source_path": "tests/FunctionalTests/Web/Controllers/CatalogControllerIndex.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Fact"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "TESTING_INDICATOR",
+      "signal_name": "FACT_ATTRIBUTE",
+      "signal_type": "ATTRIBUTE",
+      "source_path": "tests/FunctionalTests/Web/Controllers/OrderControllerIndex.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Fact"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "TESTING_INDICATOR",
+      "signal_name": "FACT_ATTRIBUTE",
+      "signal_type": "ATTRIBUTE",
+      "source_path": "tests/FunctionalTests/Web/Pages/Basket/BasketPageCheckout.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Fact"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "TESTING_INDICATOR",
+      "signal_name": "FACT_ATTRIBUTE",
+      "signal_type": "ATTRIBUTE",
+      "source_path": "tests/FunctionalTests/Web/Pages/Basket/CheckoutTest.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Fact"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 2,
+      "signal_category": "TESTING_INDICATOR",
+      "signal_name": "FACT_ATTRIBUTE",
+      "signal_type": "ATTRIBUTE",
+      "source_path": "tests/FunctionalTests/Web/Pages/Basket/IndexTest.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Fact"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "TESTING_INDICATOR",
+      "signal_name": "FACT_ATTRIBUTE",
+      "signal_type": "ATTRIBUTE",
+      "source_path": "tests/FunctionalTests/Web/Pages/HomePageOnGet.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Fact"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FRAMEWORK_REFERENCE",
+      "signal_name": "MICROSOFT_ASPNETCORE_MVC_NAMESPACE",
+      "signal_type": "NAMESPACE",
+      "source_path": "tests/FunctionalTests/PublicApi/ApiTestFixture.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Microsoft.AspNetCore.Mvc.Testing"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FRAMEWORK_REFERENCE",
+      "signal_name": "MICROSOFT_ASPNETCORE_MVC_NAMESPACE",
+      "signal_type": "NAMESPACE",
+      "source_path": "tests/FunctionalTests/Web/Controllers/AccountControllerSignIn.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Microsoft.AspNetCore.Mvc.Testing"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FRAMEWORK_REFERENCE",
+      "signal_name": "MICROSOFT_ASPNETCORE_MVC_NAMESPACE",
+      "signal_type": "NAMESPACE",
+      "source_path": "tests/FunctionalTests/Web/Controllers/OrderControllerIndex.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Microsoft.AspNetCore.Mvc.Testing"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FRAMEWORK_REFERENCE",
+      "signal_name": "MICROSOFT_ASPNETCORE_MVC_NAMESPACE",
+      "signal_type": "NAMESPACE",
+      "source_path": "tests/FunctionalTests/Web/Pages/Basket/BasketPageCheckout.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Microsoft.AspNetCore.Mvc.Testing"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FRAMEWORK_REFERENCE",
+      "signal_name": "MICROSOFT_ASPNETCORE_MVC_NAMESPACE",
+      "signal_type": "NAMESPACE",
+      "source_path": "tests/FunctionalTests/Web/Pages/Basket/CheckoutTest.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Microsoft.AspNetCore.Mvc.Testing"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FRAMEWORK_REFERENCE",
+      "signal_name": "MICROSOFT_ASPNETCORE_MVC_NAMESPACE",
+      "signal_type": "NAMESPACE",
+      "source_path": "tests/FunctionalTests/Web/Pages/Basket/IndexTest.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Microsoft.AspNetCore.Mvc.Testing"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FRAMEWORK_REFERENCE",
+      "signal_name": "MICROSOFT_ASPNETCORE_MVC_NAMESPACE",
+      "signal_type": "NAMESPACE",
+      "source_path": "tests/FunctionalTests/Web/WebTestFixture.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Microsoft.AspNetCore.Mvc.Testing"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FRAMEWORK_REFERENCE",
+      "signal_name": "MICROSOFT_ASPNETCORE_NAMESPACE",
+      "signal_type": "NAMESPACE",
+      "source_path": "tests/FunctionalTests/PublicApi/ApiTestFixture.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Microsoft.AspNetCore.Hosting"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FRAMEWORK_REFERENCE",
+      "signal_name": "MICROSOFT_ASPNETCORE_NAMESPACE",
+      "signal_type": "NAMESPACE",
+      "source_path": "tests/FunctionalTests/Web/WebTestFixture.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Microsoft.AspNetCore.Hosting"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FRAMEWORK_REFERENCE",
+      "signal_name": "MICROSOFT_ASPNETCORE_NAMESPACE",
+      "signal_type": "NAMESPACE",
+      "source_path": "tests/FunctionalTests/Web/WebTestFixture.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Microsoft.AspNetCore.Identity"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "PACKAGE_DEPENDENCY",
+      "signal_name": "MICROSOFT_ASPNETCORE_PACKAGE",
+      "signal_type": "PACKAGE",
+      "source_path": "tests/FunctionalTests/FunctionalTests.csproj",
+      "source_type": "PACKAGE_REFERENCE",
+      "value": "Microsoft.AspNetCore.Mvc.Testing"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FRAMEWORK_REFERENCE",
+      "signal_name": "MICROSOFT_ENTITYFRAMEWORKCORE_NAMESPACE",
+      "signal_type": "NAMESPACE",
+      "source_path": "tests/FunctionalTests/PublicApi/ApiTestFixture.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Microsoft.EntityFrameworkCore"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FRAMEWORK_REFERENCE",
+      "signal_name": "MICROSOFT_ENTITYFRAMEWORKCORE_NAMESPACE",
+      "signal_type": "NAMESPACE",
+      "source_path": "tests/FunctionalTests/Web/WebTestFixture.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Microsoft.EntityFrameworkCore"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "PACKAGE_DEPENDENCY",
+      "signal_name": "MICROSOFT_ENTITYFRAMEWORKCORE_PACKAGE",
+      "signal_type": "PACKAGE",
+      "source_path": "tests/FunctionalTests/FunctionalTests.csproj",
+      "source_type": "PACKAGE_REFERENCE",
+      "value": "Microsoft.EntityFrameworkCore.InMemory"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FILE_INDICATOR",
+      "signal_name": "PAGES_FOLDER",
+      "signal_type": "FILE_PRESENCE",
+      "source_path": "tests/FunctionalTests/Web/Pages",
+      "source_type": "FILE_STRUCTURE",
+      "value": null
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "PACKAGE_DEPENDENCY",
+      "signal_name": "XUNIT_PACKAGE",
+      "signal_type": "PACKAGE",
+      "source_path": "tests/FunctionalTests/FunctionalTests.csproj",
+      "source_type": "PACKAGE_REFERENCE",
+      "value": "xunit.runner.visualstudio"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "PACKAGE_DEPENDENCY",
+      "signal_name": "XUNIT_PACKAGE",
+      "signal_type": "PACKAGE",
+      "source_path": "tests/FunctionalTests/FunctionalTests.csproj",
+      "source_type": "PACKAGE_REFERENCE",
+      "value": "xunit"
+    }
+  ]
+}

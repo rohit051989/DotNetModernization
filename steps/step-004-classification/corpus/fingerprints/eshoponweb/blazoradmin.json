@@ -1,0 +1,348 @@
+{
+  "analysis_capabilities": {
+    "configurationParsed": true,
+    "deploymentArtifactsParsed": false,
+    "fileDiscovery": true,
+    "generatedCodeExcluded": true,
+    "msbuildEvaluated": false,
+    "projectMetadataParsed": false,
+    "semanticAnalysis": false,
+    "syntaxAnalysis": true
+  },
+  "fingerprint_status": "PARTIAL",
+  "metadata": {
+    "extension": ".csproj",
+    "fingerprintStatus": "PARTIAL",
+    "frameworkFamily": null,
+    "frameworkVersion": null,
+    "outputType": null,
+    "projectFormat": "sdk_style",
+    "projectSdk": null,
+    "structuralType": "csharp_project"
+  },
+  "project_id": "9a707152-b1a8-4dfe-8eb1-8112c29c9a72",
+  "project_path": "src/BlazorAdmin/BlazorAdmin.csproj",
+  "project_slug": "blazoradmin",
+  "signals": [
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "PACKAGE_DEPENDENCY",
+      "signal_name": "BLAZOR_WEBASSEMBLY_PACKAGE",
+      "signal_type": "PACKAGE",
+      "source_path": "src/BlazorAdmin/BlazorAdmin.csproj",
+      "source_type": "PACKAGE_REFERENCE",
+      "value": "Microsoft.AspNetCore.Components.WebAssembly.DevServer"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "PACKAGE_DEPENDENCY",
+      "signal_name": "BLAZOR_WEBASSEMBLY_PACKAGE",
+      "signal_type": "PACKAGE",
+      "source_path": "src/BlazorAdmin/BlazorAdmin.csproj",
+      "source_type": "PACKAGE_REFERENCE",
+      "value": "Microsoft.AspNetCore.Components.WebAssembly.Authentication"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "PACKAGE_DEPENDENCY",
+      "signal_name": "BLAZOR_WEBASSEMBLY_PACKAGE",
+      "signal_type": "PACKAGE",
+      "source_path": "src/BlazorAdmin/BlazorAdmin.csproj",
+      "source_type": "PACKAGE_REFERENCE",
+      "value": "Microsoft.AspNetCore.Components.WebAssembly"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FRAMEWORK_REFERENCE",
+      "signal_name": "MICROSOFT_ASPNETCORE_NAMESPACE",
+      "signal_type": "NAMESPACE",
+      "source_path": "src/BlazorAdmin/CustomAuthStateProvider.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Microsoft.AspNetCore.Components.Authorization"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FRAMEWORK_REFERENCE",
+      "signal_name": "MICROSOFT_ASPNETCORE_NAMESPACE",
+      "signal_type": "NAMESPACE",
+      "source_path": "src/BlazorAdmin/Helpers/BlazorComponent.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Microsoft.AspNetCore.Components"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FRAMEWORK_REFERENCE",
+      "signal_name": "MICROSOFT_ASPNETCORE_NAMESPACE",
+      "signal_type": "NAMESPACE",
+      "source_path": "src/BlazorAdmin/Helpers/BlazorLayoutComponent.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Microsoft.AspNetCore.Components"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FRAMEWORK_REFERENCE",
+      "signal_name": "MICROSOFT_ASPNETCORE_NAMESPACE",
+      "signal_type": "NAMESPACE",
+      "source_path": "src/BlazorAdmin/Helpers/ToastComponent.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Microsoft.AspNetCore.Components"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FRAMEWORK_REFERENCE",
+      "signal_name": "MICROSOFT_ASPNETCORE_NAMESPACE",
+      "signal_type": "NAMESPACE",
+      "source_path": "src/BlazorAdmin/Program.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Microsoft.AspNetCore.Components.WebAssembly.Hosting"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FRAMEWORK_REFERENCE",
+      "signal_name": "MICROSOFT_ASPNETCORE_NAMESPACE",
+      "signal_type": "NAMESPACE",
+      "source_path": "src/BlazorAdmin/Program.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Microsoft.AspNetCore.Components.Web"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FRAMEWORK_REFERENCE",
+      "signal_name": "MICROSOFT_ASPNETCORE_NAMESPACE",
+      "signal_type": "NAMESPACE",
+      "source_path": "src/BlazorAdmin/Program.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Microsoft.AspNetCore.Components.Authorization"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FRAMEWORK_REFERENCE",
+      "signal_name": "MICROSOFT_ASPNETCORE_NAMESPACE",
+      "signal_type": "NAMESPACE",
+      "source_path": "src/BlazorAdmin/Shared/CustomInputSelect.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Microsoft.AspNetCore.Components.Forms"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "PACKAGE_DEPENDENCY",
+      "signal_name": "MICROSOFT_ASPNETCORE_PACKAGE",
+      "signal_type": "PACKAGE",
+      "source_path": "src/BlazorAdmin/BlazorAdmin.csproj",
+      "source_type": "PACKAGE_REFERENCE",
+      "value": "Microsoft.AspNetCore.Components.WebAssembly.Authentication"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "PACKAGE_DEPENDENCY",
+      "signal_name": "MICROSOFT_ASPNETCORE_PACKAGE",
+      "signal_type": "PACKAGE",
+      "source_path": "src/BlazorAdmin/BlazorAdmin.csproj",
+      "source_type": "PACKAGE_REFERENCE",
+      "value": "Microsoft.AspNetCore.Components.WebAssembly.DevServer"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "PACKAGE_DEPENDENCY",
+      "signal_name": "MICROSOFT_ASPNETCORE_PACKAGE",
+      "signal_type": "PACKAGE",
+      "source_path": "src/BlazorAdmin/BlazorAdmin.csproj",
+      "source_type": "PACKAGE_REFERENCE",
+      "value": "Microsoft.AspNetCore.Components.Authorization"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "PACKAGE_DEPENDENCY",
+      "signal_name": "MICROSOFT_ASPNETCORE_PACKAGE",
+      "signal_type": "PACKAGE",
+      "source_path": "src/BlazorAdmin/BlazorAdmin.csproj",
+      "source_type": "PACKAGE_REFERENCE",
+      "value": "Microsoft.AspNetCore.Components.WebAssembly"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FILE_INDICATOR",
+      "signal_name": "PAGES_FOLDER",
+      "signal_type": "FILE_PRESENCE",
+      "source_path": "src/BlazorAdmin/Pages",
+      "source_type": "FILE_STRUCTURE",
+      "value": null
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FILE_INDICATOR",
+      "signal_name": "PROGRAM_CS_FILE",
+      "signal_type": "FILE_PRESENCE",
+      "source_path": "src/BlazorAdmin/Program.cs",
+      "source_type": "FILE_STRUCTURE",
+      "value": null
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FILE_INDICATOR",
+      "signal_name": "RAZOR_FILE",
+      "signal_type": "FILE_PRESENCE",
+      "source_path": "src/BlazorAdmin/App.razor",
+      "source_type": "FILE_STRUCTURE",
+      "value": null
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FILE_INDICATOR",
+      "signal_name": "RAZOR_FILE",
+      "signal_type": "FILE_PRESENCE",
+      "source_path": "src/BlazorAdmin/_Imports.razor",
+      "source_type": "FILE_STRUCTURE",
+      "value": null
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FILE_INDICATOR",
+      "signal_name": "RAZOR_FILE",
+      "signal_type": "FILE_PRESENCE",
+      "source_path": "src/BlazorAdmin/Pages/CatalogItemPage/Create.razor",
+      "source_type": "FILE_STRUCTURE",
+      "value": null
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FILE_INDICATOR",
+      "signal_name": "RAZOR_FILE",
+      "signal_type": "FILE_PRESENCE",
+      "source_path": "src/BlazorAdmin/Pages/CatalogItemPage/Delete.razor",
+      "source_type": "FILE_STRUCTURE",
+      "value": null
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FILE_INDICATOR",
+      "signal_name": "RAZOR_FILE",
+      "signal_type": "FILE_PRESENCE",
+      "source_path": "src/BlazorAdmin/Pages/CatalogItemPage/Details.razor",
+      "source_type": "FILE_STRUCTURE",
+      "value": null
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FILE_INDICATOR",
+      "signal_name": "RAZOR_FILE",
+      "signal_type": "FILE_PRESENCE",
+      "source_path": "src/BlazorAdmin/Pages/CatalogItemPage/Edit.razor",
+      "source_type": "FILE_STRUCTURE",
+      "value": null
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FILE_INDICATOR",
+      "signal_name": "RAZOR_FILE",
+      "signal_type": "FILE_PRESENCE",
+      "source_path": "src/BlazorAdmin/Pages/CatalogItemPage/List.razor",
+      "source_type": "FILE_STRUCTURE",
+      "value": null
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FILE_INDICATOR",
+      "signal_name": "RAZOR_FILE",
+      "signal_type": "FILE_PRESENCE",
+      "source_path": "src/BlazorAdmin/Pages/Logout.razor",
+      "source_type": "FILE_STRUCTURE",
+      "value": null
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FILE_INDICATOR",
+      "signal_name": "RAZOR_FILE",
+      "signal_type": "FILE_PRESENCE",
+      "source_path": "src/BlazorAdmin/Shared/MainLayout.razor",
+      "source_type": "FILE_STRUCTURE",
+      "value": null
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FILE_INDICATOR",
+      "signal_name": "RAZOR_FILE",
+      "signal_type": "FILE_PRESENCE",
+      "source_path": "src/BlazorAdmin/Shared/NavMenu.razor",
+      "source_type": "FILE_STRUCTURE",
+      "value": null
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FILE_INDICATOR",
+      "signal_name": "RAZOR_FILE",
+      "signal_type": "FILE_PRESENCE",
+      "source_path": "src/BlazorAdmin/Shared/RedirectToLogin.razor",
+      "source_type": "FILE_STRUCTURE",
+      "value": null
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FILE_INDICATOR",
+      "signal_name": "RAZOR_FILE",
+      "signal_type": "FILE_PRESENCE",
+      "source_path": "src/BlazorAdmin/Shared/Spinner.razor",
+      "source_type": "FILE_STRUCTURE",
+      "value": null
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FILE_INDICATOR",
+      "signal_name": "RAZOR_FILE",
+      "signal_type": "FILE_PRESENCE",
+      "source_path": "src/BlazorAdmin/Shared/Toast.razor",
+      "source_type": "FILE_STRUCTURE",
+      "value": null
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FILE_INDICATOR",
+      "signal_name": "SERVICES_FOLDER",
+      "signal_type": "FILE_PRESENCE",
+      "source_path": "src/BlazorAdmin/Services",
+      "source_type": "FILE_STRUCTURE",
+      "value": null
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "ENTRY_POINT",
+      "signal_name": "TOP_LEVEL_STATEMENTS_ENTRY_POINT",
+      "signal_type": "ENTRY_POINT",
+      "source_path": "src/BlazorAdmin/Program.cs",
+      "source_type": "SOURCE_CODE",
+      "value": null
+    }
+  ]
+}

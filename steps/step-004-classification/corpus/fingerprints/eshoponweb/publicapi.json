@@ -1,0 +1,488 @@
+{
+  "analysis_capabilities": {
+    "configurationParsed": true,
+    "deploymentArtifactsParsed": false,
+    "fileDiscovery": true,
+    "generatedCodeExcluded": true,
+    "msbuildEvaluated": false,
+    "projectMetadataParsed": false,
+    "semanticAnalysis": false,
+    "syntaxAnalysis": true
+  },
+  "fingerprint_status": "PARTIAL",
+  "metadata": {
+    "extension": ".csproj",
+    "fingerprintStatus": "PARTIAL",
+    "frameworkFamily": null,
+    "frameworkVersion": null,
+    "outputType": null,
+    "projectFormat": "sdk_style",
+    "projectSdk": null,
+    "structuralType": "csharp_project"
+  },
+  "project_id": "1ab49ef8-5fa6-4164-8dc7-44a18321a7ea",
+  "project_path": "src/PublicApi/PublicApi.csproj",
+  "project_slug": "publicapi",
+  "signals": [
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "DATA_ACCESS_INDICATOR",
+      "signal_name": "CONNECTION_STRING_CONFIG",
+      "signal_type": "CONFIG_ELEMENT",
+      "source_path": "src/PublicApi/appsettings.json",
+      "source_type": "CONFIGURATION",
+      "value": "CatalogConnection"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "DATA_ACCESS_INDICATOR",
+      "signal_name": "CONNECTION_STRING_CONFIG",
+      "signal_type": "CONFIG_ELEMENT",
+      "source_path": "src/PublicApi/appsettings.json",
+      "source_type": "CONFIGURATION",
+      "value": "IdentityConnection"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "SOURCE_CONSTRUCT",
+      "signal_name": "HTTP_POST_ATTRIBUTE",
+      "signal_type": "ATTRIBUTE",
+      "source_path": "src/PublicApi/AuthEndpoints/AuthenticateEndpoint.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "HttpPost"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FRAMEWORK_REFERENCE",
+      "signal_name": "MICROSOFT_ASPNETCORE_MVC_NAMESPACE",
+      "signal_type": "NAMESPACE",
+      "source_path": "src/PublicApi/AuthEndpoints/AuthenticateEndpoint.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Microsoft.AspNetCore.Mvc"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FRAMEWORK_REFERENCE",
+      "signal_name": "MICROSOFT_ASPNETCORE_NAMESPACE",
+      "signal_type": "NAMESPACE",
+      "source_path": "src/PublicApi/AuthEndpoints/AuthenticateEndpoint.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Microsoft.AspNetCore.Identity"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FRAMEWORK_REFERENCE",
+      "signal_name": "MICROSOFT_ASPNETCORE_NAMESPACE",
+      "signal_type": "NAMESPACE",
+      "source_path": "src/PublicApi/CatalogBrandEndpoints/CatalogBrandListEndpoint.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Microsoft.AspNetCore.Builder"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FRAMEWORK_REFERENCE",
+      "signal_name": "MICROSOFT_ASPNETCORE_NAMESPACE",
+      "signal_type": "NAMESPACE",
+      "source_path": "src/PublicApi/CatalogBrandEndpoints/CatalogBrandListEndpoint.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Microsoft.AspNetCore.Routing"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FRAMEWORK_REFERENCE",
+      "signal_name": "MICROSOFT_ASPNETCORE_NAMESPACE",
+      "signal_type": "NAMESPACE",
+      "source_path": "src/PublicApi/CatalogBrandEndpoints/CatalogBrandListEndpoint.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Microsoft.AspNetCore.Http"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FRAMEWORK_REFERENCE",
+      "signal_name": "MICROSOFT_ASPNETCORE_NAMESPACE",
+      "signal_type": "NAMESPACE",
+      "source_path": "src/PublicApi/CatalogItemEndpoints/CatalogItemGetByIdEndpoint.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Microsoft.AspNetCore.Builder"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FRAMEWORK_REFERENCE",
+      "signal_name": "MICROSOFT_ASPNETCORE_NAMESPACE",
+      "signal_type": "NAMESPACE",
+      "source_path": "src/PublicApi/CatalogItemEndpoints/CatalogItemGetByIdEndpoint.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Microsoft.AspNetCore.Routing"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FRAMEWORK_REFERENCE",
+      "signal_name": "MICROSOFT_ASPNETCORE_NAMESPACE",
+      "signal_type": "NAMESPACE",
+      "source_path": "src/PublicApi/CatalogItemEndpoints/CatalogItemGetByIdEndpoint.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Microsoft.AspNetCore.Http"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FRAMEWORK_REFERENCE",
+      "signal_name": "MICROSOFT_ASPNETCORE_NAMESPACE",
+      "signal_type": "NAMESPACE",
+      "source_path": "src/PublicApi/CatalogItemEndpoints/CatalogItemListPagedEndpoint.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Microsoft.AspNetCore.Builder"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FRAMEWORK_REFERENCE",
+      "signal_name": "MICROSOFT_ASPNETCORE_NAMESPACE",
+      "signal_type": "NAMESPACE",
+      "source_path": "src/PublicApi/CatalogItemEndpoints/CatalogItemListPagedEndpoint.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Microsoft.AspNetCore.Routing"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FRAMEWORK_REFERENCE",
+      "signal_name": "MICROSOFT_ASPNETCORE_NAMESPACE",
+      "signal_type": "NAMESPACE",
+      "source_path": "src/PublicApi/CatalogItemEndpoints/CatalogItemListPagedEndpoint.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Microsoft.AspNetCore.Http"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FRAMEWORK_REFERENCE",
+      "signal_name": "MICROSOFT_ASPNETCORE_NAMESPACE",
+      "signal_type": "NAMESPACE",
+      "source_path": "src/PublicApi/CatalogItemEndpoints/CreateCatalogItemEndpoint.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Microsoft.AspNetCore.Builder"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FRAMEWORK_REFERENCE",
+      "signal_name": "MICROSOFT_ASPNETCORE_NAMESPACE",
+      "signal_type": "NAMESPACE",
+      "source_path": "src/PublicApi/CatalogItemEndpoints/CreateCatalogItemEndpoint.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Microsoft.AspNetCore.Routing"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FRAMEWORK_REFERENCE",
+      "signal_name": "MICROSOFT_ASPNETCORE_NAMESPACE",
+      "signal_type": "NAMESPACE",
+      "source_path": "src/PublicApi/CatalogItemEndpoints/CreateCatalogItemEndpoint.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Microsoft.AspNetCore.Authentication.JwtBearer"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FRAMEWORK_REFERENCE",
+      "signal_name": "MICROSOFT_ASPNETCORE_NAMESPACE",
+      "signal_type": "NAMESPACE",
+      "source_path": "src/PublicApi/CatalogItemEndpoints/CreateCatalogItemEndpoint.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Microsoft.AspNetCore.Authorization"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FRAMEWORK_REFERENCE",
+      "signal_name": "MICROSOFT_ASPNETCORE_NAMESPACE",
+      "signal_type": "NAMESPACE",
+      "source_path": "src/PublicApi/CatalogItemEndpoints/CreateCatalogItemEndpoint.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Microsoft.AspNetCore.Http"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FRAMEWORK_REFERENCE",
+      "signal_name": "MICROSOFT_ASPNETCORE_NAMESPACE",
+      "signal_type": "NAMESPACE",
+      "source_path": "src/PublicApi/CatalogItemEndpoints/DeleteCatalogItemEndpoint.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Microsoft.AspNetCore.Builder"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FRAMEWORK_REFERENCE",
+      "signal_name": "MICROSOFT_ASPNETCORE_NAMESPACE",
+      "signal_type": "NAMESPACE",
+      "source_path": "src/PublicApi/CatalogItemEndpoints/DeleteCatalogItemEndpoint.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Microsoft.AspNetCore.Authentication.JwtBearer"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FRAMEWORK_REFERENCE",
+      "signal_name": "MICROSOFT_ASPNETCORE_NAMESPACE",
+      "signal_type": "NAMESPACE",
+      "source_path": "src/PublicApi/CatalogItemEndpoints/DeleteCatalogItemEndpoint.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Microsoft.AspNetCore.Authorization"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FRAMEWORK_REFERENCE",
+      "signal_name": "MICROSOFT_ASPNETCORE_NAMESPACE",
+      "signal_type": "NAMESPACE",
+      "source_path": "src/PublicApi/CatalogItemEndpoints/DeleteCatalogItemEndpoint.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Microsoft.AspNetCore.Http"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FRAMEWORK_REFERENCE",
+      "signal_name": "MICROSOFT_ASPNETCORE_NAMESPACE",
+      "signal_type": "NAMESPACE",
+      "source_path": "src/PublicApi/CatalogItemEndpoints/DeleteCatalogItemEndpoint.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Microsoft.AspNetCore.Routing"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FRAMEWORK_REFERENCE",
+      "signal_name": "MICROSOFT_ASPNETCORE_NAMESPACE",
+      "signal_type": "NAMESPACE",
+      "source_path": "src/PublicApi/CatalogItemEndpoints/UpdateCatalogItemEndpoint.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Microsoft.AspNetCore.Http"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FRAMEWORK_REFERENCE",
+      "signal_name": "MICROSOFT_ASPNETCORE_NAMESPACE",
+      "signal_type": "NAMESPACE",
+      "source_path": "src/PublicApi/CatalogItemEndpoints/UpdateCatalogItemEndpoint.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Microsoft.AspNetCore.Routing"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FRAMEWORK_REFERENCE",
+      "signal_name": "MICROSOFT_ASPNETCORE_NAMESPACE",
+      "signal_type": "NAMESPACE",
+      "source_path": "src/PublicApi/CatalogItemEndpoints/UpdateCatalogItemEndpoint.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Microsoft.AspNetCore.Authentication.JwtBearer"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FRAMEWORK_REFERENCE",
+      "signal_name": "MICROSOFT_ASPNETCORE_NAMESPACE",
+      "signal_type": "NAMESPACE",
+      "source_path": "src/PublicApi/CatalogItemEndpoints/UpdateCatalogItemEndpoint.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Microsoft.AspNetCore.Authorization"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FRAMEWORK_REFERENCE",
+      "signal_name": "MICROSOFT_ASPNETCORE_NAMESPACE",
+      "signal_type": "NAMESPACE",
+      "source_path": "src/PublicApi/CatalogItemEndpoints/UpdateCatalogItemEndpoint.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Microsoft.AspNetCore.Builder"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FRAMEWORK_REFERENCE",
+      "signal_name": "MICROSOFT_ASPNETCORE_NAMESPACE",
+      "signal_type": "NAMESPACE",
+      "source_path": "src/PublicApi/CatalogTypeEndpoints/CatalogTypeListEndpoint.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Microsoft.AspNetCore.Http"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FRAMEWORK_REFERENCE",
+      "signal_name": "MICROSOFT_ASPNETCORE_NAMESPACE",
+      "signal_type": "NAMESPACE",
+      "source_path": "src/PublicApi/CatalogTypeEndpoints/CatalogTypeListEndpoint.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Microsoft.AspNetCore.Routing"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FRAMEWORK_REFERENCE",
+      "signal_name": "MICROSOFT_ASPNETCORE_NAMESPACE",
+      "signal_type": "NAMESPACE",
+      "source_path": "src/PublicApi/CatalogTypeEndpoints/CatalogTypeListEndpoint.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Microsoft.AspNetCore.Builder"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FRAMEWORK_REFERENCE",
+      "signal_name": "MICROSOFT_ASPNETCORE_NAMESPACE",
+      "signal_type": "NAMESPACE",
+      "source_path": "src/PublicApi/Middleware/ExceptionMiddleware.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Microsoft.AspNetCore.Http"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FRAMEWORK_REFERENCE",
+      "signal_name": "MICROSOFT_ASPNETCORE_NAMESPACE",
+      "signal_type": "NAMESPACE",
+      "source_path": "src/PublicApi/Program.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Microsoft.AspNetCore.Authentication.JwtBearer"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FRAMEWORK_REFERENCE",
+      "signal_name": "MICROSOFT_ASPNETCORE_NAMESPACE",
+      "signal_type": "NAMESPACE",
+      "source_path": "src/PublicApi/Program.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Microsoft.AspNetCore.Identity"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FRAMEWORK_REFERENCE",
+      "signal_name": "MICROSOFT_ASPNETCORE_NAMESPACE",
+      "signal_type": "NAMESPACE",
+      "source_path": "src/PublicApi/Program.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Microsoft.AspNetCore.Builder"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "PACKAGE_DEPENDENCY",
+      "signal_name": "MICROSOFT_ASPNETCORE_PACKAGE",
+      "signal_type": "PACKAGE",
+      "source_path": "src/PublicApi/PublicApi.csproj",
+      "source_type": "PACKAGE_REFERENCE",
+      "value": "Microsoft.AspNetCore.Diagnostics.EntityFrameworkCore"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "PACKAGE_DEPENDENCY",
+      "signal_name": "MICROSOFT_ASPNETCORE_PACKAGE",
+      "signal_type": "PACKAGE",
+      "source_path": "src/PublicApi/PublicApi.csproj",
+      "source_type": "PACKAGE_REFERENCE",
+      "value": "Microsoft.AspNetCore.Identity.UI"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "PACKAGE_DEPENDENCY",
+      "signal_name": "MICROSOFT_ASPNETCORE_PACKAGE",
+      "signal_type": "PACKAGE",
+      "source_path": "src/PublicApi/PublicApi.csproj",
+      "source_type": "PACKAGE_REFERENCE",
+      "value": "Microsoft.AspNetCore.Authentication.JwtBearer"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "PACKAGE_DEPENDENCY",
+      "signal_name": "MICROSOFT_ASPNETCORE_PACKAGE",
+      "signal_type": "PACKAGE",
+      "source_path": "src/PublicApi/PublicApi.csproj",
+      "source_type": "PACKAGE_REFERENCE",
+      "value": "Microsoft.AspNetCore.Identity.EntityFrameworkCore"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "PACKAGE_DEPENDENCY",
+      "signal_name": "MICROSOFT_ENTITYFRAMEWORKCORE_PACKAGE",
+      "signal_type": "PACKAGE",
+      "source_path": "src/PublicApi/PublicApi.csproj",
+      "source_type": "PACKAGE_REFERENCE",
+      "value": "Microsoft.EntityFrameworkCore.Tools"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "PACKAGE_DEPENDENCY",
+      "signal_name": "MICROSOFT_ENTITYFRAMEWORKCORE_PACKAGE",
+      "signal_type": "PACKAGE",
+      "source_path": "src/PublicApi/PublicApi.csproj",
+      "source_type": "PACKAGE_REFERENCE",
+      "value": "Microsoft.EntityFrameworkCore.InMemory"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "PACKAGE_DEPENDENCY",
+      "signal_name": "MICROSOFT_ENTITYFRAMEWORKCORE_PACKAGE",
+      "signal_type": "PACKAGE",
+      "source_path": "src/PublicApi/PublicApi.csproj",
+      "source_type": "PACKAGE_REFERENCE",
+      "value": "Microsoft.EntityFrameworkCore.SqlServer"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FILE_INDICATOR",
+      "signal_name": "PROGRAM_CS_FILE",
+      "signal_type": "FILE_PRESENCE",
+      "source_path": "src/PublicApi/Program.cs",
+      "source_type": "FILE_STRUCTURE",
+      "value": null
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "ENTRY_POINT",
+      "signal_name": "TOP_LEVEL_STATEMENTS_ENTRY_POINT",
+      "signal_type": "ENTRY_POINT",
+      "source_path": "src/PublicApi/Program.cs",
+      "source_type": "SOURCE_CODE",
+      "value": null
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "ENTRY_POINT",
+      "signal_name": "WEB_APPLICATION_CREATE_BUILDER_ENTRY_POINT",
+      "signal_type": "ENTRY_POINT",
+      "source_path": "src/PublicApi/Program.cs",
+      "source_type": "SOURCE_CODE",
+      "value": null
+    }
+  ]
+}

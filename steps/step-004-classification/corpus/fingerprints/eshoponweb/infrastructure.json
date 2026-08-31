@@ -1,0 +1,358 @@
+{
+  "analysis_capabilities": {
+    "configurationParsed": true,
+    "deploymentArtifactsParsed": false,
+    "fileDiscovery": true,
+    "generatedCodeExcluded": true,
+    "msbuildEvaluated": false,
+    "projectMetadataParsed": false,
+    "semanticAnalysis": false,
+    "syntaxAnalysis": true
+  },
+  "fingerprint_status": "PARTIAL",
+  "metadata": {
+    "extension": ".csproj",
+    "fingerprintStatus": "PARTIAL",
+    "frameworkFamily": null,
+    "frameworkVersion": null,
+    "outputType": null,
+    "projectFormat": "sdk_style",
+    "projectSdk": null,
+    "structuralType": "csharp_project"
+  },
+  "project_id": "15dc9c1b-3148-43c0-91cb-7e70634b27cb",
+  "project_path": "src/Infrastructure/Infrastructure.csproj",
+  "project_slug": "infrastructure",
+  "signals": [
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "SOURCE_CONSTRUCT",
+      "signal_name": "DB_CONTEXT_BASE_CLASS",
+      "signal_type": "BASE_CLASS",
+      "source_path": "src/Infrastructure/Data/CatalogContext.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "DbContext"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FRAMEWORK_REFERENCE",
+      "signal_name": "MICROSOFT_ASPNETCORE_NAMESPACE",
+      "signal_type": "NAMESPACE",
+      "source_path": "src/Infrastructure/Identity/AppIdentityDbContext.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Microsoft.AspNetCore.Identity.EntityFrameworkCore"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FRAMEWORK_REFERENCE",
+      "signal_name": "MICROSOFT_ASPNETCORE_NAMESPACE",
+      "signal_type": "NAMESPACE",
+      "source_path": "src/Infrastructure/Identity/AppIdentityDbContextSeed.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Microsoft.AspNetCore.Identity"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FRAMEWORK_REFERENCE",
+      "signal_name": "MICROSOFT_ASPNETCORE_NAMESPACE",
+      "signal_type": "NAMESPACE",
+      "source_path": "src/Infrastructure/Identity/ApplicationUser.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Microsoft.AspNetCore.Identity"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FRAMEWORK_REFERENCE",
+      "signal_name": "MICROSOFT_ASPNETCORE_NAMESPACE",
+      "signal_type": "NAMESPACE",
+      "source_path": "src/Infrastructure/Identity/IdentityTokenClaimService.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Microsoft.AspNetCore.Identity"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "PACKAGE_DEPENDENCY",
+      "signal_name": "MICROSOFT_ASPNETCORE_PACKAGE",
+      "signal_type": "PACKAGE",
+      "source_path": "src/Infrastructure/Infrastructure.csproj",
+      "source_type": "PACKAGE_REFERENCE",
+      "value": "Microsoft.AspNetCore.Identity.EntityFrameworkCore"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FRAMEWORK_REFERENCE",
+      "signal_name": "MICROSOFT_ENTITYFRAMEWORKCORE_NAMESPACE",
+      "signal_type": "NAMESPACE",
+      "source_path": "src/Infrastructure/Data/CatalogContext.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Microsoft.EntityFrameworkCore"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FRAMEWORK_REFERENCE",
+      "signal_name": "MICROSOFT_ENTITYFRAMEWORKCORE_NAMESPACE",
+      "signal_type": "NAMESPACE",
+      "source_path": "src/Infrastructure/Data/CatalogContextSeed.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Microsoft.EntityFrameworkCore"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FRAMEWORK_REFERENCE",
+      "signal_name": "MICROSOFT_ENTITYFRAMEWORKCORE_NAMESPACE",
+      "signal_type": "NAMESPACE",
+      "source_path": "src/Infrastructure/Data/Config/BasketConfiguration.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Microsoft.EntityFrameworkCore.Metadata.Builders"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FRAMEWORK_REFERENCE",
+      "signal_name": "MICROSOFT_ENTITYFRAMEWORKCORE_NAMESPACE",
+      "signal_type": "NAMESPACE",
+      "source_path": "src/Infrastructure/Data/Config/BasketConfiguration.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Microsoft.EntityFrameworkCore"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FRAMEWORK_REFERENCE",
+      "signal_name": "MICROSOFT_ENTITYFRAMEWORKCORE_NAMESPACE",
+      "signal_type": "NAMESPACE",
+      "source_path": "src/Infrastructure/Data/Config/BasketItemConfiguration.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Microsoft.EntityFrameworkCore.Metadata.Builders"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FRAMEWORK_REFERENCE",
+      "signal_name": "MICROSOFT_ENTITYFRAMEWORKCORE_NAMESPACE",
+      "signal_type": "NAMESPACE",
+      "source_path": "src/Infrastructure/Data/Config/BasketItemConfiguration.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Microsoft.EntityFrameworkCore"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FRAMEWORK_REFERENCE",
+      "signal_name": "MICROSOFT_ENTITYFRAMEWORKCORE_NAMESPACE",
+      "signal_type": "NAMESPACE",
+      "source_path": "src/Infrastructure/Data/Config/CatalogBrandConfiguration.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Microsoft.EntityFrameworkCore"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FRAMEWORK_REFERENCE",
+      "signal_name": "MICROSOFT_ENTITYFRAMEWORKCORE_NAMESPACE",
+      "signal_type": "NAMESPACE",
+      "source_path": "src/Infrastructure/Data/Config/CatalogBrandConfiguration.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Microsoft.EntityFrameworkCore.Metadata.Builders"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FRAMEWORK_REFERENCE",
+      "signal_name": "MICROSOFT_ENTITYFRAMEWORKCORE_NAMESPACE",
+      "signal_type": "NAMESPACE",
+      "source_path": "src/Infrastructure/Data/Config/CatalogItemConfiguration.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Microsoft.EntityFrameworkCore"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FRAMEWORK_REFERENCE",
+      "signal_name": "MICROSOFT_ENTITYFRAMEWORKCORE_NAMESPACE",
+      "signal_type": "NAMESPACE",
+      "source_path": "src/Infrastructure/Data/Config/CatalogItemConfiguration.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Microsoft.EntityFrameworkCore.Metadata.Builders"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FRAMEWORK_REFERENCE",
+      "signal_name": "MICROSOFT_ENTITYFRAMEWORKCORE_NAMESPACE",
+      "signal_type": "NAMESPACE",
+      "source_path": "src/Infrastructure/Data/Config/CatalogTypeConfiguration.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Microsoft.EntityFrameworkCore.Metadata.Builders"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FRAMEWORK_REFERENCE",
+      "signal_name": "MICROSOFT_ENTITYFRAMEWORKCORE_NAMESPACE",
+      "signal_type": "NAMESPACE",
+      "source_path": "src/Infrastructure/Data/Config/CatalogTypeConfiguration.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Microsoft.EntityFrameworkCore"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FRAMEWORK_REFERENCE",
+      "signal_name": "MICROSOFT_ENTITYFRAMEWORKCORE_NAMESPACE",
+      "signal_type": "NAMESPACE",
+      "source_path": "src/Infrastructure/Data/Config/OrderConfiguration.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Microsoft.EntityFrameworkCore"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FRAMEWORK_REFERENCE",
+      "signal_name": "MICROSOFT_ENTITYFRAMEWORKCORE_NAMESPACE",
+      "signal_type": "NAMESPACE",
+      "source_path": "src/Infrastructure/Data/Config/OrderConfiguration.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Microsoft.EntityFrameworkCore.Metadata.Builders"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FRAMEWORK_REFERENCE",
+      "signal_name": "MICROSOFT_ENTITYFRAMEWORKCORE_NAMESPACE",
+      "signal_type": "NAMESPACE",
+      "source_path": "src/Infrastructure/Data/Config/OrderItemConfiguration.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Microsoft.EntityFrameworkCore.Metadata.Builders"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FRAMEWORK_REFERENCE",
+      "signal_name": "MICROSOFT_ENTITYFRAMEWORKCORE_NAMESPACE",
+      "signal_type": "NAMESPACE",
+      "source_path": "src/Infrastructure/Data/Config/OrderItemConfiguration.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Microsoft.EntityFrameworkCore"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FRAMEWORK_REFERENCE",
+      "signal_name": "MICROSOFT_ENTITYFRAMEWORKCORE_NAMESPACE",
+      "signal_type": "NAMESPACE",
+      "source_path": "src/Infrastructure/Data/Migrations/20201202111507_InitialModel.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Microsoft.EntityFrameworkCore.Migrations"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FRAMEWORK_REFERENCE",
+      "signal_name": "MICROSOFT_ENTITYFRAMEWORKCORE_NAMESPACE",
+      "signal_type": "NAMESPACE",
+      "source_path": "src/Infrastructure/Data/Migrations/20211026175614_FixBuyerId.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Microsoft.EntityFrameworkCore.Migrations"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FRAMEWORK_REFERENCE",
+      "signal_name": "MICROSOFT_ENTITYFRAMEWORKCORE_NAMESPACE",
+      "signal_type": "NAMESPACE",
+      "source_path": "src/Infrastructure/Data/Migrations/20211231093753_FixShipToAddress.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Microsoft.EntityFrameworkCore.Migrations"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FRAMEWORK_REFERENCE",
+      "signal_name": "MICROSOFT_ENTITYFRAMEWORKCORE_NAMESPACE",
+      "signal_type": "NAMESPACE",
+      "source_path": "src/Infrastructure/Data/Queries/BasketQueryService.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Microsoft.EntityFrameworkCore"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FRAMEWORK_REFERENCE",
+      "signal_name": "MICROSOFT_ENTITYFRAMEWORKCORE_NAMESPACE",
+      "signal_type": "NAMESPACE",
+      "source_path": "src/Infrastructure/Dependencies.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Microsoft.EntityFrameworkCore"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FRAMEWORK_REFERENCE",
+      "signal_name": "MICROSOFT_ENTITYFRAMEWORKCORE_NAMESPACE",
+      "signal_type": "NAMESPACE",
+      "source_path": "src/Infrastructure/Identity/AppIdentityDbContext.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Microsoft.EntityFrameworkCore"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FRAMEWORK_REFERENCE",
+      "signal_name": "MICROSOFT_ENTITYFRAMEWORKCORE_NAMESPACE",
+      "signal_type": "NAMESPACE",
+      "source_path": "src/Infrastructure/Identity/AppIdentityDbContextSeed.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Microsoft.EntityFrameworkCore"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FRAMEWORK_REFERENCE",
+      "signal_name": "MICROSOFT_ENTITYFRAMEWORKCORE_NAMESPACE",
+      "signal_type": "NAMESPACE",
+      "source_path": "src/Infrastructure/Identity/Migrations/20201202111612_InitialIdentityModel.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Microsoft.EntityFrameworkCore.Migrations"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "PACKAGE_DEPENDENCY",
+      "signal_name": "MICROSOFT_ENTITYFRAMEWORKCORE_PACKAGE",
+      "signal_type": "PACKAGE",
+      "source_path": "src/Infrastructure/Infrastructure.csproj",
+      "source_type": "PACKAGE_REFERENCE",
+      "value": "Microsoft.EntityFrameworkCore.InMemory"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "PACKAGE_DEPENDENCY",
+      "signal_name": "MICROSOFT_ENTITYFRAMEWORKCORE_PACKAGE",
+      "signal_type": "PACKAGE",
+      "source_path": "src/Infrastructure/Infrastructure.csproj",
+      "source_type": "PACKAGE_REFERENCE",
+      "value": "Microsoft.EntityFrameworkCore.SqlServer"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FILE_INDICATOR",
+      "signal_name": "SERVICES_FOLDER",
+      "signal_type": "FILE_PRESENCE",
+      "source_path": "src/Infrastructure/Services",
+      "source_type": "FILE_STRUCTURE",
+      "value": null
+    }
+  ]
+}

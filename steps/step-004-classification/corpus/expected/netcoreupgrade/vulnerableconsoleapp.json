@@ -1,0 +1,22 @@
+{
+  "classification_status": "MATCHED",
+  "matched_pattern_ids": [
+    "console-batch-job"
+  ],
+  "primary_pattern_id": "console-batch-job",
+  "project_role": "APPLICATION",
+  "scores": {
+    "aspnet-webforms": 0,
+    "aspnetcore-minimal-api": 0,
+    "aspnetcore-mvc-modern": 0,
+    "blazor-server-modern": 0,
+    "blazor-webassembly-modern": 0,
+    "console-batch-job": 50,
+    "core2-rest-api": 0,
+    "fx-aspnet-mvc": 0,
+    "fx47-class-library": 0,
+    "netstandard-modern-library": 0,
+    "wcf-iis-servicemodel": 0,
+    "windows-service": 0
+  }
+}

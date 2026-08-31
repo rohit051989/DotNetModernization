@@ -1,0 +1,238 @@
+{
+  "analysis_capabilities": {
+    "configurationParsed": true,
+    "deploymentArtifactsParsed": false,
+    "fileDiscovery": true,
+    "generatedCodeExcluded": true,
+    "msbuildEvaluated": false,
+    "projectMetadataParsed": false,
+    "semanticAnalysis": false,
+    "syntaxAnalysis": true
+  },
+  "fingerprint_status": "PARTIAL",
+  "metadata": {
+    "extension": ".csproj",
+    "fingerprintStatus": "PARTIAL",
+    "frameworkFamily": null,
+    "frameworkVersion": null,
+    "outputType": null,
+    "projectFormat": "sdk_style",
+    "projectSdk": null,
+    "structuralType": "csharp_project"
+  },
+  "project_id": "2b5c8cc0-4aaf-40f5-82b4-d1c6c5bf67d3",
+  "project_path": "tests/UnitTests/UnitTests.csproj",
+  "project_slug": "unittests",
+  "signals": [
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 6,
+      "signal_category": "TESTING_INDICATOR",
+      "signal_name": "FACT_ATTRIBUTE",
+      "signal_type": "ATTRIBUTE",
+      "source_path": "tests/UnitTests/ApplicationCore/Entities/BasketTests/BasketAddItem.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Fact"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "TESTING_INDICATOR",
+      "signal_name": "FACT_ATTRIBUTE",
+      "signal_type": "ATTRIBUTE",
+      "source_path": "tests/UnitTests/ApplicationCore/Entities/BasketTests/BasketRemoveEmptyItems.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Fact"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 2,
+      "signal_category": "TESTING_INDICATOR",
+      "signal_name": "FACT_ATTRIBUTE",
+      "signal_type": "ATTRIBUTE",
+      "source_path": "tests/UnitTests/ApplicationCore/Entities/BasketTests/BasketTotalItems.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Fact"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 3,
+      "signal_category": "TESTING_INDICATOR",
+      "signal_name": "FACT_ATTRIBUTE",
+      "signal_type": "ATTRIBUTE",
+      "source_path": "tests/UnitTests/ApplicationCore/Entities/OrderTests/OrderTotal.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Fact"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "TESTING_INDICATOR",
+      "signal_name": "FACT_ATTRIBUTE",
+      "signal_type": "ATTRIBUTE",
+      "source_path": "tests/UnitTests/ApplicationCore/Extensions/JsonExtensions.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Fact"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 2,
+      "signal_category": "TESTING_INDICATOR",
+      "signal_name": "FACT_ATTRIBUTE",
+      "signal_type": "ATTRIBUTE",
+      "source_path": "tests/UnitTests/ApplicationCore/Services/BasketServiceTests/AddItemToBasket.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Fact"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "TESTING_INDICATOR",
+      "signal_name": "FACT_ATTRIBUTE",
+      "signal_type": "ATTRIBUTE",
+      "source_path": "tests/UnitTests/ApplicationCore/Services/BasketServiceTests/DeleteBasket.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Fact"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 4,
+      "signal_category": "TESTING_INDICATOR",
+      "signal_name": "FACT_ATTRIBUTE",
+      "signal_type": "ATTRIBUTE",
+      "source_path": "tests/UnitTests/ApplicationCore/Services/BasketServiceTests/TransferBasket.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Fact"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 4,
+      "signal_category": "TESTING_INDICATOR",
+      "signal_name": "FACT_ATTRIBUTE",
+      "signal_type": "ATTRIBUTE",
+      "source_path": "tests/UnitTests/ApplicationCore/Specifications/BasketWithItemsSpecification.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Fact"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 2,
+      "signal_category": "TESTING_INDICATOR",
+      "signal_name": "FACT_ATTRIBUTE",
+      "signal_type": "ATTRIBUTE",
+      "source_path": "tests/UnitTests/ApplicationCore/Specifications/CatalogFilterPaginatedSpecification.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Fact"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 2,
+      "signal_category": "TESTING_INDICATOR",
+      "signal_name": "FACT_ATTRIBUTE",
+      "signal_type": "ATTRIBUTE",
+      "source_path": "tests/UnitTests/ApplicationCore/Specifications/CatalogItemsSpecification.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Fact"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 2,
+      "signal_category": "TESTING_INDICATOR",
+      "signal_name": "FACT_ATTRIBUTE",
+      "signal_type": "ATTRIBUTE",
+      "source_path": "tests/UnitTests/ApplicationCore/Specifications/CustomerOrdersWithItemsSpecification.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Fact"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "TESTING_INDICATOR",
+      "signal_name": "FACT_ATTRIBUTE",
+      "signal_type": "ATTRIBUTE",
+      "source_path": "tests/UnitTests/MediatorHandlers/OrdersTests/GetMyOrders.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Fact"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "TESTING_INDICATOR",
+      "signal_name": "FACT_ATTRIBUTE",
+      "signal_type": "ATTRIBUTE",
+      "source_path": "tests/UnitTests/MediatorHandlers/OrdersTests/GetOrderDetails.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Fact"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "TESTING_INDICATOR",
+      "signal_name": "FACT_ATTRIBUTE",
+      "signal_type": "ATTRIBUTE",
+      "source_path": "tests/UnitTests/Web/Extensions/CacheHelpersTests/GenerateBrandsCacheKey.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Fact"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "TESTING_INDICATOR",
+      "signal_name": "FACT_ATTRIBUTE",
+      "signal_type": "ATTRIBUTE",
+      "source_path": "tests/UnitTests/Web/Extensions/CacheHelpersTests/GenerateCatalogItemCacheKey.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Fact"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "TESTING_INDICATOR",
+      "signal_name": "FACT_ATTRIBUTE",
+      "signal_type": "ATTRIBUTE",
+      "source_path": "tests/UnitTests/Web/Extensions/CacheHelpersTests/GenerateTypesCacheKey.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Fact"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FILE_INDICATOR",
+      "signal_name": "SERVICES_FOLDER",
+      "signal_type": "FILE_PRESENCE",
+      "source_path": "tests/UnitTests/ApplicationCore/Services",
+      "source_type": "FILE_STRUCTURE",
+      "value": null
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "PACKAGE_DEPENDENCY",
+      "signal_name": "XUNIT_PACKAGE",
+      "signal_type": "PACKAGE",
+      "source_path": "tests/UnitTests/UnitTests.csproj",
+      "source_type": "PACKAGE_REFERENCE",
+      "value": "xunit.runner.visualstudio"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "PACKAGE_DEPENDENCY",
+      "signal_name": "XUNIT_PACKAGE",
+      "signal_type": "PACKAGE",
+      "source_path": "tests/UnitTests/UnitTests.csproj",
+      "source_type": "PACKAGE_REFERENCE",
+      "value": "xunit.runner.console"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "PACKAGE_DEPENDENCY",
+      "signal_name": "XUNIT_PACKAGE",
+      "signal_type": "PACKAGE",
+      "source_path": "tests/UnitTests/UnitTests.csproj",
+      "source_type": "PACKAGE_REFERENCE",
+      "value": "xunit"
+    }
+  ]
+}

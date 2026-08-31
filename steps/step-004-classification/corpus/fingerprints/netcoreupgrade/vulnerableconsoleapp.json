@@ -1,0 +1,48 @@
+{
+  "analysis_capabilities": {
+    "configurationParsed": true,
+    "deploymentArtifactsParsed": false,
+    "fileDiscovery": true,
+    "generatedCodeExcluded": true,
+    "msbuildEvaluated": false,
+    "projectMetadataParsed": false,
+    "semanticAnalysis": false,
+    "syntaxAnalysis": true
+  },
+  "fingerprint_status": "PARTIAL",
+  "metadata": {
+    "extension": ".csproj",
+    "fingerprintStatus": "PARTIAL",
+    "frameworkFamily": "net",
+    "frameworkVersion": "8.0",
+    "outputType": "Exe",
+    "projectFormat": "sdk_style",
+    "projectSdk": null,
+    "structuralType": "csharp_project"
+  },
+  "project_id": "ff8349a0-a8fa-4e84-879c-afd213048139",
+  "project_path": "VulnerableConsoleApp.csproj",
+  "project_slug": "vulnerableconsoleapp",
+  "signals": [
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "ENTRY_POINT",
+      "signal_name": "TOP_LEVEL_STATEMENTS_ENTRY_POINT",
+      "signal_type": "ENTRY_POINT",
+      "source_path": "Program.cs",
+      "source_type": "SOURCE_CODE",
+      "value": null
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FILE_INDICATOR",
+      "signal_name": "PROGRAM_CS_FILE",
+      "signal_type": "FILE_PRESENCE",
+      "source_path": "Program.cs",
+      "source_type": "FILE_STRUCTURE",
+      "value": null
+    }
+  ]
+}
