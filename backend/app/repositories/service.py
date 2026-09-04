@@ -538,3 +538,5 @@ def verify_path(repo: models.Repository) -> bool:
     elif repo.ingest_status == "path_missing":
         repo.ingest_status = "registered"
     return exists
+
+

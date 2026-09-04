@@ -1,0 +1,16 @@
+# Normalize line endings in the repository to LF, regardless of what OS
+# checked a file out or edited it. Git still checks files out using
+# whatever the platform/editor prefers; only the stored blob is LF.
+* text=auto eol=lf
+
+# Windows solution files conventionally use CRLF -- leave them as-is
+# rather than fighting Visual Studio / dotnet tooling about it.
+*.sln text eol=crlf
+
+# Binary build artifacts -- never text-normalize these.
+*.exe binary
+*.dll binary
+*.pdb binary
+*.png binary
+*.jpg binary
+*.jpeg binary

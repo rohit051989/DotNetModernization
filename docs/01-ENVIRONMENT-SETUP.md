@@ -212,13 +212,29 @@ building and running that step directly does.
 dotnet --list-sdks
 ```
 
-Requires **.NET SDK 10.0.302** (or later within the same feature band — see
-`steps/step-003-fingerprinting/global.json`, which pins the exact version with
-`rollForward: latestPatch`). An older SDK, or only the .NET 9 SDK, is not enough —
-the step targets `net10.0` and its Microsoft.Build.\* / Microsoft.CodeAnalysis.\*
-packages are pinned to versions built against .NET 10's bundled MSBuild (18.9.x) and
-Roslyn (5.9.x). If `dotnet --list-sdks` does not list `10.0.302` or later, stop and
-tell the user to install it rather than attempting the install.
+Requires **.NET SDK 10.0.400** (see `steps/step-003-fingerprinting/global.json`,
+which pins this exact version with `rollForward: latestPatch`). An older SDK, or
+only the .NET 9 SDK, is not enough — the step targets `net10.0` and its
+Microsoft.Build.\* / Microsoft.CodeAnalysis.\* packages are pinned to versions built
+against .NET 10's bundled MSBuild and Roslyn.
+
+**Important — feature bands don't bridge:** `rollForward: latestPatch` only forgives
+a *patch* difference within the same feature band (the hundreds digit of the SDK
+version — `10.0.4xx` vs `10.0.3xx` are different bands). If your machine has, say,
+`10.0.302` installed but `global.json` pins `10.0.400`, the build will fail with
+"a compatible .NET SDK was not found" even though `dotnet --version` looks
+close enough. Two ways to fix this if `dotnet --list-sdks` shows a different
+10.0.4xx (or later) patch than what's pinned:
+- Edit `steps/step-003-fingerprinting/global.json` to match whatever `10.0.4xx`
+  version is actually installed, **or**
+- Install .NET SDK 10.0.400 specifically (`winget install Microsoft.DotNet.SDK.10`
+  installs the latest available, which may already satisfy this).
+
+After installing on Windows, a **new terminal window is required** — an
+already-open terminal (even a new tab in an already-running VS Code window) will
+often not see the updated `PATH`. If `dotnet --version` still fails to resolve
+after a fresh terminal, call it by full path once to confirm the install itself
+succeeded: `& "C:\Program Files\dotnet\dotnet.exe" --version`.
 
 ### Build and publish
 

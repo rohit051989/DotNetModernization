@@ -75,14 +75,10 @@ BATCH_STATUS = (
     "UNKNOWN",
 )
 TRIGGERED_BY = ("manual", "api", "resume", "schedule")
-# 22-STEP-SEQUENCING-AND-POLICY.md Part D, split per
-# 23-WORKFLOW-ADMINISTRATION.md Part A: POLICY_DISABLED became
-# POLICY_DISABLED_GLOBAL / POLICY_DISABLED_ENGAGEMENT so the timeline can say
-# which layer disabled the step. Null unless exit_status is SKIPPED (enforced
-# by ck_wf_step_executions_skip_reason_pairing below).
+# 22-STEP-SEQUENCING-AND-POLICY.md Part D. Null unless exit_status is SKIPPED
+# (enforced by ck_wf_step_executions_skip_reason_pairing below).
 SKIP_REASON = (
-    "POLICY_DISABLED_GLOBAL",
-    "POLICY_DISABLED_ENGAGEMENT",
+    "POLICY_DISABLED",
     "CONDITION_FALSE",
     "TIER_NOT_APPLICABLE",
     "UPSTREAM_SKIPPED",
@@ -434,33 +430,26 @@ class EngagementPattern(Base):
 
 
 class StepPolicy(Base):
-    """One policy row, at either the global or engagement layer — see
-    23-WORKFLOW-ADMINISTRATION.md Part A. `engagement_id IS NULL` means
-    global ("nobody should run this yet"); a non-null `engagement_id` means
-    a client-specific override ("this client does not want this").
-    Precedence is engagement beats global beats default (absence of any row).
-    This table only ever holds deviations from default, so a newly
-    registered step needs no backfill."""
+    """A policy override disabling one lifecycle step, either globally or
+    for one engagement — 22-STEP-SEQUENCING-AND-POLICY.md Part A/C, added by
+    migration 73e0ffd22d29 ("add global layer"). `engagement_id IS NULL`
+    means a global policy; otherwise it's engagement-scoped. Absence of a
+    row means enabled; this table only ever holds deviations from default,
+    so a newly registered step needs no backfill. `reason` is required
+    unconditionally — "why is this off" and "why is this back on, contrary
+    to the global default" both need an answer, per the migration that
+    dropped the old enabled-implies-nullable check constraint."""
 
     __tablename__ = "step_policies"
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
     )
-    # Null means global — a row scoped to every engagement at once, not to
-    # one in particular.
     engagement_id: Mapped[str | None] = mapped_column(Text, ForeignKey("engagements.id"), nullable=True)
     step_name: Mapped[str] = mapped_column(
         Text, ForeignKey("wf_step_registrations.step_name"), nullable=False
     )
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
-    # Required in either direction (Part A): "why is this step running for
-    # Client A when it is globally off" needs an answer as much as the
-    # reverse. A cascade-created row's reason is always the literal
-    # "cascaded from disabling <step_name>" — the runtime distinguishes
-    # skip_reason CASCADED_POLICY from POLICY_DISABLED_GLOBAL /
-    # POLICY_DISABLED_ENGAGEMENT by that convention rather than a separate
-    # column (spec documents no such column).
     reason: Mapped[str] = mapped_column(Text, nullable=False)
     set_by: Mapped[str | None] = mapped_column(Text)
     set_at: Mapped[datetime.datetime] = mapped_column(
@@ -474,9 +463,6 @@ class StepPolicy(Base):
     )
 
     __table_args__ = (
-        # A plain UNIQUE(engagement_id, step_name) would treat every NULL
-        # engagement_id as distinct, allowing duplicate global rows — two
-        # partial indexes instead, one per layer.
         Index(
             "uq_step_policies_global_step",
             "step_name",
@@ -492,7 +478,6 @@ class StepPolicy(Base):
         ),
         Index("ix_step_policies_engagement_id", "engagement_id"),
     )
-
 
 class WfStepRegistration(Base):
     """The registry of known engine steps — see 10-ENGINE-CONCEPTS.md."""
@@ -1254,4 +1239,88 @@ class CatalogCoverageReport(Base):
 
     __table_args__ = (
         Index("ix_catalog_coverage_reports_repository_id", "repository_id"),
+    )
+
+
+# ---- Step 5 — pattern discovery clustering (23-STEP-005-PATTERN-DISCOVERY.md Part E) ----
+PATTERN_DISCOVERY_STATUS = ("candidate_pattern", "unclustered")
+PATTERN_DISCOVERY_FORMATION_METHOD = ("structural", "llm_assisted")
+PATTERN_DISCOVERY_REVIEW_PRIORITY = ("standard", "high")
+
+
+class PatternDiscoveryCluster(Base):
+    """Engagement-scoped output of step 5 (pattern-discovery-clustering) —
+    a group of structurally similar unmatched applications
+    (`status='candidate_pattern'`), or a single leftover application with no
+    sufficiently similar peer (`status='unclustered'`, Part E — a distinct
+    bucket so a one-member residue never masquerades as a candidate
+    pattern). Never a Master Pattern Catalog write: this is a separate
+    table tree from `patterns` / `target_state_options`, consistent with
+    CLAUDE.md's "client-scoped operations must never mutate master catalog
+    tables" — step 5 is engagement-scoped by definition. See
+    23-STEP-005-PATTERN-DISCOVERY.md Part E."""
+
+    __tablename__ = "pattern_discovery_clusters"
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)  # "CAND-{engagement_id}-{seq:04d}"
+    engagement_id: Mapped[str] = mapped_column(Text, ForeignKey("engagements.id"), nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False)
+    formation_method: Mapped[str | None] = mapped_column(Text)  # null for status='unclustered'
+    member_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    common_signals: Mapped[list] = mapped_column(JSONB, nullable=False, server_default="[]")
+    # The *minimum* pairwise similarity within the cluster, not the
+    # average — the conservative, auditable choice (Part E). Null for
+    # status='unclustered' (no pairwise score exists for a single member).
+    similarity_score: Mapped[float | None] = mapped_column(Numeric(5, 4))
+    similarity_method: Mapped[str] = mapped_column(Text, nullable=False)
+    # Replaces the original `requires_human_validation` flag from the
+    # confirmed design — redundant given step 6 is unconditionally human —
+    # repurposed as a step-6 queue-ordering signal instead.
+    review_priority: Mapped[str] = mapped_column(Text, nullable=False, server_default="standard")
+    source_job_execution_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        CheckConstraint(f"status IN {PATTERN_DISCOVERY_STATUS}", name="ck_pattern_discovery_clusters_status"),
+        CheckConstraint(
+            f"formation_method IS NULL OR formation_method IN {PATTERN_DISCOVERY_FORMATION_METHOD}",
+            name="ck_pattern_discovery_clusters_formation_method",
+        ),
+        CheckConstraint(
+            f"review_priority IN {PATTERN_DISCOVERY_REVIEW_PRIORITY}",
+            name="ck_pattern_discovery_clusters_review_priority",
+        ),
+        Index("ix_pattern_discovery_clusters_engagement_id", "engagement_id"),
+        Index("ix_pattern_discovery_clusters_engagement_status", "engagement_id", "status"),
+    )
+
+
+class PatternDiscoveryClusterMember(Base):
+    """One application's membership in a step 5 cluster (or its own
+    single-row `unclustered` bucket). `similarity_to_cluster` is this
+    member's minimum pairwise similarity to every other member; null for
+    `unclustered` rows. See 23-STEP-005-PATTERN-DISCOVERY.md Part E."""
+
+    __tablename__ = "pattern_discovery_cluster_members"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    cluster_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("pattern_discovery_clusters.id", ondelete="CASCADE"), nullable=False
+    )
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+    )
+    repository_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("repositories.id", ondelete="CASCADE"), nullable=False
+    )
+    similarity_to_cluster: Mapped[float | None] = mapped_column(Numeric(5, 4))
+
+    __table_args__ = (
+        UniqueConstraint("cluster_id", "project_id", name="uq_pattern_discovery_cluster_members_cluster_project"),
+        Index("ix_pattern_discovery_cluster_members_cluster_id", "cluster_id"),
+        Index("ix_pattern_discovery_cluster_members_project_id", "project_id"),
     )
