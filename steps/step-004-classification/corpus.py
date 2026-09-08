@@ -9,7 +9,7 @@ import os
 from pathlib import Path
 
 import db
-from engine import classify, registry
+from engine import classify, coverage, registry
 
 SCORE_TOLERANCE = 2
 
@@ -64,6 +64,23 @@ def _actual_summary(result: dict) -> dict:
         "primary_pattern_id": result["primary_pattern_id"],
         "matched_pattern_ids": sorted(m["pattern"]["id"] for m in result["matches"] if m["matched"]),
         "scores": {m["pattern"]["id"]: m["score"] for m in result["matches"]},
+        # Why each non-matching pattern failed, by rule id — the
+        # `is_disqualifying` half of failed_rules only (Part F). Pins the
+        # flag, and pins the ordering: these come from the front of
+        # failed_rules, where the sort puts genuine causes. Unsatisfied
+        # alternatives inside groups that passed are deliberately excluded —
+        # they are tuning context and would make this churn on every rule
+        # edit.
+        #
+        # Note the coverage limit: a pattern disqualified by a `none`
+        # condition records its cause in negative_triggered, leaving
+        # failed_rules empty, so it does not appear here at all. Those
+        # exclusions are pinned indirectly, via matched_pattern_ids.
+        "disqualifying_rules": {
+            m["pattern"]["id"]: [r["rule_id"] for r in m["outcome"].failed_rules if r.get("is_disqualifying")]
+            for m in result["matches"]
+            if any(r.get("is_disqualifying") for r in m["outcome"].failed_rules)
+        },
     }
 
 
@@ -89,7 +106,54 @@ def _diff(expected: dict, actual: dict) -> list[str]:
             continue
         if abs(actual_score - expected_score) > SCORE_TOLERANCE:
             findings.append(f"{pattern_id} score delta beyond tolerance: {expected_score} -> {actual_score}")
+
+    # Why a pattern failed is part of the contract, not just whether it did:
+    # a rule edit that changes the disqualifying cause while leaving the
+    # status intact is exactly the kind of drift this corpus exists to catch.
+    # Absent in a pre-extension baseline, so treat missing as "not asserted".
+    expected_rules = expected.get("disqualifying_rules")
+    if expected_rules is not None:
+        actual_rules = actual["disqualifying_rules"]
+        for pattern_id in sorted(set(expected_rules) | set(actual_rules)):
+            was = expected_rules.get(pattern_id, [])
+            now = actual_rules.get(pattern_id, [])
+            if was != now:
+                findings.append(f"{pattern_id} disqualifying rules changed: {was} -> {now}")
     return findings
+
+
+def _coverage_summary(patterns: list[dict], project_results: list[dict]) -> dict:
+    """The repo-level half of the contract. Per-project expectations cannot
+    pin section 18's `most_frequent_unmatched_signal_combinations` — it is a
+    property of the repository as a whole, and the thing step 5 clusters on.
+
+    Only that field is asserted. The rest of the coverage report (registered
+    and referenced signal counts, active_pattern_count,
+    never_matched_pattern_ids) is a property of the whole catalog rather than
+    of these fixtures, so pinning it here would fail on every unrelated
+    pattern edit.
+    """
+    report = coverage.build_coverage_report(
+        patterns=patterns,
+        project_results=project_results,
+        registered_signal_names=frozenset(),
+        catalog_version="corpus",
+        catalog_revision=0,
+        signal_registry_version=None,
+    )
+    return {
+        "most_frequent_unmatched_signal_combinations": report[
+            "most_frequent_unmatched_signal_combinations"
+        ],
+    }
+
+
+def _diff_coverage(expected: dict, actual: dict) -> list[str]:
+    key = "most_frequent_unmatched_signal_combinations"
+    was, now = expected[key], actual[key]
+    if was == now:
+        return []
+    return [f"{key} changed: expected {json.dumps(was)}, actual {json.dumps(now)}"]
 
 
 def run(corpus_dir: Path, platform_root: Path) -> int:
@@ -108,6 +172,7 @@ def run(corpus_dir: Path, platform_root: Path) -> int:
     for repo_dir in sorted(fingerprints_dir.iterdir()):
         if not repo_dir.is_dir():
             continue
+        repo_results = []
         for fixture_path in sorted(repo_dir.glob("*.json")):
             total += 1
             fixture = json.loads(fixture_path.read_text(encoding="utf-8"))
@@ -121,6 +186,7 @@ def run(corpus_dir: Path, platform_root: Path) -> int:
                 "signals_by_name": signals_by_name,
             }
             result = classify.classify_project(project_input, patterns, config)
+            repo_results.append(result)
             actual = _actual_summary(result)
 
             expected_path = expected_dir / repo_dir.name / fixture_path.name
@@ -136,6 +202,20 @@ def run(corpus_dir: Path, platform_root: Path) -> int:
                     print(f"  - {f}")
             else:
                 print(f"OK       {repo_dir.name}/{fixture_path.stem}: {actual['classification_status']}")
+
+        coverage_path = expected_dir / repo_dir.name / "_coverage.json"
+        if repo_results and coverage_path.exists():
+            findings = _diff_coverage(
+                json.loads(coverage_path.read_text(encoding="utf-8")),
+                _coverage_summary(patterns, repo_results),
+            )
+            if findings:
+                changed += 1
+                print(f"CHANGED  {repo_dir.name}/_coverage:")
+                for f in findings:
+                    print(f"  - {f}")
+            else:
+                print(f"OK       {repo_dir.name}/_coverage")
 
     print(f"\n{total} project(s), {changed} changed beyond tolerance.")
     return 1 if changed else 0
@@ -156,6 +236,7 @@ def write_expected(corpus_dir: Path, platform_root: Path) -> None:
             continue
         out_dir = expected_dir / repo_dir.name
         out_dir.mkdir(parents=True, exist_ok=True)
+        repo_results = []
         for fixture_path in sorted(repo_dir.glob("*.json")):
             fixture = json.loads(fixture_path.read_text(encoding="utf-8"))
             signals_by_name: dict[str, list[dict]] = {}
@@ -168,9 +249,17 @@ def write_expected(corpus_dir: Path, platform_root: Path) -> None:
                 "signals_by_name": signals_by_name,
             }
             result = classify.classify_project(project_input, patterns, config)
+            repo_results.append(result)
             summary = _actual_summary(result)
             out_path = out_dir / fixture_path.name
             out_path.write_text(json.dumps(summary, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+            print(f"wrote {out_path}")
+        if repo_results:
+            out_path = out_dir / "_coverage.json"
+            out_path.write_text(
+                json.dumps(_coverage_summary(patterns, repo_results), sort_keys=True, indent=2) + "\n",
+                encoding="utf-8",
+            )
             print(f"wrote {out_path}")
 
 

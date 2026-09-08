@@ -146,11 +146,11 @@ public sealed class FingerprintDatabase(string connectionString)
             """
             INSERT INTO fingerprint_signals (
                 project_id, repository_id, signal_name, signal_category, signal_type,
-                value, source_type, source_path, occurrence_count, evidence,
+                value, source_type, source_path, evidence_kind, occurrence_count, evidence,
                 extractor, extraction_confidence
             ) VALUES (
                 @project_id, @repository_id, @signal_name, @signal_category, @signal_type,
-                @value, @source_type, @source_path, @occurrence_count, @evidence,
+                @value, @source_type, @source_path, @evidence_kind, @occurrence_count, @evidence,
                 @extractor, @extraction_confidence
             )
             """,
@@ -164,6 +164,7 @@ public sealed class FingerprintDatabase(string connectionString)
         command.Parameters.AddWithValue("value", (object?)signal.Value ?? DBNull.Value);
         command.Parameters.AddWithValue("source_type", signal.SourceType);
         command.Parameters.AddWithValue("source_path", (object?)signal.SourcePath ?? DBNull.Value);
+        command.Parameters.AddWithValue("evidence_kind", (object?)signal.EvidenceKind ?? DBNull.Value);
         command.Parameters.AddWithValue("occurrence_count", signal.OccurrenceCount);
         AddJsonb(command, "evidence", ToJson(signal.Evidence));
         command.Parameters.AddWithValue("extractor", signal.Extractor);

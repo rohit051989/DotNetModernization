@@ -1,0 +1,99 @@
+{
+  "analysis_capabilities": {
+    "configurationParsed": true,
+    "deploymentArtifactsParsed": false,
+    "fileDiscovery": true,
+    "generatedCodeExcluded": true,
+    "msbuildEvaluated": false,
+    "projectMetadataParsed": false,
+    "semanticAnalysis": false,
+    "syntaxAnalysis": true
+  },
+  "fingerprint_status": "COMPLETE",
+  "metadata": {
+    "extension": ".csproj",
+    "fingerprintStatus": "COMPLETE",
+    "frameworkFamily": "net",
+    "frameworkVersion": "8.0",
+    "outputType": null,
+    "projectFormat": "sdk_style",
+    "projectSdk": "Microsoft.NET.Sdk.Web",
+    "structuralType": "csharp_project"
+  },
+  "project_id": "00000000-0000-4000-8000-000000000002",
+  "project_path": "src/HybridWeb/HybridWeb.csproj",
+  "project_slug": "undeclared-relationship-pair",
+  "signals": [
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "ENTRY_POINT",
+      "signal_name": "WEB_APPLICATION_CREATE_BUILDER_ENTRY_POINT",
+      "signal_type": "ENTRY_POINT",
+      "source_path": "src/HybridWeb/Program.cs",
+      "source_type": "SOURCE_CODE",
+      "value": null
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 4,
+      "signal_category": "FRAMEWORK_REFERENCE",
+      "signal_name": "MICROSOFT_ASPNETCORE_MVC_NAMESPACE",
+      "signal_type": "NAMESPACE",
+      "source_path": "src/HybridWeb/Controllers/OrdersController.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Microsoft.AspNetCore.Mvc"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "PACKAGE_DEPENDENCY",
+      "signal_name": "MICROSOFT_ASPNETCORE_PACKAGE",
+      "signal_type": "PACKAGE",
+      "source_path": "src/HybridWeb/HybridWeb.csproj",
+      "source_type": "PACKAGE_REFERENCE",
+      "value": "Microsoft.AspNetCore.OpenApi"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FILE_INDICATOR",
+      "signal_name": "CONTROLLERS_FOLDER",
+      "signal_type": "FILE_PRESENCE",
+      "source_path": "src/HybridWeb/Controllers",
+      "source_type": "FILE_STRUCTURE",
+      "value": null
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 3,
+      "signal_category": "SOURCE_CONSTRUCT",
+      "signal_name": "ROUTE_ATTRIBUTE",
+      "signal_type": "ATTRIBUTE",
+      "source_path": "src/HybridWeb/Controllers/OrdersController.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "Route"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 2,
+      "signal_category": "SOURCE_CONSTRUCT",
+      "signal_name": "CONTROLLER_BASE_BASE_CLASS",
+      "signal_type": "BASE_CLASS",
+      "source_path": "src/HybridWeb/Controllers/OrdersController.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "ControllerBase"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FILE_INDICATOR",
+      "signal_name": "VIEWS_FOLDER",
+      "signal_type": "FILE_PRESENCE",
+      "source_path": "src/HybridWeb/Views",
+      "source_type": "FILE_STRUCTURE",
+      "value": null
+    }
+  ],
+  "_fixture_note": "Synthetic, not captured from a scan, but a realistic hybrid: an MVC app with Views/ that also exposes API controllers deriving from ControllerBase. Pins the undeclared-relationship default (24-STEP-004-CLASSIFICATION.md Part E 'Conflict rejection'). aspnetcore-minimal-api and aspnetcore-mvc-modern name each other in neither compatible_with nor conflicts_with, both clear their minimumScore of 60, and both score 90 here — inside the ambiguity margin of 10 — so the relationship defaults to CONFLICTING and the project resolves AMBIGUOUS with relationship_source 'defaulted', where before this change it would have been MULTIPLE_MATCHES with both marked primary. Two signals are deliberate: CONTROLLER_BASE_BASE_CLASS satisfies aspnetcore-mvc-modern's razor-or-mvc-evidence atLeast group (without it that pattern disqualifies and there is no pair at all), and there is no CSHTML_FILE, which would disqualify aspnetcore-minimal-api and collapse the pair to a single match. Scores are equal rather than merely within margin, so a small weight edit cannot silently turn this fixture back into MATCHED."
+}

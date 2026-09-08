@@ -63,8 +63,12 @@ export function RegisterRepositoryDrawer({ engagementId, onClose, onRegistered }
   }
 
   function cloneUrlVerificationHint() {
-    if (!inspection || !inspection.has_git) {
-      return { tone: 'text-neutral-400', text: 'Cannot be verified — no git remote found in this folder' }
+    if (!inspection) return null
+    if (!inspection.has_git) {
+      if (!cloneUrl.trim()) {
+        return { tone: 'text-neutral-400', text: 'No .git directory found — this folder was never under source control. Leave this blank, or enter a URL if it is being migrated into source control.' }
+      }
+      return { tone: 'text-neutral-400', text: 'Cannot be verified — no git remote found in this folder. It will be recorded unverified.' }
     }
     if (!cloneUrl.trim()) return null
     const detected = inspection.detected_clone_url
@@ -89,7 +93,7 @@ export function RegisterRepositoryDrawer({ engagementId, onClose, onRegistered }
         source_type: 'local_path',
         local_path: localPath.trim(),
         name: name.trim() || undefined,
-        clone_url: cloneUrl.trim(),
+        clone_url: cloneUrl.trim() || null,
         description: description.trim() || null,
         technical_owner: technicalOwner.trim() || null,
         criticality,
@@ -119,7 +123,18 @@ export function RegisterRepositoryDrawer({ engagementId, onClose, onRegistered }
 
   const hint = cloneUrlVerificationHint()
   const blockingConflict = inspection?.duplicate_conflict ?? null
-  const canSubmit = source === 'local_path' && localPath.trim() && cloneUrl.trim() && !blockingConflict && !submitting
+  // Required only when the folder has a .git directory — a folder that was
+  // never under source control has no canonical URL to assert
+  // (15-REPOSITORY-INGEST-UI.md Part C). Not yet inspected is treated as
+  // "not required" so the button isn't blocked before inspection has had a
+  // chance to run; the backend still validates this regardless.
+  const cloneUrlRequired = inspection?.has_git === true
+  const canSubmit =
+    source === 'local_path' &&
+    localPath.trim() &&
+    (!cloneUrlRequired || cloneUrl.trim()) &&
+    !blockingConflict &&
+    !submitting
 
   return (
     <Drawer title="Register a repository" onRequestClose={onClose}>
@@ -193,7 +208,7 @@ export function RegisterRepositoryDrawer({ engagementId, onClose, onRegistered }
               </div>
             )}
 
-            <Field label="Git clone URL" error={fieldErrors.clone_url}>
+            <Field label={cloneUrlRequired ? 'Git clone URL' : 'Git clone URL (optional)'} error={fieldErrors.clone_url}>
               <input
                 type="text"
                 value={cloneUrl}
@@ -201,9 +216,11 @@ export function RegisterRepositoryDrawer({ engagementId, onClose, onRegistered }
                 placeholder="https://github.com/example/order-management.git"
                 className={inputClass(!!fieldErrors.clone_url)}
               />
-              <p className="mt-1 text-xs text-neutral-400">
-                The repository's canonical URL. It identifies this repository independently of where it sits on disk.
-              </p>
+              {cloneUrlRequired && (
+                <p className="mt-1 text-xs text-neutral-400">
+                  The repository's canonical URL. It identifies this repository independently of where it sits on disk.
+                </p>
+              )}
               {hint && <p className={`mt-1 text-xs ${hint.tone}`}>{hint.text}</p>}
             </Field>
           </section>

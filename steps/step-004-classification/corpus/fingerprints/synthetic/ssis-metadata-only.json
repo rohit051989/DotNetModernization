@@ -1,0 +1,28 @@
+{
+  "analysis_capabilities": {
+    "configurationParsed": true,
+    "deploymentArtifactsParsed": false,
+    "fileDiscovery": true,
+    "generatedCodeExcluded": true,
+    "msbuildEvaluated": false,
+    "projectMetadataParsed": false,
+    "semanticAnalysis": false,
+    "syntaxAnalysis": true
+  },
+  "fingerprint_status": "COMPLETE",
+  "metadata": {
+    "extension": ".dtproj",
+    "fingerprintStatus": "COMPLETE",
+    "frameworkFamily": null,
+    "frameworkVersion": null,
+    "outputType": null,
+    "projectFormat": null,
+    "projectSdk": null,
+    "structuralType": "ssis_project"
+  },
+  "project_id": "00000000-0000-4000-8000-000000000001",
+  "project_path": "etl/CustomerLoad/CustomerLoad.dtproj",
+  "project_slug": "ssis-metadata-only",
+  "signals": [],
+  "_fixture_note": "Synthetic, not captured from a scan. Pins the metadata-only detection path (24-STEP-004-CLASSIFICATION.md Part A6/Part C): zero step 3 signals, so the only thing that can match is ssis-package's structuralType condition. Also guards Part C 'Candidate selection' — ssis-package has empty anchor_signals, so if candidate selection is ever narrowed to an anchor-signal index this fixture goes NO_PATTERN_MATCHED and the corpus fails."
+}

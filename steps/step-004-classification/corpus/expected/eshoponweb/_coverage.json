@@ -1,0 +1,21 @@
+{
+  "most_frequent_unmatched_signal_combinations": [
+    {
+      "project_count": 1,
+      "signals": [
+        "SERVICES_FOLDER"
+      ]
+    },
+    {
+      "project_count": 1,
+      "signals": [
+        "DB_CONTEXT_BASE_CLASS",
+        "MICROSOFT_ASPNETCORE_NAMESPACE",
+        "MICROSOFT_ASPNETCORE_PACKAGE",
+        "MICROSOFT_ENTITYFRAMEWORKCORE_NAMESPACE",
+        "MICROSOFT_ENTITYFRAMEWORKCORE_PACKAGE",
+        "SERVICES_FOLDER"
+      ]
+    }
+  ]
+}

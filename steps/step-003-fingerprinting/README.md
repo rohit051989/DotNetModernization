@@ -41,9 +41,12 @@ project ids, so `database_url` is not optional here.
 
 Two declared artifacts per run, both written to `output_dir`:
 
-- `application-fingerprint.json` (`application-fingerprint@1.0.0`) — the
+- `application-fingerprint.json` (`application-fingerprint@1.1.0`) — the
   native artifact. Every downstream step (classification, and anything built
-  on top of it) reads this one; it stays primary.
+  on top of it) reads this one; it stays primary. Every signal carries
+  `evidenceKind` (`FILE`, `FOLDER`, or `NONE`, from the signal registry) —
+  what `sourcePath` names. Never treat a `FOLDER` signal's `sourcePath` (e.g.
+  `SERVICES_FOLDER`'s `src/ApplicationCore/Services`) as an openable file.
 - `application-fingerprint.sarif` (`fingerprint-sarif@2.1.0`) — the same
   evidence re-projected into [SARIF 2.1.0](https://docs.oasis-open.org/sarif/sarif/v2.1.0/sarif-v2.1.0.html),
   the OASIS-standard static analysis interchange format. Additive: nothing
@@ -51,12 +54,25 @@ Two declared artifacts per run, both written to `output_dir`:
   or tool without bespoke tooling. Signal registry entries become
   `tool.driver.rules`, one `run` per project, each signal a `result` at
   `level: "none"` (an observation, not a defect), evidence spans become
-  region locations. Validated against the published SARIF 2.1.0 JSON schema
-  before write — a validation failure fails the step, same as the native
-  artifact's own schema gate.
+  region locations — only for `evidenceKind: FILE` signals; a `FOLDER`
+  signal gets no `locations` at all (its path goes in `properties.folderPath`
+  instead), since a SARIF `physicalLocation` means somewhere within a file a
+  viewer can navigate to, and a directory isn't one. Every location carries
+  `uriBaseId: "REPOROOT"`. Validated against the published SARIF 2.1.0 JSON
+  schema before write — a validation failure fails the step, same as the
+  native artifact's own schema gate.
+- `application-fingerprint.local.sarif` — **not** a declared output, not
+  checksummed, gitignored. Byte-identical to the registered SARIF file except
+  `run.originalUriBaseIds.REPOROOT.uri` is filled in with this machine's real
+  repository path (the registered file leaves it absent, so no absolute path
+  enters the checksum). Rebuilt every run purely so a SARIF viewer on this
+  machine — e.g. VS Code's SARIF Viewer extension — can resolve source
+  locations; open the repository as the workspace root and open this file.
 
-Both are byte-identical across reruns of unchanged input — no timestamps, no
-absolute paths, alphabetical keys throughout (`Fingerprinting.Domain.DeterministicJson`).
+Both declared artifacts are byte-identical across reruns of unchanged input —
+no timestamps, no absolute paths, alphabetical keys throughout
+(`Fingerprinting.Domain.DeterministicJson`). The local sibling is not held to
+that guarantee — it deliberately embeds this machine's path.
 
 **Contributing an extractor?** If it wraps a Roslyn analyzer (or any other
 tool that already speaks SARIF), consider having it hand back a SARIF

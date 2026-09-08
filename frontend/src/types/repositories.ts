@@ -4,10 +4,11 @@ export type { JobExecution }
 
 export type Criticality = 'low' | 'medium' | 'high' | 'critical'
 export type RetirementStatus = 'active' | 'slated_for_retirement' | 'decommissioned'
-export type CloneUrlVerification = 'verified' | 'mismatch' | 'unverifiable'
+export type CloneUrlVerification = 'verified' | 'mismatch' | 'unverifiable' | 'not_applicable'
 export type IngestStatus = 'registered' | 'scanned' | 'scan_failed' | 'path_missing'
 export type SourceType = 'local_path' | 'git_clone'
 export type SourceStatus = 'active' | 'archived' | 'disabled' | 'inaccessible'
+export type SourceControlStatus = 'GIT' | 'NONE'
 
 export interface PrimaryLanguage {
   language: string
@@ -36,7 +37,8 @@ export interface RepositorySummary {
 
 export interface RepositoryDetail extends RepositorySummary {
   local_path: string
-  clone_url: string
+  clone_url: string | null
+  source_control_status: SourceControlStatus
   detected_clone_url: string | null
   default_branch: string | null
   description: string | null
@@ -71,6 +73,7 @@ export interface InspectPathResult {
   suggested_name: string | null
   suggested_slug: string | null
   has_git: boolean
+  source_control_status: SourceControlStatus
   detected_clone_url: string | null
   detected_provider: string | null
   detected_branch: string | null
@@ -87,7 +90,7 @@ export interface RegisterLocalPathInput {
   source_type: 'local_path'
   local_path: string
   name?: string | null
-  clone_url: string
+  clone_url?: string | null
   description?: string | null
   technical_owner?: string | null
   criticality: Criticality

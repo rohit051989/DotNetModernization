@@ -64,8 +64,11 @@ def normalize_local_path(raw_path: str) -> str:
     return text.rstrip("\\/")
 
 
-def derive_provider(clone_url: str) -> str:
-    """Host-derived provider for a clone URL, per Part C."""
+def derive_provider(clone_url: str | None) -> str | None:
+    """Host-derived provider for a clone URL, per Part C. Null when there is
+    no clone URL to derive one from — a folder never under source control."""
+    if not clone_url:
+        return None
     host = urlparse(repository_ingest.normalize_clone_url(clone_url)).hostname or ""
     if "github" in host:
         return "github"
@@ -300,6 +303,7 @@ def inspect_path(db: Session, engagement_id: str, raw_local_path: str) -> Inspec
             suggested_name=None,
             suggested_slug=None,
             has_git=False,
+            source_control_status="NONE",
             detected_clone_url=None,
             detected_provider=None,
             detected_branch=None,
@@ -361,6 +365,7 @@ def inspect_path(db: Session, engagement_id: str, raw_local_path: str) -> Inspec
         suggested_name=root_folder_name,
         suggested_slug=slugify(root_folder_name),
         has_git=has_git,
+        source_control_status="GIT" if has_git else "NONE",
         detected_clone_url=detected_clone_url,
         detected_provider=detected_provider,
         detected_branch=detected_branch,
@@ -380,13 +385,31 @@ def inspect_path(db: Session, engagement_id: str, raw_local_path: str) -> Inspec
 def register_local_path(
     db: Session, engagement: models.Engagement, payload: RegisterLocalPathRequest
 ) -> models.Repository:
-    problems = validate_local_path_for_registration(payload.local_path) + validate_clone_url(payload.clone_url)
+    path = Path(payload.local_path)
+    # Safe to check even before path validation — .is_dir() on a bad path
+    # just returns False, it doesn't raise.
+    has_git = (path / ".git").is_dir()
+    clone_url_raw = (payload.clone_url or "").strip() or None
+
+    problems = validate_local_path_for_registration(payload.local_path)
+    if clone_url_raw:
+        problems += validate_clone_url(clone_url_raw)
+    if has_git and not clone_url_raw:
+        problems.append(
+            {
+                "field": "clone_url",
+                "message": (
+                    "This folder has a .git directory — a clone URL is required so it can be "
+                    "verified against the remote."
+                ),
+                "code": "CLONE_URL_REQUIRED_FOR_GIT",
+            }
+        )
     if problems:
         raise RegistrationError(422, problems)
 
-    path = Path(payload.local_path)
     local_path_normalised = normalize_local_path(payload.local_path)
-    clone_url_normalised = repository_ingest.normalize_clone_url(payload.clone_url)
+    clone_url_normalised = repository_ingest.normalize_clone_url(clone_url_raw) if clone_url_raw else None
 
     conflict = find_duplicate_conflict(
         db, engagement.id, clone_url_normalised, path.name, local_path_normalised
@@ -421,11 +444,17 @@ def register_local_path(
             ],
         )
 
-    has_git = (path / ".git").is_dir()
     detected_clone_url = (
         repository_ingest.run_git(path, "config", "--get", "remote.origin.url") if has_git else None
     )
-    if detected_clone_url is None:
+    if not has_git:
+        # No .git at all: nothing to verify against. A URL may still have
+        # been supplied (e.g. a repository being migrated into source
+        # control) — record it, but there is no remote to check it against,
+        # which is a distinct state from "verification was never
+        # attempted because there's no URL at all".
+        clone_url_verification = "unverifiable" if clone_url_raw else "not_applicable"
+    elif detected_clone_url is None:
         clone_url_verification = "unverifiable"
     elif repository_ingest.normalize_clone_url(detected_clone_url) == clone_url_normalised:
         clone_url_verification = "verified"
@@ -441,12 +470,13 @@ def register_local_path(
         slug=_unique_slug(db, engagement.id, slugify(path.name)),
         local_path=payload.local_path,
         local_path_normalised=local_path_normalised,
-        clone_url=payload.clone_url,
+        clone_url=clone_url_raw,
         clone_url_normalised=clone_url_normalised,
         detected_clone_url=detected_clone_url,
         clone_url_verification=clone_url_verification,
+        source_control_status="GIT" if has_git else "NONE",
         source_type="local_path",
-        provider=derive_provider(payload.clone_url),
+        provider=derive_provider(clone_url_raw),
         default_branch=payload.default_branch,
         description=payload.description,
         technical_owner=payload.technical_owner,

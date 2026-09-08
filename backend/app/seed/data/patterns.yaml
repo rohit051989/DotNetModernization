@@ -1,24 +1,32 @@
 patterns:
 
   # ---------------------------------------------------------------- 1
-  - id: core2-rest-api
-    name: ".NET Core 2.x REST API"
-    summary: "ASP.NET Core 2.x Web API with Startup-based hosting, running on IIS."
+  - id: aspnetcore-rest-api-legacy
+    name: "Legacy-hosted ASP.NET Core REST API"
+    summary: "ASP.NET Core Web API on the Startup.cs + WebHost/Host builder hosting model, any version."
     description: |
-      REST API built on ASP.NET Core 2.0-2.2 using the classic `Startup.cs`
-      `ConfigureServices` / `Configure` pair and `IWebHostBuilder`. Typically
-      hosted in IIS behind the ASP.NET Core Module. Out of support since 2019.
-    legacy_stack: ".NET Core 2.0 - 2.2"
+      REST API built on ASP.NET Core using the classic `Startup.cs`
+      `ConfigureServices` / `Configure` pair with `WebHost.CreateDefaultBuilder`
+      or `Host.CreateDefaultBuilder`. Typically hosted in IIS behind the
+      ASP.NET Core Module.
+
+      **The discriminator is the hosting model, not the version.** Core 2.1 and
+      Core 3.1 REST APIs are structurally identical — same Startup.cs, same
+      controllers, same Microsoft.AspNetCore.Mvc — and one accelerator handles
+      both by reading `framework_version`. Projects on the modern
+      `WebApplication.CreateBuilder` model belong to `aspnetcore-minimal-api`
+      or `aspnetcore-mvc-modern` instead, and are disqualified here explicitly.
+    legacy_stack: "ASP.NET Core (Startup.cs hosting model)"
     category: web-api
-    typical_indicators: "Startup.cs with ConfigureServices/Configure, Program.cs with WebHost.CreateDefaultBuilder, controllers deriving from ControllerBase."
-    known_risks: "Default JSON serializer changes from Newtonsoft to System.Text.Json on modern .NET, which can silently alter payload casing, null handling and date formats. Contract snapshot before migration is essential."
+    typical_indicators: "Startup.cs with ConfigureServices/Configure, Program.cs with WebHost.CreateDefaultBuilder or Host.CreateDefaultBuilder, controllers deriving from ControllerBase."
+    known_risks: "Default JSON serializer changes from Newtonsoft to System.Text.Json on modern .NET, which can silently alter payload casing, null handling and date formats. Contract snapshot before migration is essential. Which breaking changes apply depends on the recorded framework_version, not on this pattern."
     classification_role: PRIMARY
     classification_family: APPLICATION_TYPE
     classification_value: REST_API
     priority: 50
     compatible_with: []
     conflicts_with: []
-    anchor_signals: ["WEBHOST_CREATE_DEFAULT_BUILDER_ENTRY_POINT", "STARTUP_CLASS_ENTRY_POINT"]
+    anchor_signals: ["STARTUP_CLASS_ENTRY_POINT", "WEBHOST_CREATE_DEFAULT_BUILDER_ENTRY_POINT", "HOST_CREATE_DEFAULT_BUILDER_ENTRY_POINT"]
     eligibility:
       fingerprintStatuses: ["COMPLETE", "PARTIAL"]
       excludedProjectRoles: ["TEST", "DEPLOYMENT"]
@@ -32,15 +40,26 @@ patterns:
     rules_status: active
     required_signals_pending: []
     rules:
+      # The hosting model is the discriminator (see this pattern's
+      # description): Startup.cs AND one of the two pre-6.0 host builders,
+      # and explicitly NOT WebApplication.CreateBuilder, which is what
+      # aspnetcore-minimal-api / aspnetcore-mvc-modern / blazor-server-modern
+      # all require in their own `all` group. Previously this was
+      # `any: [webhost-builder, startup-class]` with no metadata condition at
+      # all, which is what let it match a .NET Framework project
+      # (eShopPorted.csproj, net461) and collide with fx-aspnet-mvc.
       schema: signal-rules/1.0
-      all: []
+      all:
+        - id: startup-class
+          signal:
+            name: STARTUP_CLASS_ENTRY_POINT
       any:
         - id: webhost-builder
           signal:
             name: WEBHOST_CREATE_DEFAULT_BUILDER_ENTRY_POINT
-        - id: startup-class
+        - id: host-builder
           signal:
-            name: STARTUP_CLASS_ENTRY_POINT
+            name: HOST_CREATE_DEFAULT_BUILDER_ENTRY_POINT
       atLeast: []
       supporting:
         - id: mvc-namespace
@@ -75,7 +94,25 @@ patterns:
           signal:
             name: MICROSOFT_ASPNETCORE_PACKAGE
           weight: 5
-      none: []
+      none:
+        - id: not-webapp-builder
+          signal:
+            name: WEB_APPLICATION_CREATE_BUILDER_ENTRY_POINT
+          disqualify: true
+      # No metadata conditions, deliberately. frameworkFamily is the WRONG
+      # discriminator for an ASP.NET Core pattern: ASP.NET Core runs on
+      # either family — ASP.NET Core 2.x on .NET Framework 4.6.1 was a
+      # supported configuration, and eShopPorted.csproj is one. Its
+      # migration path follows the code shape (retarget, fix Core breaking
+      # changes), not the TFM; it does not migrate like a System.Web.Mvc app.
+      #
+      # A `frameworkFamily in [net-core]` condition here was the
+      # version-condition error one level up: it bound the pattern to a
+      # target-framework attribute when the hosting model above is the real
+      # discriminator. Framework family stays an attribute on the
+      # classification (framework_family/framework_version, Part F).
+      # fx-aspnet-mvc excludes this hosting model explicitly, so the two
+      # patterns separate on shape from both directions. See Part C.
       metadata: []
     target_states:
       - id: net10-api-controllers-preserved
@@ -220,10 +257,49 @@ patterns:
           signal:
             name: TOP_LEVEL_STATEMENTS_ENTRY_POINT
           disqualify: true
+        # ASP.NET Core hosting entry points. This pattern is absence-based —
+        # it has no positive signal condition of its own, so its `none` list
+        # IS its definition, and any hosting model absent from that list is a
+        # project type it will happily claim. ASP.NET Core 2.x on .NET
+        # Framework satisfies the family condition below, so without these a
+        # Startup-only Core project with no Main matched here at 50.
+        # Mutual exclusion, per Part C: aspnetcore-rest-api-legacy declares
+        # nothing about libraries, so this side has to declare it.
+        - id: no-startup-class
+          signal:
+            name: STARTUP_CLASS_ENTRY_POINT
+          disqualify: true
+        - id: no-webhost-builder
+          signal:
+            name: WEBHOST_CREATE_DEFAULT_BUILDER_ENTRY_POINT
+          disqualify: true
+        - id: no-host-builder
+          signal:
+            name: HOST_CREATE_DEFAULT_BUILDER_ENTRY_POINT
+          disqualify: true
+        # Completes the set: the three above were added for the ASP.NET Core
+        # hosting shapes, and WebApplication.CreateBuilder is the fourth.
+        # A .NET Framework class library cannot contain it.
+        - id: no-web-builder
+          signal:
+            name: WEB_APPLICATION_CREATE_BUILDER_ENTRY_POINT
+          disqualify: true
       metadata:
         - id: legacy-framework
           field: frameworkFamily
           equals: net-framework
+        # A project that produces an executable is not a class library.
+        # The `none` disqualifiers above already exclude one via its entry-point
+        # signal, but only when step 3 actually extracted it: on a PARTIAL
+        # fingerprint with syntax analysis unavailable, an absence-based pattern
+        # like this one goes blind and co-matches the desktop and console
+        # patterns. outputType is step 2 msbuild metadata, present whether or
+        # not syntax analysis ran, so it holds where the signal does not. This
+        # is the library half of the mutual exclusion the desktop patterns
+        # declare with `outputType equals WinExe` (docs/24 Part C).
+        - id: not-an-executable
+          field: outputType
+          notIn: ["WinExe", "Exe"]
     target_states:
       - id: netstandard20-bridge
         name: ".NET Standard 2.0 bridge"
@@ -359,8 +435,31 @@ patterns:
           signal:
             name: VIEWS_FOLDER
           weight: 5
-      none: []
+      none:
+        # A System.Web.Mvc application never has an ASP.NET Core hosting
+        # entry point. These are true exclusions, not weak counter-evidence,
+        # and they are what should have separated this pattern from
+        # aspnetcore-rest-api-legacy from the start: without them, an
+        # ASP.NET Core app targeting net461 (a supported configuration —
+        # eShopPorted.csproj is exactly this) satisfies both patterns, and
+        # binding it here would attach a System.Web.Mvc accelerator to code
+        # that needs a Core retarget instead.
+        - id: not-startup-class
+          signal:
+            name: STARTUP_CLASS_ENTRY_POINT
+          disqualify: true
+        - id: not-webhost-builder
+          signal:
+            name: WEBHOST_CREATE_DEFAULT_BUILDER_ENTRY_POINT
+          disqualify: true
+        - id: not-host-builder
+          signal:
+            name: HOST_CREATE_DEFAULT_BUILDER_ENTRY_POINT
+          disqualify: true
       metadata:
+        # Kept: System.Web.Mvc is genuinely .NET Framework-bound, so family
+        # is a real discriminator here — unlike the ASP.NET Core patterns,
+        # which run on either family. See Part C.
         - id: legacy-framework
           field: frameworkFamily
           equals: net-framework
@@ -781,7 +880,29 @@ patterns:
           signal:
             name: CSHTML_FILE
           disqualify: true
-      metadata: []
+      # No frameworkFamily condition, deliberately: a console entry point is
+      # the same shape on .NET Framework and on .NET, and it migrates the same
+      # way (retarget, fix breaking changes). Splitting it by family would be
+      # the version error's mirror image. The `none` disqualifiers above are
+      # what actually guard it — they exclude every service, web and Razor
+      # hosting model — and they hold on either family. Part C.
+      metadata:
+        # Desktop exclusion. A WinForms/WPF application has a `Main` like any
+        # console app, so MAIN_METHOD_ENTRY_POINT alone matched all three
+        # eShopWinForms projects here at score 50 — and their migration path
+        # is nothing like a console worker's (Windows-only .NET, or a UI
+        # rewrite; never a containerised OCP4 worker). OutputType WinExe is
+        # the Windows GUI subsystem, which a console app never targets.
+        #
+        # This is a metadata exclusion rather than a `none` entry because
+        # `none` only accepts signal conditions, and the registry has no
+        # System.Windows.Forms / System.Windows / STAThread signals to
+        # disqualify on — see winforms-desktop's required_signals_pending.
+        # When DesktopUiExtractor lands, add those as `none` disqualifiers
+        # here too, so the exclusion does not rest on OutputType alone.
+        - id: not-desktop-exe
+          field: outputType
+          notEquals: WinExe
     target_states:
       - id: ocp4-cronjob-container
         name: "OCP4 CronJob container"
@@ -833,6 +954,316 @@ patterns:
         playbook_md: |
           Prefer the CronJob option unless the job runs very frequently or needs to
           hold warm state between executions.
+
+  # ------------------------------------------------- 6a / 6b (desktop UI)
+  # Desktop applications are common in legacy .NET estates and were falling
+  # through to console-batch-job on MAIN_METHOD_ENTRY_POINT alone, which
+  # would bind them to a containerised OCP4 worker accelerator. Both
+  # patterns below are detectable TODAY, but only partly: step 2 records
+  # OutputType WinExe, and the registry has XAML_FILE, which separates WPF
+  # from WinForms. What the registry does NOT have is any
+  # System.Windows.Forms / System.Windows / PresentationFramework /
+  # STAThread signal — FrameworkReferenceExtractor covered web, service and
+  # data namespaces only. So detection here is confident about "this is a
+  # Windows desktop app" and thin on positive framework evidence, which is
+  # what required_signals_pending and matchWarnings record.
+  - id: winforms-desktop
+    name: "Windows Forms desktop application"
+    summary: "Windows Forms desktop client — a Windows GUI executable with no XAML markup."
+    description: |
+      A Windows Forms application: `OutputType` of `WinExe` (the Windows GUI
+      subsystem) with no XAML present. WinForms and WPF are separated by XAML
+      alone until DesktopUiExtractor lands — a WinForms project has designer
+      code and `System.Windows.Forms` references, neither of which step 3
+      currently emits a signal for.
+
+      **Not a console application.** It has a `Main` like one, which is why
+      it previously matched console-batch-job, but nothing else about it is
+      comparable: the UI toolkit is Windows-only, the migration target is
+      Windows-only .NET or a UI rewrite, and it cannot be containerised for
+      OCP4 at all.
+    legacy_stack: "Windows Forms"
+    category: desktop
+    typical_indicators: "OutputType WinExe, Designer.cs files, System.Windows.Forms references, Form-derived classes, STAThread on Main."
+    known_risks: "Windows-only for the life of the application unless the UI is rewritten. Third-party WinForms control suites are a common blocker and are frequently unsupported on modern .NET. No containerisation path on OCP4."
+    classification_role: PRIMARY
+    classification_family: APPLICATION_TYPE
+    classification_value: WINFORMS_DESKTOP
+    priority: 55
+    compatible_with: []
+    conflicts_with: ["console-batch-job", "wpf-desktop"]
+    anchor_signals: []
+    eligibility:
+      fingerprintStatuses: ["COMPLETE", "PARTIAL"]
+      excludedProjectRoles: ["TEST", "DEPLOYMENT"]
+    analysis_requirements:
+      required:
+        fileDiscovery: true
+      preferred: {}
+    thresholds:
+      # 50: OutputType alone is the whole detection, so the score is the base
+      # score with nothing to lift it. Raise this once DesktopUiExtractor
+      # gives real supporting evidence.
+      minimumScore: 50
+      highConfidenceScore: 90
+    rules_status: active
+    required_signals_pending:
+      - signal_name: SYSTEM_WINDOWS_FORMS_NAMESPACE
+        purpose: "Anchor signal — a using System.Windows.Forms directive, the positive evidence this pattern currently lacks"
+        expected_extractor: DesktopUiExtractor
+        blocking: true
+      - signal_name: SYSTEM_WINDOWS_FORMS_ASSEMBLY
+        purpose: "Raw Reference Include=System.Windows.Forms in a non-SDK project file"
+        expected_extractor: DesktopUiExtractor
+        blocking: false
+      - signal_name: FORM_BASE_CLASS
+        purpose: "A type deriving from Form — distinguishes a UI project from a WinExe with no forms"
+        expected_extractor: DesktopUiExtractor
+        blocking: false
+      - signal_name: STA_THREAD_ATTRIBUTE
+        purpose: "STAThread on Main, required by both WinForms and WPF entry points"
+        expected_extractor: DesktopUiExtractor
+        blocking: false
+    rules:
+      schema: signal-rules/1.0
+      all: []
+      any: []
+      atLeast: []
+      supporting: []
+      none:
+        # XAML separates this from wpf-desktop, and the rest are the
+        # both-directions exclusions Part C requires against the web,
+        # service and console shapes that also have a Main.
+        - id: no-xaml
+          signal:
+            name: XAML_FILE
+          disqualify: true
+        - id: no-startup-class
+          signal:
+            name: STARTUP_CLASS_ENTRY_POINT
+          disqualify: true
+        - id: no-web-builder
+          signal:
+            name: WEB_APPLICATION_CREATE_BUILDER_ENTRY_POINT
+          disqualify: true
+        - id: no-webhost-builder
+          signal:
+            name: WEBHOST_CREATE_DEFAULT_BUILDER_ENTRY_POINT
+          disqualify: true
+        - id: no-global-asax
+          signal:
+            name: GLOBAL_ASAX_ENTRY_POINT
+          disqualify: true
+        - id: no-svc-file
+          signal:
+            name: SVC_FILE
+          disqualify: true
+        - id: no-service-base
+          signal:
+            name: SERVICE_BASE_BASE_CLASS
+          disqualify: true
+      metadata:
+        - id: windows-gui-exe
+          field: outputType
+          equals: WinExe
+      matchWarnings:
+        - "Detected from OutputType WinExe and the absence of XAML; System.Windows.Forms evidence not yet available from step 3."
+    target_states:
+      - id: winforms-net-windows-retarget
+        name: "Retarget to .NET (Windows-only), UI preserved"
+        summary: "Move to the current .NET Windows Desktop target with the Windows Forms UI intact. Stays Windows-only and off OCP4."
+        target_stack: ".NET 8+ Windows Desktop (net8.0-windows), Windows host"
+        consumer_impact: none
+        effort: medium
+        linux_compatible: false
+        container_ready: false
+        is_lift_and_shift: true
+        is_recommended: true
+        prerequisites: "A Windows host remains available for build and run. Third-party control suites checked for modern .NET support before starting."
+        known_limitations: "Does not reach OCP4 — Windows Forms has no Linux or container story. This option keeps the application supported, not portable."
+        engine_support:
+          engine: github-copilot-app-modernization
+          coverage: partial
+          scenarios: ["dotnet-upgrade"]
+          skills: ["sdk-style-conversion"]
+          gaps: ["third-party control suite replacement", "designer file migration"]
+          custom_skills_required: []
+        playbook_md: |
+          ## Steps
+          1. Convert to an SDK-style project targeting `net8.0-windows` with
+             `UseWindowsForms`.
+          2. Inventory third-party control suites; confirm modern .NET support
+             or plan replacements before proceeding.
+          3. Work the build-fix loop, then verify the UI manually — there is
+             no contract-parity harness for a desktop UI.
+      - id: winforms-ui-rewrite
+        name: "Rewrite UI for the web (Blazor) or cross-platform (MAUI)"
+        summary: "Keep the domain logic, replace the Windows Forms UI. The only route to OCP4 for a desktop application."
+        target_stack: "Blazor on ASP.NET Core (container on OCP4), or .NET MAUI"
+        consumer_impact: high
+        effort: high
+        linux_compatible: true
+        container_ready: true
+        is_lift_and_shift: false
+        is_recommended: false
+        prerequisites: "Domain logic separable from the forms. User-facing change accepted by the business, with retraining planned."
+        known_limitations: "A rewrite, not a migration — no accelerator covers the UI layer. Scope this from the business case, not from the code."
+        engine_support:
+          engine: github-copilot-app-modernization
+          coverage: none
+          scenarios: []
+          skills: []
+          gaps: ["UI rewrite is out of scope for every current engine"]
+          custom_skills_required: ["blazor-ui-rewrite"]
+        playbook_md: |
+          ## Steps
+          1. Extract domain and data access behind interfaces, leaving the
+             forms as a thin shell.
+          2. Characterisation-test the extracted logic before touching the UI.
+          3. Rebuild the UI on the chosen target; retire the forms last.
+
+  - id: wpf-desktop
+    name: "WPF desktop application"
+    summary: "WPF desktop client — a Windows GUI executable with XAML markup."
+    description: |
+      A Windows Presentation Foundation application: `OutputType` of `WinExe`
+      together with XAML markup. XAML is what separates this from
+      winforms-desktop.
+
+      XAML alone does not distinguish WPF from UWP or MAUI, so the
+      `outputType` condition is doing real work here — and
+      `System.Windows`/`PresentationFramework` evidence, which would settle
+      it properly, is not yet emitted by step 3.
+    legacy_stack: "Windows Presentation Foundation"
+    category: desktop
+    typical_indicators: "OutputType WinExe, .xaml files, System.Windows and PresentationFramework references, Window-derived classes."
+    known_risks: "Windows-only unless the UI is rewritten. Older WPF applications frequently carry third-party control suites and custom themes that do not survive a retarget untouched. No containerisation path on OCP4."
+    classification_role: PRIMARY
+    classification_family: APPLICATION_TYPE
+    classification_value: WPF_DESKTOP
+    priority: 55
+    compatible_with: []
+    conflicts_with: ["console-batch-job", "winforms-desktop"]
+    anchor_signals: ["XAML_FILE"]
+    eligibility:
+      fingerprintStatuses: ["COMPLETE", "PARTIAL"]
+      excludedProjectRoles: ["TEST", "DEPLOYMENT"]
+    analysis_requirements:
+      required:
+        fileDiscovery: true
+      preferred: {}
+    thresholds:
+      minimumScore: 50
+      highConfidenceScore: 90
+    rules_status: active
+    required_signals_pending:
+      - signal_name: SYSTEM_WINDOWS_NAMESPACE
+        purpose: "Anchor signal — a using System.Windows directive, the positive evidence separating WPF from UWP/MAUI"
+        expected_extractor: DesktopUiExtractor
+        blocking: true
+      - signal_name: PRESENTATION_FRAMEWORK_ASSEMBLY
+        purpose: "Raw Reference Include=PresentationFramework in a non-SDK project file"
+        expected_extractor: DesktopUiExtractor
+        blocking: false
+      - signal_name: WINDOW_BASE_CLASS
+        purpose: "A type deriving from Window — confirms a WPF shell rather than XAML used by another toolkit"
+        expected_extractor: DesktopUiExtractor
+        blocking: false
+      - signal_name: STA_THREAD_ATTRIBUTE
+        purpose: "STAThread on Main, required by both WPF and WinForms entry points"
+        expected_extractor: DesktopUiExtractor
+        blocking: false
+    rules:
+      schema: signal-rules/1.0
+      all:
+        - id: xaml-file
+          signal:
+            name: XAML_FILE
+      any: []
+      atLeast: []
+      supporting: []
+      none:
+        - id: no-startup-class
+          signal:
+            name: STARTUP_CLASS_ENTRY_POINT
+          disqualify: true
+        - id: no-web-builder
+          signal:
+            name: WEB_APPLICATION_CREATE_BUILDER_ENTRY_POINT
+          disqualify: true
+        - id: no-webhost-builder
+          signal:
+            name: WEBHOST_CREATE_DEFAULT_BUILDER_ENTRY_POINT
+          disqualify: true
+        - id: no-global-asax
+          signal:
+            name: GLOBAL_ASAX_ENTRY_POINT
+          disqualify: true
+        - id: no-svc-file
+          signal:
+            name: SVC_FILE
+          disqualify: true
+        - id: no-service-base
+          signal:
+            name: SERVICE_BASE_BASE_CLASS
+          disqualify: true
+      metadata:
+        - id: windows-gui-exe
+          field: outputType
+          equals: WinExe
+      matchWarnings:
+        - "Detected from OutputType WinExe plus XAML; System.Windows/PresentationFramework evidence not yet available from step 3, so UWP and MAUI are not yet positively excluded."
+    target_states:
+      - id: wpf-net-windows-retarget
+        name: "Retarget to .NET (Windows-only), UI preserved"
+        summary: "Move to the current .NET Windows Desktop target with the WPF UI intact. Stays Windows-only and off OCP4."
+        target_stack: ".NET 8+ Windows Desktop (net8.0-windows), Windows host"
+        consumer_impact: none
+        effort: medium
+        linux_compatible: false
+        container_ready: false
+        is_lift_and_shift: true
+        is_recommended: true
+        prerequisites: "A Windows host remains available for build and run. Third-party control suites and custom themes checked for modern .NET support."
+        known_limitations: "Does not reach OCP4 — WPF has no Linux or container story. Keeps the application supported, not portable."
+        engine_support:
+          engine: github-copilot-app-modernization
+          coverage: partial
+          scenarios: ["dotnet-upgrade"]
+          skills: ["sdk-style-conversion"]
+          gaps: ["third-party control suite replacement", "theme and resource dictionary migration"]
+          custom_skills_required: []
+        playbook_md: |
+          ## Steps
+          1. Convert to an SDK-style project targeting `net8.0-windows` with
+             `UseWPF`.
+          2. Inventory third-party control suites and theme packs; confirm
+             modern .NET support or plan replacements.
+          3. Work the build-fix loop, then verify the UI manually.
+      - id: wpf-ui-rewrite
+        name: "Rewrite UI for the web (Blazor) or cross-platform (MAUI)"
+        summary: "Keep the domain logic, replace the WPF UI. The only route to OCP4 for a desktop application."
+        target_stack: "Blazor on ASP.NET Core (container on OCP4), or .NET MAUI"
+        consumer_impact: high
+        effort: high
+        linux_compatible: true
+        container_ready: true
+        is_lift_and_shift: false
+        is_recommended: false
+        prerequisites: "Domain logic separable from the views and view models. User-facing change accepted by the business."
+        known_limitations: "A rewrite, not a migration. MVVM view models often port further than WinForms code-behind does, but no accelerator covers the UI layer."
+        engine_support:
+          engine: github-copilot-app-modernization
+          coverage: none
+          scenarios: []
+          skills: []
+          gaps: ["UI rewrite is out of scope for every current engine"]
+          custom_skills_required: ["blazor-ui-rewrite"]
+        playbook_md: |
+          ## Steps
+          1. Separate view models and domain logic from the views.
+          2. Characterisation-test the extracted logic.
+          3. Rebuild the UI on the chosen target; retire the XAML last.
 
   # ---------------------------------------------------------------- 7
   - id: windows-service
@@ -939,7 +1370,11 @@ patterns:
     priority: 50
     compatible_with: []
     conflicts_with: []
-    anchor_signals: ["SSIS_PACKAGE_FILE"]
+    # Was ["SSIS_PACKAGE_FILE"] — not a registered signal (step 3 emits no
+    # SSIS signals at all), and an active pattern may not reference one
+    # (Part B3). Detection is metadata-only for now; SSIS_PACKAGE_FILE
+    # returns here as the anchor once SsisExtractor registers it.
+    anchor_signals: []
     eligibility:
       fingerprintStatuses: ["COMPLETE", "PARTIAL"]
       excludedProjectRoles: ["TEST", "DEPLOYMENT"]
@@ -948,9 +1383,19 @@ patterns:
         syntaxAnalysis: true
       preferred: {}
     thresholds:
-      minimumScore: 70
+      # Lowered from 70: the only condition is a metadata match (base score
+      # 50, Part E) — no supporting signal evidence exists yet to lift it
+      # higher. Confident detection (structuralType is unambiguous), thin
+      # evidence — matchWarnings below says so on every match. Raise this
+      # again once SsisExtractor's signals give real supporting evidence.
+      minimumScore: 50
       highConfidenceScore: 90
-    rules_status: awaiting_signals
+    rules_status: active
+    # Unchanged despite promotion — this tracks the richer package-internals
+    # signals SsisExtractor will add later (control flow, data flow, script
+    # tasks), independent of the metadata-only detection now active below.
+    # The extractor backlog (GET /api/catalog/pending-signals) is unaffected
+    # by this promotion.
     required_signals_pending:
       - signal_name: SSIS_PACKAGE_FILE
         purpose: "Anchor signal — identifies a .dtsx package"
@@ -961,26 +1406,32 @@ patterns:
         expected_extractor: SsisExtractor
         blocking: false
     rules:
-      # Step 3 emits no SSIS signals at all (registry v1.1.0 has zero entries
-      # in any category for .dtsx/.dtproj content) — this rule authors the
-      # intended shape now so it activates the moment SsisExtractor lands,
-      # per Part B2's own worked example. Excluded from evaluation until
-      # promoted to active; GET /api/catalog/pending-signals reports when
-      # that becomes possible.
+      # Promoted to active on metadata alone: step 2 already derives
+      # structuralType: ssis_project from the .dtproj extension
+      # (project_parser.py's EXTENSION_MAP), independent of step 3 signals
+      # entirely — no need to wait for SsisExtractor to detect the package
+      # exists. The any/supporting signal conditions this pattern used to
+      # carry (SSIS_PACKAGE_FILE, SSIS_CONNECTION_MANAGER) are removed for
+      # now, not merely emptied — Part B3 forbids an active pattern from
+      # referencing any unregistered signal anywhere in detection_rules,
+      # including anchor_signals above. They come back once SsisExtractor
+      # registers those names.
       schema: signal-rules/1.0
       all: []
-      any:
-        - id: dtsx-file
-          signal:
-            name: SSIS_PACKAGE_FILE
+      any: []
       atLeast: []
-      supporting:
-        - id: connection-manager
-          signal:
-            name: SSIS_CONNECTION_MANAGER
-          weight: 20
+      supporting: []
       none: []
-      metadata: []
+      metadata:
+        # No frameworkFamily condition, and one would break this pattern: an
+        # SSIS project has no TargetFramework at all, so step 2 records
+        # framework_family as null and any family condition would match
+        # nothing. structuralType is the guard, and it is exact. Part C.
+        - id: is-ssis-project
+          field: structuralType
+          equals: ssis_project
+      matchWarnings:
+        - "Detected structurally; package internals not yet analysed."
     target_states:
       - id: csharp-worker-container
         name: "C# worker with in-process pipeline"
@@ -1125,30 +1576,61 @@ patterns:
           signal:
             name: CSHTML_FILE
           disqualify: true
+      # No frameworkFamily condition needed: WEB_APPLICATION_CREATE_BUILDER_ENTRY_POINT
+      # in `all` is a strictly tighter guard. WebApplication.CreateBuilder ships
+      # with ASP.NET Core 6+, which has no .NET Framework support at all, so the
+      # signal cannot appear off the modern lineage — and it also excludes net5.0,
+      # which a `frameworkFamily in [net]` condition would wrongly admit. Part C.
       metadata: []
     target_states:
+      # Two options, and which one applies is a step 14 decision driven by
+      # the classification's framework_version, not by re-detecting the
+      # pattern: support lifecycle parameterises target-state selection, it
+      # does not change the code shape (Part C). Neither is is_recommended —
+      # the condition is in the option names, and recommending either
+      # unconditionally would assert a version fact the catalog cannot know.
       - id: aspnetcore-minimal-api-verify-scope
-        name: "No migration required — verify and confirm scope"
-        summary: "Already on the modern ASP.NET Core hosting model. Confirm the classification and close it out of the modernization backlog."
+        name: "No migration required — supported version"
+        summary: "The ASP.NET Core minimal API is on a currently supported framework version. Confirm the classification and close it out of the modernization backlog."
         target_stack: "Already modern — no retarget needed"
         consumer_impact: none
         effort: low
         linux_compatible: true
         container_ready: true
         is_lift_and_shift: true
-        is_recommended: true
-        prerequisites: "None — this is a verification step, not a migration."
+        is_recommended: false
+        prerequisites: "framework_version on the classification is a currently supported release. If it is not, take aspnetcore-minimal-api-retarget-lts instead."
         known_limitations: "Confirms only what step 3/4 could observe from source and package evidence. Spot-check for a stray legacy dependency before formally closing the item."
         playbook_md: |
           ## Steps
-          1. Spot-check for any residual legacy dependency the automated
-             signals wouldn't catch (a vestigial reference kept for
-             compatibility, an out-of-support intermediate target framework).
-          2. Confirm the target framework is genuinely a supported, current
-             .NET release.
+          1. Read `framework_version` from the classification. If it names an
+             out-of-support release, stop — this is the wrong option; take
+             `aspnetcore-minimal-api-retarget-lts`.
+          2. Spot-check for any residual legacy dependency the automated
+             signals wouldn't catch.
           3. Record the verification and close this project out of the
              modernization backlog — no transformation work is queued.
-
+      - id: aspnetcore-minimal-api-retarget-lts
+        name: "Retarget to current LTS — version out of support"
+        summary: "Same code shape, unsupported framework version. Retarget the ASP.NET Core minimal API to the current LTS and fix whatever breaking changes that specific version hop introduces."
+        target_stack: "ASP.NET Core minimal API on the current LTS"
+        consumer_impact: none
+        effort: low
+        linux_compatible: true
+        container_ready: true
+        is_lift_and_shift: true
+        is_recommended: false
+        prerequisites: "framework_version on the classification names an out-of-support release (e.g. netcoreapp3.1, net5.0, or a .NET version past its support date at the time of the engagement). Repository builds cleanly before the hop."
+        known_limitations: "Which breaking changes apply is a function of the source version, which is why this is one option parameterised by framework_version rather than one pattern per release. The hop itself is mechanical; verification is the real work."
+        playbook_md: |
+          ## Steps
+          1. Read `framework_version` from the classification — it determines
+             which breaking-change set applies. This option does not assume a
+             particular source version.
+          2. Raise `TargetFramework` to the current LTS.
+          3. Update package references to versions matching the new target.
+          4. Work the build-fix loop, then run the characterization and
+             contract-parity checks for the versions actually crossed.
   # ---------------------------------------------------------------- 10
   - id: aspnetcore-mvc-modern
     name: "Modern ASP.NET Core MVC / Razor application"
@@ -1234,29 +1716,59 @@ patterns:
             name: MICROSOFT_ASPNETCORE_PACKAGE
           weight: 5
       none: []
+      # Same as aspnetcore-minimal-api: WEB_APPLICATION_CREATE_BUILDER_ENTRY_POINT
+      # in `all` is a tighter guard than any family condition, since
+      # WebApplication.CreateBuilder exists only on ASP.NET Core 6+. Part C.
       metadata: []
     target_states:
+      # Two options, and which one applies is a step 14 decision driven by
+      # the classification's framework_version, not by re-detecting the
+      # pattern: support lifecycle parameterises target-state selection, it
+      # does not change the code shape (Part C). Neither is is_recommended —
+      # the condition is in the option names, and recommending either
+      # unconditionally would assert a version fact the catalog cannot know.
       - id: aspnetcore-mvc-modern-verify-scope
-        name: "No migration required — verify and confirm scope"
-        summary: "Already on the modern ASP.NET Core hosting model. Confirm the classification and close it out of the modernization backlog."
+        name: "No migration required — supported version"
+        summary: "The ASP.NET Core MVC application is on a currently supported framework version. Confirm the classification and close it out of the modernization backlog."
         target_stack: "Already modern — no retarget needed"
         consumer_impact: none
         effort: low
         linux_compatible: true
         container_ready: true
         is_lift_and_shift: true
-        is_recommended: true
-        prerequisites: "None — this is a verification step, not a migration."
+        is_recommended: false
+        prerequisites: "framework_version on the classification is a currently supported release. If it is not, take aspnetcore-mvc-modern-retarget-lts instead."
         known_limitations: "Confirms only what step 3/4 could observe from source and package evidence. Spot-check for a stray legacy dependency before formally closing the item."
         playbook_md: |
           ## Steps
-          1. Spot-check for any residual legacy dependency the automated
+          1. Read `framework_version` from the classification. If it names an
+             out-of-support release, stop — this is the wrong option; take
+             `aspnetcore-mvc-modern-retarget-lts`.
+          2. Spot-check for any residual legacy dependency the automated
              signals wouldn't catch.
-          2. Confirm the target framework is genuinely a supported, current
-             .NET release.
           3. Record the verification and close this project out of the
              modernization backlog — no transformation work is queued.
-
+      - id: aspnetcore-mvc-modern-retarget-lts
+        name: "Retarget to current LTS — version out of support"
+        summary: "Same code shape, unsupported framework version. Retarget the ASP.NET Core MVC application to the current LTS and fix whatever breaking changes that specific version hop introduces."
+        target_stack: "ASP.NET Core MVC on the current LTS"
+        consumer_impact: none
+        effort: low
+        linux_compatible: true
+        container_ready: true
+        is_lift_and_shift: true
+        is_recommended: false
+        prerequisites: "framework_version on the classification names an out-of-support release (e.g. netcoreapp3.1, net5.0, or a .NET version past its support date at the time of the engagement). Repository builds cleanly before the hop."
+        known_limitations: "Which breaking changes apply is a function of the source version, which is why this is one option parameterised by framework_version rather than one pattern per release. The hop itself is mechanical; verification is the real work."
+        playbook_md: |
+          ## Steps
+          1. Read `framework_version` from the classification — it determines
+             which breaking-change set applies. This option does not assume a
+             particular source version.
+          2. Raise `TargetFramework` to the current LTS.
+          3. Update package references to versions matching the new target.
+          4. Work the build-fix loop, then run the characterization and
+             contract-parity checks for the versions actually crossed.
   # ---------------------------------------------------------------- 11
   - id: blazor-webassembly-modern
     name: "Blazor WebAssembly application (modern)"
@@ -1321,29 +1833,60 @@ patterns:
             name: SERVICES_FOLDER
           weight: 5
       none: []
+      # No frameworkFamily condition needed: BLAZOR_WEBASSEMBLY_PACKAGE in `all`
+      # is the guard. The Microsoft.AspNetCore.Components.WebAssembly package
+      # exists only for .NET Core 3.1+/.NET 5+, so the family is implied by the
+      # package reference rather than asserted separately. Part C.
       metadata: []
     target_states:
+      # Two options, and which one applies is a step 14 decision driven by
+      # the classification's framework_version, not by re-detecting the
+      # pattern: support lifecycle parameterises target-state selection, it
+      # does not change the code shape (Part C). Neither is is_recommended —
+      # the condition is in the option names, and recommending either
+      # unconditionally would assert a version fact the catalog cannot know.
       - id: blazor-webassembly-modern-verify-scope
-        name: "No migration required — verify and confirm scope"
-        summary: "Already a modern Blazor WebAssembly client. Confirm the classification and close it out of the modernization backlog."
+        name: "No migration required — supported version"
+        summary: "The Blazor WebAssembly application is on a currently supported framework version. Confirm the classification and close it out of the modernization backlog."
         target_stack: "Already modern — no retarget needed"
         consumer_impact: none
         effort: low
         linux_compatible: true
         container_ready: true
         is_lift_and_shift: true
-        is_recommended: true
-        prerequisites: "None — this is a verification step, not a migration."
+        is_recommended: false
+        prerequisites: "framework_version on the classification is a currently supported release. If it is not, take blazor-webassembly-modern-retarget-lts instead."
         known_limitations: "Confirms only what step 3/4 could observe from source and package evidence. Spot-check for a stray legacy dependency before formally closing the item."
         playbook_md: |
           ## Steps
-          1. Spot-check for any residual legacy dependency the automated
+          1. Read `framework_version` from the classification. If it names an
+             out-of-support release, stop — this is the wrong option; take
+             `blazor-webassembly-modern-retarget-lts`.
+          2. Spot-check for any residual legacy dependency the automated
              signals wouldn't catch.
-          2. Confirm the target framework is genuinely a supported, current
-             .NET release.
           3. Record the verification and close this project out of the
              modernization backlog — no transformation work is queued.
-
+      - id: blazor-webassembly-modern-retarget-lts
+        name: "Retarget to current LTS — version out of support"
+        summary: "Same code shape, unsupported framework version. Retarget the Blazor WebAssembly application to the current LTS and fix whatever breaking changes that specific version hop introduces."
+        target_stack: "Blazor WebAssembly on the current LTS"
+        consumer_impact: none
+        effort: low
+        linux_compatible: true
+        container_ready: true
+        is_lift_and_shift: true
+        is_recommended: false
+        prerequisites: "framework_version on the classification names an out-of-support release (e.g. netcoreapp3.1, net5.0, or a .NET version past its support date at the time of the engagement). Repository builds cleanly before the hop."
+        known_limitations: "Which breaking changes apply is a function of the source version, which is why this is one option parameterised by framework_version rather than one pattern per release. The hop itself is mechanical; verification is the real work."
+        playbook_md: |
+          ## Steps
+          1. Read `framework_version` from the classification — it determines
+             which breaking-change set applies. This option does not assume a
+             particular source version.
+          2. Raise `TargetFramework` to the current LTS.
+          3. Update package references to versions matching the new target.
+          4. Work the build-fix loop, then run the characterization and
+             contract-parity checks for the versions actually crossed.
   # ---------------------------------------------------------------- 12
   - id: blazor-server-modern
     name: "Blazor Server application (modern)"
@@ -1410,46 +1953,89 @@ patterns:
           signal:
             name: BLAZOR_WEBASSEMBLY_PACKAGE
           disqualify: true
+      # No frameworkFamily condition needed: WEB_APPLICATION_CREATE_BUILDER_ENTRY_POINT
+      # in `all` already restricts this to ASP.NET Core 6+. Part C.
       metadata: []
     target_states:
+      # Two options, and which one applies is a step 14 decision driven by
+      # the classification's framework_version, not by re-detecting the
+      # pattern: support lifecycle parameterises target-state selection, it
+      # does not change the code shape (Part C). Neither is is_recommended —
+      # the condition is in the option names, and recommending either
+      # unconditionally would assert a version fact the catalog cannot know.
       - id: blazor-server-modern-verify-scope
-        name: "No migration required — verify and confirm scope"
-        summary: "Already a modern Blazor Server application. Confirm the classification and close it out of the modernization backlog."
+        name: "No migration required — supported version"
+        summary: "The Blazor Server application is on a currently supported framework version. Confirm the classification and close it out of the modernization backlog."
         target_stack: "Already modern — no retarget needed"
         consumer_impact: none
         effort: low
         linux_compatible: true
         container_ready: true
         is_lift_and_shift: true
-        is_recommended: true
-        prerequisites: "None — this is a verification step, not a migration."
+        is_recommended: false
+        prerequisites: "framework_version on the classification is a currently supported release. If it is not, take blazor-server-modern-retarget-lts instead."
         known_limitations: "Confirms only what step 3/4 could observe from source and package evidence. Spot-check for a stray legacy dependency before formally closing the item."
         playbook_md: |
           ## Steps
-          1. Spot-check for any residual legacy dependency the automated
+          1. Read `framework_version` from the classification. If it names an
+             out-of-support release, stop — this is the wrong option; take
+             `blazor-server-modern-retarget-lts`.
+          2. Spot-check for any residual legacy dependency the automated
              signals wouldn't catch.
-          2. Confirm the target framework is genuinely a supported, current
-             .NET release.
           3. Record the verification and close this project out of the
              modernization backlog — no transformation work is queued.
-
+      - id: blazor-server-modern-retarget-lts
+        name: "Retarget to current LTS — version out of support"
+        summary: "Same code shape, unsupported framework version. Retarget the Blazor Server application to the current LTS and fix whatever breaking changes that specific version hop introduces."
+        target_stack: "Blazor Server on the current LTS"
+        consumer_impact: none
+        effort: low
+        linux_compatible: true
+        container_ready: true
+        is_lift_and_shift: true
+        is_recommended: false
+        prerequisites: "framework_version on the classification names an out-of-support release (e.g. netcoreapp3.1, net5.0, or a .NET version past its support date at the time of the engagement). Repository builds cleanly before the hop."
+        known_limitations: "Which breaking changes apply is a function of the source version, which is why this is one option parameterised by framework_version rather than one pattern per release. The hop itself is mechanical; verification is the real work."
+        playbook_md: |
+          ## Steps
+          1. Read `framework_version` from the classification — it determines
+             which breaking-change set applies. This option does not assume a
+             particular source version.
+          2. Raise `TargetFramework` to the current LTS.
+          3. Update package references to versions matching the new target.
+          4. Work the build-fix loop, then run the characterization and
+             contract-parity checks for the versions actually crossed.
   # ---------------------------------------------------------------- 13
   - id: netstandard-modern-library
     name: "Modern class library"
-    summary: "Class library targeting net6.0+ or netstandard2.1 — already portable, already supported."
+    summary: "Class library on the SDK-style framework lineage (.NET Core, .NET 5+, or .NET Standard) — portable, no System.Web-era coupling."
     description: |
       A library with no entry point of its own (same absence-of-entry-point
-      basis as role-library-project) whose target framework is already
-      net6.0 or later, or netstandard2.1. Already on a fully supported
-      target. Not a migration candidate — verify the classification and
-      move on. Requires msbuild-evaluated project metadata
-      (`projectMetadataParsed`) to confirm the target framework moniker; on a
-      fingerprint without that capability this pattern correctly falls back
-      rather than asserting modernity it cannot verify.
-    legacy_stack: "Already modern"
+      basis as role-library-project) on the SDK-style framework lineage —
+      `net-core` (netcoreapp1.x-3.1), `net` (.NET 5 and later), or
+      `net-standard`. Structurally portable, with none of the System.Web-era
+      coupling that makes fx47-class-library a migration problem.
+
+      **Family discriminates, version does not.** Which exact version it is
+      (netcoreapp3.1 versus net8.0) is carried on the classification as
+      `framework_version` and read by whichever accelerator or risk score
+      needs it; it does not split this pattern. Requires msbuild-evaluated
+      project metadata (`projectMetadataParsed`) to confirm the target
+      framework; on a fingerprint without that capability this pattern
+      correctly falls back rather than asserting portability it cannot verify.
+
+      **This pattern does not assert that the target is still supported.**
+      A netcoreapp3.1 or net5.0 library matches it and is nonetheless past
+      end of life and needs a retarget. Support lifecycle is a
+      `framework_version` judgement, not a pattern boundary — so it is
+      resolved in the **target state**, not here: the two options below are
+      "no migration required — supported version" and "retarget to current
+      LTS — version out of support", and step 14 picks between them from the
+      classification's `framework_version`. See Part C.
+    legacy_stack: "SDK-style lineage"
     category: library
-    typical_indicators: "SDK-style csproj, no Main method, no top-level statements, no host-builder call; TargetFramework of net6.0 or later, or netstandard2.1."
-    known_risks: "None — already on a supported modern target. The only risk is misclassification: confirm no residual legacy dependency was missed before closing this out of the backlog."
+    typical_indicators: "SDK-style csproj, no Main method, no top-level statements, no host-builder call; a netcoreapp, net5.0+, or netstandard TargetFramework."
+    known_risks: "No System.Web-era coupling to unpick. Two residual risks: the target framework may itself be out of support (netcoreapp3.1, net5.0) and need a retarget, which framework_version tells you and this pattern does not; and misclassification — confirm no residual legacy dependency was missed before closing this out of the backlog."
     classification_role: PRIMARY
     classification_family: ALREADY_MODERN
     classification_value: MODERN_LIBRARY
@@ -1514,31 +2100,88 @@ patterns:
             name: ADD_HOSTED_SERVICE_ENTRY_POINT
           disqualify: true
       metadata:
-        - id: modern-framework-version
-          field: frameworkVersion
-          regex: "^net(6|7|8|9|10)\\.0$|^netstandard2\\.1$"
+        # Replaces `frameworkVersion regex ^net(6|7|8|9|10)\.0$|^netstandard2\.1$`.
+        # Two problems with that condition, both fixed here:
+        #   1. It discriminated within a family (net6 in, net5 out;
+        #      netstandard2.1 in, 2.0 out) — a version split of one code
+        #      shape, which is exactly what framework_version is for.
+        #   2. It could never match anything. The regex is written against
+        #      raw TFM strings ("net8.0"), but frameworkVersion holds step
+        #      2's normalised version ("8.0"), so every project failed it.
+        #
+        # `net-core` (netcoreapp1.x-3.1) is included: a netcoreapp3.1 class
+        # library is the same shape as a net8.0 one — SDK-style, no entry
+        # point, portable — and excluding it left it matching no library
+        # pattern at all, so a common real-estate project fell through to
+        # step 5's discovery queue. Whether its specific version is still
+        # supported is a framework_version question for step 10's risk
+        # scoring, not a pattern boundary (Part C).
+        # Family still discriminates: fx47-class-library owns net-framework
+        # libraries, this one owns the SDK-style lineage.
+        - id: modern-family
+          field: frameworkFamily
+          in: ["net", "net-core", "net-standard"]
+        # A project that produces an executable is not a class library.
+        # The `none` disqualifiers above already exclude one via its entry-point
+        # signal, but only when step 3 actually extracted it: on a PARTIAL
+        # fingerprint with syntax analysis unavailable, an absence-based pattern
+        # like this one goes blind and co-matches the desktop and console
+        # patterns. outputType is step 2 msbuild metadata, present whether or
+        # not syntax analysis ran, so it holds where the signal does not. This
+        # is the library half of the mutual exclusion the desktop patterns
+        # declare with `outputType equals WinExe` (docs/24 Part C).
+        - id: not-an-executable
+          field: outputType
+          notIn: ["WinExe", "Exe"]
     target_states:
+      # Two options, and which one applies is a step 14 decision driven by
+      # the classification's framework_version, not by re-detecting the
+      # pattern: support lifecycle parameterises target-state selection, it
+      # does not change the code shape (Part C). Neither is is_recommended —
+      # the condition is in the option names, and recommending either
+      # unconditionally would assert a version fact the catalog cannot know.
       - id: netstandard-modern-library-verify-scope
-        name: "No migration required — verify and confirm scope"
-        summary: "Already targets a modern, supported framework. Confirm the classification and close it out of the modernization backlog."
+        name: "No migration required — supported version"
+        summary: "The class library is on a currently supported framework version. Confirm the classification and close it out of the modernization backlog."
         target_stack: "Already modern — no retarget needed"
         consumer_impact: none
         effort: low
         linux_compatible: true
         container_ready: true
         is_lift_and_shift: true
-        is_recommended: true
-        prerequisites: "None — this is a verification step, not a migration."
+        is_recommended: false
+        prerequisites: "framework_version on the classification is a currently supported release. If it is not, take netstandard-modern-library-retarget-lts instead."
         known_limitations: "Confirms only what step 3/4 could observe from source and package evidence. Spot-check for a stray legacy dependency before formally closing the item."
         playbook_md: |
           ## Steps
-          1. Spot-check for any residual legacy dependency the automated
+          1. Read `framework_version` from the classification. If it names an
+             out-of-support release, stop — this is the wrong option; take
+             `netstandard-modern-library-retarget-lts`.
+          2. Spot-check for any residual legacy dependency the automated
              signals wouldn't catch.
-          2. Confirm the target framework is genuinely a supported, current
-             release, not an out-of-support intermediate one.
           3. Record the verification and close this project out of the
              modernization backlog — no transformation work is queued.
-
+      - id: netstandard-modern-library-retarget-lts
+        name: "Retarget to current LTS — version out of support"
+        summary: "Same code shape, unsupported framework version. Retarget the class library to the current LTS and fix whatever breaking changes that specific version hop introduces."
+        target_stack: "class library on the current LTS"
+        consumer_impact: none
+        effort: low
+        linux_compatible: true
+        container_ready: true
+        is_lift_and_shift: true
+        is_recommended: false
+        prerequisites: "framework_version on the classification names an out-of-support release (e.g. netcoreapp3.1, net5.0, or a .NET version past its support date at the time of the engagement). Repository builds cleanly before the hop."
+        known_limitations: "Which breaking changes apply is a function of the source version, which is why this is one option parameterised by framework_version rather than one pattern per release. The hop itself is mechanical; verification is the real work."
+        playbook_md: |
+          ## Steps
+          1. Read `framework_version` from the classification — it determines
+             which breaking-change set applies. This option does not assume a
+             particular source version.
+          2. Raise `TargetFramework` to the current LTS.
+          3. Update package references to versions matching the new target.
+          4. Work the build-fix loop, then run the characterization and
+             contract-parity checks for the versions actually crossed.
   # ---------------------------------------------------------- role patterns
   # 24-STEP-004-CLASSIFICATION.md Part D. Evaluated in a first pass, ahead of
   # the application patterns above, to determine project_role — which then
@@ -1825,6 +2468,40 @@ patterns:
           signal:
             name: ADD_HOSTED_SERVICE_ENTRY_POINT
           disqualify: true
+        # IIS-hosted evidence, the other half of the exclusion
+        # role-application-project declares with the same six signals
+        # (docs/24 Part C: both patterns must declare it). This role is
+        # absence-based, and priority 65 puts it AHEAD of
+        # role-application-project's 60 — so anything the application role
+        # recognises and this one does not deny wins here instead, which is
+        # how IIS-hosted WCF services (OutputType Library, no Main, no
+        # Global.asax) were being recorded as LIBRARY while ASP.NET MVC
+        # applications next to them were APPLICATION. A project IIS serves
+        # is not a class library, whatever its OutputType says.
+        - id: no-svc-file
+          signal:
+            name: SVC_FILE
+          disqualify: true
+        - id: no-service-model-config
+          signal:
+            name: SYSTEM_SERVICE_MODEL_CONFIG
+          disqualify: true
+        - id: no-aspx-page
+          signal:
+            name: ASPX_FILE
+          disqualify: true
+        - id: no-asmx-service
+          signal:
+            name: ASMX_FILE
+          disqualify: true
+        - id: no-http-handler
+          signal:
+            name: IHTTP_HANDLER_BASE_CLASS
+          disqualify: true
+        - id: no-http-module
+          signal:
+            name: IHTTP_MODULE_BASE_CLASS
+          disqualify: true
         - id: no-test-method-attr
           signal:
             name: TEST_METHOD_ATTRIBUTE
@@ -1907,6 +2584,31 @@ patterns:
         - id: hosted-service-entry
           signal:
             name: ADD_HOSTED_SERVICE_ENTRY_POINT
+        # IIS-hosted web applications have no code entry point of their own —
+        # IIS is the host, and the project is legitimately OutputType
+        # Library. Without these they fall through to role-library-project,
+        # which then contradicts the application pattern that matched them.
+        # eShopWCFService was the observed case: role LIBRARY while
+        # wcf-iis-servicemodel matched as its PRIMARY pattern. MVC and Web
+        # Forms only escaped it by happening to have Global.asax.
+        - id: svc-file-entry
+          signal:
+            name: SVC_FILE
+        - id: service-model-config-entry
+          signal:
+            name: SYSTEM_SERVICE_MODEL_CONFIG
+        - id: aspx-page-entry
+          signal:
+            name: ASPX_FILE
+        - id: asmx-service-entry
+          signal:
+            name: ASMX_FILE
+        - id: http-handler-entry
+          signal:
+            name: IHTTP_HANDLER_BASE_CLASS
+        - id: http-module-entry
+          signal:
+            name: IHTTP_MODULE_BASE_CLASS
       atLeast: []
       supporting:
         - id: aspnetcore-package

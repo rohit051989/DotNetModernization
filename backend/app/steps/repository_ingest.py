@@ -29,7 +29,10 @@ from app.workflow.adapters.base import compute_checksum
 from app.workflow.contract import StepContext, StepOutput, StepResult
 
 ARTIFACT_TYPE = "repository-inventory"
-ARTIFACT_VERSION = "1.1.0"
+# 1.2.0: added source_control_status, and clone_url may now be null
+# (15-REPOSITORY-INGEST-UI.md Part C) — additive, solution-discovery's
+# consumes range (^1.0.0) still accepts it.
+ARTIFACT_VERSION = "1.2.0"
 
 SKIP_DIR_NAMES = {".git", "node_modules", "bin", "obj", "packages"}
 
@@ -76,9 +79,12 @@ def normalize_clone_url(url: str) -> str:
     return f"{parsed.scheme}://{host}{path}"
 
 
-def derive_organization(clone_url: str) -> str | None:
+def derive_organization(clone_url: str | None) -> str | None:
     """First path segment of the clone URL — `github.com/acme/orders` ->
-    `acme`. Null when the URL has no path segment to parse (docs/19 Part A)."""
+    `acme`. Null when the URL has no path segment to parse (docs/19 Part A),
+    or there is no clone URL at all (a folder never under source control)."""
+    if not clone_url:
+        return None
     path = urlparse(normalize_clone_url(clone_url)).path.strip("/")
     if not path:
         return None
@@ -204,9 +210,30 @@ def run(context: StepContext) -> StepResult:
             detected_clone_url = run_git(local_path, "config", "--get", "remote.origin.url")
             last_commit_date_raw = run_git(local_path, "log", "-1", "--format=%cI")
 
-        if detected_clone_url is None:
+        clone_url = repo.clone_url
+        if has_git_history and not clone_url and detected_clone_url:
+            # The "migrating into source control" case, but discovered on
+            # rescan rather than at registration: the folder had no clone
+            # URL when it was registered (source_control_status NONE), and
+            # now has a git remote. Backfill from the detected remote rather
+            # than leaving clone_url null with source_control_status GIT,
+            # which ck_repositories_clone_url_required_for_git forbids.
+            clone_url = detected_clone_url
+            repo.clone_url = clone_url
+            repo.clone_url_normalised = normalize_clone_url(clone_url)
+
+        # GIT only once there is a clone_url to go with it — see the
+        # constraint above. A .git directory with no remote and no
+        # operator-supplied URL is real (has_git_history still says so) but
+        # isn't yet a fully-identified repository from this platform's
+        # registration model, so source_control_status stays NONE for it.
+        source_control_status = "GIT" if has_git_history and clone_url else "NONE"
+
+        if not has_git_history:
+            clone_url_verification = "unverifiable" if clone_url else "not_applicable"
+        elif detected_clone_url is None:
             clone_url_verification = "unverifiable"
-        elif normalize_clone_url(detected_clone_url) == normalize_clone_url(repo.clone_url):
+        elif clone_url and normalize_clone_url(detected_clone_url) == normalize_clone_url(clone_url):
             clone_url_verification = "verified"
         else:
             clone_url_verification = "mismatch"
@@ -214,7 +241,7 @@ def run(context: StepContext) -> StepResult:
         last_commit_date = (
             datetime.datetime.fromisoformat(last_commit_date_raw) if last_commit_date_raw else None
         )
-        organization = derive_organization(repo.clone_url)
+        organization = derive_organization(clone_url)
         # source_status is only knowable via a provider API — local_path is
         # the only implemented source_type, so it always stays null here.
         source_status = None
@@ -226,6 +253,7 @@ def run(context: StepContext) -> StepResult:
         repo.ingest_commit_sha = ingest_commit_sha
         repo.detected_clone_url = detected_clone_url
         repo.clone_url_verification = clone_url_verification
+        repo.source_control_status = source_control_status
         repo.size_bytes = size_bytes
         repo.file_count = file_count
         repo.organization = organization
@@ -252,7 +280,8 @@ def run(context: StepContext) -> StepResult:
             "root_folder_name": repo.root_folder_name,
             "local_path": repo.local_path,
             "source_type": repo.source_type,
-            "clone_url": repo.clone_url,
+            "clone_url": clone_url,
+            "source_control_status": source_control_status,
             "detected_clone_url": detected_clone_url,
             "clone_url_verification": clone_url_verification,
             "provider": repo.provider,

@@ -21,7 +21,7 @@ look substantive in the UI; they are not finished playbooks.
 patterns:
 
   # ---------------------------------------------------------------- 1
-  - id: core2-rest-api
+  - id: aspnetcore-rest-api-legacy
     name: ".NET Core 2.x REST API"
     summary: "ASP.NET Core 2.x Web API with Startup-based hosting, running on IIS."
     description: |
@@ -614,7 +614,7 @@ decision_records:
 
   # --- Client A ------------------------------------------------------
   - engagement_id: client-a-ocp4
-    pattern_id: core2-rest-api
+    pattern_id: aspnetcore-rest-api-legacy
     candidates_considered: [net10-api-controllers-preserved, net10-api-minimal]
     selected_target_state_id: net10-api-controllers-preserved
     evaluation_notes: "Both options leave the external contract unchanged. Controllers-preserved produces a far smaller diff and a smaller review surface across an estimated 40+ applications matching this pattern."
@@ -732,7 +732,7 @@ decision_records:
     status: approved
 
   - engagement_id: reference-engagement-b
-    pattern_id: core2-rest-api
+    pattern_id: aspnetcore-rest-api-legacy
     candidates_considered: [net10-api-controllers-preserved, net10-api-minimal]
     selected_target_state_id: net10-api-minimal
     evaluation_notes: "Small application count with strong test coverage. Client explicitly requested adoption of the modern minimal API idiom as part of a wider standards refresh."
@@ -763,3 +763,13 @@ decision_records:
 - Both SSIS target states declare `engine: none` and `coverage: none`. This is the
   single strongest differentiation point in the catalog — verify it renders
   prominently in the UI.
+- **This document is the initial seed, not the live catalog.** Patterns added
+  after step 4 landed carry step-4 `detection_rules` (the signal-rules schema in
+  `24-STEP-004-CLASSIFICATION.md` Part C), not the `target_frameworks` /
+  `forbidden_namespaces` shape written here. Two such patterns exist so far —
+  `winforms-desktop` and `wpf-desktop` (category `desktop`, ids 6a/6b in the
+  YAML), added because desktop applications are common in legacy .NET estates
+  and were otherwise matching `console-batch-job` on their `Main` alone. The
+  source of truth for the seeded catalog is
+  `backend/app/seed/data/patterns.yaml`; read this document for the original
+  intent behind each pattern, not for its current rule.

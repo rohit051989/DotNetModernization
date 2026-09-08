@@ -28,6 +28,18 @@ public sealed record SarifRun
     public required SarifTool Tool { get; init; }
     public required IReadOnlyList<SarifResult> Results { get; init; }
     public IReadOnlyList<SarifToolComponent>? Taxonomies { get; init; }
+
+    /// <summary>Declares which base a <c>uriBaseId</c> on an
+    /// <see cref="SarifArtifactLocation"/> resolves against, without
+    /// necessarily saying what that base is. The registered artifact sets
+    /// the <c>REPOROOT</c> entry's <see cref="SarifArtifactLocation.Uri"/>
+    /// to null — present, resolvable-relative-URI-wise, but carrying no
+    /// absolute machine path — so the checksum stays stable across
+    /// machines; the local-only sibling file fills it in with this
+    /// machine's actual repository path for the viewer to resolve
+    /// against.</summary>
+    public IReadOnlyDictionary<string, SarifArtifactLocation>? OriginalUriBaseIds { get; init; }
+
     public IReadOnlyDictionary<string, object?>? Properties { get; init; }
 }
 
@@ -89,8 +101,19 @@ public sealed record SarifPhysicalLocation
 public sealed record SarifArtifactLocation
 {
     /// <summary>Repository-relative, forward-slashed, never absolute — Part
-    /// A3's "no absolute paths" determinism rule.</summary>
-    public required string Uri { get; init; }
+    /// A3's "no absolute paths" determinism rule. Null only when this
+    /// record is used as the <c>REPOROOT</c> entry of the registered
+    /// file's <see cref="SarifRun.OriginalUriBaseIds"/>, where the base
+    /// itself is deliberately left unresolved.</summary>
+    public string? Uri { get; init; }
+
+    /// <summary>Names the entry in <see cref="SarifRun.OriginalUriBaseIds"/>
+    /// this location resolves against — <c>"REPOROOT"</c> for every
+    /// location this builder emits, so a viewer with the repository open
+    /// (or told where it is, via the local file's populated base) resolves
+    /// <see cref="Uri"/> relative to it instead of the platform's own
+    /// working directory.</summary>
+    public string? UriBaseId { get; init; }
 }
 
 public sealed record SarifRegion

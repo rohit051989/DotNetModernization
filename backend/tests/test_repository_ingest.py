@@ -71,7 +71,7 @@ class RepositoryIngestTestCase(unittest.TestCase):
         self.db.close()
         self.tmp.cleanup()
 
-    def _make_repository_row(self, local_path: Path, clone_url: str) -> models.Repository:
+    def _make_repository_row(self, local_path: Path, clone_url: str | None = None) -> models.Repository:
         row = models.Repository(
             id=uuid.uuid4(),
             engagement_id="client-a-ocp4",
@@ -81,7 +81,11 @@ class RepositoryIngestTestCase(unittest.TestCase):
             local_path=str(local_path),
             local_path_normalised=str(local_path).lower(),
             clone_url=clone_url,
-            clone_url_normalised=repository_ingest.normalize_clone_url(clone_url),
+            clone_url_normalised=repository_ingest.normalize_clone_url(clone_url) if clone_url else None,
+            # Pre-scan state — run() always recomputes this from the folder's
+            # actual .git presence, so what's seeded here doesn't matter to
+            # any test except as a starting value.
+            source_control_status="NONE",
             source_type="local_path",
             ingest_status="registered",
         )
@@ -131,6 +135,7 @@ class FolderWithGitTests(RepositoryIngestTestCase):
         self.assertEqual(repo.clone_url_verification, "verified")
         self.assertEqual(repo.detected_clone_url, origin_url)
         self.assertEqual(repo.ingest_status, "scanned")
+        self.assertEqual(repo.source_control_status, "GIT")
 
         artifact_path = Path(output_dir / "repository-inventory.json")
         self.assertTrue(artifact_path.exists())
@@ -138,10 +143,11 @@ class FolderWithGitTests(RepositoryIngestTestCase):
         self.assertNotIn("generated_at", inventory)
         self.assertEqual(inventory["ingest_commit_sha"], expected_sha)
         self.assertEqual(result.outputs[0].metadata["generated_at"].endswith("Z"), True)
-        self.assertEqual(inventory["artifact_version"], "1.1.0")
+        self.assertEqual(inventory["artifact_version"], "1.2.0")
         self.assertEqual(inventory["organization"], "example")
         self.assertIsNotNone(inventory["last_commit_date"])
         self.assertIsNone(inventory["source_status"])
+        self.assertEqual(inventory["source_control_status"], "GIT")
 
         self.db.refresh(repo)
         self.assertEqual(repo.organization, "example")
@@ -239,7 +245,11 @@ class FolderWithGitTests(RepositoryIngestTestCase):
 
 
 class FolderWithoutGitTests(RepositoryIngestTestCase):
-    def test_no_git_history_is_unverifiable_not_a_failure(self):
+    def test_no_git_history_with_clone_url_is_unverifiable_not_a_failure(self):
+        """A URL supplied on a non-git folder — e.g. a repository being
+        migrated into source control (15-REPOSITORY-INGEST-UI.md Part D) —
+        is recorded but unverified; source_control_status stays NONE
+        regardless, since supplying a URL doesn't make the folder git."""
         local_path = Path(self.tmp.name) / "no-git"
         local_path.mkdir()
         (local_path / "file.txt").write_text("plain folder, no git\n", encoding="utf-8")
@@ -257,6 +267,56 @@ class FolderWithoutGitTests(RepositoryIngestTestCase):
         self.assertIsNone(repo.ingest_commit_sha)
         self.assertEqual(repo.clone_url_verification, "unverifiable")
         self.assertIsNone(repo.detected_clone_url)
+        self.assertEqual(repo.source_control_status, "NONE")
+
+    def test_no_git_history_and_no_clone_url_is_not_applicable(self):
+        """The case docs/15 originally made unsatisfiable: a folder that was
+        never under source control, with no clone_url at all — not merely
+        unverified, but nothing to verify in the first place."""
+        local_path = Path(self.tmp.name) / "no-git-no-url"
+        local_path.mkdir()
+        (local_path / "file.txt").write_text("plain folder, no git, no url\n", encoding="utf-8")
+
+        repo = self._make_repository_row(local_path, clone_url=None)
+        result = repository_ingest.run(
+            self._make_context(repo.id, Path(self.tmp.name) / "out")
+        )
+
+        self.assertEqual(result.exit_status, "COMPLETED")
+        self.db.refresh(repo)
+        self.assertFalse(repo.has_git_history)
+        self.assertIsNone(repo.clone_url)
+        self.assertEqual(repo.clone_url_verification, "not_applicable")
+        self.assertEqual(repo.source_control_status, "NONE")
+        self.assertIsNone(repo.organization)
+
+    def test_git_added_after_registration_backfills_clone_url_on_rescan(self):
+        """The "migrating into source control" case, but discovered on
+        rescan: registered with no .git and no clone_url, then git is
+        initialized in the folder with a remote before the next scan."""
+        local_path = Path(self.tmp.name) / "migrated-into-git"
+        local_path.mkdir()
+        (local_path / "file.txt").write_text("starts as a plain folder\n", encoding="utf-8")
+
+        repo = self._make_repository_row(local_path, clone_url=None)
+        first = repository_ingest.run(
+            self._make_context(repo.id, Path(self.tmp.name) / "out1")
+        )
+        self.assertEqual(first.exit_status, "COMPLETED")
+        self.db.refresh(repo)
+        self.assertEqual(repo.source_control_status, "NONE")
+        self.assertIsNone(repo.clone_url)
+
+        _init_git_repo(local_path, "https://github.com/example/migrated-into-git.git")
+        second = repository_ingest.run(
+            self._make_context(repo.id, Path(self.tmp.name) / "out2")
+        )
+
+        self.assertEqual(second.exit_status, "COMPLETED")
+        self.db.refresh(repo)
+        self.assertEqual(repo.source_control_status, "GIT")
+        self.assertEqual(repo.clone_url, "https://github.com/example/migrated-into-git.git")
+        self.assertEqual(repo.clone_url_verification, "verified")
 
 
 class NonExistentPathTests(RepositoryIngestTestCase):

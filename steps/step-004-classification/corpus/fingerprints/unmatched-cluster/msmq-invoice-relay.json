@@ -1,0 +1,59 @@
+{
+  "_fixture_note": "Synthetic, not captured from a scan. Half of a two-project cluster pinning the coverage report's most_frequent_unmatched_signal_combinations (step-4-pattern-classification-against-catalog.md section 18). Both projects are MSMQ integration libraries, a shape the catalog has no pattern for, and both carry the SAME set of signal names -- so the combination must be reported once with project_count 2. That metric feeds step 5's clustering, so it has to count signals PRESENT on NO_PATTERN_MATCHED projects; an earlier version counted the anchor_signals of patterns that failed, which restated never_matched_pattern_ids and gave step 5 nothing to cluster on. If these two ever start matching a pattern, the assertion in corpus/expected/unmatched-cluster/_coverage.json fails loudly rather than silently emptying.",
+  "analysis_capabilities": {
+    "configurationParsed": true,
+    "deploymentArtifactsParsed": false,
+    "fileDiscovery": true,
+    "generatedCodeExcluded": true,
+    "msbuildEvaluated": true,
+    "projectMetadataParsed": true,
+    "semanticAnalysis": false,
+    "syntaxAnalysis": true
+  },
+  "fingerprint_status": "COMPLETE",
+  "metadata": {
+    "extension": ".csproj",
+    "fingerprintStatus": "COMPLETE",
+    "frameworkFamily": "unknown",
+    "frameworkVersion": null,
+    "outputType": "Library",
+    "projectFormat": "non_sdk",
+    "projectSdk": null,
+    "structuralType": "csharp_project"
+  },
+  "project_id": "00000000-0000-4000-8000-000000000102",
+  "project_path": "src/Integration.InvoiceRelay/Integration.InvoiceRelay.csproj",
+  "project_slug": "msmq-invoice-relay",
+  "signals": [
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 3,
+      "signal_category": "FRAMEWORK_REFERENCE",
+      "signal_name": "SYSTEM_MESSAGING_NAMESPACE",
+      "signal_type": "NAMESPACE",
+      "source_path": "src/Integration.InvoiceRelay/InvoiceQueueListener.cs",
+      "source_type": "SOURCE_CODE",
+      "value": "System.Messaging"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "FRAMEWORK_REFERENCE",
+      "signal_name": "SYSTEM_MESSAGING_ASSEMBLY",
+      "signal_type": "ASSEMBLY_REFERENCE",
+      "source_path": "src/Integration.InvoiceRelay/Integration.InvoiceRelay.csproj",
+      "source_type": "PROJECT_FILE",
+      "value": "System.Messaging"
+    },
+    {
+      "extraction_confidence": 1.0,
+      "occurrence_count": 1,
+      "signal_category": "CONFIGURATION",
+      "signal_name": "CONNECTION_STRING_CONFIG",
+      "signal_type": "CONFIG_ENTRY",
+      "source_path": "src/Integration.InvoiceRelay/app.config",
+      "source_type": "CONFIG_FILE",
+      "value": "FormatName:DIRECT=OS:queue-host\\private$\\orders"
+    }
+  ]
+}

@@ -8,9 +8,10 @@ from app.workflow.runtime.schemas import JobExecutionOut
 
 Criticality = Literal["low", "medium", "high", "critical"]
 RetirementStatus = Literal["active", "slated_for_retirement", "decommissioned"]
-CloneUrlVerification = Literal["verified", "mismatch", "unverifiable"]
+CloneUrlVerification = Literal["verified", "mismatch", "unverifiable", "not_applicable"]
 IngestStatus = Literal["registered", "scanned", "scan_failed", "path_missing"]
 SourceStatus = Literal["active", "archived", "disabled", "inaccessible"]
+SourceControlStatus = Literal["GIT", "NONE"]
 
 
 class PrimaryLanguage(BaseModel):
@@ -51,6 +52,7 @@ class InspectPathResponse(BaseModel):
                     "suggested_name": "order-management",
                     "suggested_slug": "order-management",
                     "has_git": True,
+                    "source_control_status": "GIT",
                     "detected_clone_url": "https://github.com/example/order-management.git",
                     "detected_provider": "github",
                     "detected_branch": "main",
@@ -72,6 +74,9 @@ class InspectPathResponse(BaseModel):
     suggested_name: str | None = Field(description="Prefill for the registration form's name field.")
     suggested_slug: str | None = Field(description="Prefill slug, normalised from root_folder_name.")
     has_git: bool = Field(description="Whether a .git directory was found.")
+    source_control_status: SourceControlStatus = Field(
+        description="'GIT' if a .git directory was found, 'NONE' otherwise. Tells the form whether clone_url is required."
+    )
     detected_clone_url: str | None = Field(description="The folder's git origin remote URL, if any.")
     detected_provider: str | None = Field(description="Host-derived provider for the detected clone URL.")
     detected_branch: str | None = Field(description="Current branch, if git history is present.")
@@ -118,8 +123,14 @@ class RegisterLocalPathRequest(BaseModel):
     source_type: Literal["local_path"] = Field(description="Must be 'local_path' — the only implemented source.")
     local_path: str = Field(description="Absolute path to the repository folder. Immutable once registered.")
     name: str | None = Field(default=None, description="Display name. Defaults to the folder's name.")
-    clone_url: str = Field(
-        description="The repository's canonical URL, asserted by the operator and verified against the folder's git remote where present."
+    clone_url: str | None = Field(
+        default=None,
+        description=(
+            "The repository's canonical URL, asserted by the operator and verified against the folder's git "
+            "remote where present. Required when the folder has a .git directory; optional otherwise — a "
+            "folder that was never under source control has no canonical URL. May still be supplied on a "
+            "non-git folder (e.g. one being migrated into source control); it is recorded unverified."
+        ),
     )
     description: str | None = Field(default=None, description="What this repository contains.")
     technical_owner: str | None = Field(default=None, description="Who to ask about this repository.")
@@ -212,7 +223,12 @@ class RepositorySummary(BaseModel):
 
 class RepositoryDetail(RepositorySummary):
     local_path: str = Field(description="Absolute path on the operating machine. Identity — never changes.")
-    clone_url: str = Field(description="Operator-asserted canonical URL. Identity — never changes.")
+    clone_url: str | None = Field(
+        description="Operator-asserted canonical URL. Identity — never changes. Null for a folder never under source control, unless the operator supplied one anyway."
+    )
+    source_control_status: SourceControlStatus = Field(
+        description="'GIT' if the folder has a .git directory (re-checked on every scan), 'NONE' otherwise."
+    )
     detected_clone_url: str | None = Field(description="What .git actually reports. Null when no git remote.")
     default_branch: str | None = Field(description="Detected or operator-supplied default branch.")
     organization: str | None = Field(

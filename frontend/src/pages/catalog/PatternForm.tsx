@@ -13,7 +13,7 @@ import type {
 import { emptySignalRuleSet } from '../../types/catalog'
 import { RuleBuilder } from './RuleBuilder'
 
-const CATEGORIES = ['web-api', 'web-ui', 'service', 'batch', 'library', 'data-etl']
+const CATEGORIES = ['web-api', 'web-ui', 'service', 'batch', 'library', 'data-etl', 'desktop']
 const STATUSES: LifecycleStatus[] = ['draft', 'active', 'deprecated']
 const SLUG_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/
 const SLUG_HINT = "Must be lowercase, hyphenated (e.g. 'wcf-iis-servicemodel')."

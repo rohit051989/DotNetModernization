@@ -39,24 +39,27 @@ const GIT_TONE: Record<CloneUrlVerification, string> = {
   verified: 'bg-emerald-100 text-emerald-700',
   mismatch: 'bg-amber-100 text-amber-700',
   unverifiable: 'bg-neutral-50 text-neutral-400',
+  not_applicable: 'bg-neutral-50 text-neutral-400',
 }
 
 const GIT_LABEL: Record<CloneUrlVerification, string> = {
   verified: 'verified',
   mismatch: 'mismatch',
   unverifiable: 'unverifiable',
+  not_applicable: 'not under source control',
+}
+
+const GIT_TITLE: Record<CloneUrlVerification, string> = {
+  verified: "Verified against the folder's git remote",
+  mismatch: "Does not match the folder's git remote",
+  unverifiable: 'A clone URL was supplied but there is no git remote to check it against',
+  not_applicable: 'This folder was never under source control',
 }
 
 export function CloneUrlVerificationBadge({ verification }: { verification: CloneUrlVerification }) {
   return (
     <span
-      title={
-        verification === 'mismatch'
-          ? "Does not match the folder's git remote"
-          : verification === 'unverifiable'
-            ? 'No git remote found in this folder'
-            : "Verified against the folder's git remote"
-      }
+      title={GIT_TITLE[verification]}
       className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-medium ${GIT_TONE[verification]}`}
     >
       {verification === 'mismatch' && <span aria-hidden="true">⚠</span>}

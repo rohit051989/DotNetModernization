@@ -23,14 +23,20 @@ function SummaryStat({ label, value }: { label: string; value: number }) {
   )
 }
 
-function RuleList({ title, rules, tone }: { title: string; rules: MatchedRule[]; tone: 'ok' | 'fail' }) {
+const RULE_TONE: Record<'ok' | 'fail' | 'muted', string> = {
+  ok: 'text-emerald-700',
+  fail: 'text-red-600',
+  muted: 'text-neutral-400',
+}
+
+function RuleList({ title, rules, tone }: { title: string; rules: MatchedRule[]; tone: 'ok' | 'fail' | 'muted' }) {
   if (rules.length === 0) return null
   return (
     <div className="mt-1.5">
       <p className="text-xs font-semibold uppercase tracking-wide text-neutral-400">{title}</p>
       <ul className="mt-0.5 space-y-0.5">
         {rules.map((r) => (
-          <li key={r.rule_id} className={`font-mono text-xs ${tone === 'ok' ? 'text-emerald-700' : 'text-red-600'}`}>
+          <li key={r.rule_id} className={`font-mono text-xs ${RULE_TONE[tone]}`}>
             {r.rule_id}: {r.signal_name ?? r.field}
             {r.required_occurrences != null ? ` (${r.actual_occurrences ?? 0}/${r.required_occurrences})` : ''}
             {r.weight != null ? ` +${r.weight}` : ''}
@@ -106,7 +112,16 @@ function ProjectDetailPanel({ projectId }: { projectId: string }) {
                   <span className="text-sm text-neutral-600">{m.pattern_name}</span>
                   <span className="text-xs text-neutral-400">score {m.match_score}</span>
                 </div>
-                <RuleList title="Failed rules" rules={m.failed_rules} tone="fail" />
+                <RuleList
+                  title="Why it did not match"
+                  rules={m.failed_rules.filter((r) => r.is_disqualifying !== false)}
+                  tone="fail"
+                />
+                <RuleList
+                  title="Unsatisfied alternatives (their group passed)"
+                  rules={m.failed_rules.filter((r) => r.is_disqualifying === false)}
+                  tone="muted"
+                />
                 <RuleList title="Negative rules triggered" rules={m.negative_triggered} tone="fail" />
               </div>
             ))}

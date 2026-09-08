@@ -33,7 +33,10 @@ artifact version. Two sources of truth for the same fact.
 The artifact version wins. `application-fingerprint@1.0.0`, three-part semver, per
 the versioning rules in `11-STEP-CONTRACT.md`. Do not emit a `schemaVersion` field.
 JSON Schema files (§33) are worth keeping, named to match:
-`schemas/application-fingerprint-1.0.0.schema.json`.
+`schemas/application-fingerprint-1.0.0.schema.json` (superseded by
+`-1.1.0.schema.json` per Part F's `evidenceKind` addendum — the old file stays on
+disk as a historical record, per the same "never delete, only add" rule the signal
+registry follows).
 
 ### A3. Volatile fields go in metadata, not the artifact
 
@@ -280,6 +283,7 @@ rules cannot bind reliably and every extractor invents its own naming.
       "type": "FILE_PRESENCE",
       "description": "Presence of a .svc service host file",
       "extractor": "FileIndicatorExtractor",
+      "evidence_kind": "FILE",
       "value_semantics": "count of matching files"
     },
     {
@@ -288,6 +292,7 @@ rules cannot bind reliably and every extractor invents its own naming.
       "type": "ATTRIBUTE",
       "description": "ServiceContract attribute on a type",
       "extractor": "AttributeExtractor",
+      "evidence_kind": "FILE",
       "value_semantics": "count of decorated types"
     }
   ]
@@ -301,6 +306,33 @@ Rules:
 - Every emitted signal must exist in the registry; an unregistered signal name is a
   validation failure, not a warning
 - Adding a signal is a minor registry bump; renaming or changing meaning is major
+- `evidence_kind` is one of `FILE`, `FOLDER`, `NONE` — what the signal's
+  `sourcePath` names. Get this wrong and a downstream consumer that assumes every
+  `sourcePath` is an openable file (a SARIF viewer, a future evidence UI) breaks on
+  the first folder-presence signal it sees. Audit it per signal, not per extractor —
+  `FileIndicatorExtractor` alone emits both `FILE` (`SVC_FILE`, `CSHTML_FILE`, ...)
+  and `FOLDER` (`CONTROLLERS_FOLDER`, `SERVICES_FOLDER`, ...) signals
+  (25-STANDARDS-AND-VIEWPOINTS.md Part A3 addendum)
+
+**Extractor backlog is driven by step 4, not by this document.** Signals the
+catalog needs but no extractor emits yet are recorded on the pattern that wants
+them, as `required_signals_pending[].expected_extractor`
+(`24-STEP-004-CLASSIFICATION.md` Part B2), and surface grouped by extractor in
+each scan's coverage report. Two extractors are named there and not yet built:
+
+| Extractor | Signals wanted | Wanted by |
+|---|---|---|
+| `SsisExtractor` | package-internals signals (connection managers, data flow components) | `ssis-package` |
+| `DesktopUiExtractor` | `SYSTEM_WINDOWS_FORMS_NAMESPACE`, `SYSTEM_WINDOWS_FORMS_ASSEMBLY`, `FORM_BASE_CLASS`, `SYSTEM_WINDOWS_NAMESPACE`, `PRESENTATION_FRAMEWORK_ASSEMBLY`, `WINDOW_BASE_CLASS`, `STA_THREAD_ATTRIBUTE` | `winforms-desktop`, `wpf-desktop` |
+
+`FrameworkReferenceExtractor` covered web, service and data namespaces only, so
+the registry has no desktop UI framework evidence at all — `XAML_FILE` is the
+one desktop signal it emits, and it separates WPF from WinForms without
+identifying either. Both desktop patterns are `active` regardless, detecting on
+step 2's `outputType: WinExe` plus XAML presence, and both carry a
+`matchWarnings` entry saying so. Adding these signals is a minor registry bump
+(they are additions, not renames) and lets both patterns move from
+metadata-shaped detection to real positive evidence.
 
 **Note for step 4:** the catalog's `detection_rules` JSONB is currently shaped around
 namespaces, globs and packages. Step 4 will most likely need it reshaped to reference
@@ -354,6 +386,7 @@ would reach millions.
 | `value` | `TEXT` | Fully qualified name, route template, or element path where meaningful |
 | `source_type` | `TEXT` NOT NULL | The nine §18 source types |
 | `source_path` | `TEXT` | Repository-relative |
+| `evidence_kind` | `TEXT` | CHECK IN (`FILE`, `FOLDER`, `NONE`), nullable. What `source_path` names — from the signal registry's `evidence_kind` field. Never treat a `FOLDER` (or `NONE`) row's `source_path` as an openable file location — see Part F's `evidenceKind` note |
 | `occurrence_count` | `INTEGER` NOT NULL DEFAULT 1 | |
 | `evidence` | `JSONB` | Capped array of `{line_start, line_end, declaring_type, member, snippet_hash}`. **Max 20 entries**; `occurrence_count` carries the true total |
 | `extractor` | `TEXT` NOT NULL | |
@@ -388,14 +421,24 @@ when no project could be fingerprinted at all.
 
 ---
 
-## Part F — Artifact `application-fingerprint@1.0.0`
+## Part F — Artifact `application-fingerprint@1.1.0`
 
 Written to `output_dir/application-fingerprint.json`. Deterministic per Part B.
+
+Every signal carries `evidenceKind` — `FILE`, `FOLDER`, or `NONE`, stamped from the
+signal registry's `evidence_kind` field (single source of truth per signal name, see
+Part D). It says what `sourcePath` names, so no consumer — the SARIF builder, step
+4's evidence links, `fingerprint_signals.evidence_kind`, a future "open source" UI —
+has to guess. A `FOLDER` signal (e.g. `SERVICES_FOLDER`, whose `sourcePath` is a
+directory like `src/ApplicationCore/Services`) must never be treated as something a
+viewer can open and jump to a line in; that assumption is exactly what broke the VS
+Code SARIF viewer for step 3's SARIF export (25-STANDARDS-AND-VIEWPOINTS.md Part A3
+addendum). 1.1.0 added this field; 1.0.0 lacked it and predates the fix.
 
 ```json
 {
   "artifactType": "application-fingerprint",
-  "artifactVersion": "1.0.0",
+  "artifactVersion": "1.1.0",
   "scannerVersion": "1.0.0",
   "signalRegistryVersion": "1.0.0",
   "repositoryId": "…",
@@ -440,6 +483,7 @@ Written to `output_dir/application-fingerprint.json`. Deterministic per Part B.
           "value": "System.ServiceModel.ServiceContractAttribute",
           "sourceType": "SOURCE_CODE",
           "sourcePath": "Services/ICustomerService.cs",
+          "evidenceKind": "FILE",
           "occurrenceCount": 4,
           "evidence": [ { "lineStart": 12, "lineEnd": 12, "declaringType": "ICustomerService" } ],
           "extractor": "AttributeExtractor",

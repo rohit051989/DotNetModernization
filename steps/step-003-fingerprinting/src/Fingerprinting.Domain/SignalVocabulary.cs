@@ -45,6 +45,32 @@ public static class SignalTypes
 }
 
 /// <summary>
+/// What kind of filesystem entry a signal's <see cref="Signal.SourcePath"/>
+/// names — from the signal registry's <c>evidence_kind</c> field
+/// (25-STANDARDS-AND-VIEWPOINTS.md Part A3 addendum). The registry is the
+/// single source of truth per signal name; <see cref="Signal.EvidenceKind"/>
+/// is stamped from it once, centrally, so every consumer of the native
+/// artifact — the SARIF builder, step 4's evidence links, a future "open
+/// source" UI — can tell a directory from a file without re-deriving it from
+/// the signal name.
+/// </summary>
+public static class SignalEvidenceKinds
+{
+    /// <summary>SourcePath names a file — safe to use as a SARIF
+    /// physicalLocation or any other "open this" reference.</summary>
+    public const string File = "FILE";
+
+    /// <summary>SourcePath names a directory — a structural observation
+    /// (e.g. a Controllers/ folder exists), not a location within an
+    /// artifact. Never emit a physicalLocation for one of these.</summary>
+    public const string Folder = "FOLDER";
+
+    /// <summary>The signal carries no navigable filesystem location at
+    /// all (SourcePath is null, or is a project/repository-level fact).</summary>
+    public const string None = "NONE";
+}
+
+/// <summary>
 /// The nine evidence source types from step-3-application-fingerprinting.md
 /// section 18.
 /// </summary>

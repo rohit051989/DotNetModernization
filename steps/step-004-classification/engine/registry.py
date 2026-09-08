@@ -14,7 +14,7 @@ def _registry_dir(platform_root: Path) -> Path:
     return platform_root / "steps" / "step-003-fingerprinting" / "schemas"
 
 
-def load_active_registry(platform_root: Path) -> tuple[str, frozenset[str]]:
+def _active_registry_path(platform_root: Path) -> Path:
     candidates = []
     for path in _registry_dir(platform_root).glob("signal-registry-*.json"):
         match = _FILENAME_RE.match(path.name)
@@ -23,6 +23,17 @@ def load_active_registry(platform_root: Path) -> tuple[str, frozenset[str]]:
     if not candidates:
         raise FileNotFoundError(f"No signal-registry-*.json found under {_registry_dir(platform_root)}")
     candidates.sort(key=lambda item: item[0])
-    path = candidates[-1][1]
-    data = json.loads(path.read_text(encoding="utf-8"))
+    return candidates[-1][1]
+
+
+def load_active_registry(platform_root: Path) -> tuple[str, frozenset[str]]:
+    data = json.loads(_active_registry_path(platform_root).read_text(encoding="utf-8"))
     return data["registry_version"], frozenset(s["name"] for s in data["signals"])
+
+
+def load_active_registry_entries(platform_root: Path) -> tuple[str, dict[str, dict]]:
+    """Full entries by signal name, not just the name set — probe.py needs
+    each signal's declared category/type/evidence_kind to synthesise a row
+    that a condition's category/type filters will actually accept."""
+    data = json.loads(_active_registry_path(platform_root).read_text(encoding="utf-8"))
+    return data["registry_version"], {s["name"]: s for s in data["signals"]}

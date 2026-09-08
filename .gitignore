@@ -12,3 +12,8 @@ bin/
 obj/
 steps/*/publish/
 steps/*/tests/fixtures/sample-output/
+
+# Local-only SARIF sibling (25-STANDARDS-AND-VIEWPOINTS.md Part A3): embeds
+# this machine's absolute repository path for viewer resolution, so it's
+# never the registered/checksummed output and never committed.
+*.local.sarif

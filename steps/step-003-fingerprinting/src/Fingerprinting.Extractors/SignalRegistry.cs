@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 using Fingerprinting.Domain;
 
 namespace Fingerprinting.Extractors;
@@ -23,6 +24,14 @@ public sealed record SignalRegistryEntry
 
     [JsonPropertyName("extractor")]
     public required string Extractor { get; init; }
+
+    /// <summary>One of <see cref="SignalEvidenceKinds"/> — whether this
+    /// signal's <c>sourcePath</c> names a file, a folder, or neither. The
+    /// single source of truth <see cref="Fingerprinting.Domain.Signal.EvidenceKind"/>
+    /// is stamped from (25-STANDARDS-AND-VIEWPOINTS.md Part A3
+    /// addendum).</summary>
+    [JsonPropertyName("evidence_kind")]
+    public required string EvidenceKind { get; init; }
 
     [JsonPropertyName("value_semantics")]
     public required string ValueSemantics { get; init; }
@@ -78,6 +87,36 @@ public sealed class SignalRegistry
             ?? throw new InvalidOperationException($"Signal registry at '{path}' deserialized to null.");
         return new SignalRegistry(file.RegistryVersion, file.Signals);
     }
+
+    // Highest-versioned signal-registry-*.json wins — mirrors the backend's
+    // and step 4's own "latest registry" resolution (app/catalog_rules.py,
+    // steps/step-004-classification/engine/registry.py), so a registry bump
+    // only ever means adding a new file, never a matching code change.
+    private static readonly Regex VersionedFileNamePattern = new(@"^signal-registry-(\d+)\.(\d+)\.(\d+)\.json$");
+
+    /// <summary>The highest-versioned <c>signal-registry-*.json</c> under
+    /// <paramref name="schemasDir"/>. Shared by <c>EntryPoint</c> (the real
+    /// pipeline) and the test suite, so both resolve "the active registry"
+    /// identically rather than each re-implementing the version-sort.</summary>
+    public static string ResolveLatestPath(string schemasDir)
+    {
+        var latest = Directory.EnumerateFiles(schemasDir, "signal-registry-*.json")
+            .Select(path => (Path: path, Match: VersionedFileNamePattern.Match(Path.GetFileName(path))))
+            .Where(entry => entry.Match.Success)
+            .Select(entry => (
+                entry.Path,
+                Version: (
+                    int.Parse(entry.Match.Groups[1].Value),
+                    int.Parse(entry.Match.Groups[2].Value),
+                    int.Parse(entry.Match.Groups[3].Value))))
+            .OrderByDescending(entry => entry.Version)
+            .Select(entry => entry.Path)
+            .FirstOrDefault();
+
+        return latest ?? throw new FileNotFoundException($"No signal-registry-*.json found under '{schemasDir}'.");
+    }
+
+    public static SignalRegistry LoadLatest(string schemasDir) => Load(ResolveLatestPath(schemasDir));
 
     public bool IsRegistered(string signalName) => _registeredNames.Contains(signalName);
 

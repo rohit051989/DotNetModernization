@@ -17,6 +17,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Fingerprinting.Domain\Fingerprinting.Domain.csproj" />
     <ProjectReference Include="..\..\src\Fingerprinting.Extractors\Fingerprinting.Extractors.csproj" />
+    <ProjectReference Include="..\..\src\Fingerprinting.Cli\Fingerprinting.Cli.csproj" />
   </ItemGroup>
 
 </Project>

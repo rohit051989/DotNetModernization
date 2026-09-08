@@ -1,7 +1,8 @@
 {
   "classification_status": "SKIPPED",
+  "disqualifying_rules": {},
   "matched_pattern_ids": [],
   "primary_pattern_id": null,
-  "project_role": null,
+  "project_role": "DEPLOYMENT",
   "scores": {}
 }

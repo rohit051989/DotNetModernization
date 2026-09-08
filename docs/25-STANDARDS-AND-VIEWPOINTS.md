@@ -90,6 +90,17 @@ Additive — the native artifact stays. Emit `application-fingerprint.sarif` alo
 it as a second declared output, `artifact_type: fingerprint-sarif`, version `2.1.0`
 tracking the SARIF spec version.
 
+**Why this exists — and why it isn't a debugging surface.** SARIF is for external
+interoperability: a client's own tooling ingesting our evidence, a contributed
+extractor that already speaks SARIF natively (Roslyn analyzers), and standards
+conformance the platform can point to in client material. It is **not** an internal
+debugging or verification surface — the workflow observability UI (execution detail,
+artifact list, step logs) already serves that purpose, is built for this platform's
+own data shapes, and doesn't depend on a third-party viewer's own schema-trust
+behavior. Do not spend time chasing a viewer-side rendering problem once the file is
+independently confirmed correct (schema-valid, every location resolving to a real
+file) — see the note below.
+
 Mapping:
 
 | Fingerprint | SARIF |
@@ -97,7 +108,8 @@ Mapping:
 | Signal registry entry | `tool.driver.rules[]` — `reportingDescriptor` with `id`, `name`, `shortDescription`, `properties.category` |
 | Signal instance | `results[]` with `ruleId`, `level: "none"` (these are observations, not defects) |
 | Evidence span | `locations[].physicalLocation.region.startLine` / `endLine` |
-| Source path | `physicalLocation.artifactLocation.uri`, repository-relative |
+| Source path, when `evidence_kind: FILE` | `physicalLocation.artifactLocation.uri` (repository-relative) + `uriBaseId: "REPOROOT"` |
+| Source path, when `evidence_kind: FOLDER` or `NONE` | no `locations` at all; a `FOLDER` path goes in `properties.folderPath` instead — see the addendum below |
 | `occurrence_count`, `extraction_confidence` | `properties` bag |
 | Signal categories | `taxonomies[]` |
 | Scanner version | `tool.driver.version` |
@@ -110,9 +122,89 @@ rules already satisfy most of it.
 Validate against the published SARIF 2.1.0 JSON schema before writing. A validation
 failure is a step failure.
 
+**`uriBaseId` is required, not optional.** A repository-relative `uri` with no
+`uriBaseId` resolves, per the SARIF spec, against whatever the *viewer's own*
+working directory happens to be — not the scanned repository. In practice this means
+a viewer opened anywhere other than the exact scanned root reports every location as
+unresolvable (observed: VS Code's SARIF viewer, `"Unable to find
+'ConfirmEmail.cshtml.cs'"`). Every `artifactLocation` in `results[].locations` must
+carry `uriBaseId: "REPOROOT"`, and the enclosing `run` must declare `REPOROOT` in
+`originalUriBaseIds` — the schema requires the id to be declared even when nothing
+resolves it.
+
+This creates a determinism conflict: `originalUriBaseIds.REPOROOT.uri` is exactly the
+kind of absolute, machine-specific path the "no absolute paths" rule above forbids,
+but a real viewer needs *some* absolute path to resolve against. Resolve it with two
+files, not one:
+
+1. **The registered, checksummed output** (`application-fingerprint.sarif`,
+   `fingerprint-sarif@2.1.0`) declares `originalUriBaseIds: { "REPOROOT": {} }` —
+   the id is present so the schema and every `uriBaseId` reference are valid, but its
+   `uri` is omitted entirely. No absolute path enters the file, so the determinism
+   guarantee (identical checksum for identical input, on any machine) holds.
+2. **A local-only sibling** (`application-fingerprint.local.sarif`, same directory)
+   is byte-identical except `originalUriBaseIds.REPOROOT.uri` is filled in with this
+   machine's actual repository root as an absolute `file://` URI (trailing slash, so
+   relative URIs resolve as directory children per RFC 3986). This file is never
+   declared as a step output, never checksummed, and gitignored — it exists purely
+   so a developer on this machine can open it in a SARIF viewer and have locations
+   resolve. Rebuild it on every run alongside the registered file; do not hand-edit it.
+
+A step emitting SARIF should build both from the same in-memory log — everything
+except that one field is shared — rather than writing the sibling as a
+post-processing patch over the registered file.
+
 Note in the step 3 README that a colleague contributing an extractor may deliver
 SARIF directly rather than the native signal format, since Roslyn analyzers emit it
 natively — that is the point of adopting it.
+
+**Not every signal's evidence is a location a viewer can open.** SARIF's
+`physicalLocation` means a location *within* an artifact — a byte or line range a
+viewer can navigate to. A folder-presence signal (`FileIndicatorExtractor`'s
+`CONTROLLERS_FOLDER`, `SERVICES_FOLDER`, ... — eight of the ninety-one registered
+signals) has a `sourcePath` that is a directory (e.g.
+`src/ApplicationCore/Services`), not a file: no line range makes sense for it, and a
+viewer that tries to open it as one fails outright.
+
+Fix the mapping table's "source path" row: it undersold this as "repository-relative"
+without saying *what kind of thing* — the row is the same regardless of whether the
+signal observed a file or a folder, which is exactly the gap that let this ship. The
+signal registry now carries an `evidence_kind` field per signal name (`FILE`,
+`FOLDER`, or `NONE` for a signal with no navigable source path at all) — audit every
+signal type against it, not just the ones a spec author happens to think of; get one
+wrong and a viewer breaks on the first repository that has one. The SARIF builder
+decides from this field, not from a per-name guess: `evidence_kind != FILE` emits no
+`locations` for that result at all (the folder path is still worth keeping — put it
+in `properties.folderPath` instead). Two files is still the shape (registered vs.
+local, above); this addendum only changes when the "location" half of that shape gets
+populated.
+
+**Fix it at the source, not only in the SARIF writer.** The same `sourcePath` is
+recorded in the native `application-fingerprint` artifact and in
+`fingerprint_signals` — a future consumer of either (step 4's evidence links per
+§20/§24, a "view evidence" UI) would hit the identical bug the SARIF viewer did if
+`evidence_kind` only existed inside the SARIF builder's head. Stamp
+`Signal.evidenceKind` centrally, once, from the registry — the single source of
+truth per signal name — onto every signal in the native artifact
+(`application-fingerprint@1.1.0`, see `21-STEP-003-FINGERPRINTING.md` Part F) and the
+`fingerprint_signals.evidence_kind` column, not just the SARIF projection.
+
+Add a test asserting every `physicalLocation` in the emitted SARIF resolves to a real
+file on disk — never a directory, never a missing path. Run it against a real
+repository, not only a synthetic fixture; a folder-evidence bug like this one is
+exactly the kind a hand-built two-signal fixture can miss by construction.
+
+**Closed: the VS Code SARIF Viewer blank-panel report.** After the `uriBaseId` and
+`evidence_kind` fixes above, a blank panel remained when opening the file directly in
+VS Code's SARIF Viewer extension. Independently confirmed correct: schema-valid
+against the published SARIF 2.1.0 schema, and every `physicalLocation` resolves to a
+real file on disk (the automated test above). The remaining symptom is that
+extension's own schema-trust behavior toward a `$schema` URL it doesn't recognize as
+one of its pinned trusted dialects — not a defect in this platform's output. Per the
+"why this exists" note above, this is not worth further investigation: SARIF here is
+for external interoperability, not internal debugging, and the workflow observability
+UI is the actual verification surface for this platform's own runs. Do not resume
+work on making a third-party viewer render this file.
 
 ---
 
@@ -216,6 +308,16 @@ implement — with reasons — reads as judgement rather than ignorance.
 - [ ] Step 3 emits `fingerprint-sarif@2.1.0` as a second output, validating against
       the SARIF 2.1.0 schema before write
 - [ ] Two runs produce identical SARIF checksums
+- [ ] Every location carries `uriBaseId: "REPOROOT"`; the registered file declares
+      `originalUriBaseIds.REPOROOT` with no `uri`, and a gitignored
+      `*.local.sarif` sibling fills it in for local viewing
 - [ ] The SARIF file opens in a SARIF viewer with rules and locations resolving
+- [ ] The signal registry carries `evidence_kind` (`FILE`/`FOLDER`/`NONE`) per
+      signal name; a `FOLDER` or `NONE` signal never emits a SARIF `physicalLocation`
+- [ ] `Signal.evidenceKind` is stamped centrally from the registry onto the native
+      `application-fingerprint` artifact and `fingerprint_signals.evidence_kind`, not
+      only computed inside the SARIF builder
+- [ ] A test asserts every emitted `physicalLocation` resolves to a real file on
+      disk (never a directory, never a missing path), run against a real repository
 - [ ] Specs 19, 32 and the step 7 entry in docs/17 updated per Part B
 - [ ] `docs/17-LIFECYCLE-STEPS.md` gains a viewpoint column

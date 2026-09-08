@@ -33,6 +33,12 @@ def build_coverage_report(
 
     evaluated_ids: set[str] = set()
     matched_ids: set[str] = set()
+    # §18's "most frequent unmatched signal combinations": the recurring
+    # shapes of signals **present on projects that matched nothing** — the
+    # direct input to step 5's clustering. This previously counted the
+    # `anchor_signals` of patterns that failed, which was a restatement of
+    # never_matched_pattern_ids (every entry's count equalled the project
+    # count) and gave step 5 nothing to cluster on.
     unmatched_combinations: Counter[tuple[str, ...]] = Counter()
     for result in project_results:
         for m in result["matches"]:
@@ -40,21 +46,34 @@ def build_coverage_report(
             evaluated_ids.add(pattern["id"])
             if m["matched"]:
                 matched_ids.add(pattern["id"])
-            elif pattern["anchor_signals"]:
-                unmatched_combinations[tuple(sorted(pattern["anchor_signals"]))] += 1
         # Role patterns (Part D) are evaluated in their own first pass, never
         # added to `matches` — track them here so they don't read as "never
-        # matched" just because they live in a separate code path.
+        # matched" just because they live in a separate code path. Counting
+        # every role pattern that cleared its threshold, not just the winner:
+        # role-unknown is specified as an always-matching fallback and never
+        # wins on priority, so winner-only counting reported it as never
+        # matched.
         evaluated_ids.update(result.get("role_patterns_evaluated") or [])
+        matched_ids.update(result.get("role_patterns_matched") or [])
         if result.get("role_pattern_id"):
             matched_ids.add(result["role_pattern_id"])
 
+        if result["classification_status"] == "NO_PATTERN_MATCHED":
+            present = tuple(result.get("signals_present") or [])
+            if present:
+                unmatched_combinations[present] += 1
+
     never_matched = sorted(p["id"] for p in active_patterns if p["id"] not in matched_ids)
 
+    # Not filtered to rules_status == "awaiting_signals": a pattern can be
+    # active on a partial detection (e.g. ssis-package's metadata-only rule,
+    # 24-STEP-004-CLASSIFICATION.md Part A6) while required_signals_pending
+    # still tracks richer signals a future extractor will add. The extractor
+    # backlog this drives is about what required_signals_pending says is
+    # still missing, independent of whether the pattern can already be
+    # evaluated some other way.
     awaiting_by_extractor: dict[str, list[str]] = defaultdict(list)
     for pattern in patterns:
-        if pattern["rules_status"] != "awaiting_signals":
-            continue
         for pending in pattern.get("required_signals_pending") or []:
             awaiting_by_extractor[pending["expected_extractor"]].append(pattern["id"])
     for extractor in awaiting_by_extractor:
@@ -73,7 +92,7 @@ def build_coverage_report(
         "never_matched_pattern_ids": never_matched,
         "patterns_awaiting_signals_by_extractor": dict(awaiting_by_extractor),
         "most_frequent_unmatched_signal_combinations": [
-            {"anchor_signals": list(combo), "count": count}
+            {"signals": list(combo), "project_count": count}
             for combo, count in unmatched_combinations.most_common(5)
         ],
     }

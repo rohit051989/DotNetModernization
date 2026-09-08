@@ -163,10 +163,11 @@ def replace_classification_results(
                 """
                 INSERT INTO project_classifications (
                     project_id, repository_id, classification_status, project_role,
-                    project_role_confidence, catalog_revision, signal_registry_version,
+                    project_role_confidence, framework_family, framework_version,
+                    catalog_revision, signal_registry_version,
                     config_version, evaluated_pattern_count, primary_pattern_id, warnings,
                     step_execution_id, classified_at
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, now())
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, now())
                 """,
                 (
                     result["project_id"],
@@ -174,6 +175,8 @@ def replace_classification_results(
                     result["classification_status"],
                     result["project_role"],
                     result["project_role_confidence"],
+                    result["framework_family"],
+                    result["framework_version"],
                     result["catalog_revision"],
                     result["signal_registry_version"],
                     result["config_version"],
@@ -189,10 +192,10 @@ def replace_classification_results(
                     INSERT INTO classification_matches (
                         project_id, repository_id, pattern_id, pattern_version, matched,
                         classification_role, match_score, confidence, confidence_level,
-                        is_primary_selected, rejection_reason, engagement_scope_status,
+                        is_primary_selected, rejection_reason, relationship_source, engagement_scope_status,
                         matched_rules, failed_rules, missing_preferred, negative_triggered,
                         explanation
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """,
                     (
                         result["project_id"],
@@ -206,6 +209,7 @@ def replace_classification_results(
                         m["confidence_level"],
                         m["is_primary_selected"],
                         m["rejection_reason"],
+                        m["relationship_source"],
                         m["engagement_scope_status"],
                         psycopg.types.json.Json(m["matched_rules"]),
                         psycopg.types.json.Json(m["failed_rules"]),

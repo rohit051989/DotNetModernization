@@ -4,7 +4,7 @@ import type { PatternSummary } from '../../types/catalog'
 import { EmptyState } from '../../components/EmptyState'
 import { PatternForm } from './PatternForm'
 
-const CATEGORIES = ['web-api', 'web-ui', 'service', 'batch', 'library', 'data-etl']
+const CATEGORIES = ['web-api', 'web-ui', 'service', 'batch', 'library', 'data-etl', 'desktop']
 
 interface PatternListProps {
   selectedPatternId: string | null

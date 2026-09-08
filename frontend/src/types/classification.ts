@@ -52,6 +52,12 @@ export interface MatchedRule {
   required_occurrences?: number | null
   weight?: number
   evidence?: RuleEvidence[]
+  /** Which rule group this condition came from: all | any | atLeast | metadata. */
+  group?: string
+  /** On a failed rule: whether this failure is why the pattern did not match.
+   *  False means it is an unsatisfied alternative inside an any/atLeast group
+   *  that passed on a sibling — context for tuning, not a cause. */
+  is_disqualifying?: boolean
 }
 
 export interface ClassificationMatch {

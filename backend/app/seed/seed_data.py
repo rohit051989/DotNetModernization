@@ -250,13 +250,43 @@ def seed(reset: bool = False) -> dict:
 def seed_lifecycle_steps() -> dict:
     """Registers all 51 lifecycle steps as stubs from lifecycle_steps.yaml —
     see 17-LIFECYCLE-STEPS.md. Idempotent upsert by step_name: re-run any time
-    the file changes, no code changes needed."""
+    the file changes, no code changes needed.
+
+    **Never downgrades an already-implemented step.** This used to rewrite
+    every row unconditionally, which meant any `python -m app.seed` run — for
+    a pattern edit, an engagement edit, anything — silently reset the four
+    implemented steps to `adapter_type: stub`, `produces: []`,
+    `implementation_status: stub`. The next discovery run then executed
+    repository-ingest as a stub, it produced no `repository-inventory`
+    artifact, and solution-discovery failed with "input
+    'repository-inventory' did not resolve to an artifact" — a confusing
+    error a long way from its cause.
+
+    For an implemented row, only the descriptive fields this file actually
+    owns are refreshed (display name, owner, viewpoint, lifecycle number);
+    the adapter, contract and status are left alone, since those are owned by
+    whoever implemented the step and registered it via
+    `POST /api/workflow/steps`.
+    """
     db = SessionLocal()
     try:
         steps_data = _load("lifecycle_steps.yaml")["steps"]
         created = 0
         updated = 0
+        preserved = 0
         for step_data in steps_data:
+            existing = db.get(models.WfStepRegistration, step_data["step_name"])
+            if existing is not None and existing.implementation_status != "stub":
+                # Refresh only what lifecycle_steps.yaml is the source of
+                # truth for. Adapter/contract/status/version stay as
+                # registered.
+                existing.lifecycle_step_no = step_data["lifecycle_step_no"]
+                existing.display_name = step_data["display_name"]
+                existing.owner_code = step_data["owner_code"]
+                existing.viewpoint = step_data.get("viewpoint")
+                preserved += 1
+                continue
+
             declaration = StepDeclaration(
                 step_name=step_data["step_name"],
                 lifecycle_step_no=step_data["lifecycle_step_no"],
@@ -282,6 +312,7 @@ def seed_lifecycle_steps() -> dict:
         return {
             "steps_created": created,
             "steps_updated": updated,
+            "steps_implemented_preserved": preserved,
             "steps_total": db.query(models.WfStepRegistration).count(),
         }
     finally:
@@ -305,5 +336,6 @@ def print_summary(result: dict) -> None:
 def print_steps_summary(result: dict) -> None:
     print(
         f"Seeded: {result['steps_total']} lifecycle steps "
-        f"({result['steps_created']} created, {result['steps_updated']} updated)"
+        f"({result['steps_created']} created, {result['steps_updated']} updated, "
+        f"{result.get('steps_implemented_preserved', 0)} implemented left untouched)"
     )

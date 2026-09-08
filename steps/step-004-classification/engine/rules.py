@@ -67,13 +67,32 @@ def evaluate_signal_condition(condition: dict, signals_by_name: dict[str, list[d
     return True, filtered
 
 
+_POSITIVE_METADATA_OPERATORS = ("equals", "in", "startsWith", "contains", "regex")
+
+
 def evaluate_metadata_condition(condition: dict, project_metadata: dict) -> bool:
     """Part C 'Metadata conditions' — against step 2/3 project fields
     (outputType, projectFormat, frameworkFamily, frameworkVersion,
-    projectSdk, structuralType, extension, fingerprintStatus), never signals."""
+    projectSdk, structuralType, extension, fingerprintStatus), never signals.
+
+    `notEquals`/`notIn` express a metadata **exclusion**, which the `none`
+    group cannot: that group only accepts signal conditions. An absent field
+    value satisfies a negative operator — a project with no recorded
+    outputType is not known to be WinExe — while a positive operator on an
+    absent value still fails.
+    """
     actual = project_metadata.get(condition["field"])
-    if actual is None:
+
+    if condition.get("notEquals") is not None and actual == condition["notEquals"]:
         return False
+    if condition.get("notIn") and actual in condition["notIn"]:
+        return False
+
+    if actual is None:
+        # Negatives above have already passed; a positive operator cannot be
+        # satisfied by an absent value.
+        return not any(condition.get(op) is not None for op in _POSITIVE_METADATA_OPERATORS)
+
     if condition.get("equals") is not None and actual != condition["equals"]:
         return False
     if condition.get("in") and actual not in condition["in"]:
@@ -107,6 +126,20 @@ def _rule_record(condition: dict, rows: list[dict], weight: float | None = None)
     return record
 
 
+def _failed(record: dict, group: str, is_disqualifying: bool) -> dict:
+    """Annotates a failed-rule record with why it is in `failed_rules`.
+
+    `failed_rules` holds two different things and conflating them misleads:
+    a condition whose failure actually stopped the pattern matching, and a
+    non-matching alternative inside an `any`/`atLeast` group that passed
+    anyway on one of its siblings. Only the first is a reason; the second is
+    tuning context. `is_disqualifying` separates them, and
+    `evaluate_ruleset` sorts the disqualifying ones first, so
+    `failed_rules[0]` reads as the cause it looks like.
+    """
+    return {**record, "group": group, "is_disqualifying": is_disqualifying}
+
+
 class RuleGroupOutcome:
     """Result of evaluating one pattern's `detection_rules` against a
     project — everything Part E steps 1-5 need before scoring, plus the
@@ -124,6 +157,14 @@ class RuleGroupOutcome:
 
 
 def evaluate_ruleset(ruleset: dict, signals_by_name: dict, project_metadata: dict) -> RuleGroupOutcome:
+    outcome = _evaluate_ruleset(ruleset, signals_by_name, project_metadata)
+    # Disqualifying entries first, so failed_rules[0] is the actual cause.
+    # sort() is stable, so group order is preserved within each bucket.
+    outcome.failed_rules.sort(key=lambda r: not r.get("is_disqualifying", False))
+    return outcome
+
+
+def _evaluate_ruleset(ruleset: dict, signals_by_name: dict, project_metadata: dict) -> RuleGroupOutcome:
     outcome = RuleGroupOutcome()
 
     # 1. all — every condition must match.
@@ -134,7 +175,7 @@ def evaluate_ruleset(ruleset: dict, signals_by_name: dict, project_metadata: dic
             outcome.matched_rules.append(record)
             outcome.matched_signal_rows.extend(rows)
         else:
-            outcome.failed_rules.append(record)
+            outcome.failed_rules.append(_failed(record, "all", is_disqualifying=True))
             outcome.disqualified = True
             outcome.disqualifying_group = "all"
             return outcome
@@ -151,14 +192,16 @@ def evaluate_ruleset(ruleset: dict, signals_by_name: dict, project_metadata: dic
                 outcome.matched_signal_rows.extend(rows)
             else:
                 any_failed.append(record)
-        if not any_matched:
-            outcome.matched_rules.extend(any_matched)
-            outcome.failed_rules.extend(any_failed)
+        # Every member failing is what disqualifies, so each failure is a
+        # cause. If one sibling matched, the rest are unsatisfied
+        # alternatives within a group that passed — context, not cause.
+        group_disqualified = not any_matched
+        outcome.matched_rules.extend(any_matched)
+        outcome.failed_rules.extend(_failed(r, "any", group_disqualified) for r in any_failed)
+        if group_disqualified:
             outcome.disqualified = True
             outcome.disqualifying_group = "any"
             return outcome
-        outcome.matched_rules.extend(any_matched)
-        outcome.failed_rules.extend(any_failed)
 
     # 3. atLeast — each group needs `count` of its `of` conditions to match.
     for group in ruleset.get("atLeast", []):
@@ -171,9 +214,10 @@ def evaluate_ruleset(ruleset: dict, signals_by_name: dict, project_metadata: dic
                 outcome.matched_signal_rows.extend(rows)
             else:
                 group_failed.append(record)
+        group_disqualified = len(group_matched) < group["count"]
         outcome.matched_rules.extend(group_matched)
-        outcome.failed_rules.extend(group_failed)
-        if len(group_matched) < group["count"]:
+        outcome.failed_rules.extend(_failed(r, "atLeast", group_disqualified) for r in group_failed)
+        if group_disqualified:
             outcome.disqualified = True
             outcome.disqualifying_group = "atLeast"
             return outcome
@@ -185,7 +229,7 @@ def evaluate_ruleset(ruleset: dict, signals_by_name: dict, project_metadata: dic
         if ok:
             outcome.matched_rules.append(record)
         else:
-            outcome.failed_rules.append(record)
+            outcome.failed_rules.append(_failed(record, "metadata", is_disqualifying=True))
             outcome.disqualified = True
             outcome.disqualifying_group = "metadata"
             return outcome

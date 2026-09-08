@@ -87,8 +87,12 @@ Behaviour:
 2. Verify the path still exists and is a directory. `FAILED` with a clear message if
    the folder has moved or been deleted.
 3. Detect `.git`. If present, resolve HEAD SHA, current branch and the `origin`
-   remote URL; set `has_git_history: true`. If absent, set `ingest_commit_sha` null
-   and `has_git_history: false` — a working folder without history is valid input.
+   remote URL; set `has_git_history: true` and `source_control_status: GIT`. If
+   absent, set `ingest_commit_sha` null, `has_git_history: false` and
+   `source_control_status: NONE` — a working folder without history is valid input.
+   If `.git` is newly present and the row has no `clone_url` yet, backfill it from
+   the detected remote (Part D) rather than leaving it null with
+   `source_control_status: GIT`, which the schema forbids.
 4. Perform clone URL verification (Part D) and record the outcome.
 5. Compute size and file-count metrics, skipping `.git`, `node_modules`, `bin`,
    `obj`, `packages`.
@@ -127,10 +131,11 @@ Replaces the table definition in `13-STEP-001-REPOSITORY-INGEST.md` entirely.
 | `slug` | `TEXT` NOT NULL | Normalised from `root_folder_name` |
 | `local_path` | `TEXT` NOT NULL | Absolute path on the operating machine |
 | `local_path_normalised` | `TEXT` NOT NULL | Duplicate check |
-| `clone_url` | `TEXT` NOT NULL | User-asserted canonical identity |
-| `clone_url_normalised` | `TEXT` NOT NULL | Duplicate check |
+| `source_control_status` | `TEXT` NOT NULL DEFAULT `'NONE'` | CHECK IN (`GIT`, `NONE`). Whether the folder has a `.git` directory. Re-derived on every scan, not just at registration — a folder can be migrated into source control after being registered |
+| `clone_url` | `TEXT` | Nullable. User-asserted canonical identity. **Required when `source_control_status` is `GIT`** — enforced both at registration (422) and by `ck_repositories_clone_url_required_for_git`. Null for a folder that was never under source control, unless the operator supplies one anyway (e.g. a repository being migrated into source control) |
+| `clone_url_normalised` | `TEXT` | Nullable, mirroring `clone_url`. Duplicate check — see below |
 | `detected_clone_url` | `TEXT` | What `.git` actually reports. Null when no git |
-| `clone_url_verification` | `TEXT` NOT NULL DEFAULT `'unverifiable'` | CHECK IN (`verified`, `mismatch`, `unverifiable`) |
+| `clone_url_verification` | `TEXT` NOT NULL DEFAULT `'unverifiable'` | CHECK IN (`verified`, `mismatch`, `unverifiable`, `not_applicable`). `not_applicable` means there is no `clone_url` at all to verify — distinct from `unverifiable`, which means a `clone_url` exists but there is nothing to check it against (no git remote, or no git at all but the operator supplied one anyway) |
 | `source_type` | `TEXT` NOT NULL | CHECK IN (`local_path`, `git_clone`) |
 | `provider` | `TEXT` | Derived from clone URL host: `github`, `bitbucket`, `azure_devops`, `gitlab`, `other` |
 | `default_branch` | `TEXT` | Detected or user supplied |
@@ -182,7 +187,11 @@ counts** on the dashboard.
 
 Three partial unique indexes, all `WHERE deleted_at IS NULL`:
 
-- `(engagement_id, clone_url_normalised)` — the canonical identity check
+- `(engagement_id, clone_url_normalised)` — the canonical identity check.
+  **Additionally scoped `AND clone_url_normalised IS NOT NULL`** — the check applies
+  only where there is a clone URL to compare. A folder with no clone URL cannot
+  collide on this index; `root_folder_name` and `local_path_normalised` remain the
+  identity checks for those.
 - `(engagement_id, root_folder_name)`
 - `(engagement_id, local_path_normalised)`
 
@@ -230,6 +239,7 @@ POST /api/engagements/{eid}/repositories/inspect-path
   "suggested_name": "order-management",
   "suggested_slug": "order-management",
   "has_git": true,
+  "source_control_status": "GIT",
   "detected_clone_url": "https://github.com/example/order-management.git",
   "detected_provider": "github",
   "detected_branch": "main",
@@ -245,6 +255,8 @@ POST /api/engagements/{eid}/repositories/inspect-path
 
 Drives the form: the user pastes a path, inspection fires on blur, and name, branch
 and provider prefill. It also surfaces a duplicate before the user fills anything else.
+`source_control_status` tells the form whether the clone URL field is required
+(`GIT`) or optional (`NONE`) — the field itself never hardcodes that decision.
 
 `solution_files_found` and `project_files_found` are a shallow glob count, not
 analysis — they give the user immediate confidence the right folder was picked.
@@ -265,15 +277,30 @@ Never silently overwrite what the user entered.
 |---|---|---|
 | `.git` present, normalised remote matches the entered URL | `verified` | Proceed |
 | `.git` present, normalised remote differs | `mismatch` | Proceed with a prominent warning; store both values |
-| No `.git`, or no `origin` remote configured | `unverifiable` | Proceed with a note |
+| `.git` present, no `origin` remote configured | `unverifiable` | Proceed with a note |
+| No `.git`, but the operator supplied a clone URL anyway | `unverifiable` | Proceed with a note. `source_control_status` stays `NONE` — supplying a URL does not retroactively make the folder git-tracked; see the "migrating into source control" case below |
+| No `.git`, and no clone URL supplied | `not_applicable` | Proceed. There is nothing to verify, not merely something unverified — a folder that was never under source control has no canonical URL, and `docs/15` treating that as a form of "unverifiable" was the original spec error |
 
 A mismatch is a warning, not a rejection. Legitimate causes exist — the repository
 moved, the folder is a fork or a mirror, or the remote was never updated. But it is
 also exactly what a wrong pasted path looks like, so it must be visible in the UI and
 on the repository detail page rather than buried.
 
-Verification runs at registration and again at every scan, so a remote changed later
-is caught.
+**A folder that was never under source control is a real, common case for a legacy
+estate** — a file share, an old FTP drop, code that predates the team's adoption of
+git — not an edge case. `clone_url` is nullable and required only when
+`source_control_status` is `GIT`; making it universally mandatory made step 1 unable
+to register exactly the repositories a modernization program most needs visibility
+into. The operator may still supply a clone URL on a non-git folder — the
+"repository being migrated into source control" case — in which case it is recorded
+with `clone_url_verification: unverifiable` (there is a URL, just nothing to check it
+against) while `source_control_status` stays `NONE` until `.git` actually appears.
+Verification, and `source_control_status` itself, are both re-derived on every
+scan — not just at registration — so a folder that gains `.git` after being
+registered is caught on the next rescan. If the operator never supplied a clone URL
+and the rescan detects one via `.git`'s `origin` remote, it is backfilled from the
+detected remote rather than left null, since `source_control_status: GIT` requires a
+non-null `clone_url`.
 
 ### Register
 
@@ -304,8 +331,36 @@ POST /api/engagements/{eid}/repositories/register
 }
 ```
 
-`local_path` and `clone_url` are mandatory. `name` defaults to `root_folder_name`.
-`criticality` defaults to `medium`, `retirement_status` to `active`.
+`local_path` is always mandatory. `clone_url` is mandatory only when the folder has
+a `.git` directory — omitting it (or sending `null`) for a git folder returns 422,
+`code: CLONE_URL_REQUIRED_FOR_GIT`, naming the `clone_url` field. `name` defaults to
+`root_folder_name`. `criticality` defaults to `medium`, `retirement_status` to
+`active`.
+
+A folder with no `.git` needs no `clone_url` at all:
+
+```
+POST /api/engagements/{eid}/repositories/register
+{
+  "source_type": "local_path",
+  "local_path": "D:\\samples\\no-git-repo",
+  "name": "No-Git Legacy Folder",
+  "description": "Legacy code that lived on a file share and was never put under source control.",
+  "criticality": "medium",
+  "retirement_status": "active",
+  "tags": ["legacy", "no-source-control"]
+}
+
+→ 202
+{
+  "repository_id": "…",
+  "slug": "no-git-repo",
+  "ingest_token": "…",
+  "job_execution_id": "…",
+  "clone_url_verification": "not_applicable",
+  "status": "processing"
+}
+```
 
 ### Clone registration — 501 for now
 
@@ -359,9 +414,10 @@ prevent mistakes, not attacks.
   `C:\Program Files (x86)`, `C:\ProgramData`, and any bare drive root such as `C:\`.
   Registering a drive root would attempt to scan the whole disk.
 - Reject a path containing no files at all.
-- Clone URL must parse as an `https` URL or match the `git@host:org/repo` SSH form.
-  Reject embedded credentials (`https://user:token@…`) with a message pointing at
-  environment variables.
+- Clone URL, when supplied, must parse as an `https` URL or match the
+  `git@host:org/repo` SSH form. Reject embedded credentials (`https://user:token@…`)
+  with a message pointing at environment variables. Not supplying one at all is
+  valid — see Part C — unless the folder has `.git`, in which case it is required.
 - Warn but allow when no `.sln` or `.csproj` is present — the folder may still be in
   scope, and pattern discovery may surface something unanticipated.
 
@@ -395,8 +451,9 @@ applications, patterns, discovery progress, last scanned, actions.
 - **Ingest status** — `registered` grey, `scanned` teal, `scan_failed` red,
   `path_missing` amber with a warning icon.
 - **Criticality** — badge; `critical` red, `high` amber, `medium` neutral, `low` muted.
-- **Git indicator** — a small marker showing `verified`, `mismatch` (amber warning) or
-  `unverifiable` (muted).
+- **Git indicator** — a small marker showing `verified`, `mismatch` (amber warning),
+  `unverifiable` (muted), or `not_applicable` (muted, labelled "not under source
+  control").
 - **Applications / patterns** — `—` with a tooltip naming the awaited step wherever
   the producing step is a stub. See Part G. Never display `0`.
 - **Discovery progress** — `n/7` with the segmented bar from `16-DASHBOARD-SPEC.md`.
@@ -432,14 +489,23 @@ endpoint from the UI.
    detected folder name, git status, branch, commit, solution and project file
    counts, estimated size, and any warnings. A duplicate conflict renders as a
    blocking error naming the existing repository, with submit disabled.
-2. **Git clone URL** — required, entered by the user. Helper text: "The repository's
+2. **Git clone URL** — entered by the user. Required only when `inspect-path`
+   reported `source_control_status: GIT`; the field's own label reflects this
+   ("Git clone URL" vs. "Git clone URL (optional)"), and submission is never blocked
+   on it for a folder with no `.git`. When required, helper text: "The repository's
    canonical URL. It identifies this repository independently of where it sits on
-   disk." Once a path with `.git` has been inspected, show a live verification
-   indicator beneath the field:
-   - match → green "Verified against the folder's git remote"
-   - differ → amber "Does not match the folder's remote: {detected}. Check the path
-     is correct. You can continue if this is intentional."
-   - no git → muted "Cannot be verified — no git remote found in this folder"
+   disk." Once a path has been inspected, show a live verification indicator beneath
+   the field:
+   - `.git` present, match → green "Verified against the folder's git remote"
+   - `.git` present, differ → amber "Does not match the folder's remote: {detected}.
+     Check the path is correct. You can continue if this is intentional."
+   - `.git` present, no remote → muted "Cannot be verified — no git remote found in
+     this folder. It will be recorded unverified."
+   - no `.git`, field empty → muted "No .git directory found — this folder was never
+     under source control. Leave this blank, or enter a URL if it is being migrated
+     into source control."
+   - no `.git`, field filled → muted "Cannot be verified — no git remote found in
+     this folder. It will be recorded unverified."
 
 *Details* —
 
@@ -464,7 +530,8 @@ convention in `04-FRONTEND-SPEC.md` stands unamended.
 ### Repository detail
 
 Metadata panel: name, id (monospace), root folder, local path (monospace with a copy
-button), clone URL with its verification badge and the detected URL when different,
+button), clone URL with its verification badge and the detected URL when different —
+**"Not under source control"**, not an empty field, when `clone_url` is null —
 provider, description, technical owner, criticality, retirement status, branch,
 commit SHA short or "no git history", size, file count, tags, notes, first
 registered, last scanned.
@@ -513,10 +580,20 @@ producing step is still a stub. Do not fabricate zeros.
 - [ ] Entering a clone URL matching the folder's remote yields `verified`
 - [ ] Entering a different clone URL yields `mismatch`, warns prominently, and still
       allows submission, storing both URLs
-- [ ] A folder without `.git` yields `unverifiable`
+- [ ] A folder without `.git` and with no `clone_url` supplied yields `not_applicable`
+- [ ] A folder without `.git` but with a `clone_url` supplied anyway yields
+      `unverifiable`, and `source_control_status` stays `NONE`
+- [ ] Registering a folder with no `.git` and no `clone_url` succeeds — this is the
+      case docs/15 originally made unsatisfiable: a legacy folder that was never
+      under source control
+- [ ] Registering a folder with `.git` and no `clone_url` returns 422,
+      `code: CLONE_URL_REQUIRED_FOR_GIT`, naming the `clone_url` field
 - [ ] Registering a valid path creates the row and launches discovery, returning 202
       with a resolvable `job_execution_id`
 - [ ] Registering the same clone URL again returns 409 naming the existing repository
+- [ ] Registering two different no-`.git` folders with no `clone_url`, in the same
+      engagement, does **not** 409 on the clone URL check — only on root folder name
+      or local path, if those also collide
 - [ ] Registering the same root folder name again returns 409
 - [ ] Registering a parent or child of an existing registered path returns 409
 - [ ] Registering `C:\` or `C:\Windows` is rejected
@@ -527,6 +604,10 @@ producing step is still a stub. Do not fabricate zeros.
 - [ ] Applications and patterns columns show `—`, not `0`
 - [ ] Rescan creates a new job instance rather than restarting the old one
 - [ ] Renaming the folder on disk, then Verify path, sets `path_missing`
+- [ ] Registering a no-`.git` folder with no `clone_url`, then running `git init` +
+      adding a remote in that folder on disk and Rescanning, sets
+      `source_control_status: GIT` with `clone_url` backfilled from the detected
+      remote — the "migrating into source control" case, caught on rescan
 - [ ] `PUT` cannot change `local_path`, `clone_url` or `root_folder_name`
 - [ ] `PUT` can change criticality, retirement status, owner and notes
 - [ ] A repository marked `slated_for_retirement` renders muted and is excluded from

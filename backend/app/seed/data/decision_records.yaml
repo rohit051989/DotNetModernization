@@ -2,7 +2,7 @@ decision_records:
 
   # --- Client A ------------------------------------------------------
   - engagement_id: client-a-ocp4
-    pattern_id: core2-rest-api
+    pattern_id: aspnetcore-rest-api-legacy
     candidates_considered: [net10-api-controllers-preserved, net10-api-minimal]
     selected_target_state_id: net10-api-controllers-preserved
     evaluation_notes: "Both options leave the external contract unchanged. Controllers-preserved produces a far smaller diff and a smaller review surface across an estimated 40+ applications matching this pattern."
@@ -120,7 +120,7 @@ decision_records:
     status: approved
 
   - engagement_id: reference-engagement-b
-    pattern_id: core2-rest-api
+    pattern_id: aspnetcore-rest-api-legacy
     candidates_considered: [net10-api-controllers-preserved, net10-api-minimal]
     selected_target_state_id: net10-api-minimal
     evaluation_notes: "Small application count with strong test coverage. Client explicitly requested adoption of the modern minimal API idiom as part of a wider standards refresh."

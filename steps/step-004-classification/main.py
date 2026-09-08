@@ -78,7 +78,7 @@ def _explain(pattern: dict, m: dict) -> str:
     return f"Not matched: scored {m['score']}, below the minimumScore threshold for {name}."
 
 
-def _project_artifact(project_id: str, project_path: str, result: dict) -> dict:
+def _project_artifact(project_id: str, project_path: str, project_row: dict, result: dict) -> dict:
     matches_payload = []
     for m in result["matches"]:
         pattern = m["pattern"]
@@ -95,6 +95,7 @@ def _project_artifact(project_id: str, project_path: str, result: dict) -> dict:
                 "confidence_level": m["confidence_level"],
                 "is_primary_selected": m["is_primary_selected"],
                 "rejection_reason": m["rejection_reason"],
+                "relationship_source": m["relationship_source"],
                 "role_excluded": m["role_excluded"],
                 "required_capability_missing": m["required_capability_missing"],
                 "matched_rules": m["outcome"].matched_rules + m["outcome"].supporting_matched,
@@ -112,6 +113,11 @@ def _project_artifact(project_id: str, project_path: str, result: dict) -> dict:
         "classification_status": result["classification_status"],
         "project_role": result["project_role"],
         "project_role_confidence": round(role_confidence, 2) if role_confidence is not None else None,
+        # Echoed from step 2 (Part F) so a consumer of this artifact never has
+        # to join back to the projects table. Family discriminates the
+        # pattern; version parameterises whatever acts on it.
+        "framework_family": project_row["framework_family"],
+        "framework_version": project_row["framework_version"],
         "evaluated_pattern_count": result["evaluated_pattern_count"],
         "primary_pattern_id": result["primary_pattern_id"],
         "matches": matches_payload,
@@ -144,7 +150,9 @@ def run_for_repository(database_url: str, repository_id: str, output_dir: Path, 
                 "signals_by_name": signals_by_name,
             }
             result = classify.classify_project(project_input, patterns, config)
-            project_artifacts.append(_project_artifact(str(project_row["id"]), project_row["relative_path"], result))
+            project_artifacts.append(
+                _project_artifact(str(project_row["id"]), project_row["relative_path"], project_row, result)
+            )
             engine_results.append({"project_row": project_row, "result": result})
 
         coverage_report = coverage.build_coverage_report(
@@ -169,6 +177,7 @@ def run_for_repository(database_url: str, repository_id: str, output_dir: Path, 
                         "confidence_level": m["confidence_level"],
                         "is_primary_selected": m["is_primary_selected"],
                         "rejection_reason": m["rejection_reason"],
+                        "relationship_source": m["relationship_source"],
                         "engagement_scope_status": None,
                         "matched_rules": m["outcome"].matched_rules + m["outcome"].supporting_matched,
                         "failed_rules": m["outcome"].failed_rules,
@@ -183,6 +192,8 @@ def run_for_repository(database_url: str, repository_id: str, output_dir: Path, 
                     "classification_status": result["classification_status"],
                     "project_role": result["project_role"],
                     "project_role_confidence": result["project_role_confidence"],
+                    "framework_family": project_row["framework_family"],
+                    "framework_version": project_row["framework_version"],
                     "catalog_revision": catalog_revision,
                     "signal_registry_version": signal_registry_ver,
                     "config_version": config_version,

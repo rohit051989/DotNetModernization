@@ -136,6 +136,16 @@ class MetadataCondition(BaseModel):
     startsWith: str | None = Field(default=None, description="Prefix match.")
     contains: str | None = Field(default=None, description="Substring match.")
     regex: str | None = Field(default=None, description="Anchored regular expression.")
+    notEquals: str | None = Field(
+        default=None,
+        description="Exclusion: the condition fails when the field equals this. The `none` group only accepts "
+        "signal conditions, so a metadata-based exclusion (e.g. 'outputType is not WinExe') has to be expressed "
+        "here. An absent field value passes — it cannot equal the excluded value.",
+    )
+    notIn: list[str] | None = Field(
+        default=None,
+        description="Exclusion against a list. An absent field value passes, as with notEquals.",
+    )
 
 
 class SignalRuleSet(BaseModel):
@@ -172,6 +182,12 @@ class SignalRuleSet(BaseModel):
     none: list[NoneCondition] = Field(default_factory=list, description="Negative evidence — disqualifying or penalizing.")
     metadata: list[MetadataCondition] = Field(
         default_factory=list, description="Conditions against project metadata rather than signals."
+    )
+    matchWarnings: list[str] = Field(
+        default_factory=list,
+        description="Shown (as project-level warnings) whenever this pattern matches. For a pattern whose "
+        "detection is confident but its evidence is thin — e.g. metadata-only, no step 3 signal evidence yet "
+        "— so that gap is visible on the match rather than implied by its absence.",
     )
 
     @classmethod
@@ -395,7 +411,7 @@ class PatternCreate(PatternBase):
         json_schema_extra={
             "examples": [
                 {
-                    "id": "core2-rest-api",
+                    "id": "aspnetcore-rest-api-legacy",
                     "name": ".NET Core 2.x REST API",
                     "summary": "ASP.NET Core 2.x Web API with Startup-based hosting, running on IIS.",
                     "description": "REST API built on ASP.NET Core 2.0-2.2 using the classic Startup.cs ConfigureServices/Configure pair.",
@@ -410,7 +426,7 @@ class PatternCreate(PatternBase):
     )
 
     id: str = Field(
-        description="Slug, lowercase and hyphenated. Immutable once created.", examples=["core2-rest-api"]
+        description="Slug, lowercase and hyphenated. Immutable once created.", examples=["aspnetcore-rest-api-legacy"]
     )
     status: LifecycleStatus = Field(
         default="active", description="Lifecycle state: 'draft', 'active', or 'deprecated'."
@@ -873,7 +889,7 @@ class EngagementPatternView(BaseModel):
             "examples": [
                 {
                     "engagement_id": "client-a-ocp4",
-                    "pattern_id": "core2-rest-api",
+                    "pattern_id": "aspnetcore-rest-api-legacy",
                     "name": ".NET Core 2.x REST API",
                     "summary": "ASP.NET Core 2.x Web API with Startup-based hosting, running on IIS.",
                     "description": None,
@@ -953,7 +969,7 @@ class CatalogExport(BaseModel):
                     "exported_at": "2026-08-05T00:00:00Z",
                     "patterns": [
                         {
-                            "id": "core2-rest-api",
+                            "id": "aspnetcore-rest-api-legacy",
                             "name": ".NET Core 2.x REST API",
                             "target_state_options": [],
                         }

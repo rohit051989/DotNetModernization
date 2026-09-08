@@ -60,6 +60,11 @@ class ClassificationMatchOut(BaseModel):
     confidence_level: str
     is_primary_selected: bool
     rejection_reason: str | None = Field(description="Set only when a conflicting pattern outscored this one outside the ambiguity margin.")
+    relationship_source: str | None = Field(
+        description="'declared' or 'defaulted' — set only when this match participated in a conflict/ambiguity "
+        "determination against another PRIMARY candidate. 'defaulted' means neither pattern's catalog entry "
+        "declares compatible_with/conflicts_with for the other; the relationship defaulted to CONFLICTING."
+    )
     matched_rules: list[dict] = Field(description="Rule id, signal, required vs actual occurrences, evidence.")
     failed_rules: list[dict] = Field(description="What this pattern still needs — the tuning input for near-misses.")
     missing_preferred: list[dict]
@@ -76,6 +81,14 @@ class ProjectClassificationDetailOut(BaseModel):
     classification_status: str
     project_role: str | None
     project_role_confidence: float | None
+    framework_family: str | None = Field(
+        description="Echoed from step 2. Framework family (net-framework/net-core/net-standard/net) is what "
+        "discriminates a pattern — Framework versus Core is a genuine pattern boundary."
+    )
+    framework_version: str | None = Field(
+        description="Echoed from step 2. A parameter, not a discriminator: step 10's risk scoring and an "
+        "accelerator's breaking-change set read it; no pattern splits on it."
+    )
     catalog_revision: int
     signal_registry_version: str | None
     config_version: str

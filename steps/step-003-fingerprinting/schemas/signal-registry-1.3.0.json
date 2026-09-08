@@ -1,0 +1,824 @@
+{
+  "registry_version": "1.3.0",
+  "signals": [
+    {
+      "name": "SVC_FILE",
+      "category": "FILE_INDICATOR",
+      "type": "FILE_PRESENCE",
+      "description": "Presence of a .svc WCF service host file",
+      "extractor": "FileIndicatorExtractor",
+      "evidence_kind": "FILE",
+      "value_semantics": "count of matching files"
+    },
+    {
+      "name": "ASPX_FILE",
+      "category": "FILE_INDICATOR",
+      "type": "FILE_PRESENCE",
+      "description": "Presence of an .aspx Web Forms page file",
+      "extractor": "FileIndicatorExtractor",
+      "evidence_kind": "FILE",
+      "value_semantics": "count of matching files"
+    },
+    {
+      "name": "ASCX_FILE",
+      "category": "FILE_INDICATOR",
+      "type": "FILE_PRESENCE",
+      "description": "Presence of an .ascx Web Forms user control file",
+      "extractor": "FileIndicatorExtractor",
+      "evidence_kind": "FILE",
+      "value_semantics": "count of matching files"
+    },
+    {
+      "name": "ASMX_FILE",
+      "category": "FILE_INDICATOR",
+      "type": "FILE_PRESENCE",
+      "description": "Presence of an .asmx ASP.NET Web Services file",
+      "extractor": "FileIndicatorExtractor",
+      "evidence_kind": "FILE",
+      "value_semantics": "count of matching files"
+    },
+    {
+      "name": "CSHTML_FILE",
+      "category": "FILE_INDICATOR",
+      "type": "FILE_PRESENCE",
+      "description": "Presence of a .cshtml Razor view or page file",
+      "extractor": "FileIndicatorExtractor",
+      "evidence_kind": "FILE",
+      "value_semantics": "count of matching files"
+    },
+    {
+      "name": "RAZOR_FILE",
+      "category": "FILE_INDICATOR",
+      "type": "FILE_PRESENCE",
+      "description": "Presence of a .razor Blazor component file",
+      "extractor": "FileIndicatorExtractor",
+      "evidence_kind": "FILE",
+      "value_semantics": "count of matching files"
+    },
+    {
+      "name": "XAML_FILE",
+      "category": "FILE_INDICATOR",
+      "type": "FILE_PRESENCE",
+      "description": "Presence of a .xaml WPF/UWP markup file",
+      "extractor": "FileIndicatorExtractor",
+      "evidence_kind": "FILE",
+      "value_semantics": "count of matching files"
+    },
+    {
+      "name": "GLOBAL_ASAX_FILE",
+      "category": "FILE_INDICATOR",
+      "type": "FILE_PRESENCE",
+      "description": "Presence of a Global.asax application file",
+      "extractor": "FileIndicatorExtractor",
+      "evidence_kind": "FILE",
+      "value_semantics": "count of matching files"
+    },
+    {
+      "name": "STARTUP_CS_FILE",
+      "category": "FILE_INDICATOR",
+      "type": "FILE_PRESENCE",
+      "description": "Presence of a Startup.cs file",
+      "extractor": "FileIndicatorExtractor",
+      "evidence_kind": "FILE",
+      "value_semantics": "count of matching files"
+    },
+    {
+      "name": "PROGRAM_CS_FILE",
+      "category": "FILE_INDICATOR",
+      "type": "FILE_PRESENCE",
+      "description": "Presence of a Program.cs file",
+      "extractor": "FileIndicatorExtractor",
+      "evidence_kind": "FILE",
+      "value_semantics": "count of matching files"
+    },
+    {
+      "name": "CONTROLLERS_FOLDER",
+      "category": "FILE_INDICATOR",
+      "type": "FILE_PRESENCE",
+      "description": "Presence of a Controllers/ folder",
+      "extractor": "FileIndicatorExtractor",
+      "evidence_kind": "FOLDER",
+      "value_semantics": "presence (folder exists)"
+    },
+    {
+      "name": "VIEWS_FOLDER",
+      "category": "FILE_INDICATOR",
+      "type": "FILE_PRESENCE",
+      "description": "Presence of a Views/ folder",
+      "extractor": "FileIndicatorExtractor",
+      "evidence_kind": "FOLDER",
+      "value_semantics": "presence (folder exists)"
+    },
+    {
+      "name": "PAGES_FOLDER",
+      "category": "FILE_INDICATOR",
+      "type": "FILE_PRESENCE",
+      "description": "Presence of a Pages/ folder",
+      "extractor": "FileIndicatorExtractor",
+      "evidence_kind": "FOLDER",
+      "value_semantics": "presence (folder exists)"
+    },
+    {
+      "name": "APP_START_FOLDER",
+      "category": "FILE_INDICATOR",
+      "type": "FILE_PRESENCE",
+      "description": "Presence of an App_Start/ folder",
+      "extractor": "FileIndicatorExtractor",
+      "evidence_kind": "FOLDER",
+      "value_semantics": "presence (folder exists)"
+    },
+    {
+      "name": "SERVICES_FOLDER",
+      "category": "FILE_INDICATOR",
+      "type": "FILE_PRESENCE",
+      "description": "Presence of a Services/ folder",
+      "extractor": "FileIndicatorExtractor",
+      "evidence_kind": "FOLDER",
+      "value_semantics": "presence (folder exists)"
+    },
+    {
+      "name": "JOBS_FOLDER",
+      "category": "FILE_INDICATOR",
+      "type": "FILE_PRESENCE",
+      "description": "Presence of a Jobs/ folder",
+      "extractor": "FileIndicatorExtractor",
+      "evidence_kind": "FOLDER",
+      "value_semantics": "presence (folder exists)"
+    },
+    {
+      "name": "TASKS_FOLDER",
+      "category": "FILE_INDICATOR",
+      "type": "FILE_PRESENCE",
+      "description": "Presence of a Tasks/ folder",
+      "extractor": "FileIndicatorExtractor",
+      "evidence_kind": "FOLDER",
+      "value_semantics": "presence (folder exists)"
+    },
+    {
+      "name": "FUNCTIONS_FOLDER",
+      "category": "FILE_INDICATOR",
+      "type": "FILE_PRESENCE",
+      "description": "Presence of a Functions/ folder",
+      "extractor": "FileIndicatorExtractor",
+      "evidence_kind": "FOLDER",
+      "value_semantics": "presence (folder exists)"
+    },
+    {
+      "name": "SYSTEM_WEB_NAMESPACE",
+      "category": "FRAMEWORK_REFERENCE",
+      "type": "NAMESPACE",
+      "description": "A 'using System.Web;' directive (and no more specific System.Web.* namespace matched)",
+      "extractor": "FrameworkReferenceExtractor",
+      "evidence_kind": "FILE",
+      "value_semantics": "occurrence count per file; value is the exact namespace written"
+    },
+    {
+      "name": "SYSTEM_WEB_MVC_NAMESPACE",
+      "category": "FRAMEWORK_REFERENCE",
+      "type": "NAMESPACE",
+      "description": "A 'using System.Web.Mvc' (or sub-namespace) directive",
+      "extractor": "FrameworkReferenceExtractor",
+      "evidence_kind": "FILE",
+      "value_semantics": "occurrence count per file; value is the exact namespace written"
+    },
+    {
+      "name": "SYSTEM_WEB_HTTP_NAMESPACE",
+      "category": "FRAMEWORK_REFERENCE",
+      "type": "NAMESPACE",
+      "description": "A 'using System.Web.Http' (or sub-namespace) directive",
+      "extractor": "FrameworkReferenceExtractor",
+      "evidence_kind": "FILE",
+      "value_semantics": "occurrence count per file; value is the exact namespace written"
+    },
+    {
+      "name": "SYSTEM_WEB_UI_NAMESPACE",
+      "category": "FRAMEWORK_REFERENCE",
+      "type": "NAMESPACE",
+      "description": "A 'using System.Web.UI' (or sub-namespace) directive",
+      "extractor": "FrameworkReferenceExtractor",
+      "evidence_kind": "FILE",
+      "value_semantics": "occurrence count per file; value is the exact namespace written"
+    },
+    {
+      "name": "SYSTEM_SERVICEMODEL_NAMESPACE",
+      "category": "FRAMEWORK_REFERENCE",
+      "type": "NAMESPACE",
+      "description": "A 'using System.ServiceModel' (or sub-namespace) directive",
+      "extractor": "FrameworkReferenceExtractor",
+      "evidence_kind": "FILE",
+      "value_semantics": "occurrence count per file; value is the exact namespace written"
+    },
+    {
+      "name": "SYSTEM_SERVICEPROCESS_NAMESPACE",
+      "category": "FRAMEWORK_REFERENCE",
+      "type": "NAMESPACE",
+      "description": "A 'using System.ServiceProcess' (or sub-namespace) directive",
+      "extractor": "FrameworkReferenceExtractor",
+      "evidence_kind": "FILE",
+      "value_semantics": "occurrence count per file; value is the exact namespace written"
+    },
+    {
+      "name": "SYSTEM_MESSAGING_NAMESPACE",
+      "category": "FRAMEWORK_REFERENCE",
+      "type": "NAMESPACE",
+      "description": "A 'using System.Messaging' (or sub-namespace) directive",
+      "extractor": "FrameworkReferenceExtractor",
+      "evidence_kind": "FILE",
+      "value_semantics": "occurrence count per file; value is the exact namespace written"
+    },
+    {
+      "name": "SYSTEM_DATA_ENTITY_NAMESPACE",
+      "category": "FRAMEWORK_REFERENCE",
+      "type": "NAMESPACE",
+      "description": "A 'using System.Data.Entity' (or sub-namespace) directive \u2014 legacy EF6",
+      "extractor": "FrameworkReferenceExtractor",
+      "evidence_kind": "FILE",
+      "value_semantics": "occurrence count per file; value is the exact namespace written"
+    },
+    {
+      "name": "MICROSOFT_ASPNETCORE_MVC_NAMESPACE",
+      "category": "FRAMEWORK_REFERENCE",
+      "type": "NAMESPACE",
+      "description": "A 'using Microsoft.AspNetCore.Mvc' (or sub-namespace) directive",
+      "extractor": "FrameworkReferenceExtractor",
+      "evidence_kind": "FILE",
+      "value_semantics": "occurrence count per file; value is the exact namespace written"
+    },
+    {
+      "name": "MICROSOFT_ASPNETCORE_NAMESPACE",
+      "category": "FRAMEWORK_REFERENCE",
+      "type": "NAMESPACE",
+      "description": "A 'using Microsoft.AspNetCore' (or sub-namespace, not otherwise matched) directive",
+      "extractor": "FrameworkReferenceExtractor",
+      "evidence_kind": "FILE",
+      "value_semantics": "occurrence count per file; value is the exact namespace written"
+    },
+    {
+      "name": "MICROSOFT_ENTITYFRAMEWORKCORE_NAMESPACE",
+      "category": "FRAMEWORK_REFERENCE",
+      "type": "NAMESPACE",
+      "description": "A 'using Microsoft.EntityFrameworkCore' (or sub-namespace) directive",
+      "extractor": "FrameworkReferenceExtractor",
+      "evidence_kind": "FILE",
+      "value_semantics": "occurrence count per file; value is the exact namespace written"
+    },
+    {
+      "name": "DAPPER_NAMESPACE",
+      "category": "FRAMEWORK_REFERENCE",
+      "type": "NAMESPACE",
+      "description": "A 'using Dapper' directive",
+      "extractor": "FrameworkReferenceExtractor",
+      "evidence_kind": "FILE",
+      "value_semantics": "occurrence count per file; value is the exact namespace written"
+    },
+    {
+      "name": "SYSTEM_WEB_ASSEMBLY",
+      "category": "FRAMEWORK_REFERENCE",
+      "type": "ASSEMBLY",
+      "description": "A raw <Reference Include=\"System.Web\"> in a non-SDK project file",
+      "extractor": "FrameworkReferenceExtractor",
+      "evidence_kind": "FILE",
+      "value_semantics": "occurrence count per project file; value is the assembly simple name"
+    },
+    {
+      "name": "SYSTEM_WEB_MVC_ASSEMBLY",
+      "category": "FRAMEWORK_REFERENCE",
+      "type": "ASSEMBLY",
+      "description": "A raw <Reference Include=\"System.Web.Mvc\"> in a non-SDK project file",
+      "extractor": "FrameworkReferenceExtractor",
+      "evidence_kind": "FILE",
+      "value_semantics": "occurrence count per project file; value is the assembly simple name"
+    },
+    {
+      "name": "SYSTEM_WEB_HTTP_ASSEMBLY",
+      "category": "FRAMEWORK_REFERENCE",
+      "type": "ASSEMBLY",
+      "description": "A raw <Reference Include=\"System.Web.Http\"> in a non-SDK project file",
+      "extractor": "FrameworkReferenceExtractor",
+      "evidence_kind": "FILE",
+      "value_semantics": "occurrence count per project file; value is the assembly simple name"
+    },
+    {
+      "name": "SYSTEM_SERVICEMODEL_ASSEMBLY",
+      "category": "FRAMEWORK_REFERENCE",
+      "type": "ASSEMBLY",
+      "description": "A raw <Reference Include=\"System.ServiceModel\"> in a non-SDK project file",
+      "extractor": "FrameworkReferenceExtractor",
+      "evidence_kind": "FILE",
+      "value_semantics": "occurrence count per project file; value is the assembly simple name"
+    },
+    {
+      "name": "SYSTEM_SERVICEPROCESS_ASSEMBLY",
+      "category": "FRAMEWORK_REFERENCE",
+      "type": "ASSEMBLY",
+      "description": "A raw <Reference Include=\"System.ServiceProcess\"> in a non-SDK project file",
+      "extractor": "FrameworkReferenceExtractor",
+      "evidence_kind": "FILE",
+      "value_semantics": "occurrence count per project file; value is the assembly simple name"
+    },
+    {
+      "name": "SYSTEM_MESSAGING_ASSEMBLY",
+      "category": "FRAMEWORK_REFERENCE",
+      "type": "ASSEMBLY",
+      "description": "A raw <Reference Include=\"System.Messaging\"> in a non-SDK project file",
+      "extractor": "FrameworkReferenceExtractor",
+      "evidence_kind": "FILE",
+      "value_semantics": "occurrence count per project file; value is the assembly simple name"
+    },
+    {
+      "name": "MICROSOFT_ASPNETCORE_PACKAGE",
+      "category": "PACKAGE_DEPENDENCY",
+      "type": "PACKAGE",
+      "description": "A package reference whose name starts with Microsoft.AspNetCore, read from step 2's inventory",
+      "extractor": "FrameworkReferenceExtractor",
+      "evidence_kind": "FILE",
+      "value_semantics": "one row per distinct matching package name; value is the package name"
+    },
+    {
+      "name": "MICROSOFT_ENTITYFRAMEWORKCORE_PACKAGE",
+      "category": "PACKAGE_DEPENDENCY",
+      "type": "PACKAGE",
+      "description": "A package reference whose name starts with Microsoft.EntityFrameworkCore, read from step 2's inventory",
+      "extractor": "FrameworkReferenceExtractor",
+      "evidence_kind": "FILE",
+      "value_semantics": "one row per distinct matching package name; value is the package name"
+    },
+    {
+      "name": "ENTITYFRAMEWORK_PACKAGE",
+      "category": "PACKAGE_DEPENDENCY",
+      "type": "PACKAGE",
+      "description": "A package reference named exactly EntityFramework (legacy EF6), read from step 2's inventory",
+      "extractor": "FrameworkReferenceExtractor",
+      "evidence_kind": "FILE",
+      "value_semantics": "value is the package name"
+    },
+    {
+      "name": "DAPPER_PACKAGE",
+      "category": "PACKAGE_DEPENDENCY",
+      "type": "PACKAGE",
+      "description": "A package reference named exactly Dapper, read from step 2's inventory",
+      "extractor": "FrameworkReferenceExtractor",
+      "evidence_kind": "FILE",
+      "value_semantics": "value is the package name"
+    },
+    {
+      "name": "XUNIT_PACKAGE",
+      "category": "PACKAGE_DEPENDENCY",
+      "type": "PACKAGE",
+      "description": "A package reference whose name starts with xunit (xunit, xunit.runner.visualstudio, xunit.runner.console, ...), read from step 2's inventory",
+      "extractor": "FrameworkReferenceExtractor",
+      "evidence_kind": "FILE",
+      "value_semantics": "value is the package name"
+    },
+    {
+      "name": "NUNIT_PACKAGE",
+      "category": "PACKAGE_DEPENDENCY",
+      "type": "PACKAGE",
+      "description": "A package reference whose name starts with NUnit (NUnit, NUnit3TestAdapter, ...), read from step 2's inventory",
+      "extractor": "FrameworkReferenceExtractor",
+      "evidence_kind": "FILE",
+      "value_semantics": "value is the package name"
+    },
+    {
+      "name": "MSTEST_PACKAGE",
+      "category": "PACKAGE_DEPENDENCY",
+      "type": "PACKAGE",
+      "description": "A package reference whose name starts with MSTest (MSTest.TestFramework, MSTest.TestAdapter, ...), read from step 2's inventory",
+      "extractor": "FrameworkReferenceExtractor",
+      "evidence_kind": "FILE",
+      "value_semantics": "value is the package name"
+    },
+    {
+      "name": "BLAZOR_WEBASSEMBLY_PACKAGE",
+      "category": "PACKAGE_DEPENDENCY",
+      "type": "PACKAGE",
+      "description": "A package reference whose name starts with Microsoft.AspNetCore.Components.WebAssembly (the Blazor WASM client hosting model) \u2014 also matches the broader MICROSOFT_ASPNETCORE_PACKAGE rule, so both signals are emitted for it, read from step 2's inventory",
+      "extractor": "FrameworkReferenceExtractor",
+      "evidence_kind": "FILE",
+      "value_semantics": "value is the package name"
+    },
+    {
+      "name": "SERVICE_CONTRACT_ATTRIBUTE",
+      "category": "SOURCE_CONSTRUCT",
+      "type": "ATTRIBUTE",
+      "description": "[ServiceContract] on a type",
+      "extractor": "AttributeExtractor",
+      "evidence_kind": "FILE",
+      "value_semantics": "count of decorated types/members per file"
+    },
+    {
+      "name": "OPERATION_CONTRACT_ATTRIBUTE",
+      "category": "SOURCE_CONSTRUCT",
+      "type": "ATTRIBUTE",
+      "description": "[OperationContract] on a method",
+      "extractor": "AttributeExtractor",
+      "evidence_kind": "FILE",
+      "value_semantics": "count of decorated types/members per file"
+    },
+    {
+      "name": "DATA_CONTRACT_ATTRIBUTE",
+      "category": "SOURCE_CONSTRUCT",
+      "type": "ATTRIBUTE",
+      "description": "[DataContract] on a type",
+      "extractor": "AttributeExtractor",
+      "evidence_kind": "FILE",
+      "value_semantics": "count of decorated types/members per file"
+    },
+    {
+      "name": "HTTP_GET_ATTRIBUTE",
+      "category": "SOURCE_CONSTRUCT",
+      "type": "ATTRIBUTE",
+      "description": "[HttpGet] on a method (ambiguous between System.Web.Http and Microsoft.AspNetCore.Mvc without semantic analysis)",
+      "extractor": "AttributeExtractor",
+      "evidence_kind": "FILE",
+      "value_semantics": "count of decorated types/members per file"
+    },
+    {
+      "name": "HTTP_POST_ATTRIBUTE",
+      "category": "SOURCE_CONSTRUCT",
+      "type": "ATTRIBUTE",
+      "description": "[HttpPost] on a method (ambiguous between System.Web.Http and Microsoft.AspNetCore.Mvc without semantic analysis)",
+      "extractor": "AttributeExtractor",
+      "evidence_kind": "FILE",
+      "value_semantics": "count of decorated types/members per file"
+    },
+    {
+      "name": "HTTP_PUT_ATTRIBUTE",
+      "category": "SOURCE_CONSTRUCT",
+      "type": "ATTRIBUTE",
+      "description": "[HttpPut] on a method (ambiguous between System.Web.Http and Microsoft.AspNetCore.Mvc without semantic analysis)",
+      "extractor": "AttributeExtractor",
+      "evidence_kind": "FILE",
+      "value_semantics": "count of decorated types/members per file"
+    },
+    {
+      "name": "HTTP_DELETE_ATTRIBUTE",
+      "category": "SOURCE_CONSTRUCT",
+      "type": "ATTRIBUTE",
+      "description": "[HttpDelete] on a method (ambiguous between System.Web.Http and Microsoft.AspNetCore.Mvc without semantic analysis)",
+      "extractor": "AttributeExtractor",
+      "evidence_kind": "FILE",
+      "value_semantics": "count of decorated types/members per file"
+    },
+    {
+      "name": "ROUTE_ATTRIBUTE",
+      "category": "SOURCE_CONSTRUCT",
+      "type": "ATTRIBUTE",
+      "description": "[Route] on a type or method",
+      "extractor": "AttributeExtractor",
+      "evidence_kind": "FILE",
+      "value_semantics": "count of decorated types/members per file"
+    },
+    {
+      "name": "ROUTE_PREFIX_ATTRIBUTE",
+      "category": "SOURCE_CONSTRUCT",
+      "type": "ATTRIBUTE",
+      "description": "[RoutePrefix] on a type (Web API 2 convention)",
+      "extractor": "AttributeExtractor",
+      "evidence_kind": "FILE",
+      "value_semantics": "count of decorated types/members per file"
+    },
+    {
+      "name": "API_CONTROLLER_ATTRIBUTE",
+      "category": "SOURCE_CONSTRUCT",
+      "type": "ATTRIBUTE",
+      "description": "[ApiController] on a type",
+      "extractor": "AttributeExtractor",
+      "evidence_kind": "FILE",
+      "value_semantics": "count of decorated types/members per file"
+    },
+    {
+      "name": "WEB_METHOD_ATTRIBUTE",
+      "category": "SOURCE_CONSTRUCT",
+      "type": "ATTRIBUTE",
+      "description": "[WebMethod] on a method (ASP.NET Web Services / .asmx)",
+      "extractor": "AttributeExtractor",
+      "evidence_kind": "FILE",
+      "value_semantics": "count of decorated types/members per file"
+    },
+    {
+      "name": "FUNCTION_NAME_ATTRIBUTE",
+      "category": "SOURCE_CONSTRUCT",
+      "type": "ATTRIBUTE",
+      "description": "[FunctionName] on a method (Azure Functions)",
+      "extractor": "AttributeExtractor",
+      "evidence_kind": "FILE",
+      "value_semantics": "count of decorated types/members per file"
+    },
+    {
+      "name": "TEST_METHOD_ATTRIBUTE",
+      "category": "TESTING_INDICATOR",
+      "type": "ATTRIBUTE",
+      "description": "[TestMethod] on a method (MSTest)",
+      "extractor": "AttributeExtractor",
+      "evidence_kind": "FILE",
+      "value_semantics": "count of decorated methods per file"
+    },
+    {
+      "name": "FACT_ATTRIBUTE",
+      "category": "TESTING_INDICATOR",
+      "type": "ATTRIBUTE",
+      "description": "[Fact] on a method (xUnit)",
+      "extractor": "AttributeExtractor",
+      "evidence_kind": "FILE",
+      "value_semantics": "count of decorated methods per file"
+    },
+    {
+      "name": "TEST_ATTRIBUTE",
+      "category": "TESTING_INDICATOR",
+      "type": "ATTRIBUTE",
+      "description": "[Test] on a method (NUnit)",
+      "extractor": "AttributeExtractor",
+      "evidence_kind": "FILE",
+      "value_semantics": "count of decorated methods per file"
+    },
+    {
+      "name": "TEST_FIXTURE_ATTRIBUTE",
+      "category": "TESTING_INDICATOR",
+      "type": "ATTRIBUTE",
+      "description": "[TestFixture] on a type (NUnit)",
+      "extractor": "AttributeExtractor",
+      "evidence_kind": "FILE",
+      "value_semantics": "count of decorated types per file"
+    },
+    {
+      "name": "PAGE_BASE_CLASS",
+      "category": "SOURCE_CONSTRUCT",
+      "type": "BASE_CLASS",
+      "description": "A type inheriting Page (System.Web.UI.Page \u2014 Web Forms)",
+      "extractor": "InheritanceExtractor",
+      "evidence_kind": "FILE",
+      "value_semantics": "count of matching types per file"
+    },
+    {
+      "name": "USER_CONTROL_BASE_CLASS",
+      "category": "SOURCE_CONSTRUCT",
+      "type": "BASE_CLASS",
+      "description": "A type inheriting UserControl (System.Web.UI.UserControl \u2014 Web Forms)",
+      "extractor": "InheritanceExtractor",
+      "evidence_kind": "FILE",
+      "value_semantics": "count of matching types per file"
+    },
+    {
+      "name": "CONTROLLER_BASE_CLASS",
+      "category": "SOURCE_CONSTRUCT",
+      "type": "BASE_CLASS",
+      "description": "A type inheriting a base class literally named 'Controller'. InheritanceExtractor matches on the simple name only (no semantic analysis in v1), so this fires for both System.Web.Mvc.Controller (ASP.NET MVC 5) and Microsoft.AspNetCore.Mvc.Controller (modern ASP.NET Core MVC) \u2014 rules relying on this signal to mean 'legacy MVC5' must gate on a metadata condition (e.g. frameworkFamily) as well.",
+      "extractor": "InheritanceExtractor",
+      "evidence_kind": "FILE",
+      "value_semantics": "count of matching types per file"
+    },
+    {
+      "name": "API_CONTROLLER_BASE_CLASS",
+      "category": "SOURCE_CONSTRUCT",
+      "type": "BASE_CLASS",
+      "description": "A type inheriting ApiController (System.Web.Http.ApiController \u2014 Web API 2)",
+      "extractor": "InheritanceExtractor",
+      "evidence_kind": "FILE",
+      "value_semantics": "count of matching types per file"
+    },
+    {
+      "name": "CONTROLLER_BASE_BASE_CLASS",
+      "category": "SOURCE_CONSTRUCT",
+      "type": "BASE_CLASS",
+      "description": "A type inheriting ControllerBase (ASP.NET Core)",
+      "extractor": "InheritanceExtractor",
+      "evidence_kind": "FILE",
+      "value_semantics": "count of matching types per file"
+    },
+    {
+      "name": "SERVICE_BASE_BASE_CLASS",
+      "category": "SOURCE_CONSTRUCT",
+      "type": "BASE_CLASS",
+      "description": "A type inheriting ServiceBase (System.ServiceProcess.ServiceBase \u2014 Windows Service)",
+      "extractor": "InheritanceExtractor",
+      "evidence_kind": "FILE",
+      "value_semantics": "count of matching types per file"
+    },
+    {
+      "name": "BACKGROUND_SERVICE_BASE_CLASS",
+      "category": "SOURCE_CONSTRUCT",
+      "type": "BASE_CLASS",
+      "description": "A type inheriting BackgroundService (Microsoft.Extensions.Hosting)",
+      "extractor": "InheritanceExtractor",
+      "evidence_kind": "FILE",
+      "value_semantics": "count of matching types per file"
+    },
+    {
+      "name": "IHOSTED_SERVICE_BASE_CLASS",
+      "category": "SOURCE_CONSTRUCT",
+      "type": "BASE_CLASS",
+      "description": "A type implementing IHostedService",
+      "extractor": "InheritanceExtractor",
+      "evidence_kind": "FILE",
+      "value_semantics": "count of matching types per file"
+    },
+    {
+      "name": "DB_CONTEXT_BASE_CLASS",
+      "category": "SOURCE_CONSTRUCT",
+      "type": "BASE_CLASS",
+      "description": "A type inheriting DbContext (Entity Framework / EF Core)",
+      "extractor": "InheritanceExtractor",
+      "evidence_kind": "FILE",
+      "value_semantics": "count of matching types per file"
+    },
+    {
+      "name": "MASTER_PAGE_BASE_CLASS",
+      "category": "SOURCE_CONSTRUCT",
+      "type": "BASE_CLASS",
+      "description": "A type inheriting MasterPage (System.Web.UI.MasterPage \u2014 Web Forms)",
+      "extractor": "InheritanceExtractor",
+      "evidence_kind": "FILE",
+      "value_semantics": "count of matching types per file"
+    },
+    {
+      "name": "IHTTP_HANDLER_BASE_CLASS",
+      "category": "SOURCE_CONSTRUCT",
+      "type": "BASE_CLASS",
+      "description": "A type implementing IHttpHandler (System.Web)",
+      "extractor": "InheritanceExtractor",
+      "evidence_kind": "FILE",
+      "value_semantics": "count of matching types per file"
+    },
+    {
+      "name": "IHTTP_MODULE_BASE_CLASS",
+      "category": "SOURCE_CONSTRUCT",
+      "type": "BASE_CLASS",
+      "description": "A type implementing IHttpModule (System.Web)",
+      "extractor": "InheritanceExtractor",
+      "evidence_kind": "FILE",
+      "value_semantics": "count of matching types per file"
+    },
+    {
+      "name": "MAIN_METHOD_ENTRY_POINT",
+      "category": "ENTRY_POINT",
+      "type": "ENTRY_POINT",
+      "description": "A static Main method",
+      "extractor": "EntryPointExtractor",
+      "evidence_kind": "FILE",
+      "value_semantics": "count per file"
+    },
+    {
+      "name": "TOP_LEVEL_STATEMENTS_ENTRY_POINT",
+      "category": "ENTRY_POINT",
+      "type": "ENTRY_POINT",
+      "description": "A file using C# top-level statements",
+      "extractor": "EntryPointExtractor",
+      "evidence_kind": "FILE",
+      "value_semantics": "presence per file"
+    },
+    {
+      "name": "STARTUP_CLASS_ENTRY_POINT",
+      "category": "ENTRY_POINT",
+      "type": "ENTRY_POINT",
+      "description": "A class named Startup with a Configure or ConfigureServices method (ASP.NET Core convention-based startup)",
+      "extractor": "EntryPointExtractor",
+      "evidence_kind": "FILE",
+      "value_semantics": "presence per file"
+    },
+    {
+      "name": "GLOBAL_ASAX_ENTRY_POINT",
+      "category": "ENTRY_POINT",
+      "type": "ENTRY_POINT",
+      "description": "An Application_Start method (Global.asax code-behind convention)",
+      "extractor": "EntryPointExtractor",
+      "evidence_kind": "FILE",
+      "value_semantics": "count per file"
+    },
+    {
+      "name": "WEB_APPLICATION_CREATE_BUILDER_ENTRY_POINT",
+      "category": "ENTRY_POINT",
+      "type": "ENTRY_POINT",
+      "description": "A WebApplication.CreateBuilder(...) invocation",
+      "extractor": "EntryPointExtractor",
+      "evidence_kind": "FILE",
+      "value_semantics": "count per file"
+    },
+    {
+      "name": "HOST_CREATE_DEFAULT_BUILDER_ENTRY_POINT",
+      "category": "ENTRY_POINT",
+      "type": "ENTRY_POINT",
+      "description": "A Host.CreateDefaultBuilder(...) invocation",
+      "extractor": "EntryPointExtractor",
+      "evidence_kind": "FILE",
+      "value_semantics": "count per file"
+    },
+    {
+      "name": "WEBHOST_CREATE_DEFAULT_BUILDER_ENTRY_POINT",
+      "category": "ENTRY_POINT",
+      "type": "ENTRY_POINT",
+      "description": "A WebHost.CreateDefaultBuilder(...) invocation",
+      "extractor": "EntryPointExtractor",
+      "evidence_kind": "FILE",
+      "value_semantics": "count per file"
+    },
+    {
+      "name": "SERVICEBASE_RUN_ENTRY_POINT",
+      "category": "ENTRY_POINT",
+      "type": "ENTRY_POINT",
+      "description": "A ServiceBase.Run(...) invocation (Windows Service startup)",
+      "extractor": "EntryPointExtractor",
+      "evidence_kind": "FILE",
+      "value_semantics": "count per file"
+    },
+    {
+      "name": "ADD_HOSTED_SERVICE_ENTRY_POINT",
+      "category": "ENTRY_POINT",
+      "type": "ENTRY_POINT",
+      "description": "An AddHostedService(...) invocation (Microsoft.Extensions.Hosting worker registration)",
+      "extractor": "EntryPointExtractor",
+      "evidence_kind": "FILE",
+      "value_semantics": "count per file"
+    },
+    {
+      "name": "SYSTEM_WEB_CONFIG",
+      "category": "HOSTING_INDICATOR",
+      "type": "CONFIG_ELEMENT",
+      "description": "Presence of a <system.web> element in web.config/app.config",
+      "extractor": "ConfigurationExtractor",
+      "evidence_kind": "FILE",
+      "value_semantics": "presence per file"
+    },
+    {
+      "name": "SYSTEM_WEBSERVER_CONFIG",
+      "category": "HOSTING_INDICATOR",
+      "type": "CONFIG_ELEMENT",
+      "description": "Presence of a <system.webServer> element in web.config/app.config",
+      "extractor": "ConfigurationExtractor",
+      "evidence_kind": "FILE",
+      "value_semantics": "presence per file"
+    },
+    {
+      "name": "SYSTEM_SERVICE_MODEL_CONFIG",
+      "category": "HOSTING_INDICATOR",
+      "type": "CONFIG_ELEMENT",
+      "description": "Presence of a <system.serviceModel> element in web.config/app.config (WCF)",
+      "extractor": "ConfigurationExtractor",
+      "evidence_kind": "FILE",
+      "value_semantics": "presence per file"
+    },
+    {
+      "name": "ASPNETCORE_CONFIG",
+      "category": "HOSTING_INDICATOR",
+      "type": "CONFIG_ELEMENT",
+      "description": "Presence of an <aspNetCore> element in web.config (IIS ANCM reverse-proxy hosting)",
+      "extractor": "ConfigurationExtractor",
+      "evidence_kind": "FILE",
+      "value_semantics": "presence per file"
+    },
+    {
+      "name": "SERVICE_HOSTING_ENVIRONMENT_CONFIG",
+      "category": "HOSTING_INDICATOR",
+      "type": "CONFIG_ELEMENT",
+      "description": "Presence of a <serviceHostingEnvironment> element in web.config/app.config (WCF)",
+      "extractor": "ConfigurationExtractor",
+      "evidence_kind": "FILE",
+      "value_semantics": "presence per file"
+    },
+    {
+      "name": "WCF_SERVICE_ENDPOINT_CONFIG",
+      "category": "ENDPOINT_INDICATOR",
+      "type": "CONFIG_ELEMENT",
+      "description": "A <endpoint> element under system.serviceModel/services with a contract attribute",
+      "extractor": "ConfigurationExtractor",
+      "evidence_kind": "FILE",
+      "value_semantics": "one row per distinct contract name; value is the contract"
+    },
+    {
+      "name": "WCF_BINDING_CONFIG",
+      "category": "ENDPOINT_INDICATOR",
+      "type": "CONFIG_ELEMENT",
+      "description": "The binding type declared on a WCF <endpoint> element",
+      "extractor": "ConfigurationExtractor",
+      "evidence_kind": "FILE",
+      "value_semantics": "one row per distinct binding type name; value is the binding type"
+    },
+    {
+      "name": "CONNECTION_STRING_CONFIG",
+      "category": "DATA_ACCESS_INDICATOR",
+      "type": "CONFIG_ELEMENT",
+      "description": "A connection string's name \u2014 never its value (Part G)",
+      "extractor": "ConfigurationExtractor",
+      "evidence_kind": "FILE",
+      "value_semantics": "one row per distinct connection string name; value is the name"
+    },
+    {
+      "name": "CONNECTION_STRING_PROVIDER_CONFIG",
+      "category": "DATA_ACCESS_INDICATOR",
+      "type": "CONFIG_ELEMENT",
+      "description": "A connection string's providerName attribute (web.config/app.config only \u2014 appsettings.json carries no provider)",
+      "extractor": "ConfigurationExtractor",
+      "evidence_kind": "FILE",
+      "value_semantics": "one row per distinct provider name; value is the provider"
+    },
+    {
+      "name": "SENSITIVE_CONFIG_KEY",
+      "category": "CONFIGURATION_INDICATOR",
+      "type": "CONFIG_ELEMENT",
+      "description": "A configuration key whose name matched the sensitive-key pattern (password|pwd|secret|token|apikey|api_key|connectionstring|accountkey|sharedaccesskey|credential) \u2014 presence only, value never read (Part G)",
+      "extractor": "ConfigurationExtractor",
+      "evidence_kind": "FILE",
+      "value_semantics": "one row per distinct matching key name; value is the key name, never the secret"
+    }
+  ]
+}

@@ -97,6 +97,7 @@ def _repository_out(db: Session, repo: models.Repository, detail: bool = False):
         **RepositorySummary.model_validate(repo).model_dump(),
         local_path=repo.local_path,
         clone_url=repo.clone_url,
+        source_control_status=repo.source_control_status,
         detected_clone_url=repo.detected_clone_url,
         default_branch=repo.default_branch,
         description=repo.description,

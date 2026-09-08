@@ -4,7 +4,7 @@ import type { EngagementPatternView } from '../../types/catalog'
 import { EmptyState } from '../../components/EmptyState'
 import { DeferredBadge } from '../../components/Badge'
 
-const CATEGORIES = ['web-api', 'web-ui', 'service', 'batch', 'library', 'data-etl']
+const CATEGORIES = ['web-api', 'web-ui', 'service', 'batch', 'library', 'data-etl', 'desktop']
 
 interface ClientPatternListProps {
   engagementId: string

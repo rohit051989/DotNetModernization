@@ -210,7 +210,11 @@ export function RepositoryDetailPanel({
             <span className="font-mono text-xs">{repo.local_path}</span>
           </Metadata>
           <Metadata label="Clone URL">
-            <span className="font-mono text-xs">{repo.clone_url}</span>
+            {repo.clone_url ? (
+              <span className="font-mono text-xs">{repo.clone_url}</span>
+            ) : (
+              <span className="text-neutral-400">Not under source control</span>
+            )}
           </Metadata>
           <Metadata label="Detected remote">
             {repo.detected_clone_url ? <span className="font-mono text-xs">{repo.detected_clone_url}</span> : '—'}

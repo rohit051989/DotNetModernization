@@ -13,6 +13,15 @@ public sealed class FingerprintPipeline(SignalRegistry registry, IReadOnlyList<I
 {
     public const string ScannerVersion = "1.0.0";
 
+    // The registry is the single source of truth for evidence_kind per
+    // signal name (25-STANDARDS-AND-VIEWPOINTS.md Part A3 addendum) —
+    // stamped onto every Signal here, once, so the native artifact and
+    // fingerprint_signals self-describe file-vs-folder-vs-neither instead of
+    // every downstream consumer (SARIF builder, step 4, a future evidence
+    // viewer) re-deriving it from the signal name.
+    private readonly IReadOnlyDictionary<string, string> _evidenceKindByName =
+        registry.Entries.ToDictionary(e => e.Name, e => e.EvidenceKind, StringComparer.Ordinal);
+
     /// <param name="resolveProjectId">Looks up a project's database row id by
     /// its repository-relative path. Returns null if no matching row exists —
     /// the artifact carries no project id of its own (see
@@ -122,6 +131,13 @@ public sealed class FingerprintPipeline(SignalRegistry registry, IReadOnlyList<I
         }
 
         signals = signals
+            .Select(s => s with
+            {
+                // Falls back to NONE for a name the registry doesn't have —
+                // harmless: registry.Validate below fails the whole run for
+                // a genuinely unregistered name regardless of this value.
+                EvidenceKind = _evidenceKindByName.GetValueOrDefault(s.Name, SignalEvidenceKinds.None),
+            })
             .OrderBy(s => s.Category, StringComparer.Ordinal)
             .ThenBy(s => s.Name, StringComparer.Ordinal)
             .ThenBy(s => s.SourcePath, StringComparer.Ordinal)

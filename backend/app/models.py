@@ -88,12 +88,18 @@ SKIP_REASON = (
     "UPSTREAM_SKIPPED",
     "CASCADED_POLICY",
 )
-CLONE_URL_VERIFICATION = ("verified", "mismatch", "unverifiable")
+CLONE_URL_VERIFICATION = ("verified", "mismatch", "unverifiable", "not_applicable")
 SOURCE_TYPE = ("local_path", "git_clone")
 CRITICALITY = ("low", "medium", "high", "critical")
 RETIREMENT_STATUS = ("active", "slated_for_retirement", "decommissioned")
 INGEST_STATUS = ("registered", "scanned", "scan_failed", "path_missing")
 SOURCE_STATUS = ("active", "archived", "disabled", "inaccessible")
+# Whether the registered folder is under git at all — distinct from
+# source_status above (a provider-side lifecycle status, only ever knowable
+# via a provider API). A legacy estate routinely contains folders that were
+# never in source control (a file share, an old FTP drop); clone_url has no
+# meaning for those. See 15-REPOSITORY-INGEST-UI.md Part C.
+SOURCE_CONTROL_STATUS = ("GIT", "NONE")
 
 # ---- Step 2 — solution & project discovery (19-STEP-002-SOLUTION-DISCOVERY.md) ----
 SCAN_STATUS = ("complete", "partial", "failed")
@@ -176,6 +182,13 @@ EVIDENCE_SOURCE_TYPE = (
     "DEPLOYMENT_SCRIPT",
     "SOLUTION_METADATA",
 )
+
+# What source_path names — from the signal registry's evidence_kind field
+# (25-STANDARDS-AND-VIEWPOINTS.md Part A3 addendum). FOLDER and NONE must
+# never be treated as an openable file location by any consumer of
+# fingerprint_signals (e.g. a future "view evidence" UI) — that assumption is
+# exactly what broke the step 3 SARIF viewer.
+SIGNAL_EVIDENCE_KIND = ("FILE", "FOLDER", "NONE")
 
 
 class Pattern(Base):
@@ -703,12 +716,19 @@ class Repository(Base):
     slug: Mapped[str] = mapped_column(Text, nullable=False)
     local_path: Mapped[str] = mapped_column(Text, nullable=False)
     local_path_normalised: Mapped[str] = mapped_column(Text, nullable=False)
-    clone_url: Mapped[str] = mapped_column(Text, nullable=False)
-    clone_url_normalised: Mapped[str] = mapped_column(Text, nullable=False)
+    # Nullable — a folder that was never under source control has no
+    # canonical URL to assert. Required only when source_control_status is
+    # GIT; see ck_repositories_clone_url_required_for_git below.
+    clone_url: Mapped[str | None] = mapped_column(Text)
+    clone_url_normalised: Mapped[str | None] = mapped_column(Text)
     detected_clone_url: Mapped[str | None] = mapped_column(Text)
     clone_url_verification: Mapped[str] = mapped_column(
         Text, nullable=False, server_default="unverifiable"
     )
+    # GIT when the folder has a .git directory, NONE otherwise. Re-derived on
+    # every scan (repository_ingest.py), not just at registration — a folder
+    # can be migrated into source control after being registered.
+    source_control_status: Mapped[str] = mapped_column(Text, nullable=False, server_default="NONE")
     source_type: Mapped[str] = mapped_column(Text, nullable=False)
     provider: Mapped[str | None] = mapped_column(Text)
     default_branch: Mapped[str | None] = mapped_column(Text)
@@ -753,6 +773,14 @@ class Repository(Base):
             f"clone_url_verification IN {CLONE_URL_VERIFICATION}",
             name="ck_repositories_clone_url_verification",
         ),
+        CheckConstraint(
+            f"source_control_status IN {SOURCE_CONTROL_STATUS}",
+            name="ck_repositories_source_control_status",
+        ),
+        CheckConstraint(
+            "source_control_status != 'GIT' OR clone_url IS NOT NULL",
+            name="ck_repositories_clone_url_required_for_git",
+        ),
         CheckConstraint(f"source_type IN {SOURCE_TYPE}", name="ck_repositories_source_type"),
         CheckConstraint(f"criticality IN {CRITICALITY}", name="ck_repositories_criticality"),
         CheckConstraint(
@@ -768,7 +796,7 @@ class Repository(Base):
             "engagement_id",
             "clone_url_normalised",
             unique=True,
-            postgresql_where=text("deleted_at IS NULL"),
+            postgresql_where=text("deleted_at IS NULL AND clone_url_normalised IS NOT NULL"),
         ),
         Index(
             "uq_repositories_engagement_root_folder_name",
@@ -1078,6 +1106,7 @@ class FingerprintSignal(Base):
     value: Mapped[str | None] = mapped_column(Text)
     source_type: Mapped[str] = mapped_column(Text, nullable=False)
     source_path: Mapped[str | None] = mapped_column(Text)
+    evidence_kind: Mapped[str | None] = mapped_column(Text)
     occurrence_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
     evidence: Mapped[list | None] = mapped_column(JSONB)
     extractor: Mapped[str] = mapped_column(Text, nullable=False)
@@ -1087,6 +1116,10 @@ class FingerprintSignal(Base):
         CheckConstraint(f"signal_category IN {SIGNAL_CATEGORY}", name="ck_fingerprint_signals_category"),
         CheckConstraint(f"signal_type IN {SIGNAL_TYPE}", name="ck_fingerprint_signals_type"),
         CheckConstraint(f"source_type IN {EVIDENCE_SOURCE_TYPE}", name="ck_fingerprint_signals_source_type"),
+        CheckConstraint(
+            f"evidence_kind IS NULL OR evidence_kind IN {SIGNAL_EVIDENCE_KIND}",
+            name="ck_fingerprint_signals_evidence_kind",
+        ),
         Index(
             "uq_fingerprint_signals_project_scope",
             "project_id",
@@ -1158,6 +1191,12 @@ class ProjectClassification(Base):
     classification_status: Mapped[str] = mapped_column(Text, nullable=False)
     project_role: Mapped[str | None] = mapped_column(Text)
     project_role_confidence: Mapped[float | None] = mapped_column(Numeric(3, 2))
+    # Echoed from step 2's `projects` row so the classification and its
+    # artifact are self-contained (Part F). Family is what discriminates a
+    # pattern; version is a parameter an accelerator or step 10's risk score
+    # reads — never a pattern discriminator. See Part C.
+    framework_family: Mapped[str | None] = mapped_column(Text)
+    framework_version: Mapped[str | None] = mapped_column(Text)
     catalog_revision: Mapped[int] = mapped_column(BigInteger, nullable=False)
     signal_registry_version: Mapped[str | None] = mapped_column(Text)
     config_version: Mapped[str] = mapped_column(Text, nullable=False)
@@ -1202,6 +1241,13 @@ class ClassificationMatch(Base):
     confidence_level: Mapped[str] = mapped_column(Text, nullable=False)
     is_primary_selected: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
     rejection_reason: Mapped[str | None] = mapped_column(Text)
+    # Set only when this match participated in a conflict/ambiguity
+    # determination against another PRIMARY candidate — whether that pair's
+    # relationship came from the catalog's own compatible_with/conflicts_with
+    # ('declared') or had to default because neither pattern declares it
+    # ('defaulted', per 24-STEP-004-CLASSIFICATION.md Part E — an undeclared
+    # relationship defaults to CONFLICTING, never compatible).
+    relationship_source: Mapped[str | None] = mapped_column(Text)
     engagement_scope_status: Mapped[str | None] = mapped_column(Text)
     matched_rules: Mapped[list | None] = mapped_column(JSONB)
     failed_rules: Mapped[list | None] = mapped_column(JSONB)
@@ -1217,6 +1263,10 @@ class ClassificationMatch(Base):
         CheckConstraint(
             f"engagement_scope_status IS NULL OR engagement_scope_status IN {MATCH_ENGAGEMENT_SCOPE_STATUS}",
             name="ck_classification_matches_engagement_scope_status",
+        ),
+        CheckConstraint(
+            "relationship_source IS NULL OR relationship_source IN ('declared', 'defaulted')",
+            name="ck_classification_matches_relationship_source",
         ),
         Index("ix_classification_matches_repository_matched", "repository_id", "matched"),
         Index("ix_classification_matches_repository_pattern", "repository_id", "pattern_id"),

@@ -1,5 +1,58 @@
 {
   "classification_status": "NOT_ELIGIBLE",
+  "disqualifying_rules": {
+    "aspnet-webforms": [
+      "aspx-file",
+      "page-base"
+    ],
+    "aspnetcore-minimal-api": [
+      "webapp-builder"
+    ],
+    "aspnetcore-mvc-modern": [
+      "webapp-builder"
+    ],
+    "aspnetcore-rest-api-legacy": [
+      "startup-class"
+    ],
+    "blazor-server-modern": [
+      "razor-file"
+    ],
+    "blazor-webassembly-modern": [
+      "razor-file"
+    ],
+    "console-batch-job": [
+      "main-entry",
+      "toplevel-entry"
+    ],
+    "fx-aspnet-mvc": [
+      "mvc-controller",
+      "webapi-controller",
+      "mvc-namespace",
+      "webapi-namespace"
+    ],
+    "fx47-class-library": [
+      "legacy-framework"
+    ],
+    "netstandard-modern-library": [
+      "modern-family"
+    ],
+    "ssis-package": [
+      "is-ssis-project"
+    ],
+    "wcf-iis-servicemodel": [
+      "service-contract"
+    ],
+    "windows-service": [
+      "service-base",
+      "servicebase-run"
+    ],
+    "winforms-desktop": [
+      "windows-gui-exe"
+    ],
+    "wpf-desktop": [
+      "xaml-file"
+    ]
+  },
   "matched_pattern_ids": [],
   "primary_pattern_id": null,
   "project_role": "TEST",
@@ -7,14 +60,17 @@
     "aspnet-webforms": 0,
     "aspnetcore-minimal-api": 0,
     "aspnetcore-mvc-modern": 0,
+    "aspnetcore-rest-api-legacy": 0,
     "blazor-server-modern": 0,
     "blazor-webassembly-modern": 0,
     "console-batch-job": 0,
-    "core2-rest-api": 0,
     "fx-aspnet-mvc": 0,
     "fx47-class-library": 0,
     "netstandard-modern-library": 0,
+    "ssis-package": 0,
     "wcf-iis-servicemodel": 0,
-    "windows-service": 0
+    "windows-service": 0,
+    "winforms-desktop": 0,
+    "wpf-desktop": 0
   }
 }
