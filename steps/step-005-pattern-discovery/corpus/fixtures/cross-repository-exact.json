@@ -1,0 +1,62 @@
+{
+  "_note": "Part H case 1: three projects sharing an identical signature across two repositories must produce ONE exact cluster with repository_count 2. This is the case A1 exists for \u2014 clustering per repository would split these into three single-member groups and discover nothing, which is precisely the highest-value discovery available in a real estate. Also the fixture the determinism and narration-isolation checks run against.",
+  "projects": [
+    {
+      "classification_status": "NO_PATTERN_MATCHED",
+      "classification_step_execution_id": "99999999-9999-4999-8999-999999999999",
+      "facets": {
+        "framework_family": "net-framework",
+        "output_type": "Library",
+        "project_role": "LIBRARY",
+        "structural_type": "csharp_project"
+      },
+      "project_id": "00000000-0000-4000-8000-000000000001",
+      "project_path": "src/Integration.Dispatch/Integration.Dispatch.csproj",
+      "repository_id": "00000000-0000-4000-9000-ders",
+      "repository_slug": "legacy-orders",
+      "signals": {
+        "CONNECTION_STRING_CONFIG": 1.0,
+        "SYSTEM_MESSAGING_ASSEMBLY": 1.0,
+        "SYSTEM_MESSAGING_NAMESPACE": 1.0
+      }
+    },
+    {
+      "classification_status": "NO_PATTERN_MATCHED",
+      "classification_step_execution_id": "99999999-9999-4999-8999-999999999999",
+      "facets": {
+        "framework_family": "net-framework",
+        "output_type": "Library",
+        "project_role": "LIBRARY",
+        "structural_type": "csharp_project"
+      },
+      "project_id": "00000000-0000-4000-8000-000000000002",
+      "project_path": "src/Integration.Returns/Integration.Returns.csproj",
+      "repository_id": "00000000-0000-4000-9000-ders",
+      "repository_slug": "legacy-orders",
+      "signals": {
+        "CONNECTION_STRING_CONFIG": 1.0,
+        "SYSTEM_MESSAGING_ASSEMBLY": 1.0,
+        "SYSTEM_MESSAGING_NAMESPACE": 1.0
+      }
+    },
+    {
+      "classification_status": "NO_PATTERN_MATCHED",
+      "classification_step_execution_id": "99999999-9999-4999-8999-999999999999",
+      "facets": {
+        "framework_family": "net-framework",
+        "output_type": "Library",
+        "project_role": "LIBRARY",
+        "structural_type": "csharp_project"
+      },
+      "project_id": "00000000-0000-4000-8000-000000000003",
+      "project_path": "src/Integration.Invoice/Integration.Invoice.csproj",
+      "repository_id": "00000000-0000-4000-9000-ling",
+      "repository_slug": "legacy-billing",
+      "signals": {
+        "CONNECTION_STRING_CONFIG": 1.0,
+        "SYSTEM_MESSAGING_ASSEMBLY": 1.0,
+        "SYSTEM_MESSAGING_NAMESPACE": 1.0
+      }
+    }
+  ]
+}

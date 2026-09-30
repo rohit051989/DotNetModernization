@@ -13,10 +13,11 @@ Part A splits phase 0 by scope instead:
 - `phase0-repository-discovery` — per repository, steps 1, 2, 3, 4, 8, 9, 10. Defined
   in `backend/app/jobs/phase0-repository-discovery.yaml`. Launched automatically on
   registration or rescan.
-- `phase0-estate-consolidation` — engagement-scoped, steps 5, 6, 7, 11, 12. **Not
-  defined yet** — all five steps are stubs. Its precondition, once defined, will be
-  that every in-scope, non-deleted repository has a completed
-  `phase0-repository-discovery` execution.
+- `phase0-estate-consolidation` — engagement-scoped, steps 5, 6, 7, 11, 12. Defined in
+  `backend/app/jobs/phase0-estate-consolidation.yaml`. All five steps are still stubs,
+  so it runs under `stub_policy: continue`. It declares **no preconditions**: an
+  estate-completeness precondition is unsatisfiable at fleet scale, and step 5 reports
+  its own coverage instead — see `26-STEP-005-PATTERN-DISCOVERY.md` A5.
 
 Steps 5, 6, 7, 11 and 12 are genuinely estate-wide — clustering unmatched patterns,
 building a cross-repository dependency graph, or planning waves cannot be done from a

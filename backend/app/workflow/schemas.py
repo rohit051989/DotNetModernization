@@ -1,7 +1,7 @@
 import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.workflow.definition.schemas import InvalidatedJobDefinition
 
@@ -53,10 +53,10 @@ class StepDeclaration(BaseModel):
     )
 
     step_name: str = Field(description="Fixed slug identifying this step. Do not rename after job definitions reference it.")
-    lifecycle_step_no: int | None = Field(default=None, description="1-51, from 17-LIFECYCLE-STEPS.md. Null for helper steps.")
+    lifecycle_step_no: int | None = Field(default=None, description="1-35, from 17-LIFECYCLE-STEPS.md v2.0. Null for helper steps and retired steps.")
     display_name: str = Field(description="Human-readable step name.")
     owner_code: str = Field(
-        description="Who owns this step: 'P' (platform), 'C' (Copilot engine), 'S' (custom skill), 'H' (human), or a combined code like 'P + S'."
+        description="Who owns this step: 'P' (platform), 'S' (custom skill), 'H' (human), or a combined code like 'P + S'. 'C' (engine) is retired as a step owner and accepted only on a deprecated registration."
     )
     version: str = Field(description="Semver of this step's implementation.")
     owner_team: str | None = Field(default=None, description="Team that built this step, when known.")
@@ -77,6 +77,14 @@ class StepDeclaration(BaseModel):
     adapter_config: dict[str, Any] = Field(
         default_factory=dict, description="Adapter-specific configuration — shape depends on adapter_type; see 11-STEP-CONTRACT.md."
     )
+
+    @model_validator(mode="after")
+    def _no_engine_owner(self) -> "StepDeclaration":
+        # 17-LIFECYCLE-STEPS.md v2.0: engine choice is a property of a
+        # conversion approach, never of a lifecycle step.
+        if self.owner_code == "C" and self.implementation_status != "deprecated":
+            raise ValueError("owner_code 'C' is retired: no lifecycle step is owned by an engine")
+        return self
 
 
 class AffectedConsumer(BaseModel):
@@ -121,9 +129,9 @@ class StepRegistration(BaseModel):
     )
 
     step_name: str = Field(description="Fixed slug identifying this step.")
-    lifecycle_step_no: int | None = Field(description="1-51, from 17-LIFECYCLE-STEPS.md. Null for helper steps.")
+    lifecycle_step_no: int | None = Field(description="1-35, from 17-LIFECYCLE-STEPS.md v2.0. Null for helper steps and retired steps.")
     display_name: str = Field(description="Human-readable step name.")
-    owner_code: str = Field(description="'P', 'C', 'S', 'H', or a combined code like 'P + S'.")
+    owner_code: str = Field(description="'P', 'S', 'H', or a combined code like 'P + S'. 'C' appears only on deprecated rows.")
     version: str = Field(description="Semver of this step's implementation.")
     owner_team: str | None = Field(description="Team that built this step, when known.")
     viewpoint: str | None = Field(
@@ -134,6 +142,16 @@ class StepRegistration(BaseModel):
     consumes: list[dict] = Field(description="Artifact types (with version ranges) this step requires as input.")
     produces: list[dict] = Field(description="Artifact types (with concrete versions) this step produces.")
     implementation_status: str = Field(description="'stub', 'implemented', or 'deprecated'.")
+    deleted_at: datetime.datetime | None = Field(
+        default=None,
+        description="Set when this step_name was renamed: the row is hidden from the step list but still resolves by name for execution history.",
+    )
+    superseded_by: str | None = Field(
+        default=None, description="The step_name that took over this step's work, for a renamed or retired step."
+    )
+    retired_reason: str | None = Field(
+        default=None, description="Why this step left the v2.0 lifecycle, including its former step number."
+    )
     registered_at: datetime.datetime = Field(description="When this step was first registered.")
     updated_at: datetime.datetime = Field(description="When this registration was last updated.")
 

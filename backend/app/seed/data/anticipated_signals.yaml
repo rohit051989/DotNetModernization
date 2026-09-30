@@ -1,0 +1,29 @@
+# Signals registered ahead of step 3 shipping them — 28-ITEM-AND-CONVERSION-MODEL.md
+# Part C. Each is claimed by an extractor declaration in extractors.yaml (a
+# planned extractor's `emits`, or an implemented extractor's `planned_emits`),
+# so it is `not_ready` / `extractor_not_implemented` rather than an unclaimed
+# hard error. Same shape as an entry in signal-registry-*.json.
+#
+# signal_introduced_in_version is the registry version these are expected to
+# ship in. When step 3 publishes that file, the registry sync takes the
+# signal's metadata and introduced-in version from the file instead; this
+# entry then becomes redundant and should be removed.
+#
+# Why these live here and not in a signal-registry-1.4.0.json: step 3 stamps
+# every scan with the latest registry file's version. Publishing 1.4.0 before
+# its extractors ship would label scans "1.4.0" that never looked for these
+# signals, and once the extractors landed, those scans would read as
+# checked_absent instead of not_checked (28-ITEM-AND-CONVERSION-MODEL.md
+# Part G). The registry file bumps in the same change that ships the code.
+#
+# API_INVOCATION and LITERAL are the two signal types added to the step 3
+# contract for findings like these (21-STEP-003-FINGERPRINTING.md Part D
+# "Signal types", application-fingerprint@1.2.0).
+
+#
+# Empty since registry 1.4.0 (step 3 extractor batch 2): all five signals
+# registered here shipped in signal-registry-1.4.0.json with their extractors
+# and were removed. Add an entry the next time a signal is declared ahead of
+# its code.
+
+signals: []

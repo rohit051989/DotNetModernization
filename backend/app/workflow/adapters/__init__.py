@@ -18,11 +18,17 @@ _ADAPTER_CLASSES: dict[str, type[StepAdapter]] = {
 }
 
 
-def create_adapter(adapter_type: str, adapter_config: dict) -> StepAdapter:
+def create_adapter(adapter_type: str, adapter_config: dict, session=None) -> StepAdapter:
+    """`session` is the engine's own Session, offered only to the `python`
+    adapter — the one adapter that runs inside the engine's transaction. Every
+    other adapter is out-of-process or remote by definition and could not use
+    it."""
     try:
         adapter_class = _ADAPTER_CLASSES[adapter_type]
     except KeyError:
         raise ValueError(f"unknown adapter_type '{adapter_type}'") from None
+    if adapter_type == "python":
+        return adapter_class(adapter_config, session=session)
     return adapter_class(adapter_config)
 
 

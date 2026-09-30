@@ -1,0 +1,44 @@
+{
+  "_note": "Part H case 3: two projects at Jaccard 0.40 (2 shared of 5 union) stay APART as two singletons, proving the 0.70 threshold actually holds. If this ever merges, the threshold has been loosened and every cluster in the estate is suspect.",
+  "projects": [
+    {
+      "classification_status": "NO_PATTERN_MATCHED",
+      "classification_step_execution_id": "99999999-9999-4999-8999-999999999999",
+      "facets": {
+        "framework_family": "net-framework",
+        "output_type": "Library",
+        "project_role": "LIBRARY",
+        "structural_type": "csharp_project"
+      },
+      "project_id": "00000000-0000-4000-8000-000000000021",
+      "project_path": "src/C/C.csproj",
+      "repository_id": "00000000-0000-4000-9000-ders",
+      "repository_slug": "legacy-orders",
+      "signals": {
+        "CONNECTION_STRING_CONFIG": 1.0,
+        "DAPPER_NAMESPACE": 1.0,
+        "SYSTEM_MESSAGING_NAMESPACE": 1.0
+      }
+    },
+    {
+      "classification_status": "NO_PATTERN_MATCHED",
+      "classification_step_execution_id": "99999999-9999-4999-8999-999999999999",
+      "facets": {
+        "framework_family": "net-framework",
+        "output_type": "Library",
+        "project_role": "LIBRARY",
+        "structural_type": "csharp_project"
+      },
+      "project_id": "00000000-0000-4000-8000-000000000022",
+      "project_path": "src/D/D.csproj",
+      "repository_id": "00000000-0000-4000-9000-ders",
+      "repository_slug": "legacy-orders",
+      "signals": {
+        "CONNECTION_STRING_CONFIG": 1.0,
+        "FUNCTIONS_FOLDER": 1.0,
+        "SYSTEM_MESSAGING_NAMESPACE": 1.0,
+        "WEB_METHOD_ATTRIBUTE": 1.0
+      }
+    }
+  ]
+}

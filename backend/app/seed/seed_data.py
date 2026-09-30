@@ -8,6 +8,10 @@ from sqlalchemy.orm import Session
 
 from app import catalog_rules, models
 from app.db import SessionLocal
+from app.items import pattern_migration
+from app.items import readiness as item_readiness
+from app.items import registry as item_registry
+from app.items.detection import validate_detection
 from app.schemas import SignalRuleSet
 from app.workflow import registration
 from app.workflow.schemas import StepDeclaration
@@ -248,8 +252,8 @@ def seed(reset: bool = False) -> dict:
 
 
 def seed_lifecycle_steps() -> dict:
-    """Registers all 51 lifecycle steps as stubs from lifecycle_steps.yaml —
-    see 17-LIFECYCLE-STEPS.md. Idempotent upsert by step_name: re-run any time
+    """Registers all 35 lifecycle steps as stubs from lifecycle_steps.yaml —
+    see 17-LIFECYCLE-STEPS.md v2.0. Idempotent upsert by step_name: re-run any time
     the file changes, no code changes needed.
 
     **Never downgrades an already-implemented step.** This used to rewrite
@@ -267,6 +271,12 @@ def seed_lifecycle_steps() -> dict:
     the adapter, contract and status are left alone, since those are owned by
     whoever implemented the step and registered it via
     `POST /api/workflow/steps`.
+
+    **Never revives a retired step either.** A row that is soft-deleted
+    (renamed) or deprecated (left the lifecycle) is skipped even if its
+    step_name somehow reappears in the YAML — un-retiring a step is a
+    deliberate act, not a side effect of a reseed. Retired rows absent from
+    the YAML are never touched at all.
     """
     db = SessionLocal()
     try:
@@ -274,8 +284,14 @@ def seed_lifecycle_steps() -> dict:
         created = 0
         updated = 0
         preserved = 0
+        retired_skipped = 0
         for step_data in steps_data:
             existing = db.get(models.WfStepRegistration, step_data["step_name"])
+            if existing is not None and (
+                existing.deleted_at is not None or existing.implementation_status == "deprecated"
+            ):
+                retired_skipped += 1
+                continue
             if existing is not None and existing.implementation_status != "stub":
                 # Refresh only what lifecycle_steps.yaml is the source of
                 # truth for. Adapter/contract/status/version stay as
@@ -313,10 +329,148 @@ def seed_lifecycle_steps() -> dict:
             "steps_created": created,
             "steps_updated": updated,
             "steps_implemented_preserved": preserved,
+            "steps_retired_skipped": retired_skipped,
+            "steps_live": db.query(models.WfStepRegistration)
+            .filter(
+                models.WfStepRegistration.deleted_at.is_(None),
+                models.WfStepRegistration.implementation_status != "deprecated",
+            )
+            .count(),
             "steps_total": db.query(models.WfStepRegistration).count(),
         }
     finally:
         db.close()
+
+
+def seed_signal_registry() -> dict:
+    """Loads extractors.yaml and mirrors the step 3 registry files into
+    `extractors` / `signal_registry_entries`, then recomputes readiness —
+    28-ITEM-AND-CONVERSION-MODEL.md Part C. Idempotent. Fails (and writes
+    nothing) if any registered signal is unclaimed by its extractor's
+    declaration."""
+    db = SessionLocal()
+    try:
+        result = item_registry.sync_from_registry_files(
+            db, _load("extractors.yaml")["extractors"], _load("anticipated_signals.yaml")["signals"]
+        )
+        db.commit()
+        return result
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
+_RESOLUTION_FIELDS = (
+    "name", "description", "target_description", "consumer_impact", "effort",
+    "is_default", "linux_compatible", "container_ready", "notes", "status",
+)
+_RESOLUTION_DEFAULTS = {"is_default": False, "linux_compatible": True, "container_ready": True, "status": "active"}
+
+
+def seed_catalog_items() -> dict:
+    """Upserts the authored items in catalog_items.yaml and their
+    resolutions — 28-ITEM-AND-CONVERSION-MODEL.md Parts D to F. Same
+    write-time validation as the API; readiness computed, never read from
+    the file. `version` bumps only when detection or scope changes, so a
+    reseed of an unchanged file is a no-op."""
+    db = SessionLocal()
+    try:
+        registered = {row.name: row.evidence_kind for row in db.query(models.SignalRegistryEntry)}
+        created = updated = 0
+        states = {}
+        for data in _load("catalog_items.yaml")["items"]:
+            detection, _warnings = validate_detection(data["scope"], data["detection"], registered)
+            item = db.get(models.CatalogItem, data["id"])
+            if item is None:
+                item = models.CatalogItem(id=data["id"], version=1)
+                db.add(item)
+                created += 1
+            else:
+                if item.detection != detection or item.scope != data["scope"]:
+                    item.version += 1
+                updated += 1
+            item.name = data["name"]
+            item.description = data.get("description")
+            item.scope = data["scope"]
+            item.category = data["category"]
+            item.detection = detection
+            item.excluded_roles = sorted(set(data.get("excluded_roles", [])))
+            item.owner_team = data.get("owner_team")
+            item.status = data.get("status", "active")
+            db.flush()
+            item_readiness.recompute_item(db, item)
+            states[item.id] = item.state
+
+            for res_data in data.get("resolutions", []):
+                resolution = db.get(models.ItemResolution, res_data["id"])
+                # Resolution ids are global primary keys. Reusing one under a
+                # second item would silently re-point and overwrite the first
+                # item's option, so it is a hard error.
+                if resolution is not None and resolution.item_id != item.id:
+                    raise ValueError(
+                        f"Resolution id '{res_data['id']}' under item '{item.id}' already belongs to item "
+                        f"'{resolution.item_id}'. Resolution ids are global: prefix it with the item id."
+                    )
+                if resolution is None:
+                    resolution = models.ItemResolution(id=res_data["id"], item_id=item.id)
+                    db.add(resolution)
+                for field in _RESOLUTION_FIELDS:
+                    setattr(resolution, field, res_data.get(field, _RESOLUTION_DEFAULTS.get(field)))
+            db.flush()
+        db.commit()
+        return {"items_created": created, "items_updated": updated, "states": states}
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
+def print_catalog_items_summary(result: dict) -> None:
+    ready = sorted(k for k, v in result["states"].items() if v == "ready")
+    print(
+        f"Seeded: {len(result['states'])} authored catalog items "
+        f"({result['items_created']} created, {result['items_updated']} updated); "
+        f"{len(ready)} ready, {len(result['states']) - len(ready)} not_ready"
+    )
+
+
+def seed_pattern_migration() -> dict:
+    """Part Q, idempotent: an item already migrated is left alone. See
+    app/items/pattern_migration.py, which is also runnable (and revertible)
+    on its own."""
+    db = SessionLocal()
+    try:
+        report = pattern_migration.migrate(db)
+        db.commit()
+        return report
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
+def print_pattern_migration_summary(report: dict) -> None:
+    print(
+        f"Migrated patterns -> items: {len(report['items'])} new "
+        f"({len(report['skipped_existing'])} already present, {len(report['amended'])} amended), "
+        f"{report['resolutions']} resolutions, "
+        f"{report['decisions']} decisions; {len(report['not_migrated_decisions'])} decision(s) left on "
+        "non-migrated patterns"
+    )
+
+
+def print_signal_registry_summary(result: dict) -> None:
+    print(
+        f"Seeded: signal registry {result['registry_version']} "
+        f"({result['signals_in_registry']} signals, {result['signals_anticipated']} anticipated, "
+        f"{result['signals_created']} new) "
+        f"from {result['extractors']} extractor declarations; "
+        f"{len(result['signals_changed'])} signal and {len(result['items_changed'])} item state changes"
+    )
 
 
 def print_summary(result: dict) -> None:
@@ -335,7 +489,10 @@ def print_summary(result: dict) -> None:
 
 def print_steps_summary(result: dict) -> None:
     print(
-        f"Seeded: {result['steps_total']} lifecycle steps "
+        f"Seeded: {result['steps_live']} live lifecycle steps "
         f"({result['steps_created']} created, {result['steps_updated']} updated, "
-        f"{result.get('steps_implemented_preserved', 0)} implemented left untouched)"
+        f"{result['steps_implemented_preserved']} implemented left untouched); "
+        f"{result['steps_total'] - result['steps_live']} retired registrations kept for history"
     )
+    if result["steps_retired_skipped"]:
+        print(f"  WARNING: {result['steps_retired_skipped']} YAML entries name a retired step and were skipped")

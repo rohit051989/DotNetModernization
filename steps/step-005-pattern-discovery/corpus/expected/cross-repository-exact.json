@@ -1,0 +1,32 @@
+{
+  "cluster_count": 1,
+  "clusters": [
+    {
+      "cluster_id": "6189a9508df2",
+      "cluster_method": "exact",
+      "cohesion": 1.0,
+      "is_singleton": false,
+      "member_count": 3,
+      "member_paths": [
+        "src/Integration.Invoice/Integration.Invoice.csproj",
+        "src/Integration.Dispatch/Integration.Dispatch.csproj",
+        "src/Integration.Returns/Integration.Returns.csproj"
+      ],
+      "repository_count": 2,
+      "repository_distribution": {
+        "legacy-billing": 1,
+        "legacy-orders": 2
+      },
+      "signals": [
+        "CONNECTION_STRING_CONFIG",
+        "SYSTEM_MESSAGING_ASSEMBLY",
+        "SYSTEM_MESSAGING_NAMESPACE"
+      ],
+      "similar_patterns": []
+    }
+  ],
+  "excluded_insufficient_fingerprint": 0,
+  "largest_cluster_size": 3,
+  "projects_eligible": 3,
+  "singleton_count": 0
+}

@@ -1,0 +1,46 @@
+{
+  "_note": "The same two projects as facet-disagreement, under facet_mode 'signals_only': one cluster instead of two. The canonical signature's facets are nulled where members disagree, so the cluster_id depends on the shared shape rather than on whichever member happened to sort first.",
+  "config_overrides": {
+    "facet_mode": "signals_only"
+  },
+  "projects": [
+    {
+      "classification_status": "NO_PATTERN_MATCHED",
+      "classification_step_execution_id": "99999999-9999-4999-8999-999999999999",
+      "facets": {
+        "framework_family": "net-framework",
+        "output_type": "Library",
+        "project_role": "LIBRARY",
+        "structural_type": "csharp_project"
+      },
+      "project_id": "00000000-0000-4000-8000-000000000071",
+      "project_path": "src/RoleLib/RoleLib.csproj",
+      "repository_id": "00000000-0000-4000-9000-ders",
+      "repository_slug": "legacy-orders",
+      "signals": {
+        "CONNECTION_STRING_CONFIG": 1.0,
+        "SYSTEM_MESSAGING_ASSEMBLY": 1.0,
+        "SYSTEM_MESSAGING_NAMESPACE": 1.0
+      }
+    },
+    {
+      "classification_status": "NO_PATTERN_MATCHED",
+      "classification_step_execution_id": "99999999-9999-4999-8999-999999999999",
+      "facets": {
+        "framework_family": "net-framework",
+        "output_type": "Exe",
+        "project_role": "APPLICATION",
+        "structural_type": "csharp_project"
+      },
+      "project_id": "00000000-0000-4000-8000-000000000072",
+      "project_path": "src/RoleApp/RoleApp.csproj",
+      "repository_id": "00000000-0000-4000-9000-ders",
+      "repository_slug": "legacy-orders",
+      "signals": {
+        "CONNECTION_STRING_CONFIG": 1.0,
+        "SYSTEM_MESSAGING_ASSEMBLY": 1.0,
+        "SYSTEM_MESSAGING_NAMESPACE": 1.0
+      }
+    }
+  ]
+}

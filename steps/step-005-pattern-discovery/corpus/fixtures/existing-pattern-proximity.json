@@ -1,0 +1,56 @@
+{
+  "_note": "Part H case 7: a cluster whose signature overlaps an active catalog pattern reports it in similar_patterns. This feeds step 6's 'merge into existing pattern' action \u2014 and surfaces the most common real cause of a cluster existing at all, which is an existing pattern being slightly too narrow. The second pattern here sits below the 0.40 proximity threshold and must NOT be reported.",
+  "catalog_patterns": {
+    "msmq-adjacent-pattern": [
+      "CONNECTION_STRING_CONFIG",
+      "SYSTEM_MESSAGING_ASSEMBLY",
+      "SYSTEM_MESSAGING_NAMESPACE",
+      "SENSITIVE_CONFIG_KEY"
+    ],
+    "unrelated-pattern": [
+      "ASPX_FILE",
+      "GLOBAL_ASAX_ENTRY_POINT",
+      "SYSTEM_WEB_NAMESPACE"
+    ]
+  },
+  "projects": [
+    {
+      "classification_status": "NO_PATTERN_MATCHED",
+      "classification_step_execution_id": "99999999-9999-4999-8999-999999999999",
+      "facets": {
+        "framework_family": "net-framework",
+        "output_type": "Library",
+        "project_role": "LIBRARY",
+        "structural_type": "csharp_project"
+      },
+      "project_id": "00000000-0000-4000-8000-000000000061",
+      "project_path": "src/Prox1/Prox1.csproj",
+      "repository_id": "00000000-0000-4000-9000-ders",
+      "repository_slug": "legacy-orders",
+      "signals": {
+        "CONNECTION_STRING_CONFIG": 1.0,
+        "SYSTEM_MESSAGING_ASSEMBLY": 1.0,
+        "SYSTEM_MESSAGING_NAMESPACE": 1.0
+      }
+    },
+    {
+      "classification_status": "NO_PATTERN_MATCHED",
+      "classification_step_execution_id": "99999999-9999-4999-8999-999999999999",
+      "facets": {
+        "framework_family": "net-framework",
+        "output_type": "Library",
+        "project_role": "LIBRARY",
+        "structural_type": "csharp_project"
+      },
+      "project_id": "00000000-0000-4000-8000-000000000062",
+      "project_path": "src/Prox2/Prox2.csproj",
+      "repository_id": "00000000-0000-4000-9000-ling",
+      "repository_slug": "legacy-billing",
+      "signals": {
+        "CONNECTION_STRING_CONFIG": 1.0,
+        "SYSTEM_MESSAGING_ASSEMBLY": 1.0,
+        "SYSTEM_MESSAGING_NAMESPACE": 1.0
+      }
+    }
+  ]
+}

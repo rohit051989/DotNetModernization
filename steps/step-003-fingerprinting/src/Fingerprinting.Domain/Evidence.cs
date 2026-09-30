@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace Fingerprinting.Domain;
 
 /// <summary>
@@ -13,4 +15,14 @@ public sealed record Evidence
     public string? DeclaringType { get; init; }
     public string? Member { get; init; }
     public string? SnippetHash { get; init; }
+
+    /// <summary>
+    /// <c>LITERAL</c> signals only: exactly the text the signal's pattern
+    /// matched at this span (Part D "Signal types"). Omitted from JSON when
+    /// null — application-fingerprint@1.2.0 forbids the key on every other
+    /// signal type, so it must be absent, not <c>null</c>. Never populated
+    /// from a connection string or a sensitive-key value (Part G).
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? MatchedValue { get; init; }
 }

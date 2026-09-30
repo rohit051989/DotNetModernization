@@ -179,6 +179,9 @@ export interface PatternSummary {
   legacy_stack: string
   category: string
   status: LifecycleStatus
+  /** PRIMARY, SECONDARY or PROJECT_ROLE. A cluster cannot meaningfully merge
+   * into a PROJECT_ROLE pattern, so step 6's merge selector filters on it. */
+  classification_role: string
   version: number
   target_state_count: number
   updated_at: string

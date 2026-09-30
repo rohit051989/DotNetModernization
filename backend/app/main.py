@@ -10,20 +10,25 @@ from sqlalchemy.exc import IntegrityError
 from app.config import settings
 from app.routers import (
     catalog,
+    catalog_items,
     classifications,
     dashboard,
     decisions,
     engagement_patterns,
     engagements,
     health,
+    item_decisions,
     patterns,
     repositories,
+    signal_registry,
     step_policies,
     structure,
     target_states,
     workflow_artifacts,
     workflow_capabilities,
     workflow_executions,
+    pattern_candidates,
+    validation_queue,
     workflow_jobs,
     workflow_policy,
     workflow_steps,
@@ -130,6 +135,23 @@ app = FastAPI(
                 "Deterministic export/import of the master catalog — and, optionally, one "
                 "engagement's overlay and decisions — as versionable, diffable JSON, so it "
                 "can be committed to git and reviewed as a pull request."
+            ),
+        },
+        {
+            "name": "Item Catalog",
+            "description": (
+                "The item & conversion model's master catalog (28-ITEM-AND-CONVERSION-MODEL.md): "
+                "catalog items (things that need work, with detection and scope), their "
+                "resolutions, the extractor declarations and signal registry they depend on, "
+                "and coverage views. `state` is computed from signal readiness and never "
+                "settable. Runs alongside the pattern catalog until cut-over."
+            ),
+        },
+        {
+            "name": "Item Decisions",
+            "description": (
+                "An engagement's chosen resolution per catalog item. Client-scoped: writes "
+                "only `engagement_decisions`, never the item catalog."
             ),
         },
         {
@@ -261,8 +283,13 @@ app.include_router(engagement_patterns.router)
 app.include_router(step_policies.router)
 app.include_router(decisions.router)
 app.include_router(catalog.router)
+app.include_router(signal_registry.router)
+app.include_router(catalog_items.router)
+app.include_router(item_decisions.router)
 app.include_router(workflow_steps.router)
 app.include_router(workflow_capabilities.router)
+app.include_router(pattern_candidates.router)
+app.include_router(validation_queue.router)
 app.include_router(workflow_jobs.router)
 app.include_router(workflow_executions.router)
 app.include_router(workflow_policy.router)

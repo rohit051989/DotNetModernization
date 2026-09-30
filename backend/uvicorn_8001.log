@@ -1,0 +1,22 @@
+INFO:     Started server process [63244]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8001 (Press CTRL+C to quit)
+INFO:     127.0.0.1:50306 - "POST /api/engagements/client-a-ocp4/pattern-candidates/3c2191cbea9a/create-pattern HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61587 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63069 - "POST /api/engagements/client-a-ocp4/pattern-candidates/3c2191cbea9a/create-pattern HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63070 - "PUT /api/patterns/efcore-context-services-library HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63072 - "DELETE /api/patterns/efcore-context-services-library?deleted_by=rohit.khanna HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61795 - "OPTIONS /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61795 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54822 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58816 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64741 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54965 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64946 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62146 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59312 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53591 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59915 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55371 - "OPTIONS /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55371 - "GET /api/health HTTP/1.1" 200 OK

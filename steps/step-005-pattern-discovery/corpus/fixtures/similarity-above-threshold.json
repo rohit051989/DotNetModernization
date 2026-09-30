@@ -1,0 +1,44 @@
+{
+  "_note": "Part H case 2: two projects at Jaccard 0.75 (3 shared of 4 union) cluster together with cohesion below 1.0 and cluster_method 'similarity'. The canonical signature is the INTERSECTION, so the cluster is defined by the three signals both actually have \u2014 not by MSMQ_JOURNAL_CONFIG, which only one has.",
+  "projects": [
+    {
+      "classification_status": "NO_PATTERN_MATCHED",
+      "classification_step_execution_id": "99999999-9999-4999-8999-999999999999",
+      "facets": {
+        "framework_family": "net-framework",
+        "output_type": "Library",
+        "project_role": "LIBRARY",
+        "structural_type": "csharp_project"
+      },
+      "project_id": "00000000-0000-4000-8000-000000000011",
+      "project_path": "src/A/A.csproj",
+      "repository_id": "00000000-0000-4000-9000-ders",
+      "repository_slug": "legacy-orders",
+      "signals": {
+        "CONNECTION_STRING_CONFIG": 1.0,
+        "SYSTEM_MESSAGING_ASSEMBLY": 1.0,
+        "SYSTEM_MESSAGING_NAMESPACE": 1.0
+      }
+    },
+    {
+      "classification_status": "NO_PATTERN_MATCHED",
+      "classification_step_execution_id": "99999999-9999-4999-8999-999999999999",
+      "facets": {
+        "framework_family": "net-framework",
+        "output_type": "Library",
+        "project_role": "LIBRARY",
+        "structural_type": "csharp_project"
+      },
+      "project_id": "00000000-0000-4000-8000-000000000012",
+      "project_path": "src/B/B.csproj",
+      "repository_id": "00000000-0000-4000-9000-ders",
+      "repository_slug": "legacy-orders",
+      "signals": {
+        "CONNECTION_STRING_CONFIG": 1.0,
+        "SENSITIVE_CONFIG_KEY": 1.0,
+        "SYSTEM_MESSAGING_ASSEMBLY": 1.0,
+        "SYSTEM_MESSAGING_NAMESPACE": 1.0
+      }
+    }
+  ]
+}

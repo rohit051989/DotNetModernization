@@ -244,11 +244,12 @@ public static class EntryPoint
             [
                 new StepOutput
                 {
-                    // 1.1.0, not 1.0.0: Signal gained evidenceKind (Part A3
-                    // addendum) — additive, and pattern-classification's
-                    // consumes range (^1.0.0) still accepts it.
+                    // 1.2.0: the API_INVOCATION and LITERAL signal types,
+                    // evidence.matchedValue and populated repositorySignals
+                    // (Part D "Signal types") — additive over 1.1.0, so a
+                    // ^1.0.0 consumes range still accepts it.
                     ArtifactType = "application-fingerprint",
-                    ArtifactVersion = "1.1.0",
+                    ArtifactVersion = "1.2.0",
                     Uri = ArtifactUri.FromLocalPath(outputPath),
                     Checksum = checksum,
                     Metadata = new Dictionary<string, object?> { ["generated_at"] = generatedAt },
@@ -295,12 +296,14 @@ public static class EntryPoint
         new InheritanceExtractor(),
         new EntryPointExtractor(),
         new ConfigurationExtractor(),
+        new ApiUsageExtractor(),
+        new PathLiteralExtractor(),
     ];
 
     private static string SchemasDir() => Path.Combine(AppContext.BaseDirectory, "schemas");
 
     private static string SchemaPath() =>
-        Path.Combine(AppContext.BaseDirectory, "schemas", "application-fingerprint-1.1.0.schema.json");
+        Path.Combine(AppContext.BaseDirectory, "schemas", "application-fingerprint-1.2.0.schema.json");
 
     // The canonical file (Microsoft's Sarif.Sdk NuGet package ships the
     // exact OASIS-published copy) declares itself "$schema": draft-04 and

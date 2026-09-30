@@ -1,0 +1,271 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://modernization-platform.internal/schemas/application-fingerprint-1.2.0.schema.json",
+  "title": "application-fingerprint@1.2.0",
+  "description": "See 21-STEP-003-FINGERPRINTING.md Part F. No schemaVersion, scanId, timestamp or applicationPattern field belongs here. 1.1.0 adds signal.evidenceKind (Part F addendum). 1.2.0 adds signal types API_INVOCATION and LITERAL and evidence.matchedValue, required on LITERAL evidence and forbidden elsewhere (Part D 'Signal types').",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "artifactType",
+    "artifactVersion",
+    "scannerVersion",
+    "signalRegistryVersion",
+    "repositoryId",
+    "repositorySlug",
+    "repositoryCommitSha",
+    "scanStatus",
+    "semanticAnalysisEnabled",
+    "summary",
+    "projects",
+    "repositorySignals",
+    "warnings"
+  ],
+  "properties": {
+    "artifactType": { "const": "application-fingerprint" },
+    "artifactVersion": { "const": "1.2.0" },
+    "scannerVersion": { "type": "string", "minLength": 1 },
+    "signalRegistryVersion": { "type": "string", "minLength": 1 },
+    "repositoryId": { "type": "string", "format": "uuid" },
+    "repositorySlug": { "type": "string", "minLength": 1 },
+    "repositoryCommitSha": { "type": ["string", "null"] },
+    "scanStatus": { "enum": ["complete", "partial", "failed"] },
+    "semanticAnalysisEnabled": { "type": "boolean" },
+    "summary": { "$ref": "#/$defs/scanSummary" },
+    "projects": { "type": "array", "items": { "$ref": "#/$defs/projectFingerprint" } },
+    "repositorySignals": { "type": "array", "items": { "$ref": "#/$defs/signal" } },
+    "warnings": { "type": "array", "items": { "$ref": "#/$defs/warning" } }
+  },
+  "$defs": {
+    "signalCategory": {
+      "enum": [
+        "PROJECT_METADATA",
+        "FRAMEWORK_REFERENCE",
+        "PACKAGE_DEPENDENCY",
+        "SOURCE_CONSTRUCT",
+        "FILE_INDICATOR",
+        "CONFIGURATION_INDICATOR",
+        "ENTRY_POINT",
+        "ENDPOINT_INDICATOR",
+        "EXECUTION_INDICATOR",
+        "HOSTING_INDICATOR",
+        "UI_INDICATOR",
+        "DATA_ACCESS_INDICATOR",
+        "MESSAGING_INDICATOR",
+        "SCHEDULING_INDICATOR",
+        "DEPLOYMENT_INDICATOR",
+        "TESTING_INDICATOR"
+      ]
+    },
+    "signalType": {
+      "enum": [
+        "ATTRIBUTE",
+        "BASE_CLASS",
+        "FILE_PRESENCE",
+        "INVOCATION",
+        "CONFIG_ELEMENT",
+        "PACKAGE",
+        "ASSEMBLY",
+        "NAMESPACE",
+        "ROUTE",
+        "ENTRY_POINT",
+        "API_INVOCATION",
+        "LITERAL"
+      ]
+    },
+    "evidenceSourceType": {
+      "enum": [
+        "PROJECT_FILE",
+        "SOURCE_CODE",
+        "CONFIGURATION",
+        "FILE_STRUCTURE",
+        "PACKAGE_REFERENCE",
+        "ASSEMBLY_REFERENCE",
+        "PIPELINE",
+        "DEPLOYMENT_SCRIPT",
+        "SOLUTION_METADATA"
+      ]
+    },
+    "fingerprintStatus": {
+      "enum": ["COMPLETE", "PARTIAL", "FAILED", "SKIPPED", "NOT_SUPPORTED"]
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["lineStart", "lineEnd", "declaringType", "member", "snippetHash"],
+      "properties": {
+        "lineStart": { "type": ["integer", "null"], "minimum": 1 },
+        "lineEnd": { "type": ["integer", "null"], "minimum": 1 },
+        "declaringType": { "type": ["string", "null"] },
+        "member": { "type": ["string", "null"] },
+        "snippetHash": { "type": ["string", "null"] },
+        "matchedValue": {
+          "description": "LITERAL signals only: exactly the text the signal's pattern matched at this span, never the enclosing literal or line. Part G applies: never taken from a connection string or sensitive-key value.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        }
+      }
+    },
+    "signal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "category",
+        "type",
+        "value",
+        "sourceType",
+        "sourcePath",
+        "evidenceKind",
+        "occurrenceCount",
+        "evidence",
+        "extractor",
+        "extractionConfidence"
+      ],
+      "properties": {
+        "name": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*$" },
+        "category": { "$ref": "#/$defs/signalCategory" },
+        "type": { "$ref": "#/$defs/signalType" },
+        "value": { "type": ["string", "null"] },
+        "sourceType": { "$ref": "#/$defs/evidenceSourceType" },
+        "sourcePath": { "type": ["string", "null"] },
+        "evidenceKind": { "$ref": "#/$defs/signalEvidenceKind" },
+        "occurrenceCount": { "type": "integer", "minimum": 0 },
+        "evidence": { "type": "array", "maxItems": 20, "items": { "$ref": "#/$defs/evidence" } },
+        "extractor": { "type": "string", "minLength": 1 },
+        "extractionConfidence": { "type": "number", "minimum": 0, "maximum": 1 }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "type": { "const": "LITERAL" } } },
+          "then": {
+            "properties": {
+              "value": { "type": "string", "minLength": 1 },
+              "evidenceKind": { "const": "FILE" },
+              "evidence": { "minItems": 1, "items": { "required": ["matchedValue"] } }
+            }
+          },
+          "else": {
+            "properties": { "evidence": { "items": { "not": { "required": ["matchedValue"] } } } }
+          }
+        },
+        {
+          "if": { "properties": { "type": { "const": "API_INVOCATION" } } },
+          "then": {
+            "properties": {
+              "value": { "type": "string", "minLength": 1 },
+              "evidenceKind": { "const": "FILE" },
+              "evidence": { "minItems": 1, "items": { "properties": { "lineStart": { "type": "integer" }, "lineEnd": { "type": "integer" } } } }
+            }
+          }
+        }
+      ]
+    },
+    "signalEvidenceKind": {
+      "description": "What sourcePath names — from the signal registry's evidence_kind field (25-STANDARDS-AND-VIEWPOINTS.md Part A3 addendum). FOLDER and NONE must never be treated as an openable file location.",
+      "enum": ["FILE", "FOLDER", "NONE"]
+    },
+    "warning": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "message", "severity"],
+      "properties": {
+        "code": { "type": "string", "minLength": 1 },
+        "message": { "type": "string", "minLength": 1 },
+        "severity": { "enum": ["info", "warning", "error"] }
+      }
+    },
+    "analysisCapabilities": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fileDiscovery",
+        "projectMetadataParsed",
+        "msbuildEvaluated",
+        "syntaxAnalysis",
+        "semanticAnalysis",
+        "configurationParsed",
+        "deploymentArtifactsParsed",
+        "generatedCodeExcluded"
+      ],
+      "properties": {
+        "fileDiscovery": { "type": "boolean" },
+        "projectMetadataParsed": { "type": "boolean" },
+        "msbuildEvaluated": { "type": "boolean" },
+        "syntaxAnalysis": { "type": "boolean" },
+        "semanticAnalysis": { "type": "boolean" },
+        "configurationParsed": { "type": "boolean" },
+        "deploymentArtifactsParsed": { "type": "boolean" },
+        "generatedCodeExcluded": { "type": "boolean" }
+      }
+    },
+    "evaluatedProperty": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["raw", "evaluated", "source"],
+      "properties": {
+        "raw": { "type": ["string", "null"] },
+        "evaluated": { "type": ["string", "null"] },
+        "source": { "enum": ["MSBUILD_EVALUATED", "RAW_FALLBACK"] }
+      }
+    },
+    "scanSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "projectsEligible",
+        "projectsComplete",
+        "projectsPartial",
+        "projectsFailed",
+        "projectsSkipped",
+        "totalSignals",
+        "totalEvidence",
+        "signalsByCategory"
+      ],
+      "properties": {
+        "projectsEligible": { "type": "integer", "minimum": 0 },
+        "projectsComplete": { "type": "integer", "minimum": 0 },
+        "projectsPartial": { "type": "integer", "minimum": 0 },
+        "projectsFailed": { "type": "integer", "minimum": 0 },
+        "projectsSkipped": { "type": "integer", "minimum": 0 },
+        "totalSignals": { "type": "integer", "minimum": 0 },
+        "totalEvidence": { "type": "integer", "minimum": 0 },
+        "signalsByCategory": {
+          "type": "object",
+          "additionalProperties": { "type": "integer", "minimum": 0 }
+        }
+      }
+    },
+    "projectFingerprint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "projectId",
+        "projectPath",
+        "fingerprintStatus",
+        "analysisCapabilities",
+        "projectSdk",
+        "nullableEnabled",
+        "implicitUsings",
+        "evaluatedProperties",
+        "signals",
+        "warnings"
+      ],
+      "properties": {
+        "projectId": { "type": "string", "format": "uuid" },
+        "projectPath": { "type": "string", "minLength": 1 },
+        "fingerprintStatus": { "$ref": "#/$defs/fingerprintStatus" },
+        "analysisCapabilities": { "$ref": "#/$defs/analysisCapabilities" },
+        "projectSdk": { "type": ["string", "null"] },
+        "nullableEnabled": { "type": ["boolean", "null"] },
+        "implicitUsings": { "type": ["boolean", "null"] },
+        "evaluatedProperties": {
+          "type": ["object", "null"],
+          "additionalProperties": { "$ref": "#/$defs/evaluatedProperty" }
+        },
+        "signals": { "type": "array", "items": { "$ref": "#/$defs/signal" } },
+        "warnings": { "type": "array", "items": { "$ref": "#/$defs/warning" } }
+      }
+    }
+  }
+}

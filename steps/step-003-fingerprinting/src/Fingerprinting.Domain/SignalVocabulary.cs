@@ -27,8 +27,12 @@ public static class SignalCategories
 }
 
 /// <summary>
-/// The ten <c>fingerprint_signals.signal_type</c> values from
-/// 21-STEP-003-FINGERPRINTING.md Part E.
+/// The twelve <c>fingerprint_signals.signal_type</c> values from
+/// 21-STEP-003-FINGERPRINTING.md Part D "Signal types". Mirrors the
+/// SIGNAL_TYPE tuple in backend/app/models.py — keep both in sync.
+/// <see cref="ApiInvocation"/> and <see cref="Literal"/> are part of the
+/// application-fingerprint@1.2.0 contract: no extractor emits them yet, and
+/// an artifact containing either must declare artifactVersion 1.2.0.
 /// </summary>
 public static class SignalTypes
 {
@@ -42,6 +46,16 @@ public static class SignalTypes
     public const string Namespace = "NAMESPACE";
     public const string Route = "ROUTE";
     public const string EntryPoint = "ENTRY_POINT";
+
+    /// <summary>Use of one specific member, e.g. <c>DateTime.Now</c>,
+    /// <c>Encoding.Default</c>. Signal <c>value</c> is the fully qualified
+    /// member; each evidence entry is a line span.</summary>
+    public const string ApiInvocation = "API_INVOCATION";
+
+    /// <summary>A source or configuration value matching the signal's
+    /// pattern, e.g. a Windows path. Signal <c>value</c> is the matched
+    /// value; each evidence entry also carries <c>matchedValue</c>.</summary>
+    public const string Literal = "LITERAL";
 }
 
 /// <summary>

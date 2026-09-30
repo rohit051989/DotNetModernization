@@ -66,9 +66,20 @@ token and therefore its instance, preserving restart semantics.
 
 ### `phase0-estate-consolidation` — engagement scoped
 
-Steps 5, 6, 7, 11, 12. **Do not define yet** — all five are stubs. Precondition when
-defined: every in-scope, non-deleted repository has a completed
-`phase0-repository-discovery` execution.
+Steps 5, 6, 7, 11, 12. Defined in `backend/app/jobs/phase0-estate-consolidation.yaml`.
+All five steps are still stubs, so the job runs under `stub_policy: continue` and
+completes with each step reporting `NOT_IMPLEMENTED` until step 5 lands.
+
+**No estate-completeness precondition.** An earlier draft required every in-scope,
+non-deleted repository to have a completed `phase0-repository-discovery` execution
+before this job could run. That condition is unsatisfiable at fleet scale —
+repositories are registered over weeks and rescanned continuously, so some repository
+is always mid-flight — and it would make the job unlaunchable in exactly the estates it
+exists for. Step 5 clusters over whatever has classification results and reports its own
+coverage instead; see `26-STEP-005-PATTERN-DISCOVERY.md` A5.
+
+Takes `engagement_id` only. Job scope is derived from declared parameters, so declaring
+`engagement_id` without `repository_id` is what makes this job `per_engagement`.
 
 ---
 

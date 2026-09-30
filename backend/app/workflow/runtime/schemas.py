@@ -44,8 +44,15 @@ class ResolvedInputRef(BaseModel):
 
     logical_name: str = Field(description="The key this step's job-flow `inputs:` mapping used to address the artifact.")
     artifact_type: str
-    artifact_version: str
-    artifact_id: uuid.UUID = Field(description="Links to GET /api/workflow/artifacts/{artifact_id}.")
+    # Null when `resolved` is false — an input declared `optional: true` on
+    # the step registration whose producer did not run this execution.
+    # Recording the miss is the point: "we looked for it and it was not
+    # there" is exactly the evidence docs/20 Part A wants visible, and is
+    # very different from the input never having been wired.
+    artifact_version: str | None = None
+    artifact_id: uuid.UUID | None = Field(default=None, description="Links to GET /api/workflow/artifacts/{artifact_id}. Null for an unresolved optional input.")
+    resolved: bool = Field(default=True, description="False when an optional input had no artifact to bind to.")
+    reason: str | None = Field(default=None, description="Why an optional input went unresolved.")
 
 
 class ProducedOutputRef(BaseModel):

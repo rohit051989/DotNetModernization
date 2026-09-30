@@ -17,11 +17,18 @@ internal static class SourceFileScanner
     private static readonly string[] GeneratedFileSuffixes =
         [".designer.cs", ".g.cs", ".g.i.cs", ".assemblyinfo.cs"];
 
-    public sealed record SourceFile(string RelativePath, string AbsolutePath);
+    /// <param name="IsGenerated">Only ever true when the scan was asked to
+    /// include generated code.</param>
+    public sealed record SourceFile(string RelativePath, string AbsolutePath, bool IsGenerated = false);
 
     public sealed record ScanResult(IReadOnlyList<SourceFile> Files, bool Truncated);
 
-    public static ScanResult EnumerateCSharpFiles(string repositoryRoot, string projectDirectory, CancellationToken cancellationToken)
+    /// <param name="includeGenerated">Include generated files, flagged
+    /// <see cref="SourceFile.IsGenerated"/>. Off for every extractor except
+    /// where the generated code is itself the evidence: dotnet-svcutil puts a
+    /// WCF client's binding in its generated Reference.cs.</param>
+    public static ScanResult EnumerateCSharpFiles(
+        string repositoryRoot, string projectDirectory, CancellationToken cancellationToken, bool includeGenerated = false)
     {
         var files = new List<SourceFile>();
         var truncated = false;
@@ -33,7 +40,8 @@ internal static class SourceFileScanner
                 continue;
             }
 
-            if (IsGenerated(absolutePath))
+            var generated = IsGenerated(absolutePath);
+            if (generated && !includeGenerated)
             {
                 continue;
             }
@@ -44,7 +52,7 @@ internal static class SourceFileScanner
                 break;
             }
 
-            files.Add(new SourceFile(FileSystemWalk.ToRepositoryRelativePath(repositoryRoot, absolutePath), absolutePath));
+            files.Add(new SourceFile(FileSystemWalk.ToRepositoryRelativePath(repositoryRoot, absolutePath), absolutePath, generated));
         }
 
         return new ScanResult(files, truncated);

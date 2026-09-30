@@ -7,14 +7,15 @@ namespace Fingerprinting.Extractors;
 
 /// <summary>
 /// Level 2 (structured-file) extraction — step-3-application-fingerprinting.md
-/// section 8: web.config, app.config and appsettings.json. Merges what
+/// section 8: web.config, app.config and appsettings*.json. Merges what
 /// section 30 called WcfConfigurationExtractor and AspNetConfigurationExtractor
 /// (they parse the same files) plus the section 8.4 database indicators.
 ///
-/// The secrets rule (Part G) is mechanically enforced, not a convention: this
-/// extractor never calls <c>.Value</c> on a <c>connectionString</c> attribute,
-/// never reads a JSON leaf whose key matched the sensitive-key pattern, and
-/// never stores a source snippet — only a hash. See
+/// The secrets rule (Part G) is mechanically enforced: <b>nothing derived
+/// from a connection string is ever persisted</b>, and a sensitive key's
+/// value is never read. The one read of a connection string is
+/// <see cref="Secrets.UsesWindowsAuthentication"/>, which returns a bool;
+/// every signal from a connection string carries only its name. See
 /// Fingerprinting.Tests/ConfigurationExtractorSecretsTests.cs for the
 /// mechanical proof.
 /// </summary>
@@ -24,8 +25,9 @@ public sealed class ConfigurationExtractor : IFingerprintExtractor
 
     public string Name => ExtractorName;
 
-    private static readonly string[] SensitiveKeyPatterns =
-        ["password", "pwd", "secret", "token", "apikey", "api_key", "connectionstring", "accountkey", "sharedaccesskey", "credential"];
+    // Name-based heuristics for integration settings. The key path is
+    // recorded, never the value (hosts, passwords and tokens live there).
+    private const decimal HeuristicConfidence = 0.80m;
 
     public bool CanProcess(ProjectContext context) => Directory.Exists(context.ProjectDirectory);
 
@@ -37,9 +39,8 @@ public sealed class ConfigurationExtractor : IFingerprintExtractor
         foreach (var filePath in FileSystemWalk.EnumerateFiles(context.ProjectDirectory, cancellationToken))
         {
             var fileName = Path.GetFileName(filePath);
-            var isAppSettings = string.Equals(fileName, "appsettings.json", StringComparison.OrdinalIgnoreCase);
-            var isXmlConfig = string.Equals(fileName, "web.config", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(fileName, "app.config", StringComparison.OrdinalIgnoreCase);
+            var isAppSettings = ConfigFiles.IsAppSettings(fileName);
+            var isXmlConfig = ConfigFiles.IsXmlConfig(fileName);
 
             if (!isAppSettings && !isXmlConfig)
             {
@@ -92,19 +93,46 @@ public sealed class ConfigurationExtractor : IFingerprintExtractor
         AddPresenceSignals(root, "aspNetCore", "ASPNETCORE_CONFIG", relativePath, accumulator);
         AddPresenceSignals(root, "serviceHostingEnvironment", "SERVICE_HOSTING_ENVIRONMENT_CONFIG", relativePath, accumulator);
 
-        // 8.2 Endpoint indicators — service endpoints and binding types.
+        // 8.2 Endpoint indicators. A service endpoint lives under
+        // <services>, a client endpoint under <client>; the binding type is
+        // recorded for both. Before 1.4.0 every <endpoint> counted as a
+        // service endpoint, contradicting the signal's registry description.
+        // WCF_BINDING_CONFIG does not say which kind of endpoint a binding
+        // belongs to, so a client endpoint's binding is also recorded on its
+        // own (WCF_CLIENT_BINDING_CONFIG, registry 1.5.0) — "a client calling
+        // over netTcpBinding" is then one condition, and a NetTcp *service*
+        // beside an HTTP client no longer looks like a NetTcp client.
         foreach (var endpoint in root.Descendants().Where(e => e.Name.LocalName == "endpoint"))
         {
             var contract = (string?)endpoint.Attribute("contract");
             var binding = (string?)endpoint.Attribute("binding");
             var lineInfo = (IXmlLineInfo)endpoint;
+            var ancestors = endpoint.Ancestors().Select(a => a.Name.LocalName).ToList();
+
+            if (!string.IsNullOrEmpty(binding) && ancestors.Contains("client"))
+            {
+                accumulator.Add(
+                    "WCF_CLIENT_BINDING_CONFIG", SignalCategories.EndpointIndicator, SignalTypes.ConfigElement,
+                    binding, EvidenceSourceTypes.Configuration, relativePath, ExtractorName,
+                    evidence: LineEvidence(lineInfo, endpoint));
+            }
 
             if (!string.IsNullOrEmpty(contract))
             {
-                accumulator.Add(
-                    "WCF_SERVICE_ENDPOINT_CONFIG", SignalCategories.EndpointIndicator, SignalTypes.ConfigElement,
-                    contract, EvidenceSourceTypes.Configuration, relativePath, ExtractorName,
-                    evidence: LineEvidence(lineInfo, endpoint));
+                if (ancestors.Contains("services"))
+                {
+                    accumulator.Add(
+                        "WCF_SERVICE_ENDPOINT_CONFIG", SignalCategories.EndpointIndicator, SignalTypes.ConfigElement,
+                        contract, EvidenceSourceTypes.Configuration, relativePath, ExtractorName,
+                        evidence: LineEvidence(lineInfo, endpoint));
+                }
+                else if (ancestors.Contains("client"))
+                {
+                    accumulator.Add(
+                        "WCF_CLIENT_ENDPOINT_CONFIG", SignalCategories.EndpointIndicator, SignalTypes.ConfigElement,
+                        contract, EvidenceSourceTypes.Configuration, relativePath, ExtractorName,
+                        evidence: LineEvidence(lineInfo, endpoint));
+                }
             }
 
             if (!string.IsNullOrEmpty(binding))
@@ -116,8 +144,7 @@ public sealed class ConfigurationExtractor : IFingerprintExtractor
             }
         }
 
-        // 8.4 Database indicators — connection string NAME and PROVIDER only,
-        // never the connectionString attribute's value (Part G).
+        // 8.4 Database indicators — connection string NAME and PROVIDER only.
         foreach (var add in root.Descendants().Where(e => e.Name.LocalName == "connectionStrings")
                      .SelectMany(cs => cs.Elements().Where(e => e.Name.LocalName == "add")))
         {
@@ -131,6 +158,25 @@ public sealed class ConfigurationExtractor : IFingerprintExtractor
                     "CONNECTION_STRING_CONFIG", SignalCategories.DataAccessIndicator, SignalTypes.ConfigElement,
                     name, EvidenceSourceTypes.Configuration, relativePath, ExtractorName,
                     evidence: LineEvidence(lineInfo, add));
+
+                // The one permitted read: a bool comes back, the string is
+                // not kept, and the signal carries only the name.
+                var connectionString = (string?)add.Attribute("connectionString");
+                if (connectionString is not null && Secrets.UsesWindowsAuthentication(connectionString))
+                {
+                    accumulator.Add(
+                        "WINDOWS_AUTH_CONNECTION_STRING_CONFIG", SignalCategories.DataAccessIndicator, SignalTypes.ConfigElement,
+                        name, EvidenceSourceTypes.Configuration, relativePath, ExtractorName,
+                        evidence: LineEvidence(lineInfo, add));
+                }
+
+                if (name.Contains("redis", StringComparison.OrdinalIgnoreCase))
+                {
+                    accumulator.Add(
+                        "REDIS_CONNECTION_CONFIG", SignalCategories.DataAccessIndicator, SignalTypes.ConfigElement,
+                        $"connectionStrings:{name}", EvidenceSourceTypes.Configuration, relativePath, ExtractorName,
+                        HeuristicConfidence, LineEvidence(lineInfo, add));
+                }
             }
 
             if (!string.IsNullOrEmpty(provider))
@@ -140,17 +186,15 @@ public sealed class ConfigurationExtractor : IFingerprintExtractor
                     provider, EvidenceSourceTypes.Configuration, relativePath, ExtractorName,
                     evidence: LineEvidence(lineInfo, add));
             }
-            // add.Attribute("connectionString") is deliberately never read.
         }
 
-        // Secrets rule (Part G), mechanically enforced, universally: any XML
-        // attribute whose NAME matches the sensitive-key pattern is recorded
-        // by presence only — its value is never read here.
+        // Secrets rule (Part G), universally: any XML attribute whose NAME
+        // matches the sensitive-key pattern is recorded by presence only.
         foreach (var element in root.DescendantsAndSelf())
         {
             foreach (var attribute in element.Attributes())
             {
-                if (IsSensitiveKey(attribute.Name.LocalName))
+                if (Secrets.IsSensitiveKey(attribute.Name.LocalName))
                 {
                     accumulator.Add(
                         "SENSITIVE_CONFIG_KEY", SignalCategories.ConfigurationIndicator, SignalTypes.ConfigElement,
@@ -160,19 +204,27 @@ public sealed class ConfigurationExtractor : IFingerprintExtractor
             }
         }
 
-        // appSettings shape <add key="X" value="Y"/> — X itself may name a
-        // sensitive setting even though the XML attribute is literally called
-        // "key", not "password". Y is never read.
+        // appSettings shape <add key="X" value="Y"/> — X may name a sensitive
+        // or integration setting. Y is never read.
         foreach (var add in root.Descendants().Where(e => e.Name.LocalName == "add"))
         {
             var key = (string?)add.Attribute("key");
-            if (key is not null && IsSensitiveKey(key))
+            if (key is null)
+            {
+                continue;
+            }
+
+            var evidence = LineEvidence((IXmlLineInfo)add, add);
+            if (Secrets.IsSensitiveKey(key))
             {
                 accumulator.Add(
                     "SENSITIVE_CONFIG_KEY", SignalCategories.ConfigurationIndicator, SignalTypes.ConfigElement,
                     key, EvidenceSourceTypes.Configuration, relativePath, ExtractorName,
-                    evidence: LineEvidence((IXmlLineInfo)add, add));
+                    evidence: evidence);
             }
+
+            var segments = key.Split([':', '.'], StringSplitOptions.RemoveEmptyEntries);
+            AddIntegrationSignals(segments, key, relativePath, evidence, accumulator, alreadyInRedis: false, alreadyInVault: false);
         }
     }
 
@@ -194,56 +246,144 @@ public sealed class ConfigurationExtractor : IFingerprintExtractor
         SnippetHash = Hashing.Sha256Hex(element.Name.LocalName),
     };
 
-    // ---- JSON: appsettings.json --------------------------------------------
+    // ---- JSON: appsettings*.json -------------------------------------------
 
     private static void ExtractFromAppSettings(string filePath, string relativePath, SignalAccumulator accumulator)
     {
-        var json = File.ReadAllText(filePath);
-        using var doc = JsonDocument.Parse(json);
-        WalkAppSettings(doc.RootElement, relativePath, accumulator);
-    }
+        var nodes = JsonConfigWalker.Walk(filePath);
+        var byPath = nodes
+            .GroupBy(n => PathKey(n.Path))
+            .ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal);
 
-    private static void WalkAppSettings(JsonElement element, string relativePath, SignalAccumulator accumulator)
-    {
-        if (element.ValueKind != JsonValueKind.Object)
+        foreach (var node in nodes)
         {
-            return;
-        }
+            var evidence = JsonEvidence(node);
 
-        foreach (var property in element.EnumerateObject())
-        {
-            if (string.Equals(property.Name, "ConnectionStrings", StringComparison.OrdinalIgnoreCase)
-                && property.Value.ValueKind == JsonValueKind.Object)
+            if (node.IsConnectionString)
             {
-                foreach (var connectionString in property.Value.EnumerateObject())
+                accumulator.Add(
+                    "CONNECTION_STRING_CONFIG", SignalCategories.DataAccessIndicator, SignalTypes.ConfigElement,
+                    node.Name, EvidenceSourceTypes.Configuration, relativePath, ExtractorName, evidence: evidence);
+
+                if (node.UsesWindowsAuthentication)
                 {
-                    // The name is the JSON key; the value is the full
-                    // connection string and is never read (Part G).
                     accumulator.Add(
-                        "CONNECTION_STRING_CONFIG", SignalCategories.DataAccessIndicator, SignalTypes.ConfigElement,
-                        connectionString.Name, EvidenceSourceTypes.Configuration, relativePath, ExtractorName);
+                        "WINDOWS_AUTH_CONNECTION_STRING_CONFIG", SignalCategories.DataAccessIndicator, SignalTypes.ConfigElement,
+                        node.Name, EvidenceSourceTypes.Configuration, relativePath, ExtractorName, evidence: evidence);
+                }
+
+                if (node.Name.Contains("redis", StringComparison.OrdinalIgnoreCase))
+                {
+                    accumulator.Add(
+                        "REDIS_CONNECTION_CONFIG", SignalCategories.DataAccessIndicator, SignalTypes.ConfigElement,
+                        node.KeyPath, EvidenceSourceTypes.Configuration, relativePath, ExtractorName,
+                        HeuristicConfidence, evidence);
                 }
 
                 continue;
             }
 
-            if (IsSensitiveKey(property.Name))
+            if (node.IsSensitiveKey)
             {
-                // Presence only — never descend into or read a sensitive
-                // key's value, whether it is a leaf or a nested object.
                 accumulator.Add(
                     "SENSITIVE_CONFIG_KEY", SignalCategories.ConfigurationIndicator, SignalTypes.ConfigElement,
-                    property.Name, EvidenceSourceTypes.Configuration, relativePath, ExtractorName);
+                    node.Name, EvidenceSourceTypes.Configuration, relativePath, ExtractorName, evidence: evidence);
+            }
+
+            if (node.Path.Count == 0)
+            {
                 continue;
             }
 
-            if (property.Value.ValueKind == JsonValueKind.Object)
+            if (IsSerilogFileSinkName(node))
             {
-                WalkAppSettings(property.Value, relativePath, accumulator);
+                // Args.path beside the Name — a location, never secret.
+                var sinkPath = node.Path.Take(node.Path.Count - 1).Append("Args").Append("path").ToList();
+                var pathValue = byPath.GetValueOrDefault(PathKey(sinkPath))?.StringValue;
+                accumulator.Add(
+                    "SERILOG_FILE_SINK_CONFIG", SignalCategories.ConfigurationIndicator, SignalTypes.ConfigElement,
+                    pathValue, EvidenceSourceTypes.Configuration, relativePath, ExtractorName, evidence: evidence);
             }
+
+            var parents = node.Path.Take(node.Path.Count - 1).ToList();
+            AddIntegrationSignals(
+                node.Path, node.KeyPath, relativePath, evidence, accumulator,
+                alreadyInRedis: parents.Any(IsRedisSegment),
+                alreadyInVault: parents.Any(IsVaultSegment),
+                isInConnectionStrings: parents.Any(p => p.Equals("ConnectionStrings", StringComparison.OrdinalIgnoreCase)));
         }
     }
 
-    private static bool IsSensitiveKey(string key) =>
-        SensitiveKeyPatterns.Any(pattern => key.Contains(pattern, StringComparison.OrdinalIgnoreCase));
+    // A Serilog sink entry: "Name": "File" (or the legacy "RollingFile")
+    // anywhere under the root "Serilog" section — WriteTo[n], an object-form
+    // WriteTo, or a sink nested in WriteTo[n].Args.configure (Async).
+    private static bool IsSerilogFileSinkName(JsonConfigNode node) =>
+        node.Path.Count >= 2
+        && node.Path[0].Equals("Serilog", StringComparison.OrdinalIgnoreCase)
+        && node.Name.Equals("Name", StringComparison.OrdinalIgnoreCase)
+        && node.StringValue is { } sink
+        && (sink.Equals("File", StringComparison.OrdinalIgnoreCase) || sink.Equals("RollingFile", StringComparison.OrdinalIgnoreCase));
+
+    private static Evidence JsonEvidence(JsonConfigNode node) => new()
+    {
+        LineStart = node.Line,
+        LineEnd = node.Line,
+        SnippetHash = Hashing.Sha256Hex(node.KeyPath),
+    };
+
+    private static string PathKey(IEnumerable<string> path) =>
+        string.Join('\u001f', path.Select(p => p.ToLowerInvariant()));
+
+    // ---- integration settings (both formats) -------------------------------
+
+    private static bool IsRedisSegment(string segment) => segment.Contains("redis", StringComparison.OrdinalIgnoreCase);
+
+    // HashiCorp Vault only. Azure Key Vault settings (KeyVaultName,
+    // AzureKeyVault) also contain "vault" and are a different product.
+    private static bool IsVaultSegment(string segment) =>
+        segment.Contains("vault", StringComparison.OrdinalIgnoreCase)
+        && !segment.Contains("keyvault", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsKafkaBootstrapSegment(string segment) =>
+        segment.Replace(".", string.Empty).Replace("_", string.Empty)
+            .Equals("bootstrapservers", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Kafka bootstrap servers, and the topmost Redis or Vault key —
+    /// by name only. <paramref name="keyPath"/> is what gets recorded.</summary>
+    private static void AddIntegrationSignals(
+        IReadOnlyList<string> segments, string keyPath, string relativePath, Evidence evidence,
+        SignalAccumulator accumulator, bool alreadyInRedis, bool alreadyInVault, bool isInConnectionStrings = false)
+    {
+        if (segments.Count == 0)
+        {
+            return;
+        }
+
+        var last = segments[^1];
+
+        if (IsKafkaBootstrapSegment(last))
+        {
+            accumulator.Add(
+                "KAFKA_BOOTSTRAP_CONFIG", SignalCategories.MessagingIndicator, SignalTypes.ConfigElement,
+                keyPath, EvidenceSourceTypes.Configuration, relativePath, ExtractorName, HeuristicConfidence, evidence);
+        }
+
+        // Topmost matching key only, so a Redis section with six settings is
+        // one row, not seven. ConnectionStrings entries are handled above.
+        var redisMatch = segments.Take(segments.Count - 1).Any(IsRedisSegment);
+        if (!isInConnectionStrings && IsRedisSegment(last) && !alreadyInRedis && !redisMatch)
+        {
+            accumulator.Add(
+                "REDIS_CONNECTION_CONFIG", SignalCategories.DataAccessIndicator, SignalTypes.ConfigElement,
+                keyPath, EvidenceSourceTypes.Configuration, relativePath, ExtractorName, HeuristicConfidence, evidence);
+        }
+
+        var vaultMatch = segments.Take(segments.Count - 1).Any(IsVaultSegment);
+        if (!isInConnectionStrings && IsVaultSegment(last) && !alreadyInVault && !vaultMatch)
+        {
+            accumulator.Add(
+                "VAULT_CONFIG", SignalCategories.ConfigurationIndicator, SignalTypes.ConfigElement,
+                keyPath, EvidenceSourceTypes.Configuration, relativePath, ExtractorName, HeuristicConfidence, evidence);
+        }
+    }
 }

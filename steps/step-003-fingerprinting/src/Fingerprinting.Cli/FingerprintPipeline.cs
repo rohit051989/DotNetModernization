@@ -11,7 +11,11 @@ namespace Fingerprinting.Cli;
 /// </summary>
 public sealed class FingerprintPipeline(SignalRegistry registry, IReadOnlyList<IFingerprintExtractor> extractors)
 {
-    public const string ScannerVersion = "1.0.0";
+    // 1.1.0: extractor batch 2 (signal registry 1.4.0) — ApiUsageExtractor,
+    // PathLiteralExtractor, appsettings*.json, repository-level signals.
+    // 1.2.0: WCF_CLIENT_BINDING_CONFIG (signal registry 1.5.0).
+    // Matches the application-fingerprinting step registration version.
+    public const string ScannerVersion = "1.2.0";
 
     // The registry is the single source of truth for evidence_kind per
     // signal name (25-STANDARDS-AND-VIEWPOINTS.md Part A3 addendum) —
@@ -61,7 +65,19 @@ public sealed class FingerprintPipeline(SignalRegistry registry, IReadOnlyList<I
         projects = projects.OrderBy(p => p.ProjectPath, StringComparer.Ordinal).ToList();
         artifactWarnings = artifactWarnings.OrderBy(w => w.Message, StringComparer.Ordinal).ToList();
 
-        registry.Validate(projects.SelectMany(p => p.Signals));
+        // Deployment files outside every fingerprinted project directory —
+        // a root k8s/ folder, a repo-level Dockerfile. Without these, every
+        // project in such a repository would read as having no manifests
+        // (28-ITEM-AND-CONVERSION-MODEL.md Part E).
+        var fingerprintedDirectories = projects
+            .Where(p => p.FingerprintStatus != FingerprintStatuses.Skipped)
+            .Select(p => Path.GetDirectoryName(
+                Path.Combine(repositoryRoot, p.ProjectPath.Replace('/', Path.DirectorySeparatorChar)))!)
+            .ToList();
+        var repositorySignals = Stamp(FileIndicatorExtractor.ExtractRepositoryLevel(
+            repositoryRoot, fingerprintedDirectories, cancellationToken));
+
+        registry.Validate(projects.SelectMany(p => p.Signals).Concat(repositorySignals));
 
         var summary = BuildSummary(projects);
 
@@ -76,7 +92,7 @@ public sealed class FingerprintPipeline(SignalRegistry registry, IReadOnlyList<I
             SemanticAnalysisEnabled = false,
             Summary = summary,
             Projects = projects,
-            RepositorySignals = [],
+            RepositorySignals = repositorySignals,
             Warnings = artifactWarnings,
         };
     }
@@ -130,18 +146,7 @@ public sealed class FingerprintPipeline(SignalRegistry registry, IReadOnlyList<I
             warnings.AddRange(result.Warnings);
         }
 
-        signals = signals
-            .Select(s => s with
-            {
-                // Falls back to NONE for a name the registry doesn't have —
-                // harmless: registry.Validate below fails the whole run for
-                // a genuinely unregistered name regardless of this value.
-                EvidenceKind = _evidenceKindByName.GetValueOrDefault(s.Name, SignalEvidenceKinds.None),
-            })
-            .OrderBy(s => s.Category, StringComparer.Ordinal)
-            .ThenBy(s => s.Name, StringComparer.Ordinal)
-            .ThenBy(s => s.SourcePath, StringComparer.Ordinal)
-            .ToList();
+        signals = Stamp(signals);
 
         var directoryFound = Directory.Exists(projectDirectory);
         if (directoryFound)
@@ -183,6 +188,25 @@ public sealed class FingerprintPipeline(SignalRegistry registry, IReadOnlyList<I
             Warnings = warnings,
         };
     }
+
+    /// <summary>Stamps each signal's evidence kind from the registry and
+    /// sorts per Part B rule 2. Value is part of the order because a LITERAL
+    /// or API_INVOCATION file carries several rows that differ only by value
+    /// — without it their order would be extraction order.</summary>
+    private List<Signal> Stamp(IEnumerable<Signal> signals) =>
+        signals
+            .Select(s => s with
+            {
+                // Falls back to NONE for a name the registry doesn't have —
+                // harmless: registry.Validate fails the whole run for a
+                // genuinely unregistered name regardless of this value.
+                EvidenceKind = _evidenceKindByName.GetValueOrDefault(s.Name, SignalEvidenceKinds.None),
+            })
+            .OrderBy(s => s.Category, StringComparer.Ordinal)
+            .ThenBy(s => s.Name, StringComparer.Ordinal)
+            .ThenBy(s => s.SourcePath, StringComparer.Ordinal)
+            .ThenBy(s => s.Value, StringComparer.Ordinal)
+            .ToList();
 
     private static ScanSummary BuildSummary(IReadOnlyList<ProjectFingerprint> projects)
     {

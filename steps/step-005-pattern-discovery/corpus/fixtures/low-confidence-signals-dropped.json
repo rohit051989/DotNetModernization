@@ -1,0 +1,44 @@
+{
+  "_note": "min_signal_confidence 0.5 drops the 0.3-confidence signal, so this project clusters exactly with one that never had it. Without the filter, low-confidence noise would fragment a real shape into two.",
+  "projects": [
+    {
+      "classification_status": "NO_PATTERN_MATCHED",
+      "classification_step_execution_id": "99999999-9999-4999-8999-999999999999",
+      "facets": {
+        "framework_family": "net-framework",
+        "output_type": "Library",
+        "project_role": "LIBRARY",
+        "structural_type": "csharp_project"
+      },
+      "project_id": "00000000-0000-4000-8000-000000000081",
+      "project_path": "src/Noisy/Noisy.csproj",
+      "repository_id": "00000000-0000-4000-9000-ders",
+      "repository_slug": "legacy-orders",
+      "signals": {
+        "CONNECTION_STRING_CONFIG": 1.0,
+        "SYSTEM_MESSAGING_ASSEMBLY": 1.0,
+        "SYSTEM_MESSAGING_NAMESPACE": 1.0,
+        "WEB_METHOD_ATTRIBUTE": 0.3
+      }
+    },
+    {
+      "classification_status": "NO_PATTERN_MATCHED",
+      "classification_step_execution_id": "99999999-9999-4999-8999-999999999999",
+      "facets": {
+        "framework_family": "net-framework",
+        "output_type": "Library",
+        "project_role": "LIBRARY",
+        "structural_type": "csharp_project"
+      },
+      "project_id": "00000000-0000-4000-8000-000000000082",
+      "project_path": "src/Clean/Clean.csproj",
+      "repository_id": "00000000-0000-4000-9000-ders",
+      "repository_slug": "legacy-orders",
+      "signals": {
+        "CONNECTION_STRING_CONFIG": 1.0,
+        "SYSTEM_MESSAGING_ASSEMBLY": 1.0,
+        "SYSTEM_MESSAGING_NAMESPACE": 1.0
+      }
+    }
+  ]
+}

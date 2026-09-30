@@ -56,6 +56,32 @@ public sealed class SarifLocationResolutionTests
         AssertAllLocationsResolveToRealFiles(sarif, fixture.RepositoryRoot);
     }
 
+    [Fact]
+    public async Task PathWithASpace_IsPercentEncoded_AndStillResolves()
+    {
+        using var fixture = new TempProjectFixture();
+        var generated = Path.Combine(fixture.ProjectDirectory, "Connected Services", "Ledger");
+        Directory.CreateDirectory(generated);
+        await File.WriteAllTextAsync(Path.Combine(generated, "Program.cs"), "class P { }");
+
+        var registry = SignalRegistry.LoadLatest(SchemasDir());
+        var pipeline = new FingerprintPipeline(registry, [new FileIndicatorExtractor()]);
+        var inventory = new SolutionProjectInventory
+        {
+            RepositoryId = Guid.NewGuid(),
+            RepositorySlug = "spaced-path-test",
+            Projects = [new InventoryProject { RelativePath = "Test.csproj", ParseStatus = "success", StructuralType = "csharp_project" }],
+        };
+
+        var artifact = await pipeline.RunAsync(inventory, fixture.RepositoryRoot, _ => Guid.NewGuid(), CancellationToken.None);
+        var sarif = SarifBuilder.Build(artifact, registry);
+
+        var uri = sarif.Runs.SelectMany(r => r.Results).Single(r => r.RuleId == "PROGRAM_CS_FILE")
+            .Locations!.Single().PhysicalLocation.ArtifactLocation.Uri;
+        Assert.Equal("Connected%20Services/Ledger/Program.cs", uri);
+        AssertAllLocationsResolveToRealFiles(sarif, fixture.RepositoryRoot);
+    }
+
     /// <summary>Runs the real pipeline (all six extractors) against the
     /// eShopOnWeb sample application on this machine and asserts every
     /// physicalLocation in the resulting SARIF resolves to a real file.
@@ -144,7 +170,9 @@ public sealed class SarifLocationResolutionTests
                     Assert.Equal("REPOROOT", artifactLocation.UriBaseId);
                     Assert.NotNull(artifactLocation.Uri);
 
-                    var resolved = Path.Combine(repoRoot, artifactLocation.Uri!.Replace('/', Path.DirectorySeparatorChar));
+                    // Decode as a viewer would: the URI is percent-encoded per segment.
+                    var relative = Uri.UnescapeDataString(artifactLocation.Uri!);
+                    var resolved = Path.Combine(repoRoot, relative.Replace('/', Path.DirectorySeparatorChar));
                     Assert.True(File.Exists(resolved), $"{result.RuleId}: location '{artifactLocation.Uri}' does not resolve to a file.");
                     Assert.False(Directory.Exists(resolved) && !File.Exists(resolved), $"{result.RuleId}: location '{artifactLocation.Uri}' resolves to a directory, not a file.");
                 }

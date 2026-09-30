@@ -1,0 +1,784 @@
+# Authored catalog items — 28-ITEM-AND-CONVERSION-MODEL.md Parts D to F.
+# Client-agnostic master catalog IP. Items migrated from the pattern catalog
+# are NOT here: app/items/pattern_migration.py moves those (Part Q).
+#
+# The first five are occurrence-scope items drawn from the RBC assessment.
+# Each can occur many times in one project (the Part O scope test), so each
+# declares occurrence_source: which signal's evidence becomes one occurrence
+# row per file. They were authored while their signals were still planned and
+# promoted to ready on their own when step 3 batch 2 (registry 1.4.0) shipped
+# the extractors.
+#
+# The last three are absence items: application scope, detected by a `none`
+# condition over presence signals rather than by any "missing X" signal —
+# step 3 emits no absence signals. They are also the test that
+# repository-level signals reach per-project evaluation (28-ITEM-AND-
+# CONVERSION-MODEL.md Part E): a Dockerfile or manifest at the repository
+# root must count for every project in that repository.
+#
+# `state` is computed and must not appear in this file.
+
+items:
+
+  - id: serilog-file-sink
+    name: "Serilog file sink writing to a Windows path"
+    scope: occurrence
+    category: logging
+    description: >-
+      A Serilog File sink configured with a Windows drive-letter or UNC path.
+      On OCP4 the path does not exist and logs belong on stdout for EFK. RBC:
+      n600-AccountOpenCoreAPI has 18 hardcoded Windows paths across 16
+      appsettings files. One occurrence per appsettings file, so a batching:
+      all approach can treat the set as one coherent change.
+
+      Conversion ordering (docs/28 Part E): runs BEFORE hardcoded-windows-path.
+      Removing the sink removes its path; reversed, a path about to be deleted
+      gets externalised first and the work list carries a spurious occurrence.
+      Becomes a depends_on entry.
+    detection:
+      match:
+        all:
+          - id: file-sink-windows-path
+            signal:
+              name: SERILOG_FILE_SINK_CONFIG
+              value:
+                regex: '^([A-Za-z]:[\\/]|\\\\)'
+      occurrence_source:
+        signal: SERILOG_FILE_SINK_CONFIG
+        group_by: source_path
+    resolutions:
+      - id: console-json-only
+        name: "Console JSON only"
+        description: "Remove the file sink; keep the console sink with CompactJsonFormatter for EFK."
+        target_description: "Serilog console sink, CompactJsonFormatter, stdout collected by EFK"
+        consumer_impact: low
+        effort: low
+        is_default: true
+      - id: otlp-exporter
+        name: "OpenTelemetry exporter"
+        description: "Replace the file sink with an OpenTelemetry log exporter."
+        target_description: "Serilog.Sinks.OpenTelemetry to the platform collector"
+        consumer_impact: medium
+        effort: medium
+
+  - id: hardcoded-windows-path
+    name: "Hardcoded Windows path literal"
+    scope: occurrence
+    category: configuration
+    description: >-
+      A C:\, G:\ or UNC path literal in C# source or a configuration value.
+      None of these exist in a Linux container. Overlaps serilog-file-sink by
+      design: a Serilog sink path is also a path literal. Conversion ordering
+      (depends_on) resolves the overlap, detection does not.
+
+      Conversion ordering (docs/28 Part E): runs AFTER serilog-file-sink, whose
+      removal takes the sink's path with it; its occurrences here are then gone
+      rather than externalised. Becomes a depends_on entry.
+    detection:
+      match:
+        all:
+          - id: windows-path-literal
+            signal:
+              name: WINDOWS_PATH_LITERAL
+      occurrence_source:
+        signal: WINDOWS_PATH_LITERAL
+        group_by: source_path
+    resolutions:
+      - id: externalize-path-setting
+        name: "Externalize to configuration"
+        description: "Replace the literal with a configuration key; the environment supplies a Linux path (ConfigMap or env var)."
+        target_description: "IConfiguration / IOptions setting, value set per environment"
+        consumer_impact: low
+        effort: medium
+        is_default: true
+      - id: rewrite-linux-mount-path
+        name: "Rewrite to a mounted Linux path"
+        description: "Rewrite the literal to a fixed path under a volume mounted into the pod."
+        target_description: "Literal /mnt/<volume>/... backed by a PVC"
+        consumer_impact: low
+        effort: low
+        notes: "Faster, but leaves a literal behind; the path is now fixed to the deployment manifest."
+
+  - id: encoding-default
+    name: "Encoding.Default, which differs on Linux"
+    scope: occurrence
+    category: framework
+    description: >-
+      Encoding.Default is the machine's ANSI code page on .NET Framework but
+      always UTF-8 on .NET Core and later, on every OS. Code that reads or
+      writes files, sockets or byte arrays through it changes behaviour for
+      any non-ASCII character after migration.
+    detection:
+      match:
+        all:
+          - id: encoding-default
+            signal:
+              name: ENCODING_DEFAULT_USAGE
+      occurrence_source:
+        signal: ENCODING_DEFAULT_USAGE
+        group_by: source_path
+    resolutions:
+      - id: explicit-legacy-code-page
+        name: "Explicit legacy code page"
+        description: "Register CodePagesEncodingProvider and use Encoding.GetEncoding(<code page>) so bytes match the Windows servers exactly."
+        target_description: "System.Text.Encoding.CodePages, code page from the source servers (typically 1252)"
+        consumer_impact: none
+        effort: low
+        is_default: true
+      - id: explicit-utf8
+        name: "Explicit UTF-8"
+        description: "Replace with Encoding.UTF8 (or UTF8Encoding without BOM) and migrate any stored data that depends on the old code page."
+        target_description: "UTF-8 everywhere"
+        consumer_impact: medium
+        effort: medium
+
+  - id: datetime-now-usage
+    name: "DateTime.Now rather than UtcNow"
+    scope: occurrence
+    category: framework
+    description: >-
+      DateTime.Now and DateTime.Today return host-local time. On the Windows
+      servers that is the site time zone; in a default Linux container it is
+      UTC, so timestamps, schedules and date boundaries shift silently after
+      migration.
+    detection:
+      match:
+        all:
+          - id: datetime-now
+            signal:
+              name: DATETIME_NOW_USAGE
+      occurrence_source:
+        signal: DATETIME_NOW_USAGE
+        group_by: source_path
+    resolutions:
+      - id: container-local-timezone
+        name: "Set the container time zone"
+        description: "Keep the code; set TZ in the container to the source servers' zone so Now means what it did."
+        target_description: "TZ environment variable plus tzdata in the image"
+        consumer_impact: none
+        effort: low
+        is_default: true
+        notes: "Lift-and-shift. Leaves the underlying local-time dependency in place."
+      - id: utc-at-boundaries
+        name: "UtcNow internally, convert at the edges"
+        description: "Replace with DateTime.UtcNow (or an injected TimeProvider) and convert to local time only for display."
+        target_description: "UTC throughout; TimeProvider for testability"
+        consumer_impact: medium
+        effort: high
+
+  - id: system-drawing-common
+    name: "System.Drawing, unsupported on Linux"
+    scope: occurrence
+    category: dependencies
+    description: >-
+      System.Drawing.Common is Windows-only from .NET 6 (the Unix support
+      switch was removed in .NET 7). On .NET Framework the same types come
+      from the in-box System.Drawing assembly, so there may be no package at
+      all; detection keys on the Windows-only GDI+ types used in code, or the
+      package. Deliberately not on SYSTEM_DRAWING_NAMESPACE: that namespace
+      also holds the cross-platform Color, Point and Size types, so it flags
+      files that are fine on Linux. One occurrence per file using a GDI+
+      type. A project with only the package and no usage matches but has no
+      located occurrence: the fix there is removing a dead reference.
+    detection:
+      match:
+        any:
+          - id: gdi-type-usage
+            signal:
+              name: SYSTEM_DRAWING_USAGE
+          - id: system-drawing-common-package
+            signal:
+              name: SYSTEM_DRAWING_COMMON_PACKAGE
+      occurrence_source:
+        signal: SYSTEM_DRAWING_USAGE
+        group_by: source_path
+    resolutions:
+      - id: imagesharp-replacement
+        name: "Replace with ImageSharp"
+        description: "Port imaging code to SixLabors.ImageSharp."
+        target_description: "SixLabors.ImageSharp (cross-platform, managed)"
+        consumer_impact: low
+        effort: medium
+        is_default: true
+        notes: "Check the Six Labors split licence for commercial use before adopting."
+      - id: skiasharp-replacement
+        name: "Replace with SkiaSharp"
+        description: "Port imaging and drawing code to SkiaSharp."
+        target_description: "SkiaSharp with native Linux assets in the image"
+        consumer_impact: low
+        effort: high
+      - id: system-drawing-common-remain-windows-hosted
+        name: "Remain Windows-hosted"
+        description: "Out of scope for the Linux move; the application stays on Windows."
+        target_description: ".NET on Windows Server"
+        consumer_impact: none
+        effort: low
+        linux_compatible: false
+        container_ready: false
+
+  # ---- Hosting shape (application scope) ----
+  #
+  # Three items describe how a .NET host runs, from most to least specific:
+  # windows-service-hosting > modern-worker-service > console-batch-job. Each
+  # less specific item carries `none` conditions over the more specific
+  # items' positive signals, so a project matches exactly one of them
+  # (28-ITEM-AND-CONVERSION-MODEL.md Part E "Overlapping items").
+  # console-batch-job is migrated, so its exclusions live in
+  # app/items/pattern_migration.py AMENDMENTS.
+
+  - id: windows-service-hosting
+    name: "Application hosts as a Windows Service"
+    scope: application
+    category: hosting
+    description: >-
+      A .NET generic host that runs as a Windows Service through
+      Microsoft.Extensions.Hosting.WindowsServices: UseWindowsService() or
+      AddWindowsService(), or the package referenced. The Service Control
+      Manager does not exist in a container. The docs/28 Part O J2 worked
+      example. The .NET Framework ServiceBase shape is the migrated
+      windows-service item instead.
+    excluded_roles: [TEST, LIBRARY, DATABASE, DEPLOYMENT]
+    detection:
+      match:
+        any:
+          - id: uses-windows-service
+            signal:
+              name: USE_WINDOWS_SERVICE_INVOCATION
+          - id: windowsservices-package
+            signal:
+              name: MICROSOFT_EXTENSIONS_HOSTING_WINDOWSSERVICES_PACKAGE
+    resolutions:
+      - id: generic-host-deployment
+        name: "Generic host as an OCP4 Deployment"
+        description: "Remove UseWindowsService() and the WindowsServices package; keep the generic host and run it as a Deployment (replicas=1 for a single-consumer processor)."
+        target_description: "Generic host in a container, OCP4 Deployment"
+        consumer_impact: low
+        effort: low
+        is_default: true
+      - id: generic-host-cronjob
+        name: "Generic host as an OCP4 CronJob"
+        description: "For a service that only does timed work: run the host to completion on a schedule instead of continuously."
+        target_description: "Generic host in a container, OCP4 CronJob"
+        consumer_impact: medium
+        effort: medium
+      - id: windows-service-hosting-remain-windows-hosted
+        name: "Remain Windows-hosted"
+        description: "Out of scope for the Linux move; the service stays on Windows."
+        target_description: ".NET on Windows Server, as a Windows Service"
+        consumer_impact: none
+        effort: low
+        linux_compatible: false
+        container_ready: false
+
+  - id: modern-worker-service
+    name: "Worker service built on hosted services"
+    scope: application
+    category: hosting
+    description: >-
+      A .NET worker whose work runs in BackgroundService / IHostedService
+      implementations registered with AddHostedService, and which is not
+      hosted as a Windows Service. It still needs containerising, and without
+      this item it was indistinguishable from a console app. Web hosts are
+      excluded: an ASP.NET Core application running a background task is a
+      web application, not a worker.
+    excluded_roles: [TEST, LIBRARY, DATABASE, DEPLOYMENT]
+    detection:
+      match:
+        any:
+          - id: background-service
+            signal:
+              name: BACKGROUND_SERVICE_BASE_CLASS
+          - id: ihosted-service
+            signal:
+              name: IHOSTED_SERVICE_BASE_CLASS
+          - id: add-hosted-service
+            signal:
+              name: ADD_HOSTED_SERVICE_ENTRY_POINT
+        none:
+          # windows-service-hosting takes precedence: both of its signals.
+          - id: not-use-windows-service
+            signal:
+              name: USE_WINDOWS_SERVICE_INVOCATION
+          - id: not-windowsservices-package
+            signal:
+              name: MICROSOFT_EXTENSIONS_HOSTING_WINDOWSSERVICES_PACKAGE
+          - id: not-web-builder
+            signal:
+              name: WEB_APPLICATION_CREATE_BUILDER_ENTRY_POINT
+          - id: not-webhost-builder
+            signal:
+              name: WEBHOST_CREATE_DEFAULT_BUILDER_ENTRY_POINT
+          - id: not-startup-class
+            signal:
+              name: STARTUP_CLASS_ENTRY_POINT
+    resolutions:
+      - id: ocp4-deployment
+        name: "OCP4 Deployment (continuous)"
+        description: "Containerise the worker and run it continuously as a Deployment; for queue and stream consumers such as Kafka processors."
+        target_description: "Worker in a container, OCP4 Deployment"
+        consumer_impact: none
+        effort: low
+        is_default: true
+      - id: ocp4-cronjob
+        name: "OCP4 CronJob (scheduled)"
+        description: "For a worker that polls on a timer: run it to completion on a schedule instead of looping in-process."
+        target_description: "Worker in a container, OCP4 CronJob"
+        consumer_impact: medium
+        effort: medium
+
+  # ---- Absence items (application scope, `none` over presence signals) ----
+  #
+  # "Deployable application" is expressed with entry-point signals, since
+  # step 2 records no project SDK. .NET Framework projects are excluded by
+  # metadata: they cannot run in a Linux container at all, and their
+  # framework item comes first; the absence items apply after conversion,
+  # on the next scan. excluded_roles records intent for step 6, which
+  # computes roles (Part D).
+
+  - id: missing-dockerfile
+    name: "No Dockerfile"
+    scope: application
+    category: packaging
+    description: >-
+      A deployable .NET (Core) application with no Dockerfile in its project
+      directory or anywhere else in its repository. A repository-level
+      Dockerfile counts for every project in the repository.
+    excluded_roles: [TEST, LIBRARY, DATABASE, DEPLOYMENT]
+    detection:
+      match:
+        any:
+          - id: web-host
+            signal:
+              name: WEB_APPLICATION_CREATE_BUILDER_ENTRY_POINT
+          - id: generic-host
+            signal:
+              name: HOST_CREATE_DEFAULT_BUILDER_ENTRY_POINT
+          - id: webhost
+            signal:
+              name: WEBHOST_CREATE_DEFAULT_BUILDER_ENTRY_POINT
+          - id: main-method
+            signal:
+              name: MAIN_METHOD_ENTRY_POINT
+          - id: top-level-statements
+            signal:
+              name: TOP_LEVEL_STATEMENTS_ENTRY_POINT
+        none:
+          - id: has-dockerfile
+            signal:
+              name: DOCKERFILE_FILE
+        metadata:
+          - id: modern-dotnet
+            field: frameworkFamily
+            in: [net, net-core]
+    resolutions:
+      - id: multistage-dockerfile
+        name: "Multi-stage Dockerfile"
+        description: "Add a multi-stage Dockerfile: SDK image to build and publish, aspnet or runtime image to run, non-root user."
+        target_description: "Dockerfile beside the project, built by the pipeline"
+        consumer_impact: none
+        effort: low
+        is_default: true
+      - id: sdk-container-publish
+        name: "SDK container publish"
+        description: "Build the image with dotnet publish /t:PublishContainer; no Dockerfile to maintain."
+        target_description: "Container image from MSBuild properties in the project file"
+        consumer_impact: none
+        effort: low
+        notes: "Less control over the image layers; check it meets the platform's base-image policy."
+
+  - id: missing-health-endpoint
+    name: "No health endpoint"
+    scope: application
+    category: hosting
+    description: >-
+      An ASP.NET Core application that exposes no health check endpoint, so
+      OCP4 liveness and readiness probes have nothing meaningful to call.
+      Keyed on ASP.NET Core host builders; a worker with no HTTP surface
+      needs a different probe and is not this item.
+    excluded_roles: [TEST, LIBRARY, DATABASE, DEPLOYMENT]
+    detection:
+      match:
+        any:
+          - id: web-host
+            signal:
+              name: WEB_APPLICATION_CREATE_BUILDER_ENTRY_POINT
+          - id: webhost
+            signal:
+              name: WEBHOST_CREATE_DEFAULT_BUILDER_ENTRY_POINT
+          - id: startup-class
+            signal:
+              name: STARTUP_CLASS_ENTRY_POINT
+        none:
+          - id: has-health-endpoint
+            signal:
+              name: MAP_HEALTH_CHECKS_INVOCATION
+        metadata:
+          - id: modern-dotnet
+            field: frameworkFamily
+            in: [net, net-core]
+    resolutions:
+      - id: aspnetcore-health-checks
+        name: "ASP.NET Core health checks"
+        description: "AddHealthChecks() plus separate liveness and readiness endpoints (MapHealthChecks), readiness checking the application's dependencies."
+        target_description: "/health/live and /health/ready, wired to the OCP4 probes"
+        consumer_impact: low
+        effort: low
+        is_default: true
+      - id: tcp-socket-probe
+        name: "TCP socket probe only"
+        description: "No code change; the OCP4 probe checks that the port accepts connections."
+        target_description: "tcpSocket liveness and readiness probes"
+        consumer_impact: none
+        effort: low
+        notes: "Proves the process is listening, not that it can serve requests. Choosing health checks over this needs a forcing perspective (AVAILABILITY_RESILIENCE)."
+
+  - id: missing-ocp4-manifests
+    name: "No OpenShift deployment manifests"
+    scope: application
+    category: packaging
+    description: >-
+      A deployable .NET (Core) application with no Kubernetes/OpenShift
+      manifest and no Helm chart in its project directory or anywhere else
+      in its repository. A repository-level k8s/ or charts/ folder counts for
+      every project in the repository.
+    excluded_roles: [TEST, LIBRARY, DATABASE, DEPLOYMENT]
+    detection:
+      match:
+        any:
+          - id: web-host
+            signal:
+              name: WEB_APPLICATION_CREATE_BUILDER_ENTRY_POINT
+          - id: generic-host
+            signal:
+              name: HOST_CREATE_DEFAULT_BUILDER_ENTRY_POINT
+          - id: webhost
+            signal:
+              name: WEBHOST_CREATE_DEFAULT_BUILDER_ENTRY_POINT
+          - id: main-method
+            signal:
+              name: MAIN_METHOD_ENTRY_POINT
+          - id: top-level-statements
+            signal:
+              name: TOP_LEVEL_STATEMENTS_ENTRY_POINT
+        none:
+          - id: has-manifest
+            signal:
+              name: OCP4_MANIFEST_FILE
+          - id: has-helm-chart
+            signal:
+              name: HELM_CHART_FILE
+        metadata:
+          - id: modern-dotnet
+            field: frameworkFamily
+            in: [net, net-core]
+    resolutions:
+      - id: plain-manifests
+        name: "Plain manifests"
+        description: "Deployment, Service, Route and ConfigMap YAML for the application, kept beside the code."
+        target_description: "OCP4 manifests applied by the pipeline"
+        consumer_impact: none
+        effort: low
+        is_default: true
+      - id: helm-chart
+        name: "Helm chart"
+        description: "A Helm chart with per-environment values files."
+        target_description: "Chart deployed by the pipeline or GitOps"
+        consumer_impact: none
+        effort: medium
+
+  # ---- Linux blockers and legacy service shapes ----
+  #
+  # From the signal-coverage review after step 3 batch 2. The three hard
+  # blockers (registry, directory services, MSMQ) each offer
+  # remain-windows-hosted with linux_compatible false: a legitimate client
+  # answer, and choosing it on a Linux-targeted engagement raises the
+  # decision warning by design.
+
+  - id: wcf-nettcp-client
+    name: "WCF client over NetTcp"
+    scope: application
+    category: integration
+    description: >-
+      The project calls a WCF service over NetTcp. NetTcp with Windows
+      transport security has no Kerberos identity in a Linux container; it
+      is the canonical Linux blocker. Exact, from the client's own binding:
+      a <client> endpoint whose binding is netTcpBinding, or a
+      NetTcpBinding constructed in client code (a ClientBase<T> or
+      ChannelFactory<T> file, including svcutil's generated Reference.cs).
+      Deliberately not keyed on the System.ServiceModel.NetTcp package:
+      Visual Studio and dotnet-svcutil add it to every WCF client whatever
+      the binding, so it proves nothing. A project hosting a NetTcp service
+      is the migrated wcf-iis-servicemodel item, not this one; a project
+      doing both matches both, correctly.
+    excluded_roles: [TEST]
+    detection:
+      match:
+        any:
+          - id: client-endpoint-nettcp
+            signal:
+              name: WCF_CLIENT_BINDING_CONFIG
+              value:
+                equals: netTcpBinding
+          - id: client-code-nettcp
+            signal:
+              name: WCF_CLIENT_BINDING_USAGE
+              value:
+                equals: System.ServiceModel.NetTcpBinding
+    resolutions:
+      - id: call-http-binding
+        name: "Call an HTTP binding of the service"
+        description: "Switch the client to a BasicHttp/WSHttp endpoint of the same service, which the service owner exposes if it does not already."
+        target_description: "System.ServiceModel.Http client over HTTPS"
+        consumer_impact: none
+        effort: medium
+        is_default: true
+        notes: "Usually needs the backend team; the endpoint register (lifecycle step 10) groups the callers into one conversation."
+      - id: keep-nettcp-certificate-security
+        name: "Keep NetTcp with non-Windows security"
+        description: "Keep the NetTcp client on Linux with certificate or no transport security instead of Windows authentication."
+        target_description: "System.ServiceModel.NetTcp client, certificate transport security"
+        consumer_impact: none
+        effort: low
+        notes: "Only if the service accepts non-Windows credentials; verify before choosing."
+      - id: wcf-nettcp-client-remain-windows-hosted
+        name: "Remain Windows-hosted"
+        description: "Out of scope for the Linux move; the application stays on Windows."
+        target_description: ".NET on Windows Server"
+        consumer_impact: none
+        effort: low
+        linux_compatible: false
+        container_ready: false
+
+  - id: windows-auth-connection-string
+    name: "Connection string using Windows authentication"
+    scope: occurrence
+    category: data-access
+    description: >-
+      A connection string authenticating with the process's Windows identity
+      (Integrated Security / SSPI / Trusted_Connection). A container has no
+      domain identity, so the connection fails on OCP4. One occurrence per
+      connection string per file (environment variants included). Only the
+      connection string's name is ever recorded (docs/21 Part G).
+
+      Conversion ordering (docs/28 Part E): runs BEFORE sensitive-config-key.
+      Fix the authentication in the config file first, then move the connection
+      string to an OCP4 Secret; reversed, this fix would have to edit a Secret
+      instead of a file, needing different allowed_paths and a different
+      approach. Becomes a depends_on entry.
+    excluded_roles: [TEST]
+    detection:
+      match:
+        all:
+          - id: windows-auth-connection
+            signal:
+              name: WINDOWS_AUTH_CONNECTION_STRING_CONFIG
+      occurrence_source:
+        signal: WINDOWS_AUTH_CONNECTION_STRING_CONFIG
+        group_by: source_path_and_value
+    resolutions:
+      - id: sql-auth-from-secret
+        name: "SQL authentication from an OCP4 Secret"
+        description: "Switch to a SQL login; user and password come from an OCP4 Secret injected at runtime, never from the config file."
+        target_description: "User ID/Password from a Secret, Integrated Security removed"
+        consumer_impact: low
+        effort: low
+        is_default: true
+      - id: kerberos-keytab
+        name: "Kerberos in the container"
+        description: "Keep Windows authentication by giving the pod a Kerberos identity: keytab from a Secret, krb5.conf, and a ticket-renewal sidecar."
+        target_description: "Kerberos-authenticated SqlClient on Linux"
+        consumer_impact: none
+        effort: high
+        notes: "Preserves the database's existing permissions model. Needs the directory team for the service account and SPN."
+
+  - id: registry-access
+    name: "Windows registry access"
+    scope: occurrence
+    category: configuration
+    description: >-
+      Code reading or writing the Windows registry (Microsoft.Win32.Registry,
+      RegistryKey.OpenBaseKey). It throws PlatformNotSupportedException on
+      Linux. One occurrence per file.
+    detection:
+      match:
+        all:
+          - id: registry-access
+            signal:
+              name: REGISTRY_ACCESS_USAGE
+      occurrence_source:
+        signal: REGISTRY_ACCESS_USAGE
+        group_by: source_path
+    resolutions:
+      - id: move-to-configuration
+        name: "Move to configuration"
+        description: "Replace registry reads with IConfiguration (ConfigMap, env vars, Secret); drop writes or move them to a store the application owns."
+        target_description: "IConfiguration / IOptions"
+        consumer_impact: low
+        effort: medium
+        is_default: true
+      - id: registry-access-remain-windows-hosted
+        name: "Remain Windows-hosted (out of scope)"
+        description: "Out of scope for the Linux move; the application stays on Windows."
+        target_description: ".NET on Windows Server"
+        consumer_impact: none
+        effort: low
+        linux_compatible: false
+        container_ready: false
+
+  - id: directory-services-usage
+    name: "System.DirectoryServices (Active Directory) usage"
+    scope: occurrence
+    category: security
+    description: >-
+      Code using System.DirectoryServices or
+      System.DirectoryServices.AccountManagement (DirectoryEntry,
+      DirectorySearcher, PrincipalContext), which is Windows-only.
+      System.DirectoryServices.Protocols is not flagged: it works on Linux,
+      and is the usual target. One occurrence per file.
+    detection:
+      match:
+        all:
+          - id: directory-services
+            signal:
+              name: DIRECTORY_SERVICES_USAGE
+      occurrence_source:
+        signal: DIRECTORY_SERVICES_USAGE
+        group_by: source_path
+    resolutions:
+      - id: ldap-protocols
+        name: "Port to System.DirectoryServices.Protocols"
+        description: "Rewrite the lookups against LdapConnection, which runs on Linux; bind with a service account from an OCP4 Secret."
+        target_description: "System.DirectoryServices.Protocols (LDAP)"
+        consumer_impact: low
+        effort: medium
+        is_default: true
+      - id: identity-provider-claims
+        name: "Use identity provider claims"
+        description: "Stop querying the directory at runtime; take users and groups from the identity provider's token claims."
+        target_description: "OIDC claims from the platform identity provider"
+        consumer_impact: medium
+        effort: high
+      - id: directory-services-usage-remain-windows-hosted
+        name: "Remain Windows-hosted (out of scope)"
+        description: "Out of scope for the Linux move; the application stays on Windows."
+        target_description: ".NET on Windows Server"
+        consumer_impact: none
+        effort: low
+        linux_compatible: false
+        container_ready: false
+
+  - id: msmq-usage
+    name: "MSMQ (System.Messaging)"
+    scope: application
+    category: integration
+    description: >-
+      The project sends or receives through MSMQ (System.Messaging). MSMQ
+      exists neither on Linux nor on .NET Core, so this blocks both the
+      framework move and the platform move. One decision per project; the
+      producer and consumer ends of each queue must move together.
+    excluded_roles: [TEST]
+    detection:
+      match:
+        any:
+          - id: messaging-namespace
+            signal:
+              name: SYSTEM_MESSAGING_NAMESPACE
+          - id: messaging-assembly
+            signal:
+              name: SYSTEM_MESSAGING_ASSEMBLY
+    resolutions:
+      - id: migrate-to-message-broker
+        name: "Migrate to the platform message broker"
+        description: "Replace the queues with the engagement's broker (Kafka, AMQ or RabbitMQ), moving producers and consumers together."
+        target_description: "Broker client on .NET, queue topology recreated on the broker"
+        consumer_impact: medium
+        effort: high
+        is_default: true
+      - id: msmq-usage-remain-windows-hosted
+        name: "Remain Windows-hosted (out of scope)"
+        description: "Out of scope for the Linux move; the application and its queues stay on Windows."
+        target_description: ".NET Framework on Windows Server with MSMQ"
+        consumer_impact: none
+        effort: low
+        linux_compatible: false
+        container_ready: false
+
+  - id: asmx-service
+    name: "ASMX web service"
+    scope: application
+    category: integration
+    description: >-
+      An ASP.NET (.asmx) SOAP web service. It has no .NET Core equivalent.
+      Converting it is one decision per project, like WCF, even when the
+      project has several .asmx files. It can sit alongside Web Forms or MVC
+      in the same project: those are separate items, since converting the UI
+      does not convert the service.
+    excluded_roles: [TEST]
+    detection:
+      match:
+        any:
+          - id: asmx-file
+            signal:
+              name: ASMX_FILE
+          - id: web-method
+            signal:
+              name: WEB_METHOD_ATTRIBUTE
+    resolutions:
+      - id: corewcf-basichttp
+        name: "CoreWCF with BasicHttpBinding"
+        description: "Re-host the operations on CoreWCF with BasicHttpBinding, preserving the SOAP contract and WSDL for existing callers."
+        target_description: "CoreWCF on .NET 10, BasicHttpBinding"
+        consumer_impact: none
+        effort: medium
+        is_default: true
+      - id: rest-api-rewrite
+        name: "Rewrite as a REST API"
+        description: "Replace the SOAP operations with ASP.NET Core HTTP endpoints; every caller changes."
+        target_description: "ASP.NET Core minimal API or controllers"
+        consumer_impact: high
+        effort: medium
+
+  - id: sensitive-config-key
+    name: "Secret in a configuration file"
+    scope: occurrence
+    category: security
+    description: >-
+      A configuration key whose name marks it as secret (password, token,
+      apikey, connectionString and similar), in web.config, app.config or
+      appsettings*.json. Only the key's presence is recorded, never its
+      value (docs/21 Part G). On OCP4 secrets come from Secrets, not files.
+      High-volume, low-judgement: it fires on nearly every project and the
+      resolution is nearly always the same, so it is a strong candidate for
+      fully deterministic conversion. One occurrence per key per file. An
+      XML connection string also fires here (its connectionString
+      attribute), at the same location as windows-auth-connection-string
+      when that applies; conversion ordering resolves the overlap.
+
+      Conversion ordering (docs/28 Part E): runs AFTER
+      windows-auth-connection-string, so a connection string's authentication
+      is fixed in the file before the string moves to a Secret. Becomes a
+      depends_on entry.
+    excluded_roles: [TEST]
+    detection:
+      match:
+        all:
+          - id: sensitive-key
+            signal:
+              name: SENSITIVE_CONFIG_KEY
+      occurrence_source:
+        signal: SENSITIVE_CONFIG_KEY
+        group_by: source_path_and_value
+    resolutions:
+      - id: ocp4-secret-injection
+        name: "OCP4 Secret, injected at runtime"
+        description: "Remove the value from the file; supply it from an OCP4 Secret as an environment variable or mounted file, bound through IConfiguration under the same key."
+        target_description: "Kubernetes Secret -> environment variable / volume -> IConfiguration"
+        consumer_impact: none
+        effort: low
+        is_default: true
+      - id: external-secret-store
+        name: "External secret store"
+        description: "Resolve the value from the engagement's secret store (Vault, via Agent injection or the External Secrets operator) instead of a platform Secret."
+        target_description: "Vault-sourced secret, delivered to the pod"
+        consumer_impact: none
+        effort: medium

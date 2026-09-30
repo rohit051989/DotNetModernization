@@ -1,0 +1,1228 @@
+# 28 — Item & Conversion Model
+
+The redesign that replaces pattern classification with item detection, occurrence
+mapping and conversion. Supersedes the three-layer pattern catalog in
+`02-DATA-MODEL.md` and `24-STEP-004-CLASSIFICATION.md`, and the Track A step
+decomposition in the architecture document.
+
+Read alongside `17-LIFECYCLE-STEPS.md` v2.0, which carries the revised 35-step
+register this model produces.
+
+**Two halves.** Parts A to G define the **catalog** — what needs doing and where.
+Parts H to N define **conversion** — how it gets done. Parts H to L are the contract
+the delivery team builds accelerators against; treat that half as settled and version
+it if it changes.
+
+
+---
+
+## Section index
+
+| Part | Covers |
+|---|---|
+| Part A | What changes and why |
+| Part B | The model |
+| Part C | Two-state readiness |
+| Part D | `catalog_items` |
+| Part E | Detection with occurrence projection |
+| Part F | Resolutions and decisions |
+| Part G | `item_occurrences` |
+| Part H | Coverage views |
+| Part I | Conversion: five decisions taken |
+| Part J | `conversion_approaches` |
+| Part K | Invocation |
+| Part L | `ConversionContext` |
+| Part M | `ConversionResult` |
+| Part N | Checks |
+| Part O | Worked examples |
+| Part P | Tables |
+| Part Q | Migration |
+| Part R | What this replaces |
+| Part S | Settled decisions |
+
+---
+
+## Part A — What changes and why
+
+The old catalog answered *"what kind of application is this?"* — one winner per
+project, elected through scoring, conflicts and ambiguity resolution.
+
+The new catalog answers *"what needs doing to this project, and where?"* — a list of
+occurrences, each mappable to a decision and a conversion.
+
+That single change removes most of the complexity. There is no election, so no
+scoring resolution, no conflicts, no ambiguity margin, no primary selection.
+
+### Removed entirely
+
+`classification_role` · `classification_family` · `classification_value` ·
+`conflicts_with` · `compatible_with` · `anchor_signals` · `priority` · `thresholds` ·
+match scoring · confidence factors · the eight classification statuses ·
+`is_primary_selected` · `rejection_reason` · `relationship_source` ·
+`ambiguity_margin` · role patterns as catalog entries
+
+### Retained
+
+Detection rule grammar (`all`, `any`, `atLeast`, `none`, `metadata`) · rule ids ·
+signal-registry validation on write · evidence linkage · master/client separation ·
+engagement overlay for scoping
+
+### Added
+
+`scope` · `occurrence_source` projection · two-state readiness · extractor
+declarations · `item_resolutions` · `engagement_decisions` · `item_occurrences`
+
+---
+
+---
+
+## Part B — The model
+
+```
+catalog item          a thing that needs work        "Serilog file sink"
+  └── resolutions     the options for it             "console JSON only" | "OTLP exporter"
+        └── decision  what this client chose         engagement-scoped
+              └── conversion approach                how to actually do it
+                    └── executions                   per project, recorded
+```
+
+Detection produces **occurrences**: item × project × file. Occurrences joined to
+decisions joined to approaches form the **work list**, which is the unit everything
+else counts, groups, estimates and iterates.
+
+### Scope
+
+One item type, one attribute:
+
+| Scope | Decided | Converted | Example |
+|---|---|---|---|
+| `application` | Once per project | One invocation over the project | WCF → CoreWCF |
+| `occurrence` | Once per item | Per file or per batch of files | Remove Serilog file sink |
+
+### Two conversion steps
+
+- **Step A — application-scope conversions.** Runs first. These reshape the project;
+  occurrence-scope edits must land on the reshaped result.
+- **Step B — occurrence-scope conversions.** Runs second.
+
+Both are generic iterators over the work list. **Fifty findings do not become fifty
+lifecycle steps** — they become fifty rows in `conversion_approaches`. Adding an
+accelerator is a registry insert, not a job definition change.
+
+---
+
+---
+
+## Part C — Two-state readiness
+
+Everything is `ready` or `not_ready`, with a structured reason. No third state.
+
+| Entity | `not_ready` reason codes |
+|---|---|
+| **Signal** | `extractor_not_implemented` |
+| **Catalog item** | `signal_mapping_pending` · `signal_not_ready` |
+| **Blocking signal** (inside an item's reason) | `extractor_not_implemented` · `signal_not_registered` |
+
+An item under authoring is not a separate state — it is `not_ready` with reason
+`signal_mapping_pending`, because its detection has nothing to match yet: no signal
+and no step 2 metadata condition.
+
+A blocking signal is `signal_not_registered` when the item names a signal that is not
+in the registry at all. It is kept distinct from `extractor_not_implemented` so the
+backlog can tell "register this signal" apart from "build this extractor". Its
+`expected_extractor` is whichever extractor declares the name, or null if none does.
+
+### Propagation
+
+A signal is `ready` when its expected extractor is `implemented` and lists the signal
+in `emits`. An item is `ready` when its detection is **satisfiable** — by signals, by
+step 2 metadata conditions, or both — and **every** signal it references is `ready`.
+
+Metadata conditions count as mapped. Step 2 always runs, so an item detected purely by
+project metadata (`structuralType: ssis_project`) is ready. *Revised in review: an
+earlier draft made metadata-only items permanently `signal_mapping_pending`.*
+
+Recompute item readiness whenever any signal's state changes. An item drops to
+`not_ready` automatically if a signal it depends on loses its extractor, and promotes
+automatically when one lands. Nobody edits the item.
+
+**Only `ready` items are evaluated during detection.** A `not_ready` item is inert
+and visible on the UI as pending — this is prevention rather than detection, which is
+why no emission tracking or zero-emission flagging is needed.
+
+### Structured reason
+
+Computed, refreshed on every signal state change:
+
+```json
+{
+  "state": "not_ready",
+  "reason_code": "signal_not_ready",
+  "blocking_signals": [
+    { "signal": "SERILOG_FILE_SINK_CONFIG",
+      "reason_code": "extractor_not_implemented",
+      "expected_extractor": "LoggingExtractor" }
+  ]
+}
+```
+
+Grouping `blocking_signals` by `expected_extractor` and counting the items each would
+unblock gives the extractor build order directly.
+
+### Extractor declarations
+
+Readiness is unanswerable without knowing which extractors can emit what. So each
+extractor declares its emittable signals at registration.
+
+**A registered signal that no extractor claims is a hard error**, not a warning —
+it catches the case where someone registers a signal in anticipation and forgets the
+extractor. "Claims" means the signal's expected extractor lists it in `emits` or
+`planned_emits`. The check runs before every write that could break it: registry
+sync, signal registration, and an extractor declaration that drops a signal.
+
+An extractor declaration carries a `status` and two lists:
+
+| Field | Meaning |
+|---|---|
+| `status: implemented` | The extractor ships in step 3 today |
+| `status: planned` | Declared ahead of its code |
+| `emits` | Signals it emits — ready only while `status` is `implemented` |
+| `planned_emits` | On an implemented extractor: signals it will gain but does not emit yet |
+
+That is what reconciles the hard error with `extractor_not_implemented`. A signal can be
+registered ahead of its extraction code without being unclaimed, in one of two ways:
+
+- **a new extractor**: in `emits` of a `planned` extractor
+- **an extractor that already ships, gaining a signal**: in `planned_emits`
+
+Either way the signal is claimed, so there is no hard error, but it stays `not_ready`
+/ `extractor_not_implemented`. It promotes when the extractor flips to `implemented`,
+or when the name moves from `planned_emits` to `emits` in the change that ships its
+code. The two lists are disjoint.
+
+---
+
+---
+
+## Part D — `catalog_items`
+
+Client-agnostic. One kind of item: a thing that needs work.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | `TEXT` PK | Slug, e.g. `serilog-file-sink` |
+| `name` | `TEXT` NOT NULL | |
+| `description` | `TEXT` | |
+| `scope` | `TEXT` NOT NULL | CHECK IN (`application`, `occurrence`) |
+| `category` | `TEXT` NOT NULL | `hosting`, `logging`, `configuration`, `security`, `data-access`, `integration`, `packaging`, `dependencies`, `framework` |
+| `detection` | `JSONB` NOT NULL | Part D |
+| `excluded_roles` | `JSONB` NOT NULL DEFAULT `'[]'` | Project roles this item never applies to |
+| `state` | `TEXT` NOT NULL DEFAULT `'not_ready'` | CHECK IN (`ready`, `not_ready`). **Computed, never set directly** |
+| `state_reason` | `JSONB` | Part B |
+| `version` | `INTEGER` NOT NULL DEFAULT 1 | Bumped on detection change |
+| `owner_team` | `TEXT` | |
+| `created_at` / `updated_at` | `TIMESTAMPTZ` | |
+
+### Project role is computed, not catalogued
+
+Six role patterns previously lived in the catalog. They are removed. Role is derived
+deterministically in step 6 from data already collected:
+
+| Role | Derivation |
+|---|---|
+| `TEST` | Test framework packages (step 2) or testing-indicator signals (step 3) |
+| `DEPLOYMENT` | Out-of-scope structural type from step 2 — `.dcproj`, `.sfproj`, `.wixproj` |
+| `DATABASE` | `structural_type: sql_database_project` |
+| `APPLICATION` | Has entry points (step 4), or `output_type` Exe/WinExe, or a web SDK |
+| `LIBRARY` | `output_type: Library` with no entry points |
+| `UNKNOWN` | None of the above |
+
+Deterministic, needs no authoring surface, and removes six catalog entries plus the
+role-rule concept. Document the logic in the step 6 implementation. If it ever needs
+to be editable, promote it back to the catalog then.
+
+Application *type* — API, worker, UI — comes from the entry-point inventory (step 4),
+not from catalog items. Nothing in the catalog describes what an application is; the
+catalog only describes what needs doing.
+
+---
+
+---
+
+## Part E — Detection with occurrence projection
+
+Two parts. `match` decides whether the item applies. `occurrence_source` decides
+**where**.
+
+### Occurrence scope
+
+```json
+{
+  "match": {
+    "all": [
+      { "id": "has-file-sink", "signal": { "name": "SERILOG_FILE_SINK_CONFIG" } }
+    ]
+  },
+  "occurrence_source": {
+    "signal": "SERILOG_FILE_SINK_CONFIG",
+    "group_by": "source_path"
+  }
+}
+```
+
+`occurrence_source` names which signal's evidence defines the locations. Each distinct
+`source_path` in that signal's evidence becomes one occurrence row, carrying the line
+evidence with it.
+
+This is the bridge between what step 3 already records and what conversion needs.
+**Nothing new is extracted** — step 3's evidence already has file paths and lines.
+What was missing is the catalog declaring which signal to project.
+
+`group_by` accepts `source_path` (default) or `source_path_and_value` where distinct
+values at the same path are separate occurrences.
+
+An occurrence-scope item **must** declare `occurrence_source`, and the named signal
+must appear in `match.all`, `match.any` or `match.atLeast`. A signal named only in
+`match.none` does not count: an exclusion holds precisely where the signal is absent,
+so it has no locations to project. Validate both on write. A registered signal with
+`evidence_kind: NONE` is also rejected as an `occurrence_source`, since its evidence
+carries no path.
+
+### Application scope
+
+No projection. The project is the unit.
+
+```json
+{
+  "match": {
+    "any": [
+      { "id": "uses-ws", "signal": { "name": "USE_WINDOWS_SERVICE_INVOCATION" } },
+      { "id": "ws-package", "signal": { "name": "MICROSOFT_EXTENSIONS_HOSTING_WINDOWSSERVICES_PACKAGE" } }
+    ]
+  }
+}
+```
+
+An application-scope item declaring `occurrence_source` is rejected.
+
+### Overlapping items
+
+There is no election, so nothing stops two items matching the same project. Usually
+that is correct: a project can need both `serilog-file-sink` and `datetime-now-usage`.
+It is wrong when two items are alternative descriptions of the same thing, and would
+put two conflicting resolutions on one project's work list.
+
+For those, declare **precedence with `none`**: the less specific item carries a `none`
+condition over **every positive signal** of each more specific item. Only the general
+item can do the excluding, because the specific item's signals are a superset (a worker
+also has a `Main` method). `conflicts_with` is not coming back. This is ordinary
+detection, reviewable in the rule itself.
+
+The hosting chain is the first instance:
+
+| Item | Excludes the positive signals of |
+|---|---|
+| `windows-service-hosting` | — |
+| `modern-worker-service` | `windows-service-hosting` (and web hosts, which are applications, not workers) |
+| `console-batch-job` | `windows-service-hosting`, `modern-worker-service` |
+
+A test asserts the chain, so adding a positive signal to a more specific item without
+extending the exclusions fails the build.
+
+### Conversion ordering constraints
+
+The other kind of overlap: two items that genuinely both apply, often **on the same
+line**, where converting them in the wrong order produces the wrong result. Detection is
+correct to report both; the order belongs to conversion. No conversion approaches exist
+yet, so the constraints are recorded here and in **both** items' descriptions, so an
+approach author meets them from either side. Each becomes a `depends_on` entry (Part J)
+on the later item's approaches when they are written.
+
+| First | Then | Why this order | What goes wrong reversed |
+|---|---|---|---|
+| `windows-auth-connection-string` | `sensitive-config-key` | Fix authentication while the connection string is still in the config file, then move it to an OCP4 Secret | The auth fix has to edit a Secret, not a config file: different `allowed_paths` and a different approach for the same finding |
+| `serilog-file-sink` | `hardcoded-windows-path` | Removing the file sink removes its path with it | A path about to be deleted is externalised first, and the work list carries a spurious occurrence |
+
+Same-line pairs that are *not* ordered: an XML connection string also fires
+`sensitive-config-key` through its `connectionString` attribute. That is the first row
+above, not a separate constraint.
+
+### Repository-level signals are visible to every project
+
+Step 3 emits some signals at repository level, with a null `project_id`: deployment files
+outside every fingerprinted project directory, such as a root `k8s/` folder, a
+`charts/` folder or a root `Dockerfile` (`21-STEP-003-FINGERPRINTING.md` Part D,
+"Extractor batch 2"). **When step 6 evaluates an item against a project, the
+repository's repository-level signals are part of that project's signal set**, for
+every condition in `match`: `all`, `any`, `atLeast` and `none`.
+
+This matters most for `none`. Without it, every project in a repository with a root
+`k8s/` folder reads as missing manifests, and every absence item (`missing-dockerfile`,
+`missing-ocp4-manifests`) floods the work list with false findings. The rule is
+deliberately coarse: a repository-level manifest counts for every project in that
+repository, since step 3 cannot tell which project a root-level file deploys.
+
+A repository-level signal never supplies an occurrence location. `occurrence_source`
+projects only the project's own evidence, so a repository-level file is never
+attributed to a project's work list as a place to edit.
+
+### Grammar
+
+Unchanged from the existing catalog: `all`, `any`, `atLeast`, `none`, `metadata`,
+with signal conditions supporting `minimumOccurrences`, `value` predicates and
+`minimumExtractionConfidence`. Rule ids remain required.
+
+**Dropped:** `supporting` groups and weights — there is no score to contribute to.
+A condition either holds or it does not. For the same reason a `none` condition has no
+`disqualify` or `penalty` flag: it simply excludes.
+
+**Metadata conditions are first-class.** `match.metadata` alone makes a detection
+satisfiable (Part C). An item may combine signals and metadata freely.
+
+A detection may reference signals that are not registered yet. The item is accepted,
+computed `not_ready` with each such signal blocking as `signal_not_registered`, and is
+never evaluated until the signal exists and is ready. The write returns a warning rather
+than an error.
+
+---
+
+---
+
+## Part F — Resolutions and decisions
+
+### `item_resolutions`
+
+The menu. Client-agnostic, grows across engagements.
+
+`id` PK · `item_id` FK · `name` · `description` · `target_description` ·
+`consumer_impact` (`none`/`low`/`medium`/`high`) · `effort` (`low`/`medium`/`high`) ·
+`is_default` BOOL · `linux_compatible` BOOL · `container_ready` BOOL ·
+`notes` · `created_at`/`updated_at`
+
+Unique on `(item_id, name)`. At most one `is_default` per item.
+
+### `engagement_decisions`
+
+One chosen resolution per item per engagement. **Captured upfront**, before repo
+ingestion — this is what replaces lifecycle steps 13 to 15.
+
+`id` PK · `engagement_id` FK · `item_id` FK · `resolution_id` FK (nullable until approval) ·
+`candidates_considered` · `rationale` · `forcing_perspective` · `forcing_rationale` ·
+`evaluation_notes` · `approver_name` · `approver_role` · `decision_date` ·
+`status` (`pending`/`in_review`/`approved`/`superseded`) · `created_at`/`updated_at`
+
+Partial unique on `(engagement_id, item_id) WHERE status <> 'superseded'`.
+
+`forcing_perspective` and `forcing_rationale` are a pair, as established in
+`25-STANDARDS-AND-VIEWPOINTS.md` A1. `candidates_considered` records which resolutions
+were presented at decision time. The menu grows across engagements, so that history is
+kept even though validation judges against the full menu. *Both, and `in_review`, were
+restored in review after an earlier draft of this Part omitted them.*
+
+Validation retained from the old decision records, applied on approval: a selected
+resolution belonging to the item, a `rationale`, an approver and a date. Selecting a
+resolution that is not the lowest `consumer_impact` among the item's live resolutions
+also requires both `forcing_perspective` and `forcing_rationale`.
+
+Also retained: warn when the selected resolution has `linux_compatible: false` while
+the engagement targets Linux.
+
+---
+
+---
+
+## Part G — `item_occurrences`
+
+The work list's raw rows. Produced by step 6, replaced per repository on rescan.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | `UUID` PK | |
+| `repository_id` | `UUID` NOT NULL FK | |
+| `project_id` | `UUID` NOT NULL FK | |
+| `item_id` | `TEXT` NOT NULL FK | |
+| `scope` | `TEXT` NOT NULL | Denormalised from the item |
+| `file_path` | `TEXT` | **Null for application scope** |
+| `evidence` | `JSONB` | Line spans and values, projected from the signal |
+| `signal_registry_version` | `TEXT` NOT NULL | The version the fingerprint was produced under |
+| `detection_state` | `TEXT` NOT NULL | CHECK IN (`found`, `checked_absent`, `not_checked`) |
+| `step_execution_id` | `UUID` | |
+| `detected_at` | `TIMESTAMPTZ` | |
+
+Unique on `(project_id, item_id, file_path)` — treat null `file_path` as application
+scope via a partial index.
+
+### `detection_state` — the honesty field
+
+| State | Meaning |
+|---|---|
+| `found` | Item detected here |
+| `checked_absent` | Item evaluated, not present. Genuinely clean |
+| `not_checked` | The fingerprint predates a signal this item needs. **Unknown** |
+
+`not_checked` arises when a repository was scanned under a signal registry version
+older than the one introducing a signal the item references. Without it, adding an
+extractor silently produces wrong results for every repository scanned beforehand —
+and across 600 repositories scanned over months, that is guaranteed to happen.
+
+Requires `signal_introduced_in_version` on each registry entry, compared against the
+fingerprint's `signal_registry_version`. A `not_checked` result drives a rescan flag
+on the dashboard.
+
+Occurrences from a signal whose extractor is later removed **remain valid** — the
+`signal_registry_version` on the row records what was true when detected. Readiness
+state does not retroactively invalidate detections.
+
+---
+
+---
+
+## Part H — Coverage views
+
+Two lists, both falling out of the readiness relationship.
+
+**Item coverage** — `not_ready` items with their blocking signals, grouped by
+expected extractor. This is the extractor backlog, ordered by how many items each
+unblocks.
+
+**Signal coverage** — `ready` signals referenced by no item. Either the extractor is
+doing unnecessary work, or an item is missing.
+
+```
+GET /api/catalog/item-coverage
+GET /api/catalog/signal-coverage
+GET /api/catalog/extractor-backlog
+```
+
+### LLM-assisted signal suggestion
+
+When authoring an item, an optional assist proposes which existing signals might
+express it, or concludes a new extractor is needed. Given 91 signal names, this saves
+an author reading the registry.
+
+**Advisory only.** It proposes; a human commits. It must never write a detection
+rule — an item silently bound to a wrong-but-plausible signal would look ready and
+detect the wrong thing, which is worse than one honestly pending. Same discipline as
+cluster narration.
+
+### Deliberately not catalogued
+
+Signal coverage lists ready signals that no item references. Most are descriptive rather
+than work — test attributes, folders, HTTP attributes, ASP.NET Core namespaces — and feed
+step 6's role derivation instead of items. The groups below *are* migration-relevant and
+were reviewed and **left out on purpose** after step 3 batch 2. Revisit when the
+condition in the last column changes.
+
+| Signals | Why no item | Revisit when |
+|---|---|---|
+| Redis — `STACKEXCHANGE_REDIS_PACKAGE`, `REDIS_CONNECTION_CONFIG` | The client runs on Linux unchanged. The real work — endpoint, TLS, password as a Secret — is configuration, covered by `sensitive-config-key` and the outbound inventory (lifecycle step 5) | A Redis-specific conversion appears (e.g. a Windows-only cache provider) |
+| Kafka — `CONFLUENT_KAFKA_PACKAGE`, `KAFKA_BOOTSTRAP_CONFIG` | Confluent.Kafka ships Linux native libraries and runs unchanged. The one real risk, **SASL/GSSAPI (Kerberos) authentication, cannot be assessed from these signals: it needs a new config signal** for the `sasl.mechanism` / `SaslMechanism` setting before an item can detect it | That signal is registered |
+| Vault — `VAULTSHARP_PACKAGE`, `VAULT_CONFIG` | Works on Linux. The work is a platform choice (Kubernetes auth method, or Vault Agent injection instead of the SDK) the client makes once, not a per-project finding | The engagement's secret-delivery pattern is decided |
+| Entity Framework 6 — `ENTITYFRAMEWORK_PACKAGE`, `SYSTEM_DATA_ENTITY_NAMESPACE` | EF6 6.3+ runs on .NET 8/10. Porting to EF Core is an optional decision, not a blocker | A client wants EF Core as a target state |
+| HTTP handlers and modules — `IHTTP_HANDLER_BASE_CLASS`, `IHTTP_MODULE_BASE_CLASS` | They become middleware, but only once the framework item (`aspnet-webforms`, `fx-aspnet-mvc`) has moved the application to ASP.NET Core; on its own the finding has no conversion | Conversion approaches for the framework items exist, to sequence after |
+| Azure Functions — `FUNCTION_NAME_ATTRIBUTE`, `FUNCTIONS_FOLDER` | Only relevant to an estate that has them; none of the current engagements do | An engagement has Azure Functions |
+| Process launch — `PROCESS_START_USAGE` | Not inherently broken on Linux; whether it is depends on what is launched (`cmd.exe`, `powershell`), which step 3 deliberately does not record | Someone wants a human-review item for it |
+
+---
+
+---
+
+## Part I — Conversion: five decisions taken
+
+**B1. Conversions do not write to platform tables.** Unlike lifecycle steps, a
+conversion receives its context, edits source files, and reports. It gets no
+`database_url`. The platform records the outcome. This means an accelerator written
+by anyone cannot corrupt platform state, and it is the difference between a
+contributed step and a contributed *code change*.
+
+**B2. One git commit per conversion execution (confirmed).** Message derived from the approach.
+Rollback is `git revert`, the PR reads as a sequence of named remediations, and
+traceability is free. No bespoke rollback machinery.
+
+**B3. Batching is declared, not assumed.** Sixteen `appsettings` files with a Serilog
+sink is one coherent change; three `Encoding.Default` occurrences may be independent.
+An LLM-based approach may need per-file for context reasons. The approach declares it.
+
+**B4. Dry run is mandatory.** Every approach must support producing its diff without
+applying it. This drives estimation, Tier 2 plan approval, and safe rehearsal.
+
+**B5. Three check levels, not one.** Pre-checks ask *should this run*. Post-checks ask
+*did it do what it claimed*. Verification asks *is the project still sound*. Collapsing
+them loses the distinction between "not applicable", "did the wrong thing" and "broke
+the build".
+
+---
+
+---
+
+## Part J — `conversion_approaches`
+
+The table the delivery team populates.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | `TEXT` PK | Slug, e.g. `remove-serilog-file-sink` |
+| `version` | `TEXT` NOT NULL | Semver. Recorded on every execution |
+| `name` / `description` | `TEXT` | |
+| `item_id` | `TEXT` NOT NULL FK → `catalog_items.id` | |
+| `resolution_id` | `TEXT` NOT NULL FK → `item_resolutions.id` | The binding: item + chosen resolution |
+| `scope` | `TEXT` NOT NULL | CHECK IN (`application`, `occurrence`). Must match the item's scope |
+| `invocation` | `JSONB` NOT NULL | See Part D |
+| `batching` | `TEXT` NOT NULL DEFAULT `'all'` | CHECK IN (`all`, `per_file`, `per_occurrence`). Ignored for application scope |
+| `max_batch_size` | `INTEGER` | Optional cap when `batching` is `all` |
+| `pre_checks` | `JSONB` NOT NULL DEFAULT `'[]'` | |
+| `post_checks` | `JSONB` NOT NULL DEFAULT `'[]'` | |
+| `verification` | `JSONB` NOT NULL DEFAULT `'[]'` | |
+| `depends_on` | `JSONB` NOT NULL DEFAULT `'[]'` | Approach ids that must complete first within the same project |
+| `order_hint` | `INTEGER` NOT NULL DEFAULT 100 | Tiebreak within a scope |
+| `allowed_paths` | `JSONB` | Glob allowlist. A write outside it fails the execution |
+| `requires_human_review` | `BOOLEAN` NOT NULL DEFAULT false | Forces review regardless of tier |
+| `review_reason` | `TEXT` | Required when the above is true |
+| `idempotent` | `BOOLEAN` NOT NULL DEFAULT true | False means never auto-retry |
+| `estimated_minutes_per_occurrence` | `INTEGER` | Feeds effort rollup |
+| `status` | `TEXT` NOT NULL DEFAULT `'draft'` | CHECK IN (`draft`, `active`, `deprecated`) |
+| `owner_team` | `TEXT` | |
+| `created_at` / `updated_at` | `TIMESTAMPTZ` | |
+
+Unique on `(item_id, resolution_id)` where `status = 'active'` — one active approach
+per decision. Changing how something is converted is a new version, not a second row.
+
+`allowed_paths` is the containment guard. An approach declaring
+`["**/appsettings*.json"]` that writes a `.cs` file fails. Cheap, and it is what makes
+a contributed accelerator safe to run unattended across 600 applications.
+
+---
+
+---
+
+## Part K — Invocation
+
+Mirrors the step adapter contract, so the existing adapter layer is reused.
+
+```json
+{
+  "type": "python",
+  "config": { "entrypoint": "conversions.serilog:remove_file_sink" }
+}
+```
+
+| Type | Config | Use |
+|---|---|---|
+| `python` | `entrypoint` | In-process. Deterministic edits |
+| `process` | `command`, `cwd`, `timeout_seconds` | Any language. The general contributor path |
+| `skill` | `skill_name`, `prompt_template`, `allowed_tools` | Claude Code with a scoped skill |
+| `copilot` | `scenario`, `playbook_ref` | Copilot modernization |
+| `http` | `url`, `timeout_seconds` | A service |
+| `human` | `instructions`, `checklist` | No automation exists; creates a work item |
+| `noop` | — | Decision is "no action required" |
+
+`human` is a first-class type. Some resolutions have no automation and saying so
+explicitly is better than leaving them undetected.
+
+---
+
+---
+
+## Part L — `ConversionContext`
+
+What the platform passes in. **Stable contract — version it if it changes.**
+
+```json
+{
+  "envelope_version": "1.0",
+  "conversion_execution_id": "…",
+  "conversion_approach_id": "remove-serilog-file-sink",
+  "conversion_approach_version": "1.2.0",
+  "scope": "occurrence",
+  "dry_run": false,
+
+  "repository": {
+    "id": "…", "slug": "n600-accountopencoreapi",
+    "local_path": "D:\\repos\\n600-AccountOpenCoreAPI",
+    "branch": "modernization/ocp4"
+  },
+
+  "project": {
+    "id": "…", "name": "AccountOpenAPI",
+    "relative_path": "src/AccountOpenAPI/AccountOpenAPI.csproj",
+    "framework_family": "net", "framework_version": "10.0",
+    "output_type": "Exe", "project_format": "sdk_style"
+  },
+
+  "item": {
+    "id": "serilog-file-sink",
+    "name": "Serilog file sink writing to a Windows path",
+    "scope": "occurrence"
+  },
+
+  "resolution": {
+    "id": "console-json-only",
+    "name": "Console sink with CompactJsonFormatter only",
+    "parameters": { "formatter": "CompactJsonFormatter", "retain_console_sink": true }
+  },
+
+  "occurrences": [
+    {
+      "occurrence_id": "…",
+      "file_path": "src/AccountOpenAPI/appsettings.json",
+      "evidence": [ { "line_start": 42, "line_end": 58, "signal_name": "SERILOG_FILE_SINK_CONFIG", "value": "G:\\Logs\\AccountOpenAPI\\" } ]
+    }
+  ],
+
+  "engagement_parameters": {
+    "target_platform": "ocp4",
+    "target_framework": "net10.0",
+    "log_destination": "stdout-efk",
+    "naming_conventions": { "configmap_prefix": "n600-" }
+  },
+
+  "working_dir": "…", "output_dir": "…",
+  "allowed_paths": ["**/appsettings*.json"],
+  "log_level": "INFO"
+}
+```
+
+`resolution.parameters` is how one approach serves several engagements without
+branching — the client's choices arrive as data.
+
+For `application` scope, `occurrences` is empty and the whole project is in play.
+
+---
+
+---
+
+## Part M — `ConversionResult`
+
+```json
+{
+  "envelope_version": "1.0",
+  "status": "SUCCESS",
+  "message": "Removed file sink from 16 appsettings files",
+
+  "occurrences_resolved": ["…", "…"],
+  "occurrences_failed": [ { "occurrence_id": "…", "reason": "sink not found — already removed" } ],
+
+  "files_modified": ["src/AccountOpenAPI/appsettings.json"],
+  "files_created": [], "files_deleted": [],
+
+  "pre_check_results":    [ { "check": "sink-present", "passed": true } ],
+  "post_check_results":   [ { "check": "no-windows-path", "passed": true } ],
+  "verification_results": [ { "check": "build", "passed": true, "duration_ms": 18400 } ],
+
+  "metrics": { "occurrences_resolved": 16, "occurrences_failed": 0, "files_touched": 16 },
+  "diagnostics": [ { "level": "warning", "code": "…", "message": "…", "ref": "…" } ],
+
+  "requires_human_review": false,
+  "review_reason": null,
+  "diff_summary": { "lines_added": 0, "lines_removed": 94 }
+}
+```
+
+Statuses: `SUCCESS` · `PARTIAL` (some occurrences resolved) · `FAILED` ·
+`NOT_APPLICABLE` (pre-checks say nothing to do — not a failure) · `SKIPPED`.
+
+On `dry_run: true`, the same shape with no files written and the diff in
+`output_dir`.
+
+---
+
+---
+
+## Part N — Checks
+
+```json
+{
+  "pre_checks": [
+    { "id": "sink-present", "type": "file_contains", "path": "{occurrence.file_path}", "pattern": "\"Name\"\\s*:\\s*\"File\"" }
+  ],
+  "post_checks": [
+    { "id": "no-windows-path", "type": "file_not_matches", "path": "{occurrence.file_path}", "pattern": "[A-Z]:\\\\\\\\" },
+    { "id": "valid-json",      "type": "json_parses",      "path": "{occurrence.file_path}" }
+  ],
+  "verification": [
+    { "id": "build", "type": "shell", "command": "dotnet build {project.relative_path} -c Release" }
+  ]
+}
+```
+
+Check types: `file_exists`, `file_contains`, `file_not_matches`, `json_parses`,
+`xml_parses`, `shell`, `signal_absent` (re-run the step 3 extractor and assert the
+signal is gone — the strongest post-check available).
+
+**A failed pre-check yields `NOT_APPLICABLE`, not failure.** A failed post-check is a
+failure and triggers rollback. Verification failure is a failure but rollback is
+configurable, since a pre-existing broken build should not be attributed to the
+conversion.
+
+---
+
+---
+
+## Part O — Worked examples
+
+Both drawn from the RBC assessment. The test that decides scope:
+
+> **Can this occur more than once in a single project?** Sixteen Serilog file sinks —
+> yes, occurrence. One host builder — no, application.
+
+Application scope is not "bigger". It is "at most once per project, and it is a choice
+about the project".
+
+### J1 — Occurrence scope: Serilog file sink
+
+`n600-AccountOpenCoreAPI` — 18 hardcoded Windows paths across 16 `appsettings` files.
+
+**Catalog item** (client-agnostic, defined once):
+
+```json
+{
+  "id": "serilog-file-sink",
+  "name": "Serilog file sink writing to a Windows path",
+  "scope": "occurrence",
+  "category": "logging",
+  "detection": {
+    "all": [ { "signal": { "name": "SERILOG_FILE_SINK_CONFIG" } } ]
+  }
+}
+```
+
+**Resolutions:**
+
+| id | Description | Consumer impact | Default |
+|---|---|---|---|
+| `console-json-only` | Remove file sink; keep console with CompactJsonFormatter for EFK | low | yes |
+| `otlp-exporter` | Replace with an OpenTelemetry exporter | medium | |
+
+**Engagement decision:** the client selects `console-json-only`, with rationale,
+approver and date.
+
+**Conversion approach:**
+
+```json
+{
+  "id": "remove-serilog-file-sink",
+  "version": "1.0.0",
+  "item_id": "serilog-file-sink",
+  "resolution_id": "console-json-only",
+  "scope": "occurrence",
+
+  "invocation": {
+    "type": "python",
+    "config": { "entrypoint": "conversions.serilog:remove_file_sink" }
+  },
+
+  "batching": "all",
+  "allowed_paths": ["**/appsettings*.json", "**/appsettings.*.json"],
+
+  "pre_checks": [
+    { "id": "sink-present", "type": "file_contains",
+      "path": "{occurrence.file_path}", "pattern": "\"Name\"\\s*:\\s*\"File\"" }
+  ],
+  "post_checks": [
+    { "id": "valid-json",   "type": "json_parses",      "path": "{occurrence.file_path}" },
+    { "id": "no-win-path",  "type": "file_not_matches", "path": "{occurrence.file_path}",
+      "pattern": "[A-Za-z]:\\\\\\\\" },
+    { "id": "console-kept", "type": "file_contains",    "path": "{occurrence.file_path}",
+      "pattern": "\"Name\"\\s*:\\s*\"Console\"" }
+  ],
+  "verification": [
+    { "id": "build", "type": "shell",
+      "command": "dotnet build {project.relative_path} -c Release" }
+  ],
+
+  "estimated_minutes_per_occurrence": 3,
+  "status": "active"
+}
+```
+
+`batching: all` because sixteen config files are one coherent change. Sixteen separate
+edits and sixteen builds would be slower and no safer.
+
+**ConversionContext in** (abbreviated to two of sixteen occurrences):
+
+```json
+{
+  "envelope_version": "1.0",
+  "conversion_execution_id": "ce-8f2c",
+  "conversion_approach_id": "remove-serilog-file-sink",
+  "conversion_approach_version": "1.0.0",
+  "scope": "occurrence",
+  "dry_run": false,
+
+  "repository": { "id": "r-001", "slug": "n600-accountopencoreapi",
+                  "local_path": "D:\\repos\\n600-AccountOpenCoreAPI",
+                  "branch": "modernization/ocp4" },
+
+  "project": { "id": "p-014", "name": "AccountOpenAPI",
+               "relative_path": "src/AccountOpenAPI/AccountOpenAPI.csproj",
+               "framework_family": "net", "framework_version": "10.0",
+               "output_type": "Exe", "project_format": "sdk_style" },
+
+  "item": { "id": "serilog-file-sink", "scope": "occurrence" },
+
+  "resolution": { "id": "console-json-only",
+                  "parameters": { "formatter": "CompactJsonFormatter",
+                                  "retain_console_sink": true } },
+
+  "occurrences": [
+    { "occurrence_id": "o-001",
+      "file_path": "src/AccountOpenAPI/appsettings.json",
+      "evidence": [ { "line_start": 42, "line_end": 58,
+                      "signal_name": "SERILOG_FILE_SINK_CONFIG",
+                      "value": "G:\\Logs\\AccountOpenAPI\\" } ] },
+    { "occurrence_id": "o-002",
+      "file_path": "src/AccountOpenAPI/appsettings.DEVOCP.json",
+      "evidence": [ { "line_start": 39, "line_end": 55,
+                      "signal_name": "SERILOG_FILE_SINK_CONFIG",
+                      "value": "C:\\logs\\AccountOpenAPI\\" } ] }
+  ],
+
+  "engagement_parameters": { "target_platform": "ocp4",
+                             "log_destination": "stdout-efk" },
+
+  "working_dir": "runs/.../remove-serilog-file-sink",
+  "output_dir": "runs/.../remove-serilog-file-sink/out",
+  "allowed_paths": ["**/appsettings*.json", "**/appsettings.*.json"],
+  "log_level": "INFO"
+}
+```
+
+**ConversionResult out:**
+
+```json
+{
+  "envelope_version": "1.0",
+  "status": "SUCCESS",
+  "message": "Removed file sink from 16 appsettings files",
+
+  "occurrences_resolved": ["o-001", "o-002"],
+  "occurrences_failed": [],
+
+  "files_modified": ["src/AccountOpenAPI/appsettings.json",
+                     "src/AccountOpenAPI/appsettings.DEVOCP.json"],
+  "files_created": [], "files_deleted": [],
+
+  "pre_check_results":    [ { "check": "sink-present",  "passed": true } ],
+  "post_check_results":   [ { "check": "valid-json",    "passed": true },
+                            { "check": "no-win-path",   "passed": true },
+                            { "check": "console-kept",  "passed": true } ],
+  "verification_results": [ { "check": "build", "passed": true, "duration_ms": 18400 } ],
+
+  "metrics": { "occurrences_resolved": 16, "occurrences_failed": 0, "files_touched": 16 },
+  "diagnostics": [],
+  "requires_human_review": false,
+  "diff_summary": { "lines_added": 0, "lines_removed": 94 }
+}
+```
+
+### J2 — Application scope: Windows Service hosting
+
+`n600-workflow-service` — `UseWindowsService()` in `Program.cs`, flagged BLOCKER.
+
+**Catalog item:**
+
+```json
+{
+  "id": "windows-service-hosting",
+  "name": "Application hosts as a Windows Service",
+  "scope": "application",
+  "category": "hosting",
+  "detection": {
+    "any": [
+      { "signal": { "name": "USE_WINDOWS_SERVICE_INVOCATION" } },
+      { "signal": { "name": "MICROSOFT_EXTENSIONS_HOSTING_WINDOWSSERVICES_PACKAGE" } }
+    ]
+  }
+}
+```
+
+**Resolutions:**
+
+| id | Description | Consumer impact | Default |
+|---|---|---|---|
+| `generic-host-deployment` | Generic host, deployed as an OCP4 Deployment | low | yes |
+| `generic-host-cronjob` | Generic host, scheduled as an OCP4 CronJob | medium | |
+| `remain-windows-hosted` | Out of scope; stays on Windows | none | |
+
+The client selects `generic-host-deployment` — the assessment records
+*"Deployment replicas=1, NOT Job/CronJob"*, because it is a continuous queue processor.
+
+**Conversion approach:**
+
+```json
+{
+  "id": "windows-service-to-generic-host",
+  "version": "1.0.0",
+  "item_id": "windows-service-hosting",
+  "resolution_id": "generic-host-deployment",
+  "scope": "application",
+
+  "invocation": {
+    "type": "process",
+    "config": { "command": ["conversions/dotnet/publish/HostingConverter.exe"],
+                "timeout_seconds": 600 }
+  },
+
+  "allowed_paths": ["**/Program.cs", "**/*.csproj"],
+  "order_hint": 10,
+
+  "pre_checks": [
+    { "id": "uses-windows-service", "type": "file_contains",
+      "path": "{project.dir}/Program.cs", "pattern": "UseWindowsService\\(" }
+  ],
+  "post_checks": [
+    { "id": "no-windows-service",  "type": "file_not_matches",
+      "path": "{project.dir}/Program.cs", "pattern": "UseWindowsService\\(" },
+    { "id": "package-removed",     "type": "file_not_matches",
+      "path": "{project.relative_path}",
+      "pattern": "Microsoft\\.Extensions\\.Hosting\\.WindowsServices" },
+    { "id": "host-builder-intact", "type": "file_contains",
+      "path": "{project.dir}/Program.cs",
+      "pattern": "CreateApplicationBuilder|CreateDefaultBuilder" }
+  ],
+  "verification": [
+    { "id": "build", "type": "shell",
+      "command": "dotnet build {project.relative_path} -c Release" },
+    { "id": "test",  "type": "shell",
+      "command": "dotnet test {project.relative_path} --no-build" }
+  ],
+
+  "estimated_minutes_per_occurrence": 45,
+  "status": "active"
+}
+```
+
+**ConversionContext in** — note `occurrences` is empty; the project is the subject:
+
+```json
+{
+  "envelope_version": "1.0",
+  "conversion_execution_id": "ce-b41a",
+  "conversion_approach_id": "windows-service-to-generic-host",
+  "conversion_approach_version": "1.0.0",
+  "scope": "application",
+  "dry_run": false,
+
+  "repository": { "id": "r-007", "slug": "n600-workflow-service",
+                  "local_path": "D:\\repos\\n600-workflow-service",
+                  "branch": "modernization/ocp4" },
+
+  "project": { "id": "p-102", "name": "WorkflowService",
+               "relative_path": "src/WorkflowService/WorkflowService.csproj",
+               "framework_family": "net", "framework_version": "10.0",
+               "output_type": "Exe", "project_format": "sdk_style" },
+
+  "item": { "id": "windows-service-hosting", "scope": "application" },
+
+  "resolution": { "id": "generic-host-deployment",
+                  "parameters": { "replicas": 1, "restart_policy": "Always" } },
+
+  "occurrences": [],
+
+  "engagement_parameters": { "target_platform": "ocp4",
+                             "target_framework": "net10.0" },
+
+  "working_dir": "runs/.../windows-service-to-generic-host",
+  "output_dir": "runs/.../windows-service-to-generic-host/out",
+  "allowed_paths": ["**/Program.cs", "**/*.csproj"],
+  "log_level": "INFO"
+}
+```
+
+**ConversionResult out:**
+
+```json
+{
+  "envelope_version": "1.0",
+  "status": "SUCCESS",
+  "message": "Removed Windows Service hosting; generic host retained",
+
+  "occurrences_resolved": [],
+  "occurrences_failed": [],
+
+  "files_modified": ["src/WorkflowService/Program.cs",
+                     "src/WorkflowService/WorkflowService.csproj"],
+  "files_created": [], "files_deleted": [],
+
+  "pre_check_results":    [ { "check": "uses-windows-service", "passed": true } ],
+  "post_check_results":   [ { "check": "no-windows-service",   "passed": true },
+                            { "check": "package-removed",      "passed": true },
+                            { "check": "host-builder-intact",  "passed": true } ],
+  "verification_results": [ { "check": "build", "passed": true, "duration_ms": 22100 },
+                            { "check": "test",  "passed": true, "detail": "203 passed" } ],
+
+  "metrics": { "files_touched": 2 },
+  "diagnostics": [],
+  "requires_human_review": false,
+  "diff_summary": { "lines_added": 3, "lines_removed": 7 }
+}
+```
+
+### J3 — The differences that matter
+
+| | Occurrence scope | Application scope |
+|---|---|---|
+| `occurrences[]` | Populated; drives the work | Empty; the project is the subject |
+| Path templates | `{occurrence.file_path}` | `{project.dir}`, `{project.relative_path}` |
+| `batching` | Meaningful | Ignored |
+| Effort | Per occurrence x count | Per project |
+| Runs in | Step B | Step A, first |
+
+**Why ordering matters, concretely.** `windows-service-to-generic-host` rewrites
+`Program.cs`. A later occurrence-scope conversion adding health endpoints also touches
+`Program.cs`. Run in the other order, the health-endpoint edit would land on a file
+about to be restructured. This is why application scope runs first, and why
+`depends_on` and `order_hint` exist within a scope.
+
+---
+
+---
+
+## Part P — Tables
+
+| Table | Holds |
+|---|---|
+| `catalog_items` | id, name, description, scope, detection rule, category, status. Client-agnostic |
+| `item_resolutions` | id, item_id, name, description, target description, consumer impact, effort, default flag |
+| `engagement_decisions` | engagement_id, item_id, chosen resolution, rationale, forcing perspective, approver, date, status |
+| `item_occurrences` | occurrence_id, repository_id, project_id, item_id, file_path, evidence, detected_at, status |
+| `conversion_approaches` | Part C |
+| `conversion_executions` | execution_id, work_item, approach id + version, status, result payload, commit sha, timings |
+
+**The work list** is a view: occurrences joined to decisions joined to approaches.
+`repo · project · item · resolution · approach · files[] · status`. Count it for an
+estimate, group it for a dashboard, iterate it to convert.
+
+An occurrence with no decision is flagged, never guessed — surfaced on the UI as
+"decision required" exactly as you described.
+
+---
+
+---
+
+## Part Q — Migration
+
+Existing catalog: 21 patterns, target state options, decision records, engagement
+overlays, and step 4's classification tables.
+
+| Existing | Becomes |
+|---|---|
+| `patterns` (work patterns) | `catalog_items` — keep id, name, description, detection `match`; add `scope` and `occurrence_source`; drop the election columns |
+| `patterns` (6 role patterns) | **Not migrated.** Role is computed per Part D; the pattern rows stay until cut-over |
+| `patterns` (5 modern + 2 desktop) | **Review case by case.** Most describe what an application *is*, which the catalog no longer models. Retain only where they identify real work |
+| `target_state_options` | `item_resolutions` |
+| `decision_records` | `engagement_decisions` |
+| `engagement_patterns` overlay | `engagement_item_scope` — same purpose, renamed |
+| `project_classifications`, `classification_matches` | **Dropped.** Replaced by `item_occurrences` |
+| `catalog_coverage_reports` | Replaced by the Part G views |
+
+**Run both models side by side** rather than cutting over. Build the new tables, have
+step 6 populate occurrences, and verify against the two sample repositories before
+dropping the classification tables. The old data is the only reference for whether the
+new detection produces sensible results.
+
+Each surviving item needs `scope` and, for occurrence scope, `occurrence_source`
+assigned by hand. That is a judgement call per item — apply the Part O scope test:
+*can this occur more than once in a single project?*
+
+### As migrated
+
+Run by `backend/app/items/pattern_migration.py` (also part of `python -m app.seed`).
+It is idempotent and reversible: `--revert` removes exactly the rows it wrote, and
+refuses once occurrences, resolutions or decisions have been built on top of them. It
+never writes to the pattern tables.
+
+| Patterns | Outcome |
+|---|---|
+| 8 work patterns | Items, all **application** scope, no `occurrence_source`. Detection is the old rules verbatim minus `supporting`, `schema`, `matchWarnings` and the `none` flags. `excluded_roles` is left empty so detection matches the old model in the side-by-side comparison |
+| `winforms-desktop`, `wpf-desktop` | Items, application scope, category `hosting`: a desktop UI cannot land on OpenShift. WinForms keeps its detection (WinExe with XAML absent); the positive signals it lacks are recorded in its description as an enhancement |
+| 5 already-modern patterns | Not migrated — they describe what an application is. **Knock-on:** client-a's parked `aspnetcore-minimal-api` decision (forcing perspective `REGULATION`) has no item to attach to and stays in `decision_records` |
+| 6 role patterns | Not migrated — role is computed (Part D) |
+
+Resolutions keep their target state option ids (`is_recommended` → `is_default`).
+Decisions keep their ids. `parked` becomes `pending`; `in_review`, `approved` and
+`superseded` are unchanged. Forcing pairs and `candidates_considered` carry over
+intact.
+
+**All migrated items are application scope.** The occurrence path is exercised by the
+five authored items in `backend/app/seed/data/catalog_items.yaml`.
+
+---
+
+---
+
+## Part R — What this replaces
+
+| Existing | Fate |
+|---|---|
+| Steps 1, 2 | Unchanged |
+| Step 3 fingerprinting | **Unchanged and now central.** Signals and evidence are the detection engine; evidence supplies occurrence file paths |
+| Step 4 classification | **Rewritten, much smaller.** Detection rules survive. Primary election, conflicts, ambiguity, the eight statuses, scoring resolution all removed |
+| Steps 5, 6 | Demoted to a safety net: signals matching no catalog item, reported for review |
+| Three-layer catalog | Replaced by items + resolutions + decisions |
+| Track A steps 23–30 | **Collapse** into the two conversion steps |
+| Engine, adapters, gates, policy, observability, admin | Unchanged |
+
+Net effect deletes more code than it adds. The classification engine loses the half
+that produced most of the recent defects.
+
+---
+
+---
+
+---
+
+## Part S — Settled decisions
+
+Confirmed and not open for re-litigation without a reason:
+
+| Decision | Status |
+|---|---|
+| `allowed_paths` as a hard containment guard | **Adopted.** A write outside the declared globs fails the execution |
+| One git commit per conversion execution | **Adopted.** Message derived from the approach. Rollback is `git revert` |
+| `human` invocation type | **Not adopted.** An item with no automation has no active approach row; its occurrences sit in the work list with status `awaiting_approach`. Honest, and the work list already shows what is unconverted |
+| `signal_absent` post-check | **Deferred.** Available as a check type but not mandated |
+| Approach version recorded per execution | **Deferred.** Recorded, but no re-run policy defined yet |
+
+---
+
+## Acceptance criteria
+
+### Catalog
+
+- [ ] Signals carry `state`, `state_reason`, `signal_introduced_in_version`
+- [ ] Extractors declare emittable signals; a registered signal no extractor claims is
+      a hard error
+- [ ] Item readiness computes from signal readiness and recomputes on signal change
+- [ ] A `not_ready` item is excluded from detection and visible as pending
+- [ ] An item promotes automatically when its last blocking signal becomes ready, with
+      no edit to the item
+- [ ] An occurrence-scope item without `occurrence_source` is rejected on write
+- [ ] An application-scope item with `occurrence_source` is rejected on write
+- [ ] `occurrence_source` must name a signal that appears in `match`
+- [ ] Project role is computed, not catalogued; the six role patterns are gone
+- [ ] Occurrence projection produces one row per distinct `source_path`, carrying
+      line evidence
+- [ ] Application-scope items produce one occurrence with null `file_path`
+- [ ] A fingerprint predating a referenced signal's introduction yields `not_checked`,
+      never `checked_absent`, and flags a rescan
+- [ ] Occurrences survive their signal's extractor being removed
+- [ ] Item coverage groups blocking signals by expected extractor
+- [ ] Signal coverage lists ready signals no item references
+- [ ] Signal suggestion is advisory and never writes a rule
+- [ ] Existing decision records migrate with their forcing perspectives intact
+
+### Conversion
+
+- [ ] An approach writing outside its `allowed_paths` fails the execution
+- [ ] Each conversion execution produces one git commit, message from the approach
+- [ ] `dry_run` produces the diff without applying it
+- [ ] A failed pre-check yields `NOT_APPLICABLE`, not failure
+- [ ] A failed post-check triggers rollback of that execution
+- [ ] `batching` is honoured: `all`, `per_file` and `per_occurrence` each behave as declared
+- [ ] Application-scope conversions run before occurrence-scope for the same project
+- [ ] `depends_on` and `order_hint` sequence approaches within a scope
+- [ ] An item with no active approach leaves its occurrences `awaiting_approach`
+- [ ] An occurrence with no engagement decision is flagged `awaiting_decision`, never guessed
+- [ ] Approach version is recorded on every execution
+- [ ] Occurrence-scope context carries populated `occurrences[]`; application-scope carries none

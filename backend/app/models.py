@@ -60,7 +60,8 @@ VIEWPOINT = (
 
 ADAPTER_TYPE = ("python", "process", "http", "event", "stub")
 # Combined codes (e.g. "P + S") denote shared authorship within one step and are
-# stored verbatim — see 17-LIFECYCLE-STEPS.md "Owner codes".
+# stored verbatim — see 17-LIFECYCLE-STEPS.md "Owner codes". "C" is retired as a
+# step owner (v2.0) and survives only on deprecated rows.
 STEP_OWNER_CODE = ("P", "C", "S", "H", "P + S", "P + H")
 IMPLEMENTATION_STATUS = ("stub", "implemented", "deprecated")
 VALIDATION_STATUS = ("valid", "invalid")
@@ -156,6 +157,12 @@ SIGNAL_TYPE = (
     "NAMESPACE",
     "ROUTE",
     "ENTRY_POINT",
+    # 21-STEP-003-FINGERPRINTING.md Part D "Signal types" — added with
+    # application-fingerprint@1.2.0. API_INVOCATION: use of a specific member
+    # (DateTime.Now). LITERAL: a source or config value matching a pattern (a
+    # Windows path); its evidence carries matchedValue.
+    "API_INVOCATION",
+    "LITERAL",
 )
 # ---- Step 4 — pattern classification (24-STEP-004-CLASSIFICATION.md Part E/F) ----
 CLASSIFICATION_STATUS = (
@@ -524,6 +531,17 @@ class WfStepRegistration(Base):
     implementation_status: Mapped[str] = mapped_column(Text, nullable=False)
     owner_team: Mapped[str | None] = mapped_column(Text)
     viewpoint: Mapped[str | None] = mapped_column(Text)
+    # Soft delete = the slug was renamed (the step lives on under
+    # `superseded_by`); the row leaves the step list but still resolves by
+    # name for wf_step_executions history. Distinct from
+    # implementation_status 'deprecated', which means the step left the
+    # lifecycle and stays listed. See migration e5c1d7a93f20.
+    deleted_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
+    deleted_by: Mapped[str | None] = mapped_column(Text)
+    # Plain text pointer, not an FK: a retired row may point at a v2 step
+    # that is registered later.
+    superseded_by: Mapped[str | None] = mapped_column(Text)
+    retired_reason: Mapped[str | None] = mapped_column(Text)
     registered_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -533,6 +551,13 @@ class WfStepRegistration(Base):
 
     __table_args__ = (
         CheckConstraint(f"owner_code IN {STEP_OWNER_CODE}", name="ck_wf_step_registrations_owner_code"),
+        # 'C' stays in STEP_OWNER_CODE only so deprecated rows keep their
+        # true historical owner — no live step is owned by an engine
+        # (17-LIFECYCLE-STEPS.md v2.0 "Owner codes").
+        CheckConstraint(
+            "owner_code <> 'C' OR implementation_status = 'deprecated'",
+            name="ck_wf_step_registrations_no_engine_owner",
+        ),
         CheckConstraint(f"adapter_type IN {ADAPTER_TYPE}", name="ck_wf_step_registrations_adapter_type"),
         CheckConstraint(
             f"implementation_status IN {IMPLEMENTATION_STATUS}",
@@ -1304,4 +1329,463 @@ class CatalogCoverageReport(Base):
 
     __table_args__ = (
         Index("ix_catalog_coverage_reports_repository_id", "repository_id"),
+    )
+
+
+class PatternCandidateCluster(Base):
+    """A candidate pattern discovered by step 5 — see
+    26-STEP-005-PATTERN-DISCOVERY.md Part D.
+
+    Unlike every other step output, these rows are NOT replaced per run.
+    `cluster_id` derives from the shape, so the same shape in a later run
+    resolves to this row and inherits step 6's decision. The narration
+    columns are advisory suggestions, never catalog data.
+    """
+
+    __tablename__ = "pattern_candidate_clusters"
+
+    cluster_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    engagement_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("engagements.id", ondelete="CASCADE"), nullable=False
+    )
+    cluster_method: Mapped[str] = mapped_column(Text, nullable=False)
+    canonical_signature: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    signal_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    member_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    repository_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    repository_distribution: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    cohesion: Mapped[float | None] = mapped_column(Numeric(4, 3))
+    is_singleton: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    similar_patterns: Mapped[list | None] = mapped_column(JSONB)
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default="candidate")
+    resolved_pattern_id: Mapped[str | None] = mapped_column(Text, ForeignKey("patterns.id", ondelete="SET NULL"))
+    resolution_note: Mapped[str | None] = mapped_column(Text)
+    decided_at_coverage: Mapped[float | None] = mapped_column(Numeric(4, 3))
+    decided_at_member_count: Mapped[int | None] = mapped_column(Integer)
+    needs_rereview: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    rereview_reason: Mapped[str | None] = mapped_column(Text)
+    is_stale: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    # Advisory naming (Part E). `naming_source` of 'human' means a person
+    # renamed it at step 6 and a later machine run must not overwrite them.
+    suggested_name: Mapped[str | None] = mapped_column(Text)
+    suggested_description: Mapped[str | None] = mapped_column(Text)
+    suggested_pattern_id: Mapped[str | None] = mapped_column(Text)
+    narration_confidence: Mapped[str | None] = mapped_column(Text)
+    naming_source: Mapped[str] = mapped_column(Text, nullable=False, server_default="none")
+    narration_model_version: Mapped[str | None] = mapped_column(Text)
+    narrated_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
+    first_seen_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    last_seen_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    step_execution_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+
+
+class PatternCandidateMember(Base):
+    """One project inside a candidate cluster. Replaced per cluster per
+    run — membership is a snapshot, the cluster row is not."""
+
+    __tablename__ = "pattern_candidate_members"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid())
+    cluster_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("pattern_candidate_clusters.cluster_id", ondelete="CASCADE"), nullable=False
+    )
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+    )
+    repository_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("repositories.id", ondelete="CASCADE"), nullable=False
+    )
+    classification_status: Mapped[str] = mapped_column(Text, nullable=False)
+    similarity_to_signature: Mapped[float | None] = mapped_column(Numeric(4, 3))
+    signal_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    classification_step_execution_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+
+
+class PatternDiscoveryRun(Base):
+    """One step 5 run's narration outcome — Part E.
+
+    Exists because narration failure surfacing only as a step diagnostic
+    is easy to miss at fleet scale: a human arriving at step 6 would see
+    unnamed clusters with no indication why, which reads as "nothing to
+    say about this shape" rather than "the narrator was unreachable".
+    """
+
+    __tablename__ = "pattern_discovery_runs"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid())
+    engagement_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("engagements.id", ondelete="CASCADE"), nullable=False
+    )
+    step_execution_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    cluster_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    narrated_cluster_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    coverage_ratio: Mapped[float | None] = mapped_column(Numeric(4, 3))
+    partial_estate: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    narration_status: Mapped[str] = mapped_column(Text, nullable=False)
+    narration_reason: Mapped[str | None] = mapped_column(Text)
+    output_dir: Mapped[str | None] = mapped_column(Text)
+    run_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class ValidationQueueItem(Base):
+    """One thing a human must decide — 27-STEP-006-PATTERN-VALIDATION.md
+    Part B.
+
+    **Generic across every gate step**, not step 6's own table. Step 6 is
+    the first consumer; steps 22 (plan approval), 38 (code review) and 50
+    (release approval) raise items here too. Everything step-specific
+    lives in `item_type` and `payload`, so a new gate needs no schema
+    change and inherits the queue UI, the summary and the decide/defer
+    endpoints as they stand.
+    """
+
+    __tablename__ = "validation_queue"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid())
+    engagement_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("engagements.id", ondelete="CASCADE"), nullable=False
+    )
+    job_execution_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("wf_job_executions.id", ondelete="CASCADE"), nullable=False
+    )
+    step_execution_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("wf_step_executions.id", ondelete="CASCADE"), nullable=False
+    )
+    step_name: Mapped[str] = mapped_column(Text, nullable=False)
+    item_type: Mapped[str] = mapped_column(Text, nullable=False)
+    item_key: Mapped[str] = mapped_column(Text, nullable=False)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    payload: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default="open")
+    outcome: Mapped[str | None] = mapped_column(Text)
+    outcome_detail: Mapped[dict | None] = mapped_column(JSONB)
+    decision_note: Mapped[str | None] = mapped_column(Text)
+    decided_by: Mapped[str | None] = mapped_column(Text)
+    decided_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
+    # A deferred item keeps status 'open' — the subject still needs an
+    # answer — but is set aside until the evidence improves.
+    deferred_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
+    deferred_until_coverage: Mapped[float | None] = mapped_column(Numeric(4, 3))
+    deferred_until_member_count: Mapped[int | None] = mapped_column(Integer)
+    priority: Mapped[int] = mapped_column(Integer, nullable=False, server_default="50")
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+    @property
+    def is_deferred(self) -> bool:
+        return self.status == "open" and self.deferred_at is not None
+
+
+# ---- Item & conversion model, catalog half (28-ITEM-AND-CONVERSION-MODEL.md Parts C-G) ----
+# Built ALONGSIDE the pattern tables above, which stay untouched until the
+# new model has been verified against the old (Part Q "run both models side
+# by side"). Nothing here references `patterns`, `target_state_options`,
+# `decision_records` or `engagement_patterns`.
+
+READINESS_STATE = ("ready", "not_ready")
+EXTRACTOR_STATUS = ("implemented", "planned")
+ITEM_SCOPE = ("application", "occurrence")
+ITEM_CATEGORY = (
+    "hosting",
+    "logging",
+    "configuration",
+    "security",
+    "data-access",
+    "integration",
+    "packaging",
+    "dependencies",
+    "framework",
+)
+# Master catalog lifecycle, distinct from computed readiness `state` and from
+# soft delete — CLAUDE.md rule 7.
+ITEM_STATUS = ("active", "deprecated")
+ENGAGEMENT_DECISION_STATUS = ("pending", "in_review", "approved", "superseded")
+DETECTION_STATE = ("found", "checked_absent", "not_checked")
+
+
+class Extractor(Base):
+    """A step 3 extractor and the signals it declares it can emit (Part C
+    'Extractor declarations'). A signal can be declared ahead of its
+    extraction code without being unclaimed, two ways: on a `planned`
+    extractor (a new extractor), or in an `implemented` extractor's
+    `planned_emits` (an extractor that ships, gaining a signal). Either way
+    the signal is `not_ready` / `extractor_not_implemented` until it is in
+    `emits` of an `implemented` extractor."""
+
+    __tablename__ = "extractors"
+
+    name: Mapped[str] = mapped_column(Text, primary_key=True)
+    description: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text, nullable=False)
+    emits: Mapped[list] = mapped_column(JSONB, nullable=False, server_default="[]")
+    planned_emits: Mapped[list] = mapped_column(JSONB, nullable=False, server_default="[]")
+    owner_team: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        CheckConstraint(f"status IN {EXTRACTOR_STATUS}", name="ck_extractors_status"),
+    )
+
+
+class SignalRegistryEntry(Base):
+    """One registered step 3 signal. Rows come from the versioned
+    signal-registry-*.json files step 3 ships, or are registered ahead of
+    their extractor through the API. `state` and `state_reason` are computed
+    (app/items/readiness.py), never written by a caller."""
+
+    __tablename__ = "signal_registry_entries"
+
+    name: Mapped[str] = mapped_column(Text, primary_key=True)
+    category: Mapped[str] = mapped_column(Text, nullable=False)
+    type: Mapped[str] = mapped_column(Text, nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+    # The registry file's `extractor` field. Must be a registered extractor
+    # listing this signal in `emits`; otherwise the signal is unclaimed,
+    # which is a hard error.
+    expected_extractor: Mapped[str] = mapped_column(Text, ForeignKey("extractors.name"), nullable=False)
+    evidence_kind: Mapped[str] = mapped_column(Text, nullable=False)
+    value_semantics: Mapped[str | None] = mapped_column(Text)
+    # Compared against a fingerprint's signal_registry_version to tell
+    # `not_checked` apart from `checked_absent` (Part G).
+    signal_introduced_in_version: Mapped[str] = mapped_column(Text, nullable=False)
+    state: Mapped[str] = mapped_column(Text, nullable=False, server_default="not_ready")
+    state_reason: Mapped[dict | None] = mapped_column(JSONB)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        CheckConstraint(f"state IN {READINESS_STATE}", name="ck_signal_registry_entries_state"),
+        CheckConstraint(f"category IN {SIGNAL_CATEGORY}", name="ck_signal_registry_entries_category"),
+        CheckConstraint(f"type IN {SIGNAL_TYPE}", name="ck_signal_registry_entries_type"),
+        CheckConstraint(
+            f"evidence_kind IN {SIGNAL_EVIDENCE_KIND}", name="ck_signal_registry_entries_evidence_kind"
+        ),
+    )
+
+
+class CatalogItem(Base):
+    """A thing that needs work (Part D). Client-agnostic master catalog."""
+
+    __tablename__ = "catalog_items"
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+    scope: Mapped[str] = mapped_column(Text, nullable=False)
+    category: Mapped[str] = mapped_column(Text, nullable=False)
+    detection: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    excluded_roles: Mapped[list] = mapped_column(JSONB, nullable=False, server_default="[]")
+    # Computed from signal readiness, never set directly (Part C).
+    state: Mapped[str] = mapped_column(Text, nullable=False, server_default="not_ready")
+    state_reason: Mapped[dict | None] = mapped_column(JSONB)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
+    owner_team: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default="active")
+    deleted_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
+    deleted_by: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        CheckConstraint(f"scope IN {ITEM_SCOPE}", name="ck_catalog_items_scope"),
+        CheckConstraint(f"category IN {ITEM_CATEGORY}", name="ck_catalog_items_category"),
+        CheckConstraint(f"state IN {READINESS_STATE}", name="ck_catalog_items_state"),
+        CheckConstraint(f"status IN {ITEM_STATUS}", name="ck_catalog_items_status"),
+        Index("ix_catalog_items_state", "state"),
+    )
+
+
+class ItemResolution(Base):
+    """One option for resolving a catalog item, i.e. the menu (Part F).
+    Client-agnostic; grows across engagements."""
+
+    __tablename__ = "item_resolutions"
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    item_id: Mapped[str] = mapped_column(Text, ForeignKey("catalog_items.id"), nullable=False)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+    target_description: Mapped[str | None] = mapped_column(Text)
+    consumer_impact: Mapped[str] = mapped_column(Text, nullable=False)
+    effort: Mapped[str] = mapped_column(Text, nullable=False)
+    is_default: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    linux_compatible: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
+    container_ready: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
+    notes: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default="active")
+    deleted_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
+    deleted_by: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        CheckConstraint(f"consumer_impact IN {CONSUMER_IMPACT}", name="ck_item_resolutions_consumer_impact"),
+        CheckConstraint(f"effort IN {EFFORT}", name="ck_item_resolutions_effort"),
+        CheckConstraint(f"status IN {ITEM_STATUS}", name="ck_item_resolutions_status"),
+        UniqueConstraint("item_id", "name", name="uq_item_resolutions_item_id_name"),
+        # At most one default per item. A soft-deleted default doesn't count.
+        Index(
+            "uq_item_resolutions_one_default",
+            "item_id",
+            unique=True,
+            postgresql_where=text("is_default AND deleted_at IS NULL"),
+        ),
+        Index("ix_item_resolutions_item_id", "item_id"),
+    )
+
+
+class EngagementDecision(Base):
+    """An engagement's chosen resolution for one item (Part F). Engagement
+    data: never written by, or into, the master catalog tables."""
+
+    __tablename__ = "engagement_decisions"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    engagement_id: Mapped[str] = mapped_column(Text, ForeignKey("engagements.id"), nullable=False)
+    item_id: Mapped[str] = mapped_column(Text, ForeignKey("catalog_items.id"), nullable=False)
+    # Nullable: a pending decision may not have chosen yet. Approval requires it.
+    resolution_id: Mapped[str | None] = mapped_column(Text, ForeignKey("item_resolutions.id"))
+    # What was on the menu when the decision was taken. The menu grows
+    # across engagements, so this is history; validation uses the full menu.
+    candidates_considered: Mapped[list | None] = mapped_column(JSONB)
+    rationale: Mapped[str | None] = mapped_column(Text)
+    # A pair, per 25-STANDARDS-AND-VIEWPOINTS.md A1: the quality concern
+    # that forced a higher-impact choice, and why.
+    forcing_perspective: Mapped[str | None] = mapped_column(Text)
+    forcing_rationale: Mapped[str | None] = mapped_column(Text)
+    evaluation_notes: Mapped[str | None] = mapped_column(Text)
+    approver_name: Mapped[str | None] = mapped_column(Text)
+    approver_role: Mapped[str | None] = mapped_column(Text)
+    decision_date: Mapped[datetime.date | None] = mapped_column(Date)
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default="pending")
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        CheckConstraint(f"status IN {ENGAGEMENT_DECISION_STATUS}", name="ck_engagement_decisions_status"),
+        CheckConstraint(
+            f"forcing_perspective IS NULL OR forcing_perspective IN {FORCING_PERSPECTIVE}",
+            name="ck_engagement_decisions_forcing_perspective",
+        ),
+        Index(
+            "uq_engagement_decisions_live",
+            "engagement_id",
+            "item_id",
+            unique=True,
+            postgresql_where=text("status <> 'superseded'"),
+        ),
+        Index("ix_engagement_decisions_engagement_id", "engagement_id"),
+    )
+
+
+class EngagementItemScope(Base):
+    """The client-scoped overlay on a catalog item: `engagement_patterns`
+    renamed (Part Q). Lazy: no row means active and not deleted."""
+
+    __tablename__ = "engagement_item_scope"
+
+    engagement_id: Mapped[str] = mapped_column(Text, ForeignKey("engagements.id"), primary_key=True)
+    item_id: Mapped[str] = mapped_column(Text, ForeignKey("catalog_items.id"), primary_key=True)
+    scope_status: Mapped[str] = mapped_column(Text, nullable=False, server_default="active")
+    deferred_reason: Mapped[str | None] = mapped_column(Text)
+    deleted_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
+    deleted_by: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        CheckConstraint(f"scope_status IN {SCOPE_STATUS}", name="ck_engagement_item_scope_scope_status"),
+        Index("ix_engagement_item_scope_engagement_id", "engagement_id"),
+    )
+
+
+class ItemOccurrence(Base):
+    """The work list's raw rows (Part G). Written by step 6 (item-detection),
+    replaced per repository on rescan. `signal_registry_version` records what
+    was true when detected, so a row survives its signal's extractor being
+    removed later."""
+
+    __tablename__ = "item_occurrences"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    repository_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("repositories.id", ondelete="CASCADE"), nullable=False
+    )
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+    )
+    item_id: Mapped[str] = mapped_column(Text, ForeignKey("catalog_items.id"), nullable=False)
+    scope: Mapped[str] = mapped_column(Text, nullable=False)
+    file_path: Mapped[str | None] = mapped_column(Text)
+    evidence: Mapped[list | None] = mapped_column(JSONB)
+    signal_registry_version: Mapped[str] = mapped_column(Text, nullable=False)
+    detection_state: Mapped[str] = mapped_column(Text, nullable=False)
+    step_execution_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    detected_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        CheckConstraint(f"scope IN {ITEM_SCOPE}", name="ck_item_occurrences_scope"),
+        CheckConstraint(f"detection_state IN {DETECTION_STATE}", name="ck_item_occurrences_detection_state"),
+        # A location exists only for a found occurrence-scope row. Application
+        # scope, checked_absent and not_checked rows are per project.
+        CheckConstraint(
+            "(file_path IS NOT NULL) = (scope = 'occurrence' AND detection_state = 'found')",
+            name="ck_item_occurrences_file_path",
+        ),
+        Index(
+            "uq_item_occurrences_located",
+            "project_id",
+            "item_id",
+            "file_path",
+            unique=True,
+            postgresql_where=text("file_path IS NOT NULL"),
+        ),
+        Index(
+            "uq_item_occurrences_project",
+            "project_id",
+            "item_id",
+            unique=True,
+            postgresql_where=text("file_path IS NULL"),
+        ),
+        Index("ix_item_occurrences_repository_id", "repository_id"),
+        Index("ix_item_occurrences_item_id", "item_id"),
     )

@@ -171,14 +171,19 @@ def register_step(
 
 
 def list_steps(db: Session) -> list[models.WfStepRegistration]:
+    """Every registration except soft-deleted (renamed) ones. Deprecated
+    steps stay listed — they are a lifecycle state, not a removal."""
     return (
         db.query(models.WfStepRegistration)
-        .order_by(models.WfStepRegistration.lifecycle_step_no)
+        .filter(models.WfStepRegistration.deleted_at.is_(None))
+        .order_by(models.WfStepRegistration.lifecycle_step_no.nulls_last(), models.WfStepRegistration.step_name)
         .all()
     )
 
 
 def get_step(db: Session, step_name: str) -> models.WfStepRegistration | None:
+    """Resolves soft-deleted rows too, so a historical execution's step_name
+    always leads somewhere (its `superseded_by` says where the work went)."""
     return db.get(models.WfStepRegistration, step_name)
 
 
@@ -209,7 +214,8 @@ def viewpoint_coverage(db: Session, engagement_id: str) -> ViewpointCoverage:
     VIEWPOINTS.md Part A2. Honest scoping, not a completeness claim: which
     viewpoints this platform's *implemented* steps actually address, and how
     much of that ran for this one engagement."""
-    all_steps = list_steps(db)
+    # Retired steps contribute nothing to what the platform addresses.
+    all_steps = [s for s in list_steps(db) if s.implementation_status != "deprecated"]
 
     ran_step_names: set[str] = set(
         row[0]

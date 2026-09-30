@@ -1,0 +1,53 @@
+job_name: phase0-estate-consolidation
+version: 3
+description: "Engagement-wide consolidation across every registered repository. Lifecycle steps 9-11 (17-LIFECYCLE-STEPS.md v2.0)."
+
+# Scope is derived from the declared parameters: engagement_id without
+# repository_id is what makes this job per_engagement. Do not add
+# repository_id — these three steps are estate-wide by nature. A signal
+# no catalog item claims, seen once in each of fifty repositories, is one
+# recurring shape across the estate and fifty invisible ones per
+# repository; likewise eight repositories calling one NetTcp endpoint is
+# one backend conversation (17-LIFECYCLE-STEPS.md, step 10).
+parameters:
+  - name: engagement_id
+    type: string
+    required: true
+    description: "The engagement whose estate is being consolidated. Every in-scope, non-deleted repository in it is in scope for these steps."
+  - name: run_token
+    type: string
+    required: true
+    description: "UUID generated per consolidation run. Makes each run a distinct job instance rather than a restart of the previous one — the same role ingest_token plays for phase0-repository-discovery. Restarting a failed execution reuses its token, and therefore its instance, preserving restart semantics."
+
+# NO PRECONDITIONS, deliberately.
+#
+# An earlier draft of 15-REPOSITORY-INGEST-UI.md Part A required every
+# in-scope, non-deleted repository to have a completed
+# phase0-repository-discovery execution before this job could launch. At
+# fleet scale that condition is never satisfiable: repositories are
+# registered over weeks, rescans run continuously, and at any instant some
+# repository is mid-discovery or failed. It would make this job
+# unlaunchable in exactly the estates it exists for, while the one estate
+# where it would hold — a handful of repositories all scanned this morning
+# — is the estate with nothing to discover.
+#
+# Each step works over whatever repositories have discovery results and
+# should say how much of the estate it covered, rather than wait for all
+# of it. Honest about a partial estate beats blocked on a complete one.
+
+# All three steps are registered as stubs today, so every one of them
+# returns NOT_IMPLEMENTED. `continue` is what lets the job be launched and
+# observed now, and lets each step land without the others blocking it.
+# Revisit when the last of the three is implemented: by then `halt` is the
+# safer default, since a genuine failure should stop the run.
+stub_policy: continue
+
+flow:
+  # Step 9 replaces pattern-discovery-clustering + pattern-validation. It is
+  # a report for catalog authors, not a gate, so there is no gate: block and
+  # no human wait. Like step 10 it reads per-repository results from the
+  # database: ${artifacts.x} resolves only within one job, and those
+  # results come from phase0-repository-discovery.
+  - step: unclaimed-signal-report
+  - step: dependency-and-context-map
+  - step: migration-wave-planning

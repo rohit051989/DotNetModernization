@@ -4,12 +4,14 @@ import { EngagementPolicySection } from './workflow/EngagementPolicySection'
 import { ExecutionsList } from './workflow/ExecutionsList'
 import { ExecutionDetail } from './workflow/ExecutionDetail'
 import { JobDefinitionViewer } from './workflow/definition/JobDefinitionViewer'
+import { PendingApprovals } from './workflow/PendingApprovals'
 
 interface WorkflowPageProps {
   engagementId: string
   selectedExecutionId: string | null
   onSelectExecution: (executionId: string | null) => void
   onNavigateToRepositories: () => void
+  onNavigateToPatternCandidates: () => void
 }
 
 /** Engagement-scoped, hidden in Master Catalog view — see
@@ -18,7 +20,13 @@ interface WorkflowPageProps {
  * Part C and src/routing.ts. `selectedJobName` (the definition viewer,
  * 22-STEP-SEQUENCING-AND-POLICY.md Part E) stays local: it's a same-page
  * disclosure, not a distinct navigable view. */
-export function WorkflowPage({ engagementId, selectedExecutionId, onSelectExecution, onNavigateToRepositories }: WorkflowPageProps) {
+export function WorkflowPage({
+  engagementId,
+  selectedExecutionId,
+  onSelectExecution,
+  onNavigateToRepositories,
+  onNavigateToPatternCandidates,
+}: WorkflowPageProps) {
   const [selectedJobName, setSelectedJobName] = useState<string | null>(null)
 
   if (selectedExecutionId) {
@@ -27,6 +35,14 @@ export function WorkflowPage({ engagementId, selectedExecutionId, onSelectExecut
 
   return (
     <div className="mx-auto max-w-6xl space-y-6 p-6">
+      {/* Above the jobs list deliberately: a held gate is the one thing on
+          this page that needs a person, and burying it under the execution
+          history is how it gets missed at fleet scale. */}
+      <PendingApprovals
+        engagementId={engagementId}
+        onSelectExecution={onSelectExecution}
+        onNavigateToPatternCandidates={onNavigateToPatternCandidates}
+      />
       <JobsList
         engagementId={engagementId}
         selectedJobName={selectedJobName}

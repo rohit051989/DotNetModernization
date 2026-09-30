@@ -188,6 +188,36 @@ def _resolve_inputs(
             raise StepInvocationError(f"input '{logical_name}': unsupported reference '{raw_ref}'")
 
         if artifact_row is None:
+            # `optional: true` on a consumes entry has to mean something at
+            # RUNTIME, not only in validation. Rule 9 already lets an
+            # optional entry go unwired; this is the other half — wired, but
+            # the upstream step produced nothing this run because it was
+            # stubbed, skipped by policy, or returned NOOP.
+            #
+            # Without this, step 6 declaring both its inputs optional
+            # (27-STEP-006-PATTERN-VALIDATION.md Part D) still hard-fails
+            # the moment step 5 is stubbed, which is exactly the case
+            # `optional` exists to survive. The step is invoked with the
+            # input simply absent from `inputs` and decides for itself —
+            # step 6 returns NOOP.
+            #
+            # The artifact type is taken from the reference rather than
+            # from the (absent) artifact row: `${artifacts.X}` and
+            # `${steps.S.outputs.X}` both name X, which is the convention
+            # every wiring in this repo follows.
+            intended_type = parts[-1]
+            if consumes_by_type.get(intended_type, {}).get("optional", False):
+                inputs_resolved.append(
+                    {
+                        "logical_name": logical_name,
+                        "artifact_type": intended_type,
+                        "artifact_version": None,
+                        "artifact_id": None,
+                        "resolved": False,
+                        "reason": "optional input not produced by this execution",
+                    }
+                )
+                continue
             raise StepInvocationError(
                 f"input '{logical_name}' ({raw_ref}) did not resolve to an artifact"
             )
@@ -554,7 +584,7 @@ def _invoke_step(
         database_url=settings.database_url,
     )
 
-    adapter = create_adapter(registration.adapter_type, registration.adapter_config)
+    adapter = create_adapter(registration.adapter_type, registration.adapter_config, session=db)
     try:
         result = adapter.run(context)
     except Exception as exc:

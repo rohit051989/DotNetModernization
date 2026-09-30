@@ -482,6 +482,13 @@ class PatternSummary(BaseModel):
     legacy_stack: str = Field(description="The legacy technology stack this pattern identifies.")
     category: str = Field(description="Free-text grouping used for filtering.")
     status: LifecycleStatus = Field(description="Lifecycle state: 'draft', 'active', or 'deprecated'.")
+    # On the summary, not just the detail, so a caller can tell an
+    # application pattern from a PROJECT_ROLE one without fetching each
+    # pattern in turn. Step 6's merge-target selector needs exactly this:
+    # merging a discovered shape into `role-library-project` is meaningless,
+    # and filtering on an `id` prefix would be a convention masquerading as
+    # a rule.
+    classification_role: str = Field(description="PRIMARY, SECONDARY or PROJECT_ROLE.")
     version: int = Field(description="Increments on any material change (detection_rules, name, legacy_stack, category).")
     target_state_count: int = Field(
         description="Number of non-deleted, non-deprecated target state options under this pattern."

@@ -69,6 +69,20 @@ public static class SarifBuilder
             .Select(project => BuildRun(project, driver, taxonomy, descriptionsByName, originalUriBaseIds))
             .ToList();
 
+        // Repository-level signals (deployment files outside every project)
+        // get one run of their own, after the per-project runs.
+        if (artifact.RepositorySignals.Count > 0)
+        {
+            runs.Add(new SarifRun
+            {
+                Tool = new SarifTool { Driver = driver },
+                Results = artifact.RepositorySignals.Select(signal => BuildResult(signal, descriptionsByName)).ToList(),
+                Taxonomies = [taxonomy],
+                OriginalUriBaseIds = originalUriBaseIds,
+                Properties = new Dictionary<string, object?> { ["scope"] = "repository" },
+            });
+        }
+
         return new SarifLog { Runs = runs };
     }
 
@@ -133,6 +147,14 @@ public static class SarifBuilder
     /// SERVICES_FOLDER's sourcePath "src/ApplicationCore/Services") is what
     /// broke the VS Code SARIF viewer — 25-STANDARDS-AND-VIEWPOINTS.md Part
     /// A3 addendum.</summary>
+    /// <summary>A repository-relative path as a SARIF <c>uri-reference</c>:
+    /// each segment percent-encoded, '/' kept. A raw path with a space (a
+    /// svcutil client under "Connected Services/") is not a valid URI
+    /// reference and fails SARIF schema validation — which failed the whole
+    /// scan the first time such a file carried a signal.</summary>
+    internal static string ToUriReference(string repositoryRelativePath) =>
+        string.Join('/', repositoryRelativePath.Split('/').Select(Uri.EscapeDataString));
+
     private static IReadOnlyList<SarifLocation>? BuildLocations(Signal signal)
     {
         if (signal.EvidenceKind != SignalEvidenceKinds.File)
@@ -156,7 +178,7 @@ public static class SarifBuilder
                 {
                     PhysicalLocation = new SarifPhysicalLocation
                     {
-                        ArtifactLocation = new SarifArtifactLocation { Uri = signal.SourcePath, UriBaseId = RepoRootBaseId },
+                        ArtifactLocation = new SarifArtifactLocation { Uri = ToUriReference(signal.SourcePath), UriBaseId = RepoRootBaseId },
                         Region = evidence.LineStart is null
                             ? null
                             : new SarifRegion { StartLine = evidence.LineStart, EndLine = evidence.LineEnd },
@@ -173,7 +195,7 @@ public static class SarifBuilder
                 {
                     PhysicalLocation = new SarifPhysicalLocation
                     {
-                        ArtifactLocation = new SarifArtifactLocation { Uri = signal.SourcePath, UriBaseId = RepoRootBaseId },
+                        ArtifactLocation = new SarifArtifactLocation { Uri = ToUriReference(signal.SourcePath), UriBaseId = RepoRootBaseId },
                     },
                 },
             ];

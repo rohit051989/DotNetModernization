@@ -184,6 +184,7 @@ def list_patterns(
             legacy_stack=p.legacy_stack,
             category=p.category,
             status=p.status,
+            classification_role=p.classification_role,
             version=p.version,
             target_state_count=counts.get(p.id, 0),
             updated_at=p.updated_at,

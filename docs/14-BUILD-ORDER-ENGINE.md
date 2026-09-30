@@ -130,8 +130,13 @@ Implement the job definition loader and validator in app/workflow/definition/:
 
 Then write backend/app/jobs/phase0-repository-discovery.yaml exactly as specified in
 docs/15 Part A — per-repository scope with parameters engagement_id, repository_id
-and ingest_token, steps 1, 2, 3, 4, 8, 9, 10, and stub_policy: continue. Do NOT
-define phase0-estate-consolidation; all five of its steps are stubs.
+and ingest_token, steps 1, 2, 3, 4, 8, 9, 10, and stub_policy: continue.
+
+phase0-estate-consolidation is now defined too (engagement_id + run_token, steps 5,
+6, 7, 11, 12, stub_policy: continue). It was deferred here on the grounds that all
+five of its steps are stubs; defining it ahead of them turned out to be the right
+order, because removing the estate-completeness precondition is a job-definition
+change that step 5 would otherwise have inherited as a blocker.
 
 Update docs/12-JOB-DEFINITION-FORMAT.md to reflect the two-job split, replacing any
 reference to phase0-estate-discovery.
@@ -346,5 +351,6 @@ artifact and drill from a dashboard row into an execution.
   slot in `phase0-repository-discovery`. Each needs only its own spec file following
   the shape of `13-STEP-001-REPOSITORY-INGEST.md`, and replacing its stub requires no
   job definition change.
-- Steps 5, 6, 7, 11 and 12 need `phase0-estate-consolidation` defined first. Do that
-  when the first of them is ready to build, not before.
+- Steps 5, 6, 7, 11 and 12 need `phase0-estate-consolidation`, which is now defined
+  (`backend/app/jobs/phase0-estate-consolidation.yaml`). Replacing any of their stubs
+  requires no job definition change.

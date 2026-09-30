@@ -314,6 +314,131 @@ Rules:
   and `FOLDER` (`CONTROLLERS_FOLDER`, `SERVICES_FOLDER`, ...) signals
   (25-STANDARDS-AND-VIEWPOINTS.md Part A3 addendum)
 
+### Signal types
+
+Every signal has one `type`. It tells a consumer what the signal's `value` holds and
+what its evidence entries carry. Twelve types:
+
+| Type | Signal `value` | Evidence entries carry | Example |
+|---|---|---|---|
+| `ATTRIBUTE` | Fully qualified attribute | line span, declaring type, member | `SERVICE_CONTRACT_ATTRIBUTE` |
+| `BASE_CLASS` | Fully qualified base type | line span, declaring type | `DB_CONTEXT_BASE_CLASS` |
+| `FILE_PRESENCE` | — | — (the `sourcePath` is the evidence) | `SVC_FILE`, `CONTROLLERS_FOLDER` |
+| `CONFIG_ELEMENT` | Element or key path | line span | `SYSTEM_SERVICE_MODEL_CONFIG` |
+| `PACKAGE` | Package id | — | `DAPPER_PACKAGE` |
+| `ASSEMBLY` | Assembly name | — | `SYSTEM_WEB_ASSEMBLY` |
+| `NAMESPACE` | Namespace | line span | `SYSTEM_WEB_MVC_NAMESPACE` |
+| `ROUTE` | Route template | line span, declaring type, member | *(none registered)* |
+| `ENTRY_POINT` | Entry-point shape | line span, declaring type, member | `MAIN_METHOD_ENTRY_POINT` |
+| `INVOCATION` | — | — | *(none registered; see below)* |
+| **`API_INVOCATION`** | **Fully qualified member used**, e.g. `System.DateTime.Now` | line span, declaring type and member **of the caller** | `DATETIME_NOW_USAGE`, `ENCODING_DEFAULT_USAGE` |
+| **`LITERAL`** | **The matched value**, e.g. `G:\Logs\App\` | line span, **plus `matchedValue`** | `WINDOWS_PATH_LITERAL` |
+
+`API_INVOCATION` and `LITERAL` were added with `application-fingerprint@1.2.0`, for the
+RBC-style findings: API usages and literals whose behaviour changes on Linux. Since
+signal registry 1.4.0 they are emitted by `ApiUsageExtractor` and `PathLiteralExtractor`
+(see "Extractor batch 2" below). An artifact containing either declares
+`artifactVersion: 1.2.0`, which step 3 now always emits.
+
+**`API_INVOCATION`** — one use of one specific member: a property access, method call
+or constructor. Distinct from `ENTRY_POINT`, which also matches named invocations but
+means "this is how the application starts". An `API_INVOCATION` signal says "this
+member is used here, and the member is the problem".
+
+- `evidence_kind: FILE`
+- One row per `(file, member)`, with a line span per use
+- `value` is required and names the member, so one signal can cover a small family
+  (`DateTime.Now` and `DateTime.Today`) with distinct rows
+- A match that is purely syntactic (A4: semantic analysis off by default) reports
+  `extractionConfidence` below `1.0`, since `DateTime` could be a user type or an alias.
+  Symbol-resolved matches report `1.0`
+
+**`LITERAL`** — a value in C# source or configuration that matches the signal's
+pattern, which is stated in the registry `description`.
+
+- `evidence_kind: FILE`
+- `sourceType` tells source code from configuration
+- `value` is required and holds the matched value. One row per `(file, distinct
+  value)`, so the 20-entry evidence cap never hides a distinct value, and a catalog item
+  can project with `group_by: source_path_and_value`
+- Each evidence entry also carries **`matchedValue`**: exactly the text matched at that
+  span. The conversion needs to know which path it found, and a `snippetHash` cannot
+  say. `matchedValue` is required on `LITERAL` evidence and forbidden on every other
+  type
+- `matchedValue` is subject to Part G's secrets rules. It is only the substring the
+  pattern matched, never the enclosing literal or line, capped at 512 characters, and
+  never taken from a connection string or a sensitive-key value. A `LITERAL` pattern
+  that could match credential material must not be registered
+
+`INVOCATION` has been in the vocabulary since 1.0.0 with no definition and no signal
+using it. **Do not use it for new signals**; use `API_INVOCATION`. It is kept only
+because removing a value from a published schema enum is a major change.
+
+Adding a type is a minor bump of the artifact schema (`application-fingerprint`), not
+of the signal registry. Registering a signal of a new type is a minor registry bump,
+as for any new signal.
+
+### Extractor batch 2 — signal registry 1.4.0
+
+Findings from a client assessment of .NET 8/10 APIs and workers on Windows moving to
+OpenShift. 28 signals, 91 → 119. Scanner version 1.1.0.
+
+| Extractor | Signals |
+|---|---|
+| `ApiUsageExtractor` *(new, `API_INVOCATION`)* | `ENCODING_DEFAULT_USAGE`, `DATETIME_NOW_USAGE`, `USE_WINDOWS_SERVICE_INVOCATION`, `SYSTEM_DRAWING_USAGE`, `REGISTRY_ACCESS_USAGE`, `DIRECTORY_SERVICES_USAGE`, `PROCESS_START_USAGE`, `ADD_HEALTH_CHECKS_INVOCATION`, `MAP_HEALTH_CHECKS_INVOCATION` |
+| `PathLiteralExtractor` *(new, `LITERAL`)* | `WINDOWS_PATH_LITERAL`, `UNC_PATH_LITERAL` |
+| `ConfigurationExtractor` | `SERILOG_FILE_SINK_CONFIG`, `WINDOWS_AUTH_CONNECTION_STRING_CONFIG`, `WCF_CLIENT_ENDPOINT_CONFIG`, `KAFKA_BOOTSTRAP_CONFIG`, `REDIS_CONNECTION_CONFIG`, `VAULT_CONFIG` |
+| `FrameworkReferenceExtractor` | `SYSTEM_DRAWING_COMMON_PACKAGE`, `SYSTEM_DRAWING_NAMESPACE`, `CONFLUENT_KAFKA_PACKAGE`, `STACKEXCHANGE_REDIS_PACKAGE`, `VAULTSHARP_PACKAGE`, `MICROSOFT_EXTENSIONS_HOSTING_WINDOWSSERVICES_PACKAGE`, `WCF_CLIENT_PACKAGE` |
+| `FileIndicatorExtractor` | `DOCKERFILE_FILE`, `WEB_CONFIG_FILE`, `OCP4_MANIFEST_FILE`, `HELM_CHART_FILE` |
+
+Decisions taken with it:
+
+- **Absence findings are not signals.** "No Dockerfile", "no health endpoint" and "no
+  manifests" are catalog items with a `none` condition over the presence signals above.
+- **No per-binding signals.** `WCF_BINDING_CONFIG` already carries the binding type as its
+  value (`netTcpBinding`); a code-configured .NET WCF client shows up as
+  `WCF_CLIENT_PACKAGE` with value `System.ServiceModel.NetTcp`.
+- **Client versus service WCF.** A namespace cannot tell them apart, so client usage is
+  `WCF_CLIENT_PACKAGE` plus `WCF_CLIENT_ENDPOINT_CONFIG`. `WCF_SERVICE_ENDPOINT_CONFIG` now
+  counts only `<services>` endpoints; before 1.4.0 it also counted client endpoints,
+  contradicting its own description.
+- **`SYSTEM_DRAWING_NAMESPACE` is registered but not for detection.** The namespace also
+  holds the cross-platform `Color`/`Point`/`Size` types. `SYSTEM_DRAWING_USAGE` matches only
+  the Windows-only GDI+ types.
+- **Deliberate narrowing:**
+  - `DIRECTORY_SERVICES_USAGE` ignores `System.DirectoryServices.Protocols`, which works on
+    Linux
+  - `VAULT_CONFIG` ignores Azure Key Vault keys (`KeyVaultName`)
+  - `PROCESS_START_USAGE`, `KAFKA_BOOTSTRAP_CONFIG` and `REDIS_CONNECTION_CONFIG` record
+    presence and key paths, never commands, hosts or values
+- **`appsettings*.json`, not just `appsettings.json`.** Environment variants carry the
+  same connection strings, sinks and paths; reading only the base file was an
+  undercount. The JSON walker now records a line number for every configuration signal,
+  and walks arrays, which Serilog's `WriteTo` needs.
+- **Repository-level signals.** Deployment files outside every fingerprinted project
+  directory (a root `k8s/`, `charts/` or `Dockerfile`) are emitted in the artifact's
+  `repositorySignals` and stored with a null `project_id`. Item detection must see them
+  when evaluating each project (`28-ITEM-AND-CONVERSION-MODEL.md` Part E).
+- **Registry 1.5.0 / scanner 1.2.0 — the client's own WCF binding.**
+  - `WCF_BINDING_CONFIG` records every endpoint's binding without saying whose, so a
+    NetTcp *service* beside an HTTP client looked like a NetTcp client. Two signals now
+    carry the binding of client endpoints only:
+    - `WCF_CLIENT_BINDING_CONFIG` (ConfigurationExtractor, from `<client><endpoint>`)
+    - `WCF_CLIENT_BINDING_USAGE` (ApiUsageExtractor, a binding constructed in a
+      `ClientBase<T>` / `ChannelFactory<T>` file that hosts no service)
+  - `WCF_CLIENT_PACKAGE` = `System.ServiceModel.NetTcp` is **not** NetTcp evidence:
+    Visual Studio and dotnet-svcutil add the whole WCF package set to every client.
+  - **Generated code, one exception.** Generated files stay excluded everywhere (Part G)
+    except for `WCF_CLIENT_BINDING_USAGE`, because svcutil puts the client's binding in
+    its generated `Reference.cs`. Every other rule still skips them.
+  - The first signal on a path containing a space (`Connected Services/…`) exposed a
+    SARIF bug: raw paths are not valid URI references. SARIF `artifactLocation.uri` is
+    now percent-encoded per segment.
+- **Hosted services were already covered.** `BACKGROUND_SERVICE_BASE_CLASS`,
+  `IHOSTED_SERVICE_BASE_CLASS` (InheritanceExtractor) and `ADD_HOSTED_SERVICE_ENTRY_POINT`
+  (EntryPointExtractor) have been in the registry since 1.1.0. None of the four sample
+  repositories contains a worker, which is why they never fire there.
+
 **Extractor backlog is driven by step 4, not by this document.** Signals the
 catalog needs but no extractor emits yet are recorded on the pattern that wants
 them, as `required_signals_pending[].expected_extractor`
@@ -324,6 +449,40 @@ each scan's coverage report. Two extractors are named there and not yet built:
 |---|---|---|
 | `SsisExtractor` | package-internals signals (connection managers, data flow components) | `ssis-package` |
 | `DesktopUiExtractor` | `SYSTEM_WINDOWS_FORMS_NAMESPACE`, `SYSTEM_WINDOWS_FORMS_ASSEMBLY`, `FORM_BASE_CLASS`, `SYSTEM_WINDOWS_NAMESPACE`, `PRESENTATION_FRAMEWORK_ASSEMBLY`, `WINDOW_BASE_CLASS`, `STA_THREAD_ATTRIBUTE` | `winforms-desktop`, `wpf-desktop` |
+
+### gRPC is invisible to step 3
+
+Found by step 5: cluster `b582b6fa716a` is two gRPC services in
+`legacy-grpc-suite`, and its whole signature is `PROGRAM_CS_FILE`,
+`SERVICES_FOLDER`, `TOP_LEVEL_STATEMENTS_ENTRY_POINT`,
+`WEB_APPLICATION_CREATE_BUILDER_ENTRY_POINT` — four signals that describe *any*
+minimal-hosting ASP.NET Core application. Nothing in the registry distinguishes
+a gRPC service from a Hello World web app.
+
+**This one is worse than an ordinary gap**, because gRPC is one of the three
+candidate target states for WCF in our own catalog. We can recommend migrating
+*to* a technology we cannot detect — which means we cannot verify the migration
+landed, cannot classify the result on a later scan, and cannot tell an estate's
+existing gRPC services apart from the ones we created.
+
+Four of the five wanted signals need no new extractor; one does not fit the
+existing model:
+
+| Signal | Extractor | Fit |
+|---|---|---|
+| `GRPC_ASPNETCORE_PACKAGE` | `FrameworkReferenceExtractor` | **Clean.** `<PackageReference Include="Grpc.AspNetCore">` is the same shape as `MICROSOFT_ASPNETCORE_PACKAGE` — a new entry in its package list, nothing more |
+| `GRPC_NAMESPACE` | `FrameworkReferenceExtractor` | **Clean.** `using Grpc.Core;` is the same shape as `DAPPER_NAMESPACE` |
+| `PROTO_FILE` | `FileIndicatorExtractor` | **Clean.** A `*.proto` glob, the same shape as `SVC_FILE`. `evidence_kind: FILE` |
+| `MAP_GRPC_SERVICE_INVOCATION` | `EntryPointExtractor` | **Fits the technique, not the naming.** The extractor already detects named invocations (`ADD_HOSTED_SERVICE_ENTRY_POINT`), but `app.MapGrpcService<BillingService>()` is a **generic** invocation, which its current matcher may not handle. Also every signal it emits is named `*_ENTRY_POINT`; this is an endpoint registration, not an entry point. Prefer `ADD_GRPC_INVOCATION` from `builder.Services.AddGrpc()` as the primary — non-generic, and present on every gRPC server |
+| `GRPC_SERVICE_BASE_CLASS` | `InheritanceExtractor` — **needs a change** | All twelve of its current signals match a **known, fixed** base type (`DbContext`, `ControllerBase`, `Page`). A gRPC service derives from a base generated from the .proto: `service Billing` becomes `class BillingService : Billing.BillingBase`. The name is per-service, so this needs a **shape** match (`<T>.<T>Base`) rather than a name match — a new matching mode, not a new list entry |
+
+So: three one-line additions, one that wants a naming decision and possibly
+generic-invocation support, and one that needs `InheritanceExtractor` to learn
+pattern-shaped base types. No new extractor is required. `GRPC_ASPNETCORE_PACKAGE`
+alone would have identified the cluster, so the cheap three are worth doing
+first and independently.
+
+Adding these is a minor registry bump — they are additions, not renames.
 
 `FrameworkReferenceExtractor` covered web, service and data namespaces only, so
 the registry has no desktop UI framework evidence at all — `XAML_FILE` is the
@@ -382,13 +541,13 @@ would reach millions.
 | `repository_id` | `UUID` NOT NULL FK | |
 | `signal_name` | `TEXT` NOT NULL | Must exist in the signal registry |
 | `signal_category` | `TEXT` NOT NULL | One of the sixteen §19 categories |
-| `signal_type` | `TEXT` NOT NULL | `ATTRIBUTE`, `BASE_CLASS`, `FILE_PRESENCE`, `INVOCATION`, `CONFIG_ELEMENT`, `PACKAGE`, `ASSEMBLY`, `NAMESPACE`, `ROUTE`, `ENTRY_POINT` |
-| `value` | `TEXT` | Fully qualified name, route template, or element path where meaningful |
+| `signal_type` | `TEXT` NOT NULL | `ATTRIBUTE`, `BASE_CLASS`, `FILE_PRESENCE`, `INVOCATION`, `CONFIG_ELEMENT`, `PACKAGE`, `ASSEMBLY`, `NAMESPACE`, `ROUTE`, `ENTRY_POINT`, `API_INVOCATION`, `LITERAL` — see Part D "Signal types" |
+| `value` | `TEXT` | Fully qualified name, route template, or element path where meaningful. Required for `API_INVOCATION` (the member) and `LITERAL` (the matched value) |
 | `source_type` | `TEXT` NOT NULL | The nine §18 source types |
 | `source_path` | `TEXT` | Repository-relative |
 | `evidence_kind` | `TEXT` | CHECK IN (`FILE`, `FOLDER`, `NONE`), nullable. What `source_path` names — from the signal registry's `evidence_kind` field. Never treat a `FOLDER` (or `NONE`) row's `source_path` as an openable file location — see Part F's `evidenceKind` note |
 | `occurrence_count` | `INTEGER` NOT NULL DEFAULT 1 | |
-| `evidence` | `JSONB` | Capped array of `{line_start, line_end, declaring_type, member, snippet_hash}`. **Max 20 entries**; `occurrence_count` carries the true total |
+| `evidence` | `JSONB` | Capped array of `{lineStart, lineEnd, declaringType, member, snippetHash}` (camelCase, as serialized by step 3), plus `matchedValue` on `LITERAL` rows only. **Max 20 entries**; `occurrence_count` carries the true total |
 | `extractor` | `TEXT` NOT NULL | |
 | `extraction_confidence` | `NUMERIC(3,2)` NOT NULL | 0.00–1.00 |
 
@@ -434,6 +593,14 @@ directory like `src/ApplicationCore/Services`) must never be treated as somethin
 viewer can open and jump to a line in; that assumption is exactly what broke the VS
 Code SARIF viewer for step 3's SARIF export (25-STANDARDS-AND-VIEWPOINTS.md Part A3
 addendum). 1.1.0 added this field; 1.0.0 lacked it and predates the fix.
+
+**1.2.0** (`schemas/application-fingerprint-1.2.0.schema.json`) adds the `API_INVOCATION` and
+`LITERAL` signal types and `evidence[].matchedValue` (Part D "Signal types"). The schema
+requires `matchedValue` on every `LITERAL` evidence entry and rejects it on any other type,
+and requires a non-null `value` on both new types. Every valid 1.1.0 artifact is valid under
+1.2.0 apart from the version string. Step 3 emits 1.2.0 from scanner 1.1.0 (registry
+1.4.0), and validates against it before writing. 1.2.0 is also the first version whose
+`repositorySignals` is populated.
 
 ```json
 {
@@ -511,14 +678,31 @@ is a step failure, not a warning.
 
 §8.4 and §38.7 are non-negotiable. Enforce mechanically rather than by convention:
 
-- Connection strings: emit the **name** and the **provider** only. Never the value,
-  never a substring of it.
+- **Nothing derived from a connection string is ever persisted.** Emit the **name** and
+  the **provider** only — never the value, a substring of it, or a hash of it. One read
+  of the value is permitted: parsing it in memory to check the Windows-authentication
+  keywords (`Integrated Security`, `Trusted_Connection` — synonyms, last one written
+  wins, as in SqlClient — including the inner string of an EF6 connection string).
+  That check returns a yes/no and nothing is kept. The resulting signal,
+  `WINDOWS_AUTH_CONNECTION_STRING_CONFIG`, carries only the connection string's name.
+  The rule was "never read"; it is now "never persisted", so that Windows
+  authentication can be detected at all.
 - Any config key matching `password|pwd|secret|token|apikey|api_key|connectionstring|
   accountkey|sharedaccesskey|credential` (case-insensitive): record the key's
   presence, never its value.
-- No source snippets in evidence — `snippet_hash` only.
-- Add a unit test asserting that a fixture containing a full connection string with
-  credentials produces an artifact whose text does not contain the password.
+- No source snippets in evidence — `snippet_hash` only. The single exception is
+  `LITERAL` evidence's `matchedValue`, and only within Part D's limits: just the
+  substring the pattern matched, capped at 512 characters, and never taken from a
+  connection string or a sensitive-key value. Text shaped like a connection string is
+  skipped wherever it appears, including C# literals and appSettings values, and so is
+  a literal assigned to a sensitively named variable.
+- `ConfigurationExtractorSecretsTests` is the mechanical proof. It asserts that:
+  - a full connection string with credentials produces an artifact whose text contains
+    no password
+  - a password-bearing Windows-auth connection string yields only its name, with no
+    server, keyword or password in the artifact
+  - a Windows path inside a connection string (XML, JSON or a C# literal) produces no
+    `LITERAL` row
 
 ### Scale and timeouts
 

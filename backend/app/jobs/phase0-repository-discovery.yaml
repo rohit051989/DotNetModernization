@@ -1,6 +1,6 @@
 job_name: phase0-repository-discovery
-version: 5
-description: "Per-repository discovery and analysis. Lifecycle steps 1,2,3,4,8,9,10."
+version: 6
+description: "Per-repository discovery and analysis. Lifecycle steps 1-8 (17-LIFECYCLE-STEPS.md v2.0)."
 
 parameters:
   - name: engagement_id
@@ -29,9 +29,14 @@ flow:
   - step: application-fingerprinting
     inputs:
       solution-project-inventory: "${artifacts.solution-project-inventory}"
-  - step: pattern-classification
+  # Steps 4 and 5 are new in v2.0 and registered as stubs, so nothing is
+  # wired into them yet; their inputs arrive with their registrations.
+  - step: entry-point-inventory
+  - step: outbound-invocation-inventory
+  # Step 6 replaces pattern-classification: it matches catalog items against
+  # the fingerprint's signals and emits occurrences, not a classification.
+  - step: item-detection
     inputs:
       application-fingerprint: "${artifacts.application-fingerprint}"
-  - step: impact-map-generation
   - step: test-coverage-assessment
   - step: risk-scoring-tier-assignment

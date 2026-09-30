@@ -1,19 +1,23 @@
 namespace Fingerprinting.Domain;
 
 /// <summary>
-/// The <c>application-fingerprint@1.1.0</c> artifact — see
+/// The <c>application-fingerprint@1.2.0</c> artifact — see
 /// 21-STEP-003-FINGERPRINTING.md Part F. The artifact version is the schema
 /// version (Part A2); no <c>schemaVersion</c>, <c>scanId</c> or timestamp
 /// field belongs here (Part A3) — those are volatile and go in
 /// <c>StepOutput.metadata</c> instead. Bumped to 1.1.0 for
 /// <c>Signal.EvidenceKind</c> (25-STANDARDS-AND-VIEWPOINTS.md Part A3
 /// addendum) — additive, so pattern-classification's <c>^1.0.0</c> consumes
-/// range still accepts it.
+/// range still accepts it. Bumped to 1.2.0 for the <c>API_INVOCATION</c> and
+/// <c>LITERAL</c> signal types and <see cref="Evidence.MatchedValue"/>
+/// (Part D "Signal types") — also additive. <see cref="RepositorySignals"/>
+/// is populated from 1.2.0: deployment files outside every project
+/// directory (FileIndicatorExtractor's repository-level pass).
 /// </summary>
 public sealed record ApplicationFingerprintArtifact
 {
     public string ArtifactType { get; init; } = "application-fingerprint";
-    public string ArtifactVersion { get; init; } = "1.1.0";
+    public string ArtifactVersion { get; init; } = "1.2.0";
     public required string ScannerVersion { get; init; }
     public required string SignalRegistryVersion { get; init; }
     public required Guid RepositoryId { get; init; }

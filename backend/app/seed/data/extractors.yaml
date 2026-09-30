@@ -1,0 +1,185 @@
+# Step 3 extractor declarations — 28-ITEM-AND-CONVERSION-MODEL.md Part C
+# "Extractor declarations". Each extractor declares every signal it can emit.
+#
+# This is deliberately a second, independent declaration alongside the
+# `extractor` field in steps/step-003-fingerprinting/schemas/signal-registry-*.json:
+# the seed cross-checks the two, and a registered signal whose extractor does
+# not list it here is a HARD ERROR (the seed fails). That is the check that
+# catches a signal added to the registry in anticipation with its extractor
+# forgotten.
+#
+# status: implemented — the extractor ships in step 3 today; its signals are ready.
+# status: planned     — declared ahead of the code; its signals are not_ready
+#                        (extractor_not_implemented) until this flips to implemented.
+#
+# planned_emits        — on an implemented extractor: signals it will gain but does
+#                        not emit yet. Claimed (not a hard error), not ready. Move a
+#                        name to emits in the same change that ships its code.
+#
+# Registry 1.4.0 (step 3 extractor batch 2): ApiUsageExtractor and
+# PathLiteralExtractor shipped, and every planned_emits entry moved to emits.
+# Registry 1.5.0 added WCF_CLIENT_BINDING_CONFIG and WCF_CLIENT_BINDING_USAGE.
+# Nothing is planned at the moment.
+
+extractors:
+  - name: ApiUsageExtractor
+    status: implemented
+    owner_team: platform
+    description: "Member access on framework APIs whose behaviour differs on Linux (semantic, symbol-resolved)."
+    emits:
+      - ADD_HEALTH_CHECKS_INVOCATION
+      - DATETIME_NOW_USAGE
+      - DIRECTORY_SERVICES_USAGE
+      - ENCODING_DEFAULT_USAGE
+      - MAP_HEALTH_CHECKS_INVOCATION
+      - PROCESS_START_USAGE
+      - REGISTRY_ACCESS_USAGE
+      - SYSTEM_DRAWING_USAGE
+      - USE_WINDOWS_SERVICE_INVOCATION
+      - WCF_CLIENT_BINDING_USAGE
+  - name: AttributeExtractor
+    status: implemented
+    owner_team: platform
+    description: "C# attribute usages (e.g. [ServiceContract], [ApiController], test attributes)."
+    emits:
+      - API_CONTROLLER_ATTRIBUTE
+      - DATA_CONTRACT_ATTRIBUTE
+      - FACT_ATTRIBUTE
+      - FUNCTION_NAME_ATTRIBUTE
+      - HTTP_DELETE_ATTRIBUTE
+      - HTTP_GET_ATTRIBUTE
+      - HTTP_POST_ATTRIBUTE
+      - HTTP_PUT_ATTRIBUTE
+      - OPERATION_CONTRACT_ATTRIBUTE
+      - ROUTE_ATTRIBUTE
+      - ROUTE_PREFIX_ATTRIBUTE
+      - SERVICE_CONTRACT_ATTRIBUTE
+      - TEST_ATTRIBUTE
+      - TEST_FIXTURE_ATTRIBUTE
+      - TEST_METHOD_ATTRIBUTE
+      - WEB_METHOD_ATTRIBUTE
+  - name: ConfigurationExtractor
+    status: implemented
+    owner_team: platform
+    description: "Elements and keys in web.config, app.config and appsettings*.json."
+    emits:
+      - ASPNETCORE_CONFIG
+      - CONNECTION_STRING_CONFIG
+      - CONNECTION_STRING_PROVIDER_CONFIG
+      - KAFKA_BOOTSTRAP_CONFIG
+      - REDIS_CONNECTION_CONFIG
+      - SENSITIVE_CONFIG_KEY
+      - SERILOG_FILE_SINK_CONFIG
+      - SERVICE_HOSTING_ENVIRONMENT_CONFIG
+      - SYSTEM_SERVICE_MODEL_CONFIG
+      - SYSTEM_WEBSERVER_CONFIG
+      - SYSTEM_WEB_CONFIG
+      - VAULT_CONFIG
+      - WCF_BINDING_CONFIG
+      - WCF_CLIENT_BINDING_CONFIG
+      - WCF_CLIENT_ENDPOINT_CONFIG
+      - WCF_SERVICE_ENDPOINT_CONFIG
+      - WINDOWS_AUTH_CONNECTION_STRING_CONFIG
+  - name: EntryPointExtractor
+    status: implemented
+    owner_team: platform
+    description: "How a project starts: Main, top-level statements, host builders, Global.asax, ServiceBase.Run."
+    emits:
+      - ADD_HOSTED_SERVICE_ENTRY_POINT
+      - GLOBAL_ASAX_ENTRY_POINT
+      - HOST_CREATE_DEFAULT_BUILDER_ENTRY_POINT
+      - MAIN_METHOD_ENTRY_POINT
+      - SERVICEBASE_RUN_ENTRY_POINT
+      - STARTUP_CLASS_ENTRY_POINT
+      - TOP_LEVEL_STATEMENTS_ENTRY_POINT
+      - WEBHOST_CREATE_DEFAULT_BUILDER_ENTRY_POINT
+      - WEB_APPLICATION_CREATE_BUILDER_ENTRY_POINT
+  - name: FileIndicatorExtractor
+    status: implemented
+    owner_team: platform
+    description: "Presence of indicative files and folders (.svc, .aspx, Controllers/, Views/)."
+    emits:
+      - APP_START_FOLDER
+      - ASCX_FILE
+      - ASMX_FILE
+      - ASPX_FILE
+      - CONTROLLERS_FOLDER
+      - CSHTML_FILE
+      - DOCKERFILE_FILE
+      - FUNCTIONS_FOLDER
+      - GLOBAL_ASAX_FILE
+      - HELM_CHART_FILE
+      - JOBS_FOLDER
+      - OCP4_MANIFEST_FILE
+      - PAGES_FOLDER
+      - PROGRAM_CS_FILE
+      - RAZOR_FILE
+      - SERVICES_FOLDER
+      - STARTUP_CS_FILE
+      - SVC_FILE
+      - TASKS_FOLDER
+      - VIEWS_FOLDER
+      - WEB_CONFIG_FILE
+      - XAML_FILE
+  - name: FrameworkReferenceExtractor
+    status: implemented
+    owner_team: platform
+    description: "Package references, assembly references and namespace imports."
+    emits:
+      - BLAZOR_WEBASSEMBLY_PACKAGE
+      - CONFLUENT_KAFKA_PACKAGE
+      - DAPPER_NAMESPACE
+      - DAPPER_PACKAGE
+      - ENTITYFRAMEWORK_PACKAGE
+      - MICROSOFT_ASPNETCORE_MVC_NAMESPACE
+      - MICROSOFT_ASPNETCORE_NAMESPACE
+      - MICROSOFT_ASPNETCORE_PACKAGE
+      - MICROSOFT_ENTITYFRAMEWORKCORE_NAMESPACE
+      - MICROSOFT_ENTITYFRAMEWORKCORE_PACKAGE
+      - MICROSOFT_EXTENSIONS_HOSTING_WINDOWSSERVICES_PACKAGE
+      - MSTEST_PACKAGE
+      - NUNIT_PACKAGE
+      - STACKEXCHANGE_REDIS_PACKAGE
+      - SYSTEM_DATA_ENTITY_NAMESPACE
+      - SYSTEM_DRAWING_COMMON_PACKAGE
+      - SYSTEM_DRAWING_NAMESPACE
+      - SYSTEM_MESSAGING_ASSEMBLY
+      - SYSTEM_MESSAGING_NAMESPACE
+      - SYSTEM_SERVICEMODEL_ASSEMBLY
+      - SYSTEM_SERVICEMODEL_NAMESPACE
+      - SYSTEM_SERVICEPROCESS_ASSEMBLY
+      - SYSTEM_SERVICEPROCESS_NAMESPACE
+      - SYSTEM_WEB_ASSEMBLY
+      - SYSTEM_WEB_HTTP_ASSEMBLY
+      - SYSTEM_WEB_HTTP_NAMESPACE
+      - SYSTEM_WEB_MVC_ASSEMBLY
+      - SYSTEM_WEB_MVC_NAMESPACE
+      - SYSTEM_WEB_NAMESPACE
+      - SYSTEM_WEB_UI_NAMESPACE
+      - VAULTSHARP_PACKAGE
+      - WCF_CLIENT_PACKAGE
+      - XUNIT_PACKAGE
+  - name: InheritanceExtractor
+    status: implemented
+    owner_team: platform
+    description: "Base classes a type derives from (Controller, ServiceBase, DbContext, Page)."
+    emits:
+      - API_CONTROLLER_BASE_CLASS
+      - BACKGROUND_SERVICE_BASE_CLASS
+      - CONTROLLER_BASE_BASE_CLASS
+      - CONTROLLER_BASE_CLASS
+      - DB_CONTEXT_BASE_CLASS
+      - IHOSTED_SERVICE_BASE_CLASS
+      - IHTTP_HANDLER_BASE_CLASS
+      - IHTTP_MODULE_BASE_CLASS
+      - MASTER_PAGE_BASE_CLASS
+      - PAGE_BASE_CLASS
+      - SERVICE_BASE_BASE_CLASS
+      - USER_CONTROL_BASE_CLASS
+  - name: PathLiteralExtractor
+    status: implemented
+    owner_team: platform
+    description: "Windows drive-letter and UNC path literals in C# string literals and configuration values."
+    emits:
+      - UNC_PATH_LITERAL
+      - WINDOWS_PATH_LITERAL

@@ -297,6 +297,19 @@ def validate_job_definition(
                     detail=f"step '{occ.step_name}' is not registered",
                 )
             )
+            continue
+        # A renamed (soft-deleted) or retired (deprecated) step still
+        # resolves for history, but a definition may not bind to it.
+        reg = registrations[occ.step_name]
+        if reg.deleted_at is not None or reg.implementation_status == "deprecated":
+            successor = f"; use '{reg.superseded_by}'" if reg.superseded_by else ""
+            errors.append(
+                ValidationErrorItem(
+                    code="STEP_RETIRED",
+                    step=occ.step_name,
+                    detail=f"step '{occ.step_name}' has left the lifecycle{successor}",
+                )
+            )
 
     # Rule 2 — every consumes entry is satisfied. THE CONTRACT TRIPWIRE.
     edges: set[tuple[str, str]] = set()

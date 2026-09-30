@@ -41,6 +41,11 @@ public sealed class FrameworkReferenceExtractor : IFingerprintExtractor
         new("Microsoft.AspNetCore", "MICROSOFT_ASPNETCORE_NAMESPACE"),
         new("Microsoft.EntityFrameworkCore", "MICROSOFT_ENTITYFRAMEWORKCORE_NAMESPACE"),
         new("Dapper", "DAPPER_NAMESPACE"),
+        // Registered, but deliberately unreferenced by the catalog: the
+        // namespace also holds the cross-platform Color/Point/Size types, so
+        // it over-reports. system-drawing-common keys on
+        // SYSTEM_DRAWING_USAGE (ApiUsageExtractor) instead.
+        new("System.Drawing", "SYSTEM_DRAWING_NAMESPACE"),
     ];
 
     // Classic .NET Framework assemblies referenced via a raw <Reference
@@ -72,6 +77,20 @@ public sealed class FrameworkReferenceExtractor : IFingerprintExtractor
         // checks every rule per package, so both MICROSOFT_ASPNETCORE_PACKAGE
         // and this more specific signal are emitted for it.
         new("Microsoft.AspNetCore.Components.WebAssembly", "BLAZOR_WEBASSEMBLY_PACKAGE", IsPrefix: true),
+        // Registry 1.4.0 — Linux blockers and the integrations an OpenShift
+        // landing needs to know about. Exact matches unless noted.
+        new("System.Drawing.Common", "SYSTEM_DRAWING_COMMON_PACKAGE", IsPrefix: false),
+        new("Confluent.Kafka", "CONFLUENT_KAFKA_PACKAGE", IsPrefix: false),
+        new("StackExchange.Redis", "STACKEXCHANGE_REDIS_PACKAGE", IsPrefix: false),
+        new("Microsoft.Extensions.Caching.StackExchangeRedis", "STACKEXCHANGE_REDIS_PACKAGE", IsPrefix: false),
+        new("VaultSharp", "VAULTSHARP_PACKAGE", IsPrefix: false),
+        new("Microsoft.Extensions.Hosting.WindowsServices", "MICROSOFT_EXTENSIONS_HOSTING_WINDOWSSERVICES_PACKAGE", IsPrefix: false),
+        // The .NET (Core) WCF client packages — System.ServiceModel.Http,
+        // .NetTcp, .Primitives, .Duplex, .Security, .Federation. Client-side
+        // only: server-side WCF on .NET is CoreWCF, a different package id.
+        // The value names the package, so System.ServiceModel.NetTcp (the
+        // Linux-blocker binding configured in code) is visible on its own.
+        new("System.ServiceModel.", "WCF_CLIENT_PACKAGE", IsPrefix: true),
     ];
 
     public bool CanProcess(ProjectContext context) => Directory.Exists(context.ProjectDirectory);
