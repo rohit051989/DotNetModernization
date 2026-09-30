@@ -1,8 +1,8 @@
-namespace Fingerprinting.Cli;
+namespace Fingerprinting.StepHost;
 
 /// <summary>
 /// The slice of step 2's <c>solution-project-inventory</c> artifact that
-/// step 3 actually reads. Step 3 must not re-extract what step 2 already
+/// steps 3 and 4 actually read. Step 3 must not re-extract what step 2 already
 /// captured (21-STEP-003-FINGERPRINTING.md Part A7) — everything else in
 /// that file (packages, project references, solutions, ...) is left for a
 /// future extractor to read directly rather than modelled here unused.

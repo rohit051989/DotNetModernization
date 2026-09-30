@@ -1235,6 +1235,23 @@ class ValidationQueueItem(Base):
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )
 
+    # Created by migration d8f3a15c72be; declared here so the model matches
+    # the database (alembic check reported them as drift until they were).
+    __table_args__ = (
+        # At most one open item per subject; closed ones accumulate freely.
+        Index(
+            "uq_validation_queue_open_item",
+            "engagement_id",
+            "step_name",
+            "item_key",
+            unique=True,
+            postgresql_where=text("status = 'open'"),
+        ),
+        Index("ix_validation_queue_engagement_status", "engagement_id", "status"),
+        Index("ix_validation_queue_job_execution", "job_execution_id"),
+        Index("ix_validation_queue_status_priority", "status", "priority"),
+    )
+
     @property
     def is_deferred(self) -> bool:
         return self.status == "open" and self.deferred_at is not None
@@ -1550,3 +1567,109 @@ class ItemOccurrence(Base):
         Index("ix_item_occurrences_repository_id", "repository_id"),
         Index("ix_item_occurrences_item_id", "item_id"),
     )
+
+
+# Step 4, entry-point-inventory — 29-STEPS-004-005-INVENTORIES.md Part B1.
+ENTRY_POINT_KIND = (
+    "http_controller_action",
+    "http_minimal_api",
+    "wcf_operation",
+    "asmx_web_method",
+    "grpc_service_method",
+    "signalr_hub_method",
+    "message_consumer",
+    "hosted_service",
+    "scheduled_job",
+    "console_main",
+    "webforms_page",
+    # entry-point-inventory 1.1.0.
+    "razor_page",
+    # 2.0.0.
+    "windows_service",
+    "http_handler",
+    "global_asax",
+    "owin_startup",
+    "blazor_component",
+    "azure_function",
+    "desktop_app",
+)
+AUTH_DECLARED = ("declared", "none_declared", "not_assessed")
+# 2.1.0: framework = a registered type no project in the repository declares;
+# lifecycle = bootstrap and wiring, not a place external work enters.
+ENTRY_POINT_ORIGIN = ("application", "framework")
+ENTRY_CLASS = ("request", "lifecycle")
+
+
+class EntryPoint(Base):
+    """One row per entry point — what can call an application. Written by
+    step 4 (entry-point-inventory), replaced per repository on rescan. See
+    29-STEPS-004-005-INVENTORIES.md Part B4.
+
+    `id` is derived, not random (sha256 over repository, project, kind,
+    handler, route and verb, truncated), so it is stable across rescans and
+    anything keyed to an entry point survives one. `detail` is the
+    kind-specific block (`http`, `wcf`, `grpc`, ...), camelCase as in the
+    artifact. `auth_declared` (declared | none_declared | not_assessed; null
+    where it does not apply) is an addition to Part B4's column list, kept
+    as a column so the per-project count is a query. It reports
+    authentication declared in source and config only: gateway, proxy and
+    header-based authentication are invisible to static analysis, so
+    none_declared is a review prompt, not a security finding."""
+
+    __tablename__ = "entry_points"
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    repository_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("repositories.id", ondelete="CASCADE"), nullable=False
+    )
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+    )
+    kind: Mapped[str] = mapped_column(Text, nullable=False)
+    handler_type: Mapped[str] = mapped_column(Text, nullable=False)
+    handler_member: Mapped[str | None] = mapped_column(Text)
+    file_path: Mapped[str] = mapped_column(Text, nullable=False)
+    line_start: Mapped[int] = mapped_column(Integer, nullable=False)
+    line_end: Mapped[int] = mapped_column(Integer, nullable=False)
+    detail: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    confidence: Mapped[float] = mapped_column(Numeric(3, 2), nullable=False)
+    confidence_reasons: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    auth_declared: Mapped[str | None] = mapped_column(Text)
+    origin: Mapped[str] = mapped_column(Text, nullable=False, server_default="application")
+    entry_class: Mapped[str] = mapped_column(Text, nullable=False, server_default="request")
+    step_execution_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    detected_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        CheckConstraint(f"kind IN {ENTRY_POINT_KIND}", name="ck_entry_points_kind"),
+        CheckConstraint("confidence >= 0 AND confidence <= 1", name="ck_entry_points_confidence"),
+        CheckConstraint(f"auth_declared IS NULL OR auth_declared IN {AUTH_DECLARED}", name="ck_entry_points_auth_declared"),
+        CheckConstraint(f"origin IN {ENTRY_POINT_ORIGIN}", name="ck_entry_points_origin"),
+        CheckConstraint(f"entry_class IN {ENTRY_CLASS}", name="ck_entry_points_entry_class"),
+        # Authentication is a question about requests.
+        CheckConstraint("entry_class = 'request' OR auth_declared IS NULL", name="ck_entry_points_lifecycle_auth"),
+        Index("ix_entry_points_project_id_kind", "project_id", "kind"),
+        Index("ix_entry_points_repository_id_kind", "repository_id", "kind"),
+    )
+
+
+class EntryPointScan(Base):
+    """1:1 with `repositories` — step 4's repository-level summary, as
+    `fingerprint_scans` is step 3's. Carries what the rows alone cannot:
+    per-project counts including skipped projects, the project-wide
+    authorisation written in source, and the conventional route tables."""
+
+    __tablename__ = "entry_point_scans"
+
+    repository_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("repositories.id", ondelete="CASCADE"), primary_key=True
+    )
+    scanner_version: Mapped[str] = mapped_column(Text, nullable=False)
+    skip_source: Mapped[str] = mapped_column(Text, nullable=False)
+    summary: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    project_summaries: Mapped[list] = mapped_column(JSONB, nullable=False)
+    # {manifestVersion, kinds}: what the scan looked for (2.0.0 onwards).
+    capabilities: Mapped[dict | None] = mapped_column(JSONB)
+    warnings: Mapped[list | None] = mapped_column(JSONB)
+    step_execution_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    scanned_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))

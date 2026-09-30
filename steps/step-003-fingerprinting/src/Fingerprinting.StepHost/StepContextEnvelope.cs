@@ -1,6 +1,6 @@
 using System.Text.Json;
 
-namespace Fingerprinting.Cli;
+namespace Fingerprinting.StepHost;
 
 /// <summary>
 /// The engine's invocation envelope — see 11-STEP-CONTRACT.md "Invocation —

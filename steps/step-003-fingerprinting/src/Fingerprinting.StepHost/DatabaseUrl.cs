@@ -1,7 +1,7 @@
 using System.Text.RegularExpressions;
 using Npgsql;
 
-namespace Fingerprinting.Cli;
+namespace Fingerprinting.StepHost;
 
 public static partial class DatabaseUrl
 {

@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Step 4's own published binary (29-STEPS-004-005-INVENTORIES.md Part A1):
+       its own registration, artifact and tables. Published to
+       publish/entry-point-inventory/ so it never overwrites step 3's exe. -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Fingerprinting.EntryPoints.Cli</RootNamespace>
+    <AssemblyName>EntryPointInventory.Cli</AssemblyName>
+    <InvariantGlobalization>false</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Fingerprinting.Domain\Fingerprinting.Domain.csproj" />
+    <ProjectReference Include="..\Fingerprinting.Analysis\Fingerprinting.Analysis.csproj" />
+    <ProjectReference Include="..\Fingerprinting.EntryPoints\Fingerprinting.EntryPoints.csproj" />
+    <ProjectReference Include="..\Fingerprinting.StepHost\Fingerprinting.StepHost.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="..\..\schemas\entry-point-inventory-2.1.0.schema.json">
+      <Link>schemas\entry-point-inventory-2.1.0.schema.json</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <!-- The capability manifest ships beside the exe: what this build can see. -->
+    <Content Include="..\..\schemas\entry-point-capabilities-1.1.0.json">
+      <Link>schemas\entry-point-capabilities-1.1.0.json</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+</Project>

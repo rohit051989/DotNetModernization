@@ -1,6 +1,6 @@
 using System.Security.Cryptography;
 
-namespace Fingerprinting.Cli;
+namespace Fingerprinting.StepHost;
 
 /// <summary>
 /// <c>file://</c> artifact URI helpers, mirroring

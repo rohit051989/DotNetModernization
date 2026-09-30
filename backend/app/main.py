@@ -22,6 +22,7 @@ from app.routers import (
     signal_registry,
     step_policies,
     structure,
+    surface,
     target_states,
     workflow_artifacts,
     workflow_capabilities,
@@ -222,6 +223,15 @@ app = FastAPI(
                 "yet. See 19-STEP-002-SOLUTION-DISCOVERY.md."
             ),
         },
+        {
+            "name": "Surface",
+            "description": (
+                "Read-only results of lifecycle step 4: what can call a repository's "
+                "applications — HTTP routes, WCF, ASMX, gRPC and SignalR operations, "
+                "WebForms pages, consumers, hosted services, scheduled jobs and mains. "
+                "See 29-STEPS-004-005-INVENTORIES.md Part D."
+            ),
+        },
     ],
 )
 
@@ -284,4 +294,5 @@ app.include_router(workflow_policy.router)
 app.include_router(workflow_artifacts.router)
 app.include_router(repositories.router)
 app.include_router(structure.router)
+app.include_router(surface.router)
 app.include_router(dashboard.router)

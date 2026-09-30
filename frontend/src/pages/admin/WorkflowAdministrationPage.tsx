@@ -4,12 +4,14 @@ import { JobDefinitionsAdminSection } from './JobDefinitionsAdminSection'
 import { GlobalPolicySection } from './GlobalPolicySection'
 import { PolicyMatrixSection } from './PolicyMatrixSection'
 import { ViewpointCoverageSection } from './ViewpointCoverageSection'
+import { DetectionCapabilitiesSection } from './DetectionCapabilitiesSection'
 
-type Section = 'registry' | 'viewpoints' | 'definitions' | 'policy' | 'matrix'
+type Section = 'registry' | 'viewpoints' | 'capabilities' | 'definitions' | 'policy' | 'matrix'
 
 const SECTIONS: { key: Section; label: string }[] = [
   { key: 'registry', label: 'Step registry' },
   { key: 'viewpoints', label: 'Viewpoint coverage' },
+  { key: 'capabilities', label: 'Detection capabilities' },
   { key: 'definitions', label: 'Job definitions' },
   { key: 'policy', label: 'Global policy' },
   { key: 'matrix', label: 'Policy matrix' },
@@ -54,6 +56,7 @@ export function WorkflowAdministrationPage() {
 
       {section === 'registry' && <StepRegistrySection />}
       {section === 'viewpoints' && <ViewpointCoverageSection />}
+      {section === 'capabilities' && <DetectionCapabilitiesSection />}
       {section === 'definitions' && <JobDefinitionsAdminSection />}
       {section === 'policy' && <GlobalPolicySection />}
       {section === 'matrix' && <PolicyMatrixSection />}

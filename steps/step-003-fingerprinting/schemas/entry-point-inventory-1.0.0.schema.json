@@ -1,0 +1,341 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://modernization-platform.internal/schemas/entry-point-inventory-1.0.0.schema.json",
+  "title": "entry-point-inventory@1.0.0",
+  "description": "Lifecycle step 4. See 29-STEPS-004-005-INVENTORIES.md Part B. Per project, entry points sorted by kind then route or handler. No timestamp and no absolute path belong here: two runs over unchanged input are byte-identical.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "artifactType",
+    "artifactVersion",
+    "scannerVersion",
+    "repositoryId",
+    "repositorySlug",
+    "semanticAnalysisEnabled",
+    "skipSource",
+    "summary",
+    "projects",
+    "warnings"
+  ],
+  "properties": {
+    "artifactType": { "const": "entry-point-inventory" },
+    "artifactVersion": { "const": "1.0.0" },
+    "scannerVersion": { "type": "string" },
+    "repositoryId": { "type": "string", "format": "uuid" },
+    "repositorySlug": { "type": "string" },
+    "semanticAnalysisEnabled": { "const": false },
+    "skipSource": { "enum": ["application-fingerprint", "solution-project-inventory"] },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "projectsScanned",
+        "projectsSkipped",
+        "projectsFailed",
+        "entryPointCount",
+        "countByKind",
+        "countByVerb",
+        "unauthorisedCount",
+        "authorisationNotAssessedCount"
+      ],
+      "properties": {
+        "projectsScanned": { "type": "integer", "minimum": 0 },
+        "projectsSkipped": { "type": "integer", "minimum": 0 },
+        "projectsFailed": { "type": "integer", "minimum": 0 },
+        "entryPointCount": { "type": "integer", "minimum": 0 },
+        "countByKind": { "$ref": "#/$defs/countByKind" },
+        "countByVerb": { "$ref": "#/$defs/counts" },
+        "unauthorisedCount": { "type": "integer", "minimum": 0 },
+        "authorisationNotAssessedCount": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "projects": { "type": "array", "items": { "$ref": "#/$defs/project" } },
+    "warnings": { "type": "array", "items": { "$ref": "#/$defs/warning" } }
+  },
+  "$defs": {
+    "kind": {
+      "enum": [
+        "http_controller_action",
+        "http_minimal_api",
+        "wcf_operation",
+        "asmx_web_method",
+        "grpc_service_method",
+        "signalr_hub_method",
+        "message_consumer",
+        "hosted_service",
+        "scheduled_job",
+        "console_main",
+        "webforms_page"
+      ]
+    },
+    "counts": {
+      "type": "object",
+      "additionalProperties": { "type": "integer", "minimum": 1 }
+    },
+    "countByKind": {
+      "type": "object",
+      "propertyNames": { "$ref": "#/$defs/kind" },
+      "additionalProperties": { "type": "integer", "minimum": 1 }
+    },
+    "nullableString": { "type": ["string", "null"] },
+    "warning": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "message", "severity"],
+      "properties": {
+        "code": { "type": "string" },
+        "message": { "type": "string" },
+        "severity": { "enum": ["info", "warning", "error"] }
+      }
+    },
+    "project": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["projectId", "projectPath", "status", "skipReason", "summary", "entryPoints", "warnings"],
+      "properties": {
+        "projectId": { "type": "string", "format": "uuid" },
+        "projectPath": { "type": "string" },
+        "status": { "enum": ["SCANNED", "SKIPPED", "FAILED"] },
+        "skipReason": { "$ref": "#/$defs/nullableString" },
+        "summary": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "countByKind",
+            "countByVerb",
+            "unauthorisedCount",
+            "authorisationNotAssessedCount",
+            "globalAuthorisation",
+            "conventionalRoutes"
+          ],
+          "properties": {
+            "countByKind": { "$ref": "#/$defs/countByKind" },
+            "countByVerb": { "$ref": "#/$defs/counts" },
+            "unauthorisedCount": { "type": "integer", "minimum": 0 },
+            "authorisationNotAssessedCount": { "type": "integer", "minimum": 0 },
+            "globalAuthorisation": { "type": "array", "items": { "type": "string" } },
+            "conventionalRoutes": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "entryPoints": { "type": "array", "items": { "$ref": "#/$defs/entryPoint" } },
+        "warnings": { "type": "array", "items": { "$ref": "#/$defs/warning" } }
+      }
+    },
+    "handler": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "namespace", "member", "filePath", "lineStart", "lineEnd"],
+      "properties": {
+        "type": { "type": "string" },
+        "namespace": { "$ref": "#/$defs/nullableString" },
+        "member": { "$ref": "#/$defs/nullableString" },
+        "filePath": { "type": "string", "pattern": "^[^/\\\\:][^:]*$" },
+        "lineStart": { "type": "integer", "minimum": 1 },
+        "lineEnd": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "entryPoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["entryPointId", "kind", "projectPath", "handler", "confidence", "confidenceReasons", "unauthorised"],
+      "properties": {
+        "entryPointId": { "type": "string", "pattern": "^[0-9a-f]{32}$" },
+        "kind": { "$ref": "#/$defs/kind" },
+        "projectPath": { "type": "string" },
+        "handler": { "$ref": "#/$defs/handler" },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "confidenceReasons": { "type": "array", "items": { "type": "string" } },
+        "unauthorised": { "type": ["boolean", "null"] },
+        "http": { "$ref": "#/$defs/http" },
+        "wcf": { "$ref": "#/$defs/wcf" },
+        "asmx": { "$ref": "#/$defs/asmx" },
+        "grpc": { "$ref": "#/$defs/grpc" },
+        "signalR": { "$ref": "#/$defs/signalR" },
+        "messaging": { "$ref": "#/$defs/messaging" },
+        "schedule": { "$ref": "#/$defs/schedule" },
+        "hosted": { "$ref": "#/$defs/hosted" },
+        "console": { "$ref": "#/$defs/console" },
+        "webForms": { "$ref": "#/$defs/webForms" }
+      },
+      "minProperties": 8,
+      "maxProperties": 8,
+      "allOf": [
+        { "if": { "properties": { "kind": { "enum": ["http_controller_action", "http_minimal_api"] } } }, "then": { "required": ["http"] } },
+        { "if": { "properties": { "kind": { "const": "wcf_operation" } } }, "then": { "required": ["wcf"] } },
+        { "if": { "properties": { "kind": { "const": "asmx_web_method" } } }, "then": { "required": ["asmx"] } },
+        { "if": { "properties": { "kind": { "const": "grpc_service_method" } } }, "then": { "required": ["grpc"] } },
+        { "if": { "properties": { "kind": { "const": "signalr_hub_method" } } }, "then": { "required": ["signalR"] } },
+        { "if": { "properties": { "kind": { "const": "message_consumer" } } }, "then": { "required": ["messaging"] } },
+        { "if": { "properties": { "kind": { "const": "scheduled_job" } } }, "then": { "required": ["schedule"] } },
+        { "if": { "properties": { "kind": { "const": "hosted_service" } } }, "then": { "required": ["hosted"] } },
+        { "if": { "properties": { "kind": { "const": "console_main" } } }, "then": { "required": ["console"] } },
+        { "if": { "properties": { "kind": { "const": "webforms_page" } } }, "then": { "required": ["webForms"] } },
+        {
+          "if": { "properties": { "kind": { "const": "http_controller_action" } } },
+          "then": { "properties": { "http": { "properties": { "routing": { "enum": ["attribute", "conventional"] } } } } }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "http_minimal_api" } } },
+          "then": { "properties": { "http": { "properties": { "routing": { "const": "minimal_api" } } } } }
+        }
+      ]
+    },
+    "http": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "verb",
+        "routeTemplate",
+        "routing",
+        "parameters",
+        "returnType",
+        "authorisation",
+        "controller",
+        "action",
+        "mappedTemplate",
+        "groupPrefix",
+        "handlerForm"
+      ],
+      "properties": {
+        "verb": { "enum": ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS", "TRACE", "CONNECT", "ANY"] },
+        "routeTemplate": { "type": ["string", "null"], "pattern": "^(?![/~])" },
+        "routing": { "enum": ["attribute", "conventional", "minimal_api"] },
+        "parameters": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "type", "source", "inferredSource"],
+            "properties": {
+              "name": { "type": "string" },
+              "type": { "$ref": "#/$defs/nullableString" },
+              "source": { "enum": ["route", "query", "body", "header", "form", "inferred"] },
+              "inferredSource": { "enum": ["route", "query", "body", "form", null] }
+            }
+          }
+        },
+        "returnType": { "$ref": "#/$defs/nullableString" },
+        "authorisation": { "$ref": "#/$defs/nullableString" },
+        "controller": { "$ref": "#/$defs/nullableString" },
+        "action": { "$ref": "#/$defs/nullableString" },
+        "mappedTemplate": { "$ref": "#/$defs/nullableString" },
+        "groupPrefix": {
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["resolution", "prefix", "expression"],
+              "properties": {
+                "resolution": { "enum": ["resolved", "unresolved"] },
+                "prefix": { "$ref": "#/$defs/nullableString" },
+                "expression": { "$ref": "#/$defs/nullableString" }
+              }
+            }
+          ]
+        },
+        "handlerForm": { "enum": ["lambda", "method_group", null] }
+      },
+      "allOf": [
+        { "if": { "properties": { "routing": { "const": "conventional" } } }, "then": { "properties": { "routeTemplate": { "const": null } } } }
+      ]
+    },
+    "wcf": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contract", "operation", "implementation", "isOneWay", "hostedBy", "hostFile", "authorisation"],
+      "properties": {
+        "contract": { "type": "string" },
+        "operation": { "type": "string" },
+        "implementation": { "$ref": "#/$defs/nullableString" },
+        "isOneWay": { "type": "boolean" },
+        "hostedBy": { "enum": ["svc", "service_host", null] },
+        "hostFile": { "$ref": "#/$defs/nullableString" },
+        "authorisation": { "$ref": "#/$defs/nullableString" }
+      }
+    },
+    "asmx": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["servicePath", "method", "authorisation"],
+      "properties": {
+        "servicePath": { "type": "string", "pattern": "^/" },
+        "method": { "type": "string" },
+        "authorisation": { "$ref": "#/$defs/nullableString" }
+      }
+    },
+    "webForms": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pagePath", "codeBehindClass", "authorisation"],
+      "properties": {
+        "pagePath": { "type": "string", "pattern": "^/.*\\.aspx$" },
+        "codeBehindClass": { "type": "string" },
+        "authorisation": { "$ref": "#/$defs/nullableString" }
+      }
+    },
+    "grpc": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["service", "method", "protoPackage", "protoFile", "fullMethod", "authorisation"],
+      "properties": {
+        "service": { "type": "string" },
+        "method": { "type": "string" },
+        "protoPackage": { "$ref": "#/$defs/nullableString" },
+        "protoFile": { "$ref": "#/$defs/nullableString" },
+        "fullMethod": { "type": ["string", "null"], "pattern": "^/" },
+        "authorisation": { "$ref": "#/$defs/nullableString" }
+      }
+    },
+    "signalR": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hub", "method", "hubRoute", "authorisation"],
+      "properties": {
+        "hub": { "type": "string" },
+        "method": { "type": "string" },
+        "hubRoute": { "$ref": "#/$defs/nullableString" },
+        "authorisation": { "$ref": "#/$defs/nullableString" }
+      }
+    },
+    "messaging": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["transport", "sources", "sourceResolution", "hostedService"],
+      "properties": {
+        "transport": { "enum": ["kafka", "msmq"] },
+        "sources": { "type": "array", "items": { "type": "string" } },
+        "sourceResolution": { "enum": ["resolved", "unresolved"] },
+        "hostedService": { "$ref": "#/$defs/nullableString" }
+      }
+    },
+    "schedule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scheduler", "expression", "jobId"],
+      "properties": {
+        "scheduler": { "enum": ["quartz", "hangfire", "threading_timer"] },
+        "expression": { "$ref": "#/$defs/nullableString" },
+        "jobId": { "$ref": "#/$defs/nullableString" }
+      }
+    },
+    "hosted": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["serviceBase", "registered"],
+      "properties": {
+        "serviceBase": { "enum": ["BackgroundService", "IHostedService"] },
+        "registered": { "type": "boolean" }
+      }
+    },
+    "console": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["form", "staThread"],
+      "properties": {
+        "form": { "enum": ["main", "top_level_statements"] },
+        "staThread": { "type": "boolean" }
+      }
+    }
+  }
+}

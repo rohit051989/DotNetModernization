@@ -83,7 +83,7 @@ public static class EntryPoint
             // deterministic, stable-across-reruns id derived from its path
             // rather than a real projects.id.
             var artifact = await pipeline.RunAsync(
-                inventory, repoPath, relativePath => DeterministicProjectId(inventory.RepositoryId, relativePath), CancellationToken.None);
+                inventory, repoPath, relativePath => StandaloneIds.ProjectId(inventory.RepositoryId, relativePath), CancellationToken.None);
 
             var artifactJson = DeterministicJson.Serialize(artifact);
             ArtifactSchemaValidator.Load(SchemaPath()).Validate(artifactJson);
@@ -112,38 +112,8 @@ public static class EntryPoint
         }
     }
 
-    private static async Task<int> RunEnvelopeAsync(TextReader input, TextWriter output, TextWriter error)
-    {
-        StepContextEnvelope context;
-        try
-        {
-            // lstrip a BOM: PowerShell's `Get-Content | ...exe` (the documented
-            // standalone invocation) can inject one — same guard as step 2.
-            var raw = (await input.ReadToEndAsync()).TrimStart('﻿');
-            context = JsonSerializer.Deserialize<StepContextEnvelope>(raw, EnvelopeJson.Options)
-                ?? throw new InvalidOperationException("StepContext deserialized to null");
-        }
-        catch (Exception ex)
-        {
-            // Nothing to build a StepResult against — the process adapter's
-            // fallback path (non-zero exit, stderr tail) applies here.
-            error.WriteLine($"Fatal: could not parse StepContext from stdin: {ex}");
-            return 1;
-        }
-
-        StepResult result;
-        try
-        {
-            result = await ExecuteAsync(context);
-        }
-        catch (Exception ex)
-        {
-            result = new StepResult { ExitStatus = ExitStatuses.Failed, ExitMessage = $"{ex.GetType().Name}: {ex.Message}" };
-        }
-
-        output.Write(JsonSerializer.Serialize(result, EnvelopeJson.Options));
-        return 0;
-    }
+    private static Task<int> RunEnvelopeAsync(TextReader input, TextWriter output, TextWriter error) =>
+        StepEnvelopeRunner.RunAsync(input, output, error, ExecuteAsync);
 
     private static async Task<StepResult> ExecuteAsync(StepContextEnvelope context)
     {
@@ -177,15 +147,17 @@ public static class EntryPoint
             return Failed("database_url is required — step 3 resolves the repository's local_path and project ids from it");
         }
 
-        var db = new FingerprintDatabase(DatabaseUrl.ToNpgsqlConnectionString(context.DatabaseUrl));
+        var connectionString = DatabaseUrl.ToNpgsqlConnectionString(context.DatabaseUrl);
+        var platform = new PlatformDatabase(connectionString);
+        var db = new FingerprintDatabase(connectionString);
 
-        var repositoryRoot = await db.GetRepositoryLocalPathAsync(inventory.RepositoryId, CancellationToken.None);
+        var repositoryRoot = await platform.GetRepositoryLocalPathAsync(inventory.RepositoryId, CancellationToken.None);
         if (repositoryRoot is null)
         {
             return Failed($"repository '{inventory.RepositoryId}' has no matching row in the repositories table");
         }
 
-        var projectIds = await db.ResolveProjectIdsAsync(inventory.RepositoryId, CancellationToken.None);
+        var projectIds = await platform.ResolveProjectIdsAsync(inventory.RepositoryId, CancellationToken.None);
 
         var registry = SignalRegistry.LoadLatest(SchemasDir());
         var pipeline = new FingerprintPipeline(registry, Extractors());
@@ -270,20 +242,9 @@ public static class EntryPoint
         };
     }
 
-    private static StepResult Failed(string message) => new() { ExitStatus = ExitStatuses.Failed, ExitMessage = message };
+    private static StepResult Failed(string message) => StepEnvelopeRunner.Failed(message);
 
-    private static Guid? TryParseGuid(string? value) => Guid.TryParse(value, out var guid) ? guid : null;
-
-    /// <summary>A stable id derived from (repository, relative path) for runs
-    /// with no database — deterministic across reruns, unlike
-    /// <see cref="Guid.NewGuid"/>, which the checksum determinism requirement
-    /// (Part B rule 2) rules out.</summary>
-    private static Guid DeterministicProjectId(Guid repositoryId, string relativePath)
-    {
-        var bytes = Encoding.UTF8.GetBytes($"{repositoryId:D}|{relativePath}");
-        var hash = System.Security.Cryptography.SHA256.HashData(bytes);
-        return new Guid(hash[..16]);
-    }
+    private static Guid? TryParseGuid(string? value) => StepEnvelopeRunner.TryParseGuid(value);
 
     /// <summary>Every registered extractor, in the order they run — order is
     /// otherwise immaterial since FingerprintPipeline sorts signals centrally

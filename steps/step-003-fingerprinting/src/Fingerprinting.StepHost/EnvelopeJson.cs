@@ -1,7 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace Fingerprinting.Cli;
+namespace Fingerprinting.StepHost;
 
 /// <summary>
 /// JSON options for the step envelope (StepContext in, StepResult out) —

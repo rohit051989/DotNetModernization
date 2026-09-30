@@ -19,6 +19,7 @@ import { useToast } from '../../components/Toast'
 import { CriticalityBadge, CloneUrlVerificationBadge, IngestStatusBadge, RetirementBadge } from '../../components/RepositoryBadges'
 import { BatchStatusBadge, ExitStatusBadge } from '../../components/WorkflowBadges'
 import { RepositoryStructureSection } from './RepositoryStructureSection'
+import { RepositorySurfaceSection } from './RepositorySurfaceSection'
 
 interface RepositoryDetailPanelProps {
   repositoryId: string
@@ -252,6 +253,12 @@ export function RepositoryDetailPanel({
       {!editing && (
         <section className="border-t border-neutral-100 pt-4">
           <RepositoryStructureSection repositoryId={repo.id} refreshToken={localRefresh} />
+        </section>
+      )}
+
+      {!editing && (
+        <section className="border-t border-neutral-100 pt-4">
+          <RepositorySurfaceSection repositoryId={repo.id} localPath={repo.local_path} refreshToken={localRefresh} />
         </section>
       )}
 

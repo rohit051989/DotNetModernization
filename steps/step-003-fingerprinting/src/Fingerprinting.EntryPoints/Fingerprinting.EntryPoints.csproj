@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Step 4, entry-point inventory (29-STEPS-004-005-INVENTORIES.md Part B).
+       Detection and composition only — no I/O beyond reading source files, no
+       envelope, no database; those live in Fingerprinting.EntryPoints.Cli.
+       Source enumeration and Roslyn parsing come from Fingerprinting.Analysis,
+       the same file set step 3 reads. -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Fingerprinting.EntryPoints</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Fingerprinting.Domain\Fingerprinting.Domain.csproj" />
+    <ProjectReference Include="..\Fingerprinting.Analysis\Fingerprinting.Analysis.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,6 +1,6 @@
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 
-namespace Fingerprinting.Extractors;
+namespace Fingerprinting.Analysis;
 
 /// <summary>
 /// Syntax-only name matching shared by AttributeExtractor, InheritanceExtractor
@@ -9,7 +9,7 @@ namespace Fingerprinting.Extractors;
 /// "Controller" base class is indistinguishable from
 /// System.Web.Mvc.Controller. Accepted precision loss per Part A4.
 /// </summary>
-internal static class RoslynNameHelpers
+public static class RoslynNameHelpers
 {
     /// <summary>The rightmost identifier of a (possibly qualified, possibly
     /// generic) type or attribute name — "System.Web.Mvc.Controller" and

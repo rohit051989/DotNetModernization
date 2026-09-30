@@ -9,23 +9,15 @@
     <InvariantGlobalization>false</InvariantGlobalization>
   </PropertyGroup>
 
-  <ItemGroup>
-    <!-- Locator only — never reference Microsoft.Build.* directly here. It finds
-         the MSBuild instance bundled with the installed SDK at runtime; see
-         Program.cs, where RegisterDefaults() must run before any MSBuild type
-         is touched anywhere in the call tree (21-STEP-003-FINGERPRINTING.md Part B). -->
-    <PackageReference Include="Microsoft.Build.Locator" Version="1.11.2" />
-    <PackageReference Include="Npgsql" Version="10.0.3" />
-    <!-- Draft 2020-12 JSON Schema validation for the artifact gate in Part F —
-         "Validate against the JSON Schema before writing. A schema validation
-         failure is a step failure, not a warning." -->
-    <PackageReference Include="JsonSchema.Net" Version="9.4.0" />
-  </ItemGroup>
+  <!-- MSBuild.Locator, Npgsql and JsonSchema.Net arrive through
+       Fingerprinting.StepHost, shared with the entry-point inventory. Never
+       reference Microsoft.Build.* directly here; see StepBootstrap.cs. -->
 
   <ItemGroup>
     <ProjectReference Include="..\Fingerprinting.Domain\Fingerprinting.Domain.csproj" />
     <ProjectReference Include="..\Fingerprinting.Analysis\Fingerprinting.Analysis.csproj" />
     <ProjectReference Include="..\Fingerprinting.Extractors\Fingerprinting.Extractors.csproj" />
+    <ProjectReference Include="..\Fingerprinting.StepHost\Fingerprinting.StepHost.csproj" />
   </ItemGroup>
 
   <ItemGroup>

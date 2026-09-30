@@ -1,7 +1,7 @@
 using System.Text.Json;
 using Json.Schema;
 
-namespace Fingerprinting.Cli;
+namespace Fingerprinting.StepHost;
 
 /// <summary>
 /// Validates a serialized artifact against

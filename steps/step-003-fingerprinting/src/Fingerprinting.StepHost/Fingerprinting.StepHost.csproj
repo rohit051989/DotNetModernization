@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The process-adapter plumbing every step exe in this solution shares:
+       the StepContext/StepResult envelope, artifact URIs and checksums, the
+       schema gate, the database URL, step 2's inventory model and the
+       ordering-sensitive bootstrap. Steps 3 and 4 each keep their own exe,
+       registration, artifact and tables — sharing a library is not sharing
+       a contract (29-STEPS-004-005-INVENTORIES.md Part A1). -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Fingerprinting.StepHost</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Locator only — never reference Microsoft.Build.* directly here. It finds
+         the MSBuild instance bundled with the installed SDK at runtime; see
+         StepBootstrap.cs, where RegisterDefaults() must run before any MSBuild
+         type is touched anywhere in the call tree (21-STEP-003-FINGERPRINTING.md Part B). -->
+    <PackageReference Include="Microsoft.Build.Locator" Version="1.11.2" />
+    <PackageReference Include="Npgsql" Version="10.0.3" />
+    <!-- Draft 2020-12 JSON Schema validation for the artifact gate —
+         "A schema validation failure is a step failure, not a warning." -->
+    <PackageReference Include="JsonSchema.Net" Version="9.4.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Fingerprinting.Domain\Fingerprinting.Domain.csproj" />
+  </ItemGroup>
+
+</Project>

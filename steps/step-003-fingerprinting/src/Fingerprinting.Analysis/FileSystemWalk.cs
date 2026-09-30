@@ -1,15 +1,15 @@
-namespace Fingerprinting.Extractors;
+namespace Fingerprinting.Analysis;
 
 /// <summary>
 /// Iterative (never recursive, so a deeply nested repository cannot blow the
 /// stack) file-system walk shared by every extractor that enumerates a
 /// project directory. Same directory exclusions as steps 1 and 2
 /// (backend/app/steps/repository_ingest.py SKIP_DIR_NAMES). Extracted from
-/// <see cref="FileIndicatorExtractor"/> so <see cref="SourceFileScanner"/>
-/// and <see cref="ConfigurationExtractor"/> share the identical walk instead
+/// FileIndicatorExtractor so <see cref="SourceFileScanner"/>
+/// and ConfigurationExtractor share the identical walk instead
 /// of re-implementing it.
 /// </summary>
-internal static class FileSystemWalk
+public static class FileSystemWalk
 {
     private static readonly HashSet<string> SkipDirNames =
         new(StringComparer.OrdinalIgnoreCase) { ".git", "node_modules", "bin", "obj", "packages" };

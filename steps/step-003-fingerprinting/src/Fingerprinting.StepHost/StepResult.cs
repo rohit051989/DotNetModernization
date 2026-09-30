@@ -1,6 +1,6 @@
 using System.Text.Json.Serialization;
 
-namespace Fingerprinting.Cli;
+namespace Fingerprinting.StepHost;
 
 /// <summary>The step's response envelope — see 11-STEP-CONTRACT.md "Response
 /// — StepResult". <c>exit_status</c> is the only required field.</summary>

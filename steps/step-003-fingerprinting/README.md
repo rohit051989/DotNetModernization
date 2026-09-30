@@ -9,10 +9,26 @@ that happens to live in the same repository. Written in C# because it does
 real Roslyn syntax analysis (`Microsoft.CodeAnalysis`) and MSBuild-adjacent
 project parsing, unlike step 2's lightweight Python XML parsing.
 
+## Solution layout
+
+This solution also builds **step 4, entry-point-inventory**
+(`docs/29-STEPS-004-005-INVENTORIES.md` Part B) — see the section at the end.
+The steps share libraries, never a contract: each has its own exe,
+registration, artifact and tables.
+
+| Project | What it holds | Used by |
+|---|---|---|
+| `Fingerprinting.Domain` | Artifact records, `DeterministicJson` (sorted keys, LF line endings) | both |
+| `Fingerprinting.Analysis` | `FileSystemWalk`, `SourceFileScanner` (generated-code exclusion, file cap, Roslyn syntax parse), `RoslynNameHelpers` | both |
+| `Fingerprinting.StepHost` | `StepBootstrap` (MSBuildLocator first, stdout guard, invariant culture), `StepEnvelopeRunner`, the StepContext/StepResult envelope, artifact URIs and checksums, the schema gate, step 2's inventory model, `PlatformDatabase` | both |
+| `Fingerprinting.Extractors` / `Fingerprinting.Cli` | Step 3's extractors and exe | step 3 |
+| `Fingerprinting.EntryPoints` / `Fingerprinting.EntryPoints.Cli` | Step 4's detectors, route composition and exe | step 4 |
+
 ## Build
 
 ```powershell
 dotnet publish src/Fingerprinting.Cli -c Release -o publish
+dotnet publish src/Fingerprinting.EntryPoints.Cli -c Release -o publish/entry-point-inventory
 ```
 
 `publish/Fingerprinting.Cli.exe` is what `wf_step_registrations.adapter_config`
@@ -88,3 +104,39 @@ unchanged.
 ```powershell
 dotnet test tests/Fingerprinting.Tests
 ```
+
+## Step 4 — entry-point-inventory
+
+What can call each application: HTTP controller actions and minimal APIs
+(with composed routes), WCF operations, ASMX web methods, gRPC and SignalR
+methods, message consumers, hosted services, scheduled jobs, console mains
+and WebForms pages. Syntax only, like step 3; everything below 1.0
+confidence says why. Entirely deterministic — no model is called.
+
+Capability manifest: `schemas/entry-point-capabilities-1.0.0.json` — every kind
+detected and every pattern not covered, stamped into each artifact. Add a kind
+there and in `EntryPointKinds` together; a test fails otherwise.
+
+`authDeclared` reports authentication declared in source and config only; gateway,
+proxy and header-based authentication are invisible to it, so `none_declared` is
+a review prompt, not a finding.
+
+Registration: `registration/entry-point-inventory.json`, posted to
+`POST /api/workflow/steps`. Artifact `entry-point-inventory@2.0.0`, schema
+`schemas/entry-point-inventory-2.0.0.schema.json`, validated before every
+write. Tables `entry_points` and `entry_point_scans`, replaced per repository.
+
+**Inputs.** Both `consumes` entries are required, and
+`phase0-repository-discovery` (v7) wires them. They are the only input path:
+a step invoked without them fails rather than looking elsewhere.
+
+Run standalone (no database; project ids come from the fingerprint, which
+makes the output byte-identical to an engine run):
+
+```powershell
+.\publish\entry-point-inventory\EntryPointInventory.Cli.exe --repo <repository-root> --inventory <solution-project-inventory.json> --fingerprint <application-fingerprint.json> --out <output-dir>
+```
+
+`--fingerprint` is optional; without it projects are skipped by step 2's
+out-of-scope rule instead of step 3's verdict.
+

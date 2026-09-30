@@ -9,44 +9,11 @@ namespace Fingerprinting.Cli;
 /// Npgsql persistence for the three tables from
 /// 21-STEP-003-FINGERPRINTING.md Part E. All rows owned by step 3 and
 /// replaced wholesale per repository on rescan — same pattern as step 2's
-/// <c>discovery/persistence.py</c>.
+/// <c>discovery/persistence.py</c>. The repository and project lookups it
+/// used to carry live in <see cref="PlatformDatabase"/>, shared with step 4.
 /// </summary>
 public sealed class FingerprintDatabase(string connectionString)
 {
-    public async Task<string?> GetRepositoryLocalPathAsync(Guid repositoryId, CancellationToken cancellationToken)
-    {
-        await using var connection = new NpgsqlConnection(connectionString);
-        await connection.OpenAsync(cancellationToken);
-
-        await using var command = new NpgsqlCommand("SELECT local_path FROM repositories WHERE id = @rid", connection);
-        command.Parameters.AddWithValue("rid", repositoryId);
-
-        return (string?)await command.ExecuteScalarAsync(cancellationToken);
-    }
-
-    /// <summary>Resolves each project's DB row id by (repository_id,
-    /// relative_path) — the artifact itself carries no project id; see
-    /// SolutionProjectInventory.cs.</summary>
-    public async Task<Dictionary<string, Guid>> ResolveProjectIdsAsync(
-        Guid repositoryId, CancellationToken cancellationToken)
-    {
-        await using var connection = new NpgsqlConnection(connectionString);
-        await connection.OpenAsync(cancellationToken);
-
-        var map = new Dictionary<string, Guid>(StringComparer.Ordinal);
-        await using var command = new NpgsqlCommand(
-            "SELECT relative_path, id FROM projects WHERE repository_id = @rid", connection);
-        command.Parameters.AddWithValue("rid", repositoryId);
-
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        while (await reader.ReadAsync(cancellationToken))
-        {
-            map[reader.GetString(0)] = reader.GetGuid(1);
-        }
-
-        return map;
-    }
-
     public async Task ReplaceAllAsync(
         Guid repositoryId, ApplicationFingerprintArtifact artifact, Guid? stepExecutionId, CancellationToken cancellationToken)
     {

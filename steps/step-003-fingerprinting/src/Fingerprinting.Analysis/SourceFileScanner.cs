@@ -1,16 +1,17 @@
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis;
 
-namespace Fingerprinting.Extractors;
+namespace Fingerprinting.Analysis;
 
 /// <summary>
 /// Enumerates and parses a project's C# source files for the Roslyn-syntax
 /// extractors (Attribute, Inheritance, EntryPoint, and the namespace-using
-/// pass of FrameworkReference). Excludes generated code and caps the file
+/// pass of FrameworkReference) and for step 4's entry-point inventory, so
+/// both steps read exactly the same file set. Excludes generated code and caps the file
 /// count per 21-STEP-003-FINGERPRINTING.md Part G. Never touches semantic
 /// analysis — Part A4 keeps that off by default.
 /// </summary>
-internal static class SourceFileScanner
+public static class SourceFileScanner
 {
     public const int MaxFilesPerProject = 5000;
 

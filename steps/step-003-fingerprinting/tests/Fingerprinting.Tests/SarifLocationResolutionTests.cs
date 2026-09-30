@@ -2,6 +2,7 @@ using System.Runtime.CompilerServices;
 using Fingerprinting.Cli;
 using Fingerprinting.Domain;
 using Fingerprinting.Extractors;
+using Fingerprinting.StepHost;
 using Xunit;
 using Xunit.Abstractions;
 
