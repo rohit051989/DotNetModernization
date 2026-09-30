@@ -2,10 +2,14 @@
 results. Raw psycopg SQL — no ORM, since this package must not import
 backend.app, where the SQLAlchemy models live.
 
-See 19-STEP-002-SOLUTION-DISCOVERY.md Part C: "All rows are owned by step 2
-and replaced wholesale on rescan — delete by repository_id, then insert.
-Simpler than reconciling, and correct given the artifact is a point-in-time
-snapshot."
+See 19-STEP-002-SOLUTION-DISCOVERY.md Part C: every row is owned by step 2
+and rewritten on rescan. One exception: `projects` is UPSERTED, not replaced.
+Project ids are derived from repository id + relative path (main.py
+project_id_for), so a rescan finds the same ids; updating those rows in place
+keeps everything keyed to project_id alive (fingerprints, item occurrences,
+decisions, conversion executions), where delete-then-insert would cascade them
+away. Only projects that are no longer on disk are deleted. The child tables
+(packages, references, solution membership) are still replaced wholesale.
 """
 
 import json
@@ -38,7 +42,7 @@ def _delete_existing(cur, repository_id: str) -> None:
         "DELETE FROM solution_projects WHERE solution_id IN (SELECT id FROM solutions WHERE repository_id = %s)",
         (repository_id,),
     )
-    cur.execute("DELETE FROM projects WHERE repository_id = %s", (repository_id,))
+    # projects are upserted in replace_all, not deleted here.
     cur.execute("DELETE FROM solutions WHERE repository_id = %s", (repository_id,))
     cur.execute("DELETE FROM repository_artifacts WHERE repository_id = %s", (repository_id,))
     cur.execute("DELETE FROM repository_structure WHERE repository_id = %s", (repository_id,))
@@ -127,6 +131,17 @@ def replace_all(
                     ),
                 )
 
+            # Before the upserts: projects whose id is not in this scan. That is
+            # a project no longer on disk (its fingerprints and occurrences
+            # cascade with it, correctly: it is gone), or a row from before ids
+            # were derived, whose random id would otherwise collide with the
+            # derived one on (repository_id, relative_path). The latter happens
+            # once per repository, on its first rescan after the change.
+            cur.execute(
+                "DELETE FROM projects WHERE repository_id = %s AND NOT (id = ANY(%s::uuid[]))",
+                (repository_id, [p["id"] for p in projects]),
+            )
+
             for p in projects:
                 cur.execute(
                     """
@@ -138,6 +153,22 @@ def replace_all(
                         is_standalone, project_reference_count, package_reference_count,
                         package_management_style, has_packages_config, parse_status, parse_warnings
                     ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (id) DO UPDATE SET
+                        name = EXCLUDED.name, relative_path = EXCLUDED.relative_path,
+                        extension = EXCLUDED.extension, structural_type = EXCLUDED.structural_type,
+                        project_format = EXCLUDED.project_format, language = EXCLUDED.language,
+                        assembly_name = EXCLUDED.assembly_name, root_namespace = EXCLUDED.root_namespace,
+                        output_type = EXCLUDED.output_type, target_framework_raw = EXCLUDED.target_framework_raw,
+                        target_frameworks_raw = EXCLUDED.target_frameworks_raw,
+                        framework_family = EXCLUDED.framework_family, framework_version = EXCLUDED.framework_version,
+                        is_multi_targeting = EXCLUDED.is_multi_targeting,
+                        solution_membership_count = EXCLUDED.solution_membership_count,
+                        is_standalone = EXCLUDED.is_standalone,
+                        project_reference_count = EXCLUDED.project_reference_count,
+                        package_reference_count = EXCLUDED.package_reference_count,
+                        package_management_style = EXCLUDED.package_management_style,
+                        has_packages_config = EXCLUDED.has_packages_config,
+                        parse_status = EXCLUDED.parse_status, parse_warnings = EXCLUDED.parse_warnings
                     """,
                     (
                         p["id"],

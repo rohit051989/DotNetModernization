@@ -141,6 +141,15 @@ Seven new tables. All rows are owned by step 2 and **replaced wholesale on resca
 delete by `repository_id`, then insert. Simpler than reconciling, and correct given
 the artifact is a point-in-time snapshot.
 
+**Except `projects`, which is upserted.** A project's id is derived, not generated:
+`uuid5(namespace, "<repository_id>:<relative_path lower-cased>")`
+(`main.py` `project_id_for`). A rescan therefore finds the same ids and updates those
+rows in place. Everything keyed to `project_id` stays attached across a rescan, even
+mid-migration: fingerprints, item occurrences, and later conversion executions.
+Replacing the rows would cascade all of that away. Only projects no longer on disk are
+deleted. The child tables (packages, references, solution membership) are still
+replaced wholesale.
+
 ### `repository_structure` — 1:1 with repository
 
 Summary written by step 2. Separate from `repositories` so step ownership is

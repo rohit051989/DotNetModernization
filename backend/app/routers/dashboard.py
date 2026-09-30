@@ -15,7 +15,6 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app import models
-from app.classification import service as classification_service
 from app.db import get_db
 from app.errors import ErrorResponse, error
 from app.routers.engagements import compute_coverage
@@ -30,8 +29,9 @@ _NOT_FOUND = {"model": ErrorResponse, "description": "No engagement exists with 
 # capability name -> the step_name that must be implemented to unlock it.
 _CAPABILITY_STEP = {
     "application_count": "application-fingerprinting",
-    "pattern_classification": "pattern-classification",
-    "impact_map": "impact-map-generation",
+    # Step 6 produces the work list, which is also the impact map (the
+    # retired impact-map-generation step, 17-LIFECYCLE-STEPS.md v2.0).
+    "item_detection": "item-detection",
     "test_coverage": "test-coverage-assessment",
     "risk_tier": "risk-scoring-tier-assignment",
     "wave_planning": "migration-wave-planning",
@@ -83,32 +83,32 @@ class StructureCounts(BaseModel):
     framework_families: dict[str, int] = Field(description="Project count per normalised framework family, summed across repositories.")
 
 
-class TopPattern(BaseModel):
-    pattern_id: str
-    pattern_name: str
-    count: int
+class TopItem(BaseModel):
+    item_id: str
+    item_name: str
+    projects: int = Field(description="Projects in this engagement where the item was found.")
+    occurrences: int = Field(description="Found occurrence rows across those projects.")
 
 
-class PatternCounts(BaseModel):
-    """The dashboard's Patterns card, real once pattern-classification (step
-    4) is implemented. Deliberately labelled 'projects classified as', never
-    'applications' — deployable-application aggregation is a different,
-    still-unimplemented rollup (see `applications` above)."""
+class ItemCounts(BaseModel):
+    """The dashboard's work-list card, real once item-detection (step 6) is
+    implemented — 28-ITEM-AND-CONVERSION-MODEL.md Part G. Counts what needs
+    doing, not what kind of application anything is."""
 
-    projects_evaluated: int = Field(description="Projects with any classification result, across every repository in this engagement.")
-    projects_matched: int = Field(description="Projects with classification_status MATCHED or MULTIPLE_MATCHES.")
-    projects_ambiguous: int = Field(description="Projects with classification_status AMBIGUOUS.")
-    projects_no_pattern_matched: int = Field(description="Projects with classification_status NO_PATTERN_MATCHED — step 5 candidates.")
-    top_patterns: list[TopPattern] = Field(description="Most common primary patterns, highest count first.")
+    projects_evaluated: int = Field(description="Projects with any item_occurrences row, across every repository in this engagement.")
+    projects_with_findings: int = Field(description="Projects where at least one item was found.")
+    items_found: int = Field(description="Distinct catalog items found anywhere in this engagement.")
+    occurrences_found: int = Field(description="Found item_occurrences rows (the work list's size).")
+    projects_needing_rescan: int = Field(description="Projects with any not_checked result: scanned under an older signal registry, or not fingerprinted.")
+    top_items: list[TopItem] = Field(description="Items found in the most projects, highest first.")
 
 
 class DashboardCapabilities(BaseModel):
     application_count: bool = Field(description="True once 'application-fingerprinting' (step 3) is implemented.")
-    pattern_classification: bool = Field(description="True once 'pattern-classification' (step 4) is implemented.")
-    impact_map: bool = Field(description="True once 'impact-map-generation' (step 8) is implemented.")
-    test_coverage: bool = Field(description="True once 'test-coverage-assessment' (step 9) is implemented.")
-    risk_tier: bool = Field(description="True once 'risk-scoring-tier-assignment' (step 10) is implemented.")
-    wave_planning: bool = Field(description="True once 'migration-wave-planning' (step 12) is implemented.")
+    item_detection: bool = Field(description="True once 'item-detection' (step 6) is implemented.")
+    test_coverage: bool = Field(description="True once 'test-coverage-assessment' (step 7) is implemented.")
+    risk_tier: bool = Field(description="True once 'risk-scoring-tier-assignment' (step 8) is implemented.")
+    wave_planning: bool = Field(description="True once 'migration-wave-planning' (step 11) is implemented.")
 
 
 class RecentExecution(BaseModel):
@@ -158,7 +158,7 @@ class DashboardSummary(BaseModel):
                         "framework_families": {"net-framework": 30, "net": 12},
                     },
                     "applications": None,
-                    "patterns": None,
+                    "items": None,
                     "risk_tiers": None,
                     "waves": None,
                     "decisions": {
@@ -170,8 +170,7 @@ class DashboardSummary(BaseModel):
                     },
                     "capabilities": {
                         "application_count": False,
-                        "pattern_classification": False,
-                        "impact_map": False,
+                        "item_detection": False,
                         "test_coverage": False,
                         "risk_tier": False,
                         "wave_planning": False,
@@ -189,7 +188,7 @@ class DashboardSummary(BaseModel):
     discovery: DiscoveryCounts
     structure: StructureCounts = Field(description="Solution/project discovery rollup — see 19-STEP-002-SOLUTION-DISCOVERY.md.")
     applications: dict | None = Field(default=None, description="Null — no step producing application rollups is implemented yet.")
-    patterns: PatternCounts | None = Field(default=None, description="Null until pattern-classification (step 4) is implemented; real thereafter.")
+    items: ItemCounts | None = Field(default=None, description="Null until item-detection (step 6) is implemented and has run; real thereafter.")
     risk_tiers: dict | None = Field(default=None, description="Null — no step producing risk tiers is implemented yet.")
     waves: dict | None = Field(default=None, description="Null — no step producing wave status is implemented yet.")
     decisions: DecisionCounts = Field(description="Real now — computed the same way as GET /api/engagements/{eid}/coverage.")
@@ -252,9 +251,9 @@ class DashboardRepositoryRow(BaseModel):
     latest_execution: LatestExecutionInfo | None = Field(description="Null if discovery has never run for this repository.")
     structure: RepositoryStructureBrief | None = Field(default=None, description="Null until solution-discovery has run for this repository.")
     application_count: int | None = Field(default=None, description="Null — awaiting application fingerprinting (step 3).")
-    patterns_identified: int | None = Field(default=None, description="Null — awaiting pattern classification (step 4).")
-    highest_risk_tier: str | None = Field(default=None, description="Null — awaiting risk scoring (step 10).")
-    wave: str | None = Field(default=None, description="Null — awaiting wave planning (step 12).")
+    items_found: int | None = Field(default=None, description="Distinct catalog items found in this repository. Null until item-detection (step 6) is implemented.")
+    highest_risk_tier: str | None = Field(default=None, description="Null — awaiting risk scoring (step 8).")
+    wave: str | None = Field(default=None, description="Null — awaiting wave planning (step 11).")
 
 
 class DashboardRepositoriesResponse(BaseModel):
@@ -343,6 +342,50 @@ def _get_engagement(db: Session, engagement_id: str) -> models.Engagement:
 # ---------- Routes ----------
 
 
+def _item_counts(db: Session, repository_ids: list) -> ItemCounts | None:
+    """Work-list rollup over item_occurrences for these repositories. Null
+    when step 6 has not written anything for any of them yet."""
+    if not repository_ids:
+        return None
+    rows = (
+        db.query(
+            models.ItemOccurrence.project_id,
+            models.ItemOccurrence.item_id,
+            models.ItemOccurrence.detection_state,
+            func.count(),
+        )
+        .filter(models.ItemOccurrence.repository_id.in_(repository_ids))
+        .group_by(models.ItemOccurrence.project_id, models.ItemOccurrence.item_id, models.ItemOccurrence.detection_state)
+        .all()
+    )
+    if not rows:
+        return None
+
+    evaluated = {r[0] for r in rows}
+    with_findings = {r[0] for r in rows if r[2] == "found"}
+    rescan = {r[0] for r in rows if r[2] == "not_checked"}
+    per_item_projects: dict[str, set] = {}
+    per_item_occurrences: dict[str, int] = {}
+    for project_id, item_id, state, count in rows:
+        if state == "found":
+            per_item_projects.setdefault(item_id, set()).add(project_id)
+            per_item_occurrences[item_id] = per_item_occurrences.get(item_id, 0) + count
+
+    names = {i.id: i.name for i in db.query(models.CatalogItem).filter(models.CatalogItem.id.in_(per_item_projects))}
+    top = sorted(per_item_projects, key=lambda i: (-len(per_item_projects[i]), -per_item_occurrences[i], i))[:5]
+    return ItemCounts(
+        projects_evaluated=len(evaluated),
+        projects_with_findings=len(with_findings),
+        items_found=len(per_item_projects),
+        occurrences_found=sum(per_item_occurrences.values()),
+        projects_needing_rescan=len(rescan),
+        top_items=[
+            TopItem(item_id=i, item_name=names.get(i, i), projects=len(per_item_projects[i]), occurrences=per_item_occurrences[i])
+            for i in top
+        ],
+    )
+
+
 @router.get(
     "/{engagement_id}/dashboard",
     response_model=DashboardSummary,
@@ -411,18 +454,7 @@ def get_dashboard(engagement_id: str, db: Session = Depends(get_db)):
     structure_summary = structure_service.get_engagement_structure_summary(db, engagement_id)
     structure_counts = StructureCounts(**{k: v for k, v in structure_summary.items() if k != "engagement_id"})
 
-    pattern_counts = None
-    if capabilities.pattern_classification:
-        distribution = classification_service.pattern_distribution(db, engagement_id)
-        if distribution["projects_evaluated"] > 0:
-            summary = classification_service.classification_summary_across(db, engagement_id)
-            pattern_counts = PatternCounts(
-                projects_evaluated=distribution["projects_evaluated"],
-                projects_matched=summary["matched"] + summary["multiple_matches"],
-                projects_ambiguous=summary["ambiguous"],
-                projects_no_pattern_matched=summary["no_pattern_matched"],
-                top_patterns=[TopPattern(**p) for p in distribution["primary_pattern_distribution"][:5]],
-            )
+    item_counts = _item_counts(db, [r.id for r in repos]) if capabilities.item_detection else None
 
     slugs_by_id = {str(r.id): r.slug for r in repos}
     recent_executions = []
@@ -452,7 +484,7 @@ def get_dashboard(engagement_id: str, db: Session = Depends(get_db)):
         discovery=discovery_counts,
         structure=structure_counts,
         applications=None,
-        patterns=pattern_counts,
+        items=item_counts,
         risk_tiers=None,
         waves=None,
         decisions=decisions,
@@ -510,20 +542,19 @@ def get_dashboard_repositories(
         )
     } if repos else {}
 
-    pattern_counts_implemented = (
-        db.get(models.WfStepRegistration, "pattern-classification").implementation_status == "implemented"
-    )
-    patterns_identified_by_repo: dict[uuid.UUID, int] = {}
-    if repos and pattern_counts_implemented:
+    item_detection = db.get(models.WfStepRegistration, "item-detection")
+    items_implemented = item_detection is not None and item_detection.implementation_status == "implemented"
+    items_found_by_repo: dict[uuid.UUID, int] = {}
+    if repos and items_implemented:
         for repo_id, count in (
-            db.query(models.ProjectClassification.repository_id, func.count(models.ProjectClassification.project_id))
+            db.query(models.ItemOccurrence.repository_id, func.count(func.distinct(models.ItemOccurrence.item_id)))
             .filter(
-                models.ProjectClassification.repository_id.in_([r.id for r in repos]),
-                models.ProjectClassification.classification_status.in_(["MATCHED", "MULTIPLE_MATCHES"]),
+                models.ItemOccurrence.repository_id.in_([r.id for r in repos]),
+                models.ItemOccurrence.detection_state == "found",
             )
-            .group_by(models.ProjectClassification.repository_id)
+            .group_by(models.ItemOccurrence.repository_id)
         ):
-            patterns_identified_by_repo[repo_id] = count
+            items_found_by_repo[repo_id] = count
 
     rows = []
     for repo in repos:
@@ -578,7 +609,7 @@ def get_dashboard_repositories(
                 last_ingested_at=repo.last_scanned_at,
                 latest_execution=latest_execution,
                 structure=structure_brief,
-                patterns_identified=patterns_identified_by_repo.get(repo.id, 0) if pattern_counts_implemented else None,
+                items_found=items_found_by_repo.get(repo.id, 0) if items_implemented else None,
             )
         )
 

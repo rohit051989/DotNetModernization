@@ -72,6 +72,21 @@ def _new_id() -> str:
     return str(uuid.uuid4())
 
 
+# Fixed namespace for project ids. Never change it: every project id in every
+# database is derived from it, and changing it orphans all of them.
+PROJECT_ID_NAMESPACE = uuid.UUID("5f0c2a8e-6d1b-4c3e-9a7f-2b8d4e6f1a93")
+
+
+def project_id_for(repository_id: str, relative_path: str) -> str:
+    """Stable across rescans: the same project in the same repository always
+    gets the same id, so a rescan updates its row instead of replacing it,
+    and anything keyed to project_id (item occurrences, decisions, conversion
+    executions) survives a rescan mid-migration. Lower-cased because Windows
+    paths are case-insensitive, the same key step 2 already resolves solution
+    entries and project references by."""
+    return str(uuid.uuid5(PROJECT_ID_NAMESPACE, f"{repository_id}:{relative_path.replace(chr(92), '/').lower()}"))
+
+
 def _now_iso() -> str:
     return datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z")
 
@@ -97,20 +112,21 @@ def _resolve_raw_path(raw_path: str, containing_dir: Path, repo_root: Path) -> t
     return relative, False
 
 
-def _scan(repo_root: Path, inventory: dict) -> dict:
+def _scan(repo_root: Path, inventory: dict, repository_id: str) -> dict:
     sln_paths = sorted(p for p in walk_files(repo_root) if p.suffix.lower() == ".sln")
     parsed_solutions = [solution_parser.parse(p, repo_root) for p in sln_paths]
 
     project_paths = project_parser.find_project_files(repo_root)
     parsed_projects_raw = [project_parser.parse(p, repo_root) for p in project_paths]
 
-    # Stable per-run ids, indexed by lowercased relative path — Windows
-    # filesystems are case-insensitive, and this index is how solution
-    # entries and <ProjectReference> paths resolve to a project.
+    # Ids stable across rescans (project_id_for), indexed by lowercased
+    # relative path — Windows filesystems are case-insensitive, and this
+    # index is how solution entries and <ProjectReference> paths resolve to a
+    # project.
     projects_by_id: dict[str, dict] = {}
     projects_index: dict[str, str] = {}
     for parsed in parsed_projects_raw:
-        project_id = _new_id()
+        project_id = project_id_for(repository_id, parsed["relative_path"])
         projects_by_id[project_id] = parsed
         projects_index[parsed["relative_path"].lower()] = project_id
 
@@ -514,7 +530,7 @@ def run(context: dict) -> dict:
     repo_root = repo_root.resolve()
 
     now = _now_iso()
-    outcome = _scan(repo_root, inventory)
+    outcome = _scan(repo_root, inventory, str(repository_id))
 
     database_url = context.get("database_url")
     if database_url:

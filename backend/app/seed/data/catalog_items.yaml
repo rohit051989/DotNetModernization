@@ -370,6 +370,11 @@ items:
           - id: modern-dotnet
             field: frameworkFamily
             in: [net, net-core]
+          # A desktop application needs no Dockerfile, health endpoint or
+          # OCP4 manifest: it does not run on the platform.
+          - id: not-desktop
+            field: outputType
+            notEquals: WinExe
     resolutions:
       - id: multistage-dockerfile
         name: "Multi-stage Dockerfile"
@@ -416,6 +421,11 @@ items:
           - id: modern-dotnet
             field: frameworkFamily
             in: [net, net-core]
+          # A desktop application needs no Dockerfile, health endpoint or
+          # OCP4 manifest: it does not run on the platform.
+          - id: not-desktop
+            field: outputType
+            notEquals: WinExe
     resolutions:
       - id: aspnetcore-health-checks
         name: "ASP.NET Core health checks"
@@ -471,6 +481,11 @@ items:
           - id: modern-dotnet
             field: frameworkFamily
             in: [net, net-core]
+          # A desktop application needs no Dockerfile, health endpoint or
+          # OCP4 manifest: it does not run on the platform.
+          - id: not-desktop
+            field: outputType
+            notEquals: WinExe
     resolutions:
       - id: plain-manifests
         name: "Plain manifests"

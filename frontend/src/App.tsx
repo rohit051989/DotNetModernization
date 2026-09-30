@@ -7,7 +7,6 @@ import type { TabKey } from './components/TabBar'
 import { CatalogPage } from './pages/CatalogPage'
 import { RepositoriesPage } from './pages/RepositoriesPage'
 import { DashboardPage } from './pages/DashboardPage'
-import { PatternCandidatesPage } from './pages/PatternCandidatesPage'
 import { WorkflowPage } from './pages/WorkflowPage'
 import { WorkflowAdministrationPage } from './pages/admin/WorkflowAdministrationPage'
 import { ToastProvider } from './components/Toast'
@@ -115,7 +114,6 @@ function App() {
             selectedExecutionId={selectedExecutionId}
             onSelectExecution={handleSelectExecution}
             onNavigateToRepositories={() => setActiveTab('repositories')}
-            onNavigateToPatternCandidates={() => setActiveTab('pattern-candidates')}
           />
         ) : activeTab === 'repositories' && selectedEngagementId ? (
           <RepositoriesPage
@@ -124,8 +122,6 @@ function App() {
             engagementName={engagementName}
             onNavigateToExecution={handleNavigateToExecution}
           />
-        ) : activeTab === 'pattern-candidates' && selectedEngagementId ? (
-          <PatternCandidatesPage key={selectedEngagementId} engagementId={selectedEngagementId} />
         ) : activeTab === 'dashboard' && selectedEngagementId ? (
           <DashboardPage
             key={selectedEngagementId}
@@ -140,7 +136,6 @@ function App() {
             selectedExecutionId={selectedExecutionId}
             onSelectExecution={handleSelectExecution}
             onNavigateToRepositories={() => setActiveTab('repositories')}
-            onNavigateToPatternCandidates={() => setActiveTab('pattern-candidates')}
           />
         ) : activeTab === 'admin' && !selectedEngagementId ? (
           <WorkflowAdministrationPage />

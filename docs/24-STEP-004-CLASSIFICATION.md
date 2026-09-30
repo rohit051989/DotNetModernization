@@ -1,5 +1,7 @@
 # 24 — Step 4: Pattern Classification Against Catalog
 
+> **Superseded by [28-ITEM-AND-CONVERSION-MODEL.md](28-ITEM-AND-CONVERSION-MODEL.md).** Kept as history; do not build from it. Lifecycle step 6 is now `item-detection` (`backend/app/steps/item_detection.py`); this document's classification engine, scoring, conflicts and role patterns were removed.
+
 Lifecycle step 4. Owner: **P + S**. Job: `phase0-repository-discovery`, after step 3.
 Implemented in **Python**, invoked via the `process` adapter.
 

@@ -1,5 +1,7 @@
 # 26 — Step 5: Pattern Discovery Clustering
 
+> **Superseded by [28-ITEM-AND-CONVERSION-MODEL.md](28-ITEM-AND-CONVERSION-MODEL.md).** Kept as history; do not build from it. Clustering was merged into lifecycle step 9, `unclaimed-signal-report` (not yet built); the step 5 code and its tables were removed.
+
 Lifecycle step 5. Owner: **P + S**. Job: `phase0-estate-consolidation`.
 Implemented in **Python**, invoked via the `process` adapter.
 

@@ -166,6 +166,11 @@ export function DashboardPage({ engagementId, onNavigateToRepositories, onNaviga
     )
   }
 
+  // Gated on the capability flag as well as the payload: item detection is
+  // only shown once the backend reports it implemented, so nothing renders
+  // fabricated numbers before then.
+  const items = summary.capabilities.item_detection ? summary.items : null
+
   return (
     <div className="mx-auto max-w-[1440px] space-y-6 p-6">
       <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-6">
@@ -201,18 +206,19 @@ export function DashboardPage({ engagementId, onNavigateToRepositories, onNaviga
           <p className="text-xs text-neutral-400">legacy_msbuild vs sdk_style</p>
         </SummaryCard>
         <UnavailableCard title="Applications" awaiting="application fingerprinting (step 3)" />
-        {summary.patterns ? (
-          <SummaryCard title="Patterns identified">
-            <p className="text-2xl font-semibold text-neutral-900">{summary.patterns.projects_matched}</p>
+        {items ? (
+          <SummaryCard title="Items found">
+            <p className="text-2xl font-semibold text-neutral-900">{items.items_found}</p>
             <p className="text-xs text-neutral-400">
-              of {summary.patterns.projects_evaluated} evaluated
-              {summary.patterns.top_patterns[0]
-                ? ` · top: ${summary.patterns.top_patterns[0].pattern_name}`
-                : ''}
+              {items.occurrences_found} occurrences · {items.projects_with_findings} of {items.projects_evaluated}{' '}
+              projects with findings
             </p>
+            {items.projects_needing_rescan > 0 && (
+              <p className="text-xs text-amber-600">{items.projects_needing_rescan} projects need a rescan</p>
+            )}
           </SummaryCard>
         ) : (
-          <UnavailableCard title="Patterns identified" awaiting="pattern classification (step 4)" />
+          <UnavailableCard title="Items found" awaiting="item detection" />
         )}
         <SummaryCard title="Target state decisions">
           <p className="text-2xl font-semibold text-neutral-900">{summary.decisions.approved}</p>
@@ -241,7 +247,7 @@ export function DashboardPage({ engagementId, onNavigateToRepositories, onNaviga
               <th className="px-3 py-2 font-medium">Frameworks</th>
               <th className="px-3 py-2 font-medium">Scan status</th>
               <th className="px-3 py-2 font-medium">Applications</th>
-              <th className="px-3 py-2 font-medium">Patterns</th>
+              <th className="px-3 py-2 font-medium">Items found</th>
               <th className="px-3 py-2 font-medium">Discovery progress</th>
               <th className="px-3 py-2 font-medium">Last run</th>
             </tr>
@@ -282,10 +288,10 @@ export function DashboardPage({ engagementId, onNavigateToRepositories, onNaviga
                   <td className="px-3 py-2 text-neutral-300" title="Awaiting application fingerprinting (step 3)">
                     —
                   </td>
-                  {row.patterns_identified !== null ? (
-                    <td className="px-3 py-2 text-neutral-700">{row.patterns_identified}</td>
+                  {row.items_found !== null ? (
+                    <td className="px-3 py-2 text-neutral-700">{row.items_found}</td>
                   ) : (
-                    <td className="px-3 py-2 text-neutral-300" title="Awaiting pattern classification (step 4)">
+                    <td className="px-3 py-2 text-neutral-300" title="Awaiting item detection">
                       —
                     </td>
                   )}
@@ -310,27 +316,61 @@ export function DashboardPage({ engagementId, onNavigateToRepositories, onNaviga
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <section className="rounded border border-neutral-200 bg-white p-4">
-          <h2 className="mb-2 text-sm font-semibold text-neutral-900">Pattern distribution</h2>
-          {summary.patterns ? (
-            summary.patterns.top_patterns.length > 0 ? (
-              <ul className="space-y-1.5">
-                {summary.patterns.top_patterns.map((p) => (
-                  <li key={p.pattern_id} className="flex items-center justify-between text-sm">
-                    <span className="text-neutral-700">Projects classified as {p.pattern_name}</span>
-                    <span className="font-medium text-neutral-900">{p.count}</span>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="text-xs text-neutral-400">
-                No projects matched a catalog pattern yet ({summary.patterns.projects_no_pattern_matched} evaluated
-                with no match).
-              </p>
-            )
+          <h2 className="mb-2 text-sm font-semibold text-neutral-900">Item work list</h2>
+          {items ? (
+            <>
+              <dl className="mb-3 grid grid-cols-2 gap-x-4 gap-y-1 text-xs sm:grid-cols-4">
+                <div>
+                  <dt className="text-neutral-400">Projects with findings</dt>
+                  <dd className="font-medium text-neutral-900">
+                    {items.projects_with_findings} of {items.projects_evaluated}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-neutral-400">Items found</dt>
+                  <dd className="font-medium text-neutral-900">{items.items_found}</dd>
+                </div>
+                <div>
+                  <dt className="text-neutral-400">Occurrences found</dt>
+                  <dd className="font-medium text-neutral-900">{items.occurrences_found}</dd>
+                </div>
+                <div>
+                  <dt className="text-neutral-400">Needing rescan</dt>
+                  <dd
+                    className={
+                      items.projects_needing_rescan > 0 ? 'font-medium text-amber-600' : 'font-medium text-neutral-900'
+                    }
+                  >
+                    {items.projects_needing_rescan}
+                  </dd>
+                </div>
+              </dl>
+              {items.top_items.length > 0 ? (
+                <table className="w-full text-left text-sm">
+                  <thead className="text-xs uppercase tracking-wide text-neutral-400">
+                    <tr>
+                      <th className="py-1 font-medium">Item</th>
+                      <th className="py-1 text-right font-medium">Projects</th>
+                      <th className="py-1 text-right font-medium">Occurrences</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {items.top_items.map((item) => (
+                      <tr key={item.item_id} className="border-t border-neutral-50">
+                        <td className="py-1.5 text-neutral-700">{item.item_name}</td>
+                        <td className="py-1.5 text-right font-medium text-neutral-900">{item.projects}</td>
+                        <td className="py-1.5 text-right text-neutral-600">{item.occurrences}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <p className="text-xs text-neutral-400">No catalog items found in the evaluated projects yet.</p>
+              )}
+            </>
           ) : (
-            <p className="text-xs text-neutral-400">
-              Awaiting pattern classification (step 4). {summary.decisions.total_patterns_in_scope} patterns currently
-              in scope for this engagement.
+            <p className="text-sm text-neutral-300">
+              — <span className="text-xs text-neutral-400">Awaiting item detection.</span>
             </p>
           )}
         </section>

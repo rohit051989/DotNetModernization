@@ -1,5 +1,7 @@
 # 27 — Step 6: Pattern Validation
 
+> **Superseded by [28-ITEM-AND-CONVERSION-MODEL.md](28-ITEM-AND-CONVERSION-MODEL.md).** Kept as history; do not build from it. Pattern validation is no longer a gate; the validation_queue infrastructure it introduced is kept for lifecycle steps 17, 24 and 34.
+
 Lifecycle step 6. Owner: **H**. Job: `phase0-estate-consolidation`, after step 5.
 
 A human decides what each candidate cluster is: a new catalog pattern, an extension of

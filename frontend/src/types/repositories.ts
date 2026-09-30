@@ -138,8 +138,7 @@ export interface WorkflowCapabilities {
   metrics_available: {
     repository_count: boolean
     application_count: boolean
-    pattern_classification: boolean
-    impact_map: boolean
+    item_detection: boolean
     test_coverage: boolean
     risk_tier: boolean
   }

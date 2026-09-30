@@ -399,7 +399,12 @@ The menu. Client-agnostic, grows across engagements.
 `is_default` BOOL · `linux_compatible` BOOL · `container_ready` BOOL ·
 `notes` · `created_at`/`updated_at`
 
-Unique on `(item_id, name)`. At most one `is_default` per item.
+Unique on `(item_id, name)`. At most one `is_default` per item, guaranteed by the
+database (`uq_item_resolutions_one_default`, over live resolutions), not just by the
+API. The default is the presumptive choice for every engagement, so it moves in one
+transaction: `POST /api/catalog/items/{id}/resolutions/{rid}/make-default` unsets
+the old default and sets the new one together, or changes nothing. A deprecated
+resolution cannot become the default.
 
 ### `engagement_decisions`
 
@@ -412,6 +417,13 @@ ingestion — this is what replaces lifecycle steps 13 to 15.
 `status` (`pending`/`in_review`/`approved`/`superseded`) · `created_at`/`updated_at`
 
 Partial unique on `(engagement_id, item_id) WHERE status <> 'superseded'`.
+
+Updates are partial. A field **omitted** from the body keeps its value; a field sent as
+an explicit **`null`** is cleared. That lets a decision moved from a higher-impact
+resolution back to the default shed its forcing perspective and rationale. Otherwise
+it would keep a justification it no longer needs and be counted under that
+perspective. `status` cannot be null. The result is validated as a whole, so clearing
+something an approval needs is rejected.
 
 `forcing_perspective` and `forcing_rationale` are a pair, as established in
 `25-STANDARDS-AND-VIEWPOINTS.md` A1. `candidates_considered` records which resolutions
@@ -473,6 +485,35 @@ Occurrences from a signal whose extractor is later removed **remain valid** — 
 `signal_registry_version` on the row records what was true when detected. Readiness
 state does not retroactively invalidate detections.
 
+### As implemented (step 6, `backend/app/steps/item_detection.py`)
+
+- **One recorded answer per item per project.** Every evaluated pair writes at least one
+  row: `checked_absent` and `not_checked` are a single project-level row with no
+  `file_path`.
+- **Found but unlocated.** An occurrence-scope item can hold on a signal that locates
+  nothing (`system-drawing-common` matched on the package alone). It writes one `found`
+  row with no `file_path`. The CHECK is "`file_path` only on a found occurrence-scope
+  row", not "iff".
+- **`value` column.** For `group_by: source_path_and_value` (one row per connection
+  string, one per secret key) the located unique index is `(project_id, item_id,
+  file_path, value)`, NULLS NOT DISTINCT.
+- **Only rows the condition accepts are projected.** A Serilog sink whose path is not a
+  Windows path is not an occurrence of an item whose condition requires one.
+- **`not_checked` always means "a rescan can resolve this"**:
+  - the fingerprint's registry version predates a referenced signal
+  - step 3 failed on the project
+  - step 3 never reached the project
+- **Deliberately skipped projects are not `not_checked`.** A project step 3 skips as out
+  of scope (`.dcproj`, `.sfproj`, Node.js) will never be fingerprinted. Signal-based
+  items do not apply to it and write no row; items detected purely by step 2 metadata are
+  still evaluated.
+- **Role exclusion writes no row.** An item whose `excluded_roles` contains the project's
+  role (Part D, `app/items/roles.py`) does not apply to it.
+- **Not-ready items write nothing** (Part C).
+- **The artifact** is `item-occurrences@1.0.0`: sorted keys and collections, no
+  timestamps. It carries each project's computed role and reason, and the catalog item
+  versions evaluated. Byte-identical across runs on unchanged input.
+
 ---
 
 ---
@@ -492,7 +533,19 @@ doing unnecessary work, or an item is missing.
 GET /api/catalog/item-coverage
 GET /api/catalog/signal-coverage
 GET /api/catalog/extractor-backlog
+GET /api/catalog/signal-index            every signal, and the items referencing it
+GET /api/catalog/items/{id}/signals      the reverse: one item's signals
 ```
+
+**The signal index** is built server-side from stored detections, so no client
+re-parses rules. Each reference says how the item uses the signal:
+
+- `match` — in `all`, `any` or `atLeast`
+- `none` — in an exclusion
+- `occurrence_source` — locates occurrences
+
+A signal referenced only in `none` is flagged `exclusion_only`. It does exclusion work,
+not detection, which matters when judging whether its extractor earns its keep.
 
 ### LLM-assisted signal suggestion
 

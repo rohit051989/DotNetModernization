@@ -3,10 +3,9 @@ import { StepRegistrySection } from './StepRegistrySection'
 import { JobDefinitionsAdminSection } from './JobDefinitionsAdminSection'
 import { GlobalPolicySection } from './GlobalPolicySection'
 import { PolicyMatrixSection } from './PolicyMatrixSection'
-import { CatalogCoverageSection } from './CatalogCoverageSection'
 import { ViewpointCoverageSection } from './ViewpointCoverageSection'
 
-type Section = 'registry' | 'viewpoints' | 'definitions' | 'policy' | 'matrix' | 'coverage'
+type Section = 'registry' | 'viewpoints' | 'definitions' | 'policy' | 'matrix'
 
 const SECTIONS: { key: Section; label: string }[] = [
   { key: 'registry', label: 'Step registry' },
@@ -14,7 +13,6 @@ const SECTIONS: { key: Section; label: string }[] = [
   { key: 'definitions', label: 'Job definitions' },
   { key: 'policy', label: 'Global policy' },
   { key: 'matrix', label: 'Policy matrix' },
-  { key: 'coverage', label: 'Catalog Coverage' },
 ]
 
 /** 23-WORKFLOW-ADMINISTRATION.md Part C — master-scope administration of
@@ -59,7 +57,6 @@ export function WorkflowAdministrationPage() {
       {section === 'definitions' && <JobDefinitionsAdminSection />}
       {section === 'policy' && <GlobalPolicySection />}
       {section === 'matrix' && <PolicyMatrixSection />}
-      {section === 'coverage' && <CatalogCoverageSection />}
     </div>
   )
 }

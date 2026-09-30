@@ -43,24 +43,27 @@ export interface DashboardRepositoryStructureBrief {
   framework_families: Record<string, number>
 }
 
-export interface DashboardTopPattern {
-  pattern_id: string
-  pattern_name: string
-  count: number
+export interface DashboardTopItem {
+  item_id: string
+  item_name: string
+  projects: number
+  occurrences: number
 }
 
-export interface DashboardPatternCounts {
+/** Item detection roll-up for the engagement. `null` on the summary until
+ * item detection is implemented — never fabricated zeros. */
+export interface DashboardItemCounts {
   projects_evaluated: number
-  projects_matched: number
-  projects_ambiguous: number
-  projects_no_pattern_matched: number
-  top_patterns: DashboardTopPattern[]
+  projects_with_findings: number
+  items_found: number
+  occurrences_found: number
+  projects_needing_rescan: number
+  top_items: DashboardTopItem[]
 }
 
 export interface DashboardCapabilities {
   application_count: boolean
-  pattern_classification: boolean
-  impact_map: boolean
+  item_detection: boolean
   test_coverage: boolean
   risk_tier: boolean
   wave_planning: boolean
@@ -86,7 +89,7 @@ export interface DashboardSummary {
   discovery: DashboardDiscoveryCounts
   structure: DashboardStructureCounts
   applications: Record<string, unknown> | null
-  patterns: DashboardPatternCounts | null
+  items: DashboardItemCounts | null
   risk_tiers: Record<string, unknown> | null
   waves: Record<string, unknown> | null
   decisions: DashboardDecisionCounts
@@ -132,7 +135,9 @@ export interface DashboardRepositoryRow {
   latest_execution: DashboardLatestExecution | null
   structure: DashboardRepositoryStructureBrief | null
   application_count: number | null
-  patterns_identified: number | null
+  /** Distinct catalog items found in this repository; null until item
+   * detection is implemented. */
+  items_found: number | null
   highest_risk_tier: string | null
   wave: string | null
 }

@@ -336,10 +336,21 @@ class ResolutionOut(BaseModel):
 
 
 class EngagementDecisionUpsert(BaseModel):
-    """Partial-update semantics on an existing decision: an omitted field
-    keeps its current value."""
+    """Partial update. A field OMITTED from the body keeps its current value;
+    a field sent as an explicit `null` is cleared. That distinction is what
+    lets a decision shed a forcing perspective it no longer needs — e.g. after
+    moving from a higher-impact resolution back to the default. `status`
+    cannot be null."""
 
     model_config = ConfigDict(extra="forbid")
+
+    @field_validator("status")
+    @classmethod
+    def _status_not_null(cls, value):
+        # Only reached when status is present in the body; omitted is fine.
+        if value is None:
+            raise ValueError("status cannot be null; omit it to keep the current status")
+        return value
 
     resolution_id: str | None = None
     candidates_considered: list[str] | None = Field(
@@ -429,6 +440,44 @@ class ExtractorBacklogEntry(BaseModel):
     items_unblocked: list[str] = Field(
         description="Items that become ready once this extractor lands, because it is their only remaining blocker."
     )
+
+
+# ---------- signal index ----------
+
+SignalUsage = Literal["match", "none", "occurrence_source"]
+
+
+class SignalReference(BaseModel):
+    item_id: str
+    item_name: str
+    item_scope: ItemScope
+    item_status: ItemStatus
+    usages: list[SignalUsage] = Field(description="How this item uses the signal: in match, in a none condition, as occurrence_source.")
+
+
+class SignalIndexEntry(BaseModel):
+    name: str
+    registered: bool = Field(description="False for a name an item references that the registry does not have.")
+    type: str | None
+    category: str | None
+    expected_extractor: str | None
+    state: ReadinessState | None
+    signal_introduced_in_version: str | None
+    description: str | None
+    referenced: bool
+    usages: list[SignalUsage] = Field(description="Union of usages across all referencing items.")
+    exclusion_only: bool = Field(description="Referenced, but only ever in `none`: exclusion work, not detection.")
+    referenced_by: list[SignalReference]
+
+
+class ItemSignal(BaseModel):
+    name: str
+    registered: bool
+    type: str | None
+    category: str | None
+    expected_extractor: str | None
+    state: ReadinessState | None
+    usages: list[SignalUsage]
 
 
 class ExtractorBacklog(BaseModel):

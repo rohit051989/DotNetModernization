@@ -39,8 +39,9 @@ def _validate_slug(value: str) -> str:
 
 
 # ---------- Step 4 classification schema (24-STEP-004-CLASSIFICATION.md Part C) ----------
-# Stored in `patterns.detection_rules`, evaluated by the classification
-# engine at steps/step-004-classification/.
+# Stored in `patterns.detection_rules` (legacy pattern tables, kept until the
+# reset). The engine that evaluated it was removed with step 4; the grammar
+# lives on in catalog item detection (app/items/detection.py, evaluation.py).
 
 
 class ValueMatch(BaseModel):

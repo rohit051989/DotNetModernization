@@ -11,7 +11,6 @@ from app.config import settings
 from app.routers import (
     catalog,
     catalog_items,
-    classifications,
     dashboard,
     decisions,
     engagement_patterns,
@@ -27,7 +26,6 @@ from app.routers import (
     workflow_artifacts,
     workflow_capabilities,
     workflow_executions,
-    pattern_candidates,
     validation_queue,
     workflow_jobs,
     workflow_policy,
@@ -155,15 +153,6 @@ app = FastAPI(
             ),
         },
         {
-            "name": "Classification",
-            "description": (
-                "Read-only results from lifecycle step 4 (pattern-classification): per-project "
-                "status and matched/near-miss patterns, engagement-wide pattern distribution, "
-                "and catalog coverage. Nothing here mutates — the classification step itself "
-                "owns these rows."
-            ),
-        },
-        {
             "name": "Workflow Steps",
             "description": (
                 "The registry of known lifecycle steps and their contracts (`consumes` / "
@@ -288,7 +277,6 @@ app.include_router(catalog_items.router)
 app.include_router(item_decisions.router)
 app.include_router(workflow_steps.router)
 app.include_router(workflow_capabilities.router)
-app.include_router(pattern_candidates.router)
 app.include_router(validation_queue.router)
 app.include_router(workflow_jobs.router)
 app.include_router(workflow_executions.router)
@@ -297,4 +285,3 @@ app.include_router(workflow_artifacts.router)
 app.include_router(repositories.router)
 app.include_router(structure.router)
 app.include_router(dashboard.router)
-app.include_router(classifications.router)

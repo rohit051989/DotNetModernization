@@ -200,7 +200,7 @@ export function RepositoryList({
                 <th className="px-3 py-2 font-medium">Git</th>
                 <th className="px-3 py-2 font-medium">Size</th>
                 <th className="px-3 py-2 font-medium">Apps</th>
-                <th className="px-3 py-2 font-medium">Patterns</th>
+                <th className="px-3 py-2 font-medium">Items found</th>
                 <th className="px-3 py-2 font-medium">Discovery</th>
                 <th className="px-3 py-2 font-medium">Last scanned</th>
               </tr>
@@ -235,9 +235,13 @@ export function RepositoryList({
                     <td className="px-3 py-2 text-neutral-300" title="Awaiting application fingerprinting (step 3)">
                       —
                     </td>
-                    <td className="px-3 py-2 text-neutral-300" title="Awaiting pattern classification (step 4)">
-                      —
-                    </td>
+                    {progress && progress.items_found !== null ? (
+                      <td className="px-3 py-2 text-neutral-700">{progress.items_found}</td>
+                    ) : (
+                      <td className="px-3 py-2 text-neutral-300" title="Awaiting item detection">
+                        —
+                      </td>
+                    )}
                     <td className="px-3 py-2" onClick={(event) => latest && event.stopPropagation()}>
                       {latest ? (
                         <DiscoveryProgressBar

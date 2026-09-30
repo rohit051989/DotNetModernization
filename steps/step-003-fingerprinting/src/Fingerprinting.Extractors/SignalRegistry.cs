@@ -89,9 +89,9 @@ public sealed class SignalRegistry
     }
 
     // Highest-versioned signal-registry-*.json wins — mirrors the backend's
-    // and step 4's own "latest registry" resolution (app/catalog_rules.py,
-    // steps/step-004-classification/engine/registry.py), so a registry bump
-    // only ever means adding a new file, never a matching code change.
+    // "latest registry" resolution (app/catalog_rules.py, app/items/registry.py),
+    // so a registry bump only ever means adding a new file, never a matching
+    // code change.
     private static readonly Regex VersionedFileNamePattern = new(@"^signal-registry-(\d+)\.(\d+)\.(\d+)\.json$");
 
     /// <summary>The highest-versioned <c>signal-registry-*.json</c> under

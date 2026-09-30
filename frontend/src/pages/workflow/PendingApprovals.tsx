@@ -7,11 +7,12 @@ import { usePolling } from '../../hooks/usePolling'
 const POLL_INTERVAL_MS = 15000
 
 /** Human-readable labels for gate item types. Every gate step's type is listed,
- * including the three whose steps do not exist yet — 27 Part A's whole point is
- * that steps 22, 38 and 50 inherit this surface with no further work, and a
- * label table that only knows about step 6 would quietly undo that. */
+ * including the ones whose steps do not exist yet — steps 22, 38 and 50 inherit
+ * this surface with no further work. Unknown types fall back to the raw value.
+ * `pattern_candidate` belongs to the retired pattern-validation step; it stays
+ * only so queue items it raised before retirement still read sensibly. */
 const ITEM_TYPE_LABEL: Record<string, string> = {
-  pattern_candidate: 'Pattern candidate',
+  pattern_candidate: 'Pattern candidate (retired)',
   target_state_selection: 'Target state',
   migration_plan: 'Migration plan',
   code_review: 'Code review',
@@ -19,7 +20,7 @@ const ITEM_TYPE_LABEL: Record<string, string> = {
 }
 
 const STEP_LABEL: Record<string, string> = {
-  'pattern-validation': 'Pattern validation (step 6)',
+  'pattern-validation': 'Pattern validation (retired)',
   'target-state-approval': 'Target state approval (step 16)',
   'plan-approval-gate': 'Plan approval (step 22)',
   'code-review-gate': 'Code review (step 38)',
@@ -38,14 +39,9 @@ function age(iso: string): string {
 interface PendingApprovalsProps {
   engagementId: string
   onSelectExecution: (executionId: string) => void
-  onNavigateToPatternCandidates: () => void
 }
 
-export function PendingApprovals({
-  engagementId,
-  onSelectExecution,
-  onNavigateToPatternCandidates,
-}: PendingApprovalsProps) {
+export function PendingApprovals({ engagementId, onSelectExecution }: PendingApprovalsProps) {
   const [items, setItems] = useState<QueueItem[]>([])
   const [summary, setSummary] = useState<QueueSummary | null>(null)
   const [loading, setLoading] = useState(true)
@@ -114,7 +110,7 @@ export function PendingApprovals({
       {!loading && !error && items.length === 0 && (
         <EmptyState
           title="Nothing is waiting for a decision"
-          description="Human gates raise items here when a job reaches one. Steps 6, 22, 38 and 50 all use this queue."
+          description="Human gates raise items here when a job reaches one."
         />
       )}
 
@@ -152,19 +148,10 @@ export function PendingApprovals({
             .sort(([a], [b]) => a.localeCompare(b))
             .map(([stepName, stepItems]) => (
               <div key={stepName} className="border-b border-neutral-100 last:border-b-0">
-                <div className="flex items-center justify-between px-4 py-2">
+                <div className="px-4 py-2">
                   <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
                     {STEP_LABEL[stepName] ?? stepName}
                   </h3>
-                  {stepName === 'pattern-validation' && (
-                    <button
-                      type="button"
-                      onClick={onNavigateToPatternCandidates}
-                      className="text-xs text-sky-700 hover:underline"
-                    >
-                      Review in Pattern Candidates →
-                    </button>
-                  )}
                 </div>
                 <table className="w-full text-left text-sm">
                   <thead className="text-xs uppercase tracking-wide text-neutral-400">

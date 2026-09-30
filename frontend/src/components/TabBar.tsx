@@ -1,4 +1,4 @@
-export type TabKey = 'catalog' | 'repositories' | 'pattern-candidates' | 'applications' | 'dependencies' | 'waves' | 'dashboard' | 'workflow' | 'admin'
+export type TabKey = 'catalog' | 'repositories' | 'applications' | 'dependencies' | 'waves' | 'dashboard' | 'workflow' | 'admin'
 
 interface Tab {
   key: TabKey
@@ -22,9 +22,6 @@ const TABS: Tab[] = [
   // should not see it at all (04-FRONTEND-SPEC.md, "Future: access control").
   { key: 'admin', label: 'Workflow Administration', engagementOnly: false, masterOnly: true, implemented: true },
   { key: 'repositories', label: 'Repositories', engagementOnly: true, masterOnly: false, implemented: true },
-  // Step 5's output, and the surface step 6's decision actions will land
-  // on (26-STEP-005-PATTERN-DISCOVERY.md).
-  { key: 'pattern-candidates', label: 'Pattern Candidates', engagementOnly: true, masterOnly: false, implemented: true },
   { key: 'applications', label: 'Applications', engagementOnly: true, masterOnly: false, implemented: false },
   { key: 'dependencies', label: 'Dependencies', engagementOnly: true, masterOnly: false, implemented: false },
   { key: 'waves', label: 'Waves', engagementOnly: true, masterOnly: false, implemented: false },

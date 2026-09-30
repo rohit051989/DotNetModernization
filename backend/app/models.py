@@ -164,18 +164,6 @@ SIGNAL_TYPE = (
     "API_INVOCATION",
     "LITERAL",
 )
-# ---- Step 4 — pattern classification (24-STEP-004-CLASSIFICATION.md Part E/F) ----
-CLASSIFICATION_STATUS = (
-    "SKIPPED",
-    "NOT_ELIGIBLE",
-    "INSUFFICIENT_FINGERPRINT",
-    "AMBIGUOUS",
-    "MULTIPLE_MATCHES",
-    "MATCHED",
-    "NO_PATTERN_MATCHED",
-    "CLASSIFICATION_FAILED",
-)
-MATCH_ENGAGEMENT_SCOPE_STATUS = ("active", "deferred", "deleted")
 
 # The nine source types from step-3-application-fingerprinting.md section 18.
 EVIDENCE_SOURCE_TYPE = (
@@ -1199,240 +1187,6 @@ class FingerprintScan(Base):
     )
 
 
-class ProjectClassification(Base):
-    """1:1 with `projects` — written by step 4 (pattern-classification).
-    Replaced wholesale per repository on rescan, same pattern as
-    `project_fingerprints` for step 3. See
-    24-STEP-004-CLASSIFICATION.md Part F."""
-
-    __tablename__ = "project_classifications"
-
-    project_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), primary_key=True
-    )
-    repository_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("repositories.id", ondelete="CASCADE"), nullable=False
-    )
-    classification_status: Mapped[str] = mapped_column(Text, nullable=False)
-    project_role: Mapped[str | None] = mapped_column(Text)
-    project_role_confidence: Mapped[float | None] = mapped_column(Numeric(3, 2))
-    # Echoed from step 2's `projects` row so the classification and its
-    # artifact are self-contained (Part F). Family is what discriminates a
-    # pattern; version is a parameter an accelerator or step 10's risk score
-    # reads — never a pattern discriminator. See Part C.
-    framework_family: Mapped[str | None] = mapped_column(Text)
-    framework_version: Mapped[str | None] = mapped_column(Text)
-    catalog_revision: Mapped[int] = mapped_column(BigInteger, nullable=False)
-    signal_registry_version: Mapped[str | None] = mapped_column(Text)
-    config_version: Mapped[str] = mapped_column(Text, nullable=False)
-    evaluated_pattern_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
-    primary_pattern_id: Mapped[str | None] = mapped_column(Text, ForeignKey("patterns.id", ondelete="SET NULL"))
-    warnings: Mapped[list | None] = mapped_column(JSONB)
-    step_execution_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
-    classified_at: Mapped[datetime.datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
-    )
-
-    __table_args__ = (
-        CheckConstraint(
-            f"classification_status IN {CLASSIFICATION_STATUS}", name="ck_project_classifications_status"
-        ),
-        Index("ix_project_classifications_repository_id", "repository_id"),
-    )
-
-
-class ClassificationMatch(Base):
-    """One row per pattern **evaluated** for a project, matched or not —
-    near-misses are the tuning input. See 24-STEP-004-CLASSIFICATION.md
-    Part F."""
-
-    __tablename__ = "classification_matches"
-
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
-    )
-    project_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
-    )
-    repository_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("repositories.id", ondelete="CASCADE"), nullable=False
-    )
-    pattern_id: Mapped[str] = mapped_column(Text, ForeignKey("patterns.id", ondelete="CASCADE"), nullable=False)
-    pattern_version: Mapped[int] = mapped_column(Integer, nullable=False)
-    matched: Mapped[bool] = mapped_column(Boolean, nullable=False)
-    classification_role: Mapped[str] = mapped_column(Text, nullable=False)
-    match_score: Mapped[int] = mapped_column(Integer, nullable=False)
-    confidence: Mapped[float] = mapped_column(Numeric(3, 2), nullable=False)
-    confidence_level: Mapped[str] = mapped_column(Text, nullable=False)
-    is_primary_selected: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
-    rejection_reason: Mapped[str | None] = mapped_column(Text)
-    # Set only when this match participated in a conflict/ambiguity
-    # determination against another PRIMARY candidate — whether that pair's
-    # relationship came from the catalog's own compatible_with/conflicts_with
-    # ('declared') or had to default because neither pattern declares it
-    # ('defaulted', per 24-STEP-004-CLASSIFICATION.md Part E — an undeclared
-    # relationship defaults to CONFLICTING, never compatible).
-    relationship_source: Mapped[str | None] = mapped_column(Text)
-    engagement_scope_status: Mapped[str | None] = mapped_column(Text)
-    matched_rules: Mapped[list | None] = mapped_column(JSONB)
-    failed_rules: Mapped[list | None] = mapped_column(JSONB)
-    missing_preferred: Mapped[list | None] = mapped_column(JSONB)
-    negative_triggered: Mapped[list | None] = mapped_column(JSONB)
-    explanation: Mapped[str | None] = mapped_column(Text)
-
-    __table_args__ = (
-        UniqueConstraint("project_id", "pattern_id", name="uq_classification_matches_project_pattern"),
-        CheckConstraint(
-            f"classification_role IN {CLASSIFICATION_ROLE}", name="ck_classification_matches_role"
-        ),
-        CheckConstraint(
-            f"engagement_scope_status IS NULL OR engagement_scope_status IN {MATCH_ENGAGEMENT_SCOPE_STATUS}",
-            name="ck_classification_matches_engagement_scope_status",
-        ),
-        CheckConstraint(
-            "relationship_source IS NULL OR relationship_source IN ('declared', 'defaulted')",
-            name="ck_classification_matches_relationship_source",
-        ),
-        Index("ix_classification_matches_repository_matched", "repository_id", "matched"),
-        Index("ix_classification_matches_repository_pattern", "repository_id", "pattern_id"),
-    )
-
-
-class CatalogCoverageReport(Base):
-    """Per scan, per repository — 24-STEP-004-CLASSIFICATION.md Part F,
-    metrics per step-4-pattern-classification-against-catalog.md section 18."""
-
-    __tablename__ = "catalog_coverage_reports"
-
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
-    )
-    repository_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("repositories.id", ondelete="CASCADE"), nullable=False
-    )
-    catalog_version: Mapped[str] = mapped_column(Text, nullable=False)
-    catalog_revision: Mapped[int] = mapped_column(BigInteger, nullable=False)
-    signal_registry_version: Mapped[str | None] = mapped_column(Text)
-    registered_signal_count: Mapped[int] = mapped_column(Integer, nullable=False)
-    referenced_signal_count: Mapped[int] = mapped_column(Integer, nullable=False)
-    unreferenced_signal_count: Mapped[int] = mapped_column(Integer, nullable=False)
-    active_pattern_count: Mapped[int] = mapped_column(Integer, nullable=False)
-    evaluated_pattern_count: Mapped[int] = mapped_column(Integer, nullable=False)
-    matched_pattern_count: Mapped[int] = mapped_column(Integer, nullable=False)
-    never_matched_pattern_ids: Mapped[list | None] = mapped_column(JSONB)
-    patterns_awaiting_signals_by_extractor: Mapped[dict | None] = mapped_column(JSONB)
-    most_frequent_unmatched_signal_combinations: Mapped[list | None] = mapped_column(JSONB)
-    step_execution_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
-    generated_at: Mapped[datetime.datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
-    )
-
-    __table_args__ = (
-        Index("ix_catalog_coverage_reports_repository_id", "repository_id"),
-    )
-
-
-class PatternCandidateCluster(Base):
-    """A candidate pattern discovered by step 5 — see
-    26-STEP-005-PATTERN-DISCOVERY.md Part D.
-
-    Unlike every other step output, these rows are NOT replaced per run.
-    `cluster_id` derives from the shape, so the same shape in a later run
-    resolves to this row and inherits step 6's decision. The narration
-    columns are advisory suggestions, never catalog data.
-    """
-
-    __tablename__ = "pattern_candidate_clusters"
-
-    cluster_id: Mapped[str] = mapped_column(Text, primary_key=True)
-    engagement_id: Mapped[str] = mapped_column(
-        Text, ForeignKey("engagements.id", ondelete="CASCADE"), nullable=False
-    )
-    cluster_method: Mapped[str] = mapped_column(Text, nullable=False)
-    canonical_signature: Mapped[dict] = mapped_column(JSONB, nullable=False)
-    signal_count: Mapped[int] = mapped_column(Integer, nullable=False)
-    member_count: Mapped[int] = mapped_column(Integer, nullable=False)
-    repository_count: Mapped[int] = mapped_column(Integer, nullable=False)
-    repository_distribution: Mapped[dict] = mapped_column(JSONB, nullable=False)
-    cohesion: Mapped[float | None] = mapped_column(Numeric(4, 3))
-    is_singleton: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
-    similar_patterns: Mapped[list | None] = mapped_column(JSONB)
-    status: Mapped[str] = mapped_column(Text, nullable=False, server_default="candidate")
-    resolved_pattern_id: Mapped[str | None] = mapped_column(Text, ForeignKey("patterns.id", ondelete="SET NULL"))
-    resolution_note: Mapped[str | None] = mapped_column(Text)
-    decided_at_coverage: Mapped[float | None] = mapped_column(Numeric(4, 3))
-    decided_at_member_count: Mapped[int | None] = mapped_column(Integer)
-    needs_rereview: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
-    rereview_reason: Mapped[str | None] = mapped_column(Text)
-    is_stale: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
-    # Advisory naming (Part E). `naming_source` of 'human' means a person
-    # renamed it at step 6 and a later machine run must not overwrite them.
-    suggested_name: Mapped[str | None] = mapped_column(Text)
-    suggested_description: Mapped[str | None] = mapped_column(Text)
-    suggested_pattern_id: Mapped[str | None] = mapped_column(Text)
-    narration_confidence: Mapped[str | None] = mapped_column(Text)
-    naming_source: Mapped[str] = mapped_column(Text, nullable=False, server_default="none")
-    narration_model_version: Mapped[str | None] = mapped_column(Text)
-    narrated_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
-    first_seen_at: Mapped[datetime.datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
-    )
-    last_seen_at: Mapped[datetime.datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
-    )
-    step_execution_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
-
-
-class PatternCandidateMember(Base):
-    """One project inside a candidate cluster. Replaced per cluster per
-    run — membership is a snapshot, the cluster row is not."""
-
-    __tablename__ = "pattern_candidate_members"
-
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid())
-    cluster_id: Mapped[str] = mapped_column(
-        Text, ForeignKey("pattern_candidate_clusters.cluster_id", ondelete="CASCADE"), nullable=False
-    )
-    project_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
-    )
-    repository_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("repositories.id", ondelete="CASCADE"), nullable=False
-    )
-    classification_status: Mapped[str] = mapped_column(Text, nullable=False)
-    similarity_to_signature: Mapped[float | None] = mapped_column(Numeric(4, 3))
-    signal_count: Mapped[int] = mapped_column(Integer, nullable=False)
-    classification_step_execution_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
-
-
-class PatternDiscoveryRun(Base):
-    """One step 5 run's narration outcome — Part E.
-
-    Exists because narration failure surfacing only as a step diagnostic
-    is easy to miss at fleet scale: a human arriving at step 6 would see
-    unnamed clusters with no indication why, which reads as "nothing to
-    say about this shape" rather than "the narrator was unreachable".
-    """
-
-    __tablename__ = "pattern_discovery_runs"
-
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid())
-    engagement_id: Mapped[str] = mapped_column(
-        Text, ForeignKey("engagements.id", ondelete="CASCADE"), nullable=False
-    )
-    step_execution_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
-    cluster_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
-    narrated_cluster_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
-    coverage_ratio: Mapped[float | None] = mapped_column(Numeric(4, 3))
-    partial_estate: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
-    narration_status: Mapped[str] = mapped_column(Text, nullable=False)
-    narration_reason: Mapped[str | None] = mapped_column(Text)
-    output_dir: Mapped[str | None] = mapped_column(Text)
-    run_at: Mapped[datetime.datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
-    )
-
-
 class ValidationQueueItem(Base):
     """One thing a human must decide — 27-STEP-006-PATTERN-VALIDATION.md
     Part B.
@@ -1756,6 +1510,9 @@ class ItemOccurrence(Base):
     item_id: Mapped[str] = mapped_column(Text, ForeignKey("catalog_items.id"), nullable=False)
     scope: Mapped[str] = mapped_column(Text, nullable=False)
     file_path: Mapped[str | None] = mapped_column(Text)
+    # Set for a `group_by: source_path_and_value` item, where one file holds
+    # several occurrences (one per connection string, one per secret key).
+    value: Mapped[str | None] = mapped_column(Text)
     evidence: Mapped[list | None] = mapped_column(JSONB)
     signal_registry_version: Mapped[str] = mapped_column(Text, nullable=False)
     detection_state: Mapped[str] = mapped_column(Text, nullable=False)
@@ -1765,10 +1522,12 @@ class ItemOccurrence(Base):
     __table_args__ = (
         CheckConstraint(f"scope IN {ITEM_SCOPE}", name="ck_item_occurrences_scope"),
         CheckConstraint(f"detection_state IN {DETECTION_STATE}", name="ck_item_occurrences_detection_state"),
-        # A location exists only for a found occurrence-scope row. Application
-        # scope, checked_absent and not_checked rows are per project.
+        # A location only ever sits on a found occurrence-scope row. Such a
+        # row may still have none (found on a signal that locates nothing);
+        # application scope, checked_absent and not_checked rows are per
+        # project, file_path null.
         CheckConstraint(
-            "(file_path IS NOT NULL) = (scope = 'occurrence' AND detection_state = 'found')",
+            "file_path IS NULL OR (scope = 'occurrence' AND detection_state = 'found')",
             name="ck_item_occurrences_file_path",
         ),
         Index(
@@ -1776,8 +1535,10 @@ class ItemOccurrence(Base):
             "project_id",
             "item_id",
             "file_path",
+            "value",
             unique=True,
             postgresql_where=text("file_path IS NOT NULL"),
+            postgresql_nulls_not_distinct=True,
         ),
         Index(
             "uq_item_occurrences_project",

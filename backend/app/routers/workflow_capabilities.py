@@ -11,8 +11,9 @@ router = APIRouter(prefix="/api/workflow", tags=["Workflow Steps"])
 _METRIC_STEP = {
     "repository_count": "repository-ingest",
     "application_count": "application-fingerprinting",
-    "pattern_classification": "pattern-classification",
-    "impact_map": "impact-map-generation",
+    # The work list is the impact map: retired impact-map-generation's metric
+    # is item-detection's (17-LIFECYCLE-STEPS.md v2.0).
+    "item_detection": "item-detection",
     "test_coverage": "test-coverage-assessment",
     "risk_tier": "risk-scoring-tier-assignment",
 }

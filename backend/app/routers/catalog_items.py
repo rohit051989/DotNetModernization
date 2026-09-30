@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 from app import models
 from app.db import get_db
 from app.errors import ErrorResponse, error
-from app.items import readiness
+from app.items import readiness, signal_index
 from app.items import schemas as item_schemas
 from app.items.detection import validate_detection
 
@@ -103,6 +103,19 @@ def get_item(
     db: Session = Depends(get_db),
 ):
     return _get_item(db, item_id, include_deleted)
+
+
+@router.get(
+    "/{item_id}/signals",
+    response_model=list[item_schemas.ItemSignal],
+    summary="The signals an item's detection references",
+    operation_id="list_catalog_item_signals",
+    responses={404: _ITEM_NOT_FOUND},
+)
+def list_item_signals(item_id: str, db: Session = Depends(get_db)):
+    """The reverse of GET /api/catalog/signal-index: this item's signals,
+    each with its usage (match / none / occurrence_source) and state."""
+    return signal_index.item_signals(db, _get_item(db, item_id))
 
 
 @router.post(
@@ -333,6 +346,67 @@ def update_resolution(
     db.commit()
     db.refresh(resolution)
     return resolution
+
+
+def move_default(db: Session, item_id: str, resolution_id: str) -> None:
+    """Makes `resolution_id` the item's only default, as one unit: every
+    other live resolution is unset first, then the target is set. Two
+    statements, because PostgreSQL checks a non-deferrable unique index row
+    by row and setting first would collide with the old default. The caller
+    commits once; if either statement fails the transaction rolls back and
+    the old default stands. uq_item_resolutions_one_default guarantees at
+    most one live default whatever happens."""
+    (
+        db.query(models.ItemResolution)
+        .filter(
+            models.ItemResolution.item_id == item_id,
+            models.ItemResolution.id != resolution_id,
+            models.ItemResolution.is_default.is_(True),
+        )
+        .update({"is_default": False, "updated_at": _now()}, synchronize_session=False)
+    )
+    db.flush()
+    (
+        db.query(models.ItemResolution)
+        .filter(models.ItemResolution.id == resolution_id)
+        .update({"is_default": True, "updated_at": _now()}, synchronize_session=False)
+    )
+    db.flush()
+
+
+@router.post(
+    "/{item_id}/resolutions/{resolution_id}/make-default",
+    response_model=list[item_schemas.ResolutionOut],
+    summary="Make a resolution the item's default, in one transaction",
+    response_description="The item's live resolutions after the move.",
+    operation_id="make_item_resolution_default",
+    responses={
+        404: {"model": ErrorResponse, "description": "No such item or live resolution."},
+        409: {"model": ErrorResponse, "description": "The resolution is deprecated and cannot be the default."},
+    },
+)
+def make_default(item_id: str, resolution_id: str, db: Session = Depends(get_db)):
+    """The default is the presumptive choice for every engagement, so it
+    moves atomically: the old default is unset and the new one set in the
+    same transaction, or nothing changes. Replaces unsetting and setting
+    with two PUTs, where a failure between them left the item with no
+    default."""
+    # TODO: gate behind an admin role once auth exists.
+    _get_item(db, item_id)
+    resolution = db.get(models.ItemResolution, resolution_id)
+    if resolution is None or resolution.item_id != item_id or resolution.deleted_at is not None:
+        raise error(404, f"Resolution '{resolution_id}' not found on item '{item_id}'", code="NOT_FOUND")
+    if resolution.status != "active":
+        raise error(409, f"Resolution '{resolution_id}' is {resolution.status} and cannot be the default", code="NOT_ACTIVE")
+
+    move_default(db, item_id, resolution_id)
+    db.commit()
+    return (
+        db.query(models.ItemResolution)
+        .filter(models.ItemResolution.item_id == item_id, models.ItemResolution.deleted_at.is_(None))
+        .order_by(models.ItemResolution.id)
+        .all()
+    )
 
 
 @router.delete(

@@ -215,10 +215,9 @@ class MetricsAvailable(BaseModel):
 
     repository_count: bool = Field(description="True once 'repository-ingest' (step 1) is implemented.")
     application_count: bool = Field(description="True once 'application-fingerprinting' (step 3) is implemented.")
-    pattern_classification: bool = Field(description="True once 'pattern-classification' (step 4) is implemented.")
-    impact_map: bool = Field(description="True once 'impact-map-generation' (step 8) is implemented.")
-    test_coverage: bool = Field(description="True once 'test-coverage-assessment' (step 9) is implemented.")
-    risk_tier: bool = Field(description="True once 'risk-scoring-tier-assignment' (step 10) is implemented.")
+    item_detection: bool = Field(description="True once 'item-detection' (step 6) is implemented.")
+    test_coverage: bool = Field(description="True once 'test-coverage-assessment' (step 7) is implemented.")
+    risk_tier: bool = Field(description="True once 'risk-scoring-tier-assignment' (step 8) is implemented.")
 
 
 class WorkflowCapabilities(BaseModel):

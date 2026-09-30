@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 from app import models
 from app.db import get_db
 from app.errors import ErrorResponse, error
-from app.items import readiness, registry
+from app.items import readiness, registry, signal_index
 from app.items import schemas as item_schemas
 from app.items.detection import referenced_signal_names
 from app.seed.seed_data import _load
@@ -169,6 +169,27 @@ def sync_signal_registry(db: Session = Depends(get_db)):
 
 
 # ---------- coverage (Part H) ----------
+
+
+@router.get(
+    "/signal-index",
+    response_model=list[item_schemas.SignalIndexEntry],
+    summary="Every signal, with the items that reference it and how",
+    operation_id="get_signal_index",
+)
+def get_signal_index(
+    referenced: bool | None = Query(None, description="true: only referenced signals; false: only unreferenced; omit for all."),
+    db: Session = Depends(get_db),
+):
+    """The signal-to-item index, built server-side from stored detections.
+    Each reference says whether the item uses the signal in `match`, in a
+    `none` condition, or as `occurrence_source`; `exclusion_only` flags a
+    signal used only in `none`. Soft-deleted items are excluded."""
+    rows = signal_index.signal_index(db)
+    if referenced is not None:
+        rows = [r for r in rows if r["referenced"] is referenced]
+    return rows
+
 
 
 @router.get(

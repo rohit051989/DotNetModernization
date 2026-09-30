@@ -213,8 +213,12 @@ def upsert_item_decision(
     db: Session = Depends(get_db),
 ):
     """Creates the live decision (201) or updates it in place (200). An
-    omitted field keeps its current value. A Linux-incompatible resolution
-    on a Linux-targeted engagement is allowed, and reported in `warnings`."""
+    omitted field keeps its current value; a field sent as `null` is cleared
+    (so a decision moved back to the lowest-impact resolution can drop its
+    forcing perspective and rationale). The result is validated as a whole,
+    so clearing something an approval needs is rejected. A Linux-incompatible
+    resolution on a Linux-targeted engagement is allowed, and reported in
+    `warnings`."""
     engagement = db.get(models.Engagement, engagement_id)
     if engagement is None:
         raise error(404, f"Engagement '{engagement_id}' not found", code="NOT_FOUND")
@@ -228,9 +232,10 @@ def upsert_item_decision(
         decision = models.EngagementDecision(
             id=uuid.uuid4(), engagement_id=engagement_id, item_id=item_id, status="pending"
         )
+    # exclude_unset: only fields present in the body. A present null clears
+    # the field; an absent field is left alone.
     for field, value in payload.model_dump(exclude_unset=True).items():
-        if value is not None:
-            setattr(decision, field, value)
+        setattr(decision, field, value)
 
     # Validate before the row joins the session, so a rejected create
     # leaves nothing behind to autoflush.

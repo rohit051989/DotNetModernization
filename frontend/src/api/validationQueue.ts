@@ -1,8 +1,6 @@
 import { api } from './client'
 import type {
-  DraftPattern,
   ItemType,
-  MergeProposal,
   QueueItem,
   QueueItemStatus,
   QueueSummary,
@@ -41,20 +39,4 @@ export function deferQueueItem(
   body: { until_coverage?: number | null; until_member_count?: number | null; note?: string | null; deferred_by?: string },
 ) {
   return api.post<QueueItem>(`/api/validation-queue/${itemId}/defer`, body)
-}
-
-/** Returns a draft for the rule builder. Nothing is persisted. */
-export function createPatternDraft(engagementId: string, clusterId: string) {
-  return api.post<DraftPattern>(
-    `/api/engagements/${engagementId}/pattern-candidates/${clusterId}/create-pattern`,
-    {},
-  )
-}
-
-/** Returns the suggested rule diff. The target pattern is not modified. */
-export function getMergeProposal(engagementId: string, clusterId: string, patternId: string) {
-  return api.post<MergeProposal>(
-    `/api/engagements/${engagementId}/pattern-candidates/${clusterId}/merge-proposal?pattern_id=${encodeURIComponent(patternId)}`,
-    {},
-  )
 }

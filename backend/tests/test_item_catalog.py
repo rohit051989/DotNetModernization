@@ -371,6 +371,16 @@ class PatternMigrationTests(ItemCatalogTestCase):
         before = {i.id: (i.detection, i.state) for i in self.db.query(models.CatalogItem).filter(
             models.CatalogItem.id.in_(pattern_migration.MIGRATED))}
 
+        # Once step 6 has written occurrences for migrated items, revert must
+        # refuse: work is built on them. Clear them (inside this rolled-back
+        # transaction only) to exercise the round trip itself.
+        occurrences = self.db.query(models.ItemOccurrence).filter(
+            models.ItemOccurrence.item_id.in_(pattern_migration.MIGRATED))
+        if occurrences.count():
+            self.assert_http(409, "REVERT_BLOCKED", pattern_migration.revert, self.db)
+            occurrences.delete(synchronize_session=False)
+            self.db.flush()
+
         reverted = pattern_migration.revert(self.db)
         self.assertEqual(reverted["items"], len(pattern_migration.MIGRATED))
         self.assertIsNone(self.db.get(models.CatalogItem, "windows-service"))

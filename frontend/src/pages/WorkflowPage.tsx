@@ -11,7 +11,6 @@ interface WorkflowPageProps {
   selectedExecutionId: string | null
   onSelectExecution: (executionId: string | null) => void
   onNavigateToRepositories: () => void
-  onNavigateToPatternCandidates: () => void
 }
 
 /** Engagement-scoped, hidden in Master Catalog view — see
@@ -25,7 +24,6 @@ export function WorkflowPage({
   selectedExecutionId,
   onSelectExecution,
   onNavigateToRepositories,
-  onNavigateToPatternCandidates,
 }: WorkflowPageProps) {
   const [selectedJobName, setSelectedJobName] = useState<string | null>(null)
 
@@ -41,7 +39,6 @@ export function WorkflowPage({
       <PendingApprovals
         engagementId={engagementId}
         onSelectExecution={onSelectExecution}
-        onNavigateToPatternCandidates={onNavigateToPatternCandidates}
       />
       <JobsList
         engagementId={engagementId}
