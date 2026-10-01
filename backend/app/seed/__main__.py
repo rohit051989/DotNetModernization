@@ -15,13 +15,19 @@ from app.seed.seed_data import (
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Seed the pattern catalog and lifecycle steps")
-    parser.add_argument(
-        "--reset", action="store_true", help="Truncate all four catalog tables before seeding"
+    parser = argparse.ArgumentParser(
+        description="Seed the catalog and lifecycle steps (idempotent upsert; never deletes). "
+        "To reset client and repository data, run scripts/reset-demo.ps1 — the one reset path."
     )
+    # Removed: it truncated with CASCADE, wiping repositories and every step
+    # policy, global ones included. Kept only to fail loudly.
+    parser.add_argument("--reset", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args()
+    if args.reset:
+        parser.error("--reset was removed. Run scripts\\reset-demo.ps1 to reset client and repository data; "
+                     "the catalog is never reset, only reseeded.")
 
-    result = seed(reset=args.reset)
+    result = seed()
     print_summary(result)
 
     steps_result = seed_lifecycle_steps()

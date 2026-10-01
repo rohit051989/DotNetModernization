@@ -28,6 +28,7 @@ from sqlalchemy.orm import Session
 from app import models
 from app.config import settings
 from app.db import engine
+from tests.support import TEST_ENGAGEMENT_ID, ensure_test_engagement
 from app.items import evaluation, roles
 from app.steps.item_detection import detect_repository
 
@@ -135,8 +136,9 @@ class DetectionTestCase(unittest.TestCase):
         self.outer = self.connection.begin()
         self.db = Session(bind=self.connection, join_transaction_mode="create_savepoint")
         tag = uuid.uuid4().hex[:8]
+        ensure_test_engagement(self.db)
         self.repo = models.Repository(
-            engagement_id="client-a-ocp4", name=f"t-{tag}", root_folder_name=f"t-{tag}", slug=f"t-{tag}",
+            engagement_id=TEST_ENGAGEMENT_ID, name=f"t-{tag}", root_folder_name=f"t-{tag}", slug=f"t-{tag}",
             local_path=f"C:/t-{tag}", local_path_normalised=f"c:/t-{tag}", source_type="local_path", ingest_status="scanned",
         )
         self.db.add(self.repo)

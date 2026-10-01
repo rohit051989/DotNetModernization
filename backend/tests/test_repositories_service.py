@@ -13,6 +13,7 @@ from pathlib import Path
 
 from app import models
 from app.db import SessionLocal
+from tests.support import CommittedTestEngagement
 from app.repositories import service as repositories_service
 from app.repositories.schemas import RegisterLocalPathRequest
 
@@ -23,7 +24,8 @@ class RepositoryRegistrationTestCase(unittest.TestCase):
     def setUp(self):
         self.db = SessionLocal()
         self.tmp = tempfile.TemporaryDirectory()
-        self.engagement = self.db.get(models.Engagement, "client-a-ocp4")
+        self.test_engagement = CommittedTestEngagement(self.db)
+        self.engagement = self.test_engagement.engagement
         self.registered_ids: list[uuid.UUID] = []
 
     def tearDown(self):
@@ -32,6 +34,7 @@ class RepositoryRegistrationTestCase(unittest.TestCase):
             if row is not None:
                 self.db.delete(row)
         self.db.commit()
+        self.test_engagement.remove()
         self.db.close()
         self.tmp.cleanup()
 

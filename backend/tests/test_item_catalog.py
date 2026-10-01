@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 
 from app import models
 from app.db import engine
+from tests.support import TEST_ENGAGEMENT_ID, TEST_NON_LINUX_ENGAGEMENT_ID, ensure_non_linux_engagement, ensure_test_engagement
 from app.items import schemas as s
 from app.routers import catalog_items, item_decisions, signal_registry
 
@@ -35,6 +36,7 @@ class ItemCatalogTestCase(unittest.TestCase):
         self.connection = engine.connect()
         self.outer = self.connection.begin()
         self.db = Session(bind=self.connection, join_transaction_mode="create_savepoint")
+        ensure_test_engagement(self.db)
 
     def tearDown(self):
         self.db.close()
@@ -287,36 +289,37 @@ class DecisionTests(ItemCatalogTestCase):
     def test_higher_impact_choice_requires_forcing_perspective(self):
         self.assert_http(
             422, "FORCING_PERSPECTIVE_AND_RATIONALE_REQUIRED",
-            self.upsert, "client-a-ocp4", **self.approved(resolution_id="t-high"),
+            self.upsert, TEST_ENGAGEMENT_ID, **self.approved(resolution_id="t-high"),
         )
         # The perspective alone is not enough: it is a pair (spec 25 A1).
         err = self.assert_http(
             422, "FORCING_PERSPECTIVE_AND_RATIONALE_REQUIRED",
-            self.upsert, "client-a-ocp4", **self.approved(resolution_id="t-high", forcing_perspective="SECURITY"),
+            self.upsert, TEST_ENGAGEMENT_ID, **self.approved(resolution_id="t-high", forcing_perspective="SECURITY"),
         )
         self.assertEqual([d["field"] for d in err.detail], ["forcing_rationale"])
         ok = self.upsert(
-            "client-a-ocp4",
+            TEST_ENGAGEMENT_ID,
             **self.approved(resolution_id="t-high", forcing_perspective="SECURITY", forcing_rationale="binding unsupported"),
         )
         self.assertEqual((ok.forcing_perspective, ok.forcing_rationale), ("SECURITY", "binding unsupported"))
 
     def test_in_review_and_candidates_are_kept(self):
-        d = self.upsert("client-a-ocp4", resolution_id="t-low", status="in_review", candidates_considered=["t-low", "t-high"])
+        d = self.upsert(TEST_ENGAGEMENT_ID, resolution_id="t-low", status="in_review", candidates_considered=["t-low", "t-high"])
         self.assertEqual((d.status, d.candidates_considered), ("in_review", ["t-low", "t-high"]))
 
     def test_lowest_impact_choice_needs_no_forcing_perspective(self):
-        ok = self.upsert("client-a-ocp4", **self.approved(resolution_id="t-low"))
+        ok = self.upsert(TEST_ENGAGEMENT_ID, **self.approved(resolution_id="t-low"))
         self.assertEqual(ok.status, "approved")
 
     def test_approval_requires_selection_and_approver(self):
-        err = self.assert_http(422, "APPROVAL_REQUIRES_SELECTION", self.upsert, "client-a-ocp4", status="approved")
+        err = self.assert_http(422, "APPROVAL_REQUIRES_SELECTION", self.upsert, TEST_ENGAGEMENT_ID, status="approved")
         self.assertIn("APPROVAL_REQUIRES_APPROVER", [d["code"] for d in err.detail])
 
     def test_linux_incompatible_resolution_warns_on_linux_engagement_only(self):
-        linux = self.upsert("client-a-ocp4", resolution_id="t-win")  # target_platform: Linux / OpenShift
+        linux = self.upsert(TEST_ENGAGEMENT_ID, resolution_id="t-win")  # target_platform: Linux / OpenShift
         self.assertEqual(len(linux.warnings), 1)
-        aks = self.upsert("reference-engagement-b", resolution_id="t-win")  # Azure Kubernetes Service
+        ensure_non_linux_engagement(self.db)
+        aks = self.upsert(TEST_NON_LINUX_ENGAGEMENT_ID, resolution_id="t-win")  # Azure Kubernetes Service
         self.assertEqual(aks.warnings, [])
 
     def test_resolution_from_another_item_is_rejected(self):
@@ -324,7 +327,7 @@ class DecisionTests(ItemCatalogTestCase):
         catalog_items.create_resolution(
             "t-other", s.ResolutionCreate(id="t-other-r", name="r", consumer_impact="low", effort="low"), db=self.db
         )
-        self.assert_http(422, "RESOLUTION_WRONG_ITEM", self.upsert, "client-a-ocp4", resolution_id="t-other-r")
+        self.assert_http(422, "RESOLUTION_WRONG_ITEM", self.upsert, TEST_ENGAGEMENT_ID, resolution_id="t-other-r")
 
     def test_one_default_per_item(self):
         catalog_items.create_resolution(
@@ -338,7 +341,7 @@ class DecisionTests(ItemCatalogTestCase):
         )
 
     def test_item_with_live_decision_cannot_be_soft_deleted(self):
-        self.upsert("client-a-ocp4", resolution_id="t-low")
+        self.upsert(TEST_ENGAGEMENT_ID, resolution_id="t-low")
         self.assert_http(409, "REFERENCED_BY_DECISIONS", catalog_items.delete_item, "t-app", db=self.db)
 
 

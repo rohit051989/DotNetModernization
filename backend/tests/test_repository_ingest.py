@@ -20,6 +20,7 @@ from pathlib import Path
 from app import models
 from app.config import settings
 from app.db import SessionLocal
+from tests.support import TEST_ENGAGEMENT_ID, CommittedTestEngagement
 from app.steps import repository_ingest
 from app.workflow.contract import StepContext
 
@@ -61,6 +62,7 @@ class RepositoryIngestTestCase(unittest.TestCase):
         self.db = SessionLocal()
         self.tmp = tempfile.TemporaryDirectory()
         self.repo_row_id = None
+        self.test_engagement = CommittedTestEngagement(self.db)
 
     def tearDown(self):
         if self.repo_row_id is not None:
@@ -68,13 +70,14 @@ class RepositoryIngestTestCase(unittest.TestCase):
             if row is not None:
                 self.db.delete(row)
                 self.db.commit()
+        self.test_engagement.remove()
         self.db.close()
         self.tmp.cleanup()
 
     def _make_repository_row(self, local_path: Path, clone_url: str | None = None) -> models.Repository:
         row = models.Repository(
             id=uuid.uuid4(),
-            engagement_id="client-a-ocp4",
+            engagement_id=TEST_ENGAGEMENT_ID,
             name="test-repo",
             root_folder_name=local_path.name,
             slug="test-repo-" + uuid.uuid4().hex[:8],
@@ -102,7 +105,7 @@ class RepositoryIngestTestCase(unittest.TestCase):
             job_execution_id="11111111-1111-1111-1111-111111111111",
             step_execution_id="22222222-2222-2222-2222-222222222222",
             parameters={
-                "engagement_id": "client-a-ocp4",
+                "engagement_id": TEST_ENGAGEMENT_ID,
                 "repository_id": str(repository_id),
                 "ingest_token": str(uuid.uuid4()),
             },

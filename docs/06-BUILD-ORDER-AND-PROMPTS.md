@@ -109,6 +109,8 @@ Read docs/05-SEED-CATALOG-DATA.md.
 Implement app/seed/ so that `python -m app.seed` loads all 8 patterns, 16 target
 state options, 2 engagements and 10 decision records. It must be idempotent
 (upsert by id) and support a --reset flag that truncates first.
+(Superseded: `--reset` was removed. The seed now creates no engagements or
+decisions, and `scripts/reset-demo.ps1` is the only reset — see 03-BACKEND-SPEC.md "Seeding".)
 
 Store the seed content as YAML data files under app/seed/data/ rather than
 hardcoding it in Python, so the catalog content can be edited without touching code.

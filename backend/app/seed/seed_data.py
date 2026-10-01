@@ -3,7 +3,6 @@ import uuid
 from pathlib import Path
 
 import yaml
-from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app import catalog_rules, models
@@ -26,16 +25,6 @@ _EMPTY_SIGNAL_RULE_SET = SignalRuleSet.empty().model_dump(by_alias=True)
 def _load(filename: str) -> dict:
     with open(DATA_DIR / filename, encoding="utf-8") as f:
         return yaml.safe_load(f)
-
-
-def reset_tables(db: Session) -> None:
-    db.execute(
-        text(
-            "TRUNCATE engagement_patterns, decision_records, target_state_options, "
-            "engagements, patterns, catalog_revisions CASCADE"
-        )
-    )
-    db.commit()
 
 
 def _upsert_pattern(db: Session, data: dict) -> bool:
@@ -157,12 +146,12 @@ def _upsert_decision(db: Session, data: dict) -> bool:
     return created
 
 
-def seed(reset: bool = False) -> dict:
+def seed() -> dict:
+    """Idempotent upsert of the catalog seed data. Never deletes: resetting
+    client and repository data is scripts/reset-demo.ps1's job alone
+    (app/seed/reset_demo.py) — there is one reset path."""
     db = SessionLocal()
     try:
-        if reset:
-            reset_tables(db)
-
         counts = {
             "patterns_created": 0,
             "patterns_updated": 0,
@@ -190,8 +179,7 @@ def seed(reset: bool = False) -> dict:
             # Bulk seeding writes to `patterns` exactly like the API does, so it
             # must bump catalog_revision the same way (Part H) — otherwise a
             # reseed silently leaves classification runs pointing at a stale
-            # revision number, or (after `--reset`, which truncates
-            # catalog_revisions) at 0.
+            # revision number.
             catalog_rules.bump_catalog_revision(
                 db, "pattern", pattern_data["id"], "insert" if created else "update"
             )

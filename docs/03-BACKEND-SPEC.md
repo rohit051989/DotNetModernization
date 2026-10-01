@@ -470,7 +470,12 @@ Export shape:
 ## Seeding
 
 `python -m app.seed` must be idempotent — safe to run repeatedly. Upsert by id.
-Add a `--reset` flag that truncates all tables first, for demo resets. The seed
+It never deletes. There is one reset path, `scripts/reset-demo.ps1`
+(`app/seed/reset_demo.py`): it clears engagements, repositories, scan output and
+workflow history and keeps the catalog. The seed's former `--reset` flag, which
+truncated with CASCADE and so also wiped repositories and global step policies,
+was removed so the two cannot be confused. The seed creates no engagements or
+decision records: those are client data (CLAUDE.md rule 6). The seed
 data itself does not populate `engagement_patterns` — the overlay is lazy (see
 `02-DATA-MODEL.md`), so a freshly-seeded catalog correctly has zero overlay rows,
 meaning every pattern starts active and undeleted in every engagement.

@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 
 from app import models
 from app.db import engine
+from tests.support import TEST_ENGAGEMENT_ID, ensure_test_engagement
 from app.items import schemas as s
 from app.routers import catalog_items, item_decisions, signal_registry
 
@@ -27,6 +28,7 @@ class GovernanceTestCase(unittest.TestCase):
         self.connection = engine.connect()
         self.outer = self.connection.begin()
         self.db = Session(bind=self.connection, join_transaction_mode="create_savepoint")
+        ensure_test_engagement(self.db)
 
     def tearDown(self):
         self.db.close()
@@ -78,7 +80,7 @@ class SignalIndexTests(GovernanceTestCase):
 class ClearingDecisionFieldsTests(GovernanceTestCase):
     def upsert(self, body: dict):
         return item_decisions.upsert_item_decision(
-            "client-a-ocp4", "msmq-usage", s.EngagementDecisionUpsert.model_validate(body), Response(), db=self.db
+            TEST_ENGAGEMENT_ID, "msmq-usage", s.EngagementDecisionUpsert.model_validate(body), Response(), db=self.db
         )
 
     def test_moving_back_to_the_default_can_shed_the_forcing_perspective(self):

@@ -1,14 +1,9 @@
-engagements:
-  - id: client-a-ocp4
-    client_name: "Client A"
-    description: "Primary engagement. 50+ repositories, 600+ applications, several hundred SSIS packages. Windows and IIS to Linux on OCP4."
-    target_platform: "Linux / OpenShift Container Platform 4"
-    default_posture: "lift-and-shift"
-    status: active
-
-  - id: reference-engagement-b
-    client_name: "Reference Engagement B"
-    description: "Illustrative second engagement demonstrating catalog reuse — the same patterns with different approved target states. Retain for demonstration purposes."
-    target_platform: "Azure Kubernetes Service"
-    default_posture: "lift-and-shift"
-    status: active
+# Engagements are client data, not catalog IP (CLAUDE.md rule 6), so the
+# seed creates none. Engagements are created through the API or the UI;
+# scripts/reset-demo.ps1 creates the demo engagements TestClientA and
+# TestClientB after clearing client data.
+#
+# client-a-ocp4 and reference-engagement-b were removed 2026-10-01 so that a
+# reseed can never resurrect them. The seed upserts what is listed here and
+# never deletes, so leaving this empty is what keeps them gone.
+engagements: []

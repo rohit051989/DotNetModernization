@@ -17,3 +17,11 @@ steps/*/tests/fixtures/sample-output/
 # this machine's absolute repository path for viewer resolution, so it's
 # never the registered/checksummed output and never committed.
 *.local.sarif
+
+# Database dumps hold client data and are never committed.
+# scripts/reset-demo.ps1 writes its backups outside the repository; these
+# patterns catch one copied in by hand.
+*.dump
+*.backup
+*.pgdump
+backups/
