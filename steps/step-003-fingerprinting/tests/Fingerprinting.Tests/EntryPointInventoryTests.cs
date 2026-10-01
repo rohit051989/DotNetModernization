@@ -1,3 +1,4 @@
+using Fingerprinting.Analysis;
 using Fingerprinting.Domain;
 using Fingerprinting.EntryPoints;
 using Fingerprinting.EntryPoints.Cli;

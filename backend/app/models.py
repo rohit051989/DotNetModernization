@@ -1673,3 +1673,95 @@ class EntryPointScan(Base):
     warnings: Mapped[list | None] = mapped_column(JSONB)
     step_execution_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     scanned_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+# ---------- step 5: outbound-invocation inventory ----------
+
+OUTBOUND_MECHANISM = (
+    "http_client", "soap_client", "grpc_client", "database", "message_producer", "message_consumer",
+    "cache", "secret_store", "file_share", "smtp", "ldap",
+)
+LINUX_VERDICT = ("incompatible", "requires_change", "unknown", "compatible")
+ENDPOINT_RESOLUTION = ("resolved", "partial", "unresolved")
+OUTBOUND_USAGE = ("used", "unused")
+
+
+class OutboundInvocation(Base):
+    """One row per outbound dependency of a project — what an application
+    calls. Written by step 5 (outbound-invocation-inventory), replaced per
+    repository on rescan. See 29-STEPS-004-005-INVENTORIES.md Part C8.
+
+    `id` is derived (sha256 over repository, project, mechanism, normalised
+    endpoint and contract, truncated), so it is stable across rescans. The
+    endpoint columns hold the normalised endpoint only — userinfo, query and
+    fragment are stripped before storage (Part C5). `detail` is
+    {endpoint, block} with the mechanism's block (`soap`, `database`, ...)
+    camelCase as in the artifact. `credentials` is kind and key path only,
+    never a value. `endpoint_host` is what step 10's register aggregates on.
+
+    `usage` is 'used' or 'unused'. An unused client (constructed nowhere,
+    configured nowhere) makes no outbound call: the row is kept, but step
+    10's register reads usage = 'used' only. Each environment binding in
+    `environment_bindings` carries its own `linuxVerdict`; `linux_verdict`
+    is the worst of them."""
+
+    __tablename__ = "outbound_invocations"
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    repository_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("repositories.id", ondelete="CASCADE"), nullable=False
+    )
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+    )
+    mechanism: Mapped[str] = mapped_column(Text, nullable=False)
+    usage: Mapped[str] = mapped_column(Text, nullable=False, server_default="used")
+    endpoint_scheme: Mapped[str | None] = mapped_column(Text)
+    endpoint_host: Mapped[str | None] = mapped_column(Text)
+    endpoint_port: Mapped[int | None] = mapped_column(Integer)
+    endpoint_path: Mapped[str | None] = mapped_column(Text)
+    resolution: Mapped[str] = mapped_column(Text, nullable=False)
+    placeholder: Mapped[str | None] = mapped_column(Text)
+    detail: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    environment_bindings: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    call_sites: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    credentials: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    auth_declared: Mapped[str | None] = mapped_column(Text)
+    linux_verdict: Mapped[str] = mapped_column(Text, nullable=False)
+    linux_reasons: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    confidence: Mapped[float] = mapped_column(Numeric(3, 2), nullable=False)
+    confidence_reasons: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    step_execution_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    detected_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        CheckConstraint(f"mechanism IN {OUTBOUND_MECHANISM}", name="ck_outbound_invocations_mechanism"),
+        CheckConstraint(f"linux_verdict IN {LINUX_VERDICT}", name="ck_outbound_invocations_linux_verdict"),
+        CheckConstraint(f"resolution IN {ENDPOINT_RESOLUTION}", name="ck_outbound_invocations_resolution"),
+        CheckConstraint(f"auth_declared IS NULL OR auth_declared IN {AUTH_DECLARED}", name="ck_outbound_invocations_auth_declared"),
+        CheckConstraint("confidence >= 0 AND confidence <= 1", name="ck_outbound_invocations_confidence"),
+        CheckConstraint(f"usage IN {OUTBOUND_USAGE}", name="ck_outbound_invocations_usage"),
+        Index("ix_outbound_invocations_repository_id_mechanism", "repository_id", "mechanism"),
+        Index("ix_outbound_invocations_usage_endpoint_host", "usage", "endpoint_host"),
+        Index("ix_outbound_invocations_endpoint_host", "endpoint_host"),
+        Index("ix_outbound_invocations_linux_verdict", "linux_verdict"),
+    )
+
+
+class OutboundScan(Base):
+    """1:1 with `repositories` — step 5's repository-level summary, as
+    `entry_point_scans` is step 4's: per-project counts by mechanism and
+    verdict, skipped projects included, and each project's incompatible list."""
+
+    __tablename__ = "outbound_scans"
+
+    repository_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("repositories.id", ondelete="CASCADE"), primary_key=True
+    )
+    scanner_version: Mapped[str] = mapped_column(Text, nullable=False)
+    skip_source: Mapped[str] = mapped_column(Text, nullable=False)
+    summary: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    project_summaries: Mapped[list] = mapped_column(JSONB, nullable=False)
+    warnings: Mapped[list | None] = mapped_column(JSONB)
+    step_execution_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    scanned_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))

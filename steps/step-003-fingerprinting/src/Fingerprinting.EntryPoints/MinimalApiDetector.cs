@@ -136,7 +136,7 @@ public sealed class MinimalApiDetector : IEntryPointDetector
         };
 
         // MapMethods with several verbs: one entry point per verb.
-        var record = Detected.Record(EntryPointKinds.HttpMinimalApi, project, handler, confidence, AuthDeclared.From(authorisation));
+        var record = Detected.Record(EntryPointKinds.HttpMinimalApi, project, handler, confidence, AuthDeclared.From(authorisation.NoneDeclared));
         var identity = Detected.Identity(handler.Namespace, handler.Type, handler.Member, signature);
         var route = template ?? mapped ?? "(unresolved)";
         foreach (var verb in verbs)

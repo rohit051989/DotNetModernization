@@ -278,7 +278,7 @@ public sealed partial class GrpcServiceMethodDetector : IEntryPointDetector
                 };
                 var fullMethod = proto.File is null ? null : $"/{(proto.Package is null ? "" : proto.Package + ".")}{service}/{name}";
                 yield return new DetectedEntryPoint(
-                    Detected.Record(EntryPointKinds.GrpcServiceMethod, project, handler, classConfidence, AuthDeclared.From(authorisation)) with
+                    Detected.Record(EntryPointKinds.GrpcServiceMethod, project, handler, classConfidence, AuthDeclared.From(authorisation.NoneDeclared)) with
                     {
                         Grpc = new GrpcDetail
                         {
@@ -390,7 +390,7 @@ public sealed class SignalRHubMethodDetector : IEntryPointDetector
                     LineEnd = end,
                 };
                 yield return new DetectedEntryPoint(
-                    Detected.Record(EntryPointKinds.SignalRHubMethod, project, handler, confidence, AuthDeclared.From(authorisation)) with
+                    Detected.Record(EntryPointKinds.SignalRHubMethod, project, handler, confidence, AuthDeclared.From(authorisation.NoneDeclared)) with
                     {
                         SignalR = new SignalRDetail { Hub = type.Name, Method = name, HubRoute = hubRoute, Authorisation = authorisation.Text },
                     },

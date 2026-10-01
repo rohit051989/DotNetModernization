@@ -1,5 +1,5 @@
 """The repository Surface section — 29-STEPS-004-005-INVENTORIES.md Part D.
-Inbound: step 4's entry points. Outbound (step 5) arrives with its step."""
+Inbound: step 4's entry points. Outbound: step 5's invocations."""
 
 import datetime
 import uuid
@@ -128,3 +128,70 @@ class EntryPointCapabilitiesOut(BaseModel):
     not_covered: list[NotCoveredPattern] = Field(description="Patterns step 4 does not look for: their absence from results means nothing.")
     repositories_scanned: int
     repositories_on_this_manifest: int = Field(description="Repositories whose latest scan ran against this manifest version.")
+
+
+# ---------- outbound: step 5 ----------
+
+OutboundMechanism = Literal[
+    "http_client",
+    "soap_client",
+    "grpc_client",
+    "database",
+    "message_producer",
+    "message_consumer",
+    "cache",
+    "secret_store",
+    "file_share",
+    "smtp",
+    "ldap",
+]
+LinuxVerdict = Literal["incompatible", "requires_change", "unknown", "compatible"]
+EndpointResolution = Literal["resolved", "partial", "unresolved"]
+OutboundUsage = Literal["used", "unused"]
+
+
+class OutboundInvocationOut(BaseModel):
+    id: str = Field(description="Derived, stable across rescans: sha256 over repository, project, mechanism, normalised endpoint and contract, truncated.")
+    mechanism: OutboundMechanism
+    usage: OutboundUsage = Field(description="unused: a client constructed nowhere and configured nowhere. Not a dependency; left out of every count.")
+    endpoint_scheme: str | None
+    endpoint_host: str | None = Field(description="Lowercased. Userinfo, query and fragment are never stored.")
+    endpoint_port: int | None
+    endpoint_path: str | None
+    resolution: EndpointResolution
+    placeholder: str | None = Field(description="For an unresolved endpoint: the placeholder, environment variable or config key it waits on. Never guessed.")
+    detail: dict[str, Any] = Field(description="{endpoint, block}: the full normalised endpoint and the mechanism's block (soap, database, http, ...), camelCase as in the artifact.")
+    environment_bindings: list[dict[str, Any]] = Field(
+        description="One logical endpoint's value per environment file, with the file and key it came from and that environment's own linuxVerdict and linuxReasons."
+    )
+    call_sites: list[dict[str, Any]]
+    credentials: list[dict[str, Any]] = Field(description="Kind and key path only, never a value.")
+    auth_declared: AuthDeclared | None
+    linux_verdict: LinuxVerdict = Field(description="The worst environment binding's verdict: a summary. Each binding carries its own.")
+    linux_reasons: list[str]
+    confidence: float
+    confidence_reasons: list[str]
+
+
+class ProjectOutboundOut(BaseModel):
+    project_id: uuid.UUID
+    project_path: str
+    status: ProjectScanStatus
+    skip_reason: str | None
+    unused_count: int
+    count_by_mechanism: dict[str, int] = Field(description="Used invocations only.")
+    count_by_verdict: dict[str, int] = Field(description="Used invocations only.")
+    invocations: list[OutboundInvocationOut] = Field(description="Incompatible first (the list someone will act on), then by mechanism and endpoint.")
+
+
+class OutboundInventoryOut(BaseModel):
+    repository_id: uuid.UUID
+    scanner_version: str
+    skip_source: str
+    scanned_at: datetime.datetime | None
+    invocation_count: int
+    unused_count: int
+    count_by_mechanism: dict[str, int] = Field(description="Used invocations only.")
+    count_by_verdict: dict[str, int] = Field(description="Used invocations only.")
+    auth_declared_scope: str
+    projects: list[ProjectOutboundOut]

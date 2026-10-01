@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Step 5, outbound-invocation inventory (29-STEPS-004-005-INVENTORIES.md
+       Part C). Detection, configuration resolution and verdicts only; the
+       envelope and database live in Fingerprinting.Outbound.Cli. Shares
+       Fingerprinting.Analysis with steps 3 and 4: the syntax model, config
+       parsing, the secrets rules, and the WCF binding and call-site evaluator. -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Fingerprinting.Outbound</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Fingerprinting.Domain\Fingerprinting.Domain.csproj" />
+    <ProjectReference Include="..\Fingerprinting.Analysis\Fingerprinting.Analysis.csproj" />
+  </ItemGroup>
+
+</Project>

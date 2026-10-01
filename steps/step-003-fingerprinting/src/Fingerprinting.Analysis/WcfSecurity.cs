@@ -1,4 +1,4 @@
-namespace Fingerprinting.EntryPoints;
+namespace Fingerprinting.Analysis;
 
 /// <summary>
 /// An endpoint's effective security: the binding, its security mode and the

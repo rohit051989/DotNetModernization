@@ -1,5 +1,5 @@
 job_name: phase0-repository-discovery
-version: 7
+version: 8
 description: "Per-repository discovery and analysis. Lifecycle steps 1-8 (17-LIFECYCLE-STEPS.md v2.0)."
 
 parameters:
@@ -30,12 +30,18 @@ flow:
     inputs:
       solution-project-inventory: "${artifacts.solution-project-inventory}"
   # v7: step 4 is implemented and consumes both upstream artifacts, so both
-  # are wired here. Step 5 is still a stub; its inputs arrive with it.
+  # are wired here.
   - step: entry-point-inventory
     inputs:
       solution-project-inventory: "${artifacts.solution-project-inventory}"
       application-fingerprint: "${artifacts.application-fingerprint}"
+  # v8: step 5 is implemented. It consumes the same two artifacts, both
+  # required: step 2's project list and step 3's skip verdicts and
+  # UNC_PATH_LITERAL signals.
   - step: outbound-invocation-inventory
+    inputs:
+      solution-project-inventory: "${artifacts.solution-project-inventory}"
+      application-fingerprint: "${artifacts.application-fingerprint}"
   # Step 6 replaces pattern-classification: it matches catalog items against
   # the fingerprint's signals and emits occurrences, not a classification.
   - step: item-detection

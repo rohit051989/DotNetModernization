@@ -39,8 +39,8 @@ public sealed class ConfigurationExtractor : IFingerprintExtractor
         foreach (var filePath in FileSystemWalk.EnumerateFiles(context.ProjectDirectory, cancellationToken))
         {
             var fileName = Path.GetFileName(filePath);
-            var isAppSettings = ConfigFiles.IsAppSettings(fileName);
-            var isXmlConfig = ConfigFiles.IsXmlConfig(fileName);
+            var isAppSettings = ConfigFileNames.IsAppSettings(fileName);
+            var isXmlConfig = ConfigFileNames.IsXmlConfig(fileName);
 
             if (!isAppSettings && !isXmlConfig)
             {

@@ -323,7 +323,7 @@ public sealed class ControllerActionDetector : IEntryPointDetector
                     };
 
                     yield return new DetectedEntryPoint(
-                        Detected.Record(EntryPointKinds.HttpControllerAction, project, handler, entryConfidence, AuthDeclared.From(authorisation)) with
+                        Detected.Record(EntryPointKinds.HttpControllerAction, project, handler, entryConfidence, AuthDeclared.From(authorisation.NoneDeclared)) with
                         {
                             Http = http,
                         },

@@ -1,9 +1,9 @@
-using System.Text.Json.Serialization;
+﻿using System.Text.Json.Serialization;
 using Fingerprinting.Domain;
 
 namespace Fingerprinting.EntryPoints;
 
-// The entry-point-inventory@1.0.0 artifact — 29-STEPS-004-005-INVENTORIES.md
+// The entry-point-inventory@1.0.0 artifact â€” 29-STEPS-004-005-INVENTORIES.md
 // Parts B3 and B4. Serialised through DeterministicJson: camelCase keys,
 // alphabetical at every level. Nulls are written explicitly (a conventional
 // route's null template is information), except the kind-specific blocks on
@@ -29,12 +29,12 @@ public sealed record EntryPointInventoryArtifact
     /// <summary>Where each project's skip decision came from:
     /// <c>application-fingerprint</c> (step 3's fingerprintStatus, the normal
     /// case) or <c>solution-project-inventory</c> (step 2's out-of-scope
-    /// rule, when no fingerprint was supplied — standalone runs only).</summary>
+    /// rule, when no fingerprint was supplied â€” standalone runs only).</summary>
     public required string SkipSource { get; init; }
 
-    /// <summary>What <c>authDeclared</c> can and cannot see — see
-    /// <see cref="EntryPoints.AuthDeclared.Scope"/>.</summary>
-    public string AuthDeclaredScope { get; init; } = EntryPoints.AuthDeclared.Scope;
+    /// <summary>What <c>authDeclared</c> can and cannot see â€” see
+    /// <see cref="Analysis.AuthDeclared.Scope"/>.</summary>
+    public string AuthDeclaredScope { get; init; } = Analysis.AuthDeclared.Scope;
 
     /// <summary>The entry-point kinds this scan could detect, by manifest
     /// version. A kind not listed was not looked for: its absence from the
@@ -62,7 +62,7 @@ public sealed record InventorySummary
     /// <summary>What downstream steps count, snapshot and test.</summary>
     public int RequestEntryPointCount { get; init; }
 
-    /// <summary>Bootstrap and wiring — not places external work enters.</summary>
+    /// <summary>Bootstrap and wiring â€” not places external work enters.</summary>
     public int LifecycleHookCount { get; init; }
 
     public SortedDictionary<string, int> CountByKind { get; init; } = new(StringComparer.Ordinal);
@@ -94,16 +94,16 @@ public sealed record ProjectEntryPointSummary
     public SortedDictionary<string, int> CountByVerb { get; init; } = new(StringComparer.Ordinal);
 
     /// <summary>Request entry points with <c>authDeclared: none_declared</c>
-    /// — review prompts, not findings; see <see cref="AuthDeclared.Scope"/>.
+    /// â€” review prompts, not findings; see <see cref="AuthDeclared.Scope"/>.
     /// Lifecycle hooks carry no authDeclared, so never count here.</summary>
     public int NoDeclaredAuthenticationCount { get; init; }
 
     /// <summary>Entry points with <c>authDeclared: not_assessed</c>.</summary>
     public int AuthorisationNotAssessedCount { get; init; }
 
-    /// <summary>Project-wide authorisation written in source — a global
+    /// <summary>Project-wide authorisation written in source â€” a global
     /// <c>AuthorizeFilter</c>, <c>MapControllers().RequireAuthorization()</c>,
-    /// a fallback policy — each with its location. Already applied to the
+    /// a fallback policy â€” each with its location. Already applied to the
     /// entry points it covers.</summary>
     public IReadOnlyList<string> GlobalAuthorisation { get; init; } = [];
 
@@ -130,8 +130,8 @@ public sealed record EntryPointRecord
     public IReadOnlyList<string> ConfidenceReasons { get; init; } = [];
 
     /// <summary><c>declared</c>, <c>none_declared</c> or
-    /// <c>not_assessed</c> (<see cref="EntryPoints.AuthDeclared"/>); null
-    /// where the question does not apply — hosted services, jobs, consumers,
+    /// <c>not_assessed</c> (<see cref="Analysis.AuthDeclared"/>); null
+    /// where the question does not apply â€” hosted services, jobs, consumers,
     /// mains, application hooks.</summary>
     public string? AuthDeclared { get; init; }
 
@@ -153,7 +153,7 @@ public sealed record EntryPointRecord
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public FunctionDetail? Function { get; init; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public DesktopDetail? Desktop { get; init; }
 
-    /// <summary>The kind-specific block — what the entry_points.detail
+    /// <summary>The kind-specific block â€” what the entry_points.detail
     /// column stores.</summary>
     public object DetailBlock() =>
         (object?)Http ?? Wcf ?? Asmx ?? Grpc ?? SignalR ?? Messaging ?? Schedule ?? Hosted ?? Console ?? WebForms
@@ -411,7 +411,7 @@ public sealed record HttpHandlerDetail
     public string? ConfigSection { get; init; }
 
     /// <summary>False for a registered type with no source in the
-    /// repository — a framework or package handler or module.</summary>
+    /// repository â€” a framework or package handler or module.</summary>
     public bool InRepository { get; init; }
     public string? Authorisation { get; init; }
 }
@@ -438,8 +438,8 @@ public sealed record OwinStartupDetail
     public required string DeclaredBy { get; init; }
     public string? DeclaredAt { get; init; }
 
-    /// <summary>The middleware the pipeline registers, in order —
-    /// <c>app.UseCookieAuthentication</c>, <c>app.Use&lt;T&gt;</c> — across
+    /// <summary>The middleware the pipeline registers, in order â€”
+    /// <c>app.UseCookieAuthentication</c>, <c>app.Use&lt;T&gt;</c> â€” across
     /// every part of the partial class.</summary>
     public IReadOnlyList<string> Middleware { get; init; } = [];
 }
@@ -460,8 +460,8 @@ public sealed record FunctionDetail
     /// <summary><c>in_process</c> ([FunctionName]) or <c>isolated</c> ([Function]).</summary>
     public required string Model { get; init; }
 
-    /// <summary>The trigger attribute on the first triggered parameter —
-    /// HttpTrigger, TimerTrigger, QueueTrigger, ... — which decides what
+    /// <summary>The trigger attribute on the first triggered parameter â€”
+    /// HttpTrigger, TimerTrigger, QueueTrigger, ... â€” which decides what
     /// kind of entry point it is. Null when none is written.</summary>
     public string? Trigger { get; init; }
 

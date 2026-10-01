@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { ApiError } from '../../api/client'
 import { getRepositoryEntryPoints } from '../../api/surface'
+import { RepositoryOutboundPanel } from './RepositoryOutboundPanel'
+import { sourceHref } from './sourceHref'
 import type { EntryPoint, EntryPointInventory, EntryPointKind, HttpDetail, HttpParameter, ProjectEntryPoints, WcfEndpoint } from '../../types/surface'
 
 interface RepositorySurfaceSectionProps {
@@ -42,13 +44,6 @@ const VERB_STYLE: Record<string, string> = {
   PUT: 'bg-amber-50 text-amber-700 border-amber-200',
   PATCH: 'bg-amber-50 text-amber-700 border-amber-200',
   DELETE: 'bg-red-50 text-red-700 border-red-200',
-}
-
-/** `vscode://file/D:/repo/src/Web/X.cs:42` — forward slashes, each segment encoded. */
-function sourceHref(localPath: string, filePath: string, line: number) {
-  const root = localPath.replace(/\\/g, '/').replace(/\/+$/, '')
-  const path = `${root}/${filePath}`.split('/').map(encodeURIComponent).join('/').replace(/^([A-Za-z])%3A/, '$1:')
-  return `vscode://file/${path}:${line}`
 }
 
 function isHttp(entry: EntryPoint): boolean {
@@ -427,7 +422,7 @@ function Stat({ label, value, tone }: { label: string; value: number; tone?: 'am
 }
 
 /** Surface — 29-STEPS-004-005-INVENTORIES.md Part D. Inbound is step 4's
- * entry points; Outbound arrives with step 5. */
+ * entry points; Outbound is step 5's invocations. */
 export function RepositorySurfaceSection({ repositoryId, localPath, refreshToken }: RepositorySurfaceSectionProps) {
   const [inventory, setInventory] = useState<EntryPointInventory | null>(null)
   const [notScanned, setNotScanned] = useState(false)
@@ -527,12 +522,7 @@ export function RepositorySurfaceSection({ repositoryId, localPath, refreshToken
         )}
       </div>
 
-      <div>
-        <h4 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-neutral-300">Outbound — what this repository calls</h4>
-        <div className="rounded border border-dashed border-neutral-200 p-3 text-xs text-neutral-400">
-          Arrives with lifecycle step 5, outbound-invocation-inventory.
-        </div>
-      </div>
+      <RepositoryOutboundPanel repositoryId={repositoryId} localPath={localPath} refreshToken={refreshToken} />
     </div>
   )
 }

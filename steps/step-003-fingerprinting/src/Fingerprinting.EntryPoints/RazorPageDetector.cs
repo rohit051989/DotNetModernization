@@ -136,7 +136,7 @@ public sealed partial class RazorPageDetector : IEntryPointDetector
             PageHandler = handlerName,
         };
         return new DetectedEntryPoint(
-            Detected.Record(EntryPointKinds.RazorPage, project, handler, confidence, AuthDeclared.From(authorisation)) with { Http = http },
+            Detected.Record(EntryPointKinds.RazorPage, project, handler, confidence, AuthDeclared.From(authorisation.NoneDeclared)) with { Http = http },
             Detected.Identity(handler.Namespace, typeName, handler.Member ?? "(page)",
                 method is null ? pageFile : SyntaxHelpers.ParameterSignature(method.ParameterList)),
             route,

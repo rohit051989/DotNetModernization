@@ -467,9 +467,22 @@ Each invocation carries a verdict with a reason:
 | MSMQ | `incompatible` |
 | UNC file share | `requires_change` — needs an SMB mount |
 | LDAP via `System.DirectoryServices` | `incompatible` |
-| Kafka with SASL/GSSAPI | `requires_change` — keytab. **Undetectable until a config signal exists**; record `unknown` for Kafka authentication until then |
+| Kafka with SASL/GSSAPI | `requires_change` — "Kerberos keytab required". GSSAPI is directly visible where stated: `SaslMechanism.Gssapi` in code, `sasl.mechanism=GSSAPI` in configuration, or a SASL security protocol with no mechanism (librdkafka's default is GSSAPI) |
+| Kafka with another SASL mechanism, or none | `compatible` (PLAIN, SCRAM, OAUTHBEARER; or a config built in code with no SASL) |
+| Kafka with no stated mechanism | `unknown` — only where the mechanism genuinely cannot be determined: a config object supplied from elsewhere, nothing in configuration |
 | HTTP, gRPC, Redis, Vault | `compatible` |
 | Anything unresolved | `unknown` |
+
+**Per environment.** Every environment binding carries its own verdict; the
+invocation's verdict is the worst of them — a summary. The per-environment verdict
+is the answer for a migration target: an OpenShift environment
+(`appsettings.DEVOCP.json`) already on SQL authentication is `compatible` even where
+a legacy Windows environment's Integrated Security is not.
+
+**Unused clients.** A client with no construction site and no configuration — a
+`ClientBase` subclass nothing builds or configures — is `usage: unused`. It stays in
+the inventory but is left out of every count, and step 10's endpoint register reads
+`usage = 'used'` only, so no one asks a backend team about an endpoint nothing calls.
 
 `unknown` is an honest answer, not a failure. The client needs to know what could not
 be assessed as much as what could.
@@ -512,6 +525,119 @@ host index is what step 10's aggregation reads.
 
 Artifact `outbound-invocation-inventory@1.0.0`. Per-project summary: count by
 mechanism, count by verdict, and the incompatible invocations listed explicitly.
+
+### C9. As implemented (step 5, scanner 1.1.0)
+
+**Where it lives.** `src/Fingerprinting.Outbound` (detection, configuration
+resolution, verdicts) and `src/Fingerprinting.Outbound.Cli` (envelope, database,
+published to `publish/outbound-invocation-inventory/`). Registration:
+`registration/outbound-invocation-inventory.json`. Schema:
+`schemas/outbound-invocation-inventory-1.0.0.schema.json`. Job
+`phase0-repository-discovery` v8 wires both inputs, and both are required.
+There is no fallback source.
+
+**Shared with step 4 in `Fingerprinting.Analysis`:**
+- `ProjectSource`, `SyntaxHelpers`, `ConfigFiles`, `WcfSecurity`.
+- `CallSiteEvaluator`, the generic-helper binding that resolved
+  `BuildTcpHost<TService, TContract>`.
+- `Secrets` and `JsonConfigWalker`.
+- The `AuthDeclared` vocabulary and `ProjectScanStatuses`.
+
+Step 3 and step 4 outputs were byte-identical before and after the move.
+
+**Configuration resolution (C4).**
+- `RepositoryConfig` reads every `appsettings*.json`, `web.config` and
+  `app.config`, including environment transforms. The environment comes from
+  the file name: `default`, `Docker`, `Release`, ...
+- A project's config is its own directory plus its `wwwroot`.
+- `ValueResolver` evaluates the following:
+  - literals, interpolation, concatenation and `??` defaults (recorded as
+    `(code default)`)
+  - helper call-site arguments
+  - locals, consts and single-assignment members
+  - `ConfigurationManager.AppSettings[...]`, including through an alias local
+  - `ConnectionStrings[...]`, `IConfiguration[...]`, `GetValue` and
+    `GetConnectionString`
+  - options binding (`Configure<T>(GetSection(X))` makes `T.Prop` read
+    `X:Prop`)
+  - `Environment.GetEnvironmentVariable`, which becomes `env:NAME`
+- An invocation that reads configuration is evaluated once per environment
+  whose file sets a key it reads. Each evaluation becomes one
+  `environmentBinding`. The primary endpoint is the default environment's
+  value; where no default file sets the key, it is `unresolved`, with
+  placeholder `config:KEY`.
+
+**Endpoints (C3, C5).**
+- An `Endpoint` holds only scheme, host, port and path, so userinfo, query
+  and fragment have nowhere to go.
+- A partial endpoint keeps its path only up to the first hole (`/api/{…}`),
+  so calls that differ only at run time merge.
+- Hole labels are code expressions with string-literal contents removed.
+
+**Credentials.**
+- Recorded by kind (`certificate`, `password`, `api_key`, `token`,
+  `client_secret`, `windows`) and key path or code location only.
+- `authDeclared` uses step 4's vocabulary:
+  - `declared` when any credential is visible
+  - `none_declared` only when declared as none (a WCF client credential type
+    of `None`)
+  - otherwise `not_assessed`
+- The artifact carries an `authDeclaredScope` note.
+- `origin` and `entryClass` are not carried. `soap.clientSource`
+  (`hand_written` | `generated` | `config_only`) is the only origin-like fact
+  that matters for an outbound call.
+
+**1.1.0 (additive).**
+- `environmentBindings[].linuxVerdict` and `linuxReasons` on every binding, for
+  every mechanism. Database and Kafka bindings can differ by environment; for
+  every other mechanism each binding carries the invocation's verdict.
+- `usage` (`used` | `unused`) on every invocation. `unusedCount` is added to
+  both summaries, and `countByMechanism`, `countByVerdict` and the incompatible
+  list count used invocations only. Unused invocations sort last.
+- Kafka SASL (`Sasl` in `KafkaSasl.cs`), in order: code (the config object's
+  `SaslMechanism` and `SecurityProtocol`, `config.Set("sasl.mechanism", …)`,
+  dictionary entries); then configuration (any `sasl.mechanism` /
+  `SaslMechanism` / `SecurityProtocol` key, per environment file). A SASL
+  protocol with no mechanism is GSSAPI. A config built entirely in code and
+  never bound from configuration with no SASL is `none`. Otherwise `unknown`.
+- Migration `b8e2f4a6c917` adds `outbound_invocations.usage` with an index on
+  `(usage, endpoint_host)`.
+
+**Verdicts (C6), interpretations to review.**
+- HTTP, gRPC, Redis, Vault, Key Vault and SMTP are `compatible` even when the
+  endpoint is unresolved. The protocol decides portability, and the reason
+  says the endpoint is unresolved. `unknown` is reserved for an unresolved
+  fact the verdict depends on: a SOAP binding, a database's authentication,
+  Kafka authentication.
+- LocalDB is `requires_change` (a connection-string change), not
+  `incompatible`.
+- Across environments, the worst binding decides. Reasons are prefixed with
+  the environment.
+- `System.DirectoryServices.Protocols` is `compatible` (it needs libldap).
+  `DirectoryServices` and `AccountManagement` are `incompatible`.
+- Windows credentials on HTTP or SMTP (`UseDefaultCredentials`) are
+  `requires_change`.
+
+**Known limitations.**
+- A helper is followed one call level deep.
+- A runtime URL on an injected `HttpClient` whose base address is not visible
+  is not recorded, because relative and absolute cannot be told apart. A
+  runtime URL on a locally created `HttpClient` is recorded as unresolved.
+- Kafka records the first bootstrap server as the endpoint.
+- Configuration builders (`configBuilders="Secrets,Environment,AzureKeyVault"`)
+  are noted as possibly replacing a connection string at run time. They are
+  not evaluated.
+
+**Tables.**
+- `outbound_invocations` follows C8, with these columns added:
+  - `placeholder`
+  - `credentials`
+  - `auth_declared`
+  - `confidence_reasons`
+- `detail` is `{endpoint, block}`.
+- `outbound_scans` holds the per-project summaries, including the
+  incompatible list.
+- Migration: `a5d1e7c9b203`. API: `GET /api/repositories/{id}/outbound-invocations`.
 
 ---
 

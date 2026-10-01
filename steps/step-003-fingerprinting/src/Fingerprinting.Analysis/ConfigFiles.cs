@@ -1,7 +1,7 @@
 using System.Xml;
 using System.Xml.Linq;
 
-namespace Fingerprinting.EntryPoints;
+namespace Fingerprinting.Analysis;
 
 /// <summary>A web.config or app.config, parsed once. Unparseable XML yields
 /// an empty file — config that cannot be read declares nothing, and the

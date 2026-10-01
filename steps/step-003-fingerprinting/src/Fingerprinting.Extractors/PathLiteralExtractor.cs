@@ -80,7 +80,7 @@ public sealed class PathLiteralExtractor : IFingerprintExtractor
             var relativePath = FileSystemWalk.ToRepositoryRelativePath(context.RepositoryRoot, filePath);
             try
             {
-                if (ConfigFiles.IsAppSettings(fileName))
+                if (ConfigFileNames.IsAppSettings(fileName))
                 {
                     foreach (var node in JsonConfigWalker.Walk(filePath))
                     {
@@ -91,7 +91,7 @@ public sealed class PathLiteralExtractor : IFingerprintExtractor
                         }
                     }
                 }
-                else if (ConfigFiles.IsXmlConfig(fileName))
+                else if (ConfigFileNames.IsXmlConfig(fileName))
                 {
                     ExtractFromXmlConfig(filePath, relativePath, accumulator);
                 }

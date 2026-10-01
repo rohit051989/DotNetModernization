@@ -67,7 +67,7 @@ public sealed partial class BlazorComponentDetector : IEntryPointDetector
                     LineEnd = line,
                 };
                 yield return new DetectedEntryPoint(
-                    Detected.Record(EntryPointKinds.BlazorComponent, project, handler, new Confidence(), AuthDeclared.From(authorisation)) with
+                    Detected.Record(EntryPointKinds.BlazorComponent, project, handler, new Confidence(), AuthDeclared.From(authorisation.NoneDeclared)) with
                     {
                         Blazor = new BlazorDetail
                         {

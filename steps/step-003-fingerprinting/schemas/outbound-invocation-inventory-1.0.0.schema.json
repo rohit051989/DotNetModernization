@@ -1,0 +1,1534 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://modernization-platform.internal/schemas/outbound-invocation-inventory-1.0.0.schema.json",
+  "title": "outbound-invocation-inventory@1.0.0",
+  "description": "Lifecycle step 5. See 29-STEPS-004-005-INVENTORIES.md Part C. One record per outbound dependency per project: mechanism, normalised endpoint (scheme, host, port, path — userinfo, query and fragment never stored), one binding per environment file, credentials by kind and key path only, and a Linux-compatibility verdict. No timestamp and no absolute path belong here: two runs over unchanged input are byte-identical.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "artifactType",
+    "artifactVersion",
+    "scannerVersion",
+    "repositoryId",
+    "repositorySlug",
+    "semanticAnalysisEnabled",
+    "skipSource",
+    "authDeclaredScope",
+    "summary",
+    "projects",
+    "warnings"
+  ],
+  "properties": {
+    "artifactType": {
+      "const": "outbound-invocation-inventory"
+    },
+    "artifactVersion": {
+      "const": "1.0.0"
+    },
+    "scannerVersion": {
+      "type": "string"
+    },
+    "repositoryId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "repositorySlug": {
+      "type": "string"
+    },
+    "semanticAnalysisEnabled": {
+      "const": false
+    },
+    "skipSource": {
+      "enum": [
+        "application-fingerprint",
+        "solution-project-inventory"
+      ]
+    },
+    "authDeclaredScope": {
+      "type": "string"
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "projectsScanned",
+        "projectsSkipped",
+        "projectsFailed",
+        "invocationCount",
+        "countByMechanism",
+        "countByVerdict"
+      ],
+      "properties": {
+        "projectsScanned": {
+          "type": "integer"
+        },
+        "projectsSkipped": {
+          "type": "integer"
+        },
+        "projectsFailed": {
+          "type": "integer"
+        },
+        "invocationCount": {
+          "type": "integer"
+        },
+        "countByMechanism": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "countByVerdict": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      }
+    },
+    "projects": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/project"
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/warning"
+      }
+    }
+  },
+  "$defs": {
+    "warning": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "code",
+        "message",
+        "severity"
+      ],
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "severity": {
+          "enum": [
+            "info",
+            "warning",
+            "error"
+          ]
+        }
+      }
+    },
+    "configSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourceFile",
+        "keyPath"
+      ],
+      "properties": {
+        "sourceFile": {
+          "type": "string"
+        },
+        "keyPath": {
+          "type": "string"
+        }
+      }
+    },
+    "endpoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scheme",
+        "host",
+        "port",
+        "path",
+        "resolution",
+        "placeholder",
+        "fragments",
+        "source"
+      ],
+      "properties": {
+        "scheme": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "host": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "port": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "resolution": {
+          "enum": [
+            "resolved",
+            "partial",
+            "unresolved"
+          ]
+        },
+        "placeholder": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "fragments": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "source": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/configSource"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "environmentBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "environment",
+        "sourceFile",
+        "keyPath",
+        "scheme",
+        "host",
+        "port",
+        "path",
+        "resolution",
+        "placeholder",
+        "authentication"
+      ],
+      "properties": {
+        "environment": {
+          "type": "string"
+        },
+        "sourceFile": {
+          "type": "string"
+        },
+        "keyPath": {
+          "type": "string"
+        },
+        "scheme": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "host": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "port": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "resolution": {
+          "enum": [
+            "resolved",
+            "partial",
+            "unresolved"
+          ]
+        },
+        "placeholder": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "authentication": {
+          "enum": [
+            "integrated",
+            "credentials",
+            "unknown",
+            null
+          ]
+        }
+      }
+    },
+    "credential": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "keyPath",
+        "sourceFile",
+        "declaredAt"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "certificate",
+            "password",
+            "api_key",
+            "token",
+            "client_secret",
+            "windows"
+          ]
+        },
+        "keyPath": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sourceFile": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "declaredAt": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "callSite": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "filePath",
+        "lineStart",
+        "lineEnd"
+      ],
+      "properties": {
+        "filePath": {
+          "type": "string"
+        },
+        "lineStart": {
+          "type": "integer"
+        },
+        "lineEnd": {
+          "type": "integer"
+        }
+      }
+    },
+    "soap": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract",
+        "binding",
+        "securityMode",
+        "clientCredentialType",
+        "securitySource",
+        "bindingSource",
+        "clientSource",
+        "clientType",
+        "endpointName",
+        "condition",
+        "via"
+      ],
+      "properties": {
+        "contract": {
+          "type": "string"
+        },
+        "binding": {
+          "type": "string"
+        },
+        "securityMode": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "clientCredentialType": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "securitySource": {
+          "enum": [
+            "declared",
+            "binding_default",
+            "unresolved"
+          ]
+        },
+        "bindingSource": {
+          "enum": [
+            "config",
+            "code",
+            "generated_reference"
+          ]
+        },
+        "clientSource": {
+          "enum": [
+            "hand_written",
+            "generated",
+            "config_only"
+          ]
+        },
+        "clientType": {
+          "type": "string"
+        },
+        "endpointName": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "condition": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "via": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "http": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "library",
+        "clientName",
+        "typedClient"
+      ],
+      "properties": {
+        "library": {
+          "enum": [
+            "HttpClient",
+            "IHttpClientFactory",
+            "WebClient",
+            "WebRequest",
+            "RestSharp"
+          ]
+        },
+        "clientName": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "typedClient": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "grpc": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract"
+      ],
+      "properties": {
+        "contract": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "database": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "provider",
+        "authentication",
+        "localDb"
+      ],
+      "properties": {
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "provider": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "authentication": {
+          "enum": [
+            "integrated",
+            "credentials",
+            "unknown"
+          ]
+        },
+        "localDb": {
+          "type": "boolean"
+        }
+      }
+    },
+    "messaging": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "transport",
+        "topics",
+        "authentication"
+      ],
+      "properties": {
+        "transport": {
+          "enum": [
+            "kafka",
+            "msmq"
+          ]
+        },
+        "topics": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "authentication": {
+          "enum": [
+            "unknown",
+            "windows"
+          ]
+        }
+      }
+    },
+    "provider": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "provider"
+      ],
+      "properties": {
+        "provider": {
+          "enum": [
+            "redis",
+            "vault",
+            "azure_key_vault"
+          ]
+        }
+      }
+    },
+    "fileShare": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "share"
+      ],
+      "properties": {
+        "share": {
+          "type": "string"
+        }
+      }
+    },
+    "smtp": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "usesDefaultCredentials"
+      ],
+      "properties": {
+        "usesDefaultCredentials": {
+          "type": "boolean"
+        }
+      }
+    },
+    "ldap": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "api"
+      ],
+      "properties": {
+        "api": {
+          "type": "string"
+        }
+      }
+    },
+    "invocation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "invocationId",
+        "mechanism",
+        "projectPath",
+        "endpoint",
+        "environmentBindings",
+        "authDeclared",
+        "credentials",
+        "callSites",
+        "linuxCompatibility",
+        "confidence",
+        "confidenceReasons"
+      ],
+      "properties": {
+        "invocationId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "mechanism": {
+          "enum": [
+            "http_client",
+            "soap_client",
+            "grpc_client",
+            "database",
+            "message_producer",
+            "message_consumer",
+            "cache",
+            "secret_store",
+            "file_share",
+            "smtp",
+            "ldap"
+          ]
+        },
+        "projectPath": {
+          "type": "string"
+        },
+        "endpoint": {
+          "$ref": "#/$defs/endpoint"
+        },
+        "environmentBindings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/environmentBinding"
+          }
+        },
+        "authDeclared": {
+          "enum": [
+            "declared",
+            "none_declared",
+            "not_assessed",
+            null
+          ]
+        },
+        "credentials": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/credential"
+          }
+        },
+        "callSites": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/callSite"
+          }
+        },
+        "linuxCompatibility": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "verdict",
+            "reasons"
+          ],
+          "properties": {
+            "verdict": {
+              "enum": [
+                "incompatible",
+                "requires_change",
+                "unknown",
+                "compatible"
+              ]
+            },
+            "reasons": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "confidenceReasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "soap": {
+          "$ref": "#/$defs/soap"
+        },
+        "http": {
+          "$ref": "#/$defs/http"
+        },
+        "grpc": {
+          "$ref": "#/$defs/grpc"
+        },
+        "database": {
+          "$ref": "#/$defs/database"
+        },
+        "messaging": {
+          "$ref": "#/$defs/messaging"
+        },
+        "cache": {
+          "$ref": "#/$defs/provider"
+        },
+        "secretStore": {
+          "$ref": "#/$defs/provider"
+        },
+        "fileShare": {
+          "$ref": "#/$defs/fileShare"
+        },
+        "smtp": {
+          "$ref": "#/$defs/smtp"
+        },
+        "ldap": {
+          "$ref": "#/$defs/ldap"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "mechanism": {
+                "const": "soap_client"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "soap"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "http"
+                  ]
+                },
+                {
+                  "required": [
+                    "grpc"
+                  ]
+                },
+                {
+                  "required": [
+                    "database"
+                  ]
+                },
+                {
+                  "required": [
+                    "messaging"
+                  ]
+                },
+                {
+                  "required": [
+                    "cache"
+                  ]
+                },
+                {
+                  "required": [
+                    "secretStore"
+                  ]
+                },
+                {
+                  "required": [
+                    "fileShare"
+                  ]
+                },
+                {
+                  "required": [
+                    "smtp"
+                  ]
+                },
+                {
+                  "required": [
+                    "ldap"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "mechanism": {
+                "const": "http_client"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "http"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "soap"
+                  ]
+                },
+                {
+                  "required": [
+                    "grpc"
+                  ]
+                },
+                {
+                  "required": [
+                    "database"
+                  ]
+                },
+                {
+                  "required": [
+                    "messaging"
+                  ]
+                },
+                {
+                  "required": [
+                    "cache"
+                  ]
+                },
+                {
+                  "required": [
+                    "secretStore"
+                  ]
+                },
+                {
+                  "required": [
+                    "fileShare"
+                  ]
+                },
+                {
+                  "required": [
+                    "smtp"
+                  ]
+                },
+                {
+                  "required": [
+                    "ldap"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "mechanism": {
+                "const": "grpc_client"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "grpc"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "soap"
+                  ]
+                },
+                {
+                  "required": [
+                    "http"
+                  ]
+                },
+                {
+                  "required": [
+                    "database"
+                  ]
+                },
+                {
+                  "required": [
+                    "messaging"
+                  ]
+                },
+                {
+                  "required": [
+                    "cache"
+                  ]
+                },
+                {
+                  "required": [
+                    "secretStore"
+                  ]
+                },
+                {
+                  "required": [
+                    "fileShare"
+                  ]
+                },
+                {
+                  "required": [
+                    "smtp"
+                  ]
+                },
+                {
+                  "required": [
+                    "ldap"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "mechanism": {
+                "const": "database"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "database"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "soap"
+                  ]
+                },
+                {
+                  "required": [
+                    "http"
+                  ]
+                },
+                {
+                  "required": [
+                    "grpc"
+                  ]
+                },
+                {
+                  "required": [
+                    "messaging"
+                  ]
+                },
+                {
+                  "required": [
+                    "cache"
+                  ]
+                },
+                {
+                  "required": [
+                    "secretStore"
+                  ]
+                },
+                {
+                  "required": [
+                    "fileShare"
+                  ]
+                },
+                {
+                  "required": [
+                    "smtp"
+                  ]
+                },
+                {
+                  "required": [
+                    "ldap"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "mechanism": {
+                "const": "message_producer"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "messaging"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "soap"
+                  ]
+                },
+                {
+                  "required": [
+                    "http"
+                  ]
+                },
+                {
+                  "required": [
+                    "grpc"
+                  ]
+                },
+                {
+                  "required": [
+                    "database"
+                  ]
+                },
+                {
+                  "required": [
+                    "cache"
+                  ]
+                },
+                {
+                  "required": [
+                    "secretStore"
+                  ]
+                },
+                {
+                  "required": [
+                    "fileShare"
+                  ]
+                },
+                {
+                  "required": [
+                    "smtp"
+                  ]
+                },
+                {
+                  "required": [
+                    "ldap"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "mechanism": {
+                "const": "message_consumer"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "messaging"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "soap"
+                  ]
+                },
+                {
+                  "required": [
+                    "http"
+                  ]
+                },
+                {
+                  "required": [
+                    "grpc"
+                  ]
+                },
+                {
+                  "required": [
+                    "database"
+                  ]
+                },
+                {
+                  "required": [
+                    "cache"
+                  ]
+                },
+                {
+                  "required": [
+                    "secretStore"
+                  ]
+                },
+                {
+                  "required": [
+                    "fileShare"
+                  ]
+                },
+                {
+                  "required": [
+                    "smtp"
+                  ]
+                },
+                {
+                  "required": [
+                    "ldap"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "mechanism": {
+                "const": "cache"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "cache"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "soap"
+                  ]
+                },
+                {
+                  "required": [
+                    "http"
+                  ]
+                },
+                {
+                  "required": [
+                    "grpc"
+                  ]
+                },
+                {
+                  "required": [
+                    "database"
+                  ]
+                },
+                {
+                  "required": [
+                    "messaging"
+                  ]
+                },
+                {
+                  "required": [
+                    "secretStore"
+                  ]
+                },
+                {
+                  "required": [
+                    "fileShare"
+                  ]
+                },
+                {
+                  "required": [
+                    "smtp"
+                  ]
+                },
+                {
+                  "required": [
+                    "ldap"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "mechanism": {
+                "const": "secret_store"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "secretStore"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "soap"
+                  ]
+                },
+                {
+                  "required": [
+                    "http"
+                  ]
+                },
+                {
+                  "required": [
+                    "grpc"
+                  ]
+                },
+                {
+                  "required": [
+                    "database"
+                  ]
+                },
+                {
+                  "required": [
+                    "messaging"
+                  ]
+                },
+                {
+                  "required": [
+                    "cache"
+                  ]
+                },
+                {
+                  "required": [
+                    "fileShare"
+                  ]
+                },
+                {
+                  "required": [
+                    "smtp"
+                  ]
+                },
+                {
+                  "required": [
+                    "ldap"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "mechanism": {
+                "const": "file_share"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "fileShare"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "soap"
+                  ]
+                },
+                {
+                  "required": [
+                    "http"
+                  ]
+                },
+                {
+                  "required": [
+                    "grpc"
+                  ]
+                },
+                {
+                  "required": [
+                    "database"
+                  ]
+                },
+                {
+                  "required": [
+                    "messaging"
+                  ]
+                },
+                {
+                  "required": [
+                    "cache"
+                  ]
+                },
+                {
+                  "required": [
+                    "secretStore"
+                  ]
+                },
+                {
+                  "required": [
+                    "smtp"
+                  ]
+                },
+                {
+                  "required": [
+                    "ldap"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "mechanism": {
+                "const": "smtp"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "smtp"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "soap"
+                  ]
+                },
+                {
+                  "required": [
+                    "http"
+                  ]
+                },
+                {
+                  "required": [
+                    "grpc"
+                  ]
+                },
+                {
+                  "required": [
+                    "database"
+                  ]
+                },
+                {
+                  "required": [
+                    "messaging"
+                  ]
+                },
+                {
+                  "required": [
+                    "cache"
+                  ]
+                },
+                {
+                  "required": [
+                    "secretStore"
+                  ]
+                },
+                {
+                  "required": [
+                    "fileShare"
+                  ]
+                },
+                {
+                  "required": [
+                    "ldap"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "mechanism": {
+                "const": "ldap"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "ldap"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "soap"
+                  ]
+                },
+                {
+                  "required": [
+                    "http"
+                  ]
+                },
+                {
+                  "required": [
+                    "grpc"
+                  ]
+                },
+                {
+                  "required": [
+                    "database"
+                  ]
+                },
+                {
+                  "required": [
+                    "messaging"
+                  ]
+                },
+                {
+                  "required": [
+                    "cache"
+                  ]
+                },
+                {
+                  "required": [
+                    "secretStore"
+                  ]
+                },
+                {
+                  "required": [
+                    "fileShare"
+                  ]
+                },
+                {
+                  "required": [
+                    "smtp"
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "projectSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "countByMechanism",
+        "countByVerdict",
+        "incompatible"
+      ],
+      "properties": {
+        "countByMechanism": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "countByVerdict": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "incompatible": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "invocationId",
+              "mechanism",
+              "endpoint",
+              "reasons"
+            ],
+            "properties": {
+              "invocationId": {
+                "type": "string"
+              },
+              "mechanism": {
+                "enum": [
+                  "http_client",
+                  "soap_client",
+                  "grpc_client",
+                  "database",
+                  "message_producer",
+                  "message_consumer",
+                  "cache",
+                  "secret_store",
+                  "file_share",
+                  "smtp",
+                  "ldap"
+                ]
+              },
+              "endpoint": {
+                "type": "string"
+              },
+              "reasons": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "project": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "projectId",
+        "projectPath",
+        "status",
+        "skipReason",
+        "summary",
+        "invocations",
+        "warnings"
+      ],
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "projectPath": {
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "SCANNED",
+            "SKIPPED",
+            "FAILED"
+          ]
+        },
+        "skipReason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "summary": {
+          "$ref": "#/$defs/projectSummary"
+        },
+        "invocations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/invocation"
+          }
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/warning"
+          }
+        }
+      }
+    }
+  }
+}

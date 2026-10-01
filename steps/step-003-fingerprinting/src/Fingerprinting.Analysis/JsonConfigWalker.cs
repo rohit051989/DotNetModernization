@@ -1,7 +1,7 @@
 using System.Text;
 using System.Text.Json;
 
-namespace Fingerprinting.Extractors;
+namespace Fingerprinting.Analysis;
 
 /// <summary>
 /// Which configuration files step 3 reads. <c>appsettings*.json</c> covers
@@ -9,7 +9,7 @@ namespace Fingerprinting.Extractors;
 /// <c>appsettings.DEVOCP.json</c>) that an exact <c>appsettings.json</c> match
 /// used to miss — they carry the same connection strings, sinks and paths.
 /// </summary>
-internal static class ConfigFiles
+public static class ConfigFileNames
 {
     public static bool IsAppSettings(string fileName) =>
         fileName.StartsWith("appsettings", StringComparison.OrdinalIgnoreCase)
@@ -22,7 +22,7 @@ internal static class ConfigFiles
 
 /// <summary>One JSON value in an appsettings file, flattened with its path
 /// and the line it sits on.</summary>
-internal sealed record JsonConfigNode
+public sealed record JsonConfigNode
 {
     /// <summary>Property names, and array indices as "0", "1"… — the same
     /// segments .NET configuration uses.</summary>
@@ -50,6 +50,11 @@ internal sealed record JsonConfigNode
     /// string it was computed from is not kept.</summary>
     public bool UsesWindowsAuthentication { get; init; }
 
+    /// <summary>Only meaningful when <see cref="IsConnectionString"/>: the
+    /// facts <see cref="Secrets.ReadConnectionFacts"/> keeps (host, port,
+    /// provider, kind of authentication). Nothing else of the string.</summary>
+    public ConnectionFacts? ConnectionFacts { get; init; }
+
     public string Name => Path.Count == 0 ? string.Empty : Path[^1];
 
     /// <summary>Colon-separated key path, e.g. <c>Serilog:WriteTo:0:Name</c>.</summary>
@@ -67,7 +72,7 @@ internal sealed record JsonConfigNode
 /// skipped unread, and a connection string's value is read only to be handed
 /// to <see cref="Secrets.UsesWindowsAuthentication"/> and then dropped.
 /// </summary>
-internal static class JsonConfigWalker
+public static class JsonConfigWalker
 {
     private static readonly JsonReaderOptions ReaderOptions = new()
     {
@@ -75,9 +80,14 @@ internal static class JsonConfigWalker
         AllowTrailingCommas = true,
     };
 
-    public static IReadOnlyList<JsonConfigNode> Walk(string filePath)
+    public static IReadOnlyList<JsonConfigNode> Walk(string filePath) => WalkBytes(File.ReadAllBytes(filePath));
+
+    /// <summary>The same walk over text in memory — for tests.</summary>
+    public static IReadOnlyList<JsonConfigNode> WalkText(string text) => WalkBytes(Encoding.UTF8.GetBytes(text));
+
+    private static IReadOnlyList<JsonConfigNode> WalkBytes(byte[] content)
     {
-        var bytes = File.ReadAllBytes(filePath).AsSpan();
+        var bytes = content.AsSpan();
         var bom = Encoding.UTF8.Preamble;
         if (bytes.StartsWith(bom))
         {
@@ -106,12 +116,13 @@ internal static class JsonConfigWalker
         {
             // A connection string: the one permitted read, straight into the
             // Windows-auth check, never into the node.
-            var windowsAuth = reader.TokenType == JsonTokenType.String
-                && Secrets.UsesWindowsAuthentication(reader.GetString() ?? string.Empty);
+            var connectionString = reader.TokenType == JsonTokenType.String ? reader.GetString() ?? string.Empty : null;
+            var windowsAuth = connectionString is not null && Secrets.UsesWindowsAuthentication(connectionString);
             nodes.Add(new JsonConfigNode
             {
                 Path = [.. path], Line = line, Kind = reader.TokenType,
                 IsConnectionString = true, UsesWindowsAuthentication = windowsAuth,
+                ConnectionFacts = connectionString is null ? null : Secrets.ReadConnectionFacts(connectionString),
             });
             reader.Skip();
             return;

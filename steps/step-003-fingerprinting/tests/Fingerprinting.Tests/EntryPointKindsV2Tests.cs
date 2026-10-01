@@ -1,3 +1,4 @@
+using Fingerprinting.Analysis;
 using System.Text.Json;
 using Fingerprinting.EntryPoints;
 using Xunit;

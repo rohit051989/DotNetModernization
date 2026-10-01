@@ -1,10 +1,32 @@
-using Fingerprinting.Analysis;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 
-namespace Fingerprinting.EntryPoints;
+namespace Fingerprinting.Analysis;
 
-public sealed record ParsedFile(string RelativePath, CompilationUnitSyntax Root);
+/// <param name="IsGenerated">Generated code (Reference.cs, *.designer.cs):
+/// only ever loaded when asked for, and only read where it is the evidence
+/// itself — a generated WCF client's binding.</param>
+public sealed record ParsedFile(string RelativePath, CompilationUnitSyntax Root, bool IsGenerated = false);
+
+/// <summary>Which non-C# files a step wants loaded with a project, and which
+/// of those to keep once read. Each step supplies its own: step 4 wants .svc,
+/// .cshtml pages and App.xaml; step 5 wants none of those.</summary>
+public interface IAuxiliaryFiles
+{
+    /// <summary>Whether to read <paramref name="path"/> at all.</summary>
+    bool IsCandidate(string path);
+
+    /// <summary>Whether to keep it, having read it.</summary>
+    bool Keep(string path, string text);
+}
+
+/// <summary>No auxiliary files.</summary>
+public sealed class NoAuxiliaryFiles : IAuxiliaryFiles
+{
+    public static NoAuxiliaryFiles Instance { get; } = new();
+    public bool IsCandidate(string path) => false;
+    public bool Keep(string path, string text) => false;
+}
 
 /// <summary>A class, record, struct or interface declared in the project,
 /// with its base list reduced to rightmost identifiers as written.</summary>
@@ -23,8 +45,8 @@ public sealed record DeclaredType(
 /// <summary>
 /// One project's C# source, parsed once and shared by every detector: the
 /// same file set step 3 reads (<see cref="SourceFileScanner"/> — generated
-/// code excluded, capped per project), plus the non-C# files some kinds are
-/// declared in (.svc, .proto).
+/// code excluded unless asked for, capped per project), plus the non-C# files
+/// the step asks for. Shared by steps 4 and 5.
 /// </summary>
 public sealed class ProjectSource
 {
@@ -38,11 +60,9 @@ public sealed class ProjectSource
     public required IReadOnlyList<string> PackageNames { get; init; }
     public required bool Truncated { get; init; }
 
-    /// <summary>Repository-relative paths of the non-C# files entry points
-    /// are declared in, under the project directory, with their text: .svc,
-    /// .proto, .ashx, Global.asax, Razor Pages (.cshtml with <c>@page</c>),
-    /// routable Blazor components (.razor with <c>@page</c>) and WPF
-    /// App.xaml.</summary>
+    /// <summary>Repository-relative paths of the non-C# files the loading
+    /// step asked for (<see cref="IAuxiliaryFiles"/>), under the project
+    /// directory, with their text.</summary>
     public required IReadOnlyList<(string RelativePath, string Text)> AuxiliaryFiles { get; init; }
 
     private IReadOnlyList<DeclaredType>? _types;
@@ -53,11 +73,16 @@ public sealed class ProjectSource
     public ILookup<string, DeclaredType> TypesByName =>
         _typesByName ??= Types.ToLookup(t => t.Name, StringComparer.Ordinal);
 
+    /// <param name="includeGenerated">Load generated files too, flagged
+    /// <see cref="ParsedFile.IsGenerated"/>. Off unless a step reads
+    /// generated code as evidence.</param>
     public static async Task<ProjectSource> LoadAsync(
         string repositoryRoot,
         string projectPath,
         IReadOnlyList<string> packageNames,
-        CancellationToken cancellationToken)
+        IAuxiliaryFiles auxiliaryFiles,
+        CancellationToken cancellationToken,
+        bool includeGenerated = false)
     {
         var projectDirectoryAbsolute = Path.GetDirectoryName(
             Path.Combine(repositoryRoot, projectPath.Replace('/', Path.DirectorySeparatorChar)))!;
@@ -67,52 +92,27 @@ public sealed class ProjectSource
             projectDirectory = "";
         }
 
-        var scan = SourceFileScanner.EnumerateCSharpFiles(repositoryRoot, projectDirectoryAbsolute, cancellationToken);
+        var scan = SourceFileScanner.EnumerateCSharpFiles(repositoryRoot, projectDirectoryAbsolute, cancellationToken, includeGenerated);
         var files = new List<ParsedFile>();
         foreach (var file in scan.Files.OrderBy(f => f.RelativePath, StringComparer.Ordinal))
         {
             var root = await SourceFileScanner.ParseAsync(file.AbsolutePath, cancellationToken);
-            files.Add(new ParsedFile(file.RelativePath, (CompilationUnitSyntax)root));
+            files.Add(new ParsedFile(file.RelativePath, (CompilationUnitSyntax)root, file.IsGenerated));
         }
 
         var auxiliary = new List<(string, string)>();
         foreach (var path in FileSystemWalk.EnumerateFiles(projectDirectoryAbsolute, cancellationToken))
         {
-            if (path.EndsWith(".svc", StringComparison.OrdinalIgnoreCase)
-                || path.EndsWith(".proto", StringComparison.OrdinalIgnoreCase)
-                || path.EndsWith(".ashx", StringComparison.OrdinalIgnoreCase)
-                || Path.GetFileName(path).Equals("Global.asax", StringComparison.OrdinalIgnoreCase))
+            if (!auxiliaryFiles.IsCandidate(path))
             {
-                auxiliary.Add((FileSystemWalk.ToRepositoryRelativePath(repositoryRoot, path),
-                    await File.ReadAllTextAsync(path, cancellationToken)));
+                continue;
             }
-            else if (path.EndsWith(".cshtml", StringComparison.OrdinalIgnoreCase))
+
+            // ReadAllText drops the BOM these files often start with.
+            var text = await File.ReadAllTextAsync(path, cancellationToken);
+            if (auxiliaryFiles.Keep(path, text))
             {
-                // Only pages: a view or partial has no @page directive.
-                // ReadAllText drops the BOM these files usually start with.
-                var text = await File.ReadAllTextAsync(path, cancellationToken);
-                if (RazorPageDetector.PageDirective(text) is not null)
-                {
-                    auxiliary.Add((FileSystemWalk.ToRepositoryRelativePath(repositoryRoot, path), text));
-                }
-            }
-            else if (path.EndsWith(".razor", StringComparison.OrdinalIgnoreCase))
-            {
-                // Only routable components; layouts and partials have no @page.
-                var text = await File.ReadAllTextAsync(path, cancellationToken);
-                if (BlazorComponentDetector.Routes(text).Count > 0)
-                {
-                    auxiliary.Add((FileSystemWalk.ToRepositoryRelativePath(repositoryRoot, path), text));
-                }
-            }
-            else if (path.EndsWith(".xaml", StringComparison.OrdinalIgnoreCase))
-            {
-                // Only the application definition (App.xaml), not every window.
-                var text = await File.ReadAllTextAsync(path, cancellationToken);
-                if (DesktopAppDetector.IsApplicationXaml(text))
-                {
-                    auxiliary.Add((FileSystemWalk.ToRepositoryRelativePath(repositoryRoot, path), text));
-                }
+                auxiliary.Add((FileSystemWalk.ToRepositoryRelativePath(repositoryRoot, path), text));
             }
         }
 

@@ -30,7 +30,7 @@ public sealed record DetectionContext(
         var config = WebAuthorization.Evaluate(ProjectConfigs, Project.ProjectDirectory, urlPath.TrimStart('/'));
         var text = string.Join(" + ", new[] { source.Text, config?.Written }.Where(t => t is not null));
         bool? noneDeclared = source.AnyAuthorise && !source.AnyAnonymous ? false : config?.NoneDeclared;
-        return (text.Length == 0 ? null : text, EntryPoints.AuthDeclared.From(noneDeclared));
+        return (text.Length == 0 ? null : text, Analysis.AuthDeclared.From(noneDeclared));
     }
 }
 

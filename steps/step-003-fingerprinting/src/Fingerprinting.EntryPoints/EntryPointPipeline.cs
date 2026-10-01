@@ -79,7 +79,8 @@ public sealed class EntryPointPipeline
                 continue;
             }
 
-            loaded.Add((project, await ProjectSource.LoadAsync(repositoryRoot, project.RelativePath, project.Packages, cancellationToken)));
+            loaded.Add((project, await ProjectSource.LoadAsync(
+                repositoryRoot, project.RelativePath, project.Packages, EntryPointAuxiliaryFiles.Instance, cancellationToken)));
         }
 
         // Contracts, implementations and hosts can sit in different

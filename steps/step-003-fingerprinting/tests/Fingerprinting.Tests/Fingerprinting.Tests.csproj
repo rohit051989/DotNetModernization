@@ -20,6 +20,8 @@
     <ProjectReference Include="..\..\src\Fingerprinting.Cli\Fingerprinting.Cli.csproj" />
     <ProjectReference Include="..\..\src\Fingerprinting.EntryPoints\Fingerprinting.EntryPoints.csproj" />
     <ProjectReference Include="..\..\src\Fingerprinting.EntryPoints.Cli\Fingerprinting.EntryPoints.Cli.csproj" />
+    <ProjectReference Include="..\..\src\Fingerprinting.Outbound\Fingerprinting.Outbound.csproj" />
+    <ProjectReference Include="..\..\src\Fingerprinting.Outbound.Cli\Fingerprinting.Outbound.Cli.csproj" />
   </ItemGroup>
 
 </Project>

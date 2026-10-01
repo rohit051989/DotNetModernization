@@ -39,48 +39,6 @@ public static class EntryPointKinds
 }
 
 /// <summary>
-/// Whether authentication is declared for an entry point — as written in
-/// source or config. Deliberately not "authorised / unauthorised": gateway,
-/// reverse-proxy and header-based authentication (an API gateway such as
-/// Apigee, an access manager such as ISAM injecting identity headers) sit
-/// outside the code and are invisible to static analysis. So
-/// <see cref="NoneDeclared"/> is a prompt to review how the entry point is
-/// protected, not a finding that it is open.
-/// </summary>
-public static class AuthDeclared
-{
-    /// <summary>An attribute, convention, config rule or WCF client
-    /// credential requires the caller to authenticate.</summary>
-    public const string Declared = "declared";
-
-    /// <summary>Nothing in source or config declares authentication, or
-    /// something declares it waived (<c>[AllowAnonymous]</c>, a WCF endpoint
-    /// taking no client credential, an anonymous Azure Function).</summary>
-    public const string NoneDeclared = "none_declared";
-
-    /// <summary>Where authentication would be declared — web.config, WCF
-    /// endpoints — says nothing this step can read.</summary>
-    public const string NotAssessed = "not_assessed";
-
-    /// <summary>The note every artifact and view carries with these values.</summary>
-    public const string Scope =
-        "auth_declared reports authentication as declared in source and config only. Gateway, reverse-proxy and " +
-        "header-based authentication (an API gateway, an access manager injecting identity headers) are not visible " +
-        "to static analysis, so none_declared is a prompt to review how the entry point is protected, not a security finding.";
-
-    public static string From(AuthorisationState state) => state.NoneDeclared ? NoneDeclared : Declared;
-
-    /// <summary>From a three-state answer: true = none declared, false =
-    /// declared, null = not assessed.</summary>
-    public static string From(bool? noneDeclared) => noneDeclared switch
-    {
-        true => NoneDeclared,
-        false => Declared,
-        null => NotAssessed,
-    };
-}
-
-/// <summary>
 /// Where an entry point's code comes from. <see cref="Framework"/> is a
 /// framework or package type the application only registers — an HTTP
 /// module from Application Insights, session state, Autofac. It stays in the
@@ -160,9 +118,3 @@ public static class ParameterSources
     public const string Inferred = "inferred";
 }
 
-public static class ProjectScanStatuses
-{
-    public const string Scanned = "SCANNED";
-    public const string Skipped = "SKIPPED";
-    public const string Failed = "FAILED";
-}

@@ -1,6 +1,7 @@
 """Read-only endpoints for the repository Surface section —
 29-STEPS-004-005-INVENTORIES.md Part D. Nothing here mutates: step 4
-(entry-point-inventory, steps/step-003-fingerprinting/) owns every row read.
+(entry-point-inventory) and step 5 (outbound-invocation-inventory), both in
+steps/step-003-fingerprinting/, own every row read.
 """
 
 import uuid
@@ -13,7 +14,15 @@ from app import models
 from app.db import get_db
 from app.errors import ErrorResponse, error
 from app.surface import capabilities
-from app.surface.schemas import EntryPointCapabilitiesOut, EntryPointInventoryOut, EntryPointOut, ProjectEntryPointsOut
+from app.surface.schemas import (
+    EntryPointCapabilitiesOut,
+    EntryPointInventoryOut,
+    EntryPointOut,
+    OutboundInventoryOut,
+    OutboundInvocationOut,
+    ProjectEntryPointsOut,
+    ProjectOutboundOut,
+)
 
 router = APIRouter(prefix="/api", tags=["Surface"])
 
@@ -143,3 +152,111 @@ def get_entry_point_capabilities(db: Session = Depends(get_db)):
     listed kind is a result, and a pattern under not_covered is a visible gap
     rather than a silent miss."""
     return capabilities.manifest_with_estate_counts(db)
+
+
+_OUTBOUND_NOT_SCANNED = {
+    "model": ErrorResponse,
+    "description": "The outbound-invocation inventory (lifecycle step 5) has not run yet for this repository.",
+}
+
+_VERDICT_RANK = {"incompatible": 0, "requires_change": 1, "unknown": 2, "compatible": 3}
+
+# What an outbound credential declaration means; the artifact carries the same note.
+OUTBOUND_AUTH_DECLARED_SCOPE = (
+    "authDeclared on an outbound invocation reports whether the client presents credentials, as declared in source and "
+    "config. Credentials added outside the code (a sidecar, a gateway, a delegating handler registered elsewhere) are not "
+    "visible to static analysis, so none_declared and not_assessed are prompts to review, not findings."
+)
+
+
+def _endpoint_display(row: models.OutboundInvocation) -> str:
+    if row.resolution == "unresolved":
+        return f"unresolved ({row.placeholder or 'dynamic'})"
+    port = f":{row.endpoint_port}" if row.endpoint_port is not None else ""
+    return f"{row.endpoint_scheme or '?'}://{row.endpoint_host or '?'}{port}{row.endpoint_path or ''}"
+
+
+def _outbound_sort_key(row: models.OutboundInvocation) -> tuple:
+    # The artifact's order: used before unused, incompatible first, then mechanism and endpoint.
+    return (row.usage != "used", _VERDICT_RANK.get(row.linux_verdict, 9), row.mechanism, _endpoint_display(row), row.id)
+
+
+@router.get(
+    "/repositories/{repository_id}/outbound-invocations",
+    response_model=OutboundInventoryOut,
+    summary="Get a repository's outbound surface: what its applications call, by project",
+    response_description="Invocations grouped by project, incompatible first, with per-project and repository counts.",
+    operation_id="get_repository_outbound_invocations",
+    responses={404: _REPOSITORY_NOT_FOUND, 409: _OUTBOUND_NOT_SCANNED},
+)
+def get_repository_outbound_invocations(repository_id: uuid.UUID, db: Session = Depends(get_db)):
+    """What this repository's applications call: SOAP and HTTP services,
+    gRPC, databases, brokers, caches, secret stores, file shares, SMTP and
+    LDAP, each with its normalised endpoint, environment bindings and
+    Linux-compatibility verdict. 409 until step 5 has run, so the UI can
+    show an empty state naming the step."""
+    repo = db.get(models.Repository, repository_id)
+    if repo is None or repo.deleted_at is not None:
+        raise error(404, f"Repository '{repository_id}' not found", code="NOT_FOUND")
+
+    scan = db.get(models.OutboundScan, repository_id)
+    if scan is None:
+        raise error(409, "The outbound-invocation inventory has not run yet for this repository.", code="NOT_SCANNED")
+
+    rows_by_project: dict[uuid.UUID, list[models.OutboundInvocation]] = {}
+    for row in db.query(models.OutboundInvocation).filter(models.OutboundInvocation.repository_id == repository_id):
+        rows_by_project.setdefault(row.project_id, []).append(row)
+
+    projects = []
+    for project in sorted(scan.project_summaries, key=lambda p: p["projectPath"]):
+        project_id = uuid.UUID(project["projectId"])
+        rows = sorted(rows_by_project.get(project_id, []), key=_outbound_sort_key)
+        projects.append(
+            ProjectOutboundOut(
+                project_id=project_id,
+                project_path=project["projectPath"],
+                status=project["status"],
+                skip_reason=project.get("skipReason"),
+                # Scans before 1.1.0 had no unused clients.
+                unused_count=project["summary"].get("unusedCount", 0),
+                count_by_mechanism=project["summary"]["countByMechanism"],
+                count_by_verdict=project["summary"]["countByVerdict"],
+                invocations=[
+                    OutboundInvocationOut(
+                        id=r.id,
+                        mechanism=r.mechanism,
+                        usage=r.usage,
+                        endpoint_scheme=r.endpoint_scheme,
+                        endpoint_host=r.endpoint_host,
+                        endpoint_port=r.endpoint_port,
+                        endpoint_path=r.endpoint_path,
+                        resolution=r.resolution,
+                        placeholder=r.placeholder,
+                        detail=r.detail,
+                        environment_bindings=r.environment_bindings,
+                        call_sites=r.call_sites,
+                        credentials=r.credentials,
+                        auth_declared=r.auth_declared,
+                        linux_verdict=r.linux_verdict,
+                        linux_reasons=r.linux_reasons,
+                        confidence=float(r.confidence),
+                        confidence_reasons=r.confidence_reasons,
+                    )
+                    for r in rows
+                ],
+            )
+        )
+
+    totals = scan.summary
+    return OutboundInventoryOut(
+        repository_id=repository_id,
+        scanner_version=scan.scanner_version,
+        skip_source=scan.skip_source,
+        scanned_at=scan.scanned_at,
+        invocation_count=totals["invocationCount"],
+        unused_count=totals.get("unusedCount", 0),
+        count_by_mechanism=totals["countByMechanism"],
+        count_by_verdict=totals["countByVerdict"],
+        auth_declared_scope=OUTBOUND_AUTH_DECLARED_SCOPE,
+        projects=projects,
+    )

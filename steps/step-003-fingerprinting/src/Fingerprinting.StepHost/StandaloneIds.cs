@@ -33,6 +33,25 @@ public sealed record FingerprintedProject
     public required Guid ProjectId { get; init; }
     public required string ProjectPath { get; init; }
     public required string FingerprintStatus { get; init; }
+
+    /// <summary>Step 5 reads <c>UNC_PATH_LITERAL</c> signals for file
+    /// shares; step 4 reads none. Only the fields step 5 uses are modelled.</summary>
+    public IReadOnlyList<FingerprintSignal> Signals { get; init; } = [];
+}
+
+public sealed record FingerprintSignal
+{
+    public required string Name { get; init; }
+    public string? Value { get; init; }
+    public string? SourcePath { get; init; }
+    public IReadOnlyList<FingerprintEvidence> Evidence { get; init; } = [];
+}
+
+public sealed record FingerprintEvidence
+{
+    public int? LineStart { get; init; }
+    public int? LineEnd { get; init; }
+    public string? MatchedValue { get; init; }
 }
 
 /// <summary>Caret ranges, as a <c>consumes</c> entry writes them — the
