@@ -29,7 +29,7 @@ ItemCategory = Literal[
     "framework",
 ]
 ItemStatus = Literal["active", "deprecated"]
-# Part D "Project role is computed, not catalogued" — the values step 6
+# Part D "Project role is computed, not catalogued" — the values step 7
 # derives. An item lists the roles it never applies to.
 ProjectRole = Literal["TEST", "DEPLOYMENT", "DATABASE", "APPLICATION", "LIBRARY", "UNKNOWN"]
 EngagementDecisionStatus = Literal["pending", "in_review", "approved", "superseded"]

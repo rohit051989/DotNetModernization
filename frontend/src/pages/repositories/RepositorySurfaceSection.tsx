@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { ApiError } from '../../api/client'
 import { getRepositoryEntryPoints } from '../../api/surface'
 import { RepositoryOutboundPanel } from './RepositoryOutboundPanel'
-import { sourceHref } from './sourceHref'
+import { SourceLink } from './SourceLink'
 import type { EntryPoint, EntryPointInventory, EntryPointKind, HttpDetail, HttpParameter, ProjectEntryPoints, WcfEndpoint } from '../../types/surface'
 
 interface RepositorySurfaceSectionProps {
@@ -50,16 +50,18 @@ function isHttp(entry: EntryPoint): boolean {
   return entry.kind === 'http_controller_action' || entry.kind === 'http_minimal_api' || entry.kind === 'razor_page'
 }
 
-function HandlerLink({ entry, localPath }: { entry: EntryPoint; localPath: string }) {
+function HandlerLink({ entry, localPath }: { entry: EntryPoint; localPath: string | null }) {
   const label = entry.handler_member ? `${entry.handler_type}.${entry.handler_member}` : entry.handler_type
   return (
-    <a
-      href={sourceHref(localPath, entry.file_path, entry.line_start)}
-      title={`${entry.file_path}:${entry.line_start}–${entry.line_end} — opens in VS Code`}
-      className="font-mono text-violet-700 hover:underline"
+    <SourceLink
+      localPath={localPath}
+      filePath={entry.file_path}
+      line={entry.line_start}
+      title={`${entry.file_path}:${entry.line_start}–${entry.line_end}${localPath ? ' — opens in VS Code' : ''}`}
+      className="font-mono text-violet-700"
     >
       {label}
-    </a>
+    </SourceLink>
   )
 }
 
@@ -156,7 +158,7 @@ function RouteCell({ http }: { http: HttpDetail }) {
   )
 }
 
-function HttpRouteTable({ entries, localPath }: { entries: EntryPoint[]; localPath: string }) {
+function HttpRouteTable({ entries, localPath }: { entries: EntryPoint[]; localPath: string | null }) {
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-left text-xs">
@@ -292,9 +294,10 @@ function WcfEndpoints({ endpoints }: { endpoints: WcfEndpoint[] }) {
   )
 }
 
-function OtherKindTable({ entries, localPath }: { entries: EntryPoint[]; localPath: string }) {
+function OtherKindTable({ entries, localPath }: { entries: EntryPoint[]; localPath: string | null }) {
   return (
-    <table className="w-full text-left text-xs">
+    <div className="overflow-x-auto">
+    <table className="w-full min-w-[420px] text-left text-xs">
       <tbody>
         {entries.map((entry) => {
           const authorisation = (entry.detail as Record<string, unknown>).authorisation as string | null | undefined
@@ -320,10 +323,11 @@ function OtherKindTable({ entries, localPath }: { entries: EntryPoint[]; localPa
         })}
       </tbody>
     </table>
+    </div>
   )
 }
 
-function KindGroups({ entries, localPath }: { entries: EntryPoint[]; localPath: string }) {
+function KindGroups({ entries, localPath }: { entries: EntryPoint[]; localPath: string | null }) {
   const byKind = KIND_ORDER.map((kind) => ({ kind, entries: entries.filter((e) => e.kind === kind) })).filter((g) => g.entries.length > 0)
   return (
     <>
@@ -339,7 +343,10 @@ function KindGroups({ entries, localPath }: { entries: EntryPoint[]; localPath: 
   )
 }
 
-function ProjectPanel({ project, localPath }: { project: ProjectEntryPoints; localPath: string }) {
+/** One project's entry points: request entry points first, lifecycle hooks
+ * collapsed. Shared by the repository Surface panel and the
+ * entry-point-inventory artifact renderer. */
+export function InboundProjectPanel({ project, localPath }: { project: ProjectEntryPoints; localPath: string | null }) {
   const [expanded, setExpanded] = useState(true)
   const [showLifecycle, setShowLifecycle] = useState(false)
   const requests = project.entry_points.filter((e) => e.entry_class === 'request')
@@ -350,10 +357,10 @@ function ProjectPanel({ project, localPath }: { project: ProjectEntryPoints; loc
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
-        className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left hover:bg-neutral-50"
+        className="flex w-full flex-wrap items-center justify-between gap-x-3 gap-y-1 px-3 py-2 text-left hover:bg-neutral-50"
       >
-        <span className="font-mono text-xs text-neutral-800">{project.project_path}</span>
-        <span className="flex flex-none items-center gap-2 text-xs text-neutral-400">
+        <span className="min-w-0 break-all font-mono text-xs text-neutral-800">{project.project_path}</span>
+        <span className="flex flex-wrap items-center gap-2 text-xs text-neutral-400">
           {project.request_entry_point_count} request{project.request_entry_point_count === 1 ? '' : 's'}
           {project.lifecycle_hook_count > 0 && <span> · {project.lifecycle_hook_count} lifecycle</span>}
           {(project.count_by_origin.framework ?? 0) > 0 && <span> · {project.count_by_origin.framework} framework</span>}
@@ -390,12 +397,12 @@ function ProjectPanel({ project, localPath }: { project: ProjectEntryPoints; loc
             <div className="space-y-1 rounded bg-neutral-50 px-2 py-1.5 text-[11px] text-neutral-500">
               {project.conventional_routes.map((route) => (
                 <p key={route}>
-                  <span className="font-medium text-neutral-600">Conventional route table:</span> <span className="font-mono">{route}</span>
+                  <span className="font-medium text-neutral-600">Conventional route table:</span> <span className="break-all font-mono">{route}</span>
                 </p>
               ))}
               {project.global_authorisation.map((text) => (
                 <p key={text}>
-                  <span className="font-medium text-neutral-600">Project-wide authorisation:</span> <span className="font-mono">{text}</span>
+                  <span className="font-medium text-neutral-600">Project-wide authorisation:</span> <span className="break-all font-mono">{text}</span>
                 </p>
               ))}
             </div>
@@ -421,9 +428,20 @@ function Stat({ label, value, tone }: { label: string; value: number; tone?: 'am
   )
 }
 
-/** Surface — 29-STEPS-004-005-INVENTORIES.md Part D. Inbound is step 4's
- * entry points; Outbound is step 5's invocations. */
+/** Surface — 29-STEPS-004-005-INVENTORIES.md Part D: inbound (step 4's
+ * entry points) and outbound (step 5's invocations), side by side where
+ * the page is wide enough. */
 export function RepositorySurfaceSection({ repositoryId, localPath, refreshToken }: RepositorySurfaceSectionProps) {
+  return (
+    <div className="grid gap-6 p-4 xl:grid-cols-2">
+      <RepositoryInboundPanel repositoryId={repositoryId} localPath={localPath} refreshToken={refreshToken} />
+      <RepositoryOutboundPanel repositoryId={repositoryId} localPath={localPath} refreshToken={refreshToken} />
+    </div>
+  )
+}
+
+/** Inbound — what can call this repository. */
+export function RepositoryInboundPanel({ repositoryId, localPath, refreshToken }: RepositorySurfaceSectionProps) {
   const [inventory, setInventory] = useState<EntryPointInventory | null>(null)
   const [notScanned, setNotScanned] = useState(false)
   const [failed, setFailed] = useState(false)
@@ -456,9 +474,7 @@ export function RepositorySurfaceSection({ repositoryId, localPath, refreshToken
   const without = inventory?.projects.filter((p) => p.entry_points.length === 0) ?? []
 
   return (
-    <div className="space-y-4">
-      <h3 className="text-sm font-semibold text-neutral-900">Surface</h3>
-
+    <div className="min-w-0">
       <div>
         <h4 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-neutral-400">Inbound — what can call this repository</h4>
         {loading ? (
@@ -471,7 +487,7 @@ export function RepositorySurfaceSection({ repositoryId, localPath, refreshToken
           </div>
         ) : (
           <div className="space-y-3">
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
               <Stat label="Request entry points" value={inventory.request_entry_point_count} />
               <Stat label="No declared auth" value={inventory.no_declared_authentication_count} tone="amber" />
               <Stat
@@ -497,7 +513,7 @@ export function RepositorySurfaceSection({ repositoryId, localPath, refreshToken
             ) : (
               <div className="space-y-2">
                 {withEntries.map((project) => (
-                  <ProjectPanel key={project.project_id} project={project} localPath={localPath} />
+                  <InboundProjectPanel key={project.project_id} project={project} localPath={localPath} />
                 ))}
               </div>
             )}
@@ -521,8 +537,6 @@ export function RepositorySurfaceSection({ repositoryId, localPath, refreshToken
           </div>
         )}
       </div>
-
-      <RepositoryOutboundPanel repositoryId={repositoryId} localPath={localPath} refreshToken={refreshToken} />
     </div>
   )
 }

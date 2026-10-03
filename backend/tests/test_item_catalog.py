@@ -441,6 +441,11 @@ class AuthoredItemTests(unittest.TestCase):
     ABSENCE = {"missing-dockerfile", "missing-health-endpoint", "missing-ocp4-manifests"}
     HOSTING = {"windows-service-hosting", "modern-worker-service"}
     APPLICATION_WORK = {"wcf-nettcp-client", "msmq-usage", "asmx-service"}
+    # Generic, parameterised by package (30-STEP-006 Part D2); signals from step 6.
+    PACKAGE = {
+        "package-upgrade-safe", "package-upgrade-breaking", "package-replacement-required",
+        "package-vulnerable", "package-not-approved",
+    }
     # Hard Linux blockers: "stay on Windows" is a legitimate answer and must
     # be on the menu, Linux-incompatible, so the decision warning fires.
     LINUX_BLOCKERS = {"registry-access", "directory-services-usage", "msmq-usage"}
@@ -459,7 +464,7 @@ class AuthoredItemTests(unittest.TestCase):
 
     def test_every_authored_item_has_a_menu_and_no_computed_state(self):
         items = self._items()
-        self.assertEqual(set(items), self.OCCURRENCE | self.ABSENCE | self.HOSTING | self.APPLICATION_WORK)
+        self.assertEqual(set(items), self.OCCURRENCE | self.ABSENCE | self.HOSTING | self.APPLICATION_WORK | self.PACKAGE)
         for item_id, data in items.items():
             with self.subTest(item=item_id):
                 self.assertNotIn("state", data)
@@ -475,6 +480,125 @@ class AuthoredItemTests(unittest.TestCase):
                 self.assertEqual(data["scope"], "occurrence")
                 detection, _ = validate_detection("occurrence", data["detection"], {})
                 self.assertIn("occurrence_source", detection)
+
+    def test_package_items_are_generic_occurrence_items_with_the_ordering_constraint(self):
+        from app.items.detection import validate_detection
+
+        items = self._items()
+        for item_id in self.PACKAGE:
+            data = items[item_id]
+            with self.subTest(item=item_id):
+                self.assertEqual(data["scope"], "occurrence")
+                detection, _ = validate_detection("occurrence", data["detection"], {})
+                self.assertTrue(all(n.startswith("PACKAGE_") for n in [detection["occurrence_source"]["signal"], *(detection["occurrence_source"].get("also") or [])]))
+        # One package per occurrence: the package is in the signal value.
+        for item_id in self.PACKAGE - {"package-upgrade-breaking"}:
+            self.assertEqual(items[item_id]["detection"]["occurrence_source"]["group_by"], "source_path_and_value")
+        # Safe and breaking run as one unit, recorded on both sides (docs/28 Part E).
+        self.assertIn("ONE\n      UNIT with package-upgrade-breaking".replace("\n      ", " "), " ".join(items["package-upgrade-safe"]["description"].split()))
+        self.assertIn("ONE UNIT with package-upgrade-safe", " ".join(items["package-upgrade-breaking"]["description"].split()))
+        source = items["package-replacement-required"]["detection"]["occurrence_source"]
+        self.assertEqual((source["signal"], source["also"]), ("PACKAGE_NO_COMPATIBLE_VERSION", ["PACKAGE_DEPRECATED"]))
+
+    def test_also_signals_locate_occurrences_and_the_same_line_is_one_occurrence(self):
+        from app.items.evaluation import project_occurrences
+
+        def row(value, path, line):
+            return {"signal_category": "PACKAGE_DEPENDENCY", "signal_type": "PACKAGE", "value": value, "source_type": "PACKAGE_REFERENCE",
+                    "source_path": path, "occurrence_count": 1, "extraction_confidence": 0.9,
+                    "evidence": [{"lineStart": line, "lineEnd": line}], "repository_level": False}
+
+        detection = {
+            "match": {"any": [{"id": "a", "signal": {"name": "PACKAGE_NO_COMPATIBLE_VERSION"}}, {"id": "b", "signal": {"name": "PACKAGE_DEPRECATED"}}]},
+            "occurrence_source": {"signal": "PACKAGE_NO_COMPATIBLE_VERSION", "also": ["PACKAGE_DEPRECATED"], "group_by": "source_path_and_value"},
+        }
+        signals = {
+            # Owin: both conditions on line 12 — one occurrence carrying both.
+            "PACKAGE_NO_COMPATIBLE_VERSION": [row("Owin 1.0.0", "App.csproj", 12)],
+            "PACKAGE_DEPRECATED": [row("Owin 1.0.0: no suggested replacement", "App.csproj", 12),
+                                   # Deprecated only, line 20: its own occurrence, located by `also`.
+                                   row("Old.Lib 2.0.0: replacement New.Lib", "App.csproj", 20)],
+        }
+        occurrences = project_occurrences(detection, signals)
+        self.assertEqual([o["value"] for o in occurrences], ["Old.Lib 2.0.0: replacement New.Lib", "Owin 1.0.0"])
+        owin = occurrences[1]
+        self.assertEqual({e["signal_name"] for e in owin["evidence"]}, {"PACKAGE_NO_COMPATIBLE_VERSION", "PACKAGE_DEPRECATED"})
+
+    def test_an_occurrence_whose_evidence_is_all_ambiguous_is_possible(self):
+        from app.items.evaluation import project_occurrences
+
+        def row(path, *sites):
+            return {"signal_category": "PACKAGE_DEPENDENCY", "signal_type": "API_INVOCATION", "value": f"Acme 1.0 -> 2.0: Check.Eq",
+                    "source_type": "SOURCE_CODE", "source_path": path, "occurrence_count": len(sites), "extraction_confidence": 0.4,
+                    "evidence": [{"lineStart": line, "lineEnd": line, "certainty": certainty} for line, certainty in sites],
+                    "repository_level": False}
+
+        detection = {
+            "match": {"all": [{"id": "b", "signal": {"name": "PACKAGE_UPGRADE_BREAKING"}}]},
+            "occurrence_source": {"signal": "PACKAGE_UPGRADE_BREAKING", "group_by": "source_path"},
+        }
+        signals = {"PACKAGE_UPGRADE_BREAKING": [
+            row("Ambiguous.cs", (3, "ambiguous"), (9, "ambiguous")),
+            row("Mixed.cs", (4, "ambiguous"), (5, "confirmed")),
+        ]}
+        by_file = {o["file_path"]: o for o in project_occurrences(detection, signals)}
+        self.assertEqual((by_file["Ambiguous.cs"]["certainty"], by_file["Mixed.cs"]["certainty"]), ("possible", "confirmed"))
+        self.assertEqual({e["certainty"] for e in by_file["Ambiguous.cs"]["evidence"]}, {"ambiguous"})
+
+        # Evidence that says nothing about certainty (every step 3 signal) stays confirmed.
+        plain = {"PACKAGE_UPGRADE_BREAKING": [{**row("Plain.cs", (1, None)), "evidence": [{"lineStart": 1, "lineEnd": 1}]}]}
+        self.assertEqual(project_occurrences(detection, plain)[0]["certainty"], "confirmed")
+
+    def _absence_case(self, item_id, metadata):
+        """_detect for an authored absence item on a fingerprinted web-host
+        project with no Dockerfile, manifest or health endpoint — so only
+        the metadata decides."""
+        from types import SimpleNamespace
+
+        from app.items.detection import referenced_signal_names, validate_detection
+        from app.steps.item_detection import _detect
+
+        data = self._items()[item_id]
+        detection, _ = validate_detection(data["scope"], data["detection"], {})
+        item = SimpleNamespace(id=item_id, scope=data["scope"], detection=detection)
+        host = {"signal_category": "ENTRY_POINT", "signal_type": "ENTRY_POINT", "value": None, "source_type": "SOURCE_CODE",
+                "source_path": "Program.cs", "occurrence_count": 1, "extraction_confidence": 1.0, "evidence": [], "repository_level": False}
+        visible = {"WEB_APPLICATION_CREATE_BUILDER_ENTRY_POINT": [host]}
+        return _detect(item, referenced_signal_names(detection), True, "9.9.9", {}, visible, metadata)
+
+    WEB_PROJECT = {"frameworkFamily": "net", "frameworkVersion": "8.0", "outputType": "Exe", "projectSdk": "Microsoft.NET.Sdk.Web",
+                   "structuralType": "csharp_project", "projectFormat": "sdk_style", "extension": ".csproj", "fingerprintStatus": "COMPLETE"}
+
+    def test_a_null_framework_is_not_checked_for_every_item_with_a_framework_condition(self):
+        """Absence is never reported as certainty: an unknown framework is
+        not_checked, never checked_absent."""
+        items = self._items()
+        with_framework = [i for i, d in items.items() if any(m["field"] == "frameworkFamily" for m in d["detection"]["match"].get("metadata", []))]
+        self.assertTrue(with_framework)
+        for item_id in with_framework:
+            with self.subTest(item=item_id):
+                state, reason, _rows = self._absence_case(item_id, {**self.WEB_PROJECT, "frameworkFamily": None})
+                self.assertEqual(state, "not_checked")
+                self.assertIn("frameworkFamily", reason)
+                # The same project with the framework known is a real answer.
+                self.assertEqual(self._absence_case(item_id, self.WEB_PROJECT)[0], "found")
+
+    def test_a_blazor_webassembly_client_needs_no_dockerfile_manifests_or_health_endpoint(self):
+        wasm = {**self.WEB_PROJECT, "projectSdk": "Microsoft.NET.Sdk.BlazorWebAssembly"}
+        for item_id in ("missing-dockerfile", "missing-ocp4-manifests", "missing-health-endpoint"):
+            with self.subTest(item=item_id):
+                self.assertEqual(self._absence_case(item_id, wasm)[0], "checked_absent")
+
+    def test_an_also_signal_must_be_in_a_positive_match_group(self):
+        from fastapi import HTTPException
+
+        from app.items.detection import validate_detection
+
+        with self.assertRaises(HTTPException):
+            validate_detection("occurrence", {
+                "match": {"all": [{"id": "a", "signal": {"name": "PACKAGE_NO_COMPATIBLE_VERSION"}}]},
+                "occurrence_source": {"signal": "PACKAGE_NO_COMPATIBLE_VERSION", "also": ["PACKAGE_DEPRECATED"]},
+            }, {})
 
     def test_system_drawing_does_not_key_on_the_namespace(self):
         from app.items.detection import referenced_signal_names

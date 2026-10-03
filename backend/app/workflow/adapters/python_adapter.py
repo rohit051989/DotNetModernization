@@ -4,16 +4,15 @@ For our own steps. Fastest, no serialisation overhead, shares the DB session
 pool (the engine passes `database_url` in StepContext for steps that want it).
 
 A step whose entrypoint declares a `session` parameter is additionally given
-**the engine's own session**, so its writes are inside the job execution's
-transaction. That matters for any step writing a row that foreign-keys the
-execution it belongs to — a gate step raising validation_queue items cannot
-see its own `wf_job_executions` row from a separate session, because the
-engine has only flushed it, not committed. Such a step must not commit
-either: the engine owns the transaction boundary, and committing mid-job
-would publish the partial execution.
+**the engine's own session**, so its writes are committed together with the
+step's own completion: the engine commits at each step boundary (see
+app/workflow/runtime/executor.py), and a step's writes land in the same
+commit as its COMPLETED row and artifacts. Such a step must not commit
+itself — a half-finished step's writes would then outlive a crash that
+leaves the step to be rerun.
 
 Steps that open their own session (`repository_ingest`) keep working
-unchanged — they touch only already-committed rows.
+unchanged; with per-step commits they can also see the execution's rows.
 """
 
 import importlib

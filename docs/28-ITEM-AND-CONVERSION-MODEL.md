@@ -226,7 +226,7 @@ Client-agnostic. One kind of item: a thing that needs work.
 ### Project role is computed, not catalogued
 
 Six role patterns previously lived in the catalog. They are removed. Role is derived
-deterministically in step 6 from data already collected:
+deterministically in step 7 from data already collected:
 
 | Role | Derivation |
 |---|---|
@@ -238,7 +238,7 @@ deterministically in step 6 from data already collected:
 | `UNKNOWN` | None of the above |
 
 Deterministic, needs no authoring surface, and removes six catalog entries plus the
-role-rule concept. Document the logic in the step 6 implementation. If it ever needs
+role-rule concept. Document the logic in the step 7 implementation. If it ever needs
 to be editable, promote it back to the catalog then.
 
 Application *type* — API, worker, UI — comes from the entry-point inventory (step 4),
@@ -280,6 +280,15 @@ What was missing is the catalog declaring which signal to project.
 
 `group_by` accepts `source_path` (default) or `source_path_and_value` where distinct
 values at the same path are separate occurrences.
+
+`also` (optional) names further located signals, for an item matched by `any` of several
+signals that each carry their own locations: `package-replacement-required` matches
+`PACKAGE_NO_COMPATIBLE_VERSION` or `PACKAGE_DEPRECATED`, and either can be the only one
+present for a package. Each is projected the same way, in order — `signal` first, then
+`also` — and a group that shares a path **and a line** with an occurrence already projected
+joins that occurrence instead of making a second one, so a PackageReference line flagged
+by both signals is one occurrence. Every `also` signal is validated like `signal`: it must
+appear in a positive match group and must not have `evidence_kind: NONE`.
 
 An occurrence-scope item **must** declare `occurrence_source`, and the named signal
 must appear in `match.all`, `match.any` or `match.atLeast`. A signal named only in
@@ -342,6 +351,7 @@ on the later item's approaches when they are written.
 |---|---|---|---|
 | `windows-auth-connection-string` | `sensitive-config-key` | Fix authentication while the connection string is still in the config file, then move it to an OCP4 Secret | The auth fix has to edit a Secret, not a config file: different `allowed_paths` and a different approach for the same finding |
 | `serilog-file-sink` | `hardcoded-windows-path` | Removing the file sink removes its path with it | A path about to be deleted is externalised first, and the work list carries a spurious occurrence |
+| `package-upgrade-safe` | `package-upgrade-breaking` — **one unit** for the same package | Bump the version everywhere the package is referenced, then fix the call sites, in one change (`30-STEP-006-DEPENDENCY-ASSESSMENT.md` Part D2). One package can be safe in one project and breaking in another | Fixing call sites first writes against an API the project does not reference yet; bumping only the safe projects splits the solution across two versions of one library, and bumping alone leaves the build broken in between |
 
 Same-line pairs that are *not* ordered: an XML connection string also fires
 `sensitive-config-key` through its `connectionString` attribute. That is the first row
@@ -352,7 +362,7 @@ above, not a separate constraint.
 Step 3 emits some signals at repository level, with a null `project_id`: deployment files
 outside every fingerprinted project directory, such as a root `k8s/` folder, a
 `charts/` folder or a root `Dockerfile` (`21-STEP-003-FINGERPRINTING.md` Part D,
-"Extractor batch 2"). **When step 6 evaluates an item against a project, the
+"Extractor batch 2"). **When step 7 evaluates an item against a project, the
 repository's repository-level signals are part of that project's signal set**, for
 every condition in `match`: `all`, `any`, `atLeast` and `none`.
 
@@ -445,7 +455,7 @@ the engagement targets Linux.
 
 ## Part G — `item_occurrences`
 
-The work list's raw rows. Produced by step 6, replaced per repository on rescan.
+The work list's raw rows. Produced by step 7, replaced per repository on rescan.
 
 | Column | Type | Notes |
 |---|---|---|
@@ -485,7 +495,7 @@ Occurrences from a signal whose extractor is later removed **remain valid** — 
 `signal_registry_version` on the row records what was true when detected. Readiness
 state does not retroactively invalidate detections.
 
-### As implemented (step 6, `backend/app/steps/item_detection.py`)
+### As implemented (step 7, `backend/app/steps/item_detection.py`)
 
 - **One recorded answer per item per project.** Every evaluated pair writes at least one
   row: `checked_absent` and `not_checked` are a single project-level row with no
@@ -499,10 +509,31 @@ state does not retroactively invalidate detections.
   file_path, value)`, NULLS NOT DISTINCT.
 - **Only rows the condition accepts are projected.** A Serilog sink whose path is not a
   Windows path is not an occurrence of an item whose condition requires one.
-- **`not_checked` always means "a rescan can resolve this"**:
+- **Certainty (item-occurrences 1.1.0).** A signal's evidence entry may carry
+  `certainty: confirmed | ambiguous`. Today only step 6's `PACKAGE_UPGRADE_BREAKING`
+  call sites do, where an unchanged overload could equally take the call. An occurrence
+  whose every evidence entry is ambiguous is `item_occurrences.certainty = possible`;
+  everything else, including evidence that says nothing about certainty, is
+  `confirmed`. Possible occurrences are listed apart in the work list and left out of work
+  totals by default: the dashboard's `occurrences_found` (`include_possible=true` counts
+  them), the work list's found and occurrence counts, and the repository page's Items found
+  tile. An item found in a project only through possible occurrences
+  (`summary.possible_only_found`) is not counted as found work either.
+  There is no effort-hours total yet; these counts are the work totals.
+- **`not_checked` means the platform does not know**, and is never reported as absence:
   - the fingerprint's registry version predates a referenced signal
   - step 3 failed on the project
   - step 3 never reached the project
+  - a metadata field one of the item's conditions reads (`frameworkFamily`,
+    `frameworkVersion`, `outputType`, `structuralType`, `projectSdk`, `projectFormat`, ...)
+    is null for the project. This applies to exclusions too: a `notEquals` on an unknown
+    value would otherwise pass and claim knowledge the scan lacks. The reason names the
+    field ("project metadata unknown: frameworkFamily").
+
+  Null therefore has to mean genuinely unknown. Step 2 records what MSBuild itself
+  defines instead of leaving it null: the framework from `Directory.*.props`, the
+  declared SDK (`none` for a legacy MSBuild project), and the output type's SDK default
+  when the project declares none (19-STEP-002-SOLUTION-DISCOVERY.md Part F).
 - **Deliberately skipped projects are not `not_checked`.** A project step 3 skips as out
   of scope (`.dcproj`, `.sfproj`, Node.js) will never be fingerprinted. Signal-based
   items do not apply to it and write no row; items detected purely by step 2 metadata are
@@ -562,7 +593,7 @@ cluster narration.
 
 Signal coverage lists ready signals that no item references. Most are descriptive rather
 than work — test attributes, folders, HTTP attributes, ASP.NET Core namespaces — and feed
-step 6's role derivation instead of items. The groups below *are* migration-relevant and
+step 7's role derivation instead of items. The groups below *are* migration-relevant and
 were reviewed and **left out on purpose** after step 3 batch 2. Revisit when the
 condition in the last column changes.
 
@@ -1170,7 +1201,7 @@ overlays, and step 4's classification tables.
 | `catalog_coverage_reports` | Replaced by the Part G views |
 
 **Run both models side by side** rather than cutting over. Build the new tables, have
-step 6 populate occurrences, and verify against the two sample repositories before
+step 7 populate occurrences, and verify against the two sample repositories before
 dropping the classification tables. The old data is the only reference for whether the
 new detection produces sensible results.
 

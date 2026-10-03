@@ -342,6 +342,8 @@ class Engagement(Base):
     default_posture: Mapped[str] = mapped_column(
         Text, nullable=False, server_default="lift-and-shift"
     )
+    # Step 6 (30-STEP-006 Part C1): the framework packages must support.
+    target_framework: Mapped[str] = mapped_column(Text, nullable=False, server_default="net10.0")
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default="active")
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -917,6 +919,9 @@ class Project(Base):
     assembly_name: Mapped[str | None] = mapped_column(Text)
     root_namespace: Mapped[str | None] = mapped_column(Text)
     output_type: Mapped[str | None] = mapped_column(Text)
+    # Step 2 (solution-project-inventory 2.1.0): the SDK the project file
+    # declares, version stripped; 'none' for a legacy MSBuild project.
+    project_sdk: Mapped[str | None] = mapped_column(Text)
     target_framework_raw: Mapped[str | None] = mapped_column(Text)
     target_frameworks_raw: Mapped[list | None] = mapped_column(JSONB)
     framework_family: Mapped[str | None] = mapped_column(Text)
@@ -1533,11 +1538,16 @@ class ItemOccurrence(Base):
     evidence: Mapped[list | None] = mapped_column(JSONB)
     signal_registry_version: Mapped[str] = mapped_column(Text, nullable=False)
     detection_state: Mapped[str] = mapped_column(Text, nullable=False)
+    # 'possible' when every piece of evidence is ambiguous (a call site an
+    # unchanged overload could equally take): shown apart in the work list
+    # and left out of work totals by default. Otherwise 'confirmed'.
+    certainty: Mapped[str] = mapped_column(Text, nullable=False, server_default="confirmed")
     step_execution_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     detected_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
 
     __table_args__ = (
         CheckConstraint(f"scope IN {ITEM_SCOPE}", name="ck_item_occurrences_scope"),
+        CheckConstraint("certainty IN ('confirmed', 'possible')", name="ck_item_occurrences_certainty"),
         CheckConstraint(f"detection_state IN {DETECTION_STATE}", name="ck_item_occurrences_detection_state"),
         # A location only ever sits on a found occurrence-scope row. Such a
         # row may still have none (found on a signal that locates nothing);
@@ -1765,3 +1775,91 @@ class OutboundScan(Base):
     warnings: Mapped[list | None] = mapped_column(JSONB)
     step_execution_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     scanned_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+# ---------- step 6: dependency assessment ----------
+
+PACKAGE_OUTCOME = ("current", "upgrade_safe", "upgrade_breaking", "no_compatible_version", "unknown")
+
+
+class PackageAssessment(Base):
+    """One row per project per direct package — whether it can move to the
+    engagement's target framework, to what, and which call sites break.
+    Written by step 6 (dependency-assessment), replaced per repository on
+    rescan. See 30-STEP-006-DEPENDENCY-ASSESSMENT.md Part F. `id` is derived
+    (sha256 over repository, project and package id). `feed_url` is
+    normalised: nothing derived from a feed credential is stored (Part B4)."""
+
+    __tablename__ = "package_assessments"
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    repository_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("repositories.id", ondelete="CASCADE"), nullable=False
+    )
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+    )
+    package_id: Mapped[str] = mapped_column(Text, nullable=False)
+    current_version: Mapped[str | None] = mapped_column(Text)
+    recommended_version: Mapped[str | None] = mapped_column(Text)
+    outcome: Mapped[str] = mapped_column(Text, nullable=False)
+    outcome_reason: Mapped[str | None] = mapped_column(Text)
+    classification_method: Mapped[str | None] = mapped_column(Text)
+    deprecated: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    deprecation_replacement: Mapped[str | None] = mapped_column(Text)
+    vulnerable: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    vulnerability_max_severity: Mapped[str | None] = mapped_column(Text)
+    vulnerabilities_resolved_by_upgrade: Mapped[bool | None] = mapped_column(Boolean)
+    not_in_client_feed: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    latest_public_version: Mapped[str | None] = mapped_column(Text)
+    feed_source: Mapped[str | None] = mapped_column(Text)
+    feed_name: Mapped[str | None] = mapped_column(Text)
+    feed_url: Mapped[str | None] = mapped_column(Text)
+    confidence: Mapped[float] = mapped_column(Numeric(3, 2), nullable=False)
+    breaking_members: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    call_sites: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    step_execution_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    assessed_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
+    # Artifact 1.1.0: what the package puts into the project, what a breaking
+    # outcome rests on, the content-package risk flag and version drift.
+    package_kind: Mapped[str | None] = mapped_column(Text)
+    breaking_evidence: Mapped[str | None] = mapped_column(Text)
+    content_breaking_possible: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    version_drift: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+
+    __table_args__ = (
+        CheckConstraint(f"outcome IN {PACKAGE_OUTCOME}", name="ck_package_assessments_outcome"),
+        CheckConstraint(
+            "classification_method IS NULL OR classification_method IN ('api_diff', 'semver_heuristic', 'package_kind')",
+            name="ck_package_assessments_method",
+        ),
+        CheckConstraint(
+            "package_kind IS NULL OR package_kind IN ('runtime', 'build', 'tools', 'analyzer', 'content')",
+            name="ck_package_assessments_kind",
+        ),
+        CheckConstraint(
+            "breaking_evidence IS NULL OR breaking_evidence IN ('confirmed_call_sites', 'ambiguous_call_sites_only', 'semver_presumed')",
+            name="ck_package_assessments_breaking_evidence",
+        ),
+        CheckConstraint(
+            "feed_source IS NULL OR feed_source IN ('client_feed', 'nuget_org_fallback')",
+            name="ck_package_assessments_feed_source",
+        ),
+        CheckConstraint("confidence >= 0 AND confidence <= 1", name="ck_package_assessments_confidence"),
+        Index("ix_package_assessments_repository_id_outcome", "repository_id", "outcome"),
+        Index("ix_package_assessments_package_id", "package_id"),
+    )
+
+
+class PackageLookupCache(Base):
+    """What one feed said about one package, and when (Part B6). Shared by
+    every repository, reused within its TTL — not client data, and not
+    cleared by the demo reset."""
+
+    __tablename__ = "package_lookup_cache"
+
+    feed_url_normalised: Mapped[str] = mapped_column(Text, primary_key=True)
+    package_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    versions: Mapped[list] = mapped_column(JSONB, nullable=False)
+    metadata_: Mapped[dict] = mapped_column("metadata", JSONB, nullable=False)
+    fetched_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)

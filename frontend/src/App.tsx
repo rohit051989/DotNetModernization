@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { listEngagements } from './api/catalog'
 import { getExecution } from './api/workflow'
+import { getRepository } from './api/repositories'
 import type { Engagement } from './types/catalog'
 import { AppShell } from './components/AppShell'
 import type { TabKey } from './components/TabBar'
@@ -10,13 +11,22 @@ import { DashboardPage } from './pages/DashboardPage'
 import { WorkflowPage } from './pages/WorkflowPage'
 import { WorkflowAdministrationPage } from './pages/admin/WorkflowAdministrationPage'
 import { ToastProvider } from './components/Toast'
-import { parseExecutionIdFromLocation, pushExecutionRoute, pushRootRoute } from './routing'
+import {
+  parseExecutionIdFromLocation,
+  parseRepositoryIdFromLocation,
+  pushExecutionRoute,
+  pushRepositoryRoute,
+  pushRootRoute,
+} from './routing'
 
 function App() {
   const [selectedEngagementId, setSelectedEngagementId] = useState<string | null>(null)
   const [engagements, setEngagements] = useState<Engagement[]>([])
   const [activeTab, setActiveTab] = useState<TabKey>('catalog')
   const [selectedExecutionId, setSelectedExecutionId] = useState<string | null>(null)
+  // A repository detail is a page of its own (/repositories/<id>), owned
+  // here like an execution so the URL, Back and reload all work.
+  const [selectedRepositoryId, setSelectedRepositoryId] = useState<string | null>(null)
 
   useEffect(() => {
     listEngagements()
@@ -46,11 +56,27 @@ function App() {
       })
   }, [])
 
+  // The same for a deep-linked repository: its engagement comes from the row.
+  useEffect(() => {
+    const repositoryId = parseRepositoryIdFromLocation()
+    if (!repositoryId) return
+    getRepository(repositoryId)
+      .then((repo) => {
+        setSelectedEngagementId(repo.engagement_id)
+        setActiveTab('repositories')
+        setSelectedRepositoryId(repositoryId)
+      })
+      .catch(() => pushRootRoute())
+  }, [])
+
   useEffect(() => {
     function handlePopState() {
       const executionId = parseExecutionIdFromLocation()
       setSelectedExecutionId(executionId)
       if (executionId) setActiveTab('workflow')
+      const repositoryId = parseRepositoryIdFromLocation()
+      setSelectedRepositoryId(repositoryId)
+      if (repositoryId) setActiveTab('repositories')
     }
     window.addEventListener('popstate', handlePopState)
     return () => window.removeEventListener('popstate', handlePopState)
@@ -58,6 +84,10 @@ function App() {
 
   function handleSelectEngagement(engagementId: string | null) {
     setSelectedEngagementId(engagementId)
+    if (selectedRepositoryId) {
+      setSelectedRepositoryId(null)
+      pushRootRoute()
+    }
     // Repositories/Dashboard/Workflow are engagement-only — Master Catalog has
     // nothing to show there, so fall back to the one tab that always exists.
     if (engagementId === null && activeTab !== 'catalog' && activeTab !== 'admin') {
@@ -76,6 +106,17 @@ function App() {
       setSelectedExecutionId(null)
       pushRootRoute()
     }
+    // Clicking Repositories again from a repository page returns to the list.
+    if (selectedRepositoryId) {
+      setSelectedRepositoryId(null)
+      pushRootRoute()
+    }
+  }
+
+  function handleSelectRepository(repositoryId: string | null) {
+    setSelectedRepositoryId(repositoryId)
+    if (repositoryId) pushRepositoryRoute(repositoryId)
+    else pushRootRoute()
   }
 
   function handleNavigateToExecution(executionId: string) {
@@ -120,6 +161,8 @@ function App() {
             key={selectedEngagementId}
             engagementId={selectedEngagementId}
             engagementName={engagementName}
+            selectedRepositoryId={selectedRepositoryId}
+            onSelectRepository={handleSelectRepository}
             onNavigateToExecution={handleNavigateToExecution}
           />
         ) : activeTab === 'dashboard' && selectedEngagementId ? (

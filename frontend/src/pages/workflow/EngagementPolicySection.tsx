@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { getEffectivePolicies } from '../../api/policies'
 import type { EffectivePolicy } from '../../types/policy'
+import { CollapsibleSection } from '../../components/CollapsibleSection'
 import { StepPolicyDialog } from './definition/StepPolicyDialog'
 import { policyStatusText, policyToggleLabel, policyWinningRow } from './definition/policyPresentation'
 
@@ -33,17 +34,28 @@ export function EngagementPolicySection({ engagementId }: EngagementPolicySectio
     load()
   }, [load])
 
-  if (loading) return <p className="p-4 text-sm text-neutral-400">Loading policy…</p>
-  if (loadError) return <p className="p-4 text-sm text-red-600">{loadError}</p>
-
   // "The policy summary strip lists every step whose effective state
   // differs from default, with the layer responsible" — promoted to this
   // section rather than only inside the viewer (Part D).
   const deviations = policies.filter((p) => p.source !== 'default')
+  const disabled = policies.filter((p) => !p.enabled).length
+  const summary = loading
+    ? 'loading…'
+    : loadError
+      ? 'could not load'
+      : policies.length === 0
+        ? 'no steps in an active job definition'
+        : [
+            disabled > 0 ? `${disabled} step${disabled === 1 ? '' : 's'} disabled` : `all ${policies.length} steps enabled`,
+            deviations.length > 0 && `${deviations.length} differ${deviations.length === 1 ? 's' : ''} from default`,
+          ]
+            .filter(Boolean)
+            .join(' · ')
 
   return (
-    <section className="rounded border border-neutral-200 bg-white">
-      <h2 className="border-b border-neutral-100 px-4 py-3 text-sm font-semibold text-neutral-900">Policy</h2>
+    <CollapsibleSection id="workflow:policy" title="Policy" summary={summary}>
+      {loading && <p className="p-4 text-sm text-neutral-400">Loading policy…</p>}
+      {loadError && <p className="p-4 text-sm text-red-600">{loadError}</p>}
 
       {deviations.length > 0 && (
         <div className="border-b border-neutral-100 bg-amber-50 p-3 text-xs">
@@ -64,10 +76,11 @@ export function EngagementPolicySection({ engagementId }: EngagementPolicySectio
         </div>
       )}
 
-      {policies.length === 0 ? (
+      {loading || loadError ? null : policies.length === 0 ? (
         <p className="p-4 text-sm text-neutral-400">No steps appear in an active job definition yet.</p>
       ) : (
-        <table className="w-full text-left text-sm">
+        <div className="overflow-x-auto">
+        <table className="w-full min-w-[640px] text-left text-sm">
           <thead className="text-xs uppercase tracking-wide text-neutral-500">
             <tr>
               <th className="px-4 py-2 font-medium">Step</th>
@@ -113,6 +126,7 @@ export function EngagementPolicySection({ engagementId }: EngagementPolicySectio
             })}
           </tbody>
         </table>
+        </div>
       )}
 
       {target && (
@@ -126,6 +140,6 @@ export function EngagementPolicySection({ engagementId }: EngagementPolicySectio
           onChanged={load}
         />
       )}
-    </section>
+    </CollapsibleSection>
   )
 }

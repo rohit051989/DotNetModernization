@@ -1,6 +1,6 @@
 job_name: phase0-estate-consolidation
-version: 3
-description: "Engagement-wide consolidation across every registered repository. Lifecycle steps 9-11 (17-LIFECYCLE-STEPS.md v2.0)."
+version: 4
+description: "Engagement-wide consolidation across every registered repository. Lifecycle steps 10-12 (17-LIFECYCLE-STEPS.md v2.1)."
 
 # Scope is derived from the declared parameters: engagement_id without
 # repository_id is what makes this job per_engagement. Do not add
@@ -8,7 +8,7 @@ description: "Engagement-wide consolidation across every registered repository. 
 # no catalog item claims, seen once in each of fifty repositories, is one
 # recurring shape across the estate and fifty invisible ones per
 # repository; likewise eight repositories calling one NetTcp endpoint is
-# one backend conversation (17-LIFECYCLE-STEPS.md, step 10).
+# one backend conversation (17-LIFECYCLE-STEPS.md, step 11).
 parameters:
   - name: engagement_id
     type: string
@@ -43,9 +43,10 @@ parameters:
 stub_policy: continue
 
 flow:
-  # Step 9 replaces pattern-discovery-clustering + pattern-validation. It is
+  # v4: renumbered only (17-LIFECYCLE-STEPS.md v2.1); steps unchanged.
+  # Step 10 replaces pattern-discovery-clustering + pattern-validation. It is
   # a report for catalog authors, not a gate, so there is no gate: block and
-  # no human wait. Like step 10 it reads per-repository results from the
+  # no human wait. Like step 11 it reads per-repository results from the
   # database: ${artifacts.x} resolves only within one job, and those
   # results come from phase0-repository-discovery.
   - step: unclaimed-signal-report

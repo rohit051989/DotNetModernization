@@ -393,6 +393,29 @@ evaluating conditions or importing `.props`/`.targets`. When a property appears 
 multiple conditions, take the first unconditional occurrence and emit a parse warning.
 Full MSBuild evaluation is out of scope — a documented limitation, not a bug.
 
+**Exception: the target framework (artifact 2.1.0).** MSBuild implicitly imports the
+nearest `Directory.Build.props` and then the nearest `Directory.Packages.props` above a
+project, and a repository often sets `TargetFramework` once there (eShopOnWeb does, in
+`Directory.Packages.props`). When the project file declares no framework, those two files
+are read — unconditional, literal properties only, `$(Name)` expanded from them, the later
+import overriding the earlier — and the project file's own value always wins.
+`target_framework_source` records where the framework came from: `project`, or the
+repository-relative props file. Explicit `<Import>`s are still not followed. This is the one
+place every later step reads the framework from: step 6's dependency assessment and step 7's
+role computation and `frameworkFamily` conditions see the same answer.
+
+**Known, not null (2.1.0).** Item detection treats a null metadata field as unknown and
+reports the item `not_checked` for that project, so step 2 records what MSBuild itself
+defines rather than leaving it null:
+
+- `project_sdk`: the declared SDK (`<Project Sdk="...">` or `<Sdk Name="..."/>`), version
+  stripped — `Microsoft.NET.Sdk.BlazorWebAssembly`, for example — or `none` for a legacy
+  MSBuild project, which has no SDK.
+- `output_type`: as declared; else from the implicit props files; else MSBuild's default
+  for the SDK — `Exe` for `Microsoft.NET.Sdk.Web`, `.Worker` and `.BlazorWebAssembly`,
+  `Library` otherwise. `output_type_source` says which: `project`, the props file, or
+  `sdk_default`.
+
 **Path resolution.** `.sln` and `<ProjectReference>` paths use backslashes. Normalise
 to forward slashes, resolve relative to the containing file, then relative to the
 repository root. A resolved path escaping the repository root is

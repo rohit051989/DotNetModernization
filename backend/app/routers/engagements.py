@@ -53,6 +53,7 @@ def create_engagement(payload: schemas.EngagementCreate, db: Session = Depends(g
         description=payload.description,
         target_platform=payload.target_platform,
         default_posture=payload.default_posture,
+        target_framework=payload.target_framework,
     )
     db.add(engagement)
     db.commit()
@@ -98,6 +99,7 @@ def update_engagement(
     engagement.description = payload.description
     engagement.target_platform = payload.target_platform
     engagement.default_posture = payload.default_posture
+    engagement.target_framework = payload.target_framework
     if payload.status is not None:
         engagement.status = payload.status
     engagement.updated_at = datetime.datetime.now(datetime.timezone.utc)

@@ -163,3 +163,7 @@ master view hidden entirely — is recorded in `04-FRONTEND-SPEC.md`'s "Future:
 access control" section, with `// TODO: gate ... once auth exists` markers left
 at the view switcher and every master-scoped mutation. Leave those markers alone;
 they're the map for when auth lands. Do not implement the checks now.
+
+Never start the backend as a background process. The user runs it from their own
+terminal so they can read its logs and it survives the session. If a check needs a
+running backend, ask the user to start it.

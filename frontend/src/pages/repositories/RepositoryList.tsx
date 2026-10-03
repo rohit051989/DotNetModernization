@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { listRepositories } from '../../api/repositories'
 import { getDashboardRepositories } from '../../api/dashboard'
 import type { RepositorySummary } from '../../types/repositories'
@@ -39,6 +39,9 @@ function formatRelative(iso: string | null): string {
 interface RepositoryListProps {
   engagementId: string
   engagementName: string
+  /** False while a repository's page is open: the list stays mounted (so
+   * its search and filters survive) and restores its scroll on return. */
+  visible: boolean
   selectedRepositoryId: string | null
   onSelectRepository: (repositoryId: string) => void
   onNavigateToExecution: (executionId: string) => void
@@ -49,6 +52,7 @@ interface RepositoryListProps {
 export function RepositoryList({
   engagementId,
   engagementName,
+  visible,
   selectedRepositoryId,
   onSelectRepository,
   onNavigateToExecution,
@@ -71,6 +75,17 @@ export function RepositoryList({
   // terminal."
   const [pendingRepositoryId, setPendingRepositoryId] = useState<string | null>(null)
   const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // A hidden element's scroll position is not kept, so it is saved as the
+  // list scrolls and put back when the list is shown again.
+  const scrollContainer = useRef<HTMLDivElement | null>(null)
+  const savedScroll = useRef({ top: 0, left: 0 })
+  useLayoutEffect(() => {
+    if (visible && scrollContainer.current) {
+      scrollContainer.current.scrollTop = savedScroll.current.top
+      scrollContainer.current.scrollLeft = savedScroll.current.left
+    }
+  }, [visible])
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(searchInput.trim()), 300)
@@ -123,7 +138,7 @@ export function RepositoryList({
   }, [engagementId, debouncedSearch, ingestStatusFilter, criticalityFilter, retirementFilter, refreshToken, pendingRepositoryId])
 
   return (
-    <aside className="flex w-[46rem] flex-none flex-col border-r border-neutral-200 bg-white">
+    <aside className="flex w-full min-w-0 flex-col bg-white">
       <div className="flex items-center justify-between border-b border-neutral-100 px-4 py-3">
         <h2 className="text-sm font-semibold text-neutral-900">Repositories — {engagementName}</h2>
         <button
@@ -181,7 +196,13 @@ export function RepositoryList({
         </select>
       </div>
 
-      <div className="flex-1 overflow-y-auto">
+      <div
+        ref={scrollContainer}
+        onScroll={(event) => {
+          savedScroll.current = { top: event.currentTarget.scrollTop, left: event.currentTarget.scrollLeft }
+        }}
+        className="flex-1 overflow-auto"
+      >
         {loading && <div className="p-4 text-sm text-neutral-400">Loading…</div>}
         {!loading && error && <EmptyState title="Could not load repositories" description={error} />}
         {!loading && !error && repositories.length === 0 && (
@@ -192,7 +213,7 @@ export function RepositoryList({
           />
         )}
         {!loading && !error && repositories.length > 0 && (
-          <table className="w-full text-left text-sm">
+          <table className="w-full min-w-[760px] text-left text-sm">
             <thead className="sticky top-0 bg-neutral-50 text-xs uppercase tracking-wide text-neutral-500">
               <tr>
                 <th className="px-4 py-2 font-medium">Name</th>

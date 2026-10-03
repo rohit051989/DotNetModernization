@@ -19,6 +19,10 @@
 # Registry 1.4.0 (step 3 extractor batch 2): ApiUsageExtractor and
 # PathLiteralExtractor shipped, and every planned_emits entry moved to emits.
 # Registry 1.5.0 added WCF_CLIENT_BINDING_CONFIG and WCF_CLIENT_BINDING_USAGE.
+# Registry 1.6.0 added the six PACKAGE_* signals. Their producer is
+# DependencyAssessment — lifecycle step 6, a separate step that writes into
+# fingerprint_signals under its own extractor name — so a producer here is any
+# step that emits registered signals, not only a step 3 extractor.
 # Nothing is planned at the moment.
 
 extractors:
@@ -80,6 +84,17 @@ extractors:
       - WCF_CLIENT_ENDPOINT_CONFIG
       - WCF_SERVICE_ENDPOINT_CONFIG
       - WINDOWS_AUTH_CONNECTION_STRING_CONFIG
+  - name: DependencyAssessment
+    status: implemented
+    owner_team: platform
+    description: "Lifecycle step 6, not a step 3 extractor: NuGet feed lookup, recommended version for the target framework, and the API diff of each upgrade (30-STEP-006-DEPENDENCY-ASSESSMENT.md)."
+    emits:
+      - PACKAGE_DEPRECATED
+      - PACKAGE_NOT_IN_CLIENT_FEED
+      - PACKAGE_NO_COMPATIBLE_VERSION
+      - PACKAGE_UPGRADE_BREAKING
+      - PACKAGE_UPGRADE_SAFE
+      - PACKAGE_VULNERABLE
   - name: EntryPointExtractor
     status: implemented
     owner_team: platform

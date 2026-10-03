@@ -68,8 +68,15 @@ class MainIntegrationTests(unittest.TestCase):
         self.output_dir = Path(self.tmp.name) / "out"
 
         self.repository_id = str(uuid.uuid4())
+        # Its own engagement, so the test does not depend on client data
+        # that a demo reset (scripts/reset-demo.ps1) is free to remove.
+        self.engagement_id = f"step2-integration-test-{self.repository_id[:8]}"
         self.conn = psycopg.connect(DATABASE_URL)
         with self.conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO engagements (id, client_name) VALUES (%s, %s)",
+                (self.engagement_id, "step 2 integration test"),
+            )
             cur.execute(
                 """
                 INSERT INTO repositories (
@@ -79,7 +86,7 @@ class MainIntegrationTests(unittest.TestCase):
                 """,
                 (
                     self.repository_id,
-                    "client-a-ocp4",
+                    self.engagement_id,
                     "step2-integration-test",
                     "repo",
                     f"step2-integration-test-{self.repository_id[:8]}",
@@ -96,6 +103,7 @@ class MainIntegrationTests(unittest.TestCase):
     def tearDown(self):
         with self.conn.cursor() as cur:
             cur.execute("DELETE FROM repositories WHERE id = %s", (self.repository_id,))
+            cur.execute("DELETE FROM engagements WHERE id = %s", (self.engagement_id,))
         self.conn.commit()
         self.conn.close()
         self.tmp.cleanup()
@@ -116,7 +124,7 @@ class MainIntegrationTests(unittest.TestCase):
             "job_name": "phase0-repository-discovery",
             "job_execution_id": str(uuid.uuid4()),
             "step_execution_id": str(uuid.uuid4()),
-            "parameters": {"engagement_id": "client-a-ocp4", "repository_id": self.repository_id},
+            "parameters": {"engagement_id": self.engagement_id, "repository_id": self.repository_id},
             "inputs": {
                 "repository-inventory": {
                     "artifact_type": "repository-inventory",

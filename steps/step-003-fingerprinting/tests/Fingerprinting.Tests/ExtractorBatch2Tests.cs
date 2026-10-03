@@ -344,9 +344,11 @@ public sealed class ExtractorBatch2Tests
     {
         var schemas = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "schemas"));
         var registry = SignalRegistry.LoadLatest(schemas);
-        // 1.4.0 batch 2 (119) + 1.5.0 WCF_CLIENT_BINDING_CONFIG and _USAGE.
-        Assert.Equal("1.5.0", registry.RegistryVersion);
-        Assert.Equal(121, registry.Entries.Count);
+        // 1.4.0 batch 2 (119) + 1.5.0 WCF_CLIENT_BINDING_CONFIG and _USAGE
+        // + 1.6.0 the six PACKAGE_* signals, produced by step 6 (not step 3).
+        Assert.Equal("1.6.0", registry.RegistryVersion);
+        Assert.Equal(127, registry.Entries.Count);
+        Assert.Equal(6, registry.Entries.Count(e => e.Extractor == "DependencyAssessment" && e.Category == SignalCategories.PackageDependency));
         Assert.Contains(registry.Entries, e => e.Name == "WCF_CLIENT_BINDING_CONFIG" && e.Extractor == ConfigurationExtractor.ExtractorName);
         Assert.Equal(10, registry.Entries.Count(e => e.Extractor == ApiUsageExtractor.ExtractorName));
         Assert.Equal(2, registry.Entries.Count(e => e.Extractor == PathLiteralExtractor.ExtractorName));

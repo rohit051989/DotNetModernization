@@ -56,7 +56,9 @@ export interface DashboardItemCounts {
   projects_evaluated: number
   projects_with_findings: number
   items_found: number
+  /** Excludes possible occurrences (ambiguous evidence only) unless include_possible is set. */
   occurrences_found: number
+  occurrences_possible: number
   projects_needing_rescan: number
   top_items: DashboardTopItem[]
 }

@@ -36,7 +36,7 @@ from app.routers import (
 
 def _reconcile_orphaned_executions() -> None:
     """Marks any execution left `STARTING`/`STARTED` by a previous process as
-    `FAILED`. `BackgroundTasks` execution is in-memory and does not survive a
+    `FAILED`, with the step that was in flight. `BackgroundTasks` execution is in-memory and does not survive a
     process restart — without this, an execution whose background task was
     killed mid-run would show as permanently stuck rather than as a clear,
     restartable failure. See 15-REPOSITORY-INGEST-UI.md Part E."""
@@ -58,6 +58,17 @@ def _reconcile_orphaned_executions() -> None:
             execution.exit_status = "FAILED"
             execution.exit_message = "orphaned by engine restart"
             execution.ended_at = now
+            # Steps commit as they go, so completed steps are already
+            # COMPLETED; only the one in flight is left STARTED. Failing it
+            # is what makes a resume rerun it and carry the rest forward.
+            for step in db.query(models.WfStepExecution).filter(
+                models.WfStepExecution.job_execution_id == execution.id,
+                models.WfStepExecution.batch_status.in_(["STARTING", "STARTED"]),
+            ):
+                step.batch_status = "FAILED"
+                step.exit_status = "FAILED"
+                step.exit_message = "orphaned by engine restart"
+                step.ended_at = now
         db.commit()
     finally:
         db.close()

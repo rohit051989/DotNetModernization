@@ -49,21 +49,21 @@ export function AppShell({
   const isMaster = selectedEngagementId === null
 
   return (
-    <div className="flex min-h-screen flex-col bg-neutral-50">
-      <header className="flex items-center justify-between border-b border-neutral-200 bg-white px-6 py-4">
-        <div className="flex items-center gap-3">
-          <h1 className="text-lg font-semibold text-neutral-900">Modernization Platform</h1>
+    <div className="flex h-screen flex-col bg-neutral-50">
+      <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-neutral-200 bg-white px-4 py-3 sm:px-6 sm:py-4">
+        <div className="flex min-w-0 items-center gap-3">
+          <h1 className="truncate text-base font-semibold text-neutral-900 sm:text-lg">Modernization Platform</h1>
           <HealthPill healthy={healthy} />
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex min-w-0 items-center gap-2">
           <ScopePill isMaster={isMaster} />
-          <label className="flex items-center gap-2 text-sm text-neutral-600">
+          <label className="flex min-w-0 items-center gap-2 text-sm text-neutral-600">
             View
             {/* TODO: gate the Master Catalog option behind an admin check once auth
                 exists — non-admins should not see it at all (04-FRONTEND-SPEC.md,
                 "Future: access control"). */}
             <select
-              className={`rounded border px-2 py-1.5 text-sm focus:outline-none ${
+              className={`min-w-0 max-w-[12rem] rounded border px-2 py-1.5 text-sm focus:outline-none sm:max-w-none ${
                 isMaster
                   ? 'border-violet-300 bg-violet-50 text-violet-900'
                   : 'border-blue-300 bg-blue-50 text-blue-900'
@@ -82,7 +82,9 @@ export function AppShell({
         </div>
       </header>
       <TabBar activeTab={activeTab} onSelectTab={onSelectTab} isMaster={isMaster} />
-      <main className="flex-1 overflow-auto">{children}</main>
+      {/* The one page scroller: bounded, so a page's sticky bars and its
+          panes' own scrollers (h-full + overflow-y-auto) work as designed. */}
+      <main className="min-h-0 flex-1 overflow-auto">{children}</main>
     </div>
   )
 }

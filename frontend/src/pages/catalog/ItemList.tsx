@@ -11,6 +11,7 @@ import {
 import { EmptyState } from '../../components/EmptyState'
 import { CategoryBadge, DeletedBadge, ItemDecisionStatusBadge, ReadinessBadge } from '../../components/Badge'
 import { ReadinessReason } from './ReadinessReason'
+import { detectionProfile, type DetectionProfile, type DetectionType } from './itemHelpers'
 import { ItemForm } from './ItemForm'
 
 const SCOPES: { scope: ItemScope; label: string; hint: string }[] = [
@@ -19,6 +20,32 @@ const SCOPES: { scope: ItemScope; label: string; hint: string }[] = [
 ]
 
 type DecisionFilter = 'all' | 'none' | Exclude<EngagementDecisionStatus, 'superseded'>
+
+/** Signal count, or — for an item no signal can make apply — a "metadata
+ * only" badge rather than a bare 0 that looks broken. */
+function DetectionBadge({ profile }: { profile: DetectionProfile }) {
+  const exclusions = profile.exclusions > 0 ? ` · ${profile.exclusions} exclusion${profile.exclusions === 1 ? '' : 's'}` : ''
+  if (profile.type === 'metadata') {
+    return (
+      <span
+        className="whitespace-nowrap rounded border border-sky-200 bg-sky-50 px-1.5 py-0.5 text-[11px] font-medium text-sky-700"
+        title={`Detects on ${profile.metadata} metadata condition(s) — framework, output or structural type — with no signal that can make it apply${profile.exclusions ? `; ${profile.exclusions} signal(s) only rule it out` : ''}. Ready: metadata conditions always count as mapped.`}
+      >
+        metadata only{exclusions}
+      </span>
+    )
+  }
+  return (
+    <span
+      className="whitespace-nowrap rounded border border-neutral-200 bg-neutral-50 px-1.5 py-0.5 text-[11px] text-neutral-600"
+      title={`${profile.signals} signal(s) can make it apply${profile.metadata ? `, with ${profile.metadata} metadata condition(s)` : ''}${profile.exclusions ? `; ${profile.exclusions} more only rule it out` : ''}`}
+    >
+      {profile.signals} signal{profile.signals === 1 ? '' : 's'}
+      {profile.type === 'mixed' && ' + metadata'}
+      {exclusions}
+    </span>
+  )
+}
 
 interface ItemListProps {
   /** null = master catalog view; otherwise the client catalog for this engagement. */
@@ -40,6 +67,7 @@ export function ItemList({ engagementId, selectedItemId, onSelectItem, refreshTo
   const [stateFilter, setStateFilter] = useState<ReadinessState | ''>('')
   const [categoryFilter, setCategoryFilter] = useState('')
   const [decisionFilter, setDecisionFilter] = useState<DecisionFilter>('all')
+  const [detectionFilter, setDetectionFilter] = useState<DetectionType | ''>('')
   const [showDeprecated, setShowDeprecated] = useState(false)
   const [showDeleted, setShowDeleted] = useState(false)
   const [showCreateForm, setShowCreateForm] = useState(false)
@@ -77,10 +105,13 @@ export function ItemList({ engagementId, selectedItemId, onSelectItem, refreshTo
     return map
   }, [decisions])
 
+  const profiles = useMemo(() => new Map(items.map((item) => [item.id, detectionProfile(item.detection?.match)])), [items])
+
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase()
     return items.filter((item) => {
       if (!showDeprecated && item.status === 'deprecated') return false
+      if (detectionFilter && profiles.get(item.id)?.type !== detectionFilter) return false
       if (stateFilter && item.state !== stateFilter) return false
       if (categoryFilter && item.category !== categoryFilter) return false
       if (!isMaster && decisionFilter !== 'all') {
@@ -97,19 +128,20 @@ export function ItemList({ engagementId, selectedItemId, onSelectItem, refreshTo
       }
       return true
     })
-  }, [items, search, stateFilter, categoryFilter, decisionFilter, showDeprecated, isMaster, liveDecisionByItem])
+  }, [items, search, stateFilter, categoryFilter, decisionFilter, detectionFilter, profiles, showDeprecated, isMaster, liveDecisionByItem])
 
   useEffect(() => {
     if (!selectedItemId && filtered.length > 0) onSelectItem(filtered[0].id)
   }, [filtered, selectedItemId, onSelectItem])
 
   const filtersActive =
-    search !== '' || stateFilter !== '' || categoryFilter !== '' || decisionFilter !== 'all' || showDeprecated
+    search !== '' || stateFilter !== '' || categoryFilter !== '' || decisionFilter !== 'all' || detectionFilter !== '' || showDeprecated
   function clearFilters() {
     setSearch('')
     setStateFilter('')
     setCategoryFilter('')
     setDecisionFilter('all')
+    setDetectionFilter('')
     setShowDeprecated(false)
   }
 
@@ -121,7 +153,7 @@ export function ItemList({ engagementId, selectedItemId, onSelectItem, refreshTo
     'rounded border border-neutral-300 px-2 py-1 text-xs text-neutral-700 focus:border-violet-400 focus:outline-none'
 
   return (
-    <div className="flex h-full w-[400px] shrink-0 flex-col border-r border-neutral-200 bg-white">
+    <div className="flex h-full w-[400px] max-w-full shrink-0 flex-col border-r border-neutral-200 bg-white">
       <div className="border-b border-neutral-200 p-4">
         {isMaster && (
           // TODO: gate behind an admin check once auth exists (04-FRONTEND-SPEC.md,
@@ -164,6 +196,18 @@ export function ItemList({ engagementId, selectedItemId, onSelectItem, refreshTo
                 {category}
               </option>
             ))}
+          </select>
+          <select
+            value={detectionFilter}
+            onChange={(event) => setDetectionFilter(event.target.value as DetectionType | '')}
+            className={selectClass}
+            aria-label="Detection type"
+            title="What makes an item apply: signals, metadata alone, or both"
+          >
+            <option value="">Any detection</option>
+            <option value="signal">Signal-based</option>
+            <option value="metadata">Metadata only</option>
+            <option value="mixed">Mixed</option>
           </select>
           {!isMaster && (
             <select
@@ -248,6 +292,7 @@ export function ItemList({ engagementId, selectedItemId, onSelectItem, refreshTo
                       <span className="truncate font-mono text-[11px] text-neutral-400">{item.id}</span>
                       <div className="mt-1 flex flex-wrap items-center gap-1.5">
                         <CategoryBadge category={item.category} />
+                        <DetectionBadge profile={profiles.get(item.id) ?? detectionProfile(item.detection?.match)} />
                         {item.status === 'deprecated' && (
                           <span className="text-[11px] font-medium text-neutral-500">deprecated</span>
                         )}

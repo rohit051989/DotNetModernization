@@ -11,10 +11,21 @@ Everything before that point is carried forward into the new execution as-is
 — including its artifacts — so a query scoped to one job_execution_id always
 shows the instance's full current picture, not just what changed this
 attempt.
+
+Commit per step. Given a `checkpoint` (the session's commit), the engine
+commits at every step boundary: when the execution starts, when a step
+starts (so a live view shows it running), and when a step ends, with its
+row, artifacts and job-context updates. A completed step is therefore
+durable the moment it finishes. A crash loses at most the step in flight,
+and a resume carries every completed step forward instead of rerunning it —
+which matters once steps make changes outside the database, such as git
+commits, that a rerun would apply twice. Without a checkpoint (a caller
+that wants one transaction, such as a test) the engine only flushes.
 """
 
 import datetime
 import re
+from collections.abc import Callable
 from pathlib import Path
 
 from sqlalchemy import func
@@ -538,6 +549,7 @@ def _invoke_step(
     registration: models.WfStepRegistration,
     attempt: int,
     run_base: Path,
+    commit: Callable[[], None],
 ) -> tuple[models.WfStepExecution, StepResult, bool]:
     step_execution = models.WfStepExecution(
         job_execution_id=job_execution.id,
@@ -548,7 +560,9 @@ def _invoke_step(
         started_at=_now(),
     )
     db.add(step_execution)
-    db.flush()
+    # Committed before the step runs: a live view sees it STARTED, and a
+    # process step's own database connection can see its execution row.
+    commit()
 
     run_root = run_base / node.step
     output_dir = run_root / "out"
@@ -631,11 +645,28 @@ def run_execution(
     job_execution: models.WfJobExecution,
     instance: models.WfJobInstance,
     definition: JobDefinitionFile,
+    checkpoint: Callable[[], None] | None = None,
 ) -> models.WfJobExecution:
     """Runs (or resumes) `job_execution` to completion, synchronously — this
     build has no background worker; see 15-REPOSITORY-INGEST-UI.md's
-    single-machine operating model. Mutates and returns `job_execution`."""
+    single-machine operating model. Mutates and returns `job_execution`.
+
+    `checkpoint` is called at every step boundary (see the module
+    docstring); pass the session's commit for per-step durability."""
     flow_steps = _flat_step_nodes(definition.flow)
+
+    def commit() -> None:
+        db.flush()
+        if checkpoint is not None:
+            checkpoint()
+
+    def stopped() -> bool:
+        """An operator stop, committed by another session, is honoured at
+        the next step boundary — visible only because each step commits."""
+        if checkpoint is None:
+            return False
+        db.refresh(job_execution)
+        return job_execution.batch_status == "STOPPED"
 
     prior_execution = (
         db.query(models.WfJobExecution)
@@ -670,7 +701,7 @@ def run_execution(
 
     job_execution.batch_status = "STARTED"
     job_execution.started_at = _now()
-    db.flush()
+    commit()
 
     run_base = _run_base_dir(db, instance, job_execution)
 
@@ -683,7 +714,11 @@ def run_execution(
         if i < resume_index:
             carried = _carry_forward_step(db, job_execution, prior_steps_by_name[node.step])
             step_statuses[node.step] = carried.exit_status
+            commit()
             continue
+
+        if stopped():
+            return job_execution
 
         registration = registrations.get(node.step)
         if registration is None:
@@ -727,17 +762,21 @@ def run_execution(
                 job_execution.ended_at = _now()
                 db.flush()
                 return job_execution
+            commit()
             continue
 
         if decision == "skip":
             step_execution = _record_skip(db, job_execution, node, registration, attempt, skip_reason, message)
             step_statuses[node.step] = step_execution.exit_status
+            commit()
             continue
 
         step_execution, result, should_halt = _invoke_step(
-            db, job_execution, instance, definition, node, registration, attempt, run_base
+            db, job_execution, instance, definition, node, registration, attempt, run_base, commit
         )
         step_statuses[node.step] = result.exit_status
+        # The step's row, artifacts and outputs are durable from here on.
+        commit()
 
         if should_halt:
             job_execution.batch_status = step_execution.batch_status

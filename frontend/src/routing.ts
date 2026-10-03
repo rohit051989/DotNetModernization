@@ -1,5 +1,5 @@
-/** Minimal, dependency-free URL routing for the one deep-linkable resource
- * this app has: an execution detail. Everything else (tab, engagement) stays
+/** Minimal, dependency-free URL routing for the deep-linkable resources:
+ * an execution detail and a repository detail. Everything else (tab, engagement) stays
  * plain component state, matching the rest of the app — see
  * docs/20-WORKFLOW-OBSERVABILITY-UI.md Part C: "Use real routes ... rather
  * than tab state, so an execution can be linked to and reloaded directly." */
@@ -21,5 +21,21 @@ export function pushExecutionRoute(executionId: string): void {
 export function pushRootRoute(): void {
   if (window.location.pathname !== '/') {
     window.history.pushState({}, '', '/')
+  }
+}
+
+const REPOSITORY_PATH_RE = /^\/repositories\/([^/]+)\/?$/
+
+/** A repository detail opens as a page of its own, in the same tab, like an
+ * execution — so it can be linked to, reloaded and left with Back. */
+export function parseRepositoryIdFromLocation(): string | null {
+  const match = REPOSITORY_PATH_RE.exec(window.location.pathname)
+  return match ? decodeURIComponent(match[1]) : null
+}
+
+export function pushRepositoryRoute(repositoryId: string): void {
+  const path = `/repositories/${encodeURIComponent(repositoryId)}`
+  if (window.location.pathname !== path) {
+    window.history.pushState({}, '', path)
   }
 }

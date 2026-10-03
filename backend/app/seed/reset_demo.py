@@ -36,8 +36,8 @@ RUNS_DIR = Path(__file__).resolve().parents[2] / "runs"
 CLEARED_TABLES = (
     # workflow history
     "validation_queue", "wf_artifacts", "wf_step_executions", "wf_job_executions", "wf_job_instances",
-    # step 2 to 6 output
-    "entry_points", "entry_point_scans", "outbound_invocations", "outbound_scans", "item_occurrences",
+    # step 2 to 7 output
+    "entry_points", "entry_point_scans", "outbound_invocations", "outbound_scans", "package_assessments", "item_occurrences",
     "fingerprint_signals", "project_fingerprints", "fingerprint_scans",
     "project_packages", "project_references", "solution_projects", "solutions",
     "repository_artifacts", "repository_structure", "projects",
@@ -49,6 +49,9 @@ CLEARED_TABLES = (
 KEPT_TABLES = (
     "catalog_items", "item_resolutions", "signal_registry_entries", "extractors", "wf_step_registrations",
     "wf_job_definitions", "catalog_revisions", "patterns", "target_state_options",
+    # What feeds said about packages: not client data, and reusing it is what
+    # makes a rescan deterministic (30-STEP-006 Part B6).
+    "package_lookup_cache",
 )
 
 DEMO_ENGAGEMENTS = (

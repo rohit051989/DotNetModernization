@@ -1,7 +1,9 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { getArtifact } from '../../api/workflow'
 import { CopyButton } from '../../components/CopyButton'
 import { OwnerCodeBadge, StubChip, GateChip, CarriedForwardChip, SkipReasonChip } from '../../components/WorkflowBadges'
-import type { StepExecution } from '../../types/workflow'
+import type { ArtifactSummary, StepExecution } from '../../types/workflow'
+import { ArtifactContentView } from './artifacts/ArtifactContentView'
 
 function formatDuration(seconds: number | null): string {
   if (seconds === null) return '—'
@@ -33,12 +35,43 @@ function markerClass(step: StepExecution): string {
   return MARKER_CLASS[step.batch_status] ?? 'bg-neutral-200'
 }
 
+/** Which step produced an input: from this execution's artifacts, or — for
+ * an input carried from an earlier execution — looked up on demand. */
+function ProducedBy({ artifactId, known, displayNames }: { artifactId: string; known: ArtifactSummary | undefined; displayNames: Record<string, string> }) {
+  const [fetched, setFetched] = useState<{ step: string; other: boolean } | null>(null)
+  useEffect(() => {
+    if (known) return
+    let cancelled = false
+    getArtifact(artifactId)
+      .then((a) => {
+        if (!cancelled) setFetched({ step: a.step_name, other: true })
+      })
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
+  }, [artifactId, known])
+  const step = known?.step_name ?? fetched?.step
+  if (!step) return <span className="text-neutral-300">—</span>
+  return (
+    <span className="text-neutral-600">
+      {displayNames[step] ?? step}
+      {fetched?.other && <span className="text-neutral-400"> (earlier execution)</span>}
+    </span>
+  )
+}
+
 interface StepTimelineProps {
   steps: StepExecution[]
+  /** This execution's artifacts, by id — what an input's producing step is read from. */
+  artifactsById: Record<string, ArtifactSummary>
+  /** The repository's path on this machine, for source links in readable views. */
+  localPath: string | null
   onViewArtifact: (artifactId: string) => void
 }
 
-export function StepTimeline({ steps, onViewArtifact }: StepTimelineProps) {
+export function StepTimeline({ steps, artifactsById, localPath, onViewArtifact }: StepTimelineProps) {
+  const displayNames = Object.fromEntries(steps.map((s) => [s.step_name, s.display_name]))
   const [manualExpanded, setManualExpanded] = useState<Record<string, boolean>>({})
 
   function isExpanded(step: StepExecution): boolean {
@@ -59,7 +92,7 @@ export function StepTimeline({ steps, onViewArtifact }: StepTimelineProps) {
             <span className={`mt-1 h-3 w-3 flex-none rounded-full ${markerClass(step)}`} />
             {index < steps.length - 1 && <span className="mt-1 w-px flex-1 bg-neutral-200" />}
           </div>
-          <div className={`flex-1 rounded border px-3 py-2 ${step.batch_status === 'FAILED' ? 'border-red-200 bg-red-50/40' : 'border-neutral-200 bg-white'}`}>
+          <div className={`min-w-0 flex-1 rounded border px-3 py-2 ${step.batch_status === 'FAILED' ? 'border-red-200 bg-red-50/40' : 'border-neutral-200 bg-white'}`}>
             <button type="button" onClick={() => toggle(step)} className="flex w-full flex-wrap items-center gap-2 text-left">
               <span className="font-mono text-xs text-neutral-400">
                 #{step.sequence}
@@ -106,12 +139,15 @@ export function StepTimeline({ steps, onViewArtifact }: StepTimelineProps) {
                 {step.inputs_resolved.length > 0 && (
                   <div>
                     <p className="mb-1 font-semibold uppercase tracking-wide text-neutral-400">Inputs resolved</p>
-                    <ul className="space-y-1">
+                    <ul className="space-y-0.5">
                       {step.inputs_resolved.map((input) => (
-                        <li key={input.artifact_id}>
-                          <button type="button" onClick={() => onViewArtifact(input.artifact_id)} className="text-violet-600 hover:underline">
-                            {input.logical_name}: {input.artifact_type}@{input.artifact_version}
+                        <li key={input.artifact_id} className="flex flex-wrap items-baseline gap-x-2">
+                          <button type="button" onClick={() => onViewArtifact(input.artifact_id)} className="font-medium text-violet-600 hover:underline">
+                            {input.artifact_type}
                           </button>
+                          <span className="text-neutral-500">v{input.artifact_version}</span>
+                          <span className="text-neutral-400">from</span>
+                          <ProducedBy artifactId={input.artifact_id} known={artifactsById[input.artifact_id]} displayNames={displayNames} />
                         </li>
                       ))}
                     </ul>
@@ -119,17 +155,20 @@ export function StepTimeline({ steps, onViewArtifact }: StepTimelineProps) {
                 )}
 
                 {step.outputs_produced.length > 0 && (
-                  <div>
-                    <p className="mb-1 font-semibold uppercase tracking-wide text-neutral-400">Outputs produced</p>
-                    <ul className="space-y-1">
-                      {step.outputs_produced.map((output) => (
-                        <li key={output.artifact_id}>
-                          <button type="button" onClick={() => onViewArtifact(output.artifact_id)} className="text-violet-600 hover:underline">
-                            {output.artifact_type}@{output.artifact_version}
+                  <div className="space-y-2">
+                    <p className="font-semibold uppercase tracking-wide text-neutral-400">Outputs produced</p>
+                    {step.outputs_produced.map((output) => (
+                      <div key={output.artifact_id} className="rounded border border-neutral-200 p-2">
+                        <div className="mb-2 flex flex-wrap items-baseline gap-x-2">
+                          <span className="font-medium text-neutral-800">{output.artifact_type}</span>
+                          <span className="text-neutral-500">v{output.artifact_version}</span>
+                          <button type="button" onClick={() => onViewArtifact(output.artifact_id)} className="ml-auto text-violet-600 hover:underline">
+                            Open in viewer
                           </button>
-                        </li>
-                      ))}
-                    </ul>
+                        </div>
+                        <ArtifactContentView artifactId={output.artifact_id} artifactType={output.artifact_type} localPath={localPath} />
+                      </div>
+                    ))}
                   </div>
                 )}
 
@@ -178,7 +217,7 @@ export function StepTimeline({ steps, onViewArtifact }: StepTimelineProps) {
 
                 {step.working_dir && (
                   <p className="flex items-center gap-1.5 text-neutral-500">
-                    <span className="font-mono">{step.working_dir}</span>
+                    <span className="break-all font-mono">{step.working_dir}</span>
                     <CopyButton value={step.working_dir} />
                   </p>
                 )}

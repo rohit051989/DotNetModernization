@@ -107,6 +107,80 @@ class ProjectParserParseTests(unittest.TestCase):
         self.assertEqual(result["packages"][0]["version_raw"], "13.0.1")
         self.assertEqual(result["package_management_style"], "packagereference")
 
+    def test_framework_from_directory_packages_props_when_the_project_has_none(self):
+        """eShopOnWeb sets TargetFramework once, in Directory.Packages.props."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "Directory.Packages.props").write_text(
+                "<Project><PropertyGroup><Tfm>net8.0</Tfm><TargetFramework>$(Tfm)</TargetFramework></PropertyGroup></Project>",
+                encoding="utf-8",
+            )
+            project = root / "src" / "Web" / "Web.csproj"
+            project.parent.mkdir(parents=True)
+            project.write_text('<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><Nullable>enable</Nullable></PropertyGroup></Project>', encoding="utf-8")
+            result = project_parser.parse(project, root)
+        self.assertEqual(result["target_frameworks_raw"], ["net8.0"])
+        self.assertEqual(result["target_framework_source"], "Directory.Packages.props")
+
+    def test_project_file_framework_wins_and_packages_props_overrides_build_props(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "Directory.Build.props").write_text(
+                "<Project><PropertyGroup><TargetFramework>net6.0</TargetFramework></PropertyGroup></Project>", encoding="utf-8")
+            (root / "Directory.Packages.props").write_text(
+                "<Project><PropertyGroup><TargetFramework>net8.0</TargetFramework></PropertyGroup></Project>", encoding="utf-8")
+            inherits = root / "a" / "A.csproj"
+            inherits.parent.mkdir()
+            inherits.write_text('<Project Sdk="Microsoft.NET.Sdk"></Project>', encoding="utf-8")
+            own = root / "b" / "B.csproj"
+            own.parent.mkdir()
+            own.write_text(SDK_CSPROJ, encoding="utf-8")
+            a = project_parser.parse(inherits, root)
+            b = project_parser.parse(own, root)
+        self.assertEqual((a["target_framework_raw"], a["target_framework_source"]), ("net8.0", "Directory.Packages.props"))
+        self.assertEqual((b["target_framework_raw"], b["target_framework_source"]), ("net6.0", "project"))
+
+    def test_sdk_and_output_type_are_known_not_null(self):
+        """Later steps treat null as unknown, so what MSBuild defines is recorded."""
+        cases = [
+            ('<Project Sdk="Microsoft.NET.Sdk.BlazorWebAssembly"></Project>', "Microsoft.NET.Sdk.BlazorWebAssembly", "Exe", "sdk_default"),
+            ('<Project Sdk="Microsoft.NET.Sdk.Web/8.0.0"></Project>', "Microsoft.NET.Sdk.Web", "Exe", "sdk_default"),
+            ('<Project Sdk="Microsoft.NET.Sdk"></Project>', "Microsoft.NET.Sdk", "Library", "sdk_default"),
+            ('<Project><Sdk Name="Microsoft.NET.Sdk.Worker" /></Project>', "Microsoft.NET.Sdk.Worker", "Exe", "sdk_default"),
+            ('<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>WinExe</OutputType></PropertyGroup></Project>', "Microsoft.NET.Sdk", "WinExe", "project"),
+            (LEGACY_CSPROJ, "none", "Library", "project"),
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for i, (xml, sdk, output_type, source) in enumerate(cases):
+                project = root / f"P{i}" / f"P{i}.csproj"
+                project.parent.mkdir()
+                project.write_text(xml, encoding="utf-8")
+                result = project_parser.parse(project, root)
+                with self.subTest(sdk=sdk, output_type=output_type):
+                    self.assertEqual((result["project_sdk"], result["output_type"], result["output_type_source"]), (sdk, output_type, source))
+
+    def test_output_type_from_directory_build_props(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "Directory.Build.props").write_text(
+                "<Project><PropertyGroup><OutputType>Exe</OutputType></PropertyGroup></Project>", encoding="utf-8")
+            project = root / "A.csproj"
+            project.write_text('<Project Sdk="Microsoft.NET.Sdk"></Project>', encoding="utf-8")
+            result = project_parser.parse(project, root)
+        self.assertEqual((result["output_type"], result["output_type_source"]), ("Exe", "Directory.Build.props"))
+
+    def test_conditional_props_value_is_not_used(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "Directory.Build.props").write_text(
+                "<Project><PropertyGroup Condition=\"'$(X)' == 'y'\"><TargetFramework>net6.0</TargetFramework></PropertyGroup></Project>",
+                encoding="utf-8")
+            project = root / "A.csproj"
+            project.write_text('<Project Sdk="Microsoft.NET.Sdk"></Project>', encoding="utf-8")
+            result = project_parser.parse(project, root)
+        self.assertEqual((result["target_frameworks_raw"], result["target_framework_source"]), (None, None))
+
     def test_multi_targeting_records_all_frameworks(self):
         path = self._write("src/Multi/Multi.csproj", SDK_MULTI_TARGET_CSPROJ)
         result = project_parser.parse(path, self.repo_root)

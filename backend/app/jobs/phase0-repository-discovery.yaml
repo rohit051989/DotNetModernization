@@ -1,6 +1,6 @@
 job_name: phase0-repository-discovery
-version: 8
-description: "Per-repository discovery and analysis. Lifecycle steps 1-8 (17-LIFECYCLE-STEPS.md v2.0)."
+version: 9
+description: "Per-repository discovery and analysis. Lifecycle steps 1-9 (17-LIFECYCLE-STEPS.md v2.1)."
 
 parameters:
   - name: engagement_id
@@ -42,8 +42,24 @@ flow:
     inputs:
       solution-project-inventory: "${artifacts.solution-project-inventory}"
       application-fingerprint: "${artifacts.application-fingerprint}"
-  # Step 6 replaces pattern-classification: it matches catalog items against
-  # the fingerprint's signals and emits occurrences, not a classification.
+  # v9: step 6, dependency-assessment, inserted before item detection
+  # (30-STEP-006-DEPENDENCY-ASSESSMENT.md). It needs step 2's direct
+  # packages and step 3's skip verdicts, and its PACKAGE_* signals must be
+  # in fingerprint_signals before step 7 reads them. Config is Part B6/E:
+  # the lookup-cache TTL, and the advisory explanation, off (not built).
+  - step: dependency-assessment
+    inputs:
+      solution-project-inventory: "${artifacts.solution-project-inventory}"
+      application-fingerprint: "${artifacts.application-fingerprint}"
+    config:
+      compare_public_feed: true
+      lookup_cache_ttl_hours: 24
+      force_refresh: false
+      include_transitive: false
+      enable_change_explanation: false
+  # Step 7 replaces pattern-classification: it matches catalog items against
+  # the fingerprint's signals (step 3's and step 6's) and emits occurrences,
+  # not a classification.
   - step: item-detection
     inputs:
       application-fingerprint: "${artifacts.application-fingerprint}"

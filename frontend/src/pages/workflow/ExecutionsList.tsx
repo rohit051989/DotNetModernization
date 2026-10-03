@@ -5,6 +5,7 @@ import type { RepositorySummary } from '../../types/repositories'
 import { isExecutionTerminal, type JobExecution } from '../../types/workflow'
 import { BatchStatusBadge, ExitStatusBadge } from '../../components/WorkflowBadges'
 import { EmptyState } from '../../components/EmptyState'
+import { CollapsibleSection } from '../../components/CollapsibleSection'
 import { usePolling } from '../../hooks/usePolling'
 
 const BATCH_STATUS_OPTIONS = ['STARTING', 'STARTED', 'COMPLETED', 'FAILED', 'STOPPING', 'STOPPED', 'ABANDONED']
@@ -73,11 +74,29 @@ export function ExecutionsList({ engagementId, onSelectExecution, onNavigateToRe
 
   const repoNameById = Object.fromEntries(repositories.map((r) => [r.id, r.name]))
 
+  // "last run COMPLETED, 2m ago" — the newest by start time, whatever order the API returned.
+  const latest = executions.reduce<JobExecution | null>(
+    (newest, e) => (!newest || (e.started_at ?? '') > (newest.started_at ?? '') ? e : newest),
+    null,
+  )
+  const filtered = jobNameFilter !== '' || batchStatusFilter !== '' || repositoryFilter !== ''
+  const summary = loading
+    ? 'loading…'
+    : error
+      ? 'could not load'
+      : latest
+        ? `${executions.length} execution${executions.length === 1 ? '' : 's'}${filtered ? ' (filtered)' : ''} · last run ${latest.batch_status}, ${formatRelative(latest.started_at)}`
+        : filtered
+          ? 'no executions match the filters'
+          : 'no executions yet'
+
   return (
-    <section className="rounded border border-neutral-200 bg-white">
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-neutral-100 px-4 py-3">
-        <h2 className="text-sm font-semibold text-neutral-900">Executions</h2>
-        <div className="flex flex-wrap gap-2">
+    <CollapsibleSection
+      id="workflow:executions"
+      title="Executions"
+      summary={summary}
+      actions={
+        <>
           <input
             type="text"
             value={jobNameFilter}
@@ -109,9 +128,9 @@ export function ExecutionsList({ engagementId, onSelectExecution, onNavigateToRe
               </option>
             ))}
           </select>
-        </div>
-      </div>
-
+        </>
+      }
+    >
       {loading && <p className="p-4 text-sm text-neutral-400">Loading…</p>}
       {!loading && error && <EmptyState title="Could not load executions" description={error} />}
       {!loading && !error && executions.length === 0 && (
@@ -122,7 +141,8 @@ export function ExecutionsList({ engagementId, onSelectExecution, onNavigateToRe
         />
       )}
       {!loading && !error && executions.length > 0 && (
-        <table className="w-full text-left text-sm">
+        <div className="overflow-x-auto">
+        <table className="w-full min-w-[720px] text-left text-sm">
           <thead className="text-xs uppercase tracking-wide text-neutral-500">
             <tr>
               <th className="px-4 py-2 font-medium">Job</th>
@@ -165,7 +185,8 @@ export function ExecutionsList({ engagementId, onSelectExecution, onNavigateToRe
             })}
           </tbody>
         </table>
+        </div>
       )}
-    </section>
+    </CollapsibleSection>
   )
 }

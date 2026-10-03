@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { ApiError } from '../../api/client'
 import { getRepositoryOutboundInvocations } from '../../api/surface'
 import type { LinuxVerdict, OutboundInventory, OutboundInvocation, OutboundMechanism, ProjectOutbound } from '../../types/surface'
-import { sourceHref } from './sourceHref'
+import { SourceLink } from './SourceLink'
 
 interface RepositoryOutboundPanelProps {
   repositoryId: string
@@ -166,15 +166,15 @@ function Credentials({ invocation }: { invocation: OutboundInvocation }) {
   )
 }
 
-function CallSites({ invocation, localPath }: { invocation: OutboundInvocation; localPath: string }) {
+function CallSites({ invocation, localPath }: { invocation: OutboundInvocation; localPath: string | null }) {
   const [first, ...rest] = invocation.call_sites
   if (!first) return null
   const fileName = (path: string) => path.split('/').pop()
   return (
     <span className="text-[11px]">
-      <a href={sourceHref(localPath, first.filePath, first.lineStart)} className="font-mono text-violet-700 hover:underline" title={first.filePath}>
+      <SourceLink localPath={localPath} filePath={first.filePath} line={first.lineStart} className="font-mono text-violet-700" title={first.filePath}>
         {fileName(first.filePath)}:{first.lineStart}
-      </a>
+      </SourceLink>
       {rest.length > 0 && (
         <span className="text-neutral-400" title={rest.map((c) => `${c.filePath}:${c.lineStart}`).join('\n')}>
           {' '}+{rest.length} more
@@ -238,7 +238,7 @@ function UnusedBadge() {
   )
 }
 
-function InvocationRow({ invocation, localPath }: { invocation: OutboundInvocation; localPath: string }) {
+function InvocationRow({ invocation, localPath }: { invocation: OutboundInvocation; localPath: string | null }) {
   const unused = invocation.usage === 'unused'
   return (
     <tr className={`border-b border-neutral-100 align-top last:border-0 ${unused ? 'opacity-60' : ''}`}>
@@ -271,7 +271,7 @@ function InvocationRow({ invocation, localPath }: { invocation: OutboundInvocati
 
 /** Mechanism groups, worst verdict first; within a group the API's order
  * (incompatible first). */
-function MechanismGroups({ invocations, localPath }: { invocations: OutboundInvocation[]; localPath: string }) {
+function MechanismGroups({ invocations, localPath }: { invocations: OutboundInvocation[]; localPath: string | null }) {
   const groups = new Map<OutboundMechanism, OutboundInvocation[]>()
   for (const i of invocations) groups.set(i.mechanism, [...(groups.get(i.mechanism) ?? []), i])
   const ordered = [...groups.entries()].sort(([a, x], [b, y]) => {
@@ -308,7 +308,10 @@ function MechanismGroups({ invocations, localPath }: { invocations: OutboundInvo
   )
 }
 
-function ProjectPanel({ project, localPath }: { project: ProjectOutbound; localPath: string }) {
+/** One project's invocations grouped by mechanism, incompatible first.
+ * Shared by the repository Surface panel and the
+ * outbound-invocation-inventory artifact renderer. */
+export function OutboundProjectPanel({ project, localPath }: { project: ProjectOutbound; localPath: string | null }) {
   const incompatible = project.count_by_verdict.incompatible ?? 0
   const requiresChange = project.count_by_verdict.requires_change ?? 0
   const used = project.invocations.length - project.unused_count
@@ -318,10 +321,10 @@ function ProjectPanel({ project, localPath }: { project: ProjectOutbound; localP
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left hover:bg-neutral-50"
+        className="flex w-full flex-wrap items-center justify-between gap-x-3 gap-y-1 px-3 py-2 text-left hover:bg-neutral-50"
       >
         <span className="break-all font-mono text-xs text-neutral-800">{project.project_path}</span>
-        <span className="flex flex-none items-center gap-2 text-xs text-neutral-400">
+        <span className="flex flex-wrap items-center gap-2 text-xs text-neutral-400">
           {used} invocation{used === 1 ? '' : 's'}
           {project.unused_count > 0 && <span>{project.unused_count} unused</span>}
           {incompatible > 0 && <span className="font-semibold text-red-700">{incompatible} incompatible</span>}
@@ -389,7 +392,7 @@ export function RepositoryOutboundPanel({ repositoryId, localPath, refreshToken 
   const without = inventory?.projects.filter((p) => p.invocations.length === 0) ?? []
 
   return (
-    <div>
+    <div className="min-w-0">
       <h4 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-neutral-400">Outbound — what this repository calls</h4>
       {loading ? (
         <p className="text-sm text-neutral-400">Loading outbound invocations…</p>
@@ -401,7 +404,7 @@ export function RepositoryOutboundPanel({ repositoryId, localPath, refreshToken 
         </div>
       ) : (
         <div className="space-y-3">
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
             <Stat label="Invocations" value={inventory.invocation_count - inventory.unused_count} />
             <Stat label="Incompatible" value={inventory.count_by_verdict.incompatible ?? 0} verdict="incompatible" />
             <Stat label="Requires change" value={inventory.count_by_verdict.requires_change ?? 0} verdict="requires_change" />
@@ -420,7 +423,7 @@ export function RepositoryOutboundPanel({ repositoryId, localPath, refreshToken 
           ) : (
             <div className="space-y-2">
               {withInvocations.map((project) => (
-                <ProjectPanel key={project.project_id} project={project} localPath={localPath} />
+                <OutboundProjectPanel key={project.project_id} project={project} localPath={localPath} />
               ))}
             </div>
           )}

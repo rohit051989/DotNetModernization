@@ -35,12 +35,23 @@ public sealed record InventoryProject
     /// and <c>declaration_source</c> fields are left unmodeled; only what
     /// FrameworkReferenceExtractor needs is carried.</summary>
     public IReadOnlyList<InventoryPackage> Packages { get; init; } = [];
+
+    /// <summary>What the project builds for — step 6 reads the current
+    /// package version's assemblies for it.</summary>
+    public string? TargetFrameworkRaw { get; init; }
+    public IReadOnlyList<string>? TargetFrameworksRaw { get; init; }
+    public string? FrameworkFamily { get; init; }
+    public string? FrameworkVersion { get; init; }
 }
 
 public sealed record InventoryPackage
 {
     public required string PackageName { get; init; }
     public string? VersionRaw { get; init; }
+
+    /// <summary><c>packagereference</c> or <c>packages_config</c> — where
+    /// step 6 finds the line that declares it.</summary>
+    public string? DeclarationSource { get; init; }
 }
 
 public static class OutOfScopeStructuralTypes

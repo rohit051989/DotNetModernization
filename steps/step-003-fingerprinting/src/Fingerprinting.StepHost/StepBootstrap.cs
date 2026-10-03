@@ -13,13 +13,16 @@ public static class StepBootstrap
     /// <summary>Registers MSBuild, moves stray console output to stderr and
     /// fixes the culture. Returns the real stdout: the only writer the
     /// StepResult may go to.</summary>
-    public static TextWriter Initialise()
+    /// <param name="registerMsBuild">False for a step that never loads
+    /// MSBuild (step 6 ships NuGet's client libraries, which must not be
+    /// shadowed by the SDK's copies).</param>
+    public static TextWriter Initialise(bool registerMsBuild = true)
     {
         // Rule 3: MSBuildLocator.RegisterDefaults() before any method
         // referencing a Microsoft.Build type is even JIT-compiled.
         // Fingerprinting.Analysis holds MSBuild usage behind an interface
         // resolved only after this call.
-        if (!MSBuildLocator.IsRegistered)
+        if (registerMsBuild && !MSBuildLocator.IsRegistered)
         {
             MSBuildLocator.RegisterDefaults();
         }

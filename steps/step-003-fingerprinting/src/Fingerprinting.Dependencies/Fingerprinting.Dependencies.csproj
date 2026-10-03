@@ -1,0 +1,26 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Step 6, dependency-assessment (30-STEP-006-DEPENDENCY-ASSESSMENT.md).
+       Feed resolution, version lookup, API diff and call-site search; the
+       envelope and database live in Fingerprinting.Dependencies.Cli. Uses
+       NuGet's own client libraries for feeds, credentials and packages
+       (Part B2, B4) — the spec requires NuGet's resolution, not a copy. -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Fingerprinting.Dependencies</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Fingerprinting.Domain\Fingerprinting.Domain.csproj" />
+    <ProjectReference Include="..\Fingerprinting.Analysis\Fingerprinting.Analysis.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="NuGet.Credentials" Version="7.9.0" />
+    <PackageReference Include="NuGet.Protocol" Version="7.9.0" />
+  </ItemGroup>
+
+</Project>

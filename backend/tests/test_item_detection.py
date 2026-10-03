@@ -149,12 +149,15 @@ class DetectionTestCase(unittest.TestCase):
         self.outer.rollback()
         self.connection.close()
 
-    def add_project(self, relative_path, output_type=None, framework_family="net", fingerprinted=True):
+    def add_project(self, relative_path, output_type="Library", framework_family="net", fingerprinted=True, project_sdk="Microsoft.NET.Sdk"):
+        # Step 2 records a value for output type and SDK on every .NET project
+        # (MSBuild's default when undeclared), so a fixture does too: a null
+        # here means "unknown" and makes metadata conditions not_checked.
         project = models.Project(
             repository_id=self.repo.id, name=Path(relative_path).stem, relative_path=relative_path, extension=".csproj",
             structural_type="csharp_project", project_format="sdk_style", language="csharp",
             package_management_style="packagereference", parse_status="success",
-            output_type=output_type, framework_family=framework_family,
+            output_type=output_type, framework_family=framework_family, project_sdk=project_sdk,
         )
         self.db.add(project)
         self.db.flush()

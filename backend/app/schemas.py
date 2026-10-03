@@ -668,6 +668,10 @@ class EngagementBase(BaseModel):
         default="lift-and-shift",
         description="Default migration posture for this engagement, e.g. 'lift-and-shift'.",
     )
+    target_framework: str = Field(
+        default="net10.0",
+        description="The .NET target framework moniker the estate moves to — what step 6 checks every package against.",
+    )
 
 
 class EngagementCreate(EngagementBase):
@@ -700,6 +704,7 @@ class Engagement(BaseModel):
     description: str | None = Field(description="Free-text notes about this engagement.")
     target_platform: str | None = Field(description="Intended deployment target, e.g. 'OpenShift 4'.")
     default_posture: str = Field(description="Default migration posture for this engagement.")
+    target_framework: str = Field(description="The .NET target framework moniker packages must support (step 6).")
     status: LifecycleStatus = Field(description="Lifecycle state: 'draft', 'active', or 'deprecated'.")
     created_at: datetime.datetime = Field(description="When this engagement was created.")
     updated_at: datetime.datetime = Field(description="When this engagement was last modified.")

@@ -147,18 +147,19 @@ def replace_all(
                     """
                     INSERT INTO projects (
                         id, repository_id, name, relative_path, extension, structural_type,
-                        project_format, language, assembly_name, root_namespace, output_type,
+                        project_format, language, assembly_name, root_namespace, output_type, project_sdk,
                         target_framework_raw, target_frameworks_raw, framework_family,
                         framework_version, is_multi_targeting, solution_membership_count,
                         is_standalone, project_reference_count, package_reference_count,
                         package_management_style, has_packages_config, parse_status, parse_warnings
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (id) DO UPDATE SET
                         name = EXCLUDED.name, relative_path = EXCLUDED.relative_path,
                         extension = EXCLUDED.extension, structural_type = EXCLUDED.structural_type,
                         project_format = EXCLUDED.project_format, language = EXCLUDED.language,
                         assembly_name = EXCLUDED.assembly_name, root_namespace = EXCLUDED.root_namespace,
-                        output_type = EXCLUDED.output_type, target_framework_raw = EXCLUDED.target_framework_raw,
+                        output_type = EXCLUDED.output_type, project_sdk = EXCLUDED.project_sdk,
+                        target_framework_raw = EXCLUDED.target_framework_raw,
                         target_frameworks_raw = EXCLUDED.target_frameworks_raw,
                         framework_family = EXCLUDED.framework_family, framework_version = EXCLUDED.framework_version,
                         is_multi_targeting = EXCLUDED.is_multi_targeting,
@@ -182,6 +183,7 @@ def replace_all(
                         p["assembly_name"],
                         p["root_namespace"],
                         p["output_type"],
+                        p["project_sdk"],
                         p["target_framework_raw"],
                         json.dumps(p["target_frameworks_raw"]) if p["target_frameworks_raw"] is not None else None,
                         p["framework_family"],

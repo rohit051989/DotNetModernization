@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { getExecution, listExecutionArtifacts, resumeExecution } from '../../api/workflow'
+import { getRepository } from '../../api/repositories'
 import { ApiError } from '../../api/client'
 import type { ArtifactSummary, JobExecutionDetail as JobExecutionDetailType } from '../../types/workflow'
 import { isExecutionTerminal } from '../../types/workflow'
@@ -32,6 +33,7 @@ export function ExecutionDetail({ executionId, onBack }: ExecutionDetailProps) {
   const [notFound, setNotFound] = useState(false)
   const [busy, setBusy] = useState(false)
   const [viewingArtifactId, setViewingArtifactId] = useState<string | null>(null)
+  const [localPath, setLocalPath] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     try {
@@ -54,6 +56,22 @@ export function ExecutionDetail({ executionId, onBack }: ExecutionDetailProps) {
     setExecution(null)
     load()
   }, [load])
+
+  // Source links in the readable views resolve against the repository's
+  // folder on this machine; without one they show as plain text.
+  const repositoryId = typeof execution?.parameters.repository_id === 'string' ? execution.parameters.repository_id : null
+  useEffect(() => {
+    if (!repositoryId) return
+    let cancelled = false
+    getRepository(repositoryId)
+      .then((repo) => {
+        if (!cancelled) setLocalPath(repo.local_path)
+      })
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
+  }, [repositoryId])
 
   const isRunning = execution ? !isExecutionTerminal(execution.batch_status) : false
   usePolling(load, POLL_INTERVAL_MS, isRunning)
@@ -165,7 +183,12 @@ export function ExecutionDetail({ executionId, onBack }: ExecutionDetailProps) {
 
       <section>
         <h3 className="mb-2 text-sm font-semibold text-neutral-900">Steps</h3>
-        <StepTimeline steps={execution.steps} onViewArtifact={setViewingArtifactId} />
+        <StepTimeline
+          steps={execution.steps}
+          artifactsById={Object.fromEntries(artifacts.map((a) => [a.id, a]))}
+          localPath={localPath}
+          onViewArtifact={setViewingArtifactId}
+        />
       </section>
 
       <section>
@@ -207,7 +230,7 @@ export function ExecutionDetail({ executionId, onBack }: ExecutionDetailProps) {
         )}
       </section>
 
-      {viewingArtifactId && <ArtifactViewerDrawer artifactId={viewingArtifactId} onClose={() => setViewingArtifactId(null)} />}
+      {viewingArtifactId && <ArtifactViewerDrawer artifactId={viewingArtifactId} localPath={localPath} onClose={() => setViewingArtifactId(null)} />}
     </div>
   )
 }

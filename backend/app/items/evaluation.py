@@ -1,7 +1,7 @@
 """Evaluating one catalog item's detection against one project —
 28-ITEM-AND-CONVERSION-MODEL.md Part E.
 
-Pure functions, no I/O: step 6 (app/steps/item_detection.py) loads the
+Pure functions, no I/O: step 7 (app/steps/item_detection.py) loads the
 signals and metadata, this module decides.
 
 The condition semantics are the ones the old step 4 engine used, kept
@@ -184,12 +184,37 @@ def project_occurrences(detection: dict, signals_by_name: dict[str, list[dict]])
     condition requires one. Repository-level rows never locate anything, and
     a row with no source path cannot be located.
 
-    Returns [{file_path, value, evidence}], sorted, evidence in line order."""
+    `occurrence_source.also` names further located signals, for an item
+    matched by `any` of several (package-replacement-required: no compatible
+    version, or deprecated). Their rows are projected the same way, except
+    that a group sharing a path and a line with an occurrence already
+    projected joins it: one PackageReference line flagged by both signals is
+    one occurrence, not two.
+
+    Returns [{file_path, value, evidence, certainty}], sorted, evidence in
+    line order; certainty is 'possible' when every entry is ambiguous."""
     source = detection["occurrence_source"]
-    name = source["signal"]
     by_value = source.get("group_by", "source_path") == "source_path_and_value"
 
-    match = detection["match"]
+    occurrences: list[dict] = []
+    for index, name in enumerate([source["signal"], *(source.get("also") or [])]):
+        for occurrence in _project_signal(name, detection["match"], signals_by_name, by_value):
+            lines = {e["line_start"] for e in occurrence["evidence"] if e["line_start"] is not None}
+            same = index > 0 and next(
+                (o for o in occurrences
+                 if o["file_path"] == occurrence["file_path"] and lines & {e["line_start"] for e in o["evidence"]}),
+                None,
+            )
+            if same:
+                same["evidence"] = _sorted_evidence(same["evidence"] + occurrence["evidence"])
+                if occurrence["certainty"] == "confirmed":
+                    same["certainty"] = "confirmed"
+            else:
+                occurrences.append(occurrence)
+    return sorted(occurrences, key=lambda o: (o["file_path"], o["value"] or ""))
+
+
+def _project_signal(name: str, match: dict, signals_by_name: dict[str, list[dict]], by_value: bool) -> list[dict]:
     conditions = [c for c in [*match.get("all", []), *match.get("any", [])] if c["signal"]["name"] == name]
     for group in match.get("atLeast", []):
         conditions += [c for c in group.get("of", []) if c["signal"]["name"] == name]
@@ -213,9 +238,15 @@ def project_occurrences(detection: dict, signals_by_name: dict[str, list[dict]])
                 evidence.append(_evidence_entry(name, row["value"], entry))
             if not row["evidence"]:
                 evidence.append(_evidence_entry(name, row["value"], {}))
-        evidence.sort(key=lambda e: (e["line_start"] is None, e["line_start"] or 0, e["value"] or ""))
-        occurrences.append({"file_path": file_path, "value": value, "evidence": evidence[:MAX_EVIDENCE_PER_OCCURRENCE]})
+        # Certainty over every entry, before the evidence cap drops any.
+        occurrences.append({"file_path": file_path, "value": value, "evidence": _sorted_evidence(evidence),
+                            "certainty": occurrence_certainty(evidence)})
     return occurrences
+
+
+def _sorted_evidence(evidence: list[dict]) -> list[dict]:
+    evidence = sorted(evidence, key=lambda e: (e["line_start"] is None, e["line_start"] or 0, e["signal_name"], e["value"] or ""))
+    return evidence[:MAX_EVIDENCE_PER_OCCURRENCE]
 
 
 def _evidence_entry(signal_name: str, value: str | None, entry: dict) -> dict:
@@ -227,10 +258,21 @@ def _evidence_entry(signal_name: str, value: str | None, entry: dict) -> dict:
         "line_start": entry.get("lineStart"),
         "line_end": entry.get("lineEnd"),
     }
-    for source_key, key in (("declaringType", "declaring_type"), ("member", "member"), ("matchedValue", "matched_value")):
+    for source_key, key in (("declaringType", "declaring_type"), ("member", "member"), ("matchedValue", "matched_value"), ("certainty", "certainty")):
         if entry.get(source_key) is not None:
             out[key] = entry[source_key]
     return out
+
+
+def occurrence_certainty(evidence: list[dict]) -> str:
+    """'possible' when every evidence entry is marked ambiguous — the
+    producer could not tell whether the code really uses what changed (a
+    call an unchanged overload could equally take); otherwise 'confirmed'.
+    Entries carrying no certainty count as confirmed, so every signal that
+    does not mark certainty keeps its occurrences confirmed."""
+    if evidence and all(e.get("certainty") == "ambiguous" for e in evidence):
+        return "possible"
+    return "confirmed"
 
 
 def application_evidence(held: list[dict]) -> list[dict]:

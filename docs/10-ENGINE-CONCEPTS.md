@@ -71,6 +71,29 @@ timeline never shows a gap indistinguishable from a step that never ran.
 - Restart requires identical job parameters. Different parameters means a different
   job instance.
 
+**Commit per step.** The engine commits at every step boundary: when the execution
+starts, when a step starts, and when a step ends, with its row, artifacts, outputs and
+job-context updates in that last commit. Two consequences:
+
+- **Live progress.** A run's steps are visible as they start and finish, not all at once
+  when the job ends; the execution page polls and sees them advance.
+- **Crash recovery.** A completed step is durable the moment it finishes. If the process
+  dies, startup reconciliation marks the execution `FAILED` and the step that was in flight
+  `FAILED` ("orphaned by engine restart"); a resume carries every completed step forward
+  — its artifacts included — and reruns from the first incomplete one. This matters most
+  once steps act outside the database (Track A's git commits): a rerun of an already
+  completed conversion would apply it twice.
+
+Lineage is unaffected: inputs resolve against the current execution's artifacts, including
+carried-forward copies, and committed rows are visible to the same session. A step's
+`created_at` (Postgres `now()`, the transaction's start) now orders artifacts truly; under
+one long transaction every artifact of a run shared one timestamp.
+
+Residual risk: a crash does not stop a child process a step had launched. It may finish
+and write its own rows after the engine has died, and a resume reruns the step anyway.
+Every implemented step replaces its rows per repository, so the rerun's result stands; a
+Track A step that commits to git must be idempotent or check before it acts.
+
 ## Job repository schema
 
 All tables prefixed `wf_`, in the same Postgres database as the catalog, separate

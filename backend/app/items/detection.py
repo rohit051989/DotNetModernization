@@ -54,6 +54,12 @@ class OccurrenceSource(BaseModel):
         description="'source_path': one occurrence per distinct path. 'source_path_and_value': distinct values "
         "at the same path are separate occurrences.",
     )
+    also: list[str] | None = Field(
+        default=None,
+        description="Further positive-match signals that locate occurrences the same way, for an item matched by "
+        "`any` of several signals. A row at the same path and line as an occurrence already projected (from "
+        "`signal`, then `also` in order) joins that occurrence rather than making a second one.",
+    )
 
 
 class ItemDetection(BaseModel):
@@ -98,6 +104,7 @@ def referenced_signal_names(detection: dict) -> set[str]:
     source = detection.get("occurrence_source")
     if source:
         names.add(source["signal"])
+        names.update((source.get("also") or []))
     return names
 
 
@@ -186,8 +193,7 @@ def validate_detection(scope: str, detection: dict, registered: dict[str, str]) 
                 "code": "OCCURRENCE_SOURCE_NOT_ALLOWED",
             }
         )
-    if source is not None:
-        source_signal = source["signal"]
+    for source_signal in ([source["signal"], *(source.get("also") or [])] if source is not None else []):
         if source_signal not in positive_signal_names(match):
             problems.append(
                 {

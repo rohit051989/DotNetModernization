@@ -1,8 +1,10 @@
-"""Lifecycle step 6 — item-detection. 17-LIFECYCLE-STEPS.md step 6;
+"""Lifecycle step 7 — item-detection. 17-LIFECYCLE-STEPS.md step 7;
 28-ITEM-AND-CONVERSION-MODEL.md Parts C to G.
 
 Matches every READY catalog item against every project of one repository,
-using the signals step 3 recorded, and writes the result to
+using the signals recorded in fingerprint_signals — step 3's, and the
+PACKAGE_* signals step 6 (dependency-assessment) adds under its own
+extractor name, read the same way — and writes the result to
 `item_occurrences`: the work list's raw rows. Produces occurrences, not a
 classification. There is no election and no score: an item applies to a
 project or it does not, and many items can apply to one project.
@@ -17,9 +19,11 @@ Per item per project, exactly one detection_state:
   clean.
 - `not_checked`: the scan could not have seen what the item needs — the
   repository's fingerprint was produced under a signal registry older than a
-  referenced signal's `signal_introduced_in_version`, or step 3 failed on the
-  project or never reached it. Never reported as checked_absent: that would
-  silently call unscanned code clean. A rescan can resolve every not_checked.
+  referenced signal's `signal_introduced_in_version`, step 3 failed on the
+  project or never reached it, or a project metadata field the item's
+  conditions read (frameworkFamily, outputType, projectSdk, ...) is unknown
+  for the project. Never reported as checked_absent: that would silently call
+  unknown code clean.
 
 A project step 3 deliberately skipped as out of scope (a .dcproj, a .sfproj,
 a Node.js project) is not a rescan case: no rescan will ever fingerprint it.
@@ -58,7 +62,7 @@ from app.workflow.contract import StepContext, StepOutput, StepResult
 
 STEP_NAME = "item-detection"
 ARTIFACT_TYPE = "item-occurrences"
-ARTIFACT_VERSION = "1.0.0"
+ARTIFACT_VERSION = "1.1.0"
 
 
 def _open_session(database_url: str):
@@ -90,7 +94,8 @@ def _metadata(project: models.Project, fingerprint: models.ProjectFingerprint | 
         "projectFormat": project.project_format,
         "frameworkFamily": project.framework_family,
         "frameworkVersion": project.framework_version,
-        "projectSdk": fingerprint.project_sdk if fingerprint else None,
+        # Step 2's declared SDK; step 3's evaluated value when it ever exists.
+        "projectSdk": project.project_sdk or (fingerprint.project_sdk if fingerprint else None),
         "structuralType": project.structural_type,
         "extension": project.extension,
         "fingerprintStatus": (fingerprint.fingerprint_status.upper() if fingerprint else "SKIPPED"),
@@ -145,7 +150,10 @@ def detect_repository(db: Session, repository: models.Repository, step_execution
 
     now = datetime.datetime.now(datetime.timezone.utc)
     results = []
-    counts = {"found": 0, "checked_absent": 0, "not_checked": 0, "excluded": 0, "skipped": 0, "occurrence_rows": 0}
+    # possible_occurrence_rows (1.1.0): found rows resting only on ambiguous
+    # evidence. Counted apart, and left out of work totals by default.
+    counts = {"found": 0, "checked_absent": 0, "not_checked": 0, "excluded": 0, "skipped": 0, "occurrence_rows": 0,
+              "possible_occurrence_rows": 0, "possible_only_found": 0}
 
     for project in projects:
         fingerprint = fingerprints.get(project.id)
@@ -178,6 +186,10 @@ def detect_repository(db: Session, repository: models.Repository, step_execution
                 continue
             state, reason, rows = _detect(item, referenced, fingerprinted, scan_version, introduced, visible, metadata)
             counts[state] += 1
+            if state == "found" and all(r.get("certainty") == "possible" for r in rows):
+                # Found only on ambiguous evidence: still found, but not work
+                # a total should count by default.
+                counts["possible_only_found"] += 1
 
             for row in rows:
                 db.add(models.ItemOccurrence(
@@ -190,10 +202,13 @@ def detect_repository(db: Session, repository: models.Repository, step_execution
                     evidence=row.get("evidence"),
                     signal_registry_version=scan_version or "none",
                     detection_state=state,
+                    certainty=row.get("certainty", "confirmed"),
                     step_execution_id=step_execution_id,
                     detected_at=now,
                 ))
                 counts["occurrence_rows"] += 1
+                if state == "found" and row.get("certainty") == "possible":
+                    counts["possible_occurrence_rows"] += 1
 
             item_results.append({
                 "itemId": item.id,
@@ -202,7 +217,8 @@ def detect_repository(db: Session, repository: models.Repository, step_execution
                 "detectionState": state,
                 "reason": reason,
                 "occurrences": [
-                    {"filePath": r.get("file_path"), "value": r.get("value"), "evidence": r.get("evidence") or []}
+                    {"filePath": r.get("file_path"), "value": r.get("value"), "evidence": r.get("evidence") or [],
+                     "certainty": r.get("certainty", "confirmed")}
                     for r in rows if state == "found"
                 ],
             })
@@ -236,6 +252,13 @@ def _detect(item, referenced, fingerprinted, scan_version, introduced, visible, 
 
     if referenced and not fingerprinted:
         return "not_checked", "step 3 failed on this project or has not reached it", project_row
+
+    # A condition on a metadata field the project has no value for cannot be
+    # evaluated honestly — an exclusion (`notEquals`) would pass and a positive
+    # condition would fail, either way claiming knowledge the scan lacks.
+    unknown = sorted({c["field"] for c in item.detection["match"].get("metadata", []) if metadata.get(c["field"]) is None})
+    if unknown:
+        return "not_checked", "project metadata unknown: " + ", ".join(unknown), project_row
 
     unseen = sorted(
         name for name in referenced
@@ -293,7 +316,8 @@ def run(context: StepContext) -> StepResult:
             exit_message=(
                 f"Evaluated {len(artifact['catalog'])} ready item(s) over {len(artifact['projects'])} project(s): "
                 f"{summary['found']} found, {summary['checked_absent']} checked absent, "
-                f"{summary['not_checked']} not checked, {summary['occurrence_rows']} occurrence row(s)."
+                f"{summary['not_checked']} not checked, {summary['occurrence_rows']} occurrence row(s), "
+                f"{summary['possible_occurrence_rows']} of them possible (ambiguous evidence only)."
             ),
             metrics={
                 "read_count": len(artifact["projects"]),

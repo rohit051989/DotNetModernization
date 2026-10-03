@@ -43,7 +43,8 @@ def item_signal_usages(detection: dict) -> dict[str, set[str]]:
         add(condition["signal"]["name"], "none")
     source = detection.get("occurrence_source")
     if source:
-        add(source["signal"], "occurrence_source")
+        for name in [source["signal"], *(source.get("also") or [])]:
+            add(name, "occurrence_source")
     return usages
 
 

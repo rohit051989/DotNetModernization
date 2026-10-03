@@ -29,7 +29,7 @@ from discovery.paths import walk_files
 from discovery.project_parser import OUT_OF_SCOPE_STRUCTURAL_TYPES
 
 ARTIFACT_TYPE = "solution-project-inventory"
-ARTIFACT_VERSION = "2.0.0"
+ARTIFACT_VERSION = "2.1.0"
 
 _WINDOWS_DRIVE_RE = re.compile(r"^/[A-Za-z]:")
 
@@ -286,8 +286,14 @@ def _scan(repo_root: Path, inventory: dict, repository_id: str) -> dict:
             "assembly_name": parsed["assembly_name"],
             "root_namespace": parsed["root_namespace"],
             "output_type": parsed["output_type"],
+            # 2.1.0: where output_type came from (project, a props file,
+            # sdk_default), and the declared SDK ("none" for legacy MSBuild).
+            "output_type_source": parsed["output_type_source"],
+            "project_sdk": parsed["project_sdk"],
             "target_framework_raw": parsed["target_framework_raw"],
             "target_frameworks_raw": parsed["target_frameworks_raw"],
+            # 2.1.0: "project", or the Directory.*.props file the framework came from.
+            "target_framework_source": parsed["target_framework_source"],
             "framework_family": framework_family,
             "framework_version": framework_version,
             "is_multi_targeting": is_multi_targeting,

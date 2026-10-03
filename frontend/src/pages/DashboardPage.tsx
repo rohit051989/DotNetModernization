@@ -213,6 +213,11 @@ export function DashboardPage({ engagementId, onNavigateToRepositories, onNaviga
               {items.occurrences_found} occurrences · {items.projects_with_findings} of {items.projects_evaluated}{' '}
               projects with findings
             </p>
+            {items.occurrences_possible > 0 && (
+              <p className="text-xs text-neutral-400" title="Occurrences resting only on ambiguous evidence, such as a call an unchanged overload could equally take">
+                + {items.occurrences_possible} possible, not counted
+              </p>
+            )}
             {items.projects_needing_rescan > 0 && (
               <p className="text-xs text-amber-600">{items.projects_needing_rescan} projects need a rescan</p>
             )}
@@ -233,6 +238,7 @@ export function DashboardPage({ engagementId, onNavigateToRepositories, onNaviga
         <h2 className="border-b border-neutral-100 px-4 py-3 text-sm font-semibold text-neutral-900">
           Repository status
         </h2>
+        <div className="overflow-x-auto">
         <table className="w-full text-left text-sm">
           <thead className="text-xs uppercase tracking-wide text-neutral-500">
             <tr>
@@ -312,6 +318,7 @@ export function DashboardPage({ engagementId, onNavigateToRepositories, onNaviga
             })}
           </tbody>
         </table>
+        </div>
       </section>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -332,7 +339,10 @@ export function DashboardPage({ engagementId, onNavigateToRepositories, onNaviga
                 </div>
                 <div>
                   <dt className="text-neutral-400">Occurrences found</dt>
-                  <dd className="font-medium text-neutral-900">{items.occurrences_found}</dd>
+                  <dd className="font-medium text-neutral-900">
+                    {items.occurrences_found}
+                    {items.occurrences_possible > 0 && <span className="ml-1 text-xs font-normal text-neutral-400">+ {items.occurrences_possible} possible</span>}
+                  </dd>
                 </div>
                 <div>
                   <dt className="text-neutral-400">Needing rescan</dt>

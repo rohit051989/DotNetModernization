@@ -77,12 +77,12 @@ NOT_MIGRATED = {
     "blazor-server-modern": "already modern: describes what the application is",
     "blazor-webassembly-modern": "already modern: describes what the application is",
     "netstandard-modern-library": "already modern: describes what the application is",
-    "role-application-project": "role pattern: role is computed in step 6 (Part D)",
-    "role-database-project": "role pattern: role is computed in step 6 (Part D)",
-    "role-deployment-project": "role pattern: role is computed in step 6 (Part D)",
-    "role-library-project": "role pattern: role is computed in step 6 (Part D)",
-    "role-test-project": "role pattern: role is computed in step 6 (Part D)",
-    "role-unknown": "role pattern: role is computed in step 6 (Part D)",
+    "role-application-project": "role pattern: role is computed in step 7 (Part D)",
+    "role-database-project": "role pattern: role is computed in step 7 (Part D)",
+    "role-deployment-project": "role pattern: role is computed in step 7 (Part D)",
+    "role-library-project": "role pattern: role is computed in step 7 (Part D)",
+    "role-test-project": "role pattern: role is computed in step 7 (Part D)",
+    "role-unknown": "role pattern: role is computed in step 7 (Part D)",
 }
 
 # Decision 2 from review: WinForms keeps its old detection, with the gap stated.

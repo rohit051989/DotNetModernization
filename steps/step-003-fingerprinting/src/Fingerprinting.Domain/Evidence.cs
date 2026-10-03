@@ -25,4 +25,14 @@ public sealed record Evidence
     /// </summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? MatchedValue { get; init; }
+
+    /// <summary>
+    /// <c>confirmed</c> or <c>ambiguous</c>, where the producer can tell —
+    /// today only step 6's PACKAGE_UPGRADE_BREAKING call sites, where an
+    /// unchanged overload may take the same call. Item detection marks an
+    /// occurrence "possible" when every evidence entry behind it is
+    /// ambiguous. Omitted when null, so step 3's artifacts are unchanged.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Certainty { get; init; }
 }

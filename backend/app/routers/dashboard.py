@@ -91,23 +91,24 @@ class TopItem(BaseModel):
 
 
 class ItemCounts(BaseModel):
-    """The dashboard's work-list card, real once item-detection (step 6) is
+    """The dashboard's work-list card, real once item-detection (step 7) is
     implemented — 28-ITEM-AND-CONVERSION-MODEL.md Part G. Counts what needs
     doing, not what kind of application anything is."""
 
     projects_evaluated: int = Field(description="Projects with any item_occurrences row, across every repository in this engagement.")
     projects_with_findings: int = Field(description="Projects where at least one item was found.")
     items_found: int = Field(description="Distinct catalog items found anywhere in this engagement.")
-    occurrences_found: int = Field(description="Found item_occurrences rows (the work list's size).")
+    occurrences_found: int = Field(description="Found item_occurrences rows (the work list's size). Excludes possible occurrences unless include_possible is set.")
+    occurrences_possible: int = Field(0, description="Found rows whose every piece of evidence is ambiguous (certainty 'possible'): shown apart, not counted as work by default.")
     projects_needing_rescan: int = Field(description="Projects with any not_checked result: scanned under an older signal registry, or not fingerprinted.")
     top_items: list[TopItem] = Field(description="Items found in the most projects, highest first.")
 
 
 class DashboardCapabilities(BaseModel):
     application_count: bool = Field(description="True once 'application-fingerprinting' (step 3) is implemented.")
-    item_detection: bool = Field(description="True once 'item-detection' (step 6) is implemented.")
-    test_coverage: bool = Field(description="True once 'test-coverage-assessment' (step 7) is implemented.")
-    risk_tier: bool = Field(description="True once 'risk-scoring-tier-assignment' (step 8) is implemented.")
+    item_detection: bool = Field(description="True once 'item-detection' (step 7) is implemented.")
+    test_coverage: bool = Field(description="True once 'test-coverage-assessment' (step 8) is implemented.")
+    risk_tier: bool = Field(description="True once 'risk-scoring-tier-assignment' (step 9) is implemented.")
     wave_planning: bool = Field(description="True once 'migration-wave-planning' (step 11) is implemented.")
 
 
@@ -342,9 +343,12 @@ def _get_engagement(db: Session, engagement_id: str) -> models.Engagement:
 # ---------- Routes ----------
 
 
-def _item_counts(db: Session, repository_ids: list) -> ItemCounts | None:
+def _item_counts(db: Session, repository_ids: list, include_possible: bool = False) -> ItemCounts | None:
     """Work-list rollup over item_occurrences for these repositories. Null
-    when step 6 has not written anything for any of them yet."""
+    when step 7 has not written anything for any of them yet. Possible
+    occurrences (every piece of evidence ambiguous) are counted apart and,
+    unless `include_possible`, left out of the work totals: a finding that
+    may not exist should not size the work."""
     if not repository_ids:
         return None
     rows = (
@@ -352,24 +356,29 @@ def _item_counts(db: Session, repository_ids: list) -> ItemCounts | None:
             models.ItemOccurrence.project_id,
             models.ItemOccurrence.item_id,
             models.ItemOccurrence.detection_state,
+            models.ItemOccurrence.certainty,
             func.count(),
         )
         .filter(models.ItemOccurrence.repository_id.in_(repository_ids))
-        .group_by(models.ItemOccurrence.project_id, models.ItemOccurrence.item_id, models.ItemOccurrence.detection_state)
+        .group_by(
+            models.ItemOccurrence.project_id, models.ItemOccurrence.item_id,
+            models.ItemOccurrence.detection_state, models.ItemOccurrence.certainty,
+        )
         .all()
     )
     if not rows:
         return None
 
     evaluated = {r[0] for r in rows}
-    with_findings = {r[0] for r in rows if r[2] == "found"}
     rescan = {r[0] for r in rows if r[2] == "not_checked"}
+    possible = sum(r[4] for r in rows if r[2] == "found" and r[3] == "possible")
+    counted = [r for r in rows if r[2] == "found" and (include_possible or r[3] != "possible")]
+    with_findings = {r[0] for r in counted}
     per_item_projects: dict[str, set] = {}
     per_item_occurrences: dict[str, int] = {}
-    for project_id, item_id, state, count in rows:
-        if state == "found":
-            per_item_projects.setdefault(item_id, set()).add(project_id)
-            per_item_occurrences[item_id] = per_item_occurrences.get(item_id, 0) + count
+    for project_id, item_id, _state, _certainty, count in counted:
+        per_item_projects.setdefault(item_id, set()).add(project_id)
+        per_item_occurrences[item_id] = per_item_occurrences.get(item_id, 0) + count
 
     names = {i.id: i.name for i in db.query(models.CatalogItem).filter(models.CatalogItem.id.in_(per_item_projects))}
     top = sorted(per_item_projects, key=lambda i: (-len(per_item_projects[i]), -per_item_occurrences[i], i))[:5]
@@ -378,6 +387,7 @@ def _item_counts(db: Session, repository_ids: list) -> ItemCounts | None:
         projects_with_findings=len(with_findings),
         items_found=len(per_item_projects),
         occurrences_found=sum(per_item_occurrences.values()),
+        occurrences_possible=possible,
         projects_needing_rescan=len(rescan),
         top_items=[
             TopItem(item_id=i, item_name=names.get(i, i), projects=len(per_item_projects[i]), occurrences=per_item_occurrences[i])
@@ -394,7 +404,11 @@ def _item_counts(db: Session, repository_ids: list) -> ItemCounts | None:
     operation_id="get_engagement_dashboard",
     responses={404: _NOT_FOUND},
 )
-def get_dashboard(engagement_id: str, db: Session = Depends(get_db)):
+def get_dashboard(
+    engagement_id: str,
+    include_possible: bool = Query(False, description="Count possible occurrences (every piece of evidence ambiguous) in the work totals. Off by default."),
+    db: Session = Depends(get_db),
+):
     """
     Assembled in one call so the frontend never has to stitch together
     several endpoints for a single screen. `applications`, `patterns`,
@@ -454,7 +468,7 @@ def get_dashboard(engagement_id: str, db: Session = Depends(get_db)):
     structure_summary = structure_service.get_engagement_structure_summary(db, engagement_id)
     structure_counts = StructureCounts(**{k: v for k, v in structure_summary.items() if k != "engagement_id"})
 
-    item_counts = _item_counts(db, [r.id for r in repos]) if capabilities.item_detection else None
+    item_counts = _item_counts(db, [r.id for r in repos], include_possible) if capabilities.item_detection else None
 
     slugs_by_id = {str(r.id): r.slug for r in repos}
     recent_executions = []

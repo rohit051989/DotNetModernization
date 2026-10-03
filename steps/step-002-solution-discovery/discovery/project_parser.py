@@ -2,10 +2,30 @@
 19-STEP-002-SOLUTION-DISCOVERY.md Parts D and F.
 
 MSBuild XML is read for declared values only — conditions are never
-evaluated and `.props`/`.targets` are never imported. That is a documented
-limitation (Part F), not a bug.
+evaluated and arbitrary `.props`/`.targets` imports are not followed. That is
+a documented limitation (Part F), not a bug.
+
+One exception, for the target framework: MSBuild implicitly imports the
+nearest `Directory.Build.props` and `Directory.Packages.props` above a
+project, and repositories commonly set `TargetFramework` once there
+(eShopOnWeb does, in Directory.Packages.props). When the project file
+declares no framework, those two files are read — unconditional, literal
+properties only, `$(Name)` expanded from them — and the artifact records
+which file the framework came from (`target_framework_source`).
+
+Two more values are made known rather than left null, because every later
+step treats null as "unknown" (item detection reports it as not_checked):
+
+- `project_sdk`: the SDK the project file declares (`<Project Sdk="...">` or
+  an `<Sdk Name="..."/>` child), without its version; `none` for a legacy
+  MSBuild project, which has no SDK — a fact, not a gap.
+- `output_type`: as declared; else from the implicit props files; else
+  MSBuild's own default for the SDK — Exe for the Web, Worker and
+  BlazorWebAssembly SDKs, Library otherwise. `output_type_source` records
+  which: `project`, the props file, or `sdk_default`.
 """
 
+import re
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
@@ -79,6 +99,84 @@ def _first_property(root: ET.Element, tag_name: str) -> tuple[str | None, str | 
         return value, f"'{tag_name}' only appears under a <PropertyGroup Condition=...>; used '{value}' without evaluating it"
 
     return None, None
+
+
+# Implicit imports, in MSBuild's order: Directory.Build.props comes in via
+# Microsoft.Common.props, Directory.Packages.props later via NuGet's props,
+# so a value in the second overrides the first. Both precede the project
+# body, so the project file's own value overrides both.
+IMPLICIT_PROPS = ("Directory.Build.props", "Directory.Packages.props")
+# MSBuild's OutputType when a project declares none: these SDKs set Exe in
+# their own props; Microsoft.NET.Sdk and legacy projects default to Library.
+SDK_DEFAULT_OUTPUT_TYPE = {
+    "Microsoft.NET.Sdk.Web": "Exe",
+    "Microsoft.NET.Sdk.Worker": "Exe",
+    "Microsoft.NET.Sdk.BlazorWebAssembly": "Exe",
+}
+NO_SDK = "none"
+
+
+def declared_sdk(root: ET.Element) -> str | None:
+    """`<Project Sdk="Name/version;...">` or the first `<Sdk Name="..."/>`
+    child: the SDK name without a version. None when neither is present."""
+    value = root.attrib.get("Sdk")
+    if not value:
+        child = next((c for c in root if _local_tag(c) == "Sdk" and c.attrib.get("Name")), None)
+        value = child.attrib["Name"] if child is not None else None
+    if not value:
+        return None
+    return value.split(";")[0].split("/")[0].strip() or None
+
+
+_PROPERTY_REF_RE = re.compile(r"\$\(([A-Za-z_][A-Za-z0-9_.\-]*)\)")
+
+
+def _nearest_file(start: Path, repo_root: Path, name: str) -> Path | None:
+    """The nearest `name` from the project's directory up to the repository
+    root — MSBuild's own search stops at the first one found."""
+    root = repo_root.resolve()
+    directory = start.resolve()
+    while True:
+        candidate = directory / name
+        if candidate.is_file():
+            return candidate
+        if directory == root or directory.parent == directory:
+            return None
+        directory = directory.parent
+
+
+def _expand(value: str, properties: dict[str, tuple[str, str]]) -> str:
+    for _ in range(5):
+        expanded = _PROPERTY_REF_RE.sub(lambda m: properties[m.group(1)][0] if m.group(1) in properties else m.group(0), value)
+        if expanded == value:
+            break
+        value = expanded
+    return value
+
+
+def implicit_properties(project_path: Path, repo_root: Path) -> dict[str, tuple[str, str]]:
+    """Unconditional literal properties from the implicitly imported props
+    files: name -> (value, repository-relative file that set it). Later
+    imports override earlier ones, as MSBuild evaluates them."""
+    properties: dict[str, tuple[str, str]] = {}
+    for name in IMPLICIT_PROPS:
+        path = _nearest_file(project_path.parent, repo_root, name)
+        if path is None:
+            continue
+        try:
+            text, _warning = read_text_detect_encoding(path)
+            root = ET.fromstring(text)
+        except (OSError, ET.ParseError):
+            continue
+        source = path.resolve().relative_to(repo_root.resolve()).as_posix()
+        for group in root:
+            if _local_tag(group) != "PropertyGroup" or "Condition" in group.attrib:
+                continue
+            for child in group:
+                if "Condition" in child.attrib or child.text is None or not child.text.strip() or len(child):
+                    continue
+                properties[_local_tag(child)] = (_expand(child.text.strip(), properties), source)
+    return properties
 
 
 def _package_references(root: ET.Element) -> list[dict]:
@@ -160,8 +258,11 @@ def _base_result(name: str, relative_path: str, extension: str) -> dict:
         "assembly_name": None,
         "root_namespace": None,
         "output_type": None,
+        "output_type_source": None,
+        "project_sdk": None,
         "target_framework_raw": None,
         "target_frameworks_raw": None,
+        "target_framework_source": None,
         "is_multi_targeting": False,
         "project_references": [],
         "packages": [],
@@ -205,6 +306,9 @@ def parse(path: Path, repo_root: Path) -> dict:
 
     is_sdk_style = "Sdk" in root.attrib
     result["project_format"] = "sdk_style" if is_sdk_style else "legacy_msbuild"
+    sdk = declared_sdk(root)
+    result["project_sdk"] = sdk or NO_SDK
+    implicit = implicit_properties(path, repo_root)
 
     for field, tag in (("assembly_name", "AssemblyName"), ("root_namespace", "RootNamespace"), ("output_type", "OutputType")):
         value, warning = _first_property(root, tag)
@@ -212,27 +316,42 @@ def parse(path: Path, repo_root: Path) -> dict:
         if warning:
             warnings.append(warning)
 
-    target_frameworks_raw = None
-    if is_sdk_style:
-        multi, warning = _first_property(root, "TargetFrameworks")
-        if warning:
-            warnings.append(warning)
-        if multi:
-            target_frameworks_raw = [v.strip() for v in multi.split(";") if v.strip()]
-        else:
-            single, warning = _first_property(root, "TargetFramework")
-            if warning:
-                warnings.append(warning)
-            if single:
-                target_frameworks_raw = [single]
+    if result["output_type"]:
+        result["output_type_source"] = "project"
+    elif "OutputType" in implicit:
+        result["output_type"], result["output_type_source"] = implicit["OutputType"]
     else:
-        single, warning = _first_property(root, "TargetFrameworkVersion")
+        result["output_type"] = SDK_DEFAULT_OUTPUT_TYPE.get(sdk or "", "Library")
+        result["output_type_source"] = "sdk_default"
+
+    target_frameworks_raw = None
+    framework_source = None
+    names = ("TargetFrameworks", "TargetFramework") if is_sdk_style else ("TargetFrameworkVersion",)
+    for tag in names:
+        value, warning = _first_property(root, tag)
         if warning:
             warnings.append(warning)
-        if single:
-            target_frameworks_raw = [single]
+        if value:
+            framework_source = "project"
+            break
+    else:
+        # Not in the project file: the implicitly imported props files.
+        value = None
+        for tag in names:
+            if tag in implicit:
+                value, framework_source = implicit[tag]
+                break
+    if value:
+        value = _expand(value, implicit)
+        if _PROPERTY_REF_RE.search(value):
+            warnings.append(f"target framework '{value}' refers to a property not declared literally in the project or Directory.*.props; recorded unexpanded")
+        if is_sdk_style:
+            target_frameworks_raw = [v.strip() for v in value.split(";") if v.strip()]
+        else:
+            target_frameworks_raw = [value]
 
     result["target_frameworks_raw"] = target_frameworks_raw
+    result["target_framework_source"] = framework_source if target_frameworks_raw else None
     result["target_framework_raw"] = target_frameworks_raw[0] if target_frameworks_raw else None
     result["is_multi_targeting"] = bool(target_frameworks_raw) and len(target_frameworks_raw) > 1
 

@@ -59,10 +59,10 @@ function SolutionRow({ solution }: { solution: Solution }) {
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
-        className="flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-neutral-50"
+        className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-neutral-50"
       >
-        <span className="font-medium text-neutral-800">{solution.name}</span>
-        <span className="flex items-center gap-2 text-xs text-neutral-400">
+        <span className="min-w-0 break-all font-medium text-neutral-800">{solution.name}</span>
+        <span className="flex shrink-0 items-center gap-2 text-xs text-neutral-400">
           {solution.resolved_project_count}/{solution.project_count} resolved
           {solution.missing_project_count ? (
             <span className="text-amber-600">{solution.missing_project_count} missing</span>
@@ -76,12 +76,12 @@ function SolutionRow({ solution }: { solution: Solution }) {
           {solution.parse_error && <p className="mb-1 text-xs text-red-600">{solution.parse_error}</p>}
           <ul className="space-y-1">
             {solution.projects.map((member) => (
-              <li key={member.raw_path} className="flex items-center justify-between text-xs">
-                <span className="font-mono text-neutral-700">{member.relative_path ?? member.raw_path}</span>
+              <li key={member.raw_path} className="flex items-center justify-between gap-2 text-xs">
+                <span className="min-w-0 break-all font-mono text-neutral-700">{member.relative_path ?? member.raw_path}</span>
                 {member.resolution_status === 'unresolved' ? (
-                  <span className="rounded bg-amber-50 px-1.5 py-0.5 text-amber-700">missing</span>
+                  <span className="shrink-0 rounded bg-amber-50 px-1.5 py-0.5 text-amber-700">missing</span>
                 ) : (
-                  <span className="text-neutral-400">resolved</span>
+                  <span className="shrink-0 text-neutral-400">resolved</span>
                 )}
               </li>
             ))}
@@ -115,7 +115,7 @@ function ArtifactCounts({ artifacts }: { artifacts: RepositoryArtifact[] }) {
         {expanded ? 'Hide paths' : 'Show paths'}
       </button>
       {expanded && (
-        <ul className="mt-2 max-h-40 space-y-0.5 overflow-y-auto font-mono text-xs text-neutral-500">
+        <ul className="mt-2 max-h-40 space-y-0.5 overflow-y-auto break-all font-mono text-xs text-neutral-500">
           {artifacts.map((artifact) => (
             <li key={artifact.relative_path}>{artifact.relative_path}</li>
           ))}
@@ -228,7 +228,7 @@ export function RepositoryStructureSection({ repositoryId, refreshToken }: Repos
         {standaloneProjects.length === 0 ? (
           <p className="text-sm text-neutral-400">Every project belongs to at least one solution.</p>
         ) : (
-          <ul className="space-y-0.5 font-mono text-xs text-neutral-600">
+          <ul className="space-y-0.5 break-all font-mono text-xs text-neutral-600">
             {standaloneProjects.map((project) => (
               <li key={project.id}>{project.relative_path}</li>
             ))}
@@ -254,7 +254,7 @@ export function RepositoryStructureSection({ repositoryId, refreshToken }: Repos
             <ul className="mt-2 space-y-1 text-xs text-neutral-600">
               {structure.parse_warnings.map((warning, index) => (
                 <li key={index}>
-                  <span className="font-mono text-neutral-400">{warning.path}</span> — {warning.warning}
+                  <span className="break-all font-mono text-neutral-400">{warning.path}</span> — {warning.warning}
                 </li>
               ))}
             </ul>

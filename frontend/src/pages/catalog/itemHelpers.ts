@@ -18,6 +18,31 @@ export function positiveSignalNames(match: ItemMatch | null | undefined): string
   return [...names].sort()
 }
 
+export type DetectionType = 'signal' | 'metadata' | 'mixed'
+
+export interface DetectionProfile {
+  /** Distinct signals that can make the item apply (all / any / atLeast). */
+  signals: number
+  /** Distinct signals only in `none`: they rule the item out, never in. */
+  exclusions: number
+  /** Metadata conditions (framework family, output type, structural type...). */
+  metadata: number
+  /** What makes the item apply: signals, metadata alone, or both. */
+  type: DetectionType
+}
+
+/** How an item detects. An item no signal can make apply is
+ * metadata-only — ssis-package detects on structural type — and is
+ * correctly ready, since metadata conditions always count as mapped. */
+export function detectionProfile(match: ItemMatch | null | undefined): DetectionProfile {
+  const positive = positiveSignalNames(match)
+  const excluded = new Set((match?.none ?? []).map((c) => c?.signal?.name).filter((n): n is string => Boolean(n)))
+  for (const name of positive) excluded.delete(name)
+  const metadata = match?.metadata?.length ?? 0
+  const type: DetectionType = positive.length === 0 ? 'metadata' : metadata > 0 ? 'mixed' : 'signal'
+  return { signals: positive.length, exclusions: excluded.size, metadata, type }
+}
+
 /** Collects API errors by field. Several messages on one field are joined;
  * errors with no field land under '__root__' (see api/client.ts). */
 export function fieldErrorMap(err: ApiError): Record<string, string> {

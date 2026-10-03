@@ -9,12 +9,16 @@
 # promoted to ready on their own when step 3 batch 2 (registry 1.4.0) shipped
 # the extractors.
 #
-# The last three are absence items: application scope, detected by a `none`
+# Three are absence items (missing-dockerfile, missing-health-endpoint,
+# missing-ocp4-manifests): application scope, detected by a `none`
 # condition over presence signals rather than by any "missing X" signal —
 # step 3 emits no absence signals. They are also the test that
 # repository-level signals reach per-project evaluation (28-ITEM-AND-
 # CONVERSION-MODEL.md Part E): a Dockerfile or manifest at the repository
 # root must count for every project in that repository.
+#
+# The last five are the generic package items (30-STEP-006-DEPENDENCY-
+# ASSESSMENT.md Part D2), detected on the signals lifecycle step 6 emits.
 #
 # `state` is computed and must not appear in this file.
 
@@ -375,6 +379,11 @@ items:
           - id: not-desktop
             field: outputType
             notEquals: WinExe
+          # A Blazor WebAssembly client is static files served by another host:
+          # it needs no container, manifests or health endpoint of its own.
+          - id: not-blazor-webassembly
+            field: projectSdk
+            notEquals: Microsoft.NET.Sdk.BlazorWebAssembly
     resolutions:
       - id: multistage-dockerfile
         name: "Multi-stage Dockerfile"
@@ -426,6 +435,11 @@ items:
           - id: not-desktop
             field: outputType
             notEquals: WinExe
+          # A Blazor WebAssembly client is static files served by another host:
+          # it needs no container, manifests or health endpoint of its own.
+          - id: not-blazor-webassembly
+            field: projectSdk
+            notEquals: Microsoft.NET.Sdk.BlazorWebAssembly
     resolutions:
       - id: aspnetcore-health-checks
         name: "ASP.NET Core health checks"
@@ -486,6 +500,11 @@ items:
           - id: not-desktop
             field: outputType
             notEquals: WinExe
+          # A Blazor WebAssembly client is static files served by another host:
+          # it needs no container, manifests or health endpoint of its own.
+          - id: not-blazor-webassembly
+            field: projectSdk
+            notEquals: Microsoft.NET.Sdk.BlazorWebAssembly
     resolutions:
       - id: plain-manifests
         name: "Plain manifests"
@@ -797,3 +816,233 @@ items:
         target_description: "Vault-sourced secret, delivered to the pod"
         consumer_impact: none
         effort: medium
+
+  # ---- Package dependencies (lifecycle step 6, dependency-assessment) ----
+  #
+  # Generic and parameterised by package: never one item per library, which
+  # would turn the catalog into a package index (30-STEP-006-DEPENDENCY-
+  # ASSESSMENT.md Part D2). The package is in the signal value, so
+  # group_by source_path_and_value makes two packages in one project file
+  # two occurrences. The signals come from step 6, not step 3, and reach
+  # item-detection through fingerprint_signals like any other signal.
+
+  - id: package-upgrade-safe
+    name: "Package upgrade, no code change"
+    scope: occurrence
+    category: dependencies
+    description: >-
+      A direct NuGet package has a newer version that supports the target
+      framework, and the upgrade changes nothing the code calls: by API diff
+      of the two versions' assemblies; because it is a build, tools, analyzer
+      or content package with no compile-time assemblies; or, where no diff
+      was possible, because the version change is minor or patch. A content
+      package (bootstrap, jQuery) moving a major version may still break
+      markup or CSS, which step 6 cannot see: the Dependencies view flags it
+      "content breaking possible". One occurrence per project per package, at
+      the PackageReference line; the value reads "{id} {from} -> {to}".
+
+      Conversion ordering (docs/28 Part E): for the same package, runs as ONE
+      UNIT with package-upgrade-breaking. Bump the version everywhere, then
+      fix the call sites. One package can be safe in one project and
+      breaking in another; bumping only the safe projects splits the solution
+      across two versions of the same library.
+    detection:
+      match:
+        all:
+          - id: upgrade-safe
+            signal:
+              name: PACKAGE_UPGRADE_SAFE
+      occurrence_source:
+        signal: PACKAGE_UPGRADE_SAFE
+        group_by: source_path_and_value
+    resolutions:
+      - id: package-upgrade-safe-bump
+        name: "Bump to the recommended version"
+        description: "Change the version to step 6's recommended version: the latest that supports the target framework."
+        target_description: "The recommended package version, from the authoritative feed"
+        consumer_impact: none
+        effort: low
+        is_default: true
+      - id: package-upgrade-safe-keep-current
+        name: "Keep the current version"
+        description: "Leave the version as it is: it already supports the target framework, and nothing forces the move."
+        target_description: "The current package version, unchanged"
+        consumer_impact: none
+        effort: low
+
+  - id: package-upgrade-breaking
+    name: "Package upgrade that breaks calling code"
+    scope: occurrence
+    category: dependencies
+    description: >-
+      A direct NuGet package's recommended version removes or changes public
+      members the code calls. One occurrence per affected file; the value
+      names the package, both versions and the changed member, and the
+      evidence carries each call site. Call sites are matched by syntax, so a
+      site is likely rather than certain, and a call that an unchanged
+      overload could equally take is "possible" (ambiguous), not confirmed.
+      Only runtime packages, with lib/ or ref/ assemblies, can be breaking.
+      Where no API diff was possible and the change is a major version,
+      semver presumes a break and the occurrence sits at the PackageReference
+      line, call sites not determined.
+
+      Conversion ordering (docs/28 Part E): for the same package, runs as ONE
+      UNIT with package-upgrade-safe. Bump the version everywhere, then fix
+      the call sites. Fixing call sites first writes against an API
+      the project does not reference yet; bumping alone leaves the build
+      broken in between.
+    detection:
+      match:
+        all:
+          - id: upgrade-breaking
+            signal:
+              name: PACKAGE_UPGRADE_BREAKING
+      occurrence_source:
+        signal: PACKAGE_UPGRADE_BREAKING
+        group_by: source_path
+    resolutions:
+      - id: package-upgrade-breaking-bump-and-adapt
+        name: "Bump and adapt the call sites"
+        description: "Bump to the recommended version, then change each listed call site to the new API, in the same change."
+        target_description: "The recommended package version, calling code adapted"
+        consumer_impact: low
+        effort: medium
+        is_default: true
+      - id: package-upgrade-breaking-replace
+        name: "Replace the package"
+        description: "Where the new major version is a rewrite rather than an evolution, adopt a different library instead."
+        target_description: "An alternative library supporting the target framework"
+        consumer_impact: medium
+        effort: high
+
+  - id: package-replacement-required
+    name: "Package needs replacing"
+    scope: occurrence
+    category: dependencies
+    description: >-
+      A direct NuGet package has no version supporting the target framework,
+      or its publisher has deprecated it. Either way it is a replacement, not
+      an upgrade, and which replacement to adopt is a client decision. The
+      default is the publisher's suggested replacement, carried in the
+      PACKAGE_DEPRECATED value where the publisher names one; where none is
+      named, and for a package with no compatible version, the decision must
+      choose another option. One occurrence per project per package, at the
+      PackageReference line; a package with both conditions is one occurrence.
+    detection:
+      match:
+        any:
+          - id: no-compatible-version
+            signal:
+              name: PACKAGE_NO_COMPATIBLE_VERSION
+          - id: deprecated
+            signal:
+              name: PACKAGE_DEPRECATED
+      occurrence_source:
+        signal: PACKAGE_NO_COMPATIBLE_VERSION
+        also:
+          - PACKAGE_DEPRECATED
+        group_by: source_path_and_value
+    resolutions:
+      - id: package-replacement-publisher-suggested
+        name: "Adopt the publisher's suggested replacement"
+        description: "Move to the replacement package the publisher names in the deprecation. Not available where none is named."
+        target_description: "The publisher's suggested replacement package"
+        consumer_impact: low
+        effort: medium
+        is_default: true
+      - id: package-replacement-alternative
+        name: "Adopt an alternative library"
+        description: "Choose a different maintained library that supports the target framework."
+        target_description: "A maintained alternative supporting the target framework"
+        consumer_impact: medium
+        effort: high
+      - id: package-replacement-framework-builtin
+        name: "Remove it: use the framework's own equivalent"
+        description: "Drop the package where the target framework provides the capability itself: OWIN middleware, the compiler packages, System.Web shims."
+        target_description: "Built-in .NET capability, no package"
+        consumer_impact: low
+        effort: medium
+      - id: package-replacement-remain-windows-hosted
+        name: "Remain on .NET Framework"
+        description: "Keep the package; the application stays on .NET Framework on Windows."
+        target_description: ".NET Framework on Windows Server"
+        consumer_impact: none
+        effort: low
+        linux_compatible: false
+        container_ready: false
+
+  - id: package-vulnerable
+    name: "Package with a known vulnerability"
+    scope: occurrence
+    category: security
+    description: >-
+      A direct NuGet package's current version has a published vulnerability
+      advisory. A flag, independent of the upgrade outcome: a vulnerable
+      package may also be safe or breaking to upgrade, or have no compatible
+      version. The value carries the highest severity. One occurrence per
+      project per package, at the PackageReference line.
+    detection:
+      match:
+        all:
+          - id: vulnerable
+            signal:
+              name: PACKAGE_VULNERABLE
+      occurrence_source:
+        signal: PACKAGE_VULNERABLE
+        group_by: source_path_and_value
+    resolutions:
+      - id: package-vulnerable-upgrade
+        name: "Upgrade to a version without the advisory"
+        description: "Take the recommended version where step 6 reports that it resolves the advisories; otherwise the lowest patched version."
+        target_description: "A package version with no open advisory"
+        consumer_impact: low
+        effort: low
+        is_default: true
+      - id: package-vulnerable-replace
+        name: "Replace the package"
+        description: "Where no patched version exists or the package is unmaintained, move to an alternative."
+        target_description: "A maintained alternative without the advisory"
+        consumer_impact: medium
+        effort: high
+      - id: package-vulnerable-accept-risk
+        name: "Accept the risk with a mitigation"
+        description: "Keep the version with a documented mitigation, where the vulnerable code path is not reachable."
+        target_description: "Unchanged package, risk accepted"
+        consumer_impact: none
+        effort: low
+        notes: "Needs the client's security sign-off, recorded in the decision rationale."
+
+  - id: package-not-approved
+    name: "Package version not in the client feed"
+    scope: occurrence
+    category: dependencies
+    description: >-
+      The newest compatible version of a direct package on nuget.org is newer
+      than anything the client's own feed (Artifactory, Azure Artifacts)
+      holds, so the upgrade needs that version approved into the client feed
+      first. The client feed is the authority; nuget.org is consulted for
+      comparison only. Raised only when client feeds are declared. The value
+      carries both versions. One occurrence per project per package.
+    detection:
+      match:
+        all:
+          - id: not-in-client-feed
+            signal:
+              name: PACKAGE_NOT_IN_CLIENT_FEED
+      occurrence_source:
+        signal: PACKAGE_NOT_IN_CLIENT_FEED
+        group_by: source_path_and_value
+    resolutions:
+      - id: package-not-approved-request-approval
+        name: "Request approval into the client feed"
+        description: "Raise the newer version through the client's package-approval process, then upgrade."
+        target_description: "The public version, mirrored into the client feed"
+        consumer_impact: none
+        effort: low
+        is_default: true
+      - id: package-not-approved-latest-approved
+        name: "Stay on the latest approved version"
+        description: "Upgrade only as far as the client feed allows."
+        target_description: "The newest version the client feed holds"
+        consumer_impact: none
+        effort: low

@@ -120,7 +120,7 @@ def launch_job(
     job_execution, instance, definition = create_execution(
         db, job_name, provided_parameters, triggered_by
     )
-    return executor.run_execution(db, job_execution, instance, definition)
+    return executor.run_execution(db, job_execution, instance, definition, checkpoint=db.commit)
 
 
 def run_execution_in_background(
@@ -143,7 +143,7 @@ def run_execution_in_background(
         job_execution = db.get(models.WfJobExecution, job_execution_id)
         instance = db.get(models.WfJobInstance, instance_id)
         definition = JobDefinitionFile.model_validate(definition_dict)
-        executor.run_execution(db, job_execution, instance, definition)
+        executor.run_execution(db, job_execution, instance, definition, checkpoint=db.commit)
         db.commit()
     except Exception as exc:
         db.rollback()
@@ -183,7 +183,7 @@ def resume_execution(db: Session, execution_id: uuid.UUID) -> models.WfJobExecut
     db.add(job_execution)
     db.flush()
 
-    return executor.run_execution(db, job_execution, instance, definition)
+    return executor.run_execution(db, job_execution, instance, definition, checkpoint=db.commit)
 
 
 def stop_execution(db: Session, execution_id: uuid.UUID) -> models.WfJobExecution:

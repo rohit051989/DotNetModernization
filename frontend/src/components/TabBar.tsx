@@ -39,14 +39,14 @@ export function TabBar({ activeTab, onSelectTab, isMaster }: TabBarProps) {
   const visibleTabs = TABS.filter((tab) => (!tab.engagementOnly || !isMaster) && (!tab.masterOnly || isMaster))
 
   return (
-    <nav className="flex gap-1 border-b border-neutral-200 bg-white px-6">
+    <nav className="flex gap-1 overflow-x-auto border-b border-neutral-200 bg-white px-2 sm:px-6">
       {visibleTabs.map((tab) => {
         if (!tab.implemented) {
           return (
             <span
               key={tab.key}
               title="Coming in a future build"
-              className="cursor-not-allowed select-none border-b-2 border-transparent px-4 py-3 text-sm font-medium text-neutral-400"
+              className="shrink-0 cursor-not-allowed select-none whitespace-nowrap border-b-2 border-transparent px-3 py-3 text-sm font-medium text-neutral-400 sm:px-4"
             >
               {tab.label}
             </span>
@@ -59,7 +59,7 @@ export function TabBar({ activeTab, onSelectTab, isMaster }: TabBarProps) {
             key={tab.key}
             type="button"
             onClick={() => onSelectTab(tab.key)}
-            className={`border-b-2 px-4 py-3 text-sm font-medium ${
+            className={`shrink-0 whitespace-nowrap border-b-2 px-3 py-3 text-sm font-medium sm:px-4 ${
               active
                 ? 'border-violet-600 text-neutral-900'
                 : 'border-transparent text-neutral-500 hover:text-neutral-800'
