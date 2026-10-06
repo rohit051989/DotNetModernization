@@ -8,6 +8,7 @@ import type { TabKey } from './components/TabBar'
 import { CatalogPage } from './pages/CatalogPage'
 import { RepositoriesPage } from './pages/RepositoriesPage'
 import { DashboardPage } from './pages/DashboardPage'
+import { EstatePage } from './pages/EstatePage'
 import { WorkflowPage } from './pages/WorkflowPage'
 import { WorkflowAdministrationPage } from './pages/admin/WorkflowAdministrationPage'
 import { ToastProvider } from './components/Toast'
@@ -171,6 +172,15 @@ function App() {
             engagementId={selectedEngagementId}
             onNavigateToRepositories={() => setActiveTab('repositories')}
             onNavigateToExecution={handleNavigateToExecution}
+          />
+        ) : activeTab === 'estate' && selectedEngagementId ? (
+          <EstatePage
+            key={selectedEngagementId}
+            engagementId={selectedEngagementId}
+            onOpenRepository={(repositoryId) => {
+              setActiveTab('repositories')
+              handleSelectRepository(repositoryId)
+            }}
           />
         ) : activeTab === 'workflow' && selectedEngagementId ? (
           <WorkflowPage

@@ -23,6 +23,21 @@ public sealed class PlatformDatabase(string connectionString)
         return (string?)await command.ExecuteScalarAsync(cancellationToken);
     }
 
+    /// <summary>The repository's engagement's SetParameters globs
+    /// (engagements.deploy_parameter_globs) — steps 3 and 5. Empty when none
+    /// are set, which means <c>DeployParameterFiles.DefaultGlobs</c>.</summary>
+    public async Task<IReadOnlyList<string>> GetDeployParameterGlobsAsync(Guid repositoryId, CancellationToken cancellationToken)
+    {
+        await using var connection = new NpgsqlConnection(ConnectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(
+            "SELECT e.deploy_parameter_globs::text FROM repositories r JOIN engagements e ON e.id = r.engagement_id WHERE r.id = @rid", connection);
+        command.Parameters.AddWithValue("rid", repositoryId);
+        return await command.ExecuteScalarAsync(cancellationToken) is string json
+            ? System.Text.Json.JsonSerializer.Deserialize<List<string>>(json) ?? []
+            : [];
+    }
+
     /// <summary>Resolves each project's DB row id by (repository_id,
     /// relative_path) — step 2's artifact itself carries no project id; see
     /// SolutionProjectInventory.cs.</summary>

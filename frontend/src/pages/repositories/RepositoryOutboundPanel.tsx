@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { ApiError } from '../../api/client'
 import { getRepositoryOutboundInvocations } from '../../api/surface'
 import type { LinuxVerdict, OutboundInventory, OutboundInvocation, OutboundMechanism, ProjectOutbound } from '../../types/surface'
 import { SourceLink } from './SourceLink'
+import { ShowMoreToggle } from '../../components/ShowMoreToggle'
 
 interface RepositoryOutboundPanelProps {
   repositoryId: string
@@ -166,18 +167,47 @@ function Credentials({ invocation }: { invocation: OutboundInvocation }) {
   )
 }
 
+/** How many call sites a row lists before "+N more". */
+const CALL_SITES_SHOWN = 1
+
 function CallSites({ invocation, localPath }: { invocation: OutboundInvocation; localPath: string | null }) {
-  const [first, ...rest] = invocation.call_sites
-  if (!first) return null
+  const [expanded, setExpanded] = useState(false)
+  const sites = invocation.call_sites
+  if (sites.length === 0) return null
   const fileName = (path: string) => path.split('/').pop()
+  const shown = expanded ? sites : sites.slice(0, CALL_SITES_SHOWN)
+  const constructions = invocation.construction_sites ?? []
   return (
     <span className="text-[11px]">
-      <SourceLink localPath={localPath} filePath={first.filePath} line={first.lineStart} className="font-mono text-violet-700" title={first.filePath}>
-        {fileName(first.filePath)}:{first.lineStart}
-      </SourceLink>
-      {rest.length > 0 && (
-        <span className="text-neutral-400" title={rest.map((c) => `${c.filePath}:${c.lineStart}`).join('\n')}>
-          {' '}+{rest.length} more
+      {shown.map((c) => (
+        <SourceLink
+          key={`${c.filePath}:${c.lineStart}`}
+          localPath={localPath}
+          filePath={c.filePath}
+          line={c.lineStart}
+          className="block font-mono text-violet-700"
+          title={c.filePath}
+        >
+          {fileName(c.filePath)}:{c.lineStart}
+        </SourceLink>
+      ))}
+      <ShowMoreToggle
+        expanded={expanded}
+        hidden={sites.length - CALL_SITES_SHOWN}
+        onToggle={() => setExpanded((v) => !v)}
+        className="block font-sans"
+      />
+      {constructions.length > 0 && (
+        <span className="block text-[10px] text-neutral-400">
+          created at{' '}
+          {constructions.map((c, i) => (
+            <Fragment key={`${c.filePath}:${c.lineStart}`}>
+              {i > 0 && ', '}
+              <SourceLink localPath={localPath} filePath={c.filePath} line={c.lineStart} className="font-mono" title={c.filePath}>
+                {fileName(c.filePath) === fileName(sites[0].filePath) ? '' : fileName(c.filePath)}:{c.lineStart}
+              </SourceLink>
+            </Fragment>
+          ))}
         </span>
       )}
     </span>

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { listCatalogItems, listItemDecisions } from '../../api/items'
+import { apiUrl } from '../../api/client'
 import {
   ITEM_CATEGORIES,
   type CatalogItem,
@@ -165,6 +166,16 @@ export function ItemList({ engagementId, selectedItemId, onSelectItem, refreshTo
           >
             + New Item
           </button>
+        )}
+        {isMaster && (
+          <a
+            href={apiUrl('/api/catalog/export/items')}
+            download="catalog-items.zip"
+            title="One YAML file per item — the item, its resolutions and their derivations, soft-deleted rows marked — for review and history in git. Read-only."
+            className="mb-3 block w-full rounded border border-neutral-300 py-1.5 text-center text-xs font-medium text-neutral-700 hover:bg-neutral-50"
+          >
+            Export catalog (YAML per item)
+          </a>
         )}
         <input
           type="search"

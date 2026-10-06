@@ -1,0 +1,51 @@
+category: configuration
+deleted: false
+description: |-
+  A C:\, G:\ or UNC path literal in C# source or a configuration value. None of these exist in a Linux container. Overlaps serilog-file-sink by design: a Serilog sink path is also a path literal. Conversion ordering (depends_on) resolves the overlap, detection does not.
+  Conversion ordering (docs/28 Part E): runs AFTER serilog-file-sink, whose removal takes the sink's path with it; its occurrences here are then gone rather than externalised. Becomes a depends_on entry.
+detection:
+  match:
+    all:
+    - id: windows-path-literal
+      signal:
+        name: WINDOWS_PATH_LITERAL
+    any: []
+    atLeast: []
+    metadata: []
+    none: []
+  occurrence_source:
+    group_by: source_path
+    signal: WINDOWS_PATH_LITERAL
+excluded_roles: []
+id: hardcoded-windows-path
+name: Hardcoded Windows path literal
+owner_team: null
+resolutions:
+- consumer_impact: low
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: Replace the literal with a configuration key; the environment supplies a Linux path (ConfigMap or env var).
+  effort: medium
+  id: externalize-path-setting
+  is_default: true
+  linux_compatible: true
+  name: Externalize to configuration
+  notes: null
+  status: active
+  target_description: IConfiguration / IOptions setting, value set per environment
+- consumer_impact: low
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: Rewrite the literal to a fixed path under a volume mounted into the pod.
+  effort: low
+  id: rewrite-linux-mount-path
+  is_default: false
+  linux_compatible: true
+  name: Rewrite to a mounted Linux path
+  notes: Faster, but leaves a literal behind; the path is now fixed to the deployment manifest.
+  status: active
+  target_description: Literal /mnt/<volume>/... backed by a PVC
+scope: occurrence
+status: active

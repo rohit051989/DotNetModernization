@@ -12,6 +12,17 @@ public sealed record SolutionProjectInventory
     public required Guid RepositoryId { get; init; }
     public required string RepositorySlug { get; init; }
     public required IReadOnlyList<InventoryProject> Projects { get; init; }
+
+    /// <summary>Step 2's resolved project references — step 5 resolves a
+    /// class library's configuration through the hosts that reference it.</summary>
+    public IReadOnlyList<InventoryProjectReference> ProjectReferences { get; init; } = [];
+}
+
+public sealed record InventoryProjectReference
+{
+    public required string SourceRelativePath { get; init; }
+    public string? ReferencedRelativePath { get; init; }
+    public string? ResolutionStatus { get; init; }
 }
 
 public sealed record InventoryProject
@@ -42,6 +53,12 @@ public sealed record InventoryProject
     public IReadOnlyList<string>? TargetFrameworksRaw { get; init; }
     public string? FrameworkFamily { get; init; }
     public string? FrameworkVersion { get; init; }
+
+    /// <summary><c>Exe</c>, <c>WinExe</c>, <c>Library</c>, … and the SDK
+    /// (<c>Microsoft.NET.Sdk.Web</c>): whether the project is a host whose
+    /// configuration its referenced libraries read at run time.</summary>
+    public string? OutputType { get; init; }
+    public string? ProjectSdk { get; init; }
 }
 
 public sealed record InventoryPackage

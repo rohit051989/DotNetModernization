@@ -3,7 +3,9 @@ import { listCatalogItems } from '../../../api/items'
 import { InboundProjectPanel } from '../../repositories/RepositorySurfaceSection'
 import { OutboundProjectPanel } from '../../repositories/RepositoryOutboundPanel'
 import { SourceLink } from '../../repositories/SourceLink'
+import { ShowMoreToggle } from '../../../components/ShowMoreToggle'
 import { entryPointProjects, list, num, obj, outboundProjects, str, type Json } from './adapters'
+import type { WorkListDecisions } from '../../../types/items'
 
 export interface ArtifactRendererProps {
   data: Json
@@ -624,16 +626,12 @@ function VersionRowView({
               {shortProjectPath(u.project)}
             </span>
           ))}
-          {version.uses.length > PROJECTS_SHOWN && (
-            <button
-              type="button"
-              onClick={() => setAllProjects((v) => !v)}
-              aria-expanded={allProjects}
-              className="block text-violet-600 hover:text-violet-800 hover:underline"
-            >
-              {allProjects ? 'show fewer' : `+${version.uses.length - PROJECTS_SHOWN} more`}
-            </button>
-          )}
+          <ShowMoreToggle
+            expanded={allProjects}
+            hidden={version.uses.length - PROJECTS_SHOWN}
+            onToggle={() => setAllProjects((v) => !v)}
+            className="block"
+          />
         </td>
         <td className="py-1.5 pr-3 font-mono text-neutral-700">{version.version}</td>
         <td className="py-1.5 pr-3 font-mono">
@@ -803,6 +801,9 @@ interface WorkGroup {
   itemId: string
   scope: string
   project: string
+  projectId: string
+  /** Application scope: the item's recorded attribute (wcf-service's hosting). */
+  attribute: string | null
   state: string
   reason: string | null
   /** Occurrence scope, found: each located occurrence, confirmed first. */
@@ -816,7 +817,10 @@ const FILES_SHOWN = 3
 
 const possibleOnly = (g: WorkGroup) => g.files.length > 0 && g.files.every((f) => f.certainty === 'possible')
 
-export function ItemOccurrencesView({ data, localPath }: ArtifactRendererProps) {
+/** The work list. With `decisions` (the repository page), each row also
+ * shows the engagement's decision for the item — derived or manual, what it
+ * follows and drives — and what another item's decision subsumes (Part S). */
+export function ItemOccurrencesView({ data, localPath, decisions }: ArtifactRendererProps & { decisions?: WorkListDecisions | null }) {
   const [showAll, setShowAll] = useState(false)
   // Possible occurrences rest only on ambiguous evidence: shown, but left
   // out of the totals unless the reader asks for them.
@@ -870,6 +874,8 @@ export function ItemOccurrencesView({ data, localPath }: ArtifactRendererProps) 
           itemId: str(item.itemId) ?? '',
           scope: str(item.scope) ?? '',
           project: projectPath,
+          projectId: str(project.projectId) ?? '',
+          attribute: str(item.scope) === 'application' ? (occurrences.map((o) => str(o.value)).find((v) => v) ?? null) : null,
           state,
           reason: str(item.reason),
           files: state === 'found' ? files : [],
@@ -928,7 +934,7 @@ export function ItemOccurrencesView({ data, localPath }: ArtifactRendererProps) 
       {visible.length === 0 ? (
         <p className="text-xs text-neutral-400">Nothing found — no work items for this repository.</p>
       ) : (
-        <Table head={['Item', 'Scope', 'Project', 'Files', 'Detection']} minWidth={680}>
+        <Table head={['Item', 'Scope', 'Project', 'Files', 'Detection', ...(decisions ? ['Decision'] : [])]} minWidth={decisions ? 900 : 680}>
           {visible.map((g) => {
             const key = `${g.itemId}|${g.project}`
             return (
@@ -936,6 +942,7 @@ export function ItemOccurrencesView({ data, localPath }: ArtifactRendererProps) 
                 key={key}
                 group={g}
                 name={names[g.itemId]}
+                decisions={decisions ?? null}
                 byValue={groupBy[g.itemId] === 'source_path_and_value'}
                 localPath={localPath}
                 expanded={!!open[key]}
@@ -991,9 +998,77 @@ function ValuesByFile({ entries, localPath, showCertainty }: { entries: WorkFile
   )
 }
 
+const DECISION_STATUS_STYLE: Record<string, string> = {
+  approved: 'border-teal-200 bg-teal-50 text-teal-800',
+  in_review: 'border-sky-200 bg-sky-50 text-sky-800',
+  pending: 'border-neutral-200 bg-neutral-50 text-neutral-600',
+}
+
+/** The engagement's decision for this row's item (Part S): what it is,
+ * whether it was derived (and from what) or overridden by hand, what it
+ * drives, and — per project — whether another decision subsumes it or a
+ * follow rule does not apply here. */
+function DecisionCell({ group: g, decisions }: { group: WorkGroup; decisions: WorkListDecisions }) {
+  const decision = decisions.decisions[g.itemId]
+  const note = decisions.projects.find((p) => p.project_id === g.projectId)?.items[g.itemId]
+  if (note?.subsumed_by) {
+    return (
+      <td className="py-1.5 text-[11px]">
+        <span className="rounded border border-violet-200 bg-violet-50 px-1 text-violet-800" title={note.subsumed_by.reason}>
+          subsumed by {note.subsumed_by.item_id}
+        </span>
+        <span className="block text-neutral-500">{note.subsumed_by.resolution_name} — no separate work</span>
+      </td>
+    )
+  }
+  const notHere = note && note.applies === false
+  return (
+    <td className="py-1.5 text-[11px]">
+      {decision ? (
+        <>
+          <span className="font-medium text-neutral-800">{decision.resolution_name ?? '(no option chosen)'}</span>{' '}
+          <span className={`rounded border px-1 ${DECISION_STATUS_STYLE[decision.status] ?? DECISION_STATUS_STYLE.pending}`}>{decision.status.replace('_', ' ')}</span>
+          {decision.source === 'derived' && decision.derived_from && (
+            <span className="mt-0.5 block text-violet-700">
+              derived from {decision.derived_from.item_id} ({decision.derived_from.resolution_name})
+            </span>
+          )}
+          {decision.overrides_derivation && decision.derived_from && !decision.needs_review && (
+            <span className="mt-0.5 block text-amber-700">
+              overridden by hand
+              {decision.derived_from.would_derive && <> — {decision.derived_from.item_id} would give {decision.derived_from.would_derive}</>}
+            </span>
+          )}
+          {decision.needs_review && (
+            <span className="mt-0.5 block rounded border border-amber-300 bg-amber-50 px-1 text-amber-900">
+              <span className="font-semibold">needs review</span> — {decision.review_note}
+            </span>
+          )}
+          {(decision.followers ?? []).length > 0 && (
+            <span className="mt-0.5 block text-neutral-500">
+              drives{' '}
+              {decision.followers!
+                .map((f) => `${f.item_id} (${f.source === 'derived' ? 'derived' : f.needs_review ? 'overridden, needs review' : 'overridden'})`)
+                .join(', ')}
+            </span>
+          )}
+        </>
+      ) : (
+        <span className="text-neutral-400">
+          not decided
+          {note?.follows && note.applies !== false && <span className="block">will follow {note.follows} once it is decided</span>}
+        </span>
+      )}
+      {notHere && <span className="mt-0.5 block text-neutral-500">{note!.note}</span>}
+      {note?.applies && decision?.source === 'derived' && <span className="mt-0.5 block text-neutral-400">{note.note}</span>}
+    </td>
+  )
+}
+
 function WorkGroupRow({
   group: g,
   name,
+  decisions,
   byValue,
   localPath,
   expanded,
@@ -1001,6 +1076,7 @@ function WorkGroupRow({
 }: {
   group: WorkGroup
   name: string | undefined
+  decisions: WorkListDecisions | null
   /** The item groups occurrences by file and value: list values under files. */
   byValue: boolean
   localPath: string | null
@@ -1025,6 +1101,7 @@ function WorkGroupRow({
       <td className="py-1.5 pr-3">
         <span className="font-medium text-neutral-800">{name ?? g.itemId}</span>
         {name && <span className="block font-mono text-[11px] text-neutral-400">{g.itemId}</span>}
+        {g.attribute && <span className="block text-[11px] text-neutral-500">{g.attribute}</span>}
       </td>
       <td className="py-1.5 pr-3 text-neutral-500">{g.scope}</td>
       <td className="break-all py-1.5 pr-3 font-mono text-[11px] text-neutral-600" title={g.project}>
@@ -1048,16 +1125,7 @@ function WorkGroupRow({
               </span>
               ))
             )}
-            {g.files.length > FILES_SHOWN && (
-              <button
-                type="button"
-                onClick={onToggle}
-                aria-expanded={expanded}
-                className="block font-sans text-violet-600 hover:text-violet-800 hover:underline"
-              >
-                {expanded ? 'show fewer' : `+${g.files.length - FILES_SHOWN} more`}
-              </button>
-            )}
+            <ShowMoreToggle expanded={expanded} hidden={g.files.length - FILES_SHOWN} onToggle={onToggle} className="block font-sans" />
           </>
         ) : g.evidencePaths.length > 0 ? (
           <span className="text-neutral-500" title="Application scope: the files whose signals made this item apply">
@@ -1090,6 +1158,7 @@ function WorkGroupRow({
         {mixed && <span className="block text-[11px] text-neutral-400">{possible} of {g.files.length} possible</span>}
         {g.reason && <span className="block text-[11px] text-neutral-400">{g.reason}</span>}
       </td>
+      {decisions && <DecisionCell group={g} decisions={decisions} />}
     </tr>
   )
 }

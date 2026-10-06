@@ -266,6 +266,19 @@ def _check_name_unique(db: Session, item_id: str, resolution_id: str, name: str)
         raise error(409, f"Item '{item_id}' already has a resolution named '{name}'", code="DUPLICATE_NAME")
 
 
+def _resolution_out(db: Session, resolution: models.ItemResolution) -> item_schemas.ResolutionOut:
+    """The resolution with what choosing it derives for dependent items
+    (resolution_derivations, 28-ITEM Part U), shown beside it."""
+    rows = (
+        db.query(models.ResolutionDerivation)
+        .filter(models.ResolutionDerivation.resolution_id == resolution.id, models.ResolutionDerivation.deleted_at.is_(None))
+        .order_by(models.ResolutionDerivation.dependent_item_id)
+        .all()
+    )
+    return item_schemas.ResolutionOut.model_validate(resolution).model_copy(
+        update={"derivations": [item_schemas.DerivationOut.model_validate(row) for row in rows]})
+
+
 def _apply_resolution_fields(resolution: models.ItemResolution, payload: item_schemas.ResolutionWrite) -> None:
     for field in (
         "name",
@@ -299,7 +312,7 @@ def list_resolutions(
     query = db.query(models.ItemResolution).filter(models.ItemResolution.item_id == item_id)
     if not include_deleted:
         query = query.filter(models.ItemResolution.deleted_at.is_(None))
-    return query.order_by(models.ItemResolution.id).all()
+    return [_resolution_out(db, r) for r in query.order_by(models.ItemResolution.id)]
 
 
 @router.post(
@@ -322,7 +335,7 @@ def create_resolution(item_id: str, payload: item_schemas.ResolutionCreate, db: 
     db.add(resolution)
     db.commit()
     db.refresh(resolution)
-    return resolution
+    return _resolution_out(db, resolution)
 
 
 @router.put(
@@ -345,7 +358,7 @@ def update_resolution(
     _apply_resolution_fields(resolution, payload)
     db.commit()
     db.refresh(resolution)
-    return resolution
+    return _resolution_out(db, resolution)
 
 
 def move_default(db: Session, item_id: str, resolution_id: str) -> None:
@@ -401,12 +414,12 @@ def make_default(item_id: str, resolution_id: str, db: Session = Depends(get_db)
 
     move_default(db, item_id, resolution_id)
     db.commit()
-    return (
-        db.query(models.ItemResolution)
+    return [
+        _resolution_out(db, r)
+        for r in db.query(models.ItemResolution)
         .filter(models.ItemResolution.item_id == item_id, models.ItemResolution.deleted_at.is_(None))
         .order_by(models.ItemResolution.id)
-        .all()
-    )
+    ]
 
 
 @router.delete(

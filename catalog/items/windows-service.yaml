@@ -1,0 +1,57 @@
+category: hosting
+deleted: false
+description: |-
+  Background service installed on Windows via ServiceBase and InstallUtil,
+  running continuously under a service account.
+detection:
+  match:
+    all: []
+    any:
+    - id: service-base
+      signal:
+        name: SERVICE_BASE_BASE_CLASS
+    - id: servicebase-run
+      signal:
+        name: SERVICEBASE_RUN_ENTRY_POINT
+    atLeast: []
+    metadata:
+    - equals: net-framework
+      field: frameworkFamily
+      id: legacy-framework
+    none: []
+excluded_roles: []
+id: windows-service
+name: Windows Service
+owner_team: null
+resolutions:
+- consumer_impact: none
+  container_ready: false
+  deleted: false
+  derivations: []
+  description: Out of scope for the Linux move; the service stays on Windows as a .NET Framework Windows Service.
+  effort: low
+  id: windows-service-remain-windows-hosted
+  is_default: false
+  linux_compatible: false
+  name: Remain Windows-hosted (out of scope)
+  notes: null
+  status: active
+  target_description: .NET Framework on Windows Server, as a Windows Service
+- consumer_impact: low
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: Convert ServiceBase to a BackgroundService hosted worker, containerized and deployed as an OCP4 Deployment.
+  effort: medium
+  id: worker-service-daemon-container
+  is_default: true
+  linux_compatible: true
+  name: .NET Worker Service container
+  notes: |-
+    Prerequisites: Service account permissions mapped to an alternative identity mechanism on OCP4.
+
+    Known limitations: Windows-integrated authentication to SQL Server or file shares has no direct Linux equivalent. Expect a security-driven forcing factor here rather than a pure lift-and-shift.
+  status: active
+  target_description: .NET 10 Worker Service + OCP4 Deployment
+scope: application
+status: active

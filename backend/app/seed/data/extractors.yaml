@@ -19,6 +19,10 @@
 # Registry 1.4.0 (step 3 extractor batch 2): ApiUsageExtractor and
 # PathLiteralExtractor shipped, and every planned_emits entry moved to emits.
 # Registry 1.5.0 added WCF_CLIENT_BINDING_CONFIG and WCF_CLIENT_BINDING_USAGE.
+# Registry 1.8.0 added step 4's architecture signals (EntryPointInventory,
+# lifecycle step 4 as a producer, like DependencyAssessment).
+# Registry 1.7.0 added UNQUALIFIED_HOSTNAME_URL, and SetParameters files as a
+# source for PathLiteralExtractor and ConfigurationExtractor.
 # Registry 1.6.0 added the six PACKAGE_* signals. Their producer is
 # DependencyAssessment — lifecycle step 6, a separate step that writes into
 # fingerprint_signals under its own extractor name — so a producer here is any
@@ -95,6 +99,18 @@ extractors:
       - PACKAGE_UPGRADE_BREAKING
       - PACKAGE_UPGRADE_SAFE
       - PACKAGE_VULNERABLE
+  - name: EntryPointInventory
+    status: implemented
+    owner_team: platform
+    description: "Lifecycle step 4, not a step 3 extractor: what each project exposes or hosts, resolved across projects from the entry-point inventory (registry 1.8.0)."
+    emits:
+      - EXPOSES_ASMX_SERVICE
+      - EXPOSES_GRPC_SERVICE
+      - EXPOSES_HTTP_API
+      - EXPOSES_WCF_SERVICE
+      - EXPOSES_WEBFORMS_UI
+      - HOSTS_WCF_SERVICE
+      - WCF_SERVICE_HOSTING
   - name: EntryPointExtractor
     status: implemented
     owner_team: platform
@@ -194,7 +210,8 @@ extractors:
   - name: PathLiteralExtractor
     status: implemented
     owner_team: platform
-    description: "Windows drive-letter and UNC path literals in C# string literals and configuration values."
+    description: "Windows drive-letter and UNC path literals, and URLs on unqualified hostnames, in C# string literals, configuration values and SetParameters values."
     emits:
       - UNC_PATH_LITERAL
+      - UNQUALIFIED_HOSTNAME_URL
       - WINDOWS_PATH_LITERAL

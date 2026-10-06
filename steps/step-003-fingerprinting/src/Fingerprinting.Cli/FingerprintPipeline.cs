@@ -14,8 +14,10 @@ public sealed class FingerprintPipeline(SignalRegistry registry, IReadOnlyList<I
     // 1.1.0: extractor batch 2 (signal registry 1.4.0) — ApiUsageExtractor,
     // PathLiteralExtractor, appsettings*.json, repository-level signals.
     // 1.2.0: WCF_CLIENT_BINDING_CONFIG (signal registry 1.5.0).
+    // 1.3.0: Web Deploy SetParameters files read for path literals, sensitive
+    // keys and connection strings; UNQUALIFIED_HOSTNAME_URL (registry 1.7.0).
     // Matches the application-fingerprinting step registration version.
-    public const string ScannerVersion = "1.2.0";
+    public const string ScannerVersion = "1.3.0";
 
     // The registry is the single source of truth for evidence_kind per
     // signal name (25-STANDARDS-AND-VIEWPOINTS.md Part A3 addendum) —
@@ -37,10 +39,16 @@ public sealed class FingerprintPipeline(SignalRegistry registry, IReadOnlyList<I
         SolutionProjectInventory inventory,
         string repositoryRoot,
         Func<string, Guid?> resolveProjectId,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IReadOnlyList<string>? deployParameterGlobs = null)
     {
         var projects = new List<ProjectFingerprint>();
         var artifactWarnings = new List<Warning>();
+
+        // SetParameters files sit outside project directories; found once
+        // and handed to the project they belong to.
+        var deployFiles = Fingerprinting.Analysis.DeployParameterFiles.Discover(
+            repositoryRoot, deployParameterGlobs ?? [], inventory.Projects.Select(p => p.RelativePath).ToList(), cancellationToken);
 
         foreach (var inventoryProject in inventory.Projects)
         {
@@ -57,7 +65,8 @@ public sealed class FingerprintPipeline(SignalRegistry registry, IReadOnlyList<I
                 continue;
             }
 
-            projects.Add(await BuildProjectFingerprintAsync(inventoryProject, repositoryRoot, projectId.Value, cancellationToken));
+            projects.Add(await BuildProjectFingerprintAsync(inventoryProject, repositoryRoot, projectId.Value,
+                deployFiles.Where(f => f.ProjectPath == inventoryProject.RelativePath).ToList(), cancellationToken));
         }
 
         // Sort collections per Part B rule 2 — projects by relative path —
@@ -101,6 +110,7 @@ public sealed class FingerprintPipeline(SignalRegistry registry, IReadOnlyList<I
         InventoryProject inventoryProject,
         string repositoryRoot,
         Guid projectId,
+        IReadOnlyList<Fingerprinting.Analysis.DeployParameterFile> deployFiles,
         CancellationToken cancellationToken)
     {
         var outOfScope = inventoryProject.ParseStatus == "out_of_scope"
@@ -129,6 +139,7 @@ public sealed class FingerprintPipeline(SignalRegistry registry, IReadOnlyList<I
             Packages = inventoryProject.Packages
                 .Select(p => new PackageReferenceInfo { PackageName = p.PackageName, VersionRaw = p.VersionRaw })
                 .ToList(),
+            DeployParameterFiles = deployFiles,
         };
 
         var signals = new List<Signal>();

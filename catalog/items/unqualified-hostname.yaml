@@ -1,0 +1,50 @@
+category: configuration
+deleted: false
+description: 'An endpoint URL whose host is a single label, such as http://appsrv0341/FundsTransferWS/FundsTransferWS.asmx — in C# source, a configuration value or a Web Deploy SetParameters value. On Windows the name resolves through NetBIOS or the DNS suffix search list; in an OpenShift container it resolves only if the cluster''s DNS search domains cover it. Linux verdict: requires_change (lifecycle step 5 marks the environment binding the same way). One occurrence per host per file, so each environment''s SetParam file that names the host is its own occurrence. localhost and IP addresses are not matched.'
+detection:
+  match:
+    all:
+    - id: unqualified-host
+      signal:
+        name: UNQUALIFIED_HOSTNAME_URL
+    any: []
+    atLeast: []
+    metadata: []
+    none: []
+  occurrence_source:
+    group_by: source_path_and_value
+    signal: UNQUALIFIED_HOSTNAME_URL
+excluded_roles:
+- TEST
+id: unqualified-hostname
+name: Endpoint URL on an unqualified hostname
+owner_team: null
+resolutions:
+- consumer_impact: none
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: Keep the short name and add the corporate DNS suffix to the pod's dnsConfig.searches (or the cluster DNS forwarding), so it resolves as on Windows.
+  effort: low
+  id: cluster-dns-search-domain
+  is_default: false
+  linux_compatible: true
+  name: Add the domain to the pod's DNS search list
+  notes: Platform-level change; every workload relying on it depends on cluster configuration staying in place.
+  status: active
+  target_description: Pod dnsConfig.searches includes the corporate domain
+- consumer_impact: none
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: Replace the single-label host with its fully qualified DNS name in the URL, in every environment's configuration.
+  effort: low
+  id: fully-qualify-hostname
+  is_default: true
+  linux_compatible: true
+  name: Use the fully qualified name
+  notes: null
+  status: active
+  target_description: http://appsrv0341.corp.example.com/... (FQDN)
+scope: occurrence
+status: active

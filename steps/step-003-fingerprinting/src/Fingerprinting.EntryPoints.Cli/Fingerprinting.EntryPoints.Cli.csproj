@@ -22,13 +22,13 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Content Include="..\..\schemas\entry-point-inventory-2.1.0.schema.json">
-      <Link>schemas\entry-point-inventory-2.1.0.schema.json</Link>
+    <Content Include="..\..\schemas\entry-point-inventory-2.2.0.schema.json">
+      <Link>schemas\entry-point-inventory-2.2.0.schema.json</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
     <!-- The capability manifest ships beside the exe: what this build can see. -->
-    <Content Include="..\..\schemas\entry-point-capabilities-1.1.0.json">
-      <Link>schemas\entry-point-capabilities-1.1.0.json</Link>
+    <Content Include="..\..\schemas\entry-point-capabilities-1.2.0.json">
+      <Link>schemas\entry-point-capabilities-1.2.0.json</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>

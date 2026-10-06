@@ -1,0 +1,102 @@
+category: framework
+deleted: false
+description: |-
+  Non-SDK-style class library on .NET Framework 4.7x. Frequently a shared
+  dependency across several applications in the same repository, which makes it
+  a coordination point rather than an isolated migration.
+detection:
+  match:
+    all: []
+    any: []
+    atLeast: []
+    metadata:
+    - equals: net-framework
+      field: frameworkFamily
+      id: legacy-framework
+    - field: outputType
+      id: not-an-executable
+      notIn:
+      - WinExe
+      - Exe
+    none:
+    - id: no-aspx
+      signal:
+        name: ASPX_FILE
+    - id: no-page-base
+      signal:
+        name: PAGE_BASE_CLASS
+    - id: no-svc
+      signal:
+        name: SVC_FILE
+    - id: no-service-contract
+      signal:
+        name: SERVICE_CONTRACT_ATTRIBUTE
+    - id: no-mvc-controller
+      signal:
+        name: CONTROLLER_BASE_CLASS
+    - id: no-webapi-controller
+      signal:
+        name: API_CONTROLLER_BASE_CLASS
+    - id: no-global-asax
+      signal:
+        name: GLOBAL_ASAX_FILE
+    - id: no-service-base
+      signal:
+        name: SERVICE_BASE_BASE_CLASS
+    - id: no-main-entry
+      signal:
+        name: MAIN_METHOD_ENTRY_POINT
+    - id: no-toplevel-entry
+      signal:
+        name: TOP_LEVEL_STATEMENTS_ENTRY_POINT
+    - id: no-startup-class
+      signal:
+        name: STARTUP_CLASS_ENTRY_POINT
+    - id: no-webhost-builder
+      signal:
+        name: WEBHOST_CREATE_DEFAULT_BUILDER_ENTRY_POINT
+    - id: no-host-builder
+      signal:
+        name: HOST_CREATE_DEFAULT_BUILDER_ENTRY_POINT
+    - id: no-web-builder
+      signal:
+        name: WEB_APPLICATION_CREATE_BUILDER_ENTRY_POINT
+excluded_roles: []
+id: fx47-class-library
+name: .NET Framework 4.7 class library
+owner_team: null
+resolutions:
+- consumer_impact: low
+  container_ready: false
+  deleted: false
+  derivations: []
+  description: Retarget directly to .NET 10. Requires all consumers to migrate in the same wave.
+  effort: low
+  id: net10-class-library
+  is_default: false
+  linux_compatible: true
+  name: .NET 10 class library
+  notes: |-
+    Prerequisites: All consuming applications scheduled in the same migration wave.
+
+    Known limitations: Legacy Framework consumers cannot reference a net10.0 library. Sequencing is mandatory, not optional.
+  status: active
+  target_description: .NET 10
+- consumer_impact: none
+  container_ready: false
+  deleted: false
+  derivations: []
+  description: Retarget to .NET Standard 2.0 so both legacy and modern consumers can reference it during a phased migration.
+  effort: low
+  id: netstandard20-bridge
+  is_default: true
+  linux_compatible: true
+  name: .NET Standard 2.0 bridge
+  notes: |-
+    Prerequisites: No dependency on Framework-only APIs such as System.Web, AppDomain or Windows-specific configuration.
+
+    Known limitations: Interim state, not a destination. Some Framework APIs have no .NET Standard equivalent. Plan a later move to net10.0 once all consumers are migrated.
+  status: active
+  target_description: .NET Standard 2.0
+scope: application
+status: active

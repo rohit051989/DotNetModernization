@@ -13,6 +13,7 @@ from app.routers import (
     catalog_items,
     dashboard,
     decisions,
+    estate,
     engagement_patterns,
     engagements,
     health,
@@ -226,6 +227,15 @@ app = FastAPI(
             ),
         },
         {
+            "name": "Estate",
+            "description": (
+                "Engagement-wide results of lifecycle step 11: the endpoint register, "
+                "package estate, dependency graph and context map, with the "
+                "conversation annotations people keep on each host. See "
+                "31-STEP-011-ESTATE-DEPENDENCY-MAP.md."
+            ),
+        },
+        {
             "name": "Solution Discovery",
             "description": (
                 "Read-only results of lifecycle step 2: solutions, projects, project "
@@ -307,3 +317,4 @@ app.include_router(repositories.router)
 app.include_router(structure.router)
 app.include_router(surface.router)
 app.include_router(dashboard.router)
+app.include_router(estate.router)

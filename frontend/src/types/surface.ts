@@ -250,7 +250,10 @@ export interface OutboundInvocation {
   placeholder: string | null
   detail: { endpoint: OutboundEndpoint; block: OutboundBlock }
   environment_bindings: EnvironmentBinding[]
+  /** Step 5 1.3.0: where the dependency is invoked — each operation's call site. */
   call_sites: OutboundCallSite[]
+  /** Step 5 1.3.0: where the client is created, when that differs. */
+  construction_sites?: OutboundCallSite[]
   credentials: OutboundCredential[]
   auth_declared: AuthDeclared | null
   linux_verdict: LinuxVerdict
@@ -268,6 +271,23 @@ export interface ProjectOutbound {
   count_by_mechanism: Record<string, number>
   count_by_verdict: Record<string, number>
   invocations: OutboundInvocation[]
+  /** Step 5 1.3.0: Web Deploy SetParameters parameters; a value only for a path or a used endpoint URL. */
+  deploy_parameters?: DeployParameter[]
+}
+
+export interface DeployParameter {
+  projectPath: string | null
+  sourceFile: string
+  environment: string
+  name: string
+  kind: 'url' | 'path' | 'connection_string' | 'sensitive' | 'other'
+  line: number
+  value: string | null
+  linkedKind: string | null
+  linkedName: string | null
+  linkMethod: 'parameters_xml' | 'name_and_path' | null
+  linkConfidence: number | null
+  linkNote: string | null
 }
 
 export interface OutboundInventory {
@@ -281,4 +301,52 @@ export interface OutboundInventory {
   count_by_verdict: Record<string, number>
   auth_declared_scope: string
   projects: ProjectOutbound[]
+}
+
+// ---------- inbound operations -> backend calls (step 5 1.3.0) ----------
+
+export type BackendStatus = 'yes' | 'no' | 'unresolved' | 'not_assessed'
+
+export interface BackendHost {
+  environment: string
+  host: string | null
+  port: number | null
+  path: string | null
+  source_file: string | null
+  deploy_parameter: string | null
+  host_project: string | null
+  linux_verdict: string | null
+}
+
+export interface BackendCall {
+  invocation_id: string
+  mechanism: string
+  contract: string | null
+  operation: string | null
+  call_site: OutboundCallSite
+  depth: number
+  via: string[]
+  conditional: boolean
+  in_loop: boolean
+  context: string[]
+  endpoint: { shown: BackendHost; grouped_by: 'production_environment' | 'host'; others: BackendHost[] }
+  linux_verdict: string
+}
+
+export interface EntryPointBackendRow {
+  number: number
+  entry_point_id: string
+  kind: string
+  service: string
+  operation: string
+  handler: { type: string; member: string | null; filePath: string; lineStart: number }
+  status: BackendStatus
+  calls: BackendCall[]
+  unresolved: { reason: string; callSite: OutboundCallSite }[]
+}
+
+export interface EntryPointBackend {
+  repository_id: string
+  production_environment: string | null
+  applications: { project_id: string; project_path: string; rows: EntryPointBackendRow[] }[]
 }

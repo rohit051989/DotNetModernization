@@ -276,7 +276,13 @@ def _detect(item, referenced, fingerprinted, scan_version, introduced, visible, 
         return "checked_absent", None, project_row
 
     if item.scope == "application":
-        return "found", None, [{"file_path": None, "value": None, "evidence": evaluation.application_evidence(held)}]
+        # An attribute (wcf-service's hosting) is the occurrence's value.
+        attribute = item.detection.get("attribute")
+        value = None
+        if attribute:
+            values = sorted({row["value"] for row in visible.get(attribute["signal"], []) if row["value"]})
+            value = f"{attribute['label']}: " + "; ".join(values) if values else None
+        return "found", None, [{"file_path": None, "value": value, "evidence": evaluation.application_evidence(held)}]
 
     located = evaluation.project_occurrences(item.detection, visible)
     if not located:

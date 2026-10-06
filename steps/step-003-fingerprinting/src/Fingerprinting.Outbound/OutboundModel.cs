@@ -64,7 +64,7 @@ public static class Resolutions
 public sealed record OutboundInventoryArtifact
 {
     public string ArtifactType { get; init; } = "outbound-invocation-inventory";
-    public string ArtifactVersion { get; init; } = "1.1.0";
+    public string ArtifactVersion { get; init; } = "1.3.0";
     public required string ScannerVersion { get; init; }
     public required Guid RepositoryId { get; init; }
     public required string RepositorySlug { get; init; }
@@ -109,7 +109,83 @@ public sealed record ProjectInvocations
     public string? SkipReason { get; init; }
     public required ProjectOutboundSummary Summary { get; init; }
     public IReadOnlyList<Invocation> Invocations { get; init; } = [];
+
+    /// <summary>1.3.0: every SetParameters parameter of this project, linked
+    /// or not. A value only where <see cref="Fingerprinting.Analysis.DeployParameterFiles.MayStore"/> allows.</summary>
+    public IReadOnlyList<DeployParameterRecord> DeployParameters { get; init; } = [];
+
+    /// <summary>1.3.0: per step 4 entry point of this project, the outbound
+    /// call sites it reaches — see <see cref="BackendReach"/>.</summary>
+    public IReadOnlyList<EntryPointBackend> EntryPointBackend { get; init; } = [];
     public IReadOnlyList<Warning> Warnings { get; init; } = [];
+}
+
+/// <summary>One SetParameters parameter (1.3.0). <see cref="Value"/> is set
+/// only for a path, or a URL that links to an endpoint some invocation uses;
+/// every other parameter — a password, a connection string, a user id — is
+/// recorded as present, with its name and kind only.</summary>
+public sealed record DeployParameterRecord
+{
+    public string? ProjectPath { get; init; }
+    public required string SourceFile { get; init; }
+    public required string Environment { get; init; }
+    public required string Name { get; init; }
+
+    /// <summary><c>url</c>, <c>path</c>, <c>connection_string</c>, <c>sensitive</c> or <c>other</c>.</summary>
+    public required string Kind { get; init; }
+    public required int Line { get; init; }
+    public string? Value { get; init; }
+
+    /// <summary>What it replaces: <c>client_endpoint</c>, <c>app_setting</c>,
+    /// <c>connection_string</c> or <c>xpath</c>, and that thing's name.</summary>
+    public string? LinkedKind { get; init; }
+    public string? LinkedName { get; init; }
+
+    /// <summary><c>parameters_xml</c> or <c>name_and_path</c>.</summary>
+    public string? LinkMethod { get; init; }
+    public double? LinkConfidence { get; init; }
+    public string? LinkNote { get; init; }
+}
+
+/// <summary>What one inbound entry point reaches (1.3.0).
+/// <see cref="Status"/>: <c>yes</c> (an outbound call site is reached),
+/// <c>no</c> (none, and no path left unfollowed), <c>unresolved</c> (none
+/// found, but a path through another class or deeper was not followed).</summary>
+public sealed record EntryPointBackend
+{
+    public required string EntryPointId { get; init; }
+    public required string Status { get; init; }
+    public IReadOnlyList<BackendCall> Calls { get; init; } = [];
+    public IReadOnlyList<UnfollowedPath> Unresolved { get; init; } = [];
+}
+
+public sealed record BackendCall
+{
+    public required string InvocationId { get; init; }
+    public required string Mechanism { get; init; }
+
+    /// <summary>The operation as step 5 records it (<c>PlaceRealTimeFTOrder</c>,
+    /// <c>GET /api/orders</c>); null for a mechanism without operations.</summary>
+    public string? Operation { get; init; }
+    public required CallSite CallSite { get; init; }
+
+    /// <summary>0: in the entry point's own method; n: through n methods of the same class.</summary>
+    public required int Depth { get; init; }
+
+    /// <summary>The methods walked, entry point first.</summary>
+    public IReadOnlyList<string> Via { get; init; } = [];
+    public required bool Conditional { get; init; }
+    public required bool InLoop { get; init; }
+
+    /// <summary>The conditions and loops around it, as written in code
+    /// (<c>else of if (item.IsPracticeAccount)</c>) — syntax, not interpretation.</summary>
+    public IReadOnlyList<string> Context { get; init; } = [];
+}
+
+public sealed record UnfollowedPath
+{
+    public required string Reason { get; init; }
+    public required CallSite CallSite { get; init; }
 }
 
 public sealed record ProjectOutboundSummary
@@ -169,7 +245,19 @@ public sealed record Invocation
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public SmtpDetail? Smtp { get; init; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public LdapDetail? Ldap { get; init; }
 
+    /// <summary>Where the dependency is invoked (1.3.0): each resolved
+    /// operation's call site when there are any; otherwise where the client is
+    /// created or configured.</summary>
     public IReadOnlyList<CallSite> CallSites { get; init; } = [];
+
+    /// <summary>1.3.0: where the client is created — <c>new XClient()</c>,
+    /// <c>new ChannelFactory&lt;T&gt;</c> — when that differs from where it is invoked.</summary>
+    public IReadOnlyList<CallSite> ConstructionSites { get; init; } = [];
+
+    /// <summary>What the client invokes, each with its own call site
+    /// (1.2.0): SOAP and gRPC operations, HTTP verb and path. Empty for the
+    /// other mechanisms. See <see cref="OperationTracer"/>.</summary>
+    public IReadOnlyList<InvokedOperation> Operations { get; init; } = [];
     public required LinuxCompatibility LinuxCompatibility { get; init; }
     public required double Confidence { get; init; }
     public IReadOnlyList<string> ConfidenceReasons { get; init; } = [];
@@ -238,6 +326,16 @@ public sealed record EnvironmentBinding
     public string? LinuxVerdict { get; init; }
 
     public IReadOnlyList<string> LinuxReasons { get; init; } = [];
+
+    /// <summary>1.3.0: for a class library, the host project whose
+    /// configuration this is; null for the project's own.</summary>
+    public string? HostProject { get; init; }
+
+    /// <summary>1.3.0: the SetParameters parameter that sets this value, and
+    /// how it was linked (<c>parameters_xml</c> exact, <c>name_and_path</c> lower).</summary>
+    public string? DeployParameter { get; init; }
+    public string? LinkMethod { get; init; }
+    public double? LinkConfidence { get; init; }
 }
 
 public sealed record CredentialReference
@@ -257,6 +355,34 @@ public sealed record CallSite
     public required string FilePath { get; init; }
     public required int LineStart { get; init; }
     public required int LineEnd { get; init; }
+}
+
+/// <summary>One operation a client invokes, where (1.2.0).</summary>
+public sealed record InvokedOperation
+{
+    /// <summary>SOAP: the method called on the proxy or channel, as called.
+    /// gRPC: the RPC (a generated <c>…Async</c> method's name without the suffix).
+    /// Null for HTTP and when unresolved.</summary>
+    public string? Operation { get; init; }
+
+    /// <summary>HTTP: GET, POST, PUT, PATCH, DELETE; null when not readable.</summary>
+    public string? Verb { get; init; }
+
+    /// <summary>HTTP: the request path with any base-address path
+    /// prefixed; a part this step could not read is <c>{…}</c>.</summary>
+    public string? Path { get; init; }
+
+    /// <summary>The member invoked, as written; null when unresolved.</summary>
+    public string? Member { get; init; }
+
+    /// <summary><c>resolved</c>, <c>partial</c> (an HTTP path with unread
+    /// parts, or a verb that could not be read) or <c>unresolved</c>.</summary>
+    public required string Resolution { get; init; }
+
+    /// <summary>Why it is unresolved, or how it was found when indirect.</summary>
+    public string? Reason { get; init; }
+
+    public required CallSite CallSite { get; init; }
 }
 
 public sealed record LinuxCompatibility

@@ -20,7 +20,7 @@ public sealed record EntryPointInventoryArtifact
     /// seven kinds are added, and the capability manifest is stamped in.
     /// 2.1.0: <c>origin</c> and <c>entryClass</c> on every entry point, and
     /// counts split by both. Additive.</summary>
-    public string ArtifactVersion { get; init; } = "2.1.0";
+    public string ArtifactVersion { get; init; } = "2.2.0";
     public required string ScannerVersion { get; init; }
     public required Guid RepositoryId { get; init; }
     public required string RepositorySlug { get; init; }
@@ -82,6 +82,11 @@ public sealed record ProjectEntryPoints
     public string? SkipReason { get; init; }
     public required ProjectEntryPointSummary Summary { get; init; }
     public IReadOnlyList<EntryPointRecord> EntryPoints { get; init; } = [];
+
+    /// <summary>2.2.0: architecture signals this project carries — what it
+    /// exposes or hosts, put together across projects. Written to
+    /// fingerprint_signals under <see cref="ArchitectureSignals.Extractor"/>.</summary>
+    public IReadOnlyList<Signal> Signals { get; init; } = [];
     public IReadOnlyList<Warning> Warnings { get; init; } = [];
 }
 

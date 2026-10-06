@@ -1,0 +1,88 @@
+category: hosting
+deleted: false
+description: |-
+  A Windows Forms application: `OutputType` of `WinExe` (the Windows GUI
+  subsystem) with no XAML present. WinForms and WPF are separated by XAML
+  alone until DesktopUiExtractor lands — a WinForms project has designer
+  code and `System.Windows.Forms` references, neither of which step 3
+  currently emits a signal for.
+
+  **Not a console application.** It has a `Main` like one, which is why
+  it previously matched console-batch-job, but nothing else about it is
+  comparable: the UI toolkit is Windows-only, the migration target is
+  Windows-only .NET or a UI rewrite, and it cannot be containerised for
+  OCP4 at all.
+
+  Detection note (from the pattern's match warning): Detected from OutputType WinExe and the absence of XAML; System.Windows.Forms evidence not yet available from step 3.
+
+  Detection note: `OutputType` WinExe covers both WinForms and WPF, so this item tells them apart only by the absence of XAML. Enhancement, not a blocker: positive WinForms signals (FORM_BASE_CLASS, SYSTEM_WINDOWS_FORMS_NAMESPACE, SYSTEM_WINDOWS_FORMS_ASSEMBLY, STA_THREAD_ATTRIBUTE) would let detection stop relying on an absence. Add them to `match` once step 3 emits them.
+detection:
+  match:
+    all: []
+    any: []
+    atLeast: []
+    metadata:
+    - equals: WinExe
+      field: outputType
+      id: windows-gui-exe
+    none:
+    - id: no-xaml
+      signal:
+        name: XAML_FILE
+    - id: no-startup-class
+      signal:
+        name: STARTUP_CLASS_ENTRY_POINT
+    - id: no-web-builder
+      signal:
+        name: WEB_APPLICATION_CREATE_BUILDER_ENTRY_POINT
+    - id: no-webhost-builder
+      signal:
+        name: WEBHOST_CREATE_DEFAULT_BUILDER_ENTRY_POINT
+    - id: no-global-asax
+      signal:
+        name: GLOBAL_ASAX_ENTRY_POINT
+    - id: no-svc-file
+      signal:
+        name: SVC_FILE
+    - id: no-service-base
+      signal:
+        name: SERVICE_BASE_BASE_CLASS
+excluded_roles: []
+id: winforms-desktop
+name: Windows Forms desktop application
+owner_team: null
+resolutions:
+- consumer_impact: none
+  container_ready: false
+  deleted: false
+  derivations: []
+  description: Move to the current .NET Windows Desktop target with the Windows Forms UI intact. Stays Windows-only and off OCP4.
+  effort: medium
+  id: winforms-net-windows-retarget
+  is_default: true
+  linux_compatible: false
+  name: Retarget to .NET (Windows-only), UI preserved
+  notes: |-
+    Prerequisites: A Windows host remains available for build and run. Third-party control suites checked for modern .NET support before starting.
+
+    Known limitations: Does not reach OCP4 — Windows Forms has no Linux or container story. This option keeps the application supported, not portable.
+  status: active
+  target_description: .NET 8+ Windows Desktop (net8.0-windows), Windows host
+- consumer_impact: high
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: Keep the domain logic, replace the Windows Forms UI. The only route to OCP4 for a desktop application.
+  effort: high
+  id: winforms-ui-rewrite
+  is_default: false
+  linux_compatible: true
+  name: Rewrite UI for the web (Blazor) or cross-platform (MAUI)
+  notes: |-
+    Prerequisites: Domain logic separable from the forms. User-facing change accepted by the business, with retraining planned.
+
+    Known limitations: A rewrite, not a migration — no accelerator covers the UI layer. Scope this from the business case, not from the code.
+  status: active
+  target_description: Blazor on ASP.NET Core (container on OCP4), or .NET MAUI
+scope: application
+status: active

@@ -172,6 +172,9 @@ public static class DatabaseDetector
                 Port = int.TryParse(e.Facts.Port, out var port) ? port : null,
                 Resolution = e.Facts.Host is null ? Resolutions.Partial : Resolutions.Resolved,
                 Authentication = Authentication(e.Facts),
+                DeployParameter = e.Link?.Parameter,
+                LinkMethod = e.Link?.Method,
+                LinkConfidence = e.Link?.Confidence,
             }).ToList();
 
             var facts = primary.Facts!;

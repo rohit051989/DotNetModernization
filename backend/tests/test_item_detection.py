@@ -316,5 +316,45 @@ class EndToEndNetTcpTests(DetectionTestCase):
         self.assertEqual(states[(project.id, "wcf-nettcp-client")], "found")
 
 
+class AttributeTests(unittest.TestCase):
+    """28-ITEM Part R: an application-scope item's attribute (wcf-service's
+    hosting) is recorded as the occurrence's value."""
+
+    def test_an_attribute_is_the_found_occurrences_value(self):
+        from types import SimpleNamespace
+
+        from app.items.detection import referenced_signal_names, validate_detection
+        from app.steps.item_detection import _detect
+
+        detection, _ = validate_detection("application", {
+            "match": {"any": [{"id": "svc", "signal": {"name": "EXPOSES_WCF_SERVICE"}}]},
+            "attribute": {"signal": "WCF_SERVICE_HOSTING", "label": "hosting"},
+        }, {})
+        item = SimpleNamespace(id="t", scope="application", detection=detection)
+
+        def row(value):
+            return {"signal_category": "HOSTING_INDICATOR", "signal_type": "ENTRY_POINT", "value": value, "source_type": "SOURCE_CODE",
+                    "source_path": "x.cs", "occurrence_count": 1, "extraction_confidence": 1.0, "evidence": [], "repository_level": False}
+
+        visible = {"EXPOSES_WCF_SERVICE": [row("IAccountService")],
+                   "WCF_SERVICE_HOSTING": [row("ServiceHost in src/Host/Host.csproj"), row("IIS .svc in src/Hosting.Iis (no project file)"),
+                                           row("ServiceHost in src/Host/Host.csproj")]}
+        state, _reason, rows = _detect(item, referenced_signal_names(detection), True, "9.9.9", {}, visible, {})
+        self.assertEqual((state, rows[0]["value"]),
+                         ("found", "hosting: IIS .svc in src/Hosting.Iis (no project file); ServiceHost in src/Host/Host.csproj"))
+
+    def test_an_attribute_is_refused_on_an_occurrence_item(self):
+        from fastapi import HTTPException
+
+        from app.items.detection import validate_detection
+
+        with self.assertRaises(HTTPException):
+            validate_detection("occurrence", {
+                "match": {"all": [{"id": "p", "signal": {"name": "WINDOWS_PATH_LITERAL"}}]},
+                "occurrence_source": {"signal": "WINDOWS_PATH_LITERAL"},
+                "attribute": {"signal": "WCF_SERVICE_HOSTING", "label": "hosting"},
+            }, {})
+
+
 if __name__ == "__main__":
     unittest.main()

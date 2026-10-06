@@ -15,7 +15,7 @@ namespace Fingerprinting.EntryPoints.Cli;
 public static class EntryPointInventoryCli
 {
     public const string ArtifactType = "entry-point-inventory";
-    public const string ArtifactVersion = "2.1.0";
+    public const string ArtifactVersion = "2.2.0";
     public const string OutputFileName = "entry-point-inventory.json";
 
     private const string InventoryType = "solution-project-inventory";
@@ -259,7 +259,7 @@ public static class EntryPointInventoryCli
         ?? throw new InvalidOperationException("application-fingerprint deserialized to null");
 
     private static readonly Lazy<ArtifactSchemaValidator> SchemaValidator = new(() =>
-        ArtifactSchemaValidator.Load(Path.Combine(AppContext.BaseDirectory, "schemas", "entry-point-inventory-2.1.0.schema.json")));
+        ArtifactSchemaValidator.Load(Path.Combine(AppContext.BaseDirectory, "schemas", "entry-point-inventory-2.2.0.schema.json")));
 
     /// <summary>Serialises deterministically, validates against the schema —
     /// a failure is a step failure — and writes.</summary>

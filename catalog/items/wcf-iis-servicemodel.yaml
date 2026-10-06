@@ -1,0 +1,82 @@
+category: integration
+deleted: true
+description: |-
+  WCF service using ServiceContract and OperationContract attributes, with
+  bindings and behaviours configured in web.config, hosted in IIS. Frequently
+  consumed by external parties whose contracts cannot change.
+detection:
+  match:
+    all:
+    - id: service-contract
+      signal:
+        minimumOccurrences: 1
+        name: SERVICE_CONTRACT_ATTRIBUTE
+    any:
+    - id: svc-host
+      signal:
+        minimumOccurrences: 1
+        name: SVC_FILE
+    - id: svc-config
+      signal:
+        name: SYSTEM_SERVICE_MODEL_CONFIG
+    atLeast: []
+    metadata:
+    - equals: net-framework
+      field: frameworkFamily
+      id: legacy-framework
+    none: []
+excluded_roles: []
+id: wcf-iis-servicemodel
+name: WCF service hosted in IIS
+owner_team: null
+resolutions:
+- consumer_impact: none
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: Port to CoreWCF, preserving service contracts, bindings and the published WSDL.
+  effort: medium
+  id: corewcf-net10
+  is_default: true
+  linux_compatible: true
+  name: CoreWCF on .NET 10
+  notes: |-
+    Prerequisites: Bindings in use must be supported by CoreWCF. WSDL snapshot captured before migration.
+
+    Known limitations: CoreWCF does not support every WCF binding. WS-* protocols, MSMQ transport and some Windows-integrated security modes need case-by-case assessment. Windows authentication requires an alternative on Linux.
+  status: active
+  target_description: .NET 10 + CoreWCF, container on OCP4
+- consumer_impact: high
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: Rewrite as a contract-first gRPC service.
+  effort: high
+  id: grpc-net10
+  is_default: false
+  linux_compatible: true
+  name: gRPC service on .NET 10
+  notes: |-
+    Prerequisites: Every consumer must be able to adopt a gRPC client. Requires HTTP/2 support through the OCP4 ingress path.
+
+    Known limitations: All callers must change. Only viable where consumers are internal and in scope for coordinated change.
+  status: active
+  target_description: .NET 10 + gRPC, container on OCP4
+- consumer_impact: high
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: Rewrite as a conventional REST API, retiring SOAP entirely.
+  effort: high
+  id: rest-net10
+  is_default: false
+  linux_compatible: true
+  name: REST API on .NET 10
+  notes: |-
+    Prerequisites: All consumers able to change. Resource model designed and agreed.
+
+    Known limitations: The largest change of the three options. SOAP faults, message-level security and transactional semantics have no direct REST equivalent.
+  status: active
+  target_description: .NET 10 + ASP.NET Core, container on OCP4
+scope: application
+status: active

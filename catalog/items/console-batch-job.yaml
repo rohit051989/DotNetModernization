@@ -1,0 +1,118 @@
+category: hosting
+deleted: false
+description: |-
+  Console application with a Main entry point performing batch work — file
+  processing, data loads, report generation — invoked on a schedule rather than
+  run continuously.
+detection:
+  match:
+    all: []
+    any:
+    - id: main-entry
+      signal:
+        name: MAIN_METHOD_ENTRY_POINT
+    - id: toplevel-entry
+      signal:
+        name: TOP_LEVEL_STATEMENTS_ENTRY_POINT
+    atLeast: []
+    metadata:
+    - field: outputType
+      id: not-desktop-exe
+      notEquals: WinExe
+    none:
+    - id: not-service-base
+      signal:
+        name: SERVICE_BASE_BASE_CLASS
+    - id: not-servicebase-run
+      signal:
+        name: SERVICEBASE_RUN_ENTRY_POINT
+    - id: not-web-builder
+      signal:
+        name: WEB_APPLICATION_CREATE_BUILDER_ENTRY_POINT
+    - id: not-webhost-builder
+      signal:
+        name: WEBHOST_CREATE_DEFAULT_BUILDER_ENTRY_POINT
+    - id: not-global-asax
+      signal:
+        name: GLOBAL_ASAX_ENTRY_POINT
+    - id: not-startup-class
+      signal:
+        name: STARTUP_CLASS_ENTRY_POINT
+    - id: not-razor-file
+      signal:
+        name: RAZOR_FILE
+    - id: not-cshtml-file
+      signal:
+        name: CSHTML_FILE
+    - id: not-background-service
+      signal:
+        name: BACKGROUND_SERVICE_BASE_CLASS
+    - id: not-ihosted-service
+      signal:
+        name: IHOSTED_SERVICE_BASE_CLASS
+    - id: not-add-hosted-service
+      signal:
+        name: ADD_HOSTED_SERVICE_ENTRY_POINT
+    - id: not-use-windows-service
+      signal:
+        name: USE_WINDOWS_SERVICE_INVOCATION
+    - id: not-windowsservices-package
+      signal:
+        name: MICROSOFT_EXTENSIONS_HOSTING_WINDOWSSERVICES_PACKAGE
+    - id: not-wcf-host
+      signal:
+        name: HOSTS_WCF_SERVICE
+    - id: not-exposes-wcf-service
+      signal:
+        name: EXPOSES_WCF_SERVICE
+    - id: not-exposes-http-api
+      signal:
+        name: EXPOSES_HTTP_API
+    - id: not-exposes-asmx-service
+      signal:
+        name: EXPOSES_ASMX_SERVICE
+    - id: not-exposes-grpc-service
+      signal:
+        name: EXPOSES_GRPC_SERVICE
+    - id: not-exposes-webforms-ui
+      signal:
+        name: EXPOSES_WEBFORMS_UI
+excluded_roles: []
+id: console-batch-job
+name: Console batch application
+owner_team: null
+resolutions:
+- consumer_impact: low
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: Retarget to .NET 10, containerize, and schedule as an OpenShift CronJob.
+  effort: medium
+  id: ocp4-cronjob-container
+  is_default: true
+  linux_compatible: true
+  name: OCP4 CronJob container
+  notes: |-
+    Prerequisites: Job is idempotent and safe to retry. File paths externalized to configuration.
+
+    Known limitations: Scheduling moves from Windows Task Scheduler to OpenShift, changing who owns the schedule. Local file dependencies must move to a mounted volume or object storage.
+  status: active
+  target_description: .NET 10 console + OCP4 CronJob
+- consumer_impact: low
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: Convert to a long-running Worker Service with an internal scheduler, deployed as a Deployment rather than a CronJob.
+  effort: medium
+  id: worker-service-container
+  is_default: false
+  linux_compatible: true
+  name: .NET Worker Service container
+  notes: |-
+    Prerequisites: Job frequency high enough that a persistently running pod is justified.
+
+    Known limitations: Consumes resources continuously. Scheduling logic moves into the application, which makes it less visible to platform operators than a CronJob.
+  status: active
+  target_description: .NET 10 Worker Service + OCP4 Deployment
+scope: application
+status: active

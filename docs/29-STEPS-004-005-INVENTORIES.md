@@ -374,6 +374,44 @@ Dapr, BizTalk, SSIS, Sitecore / Umbraco pipelines, in-house dispatchers. Also no
 covered: actions inherited from an abstract base controller, WCF `serviceAuthorization`
 behaviours, and web.config transforms.
 
+### B6. Architecture signals (scanner 2.2.0, signal registry 1.8.0)
+
+A service is often assembled across projects. In the WCF sample the contracts are in
+`Catalog.Contracts`, the implementations in `Catalog.Services`, the `ServiceHost` and
+`system.serviceModel` in `Catalog.Host`, and the `.svc` files in `Hosting.Iis`, which has
+no project file. A step-3 detection rule matches signals within one project, so it cannot
+see the service. Step 4 has already put it together, so step 4 is also a **signal
+producer**, in the same way as step 6.
+
+- **Registration.** Step 4 is registered as the producer `EntryPointInventory` in
+  `extractors.yaml` and in signal registry 1.8.0. The registration, the artifact and the
+  scanner are 2.2.0, and the capability manifest is 1.2.0.
+- **Writing.** At the end of a run, step 4 deletes its own `fingerprint_signals` rows for
+  the repository (`extractor = 'EntryPointInventory'`) and writes the new set. Step 7
+  reads them like any other signal.
+- **Scope.** Only application-origin entry points count. A framework-origin entry point
+  (an external base class) does not make a project expose a service.
+- **Evidence.** The evidence is the implementing class (type, member and line span) or the
+  host construction. A signal carries at most 20 evidence entries, in deterministic order.
+
+| Signal | Project | Value |
+|---|---|---|
+| `EXPOSES_WCF_SERVICE` | the project implementing a service contract | the contract |
+| `WCF_SERVICE_HOSTING` | the implementing project | where it is hosted, for example `ServiceHost in src/Catalog.Host/Catalog.Host.csproj` or `IIS .svc in src/Hosting.Iis (no project file)`, or `no host found` |
+| `HOSTS_WCF_SERVICE` | the project that constructs the `ServiceHost`, or owns the `.svc` file | the contract |
+| `EXPOSES_HTTP_API` | controllers or minimal APIs | the handler type |
+| `EXPOSES_ASMX_SERVICE` | `[WebMethod]` services | the service path |
+| `EXPOSES_GRPC_SERVICE` | gRPC service implementations | the service |
+| `EXPOSES_WEBFORMS_UI` | `.aspx` pages | the page path |
+
+A host file with no project file has no project to hold `HOSTS_WCF_SERVICE`. It is still
+recorded, through `WCF_SERVICE_HOSTING` on the implementing project. The owner of a host
+file is the project whose directory is the longest prefix of the file's path.
+
+On the WCF sample, `Catalog.Services` carries `EXPOSES_WCF_SERVICE` five times (once per
+contract) and `Catalog.Host` carries `HOSTS_WCF_SERVICE` five times. `Catalog.Services`
+also has two hosting values: the IIS `.svc` files and the `ServiceHost`.
+
 ---
 
 ## Part C — Step 5: outbound-invocation inventory
@@ -506,6 +544,12 @@ be assessed as much as what could.
             "securityMode": "Transport", "clientCredentialType": "Windows" },
   "callSites": [ { "filePath": "src/AccountOpenAPI/Services/AccountClient.cs",
                    "lineStart": 31, "lineEnd": 31 } ],
+  "operations": [
+    { "operation": "OpenAccount", "verb": null, "path": null, "member": "OpenAccount",
+      "resolution": "resolved", "reason": null,
+      "callSite": { "filePath": "src/AccountOpenAPI/Services/AccountClient.cs",
+                    "lineStart": 44, "lineEnd": 44 } }
+  ],
   "linuxCompatibility": { "verdict": "incompatible",
                           "reasons": ["netTcpBinding", "Windows client credentials"] },
   "confidence": 0.9
@@ -526,7 +570,7 @@ host index is what step 10's aggregation reads.
 Artifact `outbound-invocation-inventory@1.0.0`. Per-project summary: count by
 mechanism, count by verdict, and the incompatible invocations listed explicitly.
 
-### C9. As implemented (step 5, scanner 1.1.0)
+### C9. As implemented (step 5, scanner 1.3.0)
 
 **Where it lives.** `src/Fingerprinting.Outbound` (detection, configuration
 resolution, verdicts) and `src/Fingerprinting.Outbound.Cli` (envelope, database,
@@ -603,6 +647,155 @@ Step 3 and step 4 outputs were byte-identical before and after the move.
 - Migration `b8e2f4a6c917` adds `outbound_invocations.usage` with an index on
   `(usage, endpoint_host)`.
 
+**1.2.0 (additive): the operation each call site invokes.** Every invocation
+carries `operations`, one per call site, each `{operation, verb, path, member,
+resolution, reason, callSite}`. Step 11 matches them to step 4's entry points
+(31-STEP-011 Part I). `OperationTracer` (syntax only) produces them:
+- **SOAP.** It follows the client from where it is created to the variable or
+  field holding it (through `await`, casts and `using`). For a
+  `ChannelFactory<T>`, including one returned by a generic helper per call
+  site, it goes through `CreateChannel()` to the proxy variables. The
+  operations are the methods called on those: `utility.Ping()` is `Ping`.
+  - Only methods the contract interface declares count. The interface is
+    taken from the client's own project first, then a `[ServiceContract]`
+    interface in the repository, then any interface of the name. A domain
+    interface sharing the contract's name therefore does not filter the
+    operations.
+  - `FooAsync` on a generated proxy is kept as written; step 11 matches it to
+    the `Foo` operation.
+  - Where the proxy is passed on (a WinForms form handing it to a
+    controller), every call on a receiver declared with the contract or client
+    type in the project is taken, with a reason saying so.
+- **HTTP.** The verb comes from the request method (`GetAsync` is GET,
+  `UploadString(url, "PUT", …)` is PUT). The path is the request URL's path,
+  with unread parts written `{…}` and the resolution `partial`.
+  - A request inside a wrapper whose URL uses the wrapper's parameters
+    (`HttpGet(uri)` building `$"{_apiUrl}{uri}"`) is recorded once per caller
+    of the wrapper, at the caller's call site, with the path it passes.
+  - A client configured with a base address (`new HttpClient { BaseAddress }`,
+    `AddHttpClient<T>`, a named client through `CreateClient("name")`) records
+    the relative requests made through it, joined to the base address's path.
+  - `SendAsync` and `WebRequest` have no readable verb and are `partial`.
+    RestSharp is not traced.
+- **gRPC.** These are the methods called on the stub constructed over the
+  channel, or on a receiver of `<Service>Client` for `AddGrpcClient<T>`.
+  `SayHelloAsync` is recorded as the `SayHello` RPC (`member` keeps the name
+  as written).
+- **Unresolved.** When nothing can be followed statically, one operation is
+  recorded with `resolution: unresolved` and the reason. Examples: the client
+  is never held in a variable, nothing is called on it, it is declared in
+  configuration only, or the client class is never constructed. It is never
+  guessed.
+- Operations merge with their invocation (an invocation found at several
+  call sites carries the operations of all of them), deduplicated by call
+  site and sorted.
+- Schema `outbound-invocation-inventory-1.2.0.schema.json` (generated from
+  1.1.0 by `schemas/make_outbound_schema_1_2_0.py`). Migration `b8e2d4f61a07`
+  adds `outbound_invocations.operations` JSONB.
+
+**1.3.0 (additive).** Schema `outbound-invocation-inventory-1.3.0.schema.json`,
+generated by `schemas/make_outbound_schema_1_3_0.py`. Migration `c4a7e1d93b26`.
+Job `phase0-repository-discovery` v10 wires step 4's `entry-point-inventory`
+into this step as an optional input.
+
+- **Configuration through the host process.**
+  - In .NET, App.config and web.config belong to the executable or web host.
+    A class library reads its host's configuration at run time and has none
+    of its own.
+  - So a project that is not a host and has no configuration file is
+    resolved through its hosts. A host is an `Exe`/`WinExe` output type, a
+    `.Web` SDK, or a project with a web.config. It is found through step 2's
+    project references, transitively through other libraries
+    (`ResolveHosts`).
+  - Key lookups (`Lookup`, `EnvironmentsFor`) and WCF client endpoints search
+    the hosts' configuration after the library's own (`InScope`).
+  - The "configured but never referenced" sweeps (connection strings, Kafka,
+    Key Vault, SMTP) stay per project, so a host's entry is not reported a
+    second time in its library.
+  - A library's client claims its host's endpoint entry. SOAP code detection
+    runs for every project before any project looks for config-only entries,
+    so the host no longer reports the same endpoint as "declared in config
+    only". The result is one invocation: call sites from the library,
+    configuration from the host.
+  - With several hosts, each host's configuration is its own binding.
+    `environmentBindings[].hostProject` names the host.
+  - Not covered: a host that step 2 does not know, such as a folder of `.svc`
+    files and a web.config with no project file (the WCF sample's
+    `Hosting.Iis`).
+- **Web Deploy SetParameters.** `DeployParameterFiles` in Fingerprinting.Analysis
+  is shared with step 3.
+  - **Discovery.** Files come from the engagement's `deploy_parameter_globs`,
+    defaulting to `**/SetParam*.xml` and `**/SetParameters*.xml`.
+  - **Environment.** A filename suffix names the environment
+    (`SetParam.PROD.xml`); otherwise the parent folder does
+    (`SetParamFiles\PROD\SetParam.xml` is PROD; `DEV\LOCAL\SetParam.xml` is
+    LOCAL).
+  - **Project.** The file belongs to the project whose name a folder on its
+    path carries (`CustomFiles\Catalog.Host\…`), or under whose directory it
+    sits. A file with no project is a warning, and its values are not applied.
+  - **Every environment is read.** Each linked parameter becomes that
+    environment's value: a client endpoint's address, an appSettings key read
+    the way the replaced key is read, or a connection string as facts only.
+    It is then evaluated like any environment file. The binding carries
+    `deployParameter`, `linkMethod` and `linkConfidence`.
+  - **Linking.**
+    - `parameters.xml` in the project's directory: its `parameterEntry match`
+      XPath decides, recorded as `parameters_xml` at 1.0. Recognised XPaths
+      are `client/endpoint[@name]/@address`, `appSettings/add[@key]/@value`
+      and `connectionStrings/add[@name]/@connectionString`.
+    - Otherwise, a URL parameter whose name contains the endpoint's name or
+      contract and whose URL path ends as the endpoint's does (`name_and_path`,
+      0.8 for both matches, 0.6 for one).
+    - Otherwise, an appSettings key of the same name (0.7).
+  - **Secrets.** `deployParameters` on each project records every parameter,
+    each with its name, kind (`url`, `path`, `connection_string`, `sensitive`,
+    `other`), environment, file and link.
+    - A value is kept only for a path, or for a URL that a used invocation's
+      binding cites. Such a URL is stored normalised, as the binding holds it.
+    - A password, a connection string, a user id or anything else is recorded
+      as present, never with its value. The schema forbids a value on those
+      kinds.
+    - The secrets fixture now includes a SetParam file with a password and a
+      connection string.
+  - Which environment is production is the engagement's existing
+    `production_environment` setting; step 11 and the repository page use it.
+- **Call sites are invocations.** `callSites` is now where the dependency is
+  invoked: each followed operation's call site (`service.PlaceRealTimeFTOrder(req)`
+  at line 56). Where the client is created (`using (… = new FundsTransferWSSoapClient())`
+  at 51) is kept in `constructionSites` when it differs.
+- **Inbound operations → backend calls (`BackendReach`).**
+  - For each step 4 entry point, from its handler method: the outbound call
+    sites in the method itself (depth 0), then through methods of the same
+    class it calls (`M()`, `this.M()`), breadth-first, up to depth 3.
+  - Each call records its depth, the methods walked, and whether it is
+    conditional or in a loop. Both are read from the syntax between the entry
+    point and the call:
+    - conditional: `if` or `else`, a `switch` case or arm, `?:`, the right
+      side of `&&`, `||` or `??`, `catch`, or an earlier `if (…) return/throw`
+      in the same block (an early-return guard);
+    - loop: `for`, `foreach`, `while`, `do`, or a lambda passed to
+      `ForEach`, `Select` and similar.
+  - The code text is kept in `context`. A human-readable condition ("not for
+    practice accounts") is advisory LLM work and is left out.
+  - A call into another class, or into an injected dependency (an interface,
+    or a field assigned from a constructor parameter), whose type makes
+    backend calls is recorded under `unresolved` and not followed. So is a
+    same-class path deeper than 3.
+  - Status:
+    - `yes`: a call is reached;
+    - `no`: none, and nothing unfollowed;
+    - `unresolved`: none found, but something was not followed.
+  - Written to `entry_point_backend`, one row per entry point, replaced per
+    repository. Served by `GET /api/repositories/{id}/entry-point-backend`,
+    shown as the table on the repository page's Surface section.
+- **Unqualified hostnames.** A SOAP, HTTP or gRPC binding whose host is a single
+  label (`appsrv0341`) is at least `requires_change` in that environment.
+  - The reason: it resolves on Windows through NetBIOS or the DNS suffix
+    search, but in a pod only if the cluster's search domains cover it.
+  - The invocation's verdict follows.
+  - Database and cache hosts are exempt: a one-label name there is commonly a
+    cluster Service name.
+
 **Verdicts (C6), interpretations to review.**
 - HTTP, gRPC, Redis, Vault, Key Vault and SMTP are `compatible` even when the
   endpoint is unresolved. The protocol decides portability, and the reason
@@ -619,7 +812,9 @@ Step 3 and step 4 outputs were byte-identical before and after the move.
   `requires_change`.
 
 **Known limitations.**
-- A helper is followed one call level deep.
+- A helper is followed one call level deep. The same holds for operations: a
+  proxy passed on is found through receivers declared with its type, not by
+  following the value.
 - A runtime URL on an injected `HttpClient` whose base address is not visible
   is not recorded, because relative and absolute cannot be told apart. A
   runtime URL on a locally created `HttpClient` is recorded as unresolved.

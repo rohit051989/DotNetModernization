@@ -1,0 +1,52 @@
+category: data-access
+deleted: false
+description: |-
+  A connection string authenticating with the process's Windows identity (Integrated Security / SSPI / Trusted_Connection). A container has no domain identity, so the connection fails on OCP4. One occurrence per connection string per file (environment variants included). Only the connection string's name is ever recorded (docs/21 Part G).
+  Conversion ordering (docs/28 Part E): runs BEFORE sensitive-config-key. Fix the authentication in the config file first, then move the connection string to an OCP4 Secret; reversed, this fix would have to edit a Secret instead of a file, needing different allowed_paths and a different approach. Becomes a depends_on entry.
+detection:
+  match:
+    all:
+    - id: windows-auth-connection
+      signal:
+        name: WINDOWS_AUTH_CONNECTION_STRING_CONFIG
+    any: []
+    atLeast: []
+    metadata: []
+    none: []
+  occurrence_source:
+    group_by: source_path_and_value
+    signal: WINDOWS_AUTH_CONNECTION_STRING_CONFIG
+excluded_roles:
+- TEST
+id: windows-auth-connection-string
+name: Connection string using Windows authentication
+owner_team: null
+resolutions:
+- consumer_impact: none
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: 'Keep Windows authentication by giving the pod a Kerberos identity: keytab from a Secret, krb5.conf, and a ticket-renewal sidecar.'
+  effort: high
+  id: kerberos-keytab
+  is_default: false
+  linux_compatible: true
+  name: Kerberos in the container
+  notes: Preserves the database's existing permissions model. Needs the directory team for the service account and SPN.
+  status: active
+  target_description: Kerberos-authenticated SqlClient on Linux
+- consumer_impact: low
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: Switch to a SQL login; user and password come from an OCP4 Secret injected at runtime, never from the config file.
+  effort: low
+  id: sql-auth-from-secret
+  is_default: true
+  linux_compatible: true
+  name: SQL authentication from an OCP4 Secret
+  notes: null
+  status: active
+  target_description: User ID/Password from a Secret, Integrated Security removed
+scope: occurrence
+status: active

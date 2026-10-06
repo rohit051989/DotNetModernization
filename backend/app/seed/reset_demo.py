@@ -7,8 +7,8 @@
 Run through scripts/reset-demo.ps1. Clears every engagement and everything
 scoped to one, every repository and everything derived from it, all
 workflow history, the validation queue and backend/runs/; then creates the
-demo engagements below. Keeps the catalog: catalog_items and
-item_resolutions, the signal registry and extractors, step registrations and
+demo engagements below. Keeps the catalog: catalog_items,
+item_resolutions and resolution_derivations, the signal registry and extractors, step registrations and
 job definitions, global step policies, catalog_revisions, and the legacy
 patterns and target_state_options (master catalog, read by
 pattern_migration.py --revert).
@@ -36,8 +36,11 @@ RUNS_DIR = Path(__file__).resolve().parents[2] / "runs"
 CLEARED_TABLES = (
     # workflow history
     "validation_queue", "wf_artifacts", "wf_step_executions", "wf_job_executions", "wf_job_instances",
+    # step 11 output, and the annotations people keep on its register (client data)
+    "integration_entry_points", "integration_edges", "origin_reconciliations", "dependency_cycles", "shared_libraries", "dependency_edges", "package_estate",
+    "endpoint_register_services", "endpoint_register", "endpoint_annotations", "estate_sources",
     # step 2 to 7 output
-    "entry_points", "entry_point_scans", "outbound_invocations", "outbound_scans", "package_assessments", "item_occurrences",
+    "entry_point_backend", "entry_points", "entry_point_scans", "outbound_invocations", "outbound_scans", "package_assessments", "item_occurrences",
     "fingerprint_signals", "project_fingerprints", "fingerprint_scans",
     "project_packages", "project_references", "solution_projects", "solutions",
     "repository_artifacts", "repository_structure", "projects",
@@ -47,7 +50,7 @@ CLEARED_TABLES = (
 )
 
 KEPT_TABLES = (
-    "catalog_items", "item_resolutions", "signal_registry_entries", "extractors", "wf_step_registrations",
+    "catalog_items", "item_resolutions", "resolution_derivations", "signal_registry_entries", "extractors", "wf_step_registrations",
     "wf_job_definitions", "catalog_revisions", "patterns", "target_state_options",
     # What feeds said about packages: not client data, and reusing it is what
     # makes a rescan deterministic (30-STEP-006 Part B6).

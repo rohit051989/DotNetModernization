@@ -59,12 +59,58 @@ public static class LinuxVerdicts
             bindings = invocation.EnvironmentBindings.Select(b => b with { LinuxVerdict = summary.Verdict, LinuxReasons = summary.Reasons }).ToList();
         }
 
+        (bindings, summary) = UnqualifiedHosts(invocation, bindings, summary);
+
         if (invocation.Usage == Usages.Unused)
         {
             summary = summary with { Reasons = [.. summary.Reasons, "unused: no construction site and no configuration — not a dependency"] };
         }
 
         return invocation with { EnvironmentBindings = bindings, LinuxCompatibility = summary };
+    }
+
+    /// <summary>
+    /// 1.3.0: an endpoint URL on a single-label host (<c>appsrv0341</c>) is at
+    /// least <c>requires_change</c> in that environment — it resolves in a pod
+    /// only if the cluster's DNS search domains cover it. URL endpoints only
+    /// (SOAP, HTTP, gRPC): a database or cache host of one label is commonly a
+    /// cluster service name.
+    /// </summary>
+    private static (IReadOnlyList<EnvironmentBinding>, LinuxCompatibility) UnqualifiedHosts(
+        Invocation invocation, IReadOnlyList<EnvironmentBinding> bindings, LinuxCompatibility summary)
+    {
+        if (invocation.Mechanism is not (Mechanisms.SoapClient or Mechanisms.HttpClient or Mechanisms.GrpcClient))
+        {
+            return (bindings, summary);
+        }
+
+        static (string, IReadOnlyList<string>) Worsen(string verdict, IReadOnlyList<string> reasons, string host) =>
+            (Verdicts.Rank(verdict) > Verdicts.Rank(Verdicts.RequiresChange) ? Verdicts.RequiresChange : verdict,
+             [.. reasons, string.Format(Fingerprinting.Analysis.Hostnames.Reason, host)]);
+
+        var updated = bindings.Select(b =>
+        {
+            if (!Fingerprinting.Analysis.Hostnames.IsUnqualified(b.Host))
+            {
+                return b;
+            }
+
+            var (verdict, reasons) = Worsen(b.LinuxVerdict ?? summary.Verdict, b.LinuxReasons, b.Host!);
+            return b with { LinuxVerdict = verdict, LinuxReasons = reasons };
+        }).ToList();
+
+        var hosts = updated.Where(b => Fingerprinting.Analysis.Hostnames.IsUnqualified(b.Host)).Select(b => (b.Environment, Host: b.Host!))
+            .Concat(Fingerprinting.Analysis.Hostnames.IsUnqualified(invocation.Endpoint.Host) ? [("default", invocation.Endpoint.Host!)] : [])
+            .DistinctBy(x => (x.Environment, x.Host)).ToList();
+        if (hosts.Count == 0)
+        {
+            return (updated, summary);
+        }
+
+        var verdict = Verdicts.Rank(summary.Verdict) > Verdicts.Rank(Verdicts.RequiresChange) ? Verdicts.RequiresChange : summary.Verdict;
+        var reasons = summary.Reasons.Concat(hosts.Select(h => $"{h.Environment}: {string.Format(Fingerprinting.Analysis.Hostnames.Reason, h.Host)}"))
+            .Distinct(StringComparer.Ordinal).ToList();
+        return (updated, summary with { Verdict = verdict, Reasons = reasons });
     }
 
     private static LinuxCompatibility Summary(Invocation invocation)

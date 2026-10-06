@@ -1,0 +1,66 @@
+category: hosting
+deleted: false
+description: 'A .NET generic host that runs as a Windows Service through Microsoft.Extensions.Hosting.WindowsServices: UseWindowsService() or AddWindowsService(), or the package referenced. The Service Control Manager does not exist in a container. The docs/28 Part O J2 worked example. The .NET Framework ServiceBase shape is the migrated windows-service item instead.'
+detection:
+  match:
+    all: []
+    any:
+    - id: uses-windows-service
+      signal:
+        name: USE_WINDOWS_SERVICE_INVOCATION
+    - id: windowsservices-package
+      signal:
+        name: MICROSOFT_EXTENSIONS_HOSTING_WINDOWSSERVICES_PACKAGE
+    atLeast: []
+    metadata: []
+    none: []
+excluded_roles:
+- DATABASE
+- DEPLOYMENT
+- LIBRARY
+- TEST
+id: windows-service-hosting
+name: Application hosts as a Windows Service
+owner_team: null
+resolutions:
+- consumer_impact: medium
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: 'For a service that only does timed work: run the host to completion on a schedule instead of continuously.'
+  effort: medium
+  id: generic-host-cronjob
+  is_default: false
+  linux_compatible: true
+  name: Generic host as an OCP4 CronJob
+  notes: null
+  status: active
+  target_description: Generic host in a container, OCP4 CronJob
+- consumer_impact: low
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: Remove UseWindowsService() and the WindowsServices package; keep the generic host and run it as a Deployment (replicas=1 for a single-consumer processor).
+  effort: low
+  id: generic-host-deployment
+  is_default: true
+  linux_compatible: true
+  name: Generic host as an OCP4 Deployment
+  notes: null
+  status: active
+  target_description: Generic host in a container, OCP4 Deployment
+- consumer_impact: none
+  container_ready: false
+  deleted: false
+  derivations: []
+  description: Out of scope for the Linux move; the service stays on Windows.
+  effort: low
+  id: windows-service-hosting-remain-windows-hosted
+  is_default: false
+  linux_compatible: false
+  name: Remain Windows-hosted
+  notes: null
+  status: active
+  target_description: .NET on Windows Server, as a Windows Service
+scope: application
+status: active

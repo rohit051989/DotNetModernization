@@ -1,5 +1,5 @@
 job_name: phase0-repository-discovery
-version: 9
+version: 10
 description: "Per-repository discovery and analysis. Lifecycle steps 1-9 (17-LIFECYCLE-STEPS.md v2.1)."
 
 parameters:
@@ -38,10 +38,13 @@ flow:
   # v8: step 5 is implemented. It consumes the same two artifacts, both
   # required: step 2's project list and step 3's skip verdicts and
   # UNC_PATH_LITERAL signals.
+  # v10: step 5 1.3.0 also reads step 4's entry points, to record which
+  # backend calls each inbound operation reaches (29-STEPS Part C9).
   - step: outbound-invocation-inventory
     inputs:
       solution-project-inventory: "${artifacts.solution-project-inventory}"
       application-fingerprint: "${artifacts.application-fingerprint}"
+      entry-point-inventory: "${artifacts.entry-point-inventory}"
   # v9: step 6, dependency-assessment, inserted before item detection
   # (30-STEP-006-DEPENDENCY-ASSESSMENT.md). It needs step 2's direct
   # packages and step 3's skip verdicts, and its PACKAGE_* signals must be

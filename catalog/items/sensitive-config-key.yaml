@@ -1,0 +1,52 @@
+category: security
+deleted: false
+description: |-
+  A configuration key whose name marks it as secret (password, token, apikey, connectionString and similar), in web.config, app.config or appsettings*.json. Only the key's presence is recorded, never its value (docs/21 Part G). On OCP4 secrets come from Secrets, not files. High-volume, low-judgement: it fires on nearly every project and the resolution is nearly always the same, so it is a strong candidate for fully deterministic conversion. One occurrence per key per file. An XML connection string also fires here (its connectionString attribute), at the same location as windows-auth-connection-string when that applies; conversion ordering resolves the overlap.
+  Conversion ordering (docs/28 Part E): runs AFTER windows-auth-connection-string, so a connection string's authentication is fixed in the file before the string moves to a Secret. Becomes a depends_on entry.
+detection:
+  match:
+    all:
+    - id: sensitive-key
+      signal:
+        name: SENSITIVE_CONFIG_KEY
+    any: []
+    atLeast: []
+    metadata: []
+    none: []
+  occurrence_source:
+    group_by: source_path_and_value
+    signal: SENSITIVE_CONFIG_KEY
+excluded_roles:
+- TEST
+id: sensitive-config-key
+name: Secret in a configuration file
+owner_team: null
+resolutions:
+- consumer_impact: none
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: Resolve the value from the engagement's secret store (Vault, via Agent injection or the External Secrets operator) instead of a platform Secret.
+  effort: medium
+  id: external-secret-store
+  is_default: false
+  linux_compatible: true
+  name: External secret store
+  notes: null
+  status: active
+  target_description: Vault-sourced secret, delivered to the pod
+- consumer_impact: none
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: Remove the value from the file; supply it from an OCP4 Secret as an environment variable or mounted file, bound through IConfiguration under the same key.
+  effort: low
+  id: ocp4-secret-injection
+  is_default: true
+  linux_compatible: true
+  name: OCP4 Secret, injected at runtime
+  notes: null
+  status: active
+  target_description: Kubernetes Secret -> environment variable / volume -> IConfiguration
+scope: occurrence
+status: active

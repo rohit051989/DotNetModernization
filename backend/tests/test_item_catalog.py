@@ -364,25 +364,49 @@ class OccurrenceTableTests(ItemCatalogTestCase):
 
 
 class PatternMigrationTests(ItemCatalogTestCase):
-    """Part Q. Needs the migration already applied (python -m app.seed runs it)."""
+    """Part Q. Needs the migration already applied (python -m app.seed runs it).
 
-    def test_revert_then_migrate_round_trips(self):
+    Each test starts from the catalog's factory defaults, set up inside its
+    own rolled-back transaction — not from whatever the live rows hold."""
+
+    def at_factory_defaults(self):
+        """Every catalog row treated as unedited, then the catalog seeded:
+        each row is its factory default, with a baseline. Rolled back with
+        the test."""
+        from app.items import baseline, catalog_seed
+
+        for model in baseline.CONTENT_FIELDS:
+            for row in self.db.query(model):
+                row.seeded_hash = baseline.digest(baseline.content(row))
+        self.db.flush()
+        catalog_seed.seed(self.db)
+        self.db.flush()
+
+    def clear_occurrences(self):
+        """Once step 7 has written occurrences for migrated items, revert must
+        refuse: work is built on them. Cleared (inside this rolled-back
+        transaction only) to exercise revert itself."""
         from app.items import pattern_migration
 
-        if self.db.get(models.CatalogItem, "windows-service") is None:
-            self.skipTest("pattern migration not applied in this database")
-        before = {i.id: (i.detection, i.state) for i in self.db.query(models.CatalogItem).filter(
-            models.CatalogItem.id.in_(pattern_migration.MIGRATED))}
-
-        # Once step 6 has written occurrences for migrated items, revert must
-        # refuse: work is built on them. Clear them (inside this rolled-back
-        # transaction only) to exercise the round trip itself.
         occurrences = self.db.query(models.ItemOccurrence).filter(
             models.ItemOccurrence.item_id.in_(pattern_migration.MIGRATED))
         if occurrences.count():
             self.assert_http(409, "REVERT_BLOCKED", pattern_migration.revert, self.db)
             occurrences.delete(synchronize_session=False)
             self.db.flush()
+
+    def setUp(self):
+        super().setUp()
+        if self.db.get(models.CatalogItem, "windows-service") is None:
+            self.skipTest("pattern migration not applied in this database")
+        self.at_factory_defaults()
+        self.clear_occurrences()
+
+    def test_revert_then_migrate_round_trips(self):
+        from app.items import pattern_migration
+
+        before = self.migrated_items(pattern_migration.MIGRATED)
+        derivations_before = self.derivation_rows()
 
         reverted = pattern_migration.revert(self.db)
         self.assertEqual(reverted["items"], len(pattern_migration.MIGRATED))
@@ -392,9 +416,59 @@ class PatternMigrationTests(ItemCatalogTestCase):
 
         report = pattern_migration.migrate(self.db)
         self.assertEqual(len(report["items"]), len(pattern_migration.MIGRATED))
-        after = {i.id: (i.detection, i.state) for i in self.db.query(models.CatalogItem).filter(
-            models.CatalogItem.id.in_(pattern_migration.MIGRATED))}
-        self.assertEqual(before, after)
+        # The seed applies the architecture items and then the derivations
+        # after the migration (Parts T, U): derivations naming a migrated item
+        # (fx47-class-library) are removed by revert and re-created from
+        # catalog_items.yaml.
+        from app.items import architecture_items, derivations
+        architecture_items.apply(self.db)
+        derivations.apply(self.db)
+        self.assertEqual(before, self.migrated_items(pattern_migration.MIGRATED))
+        self.assertEqual(derivations_before, self.derivation_rows())
+
+    def assert_revert_refused_naming(self, blocker: str):
+        from app.items import pattern_migration
+
+        refused = self.assert_http(409, "REVERT_BLOCKED", pattern_migration.revert, self.db)
+        self.assertIn(blocker, " ".join(d["message"] for d in refused.detail))
+        # Nothing was removed.
+        self.assertIsNotNone(self.db.get(models.CatalogItem, "windows-service"))
+        self.assertIsNotNone(self.db.get(models.ResolutionDerivation, ("wcf-service-corewcf", "fx47-class-library")))
+
+    def test_revert_refuses_when_a_migrated_resolution_was_edited(self):
+        resolution = self.db.get(models.ItemResolution, "windows-service-remain-windows-hosted")
+        catalog_items.update_resolution("windows-service", resolution.id, s.ResolutionWrite(
+            name="Stay on Windows (team wording)", consumer_impact=resolution.consumer_impact, effort=resolution.effort,
+            linux_compatible=False, container_ready=False), db=self.db)
+        self.assert_revert_refused_naming(
+            "item_resolutions windows-service-remain-windows-hosted has been edited since it was seeded")
+
+    def test_revert_refuses_when_a_derivation_naming_a_migrated_item_was_edited(self):
+        row = self.db.get(models.ResolutionDerivation, ("wcf-service-corewcf", "fx47-class-library"))
+        row.reason = "The team's reason."
+        self.db.flush()
+        self.assert_revert_refused_naming(
+            "resolution_derivations wcf-service-corewcf -> fx47-class-library has been edited since it was seeded")
+
+    def test_revert_refuses_a_row_with_no_baseline(self):
+        self.db.get(models.CatalogItem, "windows-service").seeded_hash = None
+        self.db.flush()
+        self.assert_revert_refused_naming("catalog_items windows-service has no seed baseline to prove it unedited")
+
+    def migrated_items(self, item_ids):
+        """Per migrated item: detection, readiness, whether soft-deleted (the
+        replaced wcf-iis-servicemodel is), and its live resolution menu."""
+        return {
+            i.id: (i.detection, i.state, i.deleted_at is not None, sorted(
+                r.id for r in self.db.query(models.ItemResolution).filter(
+                    models.ItemResolution.item_id == i.id, models.ItemResolution.deleted_at.is_(None))))
+            for i in self.db.query(models.CatalogItem).filter(models.CatalogItem.id.in_(item_ids))
+        }
+
+    def derivation_rows(self):
+        return sorted(
+            (r.resolution_id, r.dependent_item_id, r.action, r.dependent_resolution_id, r.applies_to, r.reason)
+            for r in self.db.query(models.ResolutionDerivation).filter(models.ResolutionDerivation.deleted_at.is_(None)))
 
     def test_every_migrated_item_is_application_scope_without_supporting(self):
         from app.items import pattern_migration
@@ -409,14 +483,31 @@ class PatternMigrationTests(ItemCatalogTestCase):
             self.assertEqual(item.excluded_roles, [])
 
     def test_forcing_pairs_survive(self):
-        decisions = self.db.query(models.EngagementDecision).filter(
-            models.EngagementDecision.forcing_perspective.isnot(None)).all()
-        for decision in decisions:
-            record = self.db.get(models.DecisionRecord, decision.id)
-            self.assertEqual(
-                (decision.forcing_perspective, decision.forcing_rationale),
-                (record.forcing_perspective, record.forcing_rationale),
-            )
+        """Hermetic: its own pattern, option and decision record, inside the
+        rolled-back transaction — never whatever the database holds."""
+        from app.items import pattern_migration
+
+        pattern = models.Pattern(id="t-forcing-pattern", name="Fixture pattern", summary="Fixture.", legacy_stack="Fixture",
+                                 category="framework", detection_rules={})
+        self.db.add(pattern)
+        self.db.flush()
+        option = models.TargetStateOption(id="t-forcing-rewrite", pattern_id=pattern.id, name="Rewrite", summary="Fixture.",
+                                          target_stack="Fixture", consumer_impact="high", effort="high")
+        self.db.add(option)
+        self.db.flush()
+        record = models.DecisionRecord(
+            engagement_id=TEST_ENGAGEMENT_ID,
+            pattern_id=pattern.id, selected_target_state_id=option.id, status="parked",
+            forcing_perspective="SECURITY", forcing_rationale="The legacy stack is out of support.",
+        )
+        self.db.add(record)
+        self.db.flush()
+
+        decision = pattern_migration.decision_from_record(record)
+        self.assertEqual(
+            (decision.id, decision.forcing_perspective, decision.forcing_rationale, decision.status),
+            (record.id, "SECURITY", "The legacy stack is out of support.", "pending"),
+        )
 
     def test_revert_refuses_once_work_is_built_on_top(self):
         from app.items import pattern_migration
@@ -436,11 +527,11 @@ class AuthoredItemTests(unittest.TestCase):
     OCCURRENCE = {
         "serilog-file-sink", "hardcoded-windows-path", "encoding-default", "datetime-now-usage",
         "system-drawing-common", "windows-auth-connection-string", "registry-access",
-        "directory-services-usage", "sensitive-config-key",
+        "directory-services-usage", "sensitive-config-key", "unqualified-hostname",
     }
     ABSENCE = {"missing-dockerfile", "missing-health-endpoint", "missing-ocp4-manifests"}
-    HOSTING = {"windows-service-hosting", "modern-worker-service"}
-    APPLICATION_WORK = {"wcf-nettcp-client", "msmq-usage", "asmx-service"}
+    HOSTING = {"windows-service-hosting", "modern-worker-service", "wcf-service-host"}
+    APPLICATION_WORK = {"wcf-nettcp-client", "msmq-usage", "asmx-service", "wcf-service"}
     # Generic, parameterised by package (30-STEP-006 Part D2); signals from step 6.
     PACKAGE = {
         "package-upgrade-safe", "package-upgrade-breaking", "package-replacement-required",
@@ -571,9 +662,11 @@ class AuthoredItemTests(unittest.TestCase):
 
     def test_a_null_framework_is_not_checked_for_every_item_with_a_framework_condition(self):
         """Absence is never reported as certainty: an unknown framework is
-        not_checked, never checked_absent."""
+        not_checked, never checked_absent. Absence items only — the fixture
+        project has nothing, so only an absence item can be found on it."""
         items = self._items()
-        with_framework = [i for i, d in items.items() if any(m["field"] == "frameworkFamily" for m in d["detection"]["match"].get("metadata", []))]
+        with_framework = [i for i, d in items.items() if i in self.ABSENCE
+                          and any(m["field"] == "frameworkFamily" for m in d["detection"]["match"].get("metadata", []))]
         self.assertTrue(with_framework)
         for item_id in with_framework:
             with self.subTest(item=item_id):

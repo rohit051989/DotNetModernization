@@ -1,0 +1,79 @@
+category: framework
+deleted: false
+description: |-
+  System.Web-based MVC or Web API application with Global.asax, App_Start
+  configuration classes and web.config. Tightly coupled to IIS and the
+  System.Web pipeline.
+detection:
+  match:
+    all: []
+    any:
+    - id: mvc-controller
+      signal:
+        name: CONTROLLER_BASE_CLASS
+    - id: webapi-controller
+      signal:
+        name: API_CONTROLLER_BASE_CLASS
+    - id: mvc-namespace
+      signal:
+        name: SYSTEM_WEB_MVC_NAMESPACE
+    - id: webapi-namespace
+      signal:
+        name: SYSTEM_WEB_HTTP_NAMESPACE
+    - id: exposes-http-api
+      signal:
+        name: EXPOSES_HTTP_API
+    atLeast: []
+    metadata:
+    - equals: net-framework
+      field: frameworkFamily
+      id: legacy-framework
+    none:
+    - id: not-startup-class
+      signal:
+        name: STARTUP_CLASS_ENTRY_POINT
+    - id: not-webhost-builder
+      signal:
+        name: WEBHOST_CREATE_DEFAULT_BUILDER_ENTRY_POINT
+    - id: not-host-builder
+      signal:
+        name: HOST_CREATE_DEFAULT_BUILDER_ENTRY_POINT
+excluded_roles: []
+id: fx-aspnet-mvc
+name: Classic ASP.NET MVC / Web API on .NET Framework
+owner_team: null
+resolutions:
+- consumer_impact: none
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: Run ASP.NET Core alongside the existing app using System.Web adapters and a YARP strangler proxy, migrating routes progressively.
+  effort: medium
+  id: aspnetcore-incremental-adapters
+  is_default: true
+  linux_compatible: true
+  name: Incremental migration with System.Web adapters
+  notes: |-
+    Prerequisites: Ability to run two processes during transition. Route inventory captured up front.
+
+    Known limitations: Temporarily increases operational complexity by running two applications. Requires a defined end date or the interim state becomes permanent.
+  status: active
+  target_description: .NET 10 + ASP.NET Core + System.Web adapters + YARP
+- consumer_impact: low
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: Single-pass migration of the whole application to ASP.NET Core MVC.
+  effort: high
+  id: aspnetcore-mvc-net10
+  is_default: false
+  linux_compatible: true
+  name: Direct migration to ASP.NET Core MVC on .NET 10
+  notes: |-
+    Prerequisites: Strong test coverage. Limited HttpContext and session sprawl.
+
+    Known limitations: Big-bang cutover with a large review surface. Only appropriate for small or well-tested applications.
+  status: active
+  target_description: .NET 10 + ASP.NET Core MVC, container on OCP4
+scope: application
+status: active

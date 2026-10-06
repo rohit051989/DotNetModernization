@@ -312,6 +312,18 @@ class ResolutionCreate(ResolutionWrite):
         return _validate_slug(value)
 
 
+class DerivationOut(BaseModel):
+    """What choosing a resolution means for one dependent item (Part U)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    dependent_item_id: str
+    action: Literal["derive", "not_derived", "subsume", "not_subsumed"]
+    dependent_resolution_id: str | None
+    applies_to: Literal["all", "internal_clients"]
+    reason: str
+
+
 class ResolutionOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -330,6 +342,8 @@ class ResolutionOut(BaseModel):
     deleted_at: datetime.datetime | None
     created_at: datetime.datetime
     updated_at: datetime.datetime
+    derivations: list[DerivationOut] = Field(
+        default_factory=list, description="What choosing this resolution derives for dependent items (resolution_derivations).")
 
 
 # ---------- engagement decisions ----------
@@ -389,8 +403,67 @@ class EngagementDecisionOut(BaseModel):
     warnings: list[str] = Field(
         description="Non-blocking, recomputed on every read — e.g. a Linux-incompatible resolution on a Linux-targeted engagement."
     )
+    source: Literal["manual", "derived"] = Field(
+        default="manual", description="Part S: 'derived' — this decision follows another item's decision (derived_from)."
+    )
+    derived_from: "DecisionLink | None" = Field(
+        default=None, description="The decision this one follows (derived), or was overridden against (by hand), with the derivation's reason."
+    )
+    overrides_derivation: bool = Field(
+        default=False, description="Decided by hand where a derivation applies: what it would give is `derived_from.would_derive`."
+    )
+    needs_review: bool = Field(
+        default=False, description="An override made against a leading decision that has since changed (`review_note` says how)."
+    )
+    review_note: str | None = None
+    followers: list["DecisionLink"] = Field(
+        default_factory=list, description="Decisions that follow this one — derived, or manual and overriding the rule."
+    )
     created_at: datetime.datetime
     updated_at: datetime.datetime
+
+
+class DecisionLink(BaseModel):
+    """One end of a Part U dependency between two decisions."""
+
+    decision_id: str
+    item_id: str
+    item_name: str
+    resolution_id: str | None
+    resolution_name: str | None
+    status: str
+    source: Literal["manual", "derived"]
+    derived_against_resolution_id: str | None = Field(
+        default=None, description="The leading resolution the dependent was derived from or overridden against.")
+    derivation_reason: str | None = Field(default=None, description="The catalog derivation's reason (resolution_derivations).")
+    would_derive: str | None = Field(default=None, description="For an override: the resolution the live leading decision would give, by name.")
+    overrides_derivation: bool = False
+    needs_review: bool = False
+
+
+EngagementDecisionOut.model_rebuild()
+
+
+class WorkListItemNote(BaseModel):
+    subsumed_by: dict | None = Field(
+        default=None, description="{item_id, decision_id, resolution_id, resolution_name, reason}: another item's decision on this project covers this one."
+    )
+    follows: str | None = Field(default=None, description="The leading item whose decision this one depends on (Part U).")
+    action: str | None = Field(default=None, description="The leading resolution's derivation for this item: derive, not_derived, not_subsumed.")
+    applies: bool | None = Field(
+        default=None, description="Whether the leading decision settles this item on this project; null while the leader is undecided.")
+    note: str | None = None
+
+
+class WorkListProjectNotes(BaseModel):
+    project_id: str
+    items: dict[str, WorkListItemNote]
+
+
+class WorkListDecisionsOut(BaseModel):
+    engagement_id: str
+    decisions: dict[str, EngagementDecisionOut] = Field(description="Live decision per item found in the repository.")
+    projects: list[WorkListProjectNotes]
 
 
 # ---------- coverage (Part H) ----------

@@ -1,5 +1,5 @@
 job_name: phase0-estate-consolidation
-version: 4
+version: 5
 description: "Engagement-wide consolidation across every registered repository. Lifecycle steps 10-12 (17-LIFECYCLE-STEPS.md v2.1)."
 
 # Scope is derived from the declared parameters: engagement_id without
@@ -35,15 +35,17 @@ parameters:
 # should say how much of the estate it covered, rather than wait for all
 # of it. Honest about a partial estate beats blocked on a complete one.
 
-# All three steps are registered as stubs today, so every one of them
-# returns NOT_IMPLEMENTED. `continue` is what lets the job be launched and
-# observed now, and lets each step land without the others blocking it.
-# Revisit when the last of the three is implemented: by then `halt` is the
-# safer default, since a genuine failure should stop the run.
+# Step 11 (dependency-and-context-map) is implemented; steps 10 and 12 are
+# still stubs returning NOT_IMPLEMENTED. `continue` is what lets the job run
+# step 11 between them, and lets each remaining step land without the others
+# blocking it. Revisit when the last of the three is implemented: by then
+# `halt` is the safer default, since a genuine failure should stop the run.
 stub_policy: continue
 
 flow:
   # v4: renumbered only (17-LIFECYCLE-STEPS.md v2.1); steps unchanged.
+  # v5: step 11 implemented (31-STEP-011-ESTATE-DEPENDENCY-MAP.md). It reads
+  # per-repository rows from the database, so it declares no inputs.
   # Step 10 replaces pattern-discovery-clustering + pattern-validation. It is
   # a report for catalog authors, not a gate, so there is no gate: block and
   # no human wait. Like step 11 it reads per-repository results from the

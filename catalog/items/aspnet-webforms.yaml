@@ -1,0 +1,65 @@
+category: framework
+deleted: false
+description: |-
+  Web Forms application using the page lifecycle, ViewState, server controls
+  and code-behind. There is no lift-and-shift path: Web Forms does not exist on
+  modern .NET, so any migration is a rewrite by definition.
+detection:
+  match:
+    all: []
+    any:
+    - id: aspx-file
+      signal:
+        minimumOccurrences: 1
+        name: ASPX_FILE
+    - id: page-base
+      signal:
+        name: PAGE_BASE_CLASS
+    - id: exposes-webforms-ui
+      signal:
+        name: EXPOSES_WEBFORMS_UI
+    atLeast: []
+    metadata:
+    - equals: net-framework
+      field: frameworkFamily
+      id: legacy-framework
+    none: []
+excluded_roles: []
+id: aspnet-webforms
+name: ASP.NET Web Forms
+owner_team: null
+resolutions:
+- consumer_impact: high
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: Rewrite as a conventional server-rendered ASP.NET Core MVC application.
+  effort: high
+  id: aspnetcore-mvc-rewrite
+  is_default: false
+  linux_compatible: true
+  name: ASP.NET Core MVC rewrite
+  notes: |-
+    Prerequisites: Same as Blazor Server. Preferred where the team's skills favour MVC over Blazor.
+
+    Known limitations: Requires explicit reimplementation of state that ViewState previously handled implicitly.
+  status: active
+  target_description: .NET 10 + ASP.NET Core MVC + Razor views, container on OCP4
+- consumer_impact: high
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: Rewrite as a Blazor Server application, the closest conceptual match to the Web Forms component and server-render model.
+  effort: high
+  id: blazor-server-net10
+  is_default: false
+  linux_compatible: true
+  name: Blazor Server on .NET 10
+  notes: |-
+    Prerequisites: Screen inventory and behavioural specification captured before starting. Business sign-off on UI change.
+
+    Known limitations: No automated path preserves ViewState or the page lifecycle. Expect genuine redesign of stateful screens. Requires a persistent connection, which changes load-balancer and session-affinity requirements on OCP4.
+  status: active
+  target_description: .NET 10 + Blazor Server, container on OCP4
+scope: application
+status: active

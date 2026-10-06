@@ -3,7 +3,7 @@
   "lifecycle_step_no": 4,
   "display_name": "Entry point inventory",
   "owner_code": "P",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "owner_team": "platform",
   "viewpoint": "FUNCTIONAL",
   "implementation_status": "implemented",
@@ -12,7 +12,7 @@
     { "artifact_type": "application-fingerprint", "version_range": "^1.2.0", "optional": false }
   ],
   "produces": [
-    { "artifact_type": "entry-point-inventory", "artifact_version": "2.1.0" }
+    { "artifact_type": "entry-point-inventory", "artifact_version": "2.2.0" }
   ],
   "adapter_type": "process",
   "adapter_config": {

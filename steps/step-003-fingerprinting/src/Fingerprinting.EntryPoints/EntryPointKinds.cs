@@ -91,7 +91,7 @@ public static class EntryClasses
 /// together; bump both when a kind is added.</summary>
 public static class CapabilityManifest
 {
-    public const string Version = "1.1.0";
+    public const string Version = "1.2.0";
 
     public static CapabilitiesStamp Stamp() => new()
     {

@@ -137,6 +137,54 @@ public sealed class ExtractorBatch2Tests
         Assert.Equal(@"\\fileserver01\drops\incoming", unc.Value);
     }
 
+    // ---- SetParameters files (registry 1.7.0) ----
+
+    private const string SetParam = """
+        <parameters>
+          <setParameter name="FundsTransferWSURL" value="http://appsrv0341/FundsTransferWS/FundsTransferWS.asmx" />
+          <setParameter name="LogDirectory" value="G:\Logs\WcfCatalog\FundsTransfer\" />
+          <setParameter name="ServicePassword" value="G:\NotAPath-Secret-5521" />
+          <setParameter name="TransfersDb" value="Server=sql01;Database=Transfers;Integrated Security=true;Password=Hidden-8831" />
+          <setParameter name="Qualified" value="http://ftmt.corp.example.com/x.asmx" />
+        </parameters>
+        """;
+
+    [Fact]
+    public async Task SetParam_values_yield_path_literals_and_unqualified_hosts_and_never_secrets()
+    {
+        using var repo = new TempRepo();
+        var files = Fingerprinting.Analysis.DeployParameterFiles.FromText(
+            [("CustomFiles/Test/SetParamFiles/DEV/SetParam.xml", SetParam)], ["src/Test/Test.csproj"]);
+        Assert.Equal(("DEV", "src/Test/Test.csproj"), (files[0].Environment, files[0].ProjectPath));
+
+        var literals = await Extract(new PathLiteralExtractor(), repo, files);
+        var path = Assert.Single(literals, s => s.Name == PathLiteralExtractor.WindowsPathLiteral);
+        Assert.Equal((@"G:\Logs\WcfCatalog\FundsTransfer\", "CustomFiles/Test/SetParamFiles/DEV/SetParam.xml", 3),
+            (path.Value, path.SourcePath, path.Evidence[0].LineStart));
+        var host = Assert.Single(literals, s => s.Name == PathLiteralExtractor.UnqualifiedHostnameUrl);
+        Assert.Equal(("appsrv0341", SignalCategories.EndpointIndicator), (host.Value, host.Category));
+
+        var config = await Extract(new ConfigurationExtractor(), repo, files);
+        Assert.Contains(config, s => s.Name == "SENSITIVE_CONFIG_KEY" && s.Value == "ServicePassword");
+        Assert.Contains(config, s => s.Name == "CONNECTION_STRING_CONFIG" && s.Value == "TransfersDb");
+        Assert.Contains(config, s => s.Name == "WINDOWS_AUTH_CONNECTION_STRING_CONFIG" && s.Value == "TransfersDb");
+
+        var json = DeterministicJson.Serialize(literals.Concat(config).ToList());
+        Assert.DoesNotContain("Secret-5521", json);
+        Assert.DoesNotContain("Hidden-8831", json);
+        Assert.DoesNotContain("sql01", json);
+    }
+
+    [Theory]
+    [InlineData("http://appsrv0341/x", true)]
+    [InlineData("net.tcp://APPSRV0341:808/x", true)]
+    [InlineData("http://localhost:8090/x", false)]
+    [InlineData("http://10.1.2.3/x", false)]
+    [InlineData("https://ftmt.corp.example.com/x", false)]
+    [InlineData("http://user:pw@appsrv9/x?token=abc", true)]
+    public void Unqualified_hosts_in_urls(string url, bool unqualified) =>
+        Assert.Equal(unqualified, Fingerprinting.Analysis.Hostnames.UnqualifiedInUrls(url).Any());
+
     [Fact]
     public void MatchedValue_IsOmittedFromJsonWhenNull()
     {
@@ -345,20 +393,24 @@ public sealed class ExtractorBatch2Tests
         var schemas = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "schemas"));
         var registry = SignalRegistry.LoadLatest(schemas);
         // 1.4.0 batch 2 (119) + 1.5.0 WCF_CLIENT_BINDING_CONFIG and _USAGE
-        // + 1.6.0 the six PACKAGE_* signals, produced by step 6 (not step 3).
-        Assert.Equal("1.6.0", registry.RegistryVersion);
-        Assert.Equal(127, registry.Entries.Count);
+        // + 1.6.0 the six PACKAGE_* signals, produced by step 6 (not step 3)
+        // + 1.7.0 UNQUALIFIED_HOSTNAME_URL
+        // + 1.8.0 seven architecture signals, produced by step 4 (not step 3).
+        Assert.Equal("1.8.0", registry.RegistryVersion);
+        Assert.Equal(135, registry.Entries.Count);
+        Assert.Equal(7, registry.Entries.Count(e => e.Extractor == "EntryPointInventory"));
         Assert.Equal(6, registry.Entries.Count(e => e.Extractor == "DependencyAssessment" && e.Category == SignalCategories.PackageDependency));
         Assert.Contains(registry.Entries, e => e.Name == "WCF_CLIENT_BINDING_CONFIG" && e.Extractor == ConfigurationExtractor.ExtractorName);
         Assert.Equal(10, registry.Entries.Count(e => e.Extractor == ApiUsageExtractor.ExtractorName));
-        Assert.Equal(2, registry.Entries.Count(e => e.Extractor == PathLiteralExtractor.ExtractorName));
+        Assert.Equal(3, registry.Entries.Count(e => e.Extractor == PathLiteralExtractor.ExtractorName));
         Assert.All(registry.Entries.Where(e => e.Type is SignalTypes.ApiInvocation or SignalTypes.Literal),
             e => Assert.Equal(SignalEvidenceKinds.File, e.EvidenceKind));
     }
 
     // ---- helpers ----
 
-    private static async Task<IReadOnlyList<Signal>> Extract(IFingerprintExtractor extractor, TempRepo repo)
+    private static async Task<IReadOnlyList<Signal>> Extract(
+        IFingerprintExtractor extractor, TempRepo repo, IReadOnlyList<Fingerprinting.Analysis.DeployParameterFile>? deployFiles = null)
     {
         var result = await extractor.ExtractAsync(new ProjectContext
         {
@@ -366,6 +418,7 @@ public sealed class ExtractorBatch2Tests
             RepositoryRoot = repo.Root,
             ProjectRelativePath = "Test.csproj",
             ProjectDirectory = repo.Root,
+            DeployParameterFiles = deployFiles ?? [],
         }, CancellationToken.None);
         return result.Signals;
     }

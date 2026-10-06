@@ -28,16 +28,22 @@ What moves (agreed in review, not re-derived here):
   perspective and rationale carried as the pair).
 - engagement_patterns -> engagement_item_scope.
 
-Idempotent: a row whose id already exists is left alone, so re-running
-never overwrites an item edited after migration. Readiness is computed, not
-copied — there is no such thing on a pattern.
+Idempotent, and the database is authoritative (app/items/baseline.py):
+the pattern tables and AMENDMENTS are the items' factory defaults. A
+re-run inserts what is missing and brings a row not edited since it was
+seeded to its default; it never overwrites a row edited since, and reports
+a conflict where both changed. Readiness is computed, not copied — there is
+no such thing on a pattern.
 
 **Reversible.** `revert` removes exactly the rows this migration wrote,
-identified by their source ids. It refuses if anything has been built on top
-of them since: occurrences detected for a migrated item, or resolutions or
-decisions on a migrated item that did not come from the pattern tables.
-Revert is the single place rows leave the item tables, and only rows that
-are a copy of data still intact in the pattern tables — so it loses nothing.
+identified by their source ids, and the derivations naming them. It refuses
+if anything has been built on top of them since: occurrences detected for a
+migrated item, resolutions or decisions on a migrated item that did not
+come from the pattern tables, or any migrated item, resolution or
+derivation edited since it was seeded (or with no baseline to prove it was
+not) — it names each. Revert is the single place rows leave the item
+tables, and only rows still exactly their factory default, which the seed
+recreates — so it loses nothing.
 
     python -m app.items.pattern_migration             # migrate
     python -m app.items.pattern_migration --dry-run   # report, write nothing
@@ -47,12 +53,13 @@ are a copy of data still intact in the pattern tables — so it loses nothing.
 import argparse
 import copy
 
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app import models
 from app.db import SessionLocal
 from app.errors import errors
-from app.items import readiness
+from app.items import baseline, readiness
 from app.items.detection import validate_detection
 
 # pattern id -> item category. All application scope.
@@ -192,106 +199,121 @@ def _resolution_notes(option: models.TargetStateOption) -> str | None:
     return "\n\n".join(parts) or None
 
 
-def _missing_amended_resolutions(db: Session, pattern_id: str) -> list[dict]:
-    """Amended resolutions for this item that are not in the table yet."""
-    if db.get(models.CatalogItem, pattern_id) is None:
-        return []
-    return [
-        data for data in AMENDMENTS.get(pattern_id, {}).get("resolutions", [])
-        if db.get(models.ItemResolution, data["id"]) is None
-    ]
-
-
 def _amended_resolution_ids() -> set[str]:
     return {data["id"] for amendment in AMENDMENTS.values() for data in amendment.get("resolutions", [])}
+
+
+def decision_from_record(record: models.DecisionRecord) -> models.EngagementDecision:
+    """A pattern decision record as an item decision: same id (so it traces
+    to its source), parked -> pending, the forcing perspective and rationale
+    carried as the pair."""
+    return models.EngagementDecision(
+        id=record.id,
+        engagement_id=record.engagement_id,
+        item_id=record.pattern_id,
+        resolution_id=record.selected_target_state_id,
+        candidates_considered=record.candidates_considered,
+        rationale=record.rationale,
+        forcing_perspective=record.forcing_perspective,
+        forcing_rationale=record.forcing_rationale,
+        evaluation_notes=record.evaluation_notes,
+        approver_name=record.approver_name,
+        approver_role=record.approver_role,
+        decision_date=record.decision_date,
+        status=_DECISION_STATUS[record.status],
+        created_at=record.created_at,
+        updated_at=record.updated_at,
+    )
 
 
 # ---------- migrate ----------
 
 
-def migrate(db: Session) -> dict:
-    report = {
-        "items": [], "resolutions": 0, "decisions": 0, "scope_rows": 0,
-        "skipped_existing": [], "amended": [], "not_migrated_decisions": [],
+def migrated_item_content(pattern: models.Pattern, category: str, registered: dict[str, str]) -> dict:
+    """A migrated item's factory default (app/items/baseline.py content):
+    the pattern's detection with this module's AMENDMENTS and the
+    architecture items' amendments (28-ITEM Part T); soft-deleted when an
+    authored item replaces it (wcf-iis-servicemodel -> wcf-service)."""
+    from app.items import architecture_items  # it imports the seeder, which imports this module
+
+    detection = architecture_items.amend(pattern.id, item_detection(pattern.detection_rules, pattern.id))
+    detection, _warnings = validate_detection("application", detection, registered)
+    replaced_by = architecture_items.REPLACED_BY.get(pattern.id)
+    return {
+        "name": pattern.name, "description": item_description(pattern), "scope": "application", "category": category,
+        "detection": detection, "excluded_roles": [], "owner_team": None,
+        "status": "deprecated" if pattern.status == "deprecated" else "active",
+        "deleted": replaced_by is not None,
+        "_deleted_by": f"{architecture_items.APPLIED_BY}: replaced by {replaced_by}" if replaced_by else None,
     }
+
+
+def migrated_resolution_contents(db: Session) -> list[tuple[str, dict]]:
+    """(id, factory default) for every migrated resolution: the target state
+    options of migrated patterns, then the AMENDMENTS resolutions."""
+    contents = []
+    for option in (
+        db.query(models.TargetStateOption)
+        .filter(models.TargetStateOption.pattern_id.in_(set(MIGRATED)))
+        .order_by(models.TargetStateOption.pattern_id, models.TargetStateOption.id)
+    ):
+        contents.append((option.id, {
+            "item_id": option.pattern_id, "name": option.name, "description": option.summary,
+            "target_description": option.target_stack, "consumer_impact": option.consumer_impact, "effort": option.effort,
+            "is_default": option.is_recommended, "linux_compatible": option.linux_compatible,
+            "container_ready": option.container_ready, "notes": _resolution_notes(option),
+            "status": "deprecated" if option.status == "deprecated" else "active",
+            "deleted": option.deleted_at is not None, "_deleted_at": option.deleted_at, "_deleted_by": option.deleted_by,
+        }))
+    for pattern_id in sorted(MIGRATED):
+        for data in AMENDMENTS.get(pattern_id, {}).get("resolutions", []):
+            contents.append((data["id"], {
+                "item_id": pattern_id, "description": None, "target_description": None, "notes": None, "status": "active",
+                "deleted": False, **{k: v for k, v in data.items() if k != "id"},
+            }))
+    return contents
+
+
+def migrate_catalog(db: Session, report: dict | None = None) -> tuple[dict, list[dict]]:
+    """Migrated items and resolutions only (no engagement data), through the
+    seed baseline: missing rows inserted, rows not edited since seeding
+    brought to their factory default, edited rows left alone and reported
+    (app/items/baseline.py). Returns (baseline report, inserted items)."""
+    report = report if report is not None else baseline.new_report()
     registered = {row.name: row.evidence_kind for row in db.query(models.SignalRegistryEntry)}
     if not registered:
         raise RuntimeError("signal_registry_entries is empty: run `python -m app.seed` before migrating")
 
+    inserted = []
     for pattern_id, category in MIGRATED.items():
         pattern = db.get(models.Pattern, pattern_id)
         if pattern is None or pattern.deleted_at is not None:
             raise RuntimeError(f"pattern '{pattern_id}' is missing or soft-deleted; the migration list is out of date")
         existing = db.get(models.CatalogItem, pattern_id)
-        if existing is not None:
-            amended = apply_amendments(pattern_id, copy.deepcopy(existing.detection))
-            if amended != existing.detection:
-                existing.detection, _warnings = validate_detection(existing.scope, amended, registered)
-                existing.version += 1
-                db.flush()
-                readiness.recompute_item(db, existing)
-                report["amended"].append(pattern_id)
-            elif not _missing_amended_resolutions(db, pattern_id):
-                report["skipped_existing"].append(pattern_id)
-            continue
+        before = (existing.detection, existing.scope) if existing is not None else None
         # Same write-time validation as the API. Application scope, so this
         # also proves no occurrence_source slipped in.
-        detection, warnings = validate_detection("application", item_detection(pattern.detection_rules, pattern.id), registered)
-        item = models.CatalogItem(
-            id=pattern.id,
-            name=pattern.name,
-            description=item_description(pattern),
-            scope="application",
-            category=category,
-            detection=detection,
-            excluded_roles=[],
-            version=1,
-            status="deprecated" if pattern.status == "deprecated" else "active",
-        )
-        db.add(item)
+        item, outcome = baseline.seed_row(db, models.CatalogItem, {"id": pattern_id},
+                                          migrated_item_content(pattern, category, registered), report)
+        if outcome == "updated" and before != (item.detection, item.scope):
+            item.version += 1
         db.flush()
         readiness.recompute_item(db, item)
-        report["items"].append({"id": item.id, "state": item.state, "warnings": warnings})
+        if outcome == "inserted":
+            inserted.append({"id": item.id, "state": item.state})
 
+    for resolution_id, content in migrated_resolution_contents(db):
+        baseline.seed_row(db, models.ItemResolution, {"id": resolution_id}, content, report)
     db.flush()
+    return report, inserted
+
+
+def migrate(db: Session) -> dict:
+    catalog, inserted = migrate_catalog(db)
+    report = {
+        "items": inserted, "baseline": catalog, "decisions": 0, "scope_rows": 0, "not_migrated_decisions": [],
+    }
     migrated_ids = set(MIGRATED)
-
-    for option in (
-        db.query(models.TargetStateOption)
-        .filter(models.TargetStateOption.pattern_id.in_(migrated_ids))
-        .order_by(models.TargetStateOption.pattern_id, models.TargetStateOption.id)
-    ):
-        if db.get(models.ItemResolution, option.id) is not None:
-            continue
-        db.add(
-            models.ItemResolution(
-                id=option.id,
-                item_id=option.pattern_id,
-                name=option.name,
-                description=option.summary,
-                target_description=option.target_stack,
-                consumer_impact=option.consumer_impact,
-                effort=option.effort,
-                is_default=option.is_recommended,
-                linux_compatible=option.linux_compatible,
-                container_ready=option.container_ready,
-                notes=_resolution_notes(option),
-                status="deprecated" if option.status == "deprecated" else "active",
-                deleted_at=option.deleted_at,
-                deleted_by=option.deleted_by,
-            )
-        )
-        report["resolutions"] += 1
-    db.flush()
-
-    for pattern_id in sorted(migrated_ids):
-        missing = _missing_amended_resolutions(db, pattern_id)
-        for data in missing:
-            db.add(models.ItemResolution(item_id=pattern_id, **data))
-            report["resolutions"] += 1
-        if missing and pattern_id not in report["amended"]:
-            report["amended"].append(pattern_id)
-    db.flush()
 
     for record in db.query(models.DecisionRecord).filter(models.DecisionRecord.deleted_at.is_(None)).order_by(
         models.DecisionRecord.engagement_id, models.DecisionRecord.pattern_id
@@ -309,25 +331,7 @@ def migrate(db: Session) -> dict:
             continue
         if db.get(models.EngagementDecision, record.id) is not None:
             continue
-        db.add(
-            models.EngagementDecision(
-                id=record.id,
-                engagement_id=record.engagement_id,
-                item_id=record.pattern_id,
-                resolution_id=record.selected_target_state_id,
-                candidates_considered=record.candidates_considered,
-                rationale=record.rationale,
-                forcing_perspective=record.forcing_perspective,
-                forcing_rationale=record.forcing_rationale,
-                evaluation_notes=record.evaluation_notes,
-                approver_name=record.approver_name,
-                approver_role=record.approver_role,
-                decision_date=record.decision_date,
-                status=_DECISION_STATUS[record.status],
-                created_at=record.created_at,
-                updated_at=record.updated_at,
-            )
-        )
+        db.add(decision_from_record(record))
         report["decisions"] += 1
 
     for overlay in db.query(models.EngagementPattern).filter(models.EngagementPattern.pattern_id.in_(migrated_ids)):
@@ -377,13 +381,36 @@ def revert(db: Session) -> dict:
     ]
     if foreign_decisions:
         problems.append(f"{len(foreign_decisions)} engagement decisions recorded after migration")
+    # The database is authoritative for the catalog (app/items/baseline.py):
+    # revert removes only rows that are still exactly their factory default,
+    # which the seed can recreate. A row edited since seeding — or with no
+    # baseline to prove it was not — is team-authored data: revert refuses.
+    resolution_ids = [r.id for r in db.query(models.ItemResolution.id).filter(models.ItemResolution.item_id.in_(item_ids))]
+    derivations = db.query(models.ResolutionDerivation).filter(or_(
+        models.ResolutionDerivation.item_id.in_(item_ids),
+        models.ResolutionDerivation.dependent_item_id.in_(item_ids),
+        models.ResolutionDerivation.dependent_resolution_id.in_(resolution_ids)))
+    rows = (
+        list(db.query(models.CatalogItem).filter(models.CatalogItem.id.in_(item_ids)).order_by(models.CatalogItem.id))
+        + list(db.query(models.ItemResolution).filter(models.ItemResolution.item_id.in_(item_ids)).order_by(models.ItemResolution.id))
+        + list(derivations.order_by(models.ResolutionDerivation.resolution_id, models.ResolutionDerivation.dependent_item_id))
+    )
+    for row in rows:
+        state = baseline.edit_state(row)
+        if state != "unedited":
+            problems.append(f"{baseline.TABLES[type(row)]} {baseline.row_label(row)} "
+                            + ("has been edited since it was seeded" if state == "edited" else "has no seed baseline to prove it unedited"))
     if problems:
         raise errors(
             409,
             [{"field": None, "message": f"Cannot revert: {p}.", "code": "REVERT_BLOCKED"} for p in problems],
         )
 
+    # Derivations (28-ITEM Part U) naming a migrated item cannot outlive it.
+    # Every one was proved unedited above — its factory default, which the
+    # seed's derivation step recreates once the items are migrated again.
     counts = {
+        "derivations": derivations.delete(synchronize_session=False),
         "decisions": db.query(models.EngagementDecision)
         .filter(models.EngagementDecision.item_id.in_(item_ids))
         .delete(synchronize_session=False),
@@ -407,16 +434,12 @@ def revert(db: Session) -> dict:
 def _print_migrate(report: dict) -> None:
     for item in report["items"]:
         print(f"  item {item['id']:<28} {item['state']}")
-        for warning in item["warnings"]:
-            print(f"      warning: {warning}")
-    if report["amended"]:
-        print(f"  amended (AMENDMENTS): {', '.join(report['amended'])}")
-    if report["skipped_existing"]:
-        print(f"  already migrated, left alone: {', '.join(report['skipped_existing'])}")
     print(
-        f"Migrated {len(report['items'])} items, {report['resolutions']} resolutions, "
+        f"Migrated items and resolutions: {baseline.summary(report['baseline'])}; "
         f"{report['decisions']} decisions, {report['scope_rows']} engagement scope rows"
     )
+    if report["baseline"]["conflicts"]:
+        print(baseline.format_conflicts(report["baseline"]["conflicts"]))
     for d in report["not_migrated_decisions"]:
         print(
             f"  NOT migrated: decision {d['engagement_id']} / {d['pattern_id']} ({d['status']}, "

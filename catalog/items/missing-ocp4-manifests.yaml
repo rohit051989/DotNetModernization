@@ -1,0 +1,79 @@
+category: packaging
+deleted: false
+description: A deployable .NET (Core) application with no Kubernetes/OpenShift manifest and no Helm chart in its project directory or anywhere else in its repository. A repository-level k8s/ or charts/ folder counts for every project in the repository.
+detection:
+  match:
+    all: []
+    any:
+    - id: web-host
+      signal:
+        name: WEB_APPLICATION_CREATE_BUILDER_ENTRY_POINT
+    - id: generic-host
+      signal:
+        name: HOST_CREATE_DEFAULT_BUILDER_ENTRY_POINT
+    - id: webhost
+      signal:
+        name: WEBHOST_CREATE_DEFAULT_BUILDER_ENTRY_POINT
+    - id: main-method
+      signal:
+        name: MAIN_METHOD_ENTRY_POINT
+    - id: top-level-statements
+      signal:
+        name: TOP_LEVEL_STATEMENTS_ENTRY_POINT
+    atLeast: []
+    metadata:
+    - field: frameworkFamily
+      id: modern-dotnet
+      in:
+      - net
+      - net-core
+    - field: outputType
+      id: not-desktop
+      notEquals: WinExe
+    - field: projectSdk
+      id: not-blazor-webassembly
+      notEquals: Microsoft.NET.Sdk.BlazorWebAssembly
+    none:
+    - id: has-manifest
+      signal:
+        name: OCP4_MANIFEST_FILE
+    - id: has-helm-chart
+      signal:
+        name: HELM_CHART_FILE
+excluded_roles:
+- DATABASE
+- DEPLOYMENT
+- LIBRARY
+- TEST
+id: missing-ocp4-manifests
+name: No OpenShift deployment manifests
+owner_team: null
+resolutions:
+- consumer_impact: none
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: A Helm chart with per-environment values files.
+  effort: medium
+  id: helm-chart
+  is_default: false
+  linux_compatible: true
+  name: Helm chart
+  notes: null
+  status: active
+  target_description: Chart deployed by the pipeline or GitOps
+- consumer_impact: none
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: Deployment, Service, Route and ConfigMap YAML for the application, kept beside the code.
+  effort: low
+  id: plain-manifests
+  is_default: true
+  linux_compatible: true
+  name: Plain manifests
+  notes: null
+  status: active
+  target_description: OCP4 manifests applied by the pipeline
+scope: application
+status: active

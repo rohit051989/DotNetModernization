@@ -1,0 +1,50 @@
+category: integration
+deleted: false
+description: The project sends or receives through MSMQ (System.Messaging). MSMQ exists neither on Linux nor on .NET Core, so this blocks both the framework move and the platform move. One decision per project; the producer and consumer ends of each queue must move together.
+detection:
+  match:
+    all: []
+    any:
+    - id: messaging-namespace
+      signal:
+        name: SYSTEM_MESSAGING_NAMESPACE
+    - id: messaging-assembly
+      signal:
+        name: SYSTEM_MESSAGING_ASSEMBLY
+    atLeast: []
+    metadata: []
+    none: []
+excluded_roles:
+- TEST
+id: msmq-usage
+name: MSMQ (System.Messaging)
+owner_team: null
+resolutions:
+- consumer_impact: medium
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: Replace the queues with the engagement's broker (Kafka, AMQ or RabbitMQ), moving producers and consumers together.
+  effort: high
+  id: migrate-to-message-broker
+  is_default: true
+  linux_compatible: true
+  name: Migrate to the platform message broker
+  notes: null
+  status: active
+  target_description: Broker client on .NET, queue topology recreated on the broker
+- consumer_impact: none
+  container_ready: false
+  deleted: false
+  derivations: []
+  description: Out of scope for the Linux move; the application and its queues stay on Windows.
+  effort: low
+  id: msmq-usage-remain-windows-hosted
+  is_default: false
+  linux_compatible: false
+  name: Remain Windows-hosted (out of scope)
+  notes: null
+  status: active
+  target_description: .NET Framework on Windows Server with MSMQ
+scope: application
+status: active

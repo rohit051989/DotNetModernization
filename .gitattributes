@@ -1,0 +1,4 @@
+# The item catalog export (python -m app.items.catalog_export export) is
+# written with LF line endings and must stay byte-identical to a re-export:
+# never convert it to CRLF on checkout, whatever core.autocrlf says.
+catalog/items/*.yaml text eol=lf

@@ -1,0 +1,70 @@
+category: hosting
+deleted: false
+description: An ASP.NET Core application that exposes no health check endpoint, so OCP4 liveness and readiness probes have nothing meaningful to call. Keyed on ASP.NET Core host builders; a worker with no HTTP surface needs a different probe and is not this item.
+detection:
+  match:
+    all: []
+    any:
+    - id: web-host
+      signal:
+        name: WEB_APPLICATION_CREATE_BUILDER_ENTRY_POINT
+    - id: webhost
+      signal:
+        name: WEBHOST_CREATE_DEFAULT_BUILDER_ENTRY_POINT
+    - id: startup-class
+      signal:
+        name: STARTUP_CLASS_ENTRY_POINT
+    atLeast: []
+    metadata:
+    - field: frameworkFamily
+      id: modern-dotnet
+      in:
+      - net
+      - net-core
+    - field: outputType
+      id: not-desktop
+      notEquals: WinExe
+    - field: projectSdk
+      id: not-blazor-webassembly
+      notEquals: Microsoft.NET.Sdk.BlazorWebAssembly
+    none:
+    - id: has-health-endpoint
+      signal:
+        name: MAP_HEALTH_CHECKS_INVOCATION
+excluded_roles:
+- DATABASE
+- DEPLOYMENT
+- LIBRARY
+- TEST
+id: missing-health-endpoint
+name: No health endpoint
+owner_team: null
+resolutions:
+- consumer_impact: low
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: AddHealthChecks() plus separate liveness and readiness endpoints (MapHealthChecks), readiness checking the application's dependencies.
+  effort: low
+  id: aspnetcore-health-checks
+  is_default: true
+  linux_compatible: true
+  name: ASP.NET Core health checks
+  notes: null
+  status: active
+  target_description: /health/live and /health/ready, wired to the OCP4 probes
+- consumer_impact: none
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: No code change; the OCP4 probe checks that the port accepts connections.
+  effort: low
+  id: tcp-socket-probe
+  is_default: false
+  linux_compatible: true
+  name: TCP socket probe only
+  notes: Proves the process is listening, not that it can serve requests. Choosing health checks over this needs a forcing perspective (AVAILABILITY_RESILIENCE).
+  status: active
+  target_description: tcpSocket liveness and readiness probes
+scope: application
+status: active

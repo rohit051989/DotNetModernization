@@ -19,11 +19,14 @@ public class OutboundInvocationTests
 
     private static IReadOnlyList<ProjectInvocations> Run(
         string projectPath, Dictionary<string, string> sources, IReadOnlyList<(string Path, string Text)>? config = null,
-        IReadOnlyList<UncLiteral>? unc = null)
+        IReadOnlyList<UncLiteral>? unc = null, IReadOnlyList<(string Path, string Text)>? setParameters = null,
+        IReadOnlyDictionary<string, string>? declarations = null)
     {
         var project = new OutboundInputProject(projectPath, Guid.Empty, null, [], unc ?? []);
         var source = ProjectSource.FromText(projectPath, sources);
-        return OutboundPipeline.Detect(RepositoryId, [(project, source)], RepositoryConfig.FromText(config ?? []));
+        var repositoryConfig = RepositoryConfig.FromText(config ?? [])
+            .WithDeployParameters(DeployParameterFiles.FromText(setParameters ?? [], [projectPath]), declarations ?? new Dictionary<string, string>());
+        return OutboundPipeline.Detect(RepositoryId, [(project, source)], repositoryConfig);
     }
 
     private static OutboundInventoryArtifact Artifact(IReadOnlyList<ProjectInvocations> projects) => new()
@@ -350,7 +353,29 @@ public class OutboundInvocationTests
             }
             """;
 
-        var projects = Run("src/Api/Api.csproj", new() { ["src/Api/Payments.cs"] = code }, [("src/Api/appsettings.json", config)]);
+        // 1.3.0: a SetParameters file mixing a URL, a path, a password, a
+        // connection string and a plain property. Only the URL (linked to
+        // the endpoint by parameters.xml) and the path may keep a value.
+        const string setParamPassword = "SetP4ram-Secret-6630";
+        const string setParamDatabaseUser = "setparam_db_user";
+        var setParam = $$"""
+            <parameters>
+              <setParameter name="PaymentsUrl" value="https://payments-prod.example.com/v2/" />
+              <setParameter name="ArchiveFolder" value="G:\Archive\Payments\" />
+              <setParameter name="ServicePassword" value="{{setParamPassword}}" />
+              <setParameter name="MainConnection" value="Server=db-prod.internal;Database=Main;User Id={{setParamDatabaseUser}};Password={{setParamPassword}}" />
+              <setParameter name="BatchUser" value="PAYBATCH" />
+            </parameters>
+            """;
+        const string declarations = """
+            <parameters>
+              <parameter name="PaymentsUrl"><parameterEntry kind="XmlFile" scope="x" match="/configuration/appSettings/add[@key='Payments:Url']/@value" /></parameter>
+              <parameter name="MainConnection"><parameterEntry kind="XmlFile" scope="x" match="/configuration/connectionStrings/add[@name='Main']/@connectionString" /></parameter>
+            </parameters>
+            """;
+
+        var projects = Run("src/Api/Api.csproj", new() { ["src/Api/Payments.cs"] = code }, [("src/Api/appsettings.json", config)],
+            setParameters: [("deploy/Api/PROD/SetParam.xml", setParam)], declarations: new Dictionary<string, string> { ["src/Api"] = declarations });
         var artifact = Artifact(projects);
         var json = DeterministicJson.Serialize(artifact);
 
@@ -358,6 +383,21 @@ public class OutboundInvocationTests
         Assert.DoesNotContain(urlSecret, json);
         Assert.DoesNotContain(apiKey, json);
         Assert.DoesNotContain("svc-user", json);
+        Assert.DoesNotContain(setParamPassword, json);
+        Assert.DoesNotContain(setParamDatabaseUser, json);
+        Assert.DoesNotContain("PAYBATCH", json);
+
+        // Every parameter is recorded as present; values only where allowed.
+        var parameters = projects.Single().DeployParameters.ToDictionary(p => p.Name);
+        Assert.Equal(("sensitive", null), (parameters["ServicePassword"].Kind, parameters["ServicePassword"].Value));
+        Assert.Equal(("connection_string", null), (parameters["MainConnection"].Kind, parameters["MainConnection"].Value));
+        Assert.Equal(("other", null), (parameters["BatchUser"].Kind, parameters["BatchUser"].Value));
+        Assert.Equal(("path", @"G:\Archive\Payments\"), (parameters["ArchiveFolder"].Kind, parameters["ArchiveFolder"].Value));
+        Assert.Equal(("url", "https://payments-prod.example.com:443/v2/"), (parameters["PaymentsUrl"].Kind, parameters["PaymentsUrl"].Value));
+        Assert.Equal(("parameters_xml", "PROD"), (parameters["PaymentsUrl"].LinkMethod, parameters["PaymentsUrl"].Environment));
+        // The connection string still yields its server host for the PROD binding — facts only.
+        var database = Assert.Single(projects.Single().Invocations, i => i.Mechanism == Mechanisms.Database);
+        Assert.Contains(database.EnvironmentBindings, b => b.Environment == "PROD" && b.Host == "db-prod.internal" && b.DeployParameter == "MainConnection");
 
         // What is kept: the endpoints, and that a key is configured and where.
         var invocations = projects.Single().Invocations;
@@ -376,6 +416,8 @@ public class OutboundInvocationTests
             Assert.DoesNotContain(password, written);
             Assert.DoesNotContain(urlSecret, written);
             Assert.DoesNotContain(apiKey, written);
+            Assert.DoesNotContain(setParamPassword, written);
+            Assert.DoesNotContain(setParamDatabaseUser, written);
         }
         finally
         {
@@ -571,5 +613,183 @@ public class OutboundInvocationTests
         Assert.Equal(2, invocation.CallSites.Count);
         Assert.Matches("^[0-9a-f]{32}$", invocation.InvocationId);
         Assert.Equal(invocation.InvocationId, Assert.Single(second).InvocationId);
+    }
+
+    // ---------- 1.2.0: the operation each call site invokes ----------
+
+    private const string Contracts = """
+        using System.ServiceModel;
+        [ServiceContract] public interface IUtilityService { [OperationContract] string Ping(); [OperationContract] System.DateTime GetServerTimeUtc(); }
+        [ServiceContract] public interface IProductService { [OperationContract] int CreateProduct(string name); }
+        """;
+
+    [Fact]
+    public void Operations_called_on_the_channel_of_each_helper_created_factory_are_recorded_per_call_site()
+    {
+        const string code = """
+            using System.ServiceModel;
+            class Program
+            {
+                static void Main()
+                {
+                    using (var utilityFactory = CreateTcpFactory<IUtilityService>("Utility", 8101))
+                    {
+                        var utility = utilityFactory.CreateChannel();
+                        utility.Ping();
+                        utility.GetServerTimeUtc();
+                        ((ICommunicationObject)utility).Close();
+                    }
+                    using (var productFactory = CreateTcpFactory<IProductService>("Product", 8301))
+                    {
+                        productFactory.CreateChannel().CreateProduct("x");
+                    }
+                }
+                static ChannelFactory<T> CreateTcpFactory<T>(string name, int port) =>
+                    new ChannelFactory<T>(new NetTcpBinding(), new EndpointAddress(new System.Uri($"net.tcp://localhost:{port}/{name}")));
+            }
+            """;
+        var invocations = Detect("src/Client/Client.csproj", new() { ["src/Client/Program.cs"] = code, ["src/Client/Contracts.cs"] = Contracts });
+
+        var utility = Assert.Single(invocations, i => i.Soap!.Contract == "IUtilityService");
+        Assert.Equal(["GetServerTimeUtc", "Ping"], utility.Operations.Select(o => o.Operation!).Order());
+        Assert.All(utility.Operations, o => Assert.Equal((Resolutions.Resolved, "src/Client/Program.cs"), (o.Resolution, o.CallSite.FilePath)));
+        Assert.Equal(9, utility.Operations.Single(o => o.Operation == "Ping").CallSite.LineStart);
+
+        var product = Assert.Single(invocations, i => i.Soap!.Contract == "IProductService");
+        Assert.Equal("CreateProduct", Assert.Single(product.Operations).Operation);
+    }
+
+    [Fact]
+    public void A_proxy_passed_on_from_where_it_is_created_is_followed_through_receivers_of_its_type()
+    {
+        const string code = """
+            using System.ServiceModel;
+            class UtilityClient : ClientBase<IUtilityService>, IUtilityService
+            {
+                public UtilityClient() : base(new BasicHttpBinding(), new EndpointAddress("http://utility.local/Utility.svc")) { }
+                public string Ping() => Channel.Ping();
+                public System.DateTime GetServerTimeUtc() => Channel.GetServerTimeUtc();
+            }
+            class Form
+            {
+                static void Main() => new Presenter(new UtilityClient()).Show();
+            }
+            class Presenter
+            {
+                private readonly IUtilityService _service;
+                public Presenter(IUtilityService service) { _service = service; }
+                public void Show() { _service.Ping(); }
+            }
+            """;
+        var invocation = Assert.Single(Detect("src/Win/Win.csproj", new() { ["src/Win/Form.cs"] = code, ["src/Win/Contracts.cs"] = Contracts }));
+
+        var ping = Assert.Single(invocation.Operations);
+        Assert.Equal(("Ping", Resolutions.Resolved), (ping.Operation, ping.Resolution));
+        Assert.Contains("passed on", ping.Reason);
+    }
+
+    [Fact]
+    public void The_service_contract_names_the_operations_when_a_domain_interface_shares_its_name()
+    {
+        const string code = """
+            using System.ServiceModel;
+            namespace Domain { public interface ICatalogService { void GetBrands(); } }
+            namespace Proxy
+            {
+                [ServiceContract] public interface ICatalogService { [OperationContract] void GetBrands(); [OperationContract] void GetItems(); }
+                class CatalogServiceClient : ClientBase<ICatalogService>, ICatalogService
+                {
+                    public CatalogServiceClient() : base(new BasicHttpBinding(), new EndpointAddress("http://catalog.local/Catalog.svc")) { }
+                    public void GetBrands() => Channel.GetBrands();
+                    public void GetItems() => Channel.GetItems();
+                }
+                class Controller
+                {
+                    private ICatalogService _service = new CatalogServiceClient();
+                    void Load() { _service.GetBrands(); _service.GetItems(); }
+                }
+            }
+            """;
+        var invocation = Assert.Single(Detect("src/Win/Win.csproj", new() { ["src/Win/Code.cs"] = code }));
+
+        Assert.Equal(["GetBrands", "GetItems"], invocation.Operations.Select(o => o.Operation!).Order());
+    }
+
+    [Fact]
+    public void A_client_with_nothing_called_on_it_records_one_unresolved_operation_with_the_reason()
+    {
+        const string code = """
+            using System.ServiceModel;
+            class Program
+            {
+                static object Make() => new ChannelFactory<IRemote>(new BasicHttpBinding(), new EndpointAddress("http://remote.local/R.svc"));
+            }
+            """;
+        var operation = Assert.Single(Assert.Single(Detect("src/C/C.csproj", new() { ["src/C/P.cs"] = code })).Operations);
+        Assert.Equal(Resolutions.Unresolved, operation.Resolution);
+        Assert.Null(operation.Operation);
+        Assert.False(string.IsNullOrEmpty(operation.Reason));
+    }
+
+    [Fact]
+    public void An_http_wrapper_records_the_verb_and_the_path_each_caller_passes()
+    {
+        const string code = """
+            class HttpService
+            {
+                private readonly HttpClient _httpClient = new HttpClient();
+                private readonly string _apiUrl = "https://localhost:5099/api/";
+                public Task<string> HttpGet(string uri) => _httpClient.GetStringAsync($"{_apiUrl}{uri}");
+            }
+            class CatalogItems
+            {
+                private readonly HttpService _http;
+                public Task List() => _http.HttpGet("catalog-items?pageSize=10");
+                public Task One(int id) => _http.HttpGet($"catalog-items/{id}");
+            }
+            """;
+        var invocation = Assert.Single(Detect("src/Admin/Admin.csproj", new() { ["src/Admin/Http.cs"] = code }));
+
+        Assert.Equal(
+            [("GET", "/api/catalog-items", Resolutions.Resolved), ("GET", "/api/catalog-items/{…}", Resolutions.Partial)],
+            invocation.Operations.Select(o => (o.Verb!, o.Path!, o.Resolution)).Order());
+    }
+
+    [Fact]
+    public void Relative_requests_through_a_client_with_a_base_address_are_joined_to_its_path()
+    {
+        const string code = """
+            class Orders
+            {
+                private readonly HttpClient _client = new HttpClient { BaseAddress = new System.Uri("http://orders.local/v1/") };
+                public Task Create() => _client.PostAsync("orders", null);
+                public Task Remove(int id) => _client.DeleteAsync($"orders/{id}");
+            }
+            """;
+        var invocation = Assert.Single(Detect("src/Shop/Shop.csproj", new() { ["src/Shop/Orders.cs"] = code }));
+
+        Assert.Equal([("DELETE", "/v1/orders/{…}"), ("POST", "/v1/orders")], invocation.Operations.Select(o => (o.Verb!, o.Path!)).Order());
+    }
+
+    [Fact]
+    public void Grpc_methods_called_on_the_stub_are_the_rpcs_without_the_async_suffix()
+    {
+        const string code = """
+            using Grpc.Net.Client;
+            class Program
+            {
+                static async Task Main()
+                {
+                    using var channel = GrpcChannel.ForAddress("https://greeter.local:5001");
+                    var client = new Greeter.GreeterClient(channel);
+                    await client.SayHelloAsync(new HelloRequest());
+                    client.SayGoodbye(new GoodbyeRequest());
+                }
+            }
+            """;
+        var invocation = Assert.Single(Detect("src/G/G.csproj", new() { ["src/G/Program.cs"] = code }));
+
+        Assert.Equal(["SayGoodbye", "SayHello"], invocation.Operations.Select(o => o.Operation!).Order());
+        Assert.Contains(invocation.Operations, o => o.Member == "SayHelloAsync");
     }
 }

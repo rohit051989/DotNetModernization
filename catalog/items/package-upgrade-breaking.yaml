@@ -1,0 +1,51 @@
+category: dependencies
+deleted: false
+description: |-
+  A direct NuGet package's recommended version removes or changes public members the code calls. One occurrence per affected file; the value names the package, both versions and the changed member, and the evidence carries each call site. Call sites are matched by syntax, so a site is likely rather than certain, and a call that an unchanged overload could equally take is "possible" (ambiguous), not confirmed. Only runtime packages, with lib/ or ref/ assemblies, can be breaking. Where no API diff was possible and the change is a major version, semver presumes a break and the occurrence sits at the PackageReference line, call sites not determined.
+  Conversion ordering (docs/28 Part E): for the same package, runs as ONE UNIT with package-upgrade-safe. Bump the version everywhere, then fix the call sites. Fixing call sites first writes against an API the project does not reference yet; bumping alone leaves the build broken in between.
+detection:
+  match:
+    all:
+    - id: upgrade-breaking
+      signal:
+        name: PACKAGE_UPGRADE_BREAKING
+    any: []
+    atLeast: []
+    metadata: []
+    none: []
+  occurrence_source:
+    group_by: source_path
+    signal: PACKAGE_UPGRADE_BREAKING
+excluded_roles: []
+id: package-upgrade-breaking
+name: Package upgrade that breaks calling code
+owner_team: null
+resolutions:
+- consumer_impact: low
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: Bump to the recommended version, then change each listed call site to the new API, in the same change.
+  effort: medium
+  id: package-upgrade-breaking-bump-and-adapt
+  is_default: true
+  linux_compatible: true
+  name: Bump and adapt the call sites
+  notes: null
+  status: active
+  target_description: The recommended package version, calling code adapted
+- consumer_impact: medium
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: Where the new major version is a rewrite rather than an evolution, adopt a different library instead.
+  effort: high
+  id: package-upgrade-breaking-replace
+  is_default: false
+  linux_compatible: true
+  name: Replace the package
+  notes: null
+  status: active
+  target_description: An alternative library supporting the target framework
+scope: occurrence
+status: active

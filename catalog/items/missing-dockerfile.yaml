@@ -1,0 +1,76 @@
+category: packaging
+deleted: false
+description: A deployable .NET (Core) application with no Dockerfile in its project directory or anywhere else in its repository. A repository-level Dockerfile counts for every project in the repository.
+detection:
+  match:
+    all: []
+    any:
+    - id: web-host
+      signal:
+        name: WEB_APPLICATION_CREATE_BUILDER_ENTRY_POINT
+    - id: generic-host
+      signal:
+        name: HOST_CREATE_DEFAULT_BUILDER_ENTRY_POINT
+    - id: webhost
+      signal:
+        name: WEBHOST_CREATE_DEFAULT_BUILDER_ENTRY_POINT
+    - id: main-method
+      signal:
+        name: MAIN_METHOD_ENTRY_POINT
+    - id: top-level-statements
+      signal:
+        name: TOP_LEVEL_STATEMENTS_ENTRY_POINT
+    atLeast: []
+    metadata:
+    - field: frameworkFamily
+      id: modern-dotnet
+      in:
+      - net
+      - net-core
+    - field: outputType
+      id: not-desktop
+      notEquals: WinExe
+    - field: projectSdk
+      id: not-blazor-webassembly
+      notEquals: Microsoft.NET.Sdk.BlazorWebAssembly
+    none:
+    - id: has-dockerfile
+      signal:
+        name: DOCKERFILE_FILE
+excluded_roles:
+- DATABASE
+- DEPLOYMENT
+- LIBRARY
+- TEST
+id: missing-dockerfile
+name: No Dockerfile
+owner_team: null
+resolutions:
+- consumer_impact: none
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: 'Add a multi-stage Dockerfile: SDK image to build and publish, aspnet or runtime image to run, non-root user.'
+  effort: low
+  id: multistage-dockerfile
+  is_default: true
+  linux_compatible: true
+  name: Multi-stage Dockerfile
+  notes: null
+  status: active
+  target_description: Dockerfile beside the project, built by the pipeline
+- consumer_impact: none
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: Build the image with dotnet publish /t:PublishContainer; no Dockerfile to maintain.
+  effort: low
+  id: sdk-container-publish
+  is_default: false
+  linux_compatible: true
+  name: SDK container publish
+  notes: Less control over the image layers; check it meets the platform's base-image policy.
+  status: active
+  target_description: Container image from MSBuild properties in the project file
+scope: application
+status: active

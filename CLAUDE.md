@@ -84,9 +84,16 @@ modernization-platform/
 3. **No secrets in code.** Connection strings come from `.env`, which is
    gitignored. `.env.example` is committed with placeholder values.
 4. **Migrations, not `create_all`.** Every schema change is an Alembic migration.
-5. **The catalog is versionable IP.** The export endpoint must produce
-   deterministic, diffable JSON — stable key order, stable record order — so the
-   catalog can be committed to git and reviewed as a pull request.
+   **Never edit a migration that has been applied** — to any database, including
+   the local one. A database that ran the old text will never run the new one,
+   so the two silently disagree. Add a new migration instead, even for a
+   one-column fix, and never patch a database by hand to match an edited file.
+5. **The catalog is versionable IP.** Its exports must be deterministic and
+   diffable — stable key order, stable record order — so the catalog can be
+   committed to git and reviewed as a pull request. The item catalog is exported
+   to `catalog/items/<item-id>.yaml` (`python -m app.items.catalog_export export`,
+   28-ITEM Part W). That export is for review and history, never a place to edit:
+   change the catalog in the UI, then re-export.
 6. **Client-agnostic vs engagement-specific separation is architectural.**
    Patterns and target-state options are reusable across clients. Decision records
    belong to an engagement. Never let engagement data leak into the pattern or
@@ -113,6 +120,16 @@ modernization-platform/
    endpoint seems to require touching a master table, that change belongs on the
    master endpoints (`/api/patterns`, `/api/target-states`) instead — see
    "Master catalog vs client catalog" in `02-DATA-MODEL.md`.
+10. **A reseed never undoes work.** It must never revert an implemented step to
+    stub (`17-LIFECYCLE-STEPS.md`), and it must never overwrite a catalog edit
+    made in the UI. The database is authoritative for the item catalog;
+    `catalog_items.yaml`, the pattern tables and the amendments in code are
+    factory defaults. Every seed write to `catalog_items`, `item_resolutions`
+    and `resolution_derivations` goes through `app/items/baseline.py`. A row is
+    updated only if it has not been edited since it was seeded (its
+    `seeded_hash`). Where both the database and the default changed, the seed
+    reports a conflict and leaves the row as it is. Never write catalog rows
+    from a seed, script or migration any other way.
 
 ## Domain vocabulary
 

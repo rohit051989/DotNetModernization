@@ -1,0 +1,151 @@
+category: integration
+deleted: false
+description: 'The project implements a WCF service contract (System.ServiceModel), wherever the contract is declared and however the service is hosted — ServiceHost in a console or Windows Service, IIS .svc files (including a folder with no project file), or both. The hosting is recorded as the occurrence''s attribute; the host project carries wcf-service-host. Frequently consumed by callers whose contracts cannot change, so the lowest-impact option, CoreWCF, is the default; the rewrites change every caller. Each resolution declares what it means for the dependent items (`derivations`, 28-ITEM Part U): the host (wcf-service-host), internal clients (wcf-nettcp-client) and a framework retarget on the same project (fx47-class-library).'
+detection:
+  attribute:
+    label: hosting
+    signal: WCF_SERVICE_HOSTING
+  match:
+    all: []
+    any:
+    - id: implements-wcf-service
+      signal:
+        name: EXPOSES_WCF_SERVICE
+    atLeast: []
+    metadata:
+    - equals: net-framework
+      field: frameworkFamily
+      id: legacy-framework
+    none: []
+excluded_roles:
+- TEST
+id: wcf-service
+name: WCF service
+owner_team: null
+resolutions:
+- consumer_impact: none
+  container_ready: true
+  deleted: false
+  derivations:
+  - action: subsume
+    applies_to: all
+    deleted: false
+    dependent_item_id: fx47-class-library
+    dependent_resolution_id: null
+    reason: 'CoreWCF on .NET 10 moves this project to the engagement framework: a separate framework retarget is no further work.'
+  - action: not_derived
+    applies_to: all
+    deleted: false
+    dependent_item_id: wcf-nettcp-client
+    dependent_resolution_id: null
+    reason: 'CoreWCF keeps WCF and SOAP, so the client keeps calling WCF: it still needs a Linux-compatible binding (an HTTP binding, or NetTcp without Windows security). Decide it on its own.'
+  - action: derive
+    applies_to: all
+    deleted: false
+    dependent_item_id: wcf-service-host
+    dependent_resolution_id: wcf-host-aspnetcore-web-host
+    reason: 'CoreWCF runs inside ASP.NET Core: the process hosting the service becomes an ASP.NET Core web host.'
+  description: Port to CoreWCF, preserving service contracts, bindings and the published WSDL.
+  effort: medium
+  id: wcf-service-corewcf
+  is_default: true
+  linux_compatible: true
+  name: CoreWCF on .NET 10
+  notes: 'Prerequisites: bindings in use must be supported by CoreWCF; capture a WSDL snapshot before migrating. Known limitations: not every WCF binding is supported — WS-* protocols, MSMQ transport and some Windows-integrated security modes need case-by-case assessment; Windows authentication needs an alternative on Linux.'
+  status: active
+  target_description: .NET 10 + CoreWCF, container on OCP4
+- consumer_impact: high
+  container_ready: true
+  deleted: false
+  derivations:
+  - action: subsume
+    applies_to: all
+    deleted: false
+    dependent_item_id: fx47-class-library
+    dependent_resolution_id: null
+    reason: 'The rewrite targets .NET 10 by definition: a separate framework retarget is no further work.'
+  - action: derive
+    applies_to: internal_clients
+    deleted: false
+    dependent_item_id: wcf-nettcp-client
+    dependent_resolution_id: migrate-to-service-protocol
+    reason: 'The service stops speaking WCF: an internal client moves to a gRPC client in the same coordinated change.'
+  - action: derive
+    applies_to: all
+    deleted: false
+    dependent_item_id: wcf-service-host
+    dependent_resolution_id: wcf-host-aspnetcore-web-host
+    reason: 'gRPC on .NET runs in ASP.NET Core: the process hosting the service becomes an ASP.NET Core web host.'
+  description: Rewrite as a contract-first gRPC service.
+  effort: high
+  id: wcf-service-grpc-rewrite
+  is_default: false
+  linux_compatible: true
+  name: gRPC rewrite on .NET 10
+  notes: 'Prerequisites: every consumer able to adopt a gRPC client; HTTP/2 through the OCP4 ingress path. Known limitations: all callers must change — only viable where consumers are internal and in scope for coordinated change.'
+  status: active
+  target_description: .NET 10 + gRPC, container on OCP4
+- consumer_impact: none
+  container_ready: false
+  deleted: false
+  derivations:
+  - action: not_subsumed
+    applies_to: all
+    deleted: false
+    dependent_item_id: fx47-class-library
+    dependent_resolution_id: null
+    reason: 'Staying on Windows does not move this project to the engagement framework: a retarget, if wanted, is separate work.'
+  - action: not_derived
+    applies_to: all
+    deleted: false
+    dependent_item_id: wcf-nettcp-client
+    dependent_resolution_id: null
+    reason: 'The service keeps its WCF bindings on Windows: whether the client can still reach it from Linux (an HTTP binding, or NetTcp without Windows security) is the client''s own decision.'
+  - action: not_derived
+    applies_to: all
+    deleted: false
+    dependent_item_id: wcf-service-host
+    dependent_resolution_id: null
+    reason: 'The service stays where it is, so its decision does not settle the host: usually it stays Windows-hosted too, but decide it on its own.'
+  description: Out of scope for the Linux move; the service stays on .NET Framework WCF on Windows.
+  effort: low
+  id: wcf-service-remain-windows-hosted
+  is_default: false
+  linux_compatible: false
+  name: Remain Windows-hosted
+  notes: null
+  status: active
+  target_description: .NET Framework WCF on Windows Server
+- consumer_impact: high
+  container_ready: true
+  deleted: false
+  derivations:
+  - action: subsume
+    applies_to: all
+    deleted: false
+    dependent_item_id: fx47-class-library
+    dependent_resolution_id: null
+    reason: 'The rewrite targets .NET 10 by definition: a separate framework retarget is no further work.'
+  - action: derive
+    applies_to: internal_clients
+    deleted: false
+    dependent_item_id: wcf-nettcp-client
+    dependent_resolution_id: migrate-to-service-protocol
+    reason: 'The service stops speaking WCF: an internal client moves to its REST API in the same coordinated change.'
+  - action: derive
+    applies_to: all
+    deleted: false
+    dependent_item_id: wcf-service-host
+    dependent_resolution_id: wcf-host-aspnetcore-web-host
+    reason: 'A REST API runs in ASP.NET Core: the process hosting the service becomes an ASP.NET Core web host.'
+  description: Rewrite as a conventional REST API on ASP.NET Core, retiring SOAP entirely.
+  effort: high
+  id: wcf-service-rest-rewrite
+  is_default: false
+  linux_compatible: true
+  name: REST rewrite on .NET 10
+  notes: 'Prerequisites: every consumer able to change; resource model designed and agreed. Known limitations: the largest change of the three; SOAP faults, message-level security and transactional semantics have no direct REST equivalent.'
+  status: active
+  target_description: .NET 10 + ASP.NET Core, container on OCP4
+scope: application
+status: active

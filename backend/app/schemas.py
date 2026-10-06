@@ -705,6 +705,16 @@ class Engagement(BaseModel):
     target_platform: str | None = Field(description="Intended deployment target, e.g. 'OpenShift 4'.")
     default_posture: str = Field(description="Default migration posture for this engagement.")
     target_framework: str = Field(description="The .NET target framework moniker packages must support (step 6).")
+    production_environment: str | None = Field(
+        default=None,
+        description="The environment whose host names a service in the endpoint register (step 11). "
+        "Set through PUT /api/engagements/{id}/estate/settings.",
+    )
+    deploy_parameter_globs: list[str] | None = Field(
+        default=None,
+        description="Where Web Deploy SetParameters files are (steps 3 and 5); null means the defaults. "
+        "Set through PUT /api/engagements/{id}/estate/settings.",
+    )
     status: LifecycleStatus = Field(description="Lifecycle state: 'draft', 'active', or 'deprecated'.")
     created_at: datetime.datetime = Field(description="When this engagement was created.")
     updated_at: datetime.datetime = Field(description="When this engagement was last modified.")

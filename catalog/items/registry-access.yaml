@@ -1,0 +1,49 @@
+category: configuration
+deleted: false
+description: Code reading or writing the Windows registry (Microsoft.Win32.Registry, RegistryKey.OpenBaseKey). It throws PlatformNotSupportedException on Linux. One occurrence per file.
+detection:
+  match:
+    all:
+    - id: registry-access
+      signal:
+        name: REGISTRY_ACCESS_USAGE
+    any: []
+    atLeast: []
+    metadata: []
+    none: []
+  occurrence_source:
+    group_by: source_path
+    signal: REGISTRY_ACCESS_USAGE
+excluded_roles: []
+id: registry-access
+name: Windows registry access
+owner_team: null
+resolutions:
+- consumer_impact: low
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: Replace registry reads with IConfiguration (ConfigMap, env vars, Secret); drop writes or move them to a store the application owns.
+  effort: medium
+  id: move-to-configuration
+  is_default: true
+  linux_compatible: true
+  name: Move to configuration
+  notes: null
+  status: active
+  target_description: IConfiguration / IOptions
+- consumer_impact: none
+  container_ready: false
+  deleted: false
+  derivations: []
+  description: Out of scope for the Linux move; the application stays on Windows.
+  effort: low
+  id: registry-access-remain-windows-hosted
+  is_default: false
+  linux_compatible: false
+  name: Remain Windows-hosted (out of scope)
+  notes: null
+  status: active
+  target_description: .NET on Windows Server
+scope: occurrence
+status: active

@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import type { ItemResolution } from '../../types/items'
+import type { DerivationAction, ItemResolution } from '../../types/items'
 import { DefaultBadge, DeletedBadge, EffortBadge, FlagBadge, ImpactBadge } from '../../components/Badge'
 
 interface ResolutionCardProps {
@@ -50,6 +50,36 @@ export function ResolutionCard({ resolution, isLowestImpact, actions, highlight 
           {resolution.notes}
         </p>
       )}
+      {(resolution.derivations ?? []).length > 0 && (
+        <div className="mt-2 rounded border border-violet-100 bg-violet-50/40 px-2 py-1.5">
+          <p className="text-[11px] font-medium uppercase tracking-wide text-violet-700">Choosing this derives</p>
+          <ul className="mt-1 space-y-1">
+            {resolution.derivations!.map((d) => (
+              <li key={d.dependent_item_id} className="text-xs text-neutral-700">
+                <span className="font-mono text-neutral-800">{d.dependent_item_id}</span>{' '}
+                <span className={`rounded border px-1 text-[10px] ${ACTION_STYLE[d.action]}`}>{ACTION_LABEL[d.action]}</span>
+                {d.dependent_resolution_id && <span className="font-mono text-neutral-600"> → {d.dependent_resolution_id}</span>}
+                {d.applies_to === 'internal_clients' && <span className="text-neutral-500"> (internal clients only)</span>}
+                <span className="block text-neutral-500">{d.reason}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   )
+}
+
+const ACTION_LABEL: Record<DerivationAction, string> = {
+  derive: 'derived',
+  not_derived: 'not derived',
+  subsume: 'subsumed',
+  not_subsumed: 'not subsumed',
+}
+
+const ACTION_STYLE: Record<DerivationAction, string> = {
+  derive: 'border-violet-200 bg-white text-violet-800',
+  subsume: 'border-violet-200 bg-white text-violet-800',
+  not_derived: 'border-neutral-200 bg-white text-neutral-600',
+  not_subsumed: 'border-neutral-200 bg-white text-neutral-600',
 }

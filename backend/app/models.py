@@ -344,6 +344,12 @@ class Engagement(Base):
     )
     # Step 6 (30-STEP-006 Part C1): the framework packages must support.
     target_framework: Mapped[str] = mapped_column(Text, nullable=False, server_default="net10.0")
+    # Step 11 (31-STEP-011 Part C1): the environment whose host names a
+    # service in the endpoint register. Null: group by the host as found.
+    production_environment: Mapped[str | None] = mapped_column(Text)
+    # Step 5 (29-STEPS Part C9, 1.3.0): globs for Web Deploy SetParameters
+    # files. Null means **/SetParam*.xml and **/SetParameters*.xml.
+    deploy_parameter_globs: Mapped[list | None] = mapped_column(JSONB)
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default="active")
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -1378,6 +1384,9 @@ class CatalogItem(Base):
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default="active")
     deleted_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
     deleted_by: Mapped[str | None] = mapped_column(Text)
+    # Hash of the content the seed last wrote (app/items/baseline.py): a
+    # reseed never overwrites a row edited since. Null: no baseline.
+    seeded_hash: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -1414,6 +1423,9 @@ class ItemResolution(Base):
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default="active")
     deleted_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
     deleted_by: Mapped[str | None] = mapped_column(Text)
+    # Hash of the content the seed last wrote (app/items/baseline.py): a
+    # reseed never overwrites a row edited since. Null: no baseline.
+    seeded_hash: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -1434,6 +1446,58 @@ class ItemResolution(Base):
             postgresql_where=text("is_default AND deleted_at IS NULL"),
         ),
         Index("ix_item_resolutions_item_id", "item_id"),
+    )
+
+
+DERIVATION_ACTIONS = ("derive", "not_derived", "subsume", "not_subsumed")
+DERIVATION_APPLIES_TO = ("all", "internal_clients")
+
+
+class ResolutionDerivation(Base):
+    """What choosing one resolution of a leading item means for a dependent
+    item (28-ITEM Part U). Master catalog data, authored beside the
+    resolution in catalog_items.yaml: a new resolution declares its
+    derivations as data, not code.
+
+    - derive: the dependent's decision is derived as dependent_resolution_id
+      (applies_to 'internal_clients': only on projects whose integration
+      edges reach the leader's project).
+    - not_derived: the leading decision does not settle the dependent; it
+      stays awaiting_decision, and `reason` says why.
+    - subsume: the dependent, on the leader's project, is no separate work.
+    - not_subsumed: it stays separate work; `reason` says why.
+    """
+
+    __tablename__ = "resolution_derivations"
+
+    resolution_id: Mapped[str] = mapped_column(Text, ForeignKey("item_resolutions.id"), primary_key=True)
+    dependent_item_id: Mapped[str] = mapped_column(Text, ForeignKey("catalog_items.id"), primary_key=True)
+    # The leading item: the resolution's own item, kept for keyed lookups.
+    item_id: Mapped[str] = mapped_column(Text, ForeignKey("catalog_items.id"), nullable=False)
+    action: Mapped[str] = mapped_column(Text, nullable=False)
+    dependent_resolution_id: Mapped[str | None] = mapped_column(Text, ForeignKey("item_resolutions.id"))
+    applies_to: Mapped[str] = mapped_column(Text, nullable=False, server_default="all")
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    deleted_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
+    deleted_by: Mapped[str | None] = mapped_column(Text)
+    # Hash of the content the seed last wrote (app/items/baseline.py): a
+    # reseed never overwrites a row edited since. Null: no baseline.
+    seeded_hash: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    __table_args__ = (
+        CheckConstraint(f"action IN {DERIVATION_ACTIONS}", name="ck_resolution_derivations_action"),
+        CheckConstraint(f"applies_to IN {DERIVATION_APPLIES_TO}", name="ck_resolution_derivations_applies_to"),
+        CheckConstraint("(action = 'derive') = (dependent_resolution_id IS NOT NULL)",
+                        name="ck_resolution_derivations_derive_names_resolution"),
+        CheckConstraint("dependent_item_id <> item_id", name="ck_resolution_derivations_not_self"),
+        Index("ix_resolution_derivations_item_id", "item_id"),
+        Index("ix_resolution_derivations_dependent_item_id", "dependent_item_id"),
     )
 
 
@@ -1463,6 +1527,25 @@ class EngagementDecision(Base):
     approver_role: Mapped[str | None] = mapped_column(Text)
     decision_date: Mapped[datetime.date | None] = mapped_column(Date)
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default="pending")
+    # Part U: 'derived' — this decision follows another item's decision
+    # (derived_from_decision_id) by the catalog's resolution_derivations row
+    # for that decision's resolution (app/items/coupling.py). A derived
+    # decision overridden by hand becomes 'manual', keeps the link, and sets
+    # overrides_derivation.
+    source: Mapped[str] = mapped_column(Text, nullable=False, server_default="manual")
+    derived_from_decision_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("engagement_decisions.id", ondelete="SET NULL", name="fk_engagement_decisions_derived_from")
+    )
+    # The leader's resolution this decision was derived from or, for an
+    # override, overridden against. When the leader's decision no longer
+    # matches it, an override is flagged needs_review (review_note names the
+    # old and new leading decisions); any write to the decision clears it.
+    derived_against_resolution_id: Mapped[str | None] = mapped_column(
+        Text, ForeignKey("item_resolutions.id", ondelete="SET NULL", name="fk_engagement_decisions_derived_against")
+    )
+    overrides_derivation: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    needs_review: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    review_note: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -1472,6 +1555,7 @@ class EngagementDecision(Base):
 
     __table_args__ = (
         CheckConstraint(f"status IN {ENGAGEMENT_DECISION_STATUS}", name="ck_engagement_decisions_status"),
+        CheckConstraint("source IN ('manual', 'derived')", name="ck_engagement_decisions_source"),
         CheckConstraint(
             f"forcing_perspective IS NULL OR forcing_perspective IN {FORCING_PERSPECTIVE}",
             name="ck_engagement_decisions_forcing_perspective",
@@ -1735,6 +1819,12 @@ class OutboundInvocation(Base):
     detail: Mapped[dict] = mapped_column(JSONB, nullable=False)
     environment_bindings: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
     call_sites: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    # 1.2.0: what each call site invokes — {operation, verb, path, member,
+    # resolution, reason, callSite} as in the artifact.
+    operations: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    # 1.3.0: where the client is created, when that differs from call_sites
+    # (now where it is invoked).
+    construction_sites: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
     credentials: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
     auth_declared: Mapped[str | None] = mapped_column(Text)
     linux_verdict: Mapped[str] = mapped_column(Text, nullable=False)
@@ -1863,3 +1953,268 @@ class PackageLookupCache(Base):
     versions: Mapped[list] = mapped_column(JSONB, nullable=False)
     metadata_: Mapped[dict] = mapped_column("metadata", JSONB, nullable=False)
     fetched_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+# ---------- Lifecycle step 11: estate dependency map (31-STEP-011-ESTATE-DEPENDENCY-MAP.md) ----------
+#
+# Engagement-scoped. Every table but endpoint_annotations is replaced by each
+# run of step 11 for its engagement; endpoint_annotations is human data and a
+# run never writes it.
+
+CONVERSATION_STATUS = ("not_started", "in_progress", "agreed", "resolved", "not_required")
+ENDPOINT_CLASSIFICATION = ("internal", "external")
+DEPENDENCY_EDGE_KIND = ("project_reference", "internal_package")
+
+
+class EstateSource(Base):
+    """Lineage (Part B1): per repository, which step execution's rows step 11
+    read, for each per-repository step it reads from."""
+
+    __tablename__ = "estate_sources"
+
+    engagement_id: Mapped[str] = mapped_column(Text, ForeignKey("engagements.id", ondelete="CASCADE"), primary_key=True)
+    repository_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("repositories.id", ondelete="CASCADE"), primary_key=True
+    )
+    step_name: Mapped[str] = mapped_column(Text, primary_key=True)
+    step_execution_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    estate_step_execution_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+
+
+class EndpointRegisterHost(Base):
+    """One row per host per engagement (Part C2). `host` is the register key:
+    a normalised real host, or for a development address 'localhost@<repo>'
+    (served by that repository) or 'localhost:<port>'. A host only annotations
+    remember is kept with no_longer_called."""
+
+    __tablename__ = "endpoint_register"
+
+    engagement_id: Mapped[str] = mapped_column(Text, ForeignKey("engagements.id", ondelete="CASCADE"), primary_key=True)
+    host: Mapped[str] = mapped_column(Text, primary_key=True)
+    classification: Mapped[str] = mapped_column(Text, nullable=False)
+    loopback: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    no_longer_called: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    calling_repository_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    calling_repositories: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    calling_project_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    calling_projects: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    mechanisms: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    bindings: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    ports: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    worst_verdict: Mapped[str | None] = mapped_column(Text)
+    verdict_by_environment: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    requires_backend_change: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    backend_change_reasons: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    invocation_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    # 'production_environment': keyed by the production environment's host,
+    # other environments' hosts in other_hosts. 'host': no production binding,
+    # keyed by the host as found.
+    grouped_by: Mapped[str] = mapped_column(Text, nullable=False, server_default="host")
+    other_hosts: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    # Annotated hosts carried to this row when the production grouping moved
+    # their calls here (C4). The annotation rows themselves are untouched.
+    annotation_carried_from: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    step_execution_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+
+    __table_args__ = (
+        CheckConstraint(f"classification IN {ENDPOINT_CLASSIFICATION}", name="ck_endpoint_register_classification"),
+        CheckConstraint("grouped_by IN ('production_environment', 'host')", name="ck_endpoint_register_grouped_by"),
+    )
+
+
+class EndpointRegisterService(Base):
+    """Path and contract groups beneath a host (C1), with the entry points
+    that serve them when the host is internal (C3)."""
+
+    __tablename__ = "endpoint_register_services"
+
+    engagement_id: Mapped[str] = mapped_column(Text, ForeignKey("engagements.id", ondelete="CASCADE"), primary_key=True)
+    host: Mapped[str] = mapped_column(Text, primary_key=True)
+    path: Mapped[str] = mapped_column(Text, primary_key=True)
+    contract: Mapped[str] = mapped_column(Text, primary_key=True, server_default="")
+    ports: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    mechanisms: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    bindings: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    calling_repositories: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    calling_projects: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    worst_verdict: Mapped[str | None] = mapped_column(Text)
+    requires_backend_change: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    internal: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    internal_targets: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+
+
+class EndpointAnnotation(Base):
+    """A human's record of the conversation about one host (C4). Keyed by
+    the register's host, never an invocation id, and never written by a run:
+    rescans regenerate invocations, this survives them."""
+
+    __tablename__ = "endpoint_annotations"
+
+    engagement_id: Mapped[str] = mapped_column(Text, ForeignKey("engagements.id", ondelete="CASCADE"), primary_key=True)
+    host: Mapped[str] = mapped_column(Text, primary_key=True)
+    owning_team: Mapped[str | None] = mapped_column(Text)
+    contact: Mapped[str | None] = mapped_column(Text)
+    conversation_status: Mapped[str] = mapped_column(Text, nullable=False, server_default="not_started")
+    target_date: Mapped[datetime.date | None] = mapped_column(Date)
+    notes: Mapped[str | None] = mapped_column(Text)
+    # A human's statement that one of the estate's repositories serves this
+    # host: HTTP calls to it are matched against that repository's routes.
+    served_by_repository_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("repositories.id", ondelete="SET NULL", name="fk_endpoint_annotations_served_by_repository")
+    )
+    updated_by: Mapped[str | None] = mapped_column(Text)
+    updated_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    __table_args__ = (
+        CheckConstraint(f"conversation_status IN {CONVERSATION_STATUS}", name="ck_endpoint_annotations_status"),
+    )
+
+
+class PackageEstateRow(Base):
+    """One row per package per engagement (Part D)."""
+
+    __tablename__ = "package_estate"
+
+    engagement_id: Mapped[str] = mapped_column(Text, ForeignKey("engagements.id", ondelete="CASCADE"), primary_key=True)
+    package_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    repository_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    repositories: Mapped[list] = mapped_column(JSONB, nullable=False)
+    project_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    projects: Mapped[list] = mapped_column(JSONB, nullable=False)
+    versions_in_use: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    estate_drift: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    # Versions differ between repositories, not only within one.
+    cross_repository_drift: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    recommended_version: Mapped[str | None] = mapped_column(Text)
+    outcomes: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    breaking_members: Mapped[list] = mapped_column(JSONB, nullable=False)
+    flags: Mapped[dict] = mapped_column(JSONB, nullable=False)
+
+
+class DependencyEdge(Base):
+    """A project depending on another (E1)."""
+
+    __tablename__ = "dependency_edges"
+
+    engagement_id: Mapped[str] = mapped_column(Text, ForeignKey("engagements.id", ondelete="CASCADE"), primary_key=True)
+    from_project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), primary_key=True)
+    to_project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), primary_key=True)
+    edge_kind: Mapped[str] = mapped_column(Text, primary_key=True)
+    cross_repository: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    via_package: Mapped[str | None] = mapped_column(Text)
+    client_feed: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+
+    __table_args__ = (CheckConstraint(f"edge_kind IN {DEPENDENCY_EDGE_KIND}", name="ck_dependency_edges_kind"),)
+
+
+class SharedLibrary(Base):
+    """A project depended on from two or more repositories (E2)."""
+
+    __tablename__ = "shared_libraries"
+
+    engagement_id: Mapped[str] = mapped_column(Text, ForeignKey("engagements.id", ondelete="CASCADE"), primary_key=True)
+    project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), primary_key=True)
+    consumer_repository_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    consumer_project_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    consumers: Mapped[list] = mapped_column(JSONB, nullable=False)
+
+
+class DependencyCycle(Base):
+    """Projects that depend on each other (E3): wave planning treats a cycle
+    as one unit."""
+
+    __tablename__ = "dependency_cycles"
+
+    engagement_id: Mapped[str] = mapped_column(Text, ForeignKey("engagements.id", ondelete="CASCADE"), primary_key=True)
+    cycle_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    member_project_ids: Mapped[list] = mapped_column(JSONB, nullable=False)
+    cross_repository: Mapped[bool] = mapped_column(Boolean, nullable=False)
+
+
+class OriginReconciliation(Base):
+    """Step 4's origin, corrected with the estate in view (E4). Step 4's own
+    rows are never rewritten — its next rescan would revert them; consumers
+    apply this overlay."""
+
+    __tablename__ = "origin_reconciliations"
+
+    engagement_id: Mapped[str] = mapped_column(Text, ForeignKey("engagements.id", ondelete="CASCADE"), primary_key=True)
+    entry_point_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    original_origin: Mapped[str] = mapped_column(Text, nullable=False)
+    reconciled_origin: Mapped[str] = mapped_column(Text, nullable=False)
+    declaring_repository_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("repositories.id", ondelete="CASCADE"), nullable=False)
+    declaring_project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class IntegrationEdge(Base):
+    """One invoked operation of a call site matched to the entry point that
+    serves it (31-STEP-011 Part I): SOAP by contract and operation, HTTP by
+    verb and route template, gRPC by service and method. Same-repository
+    edges are kept, flagged. Replaced per run."""
+
+    __tablename__ = "integration_edges"
+
+    engagement_id: Mapped[str] = mapped_column(Text, ForeignKey("engagements.id", ondelete="CASCADE"), primary_key=True)
+    edge_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    mechanism: Mapped[str] = mapped_column(Text, nullable=False)
+    caller_repository_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    caller_project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    invocation_id: Mapped[str] = mapped_column(Text, nullable=False)
+    call_site_file: Mapped[str] = mapped_column(Text, nullable=False)
+    call_site_line: Mapped[int] = mapped_column(Integer, nullable=False)
+    operation: Mapped[str] = mapped_column(Text, nullable=False)
+    callee_repository_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    callee_project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    entry_point_id: Mapped[str] = mapped_column(Text, nullable=False)
+    match_method: Mapped[str] = mapped_column(Text, nullable=False)
+    confidence: Mapped[float] = mapped_column(Numeric(3, 2), nullable=False)
+    same_repository: Mapped[bool] = mapped_column(Boolean, nullable=False)
+
+    __table_args__ = (Index("ix_integration_edges_entry_point", "engagement_id", "entry_point_id"),)
+
+
+class IntegrationEntryPoint(Base):
+    """Per matchable entry point: whether an internal caller was found. Never
+    'unused' — an operation no estate code calls may be called from outside
+    the estate."""
+
+    __tablename__ = "integration_entry_points"
+
+    engagement_id: Mapped[str] = mapped_column(Text, ForeignKey("engagements.id", ondelete="CASCADE"), primary_key=True)
+    entry_point_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    repository_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    kind: Mapped[str] = mapped_column(Text, nullable=False)
+    operation: Mapped[str] = mapped_column(Text, nullable=False)
+    matchable: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    internal_caller: Mapped[str] = mapped_column(Text, nullable=False)
+    caller_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    cross_repository_caller_count: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    __table_args__ = (
+        CheckConstraint("internal_caller IN ('internal_caller_found', 'no_internal_caller_found')",
+                        name="ck_integration_entry_points_internal_caller"),
+    )
+
+
+class EntryPointBackend(Base):
+    """Per step 4 entry point, the outbound call sites it reaches (step 5,
+    1.3.0): status yes/no/unresolved, each call with its depth, the methods
+    walked and whether it is conditional or in a loop, and the paths not
+    followed (another class, an injected dependency, too deep). Written by
+    step 5 and replaced per repository with its other rows."""
+
+    __tablename__ = "entry_point_backend"
+
+    repository_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("repositories.id", ondelete="CASCADE"), primary_key=True
+    )
+    entry_point_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    project_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False)
+    calls: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    unresolved: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    step_execution_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+
+    __table_args__ = (CheckConstraint("status IN ('yes', 'no', 'unresolved')", name="ck_entry_point_backend_status"),)

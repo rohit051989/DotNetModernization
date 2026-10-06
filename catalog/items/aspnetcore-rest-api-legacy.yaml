@@ -1,0 +1,72 @@
+category: framework
+deleted: false
+description: |-
+  REST API built on ASP.NET Core using the classic `Startup.cs`
+  `ConfigureServices` / `Configure` pair with `WebHost.CreateDefaultBuilder`
+  or `Host.CreateDefaultBuilder`. Typically hosted in IIS behind the
+  ASP.NET Core Module.
+
+  **The discriminator is the hosting model, not the version.** Core 2.1 and
+  Core 3.1 REST APIs are structurally identical — same Startup.cs, same
+  controllers, same Microsoft.AspNetCore.Mvc — and one accelerator handles
+  both by reading `framework_version`. Projects on the modern
+  `WebApplication.CreateBuilder` model belong to `aspnetcore-minimal-api`
+  or `aspnetcore-mvc-modern` instead, and are disqualified here explicitly.
+detection:
+  match:
+    all:
+    - id: startup-class
+      signal:
+        name: STARTUP_CLASS_ENTRY_POINT
+    any:
+    - id: webhost-builder
+      signal:
+        name: WEBHOST_CREATE_DEFAULT_BUILDER_ENTRY_POINT
+    - id: host-builder
+      signal:
+        name: HOST_CREATE_DEFAULT_BUILDER_ENTRY_POINT
+    atLeast: []
+    metadata: []
+    none:
+    - id: not-webapp-builder
+      signal:
+        name: WEB_APPLICATION_CREATE_BUILDER_ENTRY_POINT
+excluded_roles: []
+id: aspnetcore-rest-api-legacy
+name: Legacy-hosted ASP.NET Core REST API
+owner_team: null
+resolutions:
+- consumer_impact: none
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: Retarget to .NET 10, move to WebApplicationBuilder, keep controller classes and routes exactly as they are.
+  effort: low
+  id: net10-api-controllers-preserved
+  is_default: true
+  linux_compatible: true
+  name: .NET 10 Web API, controllers preserved
+  notes: |-
+    Prerequisites: Repository builds cleanly on the current framework. Contract snapshot captured before any change.
+
+    Known limitations: Pins Newtonsoft.Json explicitly rather than adopting System.Text.Json, to guarantee payload parity. Serializer modernization is deferred to a later pass.
+  status: active
+  target_description: .NET 10 + ASP.NET Core, container on OCP4
+- consumer_impact: none
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: Retarget and additionally rewrite controllers as minimal API endpoints.
+  effort: medium
+  id: net10-api-minimal
+  is_default: false
+  linux_compatible: true
+  name: .NET 10 Minimal API
+  notes: |-
+    Prerequisites: Good test coverage, since endpoint code is restructured rather than retargeted.
+
+    Known limitations: External contract is unchanged but internal structure churns significantly, enlarging the review surface for no consumer-visible benefit. Not the default choice under a lift-and-shift posture.
+  status: active
+  target_description: .NET 10 + Minimal APIs, container on OCP4
+scope: application
+status: active

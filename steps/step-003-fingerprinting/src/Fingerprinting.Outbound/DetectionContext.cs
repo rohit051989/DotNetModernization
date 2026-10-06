@@ -23,6 +23,11 @@ public sealed class DetectionContext
 
     public IReadOnlyList<UncLiteral> UncLiterals { get; init; } = [];
 
+    /// <summary>WCF client endpoint entries a client has claimed, shared by
+    /// every project's context (1.3.0): a class library's client claims the
+    /// entry in its host's configuration.</summary>
+    public HashSet<string> ClaimedEndpoints { get; init; } = new(StringComparer.OrdinalIgnoreCase);
+
     /// <summary>Hand-written source. Generated files are loaded only so
     /// the SOAP detector can read a service reference's binding (Part C2).</summary>
     public IEnumerable<ParsedFile> SourceFiles => Project.Files.Where(f => !f.IsGenerated);
@@ -109,6 +114,7 @@ public static class DetectionSupport
             var source = environmentValue.Parts.OfType<TextPart>().Select(p => p.Source)
                              .FirstOrDefault(s => s is not null && s.SourceFile != "(code default)")
                          ?? environmentValue.Parts.OfType<TextPart>().Select(p => p.Source).FirstOrDefault(s => s is not null);
+            var entry = source is null ? null : resolver.Config.EntryFor(source.SourceFile, source.KeyPath);
             bindings.Add(new EnvironmentBinding
             {
                 Environment = environment,
@@ -121,6 +127,10 @@ public static class DetectionSupport
                 Resolution = environmentEndpoint.Resolution,
                 Placeholder = environmentEndpoint.Placeholder,
                 Authentication = environmentValue.Facts is { } facts ? Authentication(facts) : null,
+                HostProject = entry is null ? null : resolver.Config.HostFor(resolver.Project.ProjectDirectory, entry.Directory),
+                DeployParameter = entry?.Link?.Parameter,
+                LinkMethod = entry?.Link?.Method,
+                LinkConfidence = entry?.Link?.Confidence,
             });
         }
 

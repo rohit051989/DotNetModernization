@@ -62,6 +62,18 @@ class OccurrenceSource(BaseModel):
     )
 
 
+class ItemAttribute(BaseModel):
+    """An application-scope item's recorded attribute: a signal whose
+    distinct values describe the occurrence — wcf-service's hosting, from
+    WCF_SERVICE_HOSTING. Written as the occurrence's value; never part of
+    whether the item applies."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    signal: str = Field(description="The signal whose distinct values are recorded.")
+    label: str = Field(description="What the values are, e.g. 'hosting'.")
+
+
 class ItemDetection(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -79,6 +91,11 @@ class ItemDetection(BaseModel):
     occurrence_source: OccurrenceSource | None = Field(
         default=None,
         description="Required for occurrence scope, rejected for application scope.",
+    )
+    attribute: ItemAttribute | None = Field(
+        default=None,
+        description="Application scope only: a signal whose distinct values are recorded as the occurrence's value "
+        "(e.g. hosting). Does not affect whether the item applies.",
     )
 
 
@@ -105,6 +122,8 @@ def referenced_signal_names(detection: dict) -> set[str]:
     if source:
         names.add(source["signal"])
         names.update((source.get("also") or []))
+    if detection.get("attribute"):
+        names.add(detection["attribute"]["signal"])
     return names
 
 
@@ -211,6 +230,15 @@ def validate_detection(scope: str, detection: dict, registered: dict[str, str]) 
                     "code": "OCCURRENCE_SOURCE_HAS_NO_LOCATION",
                 }
             )
+
+    if normalised.get("attribute") is not None and scope != "application":
+        problems.append(
+            {
+                "field": "detection.attribute",
+                "message": "An attribute is recorded on an application-scope occurrence; an occurrence-scope item's value is its located value.",
+                "code": "ATTRIBUTE_NOT_ALLOWED",
+            }
+        )
 
     if problems:
         raise errors(422, problems)

@@ -1,0 +1,53 @@
+category: logging
+deleted: false
+description: |-
+  A Serilog File sink configured with a Windows drive-letter or UNC path. On OCP4 the path does not exist and logs belong on stdout for EFK. RBC: n600-AccountOpenCoreAPI has 18 hardcoded Windows paths across 16 appsettings files. One occurrence per appsettings file, so a batching: all approach can treat the set as one coherent change.
+  Conversion ordering (docs/28 Part E): runs BEFORE hardcoded-windows-path. Removing the sink removes its path; reversed, a path about to be deleted gets externalised first and the work list carries a spurious occurrence. Becomes a depends_on entry.
+detection:
+  match:
+    all:
+    - id: file-sink-windows-path
+      signal:
+        name: SERILOG_FILE_SINK_CONFIG
+        value:
+          regex: ^([A-Za-z]:[\\/]|\\\\)
+    any: []
+    atLeast: []
+    metadata: []
+    none: []
+  occurrence_source:
+    group_by: source_path
+    signal: SERILOG_FILE_SINK_CONFIG
+excluded_roles: []
+id: serilog-file-sink
+name: Serilog file sink writing to a Windows path
+owner_team: null
+resolutions:
+- consumer_impact: low
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: Remove the file sink; keep the console sink with CompactJsonFormatter for EFK.
+  effort: low
+  id: console-json-only
+  is_default: true
+  linux_compatible: true
+  name: Console JSON only
+  notes: null
+  status: active
+  target_description: Serilog console sink, CompactJsonFormatter, stdout collected by EFK
+- consumer_impact: medium
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: Replace the file sink with an OpenTelemetry log exporter.
+  effort: medium
+  id: otlp-exporter
+  is_default: false
+  linux_compatible: true
+  name: OpenTelemetry exporter
+  notes: null
+  status: active
+  target_description: Serilog.Sinks.OpenTelemetry to the platform collector
+scope: occurrence
+status: active

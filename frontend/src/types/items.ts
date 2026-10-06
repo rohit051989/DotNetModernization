@@ -180,6 +180,19 @@ export interface ItemResolution {
   deleted_at: string | null
   created_at: string
   updated_at: string
+  /** Part U: what choosing this resolution means for each dependent item. */
+  derivations?: ResolutionDerivation[]
+}
+
+export type DerivationAction = 'derive' | 'not_derived' | 'subsume' | 'not_subsumed'
+
+/** One row of `resolution_derivations`: master catalog data. */
+export interface ResolutionDerivation {
+  dependent_item_id: string
+  action: DerivationAction
+  dependent_resolution_id: string | null
+  applies_to: 'all' | 'internal_clients'
+  reason: string
 }
 
 export interface ResolutionWriteInput {
@@ -218,8 +231,50 @@ export interface EngagementDecision {
   decision_date: string | null
   status: EngagementDecisionStatus
   warnings: string[]
+  /** Part U: 'derived' — follows another item's decision (derived_from). */
+  source?: 'manual' | 'derived'
+  derived_from?: DecisionLink | null
+  /** Decided by hand where a derivation applies; what it would give is derived_from.would_derive. */
+  overrides_derivation?: boolean
+  /** An override made against a leading decision that has since changed. */
+  needs_review?: boolean
+  review_note?: string | null
+  followers?: DecisionLink[]
   created_at: string
   updated_at: string
+}
+
+/** One end of a Part U dependency between two decisions. */
+export interface DecisionLink {
+  decision_id: string
+  item_id: string
+  item_name: string
+  resolution_id: string | null
+  resolution_name: string | null
+  status: string
+  source: 'manual' | 'derived'
+  /** The leading resolution the dependent was derived from or overridden against. */
+  derived_against_resolution_id: string | null
+  derivation_reason: string | null
+  would_derive: string | null
+  overrides_derivation: boolean
+  needs_review: boolean
+}
+
+export interface WorkListItemNote {
+  subsumed_by: { item_id: string; decision_id: string; resolution_id: string; resolution_name: string; reason: string } | null
+  /** The leading item this one depends on. */
+  follows: string | null
+  action: DerivationAction | null
+  /** Whether the leading decision settles this item here; null while the leader is undecided. */
+  applies: boolean | null
+  note: string | null
+}
+
+export interface WorkListDecisions {
+  engagement_id: string
+  decisions: Record<string, EngagementDecision>
+  projects: { project_id: string; items: Record<string, WorkListItemNote> }[]
 }
 
 /** Partial-update semantics: an OMITTED field keeps its current value; a

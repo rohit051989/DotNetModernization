@@ -56,7 +56,8 @@ public static class HttpClientDetector
         switch (type)
         {
             case "HttpClient" or "WebClient" when BaseAddressIn(creation.Initializer) is { } baseAddress:
-                return Make(context, file, creation, baseAddress, type, clientName: null, typedClient: null, 1.0, []);
+                return Make(context, file, creation, baseAddress, type, clientName: null, typedClient: null, 1.0, [],
+                    endpoint => OperationTracer.HttpClientRequests(context, file, creation, endpoint.Path, null, null));
             case "RestClient" when creation.ArgumentList?.Arguments.FirstOrDefault()?.Expression is { } argument:
             {
                 // new RestClient("https://…") or new RestClient(new RestClientOptions("https://…"))
@@ -64,7 +65,8 @@ public static class HttpClientDetector
                           && SyntaxHelpers.RightmostTypeName(options.Type) == "RestClientOptions"
                     ? inner.Expression
                     : argument;
-                return Make(context, file, creation, url, "RestSharp", null, null, 1.0, []);
+                return Make(context, file, creation, url, "RestSharp", null, null, 1.0, [],
+                    _ => [OperationTracer.UnresolvedAt(CallSiteOf(file, creation), "RestSharp requests are not traced")]);
             }
 
             default:
@@ -95,7 +97,8 @@ public static class HttpClientDetector
         }
 
         return Make(context, file, assignment, assignment.Right, receiverType ?? "HttpClient", null, null, receiverType is null ? 0.8 : 1.0,
-            receiverType is null ? ["BaseAddress set on a lambda parameter taken to be an HttpClient"] : []);
+            receiverType is null ? ["BaseAddress set on a lambda parameter taken to be an HttpClient"] : [],
+            endpoint => OperationTracer.HttpClientRequests(context, file, assignment, endpoint.Path, null, null));
     }
 
     private static Detected? FromInvocation(DetectionContext context, ParsedFile file, InvocationExpressionSyntax invocation)
@@ -154,7 +157,8 @@ public static class HttpClientDetector
             GenericNameSyntax generic => SyntaxHelpers.RightmostTypeName(generic.TypeArgumentList.Arguments[^1]),
             _ => null,
         };
-        return Make(context, file, invocation, baseAddress, "IHttpClientFactory", clientName, typed, 1.0, []);
+        return Make(context, file, invocation, baseAddress, "IHttpClientFactory", clientName, typed, 1.0, [],
+            endpoint => OperationTracer.HttpClientRequests(context, file, invocation, endpoint.Path, typed, clientName));
     }
 
     private static Detected? Request(
@@ -173,7 +177,8 @@ public static class HttpClientDetector
         }
 
         return Make(context, file, invocation, url, library, null, null, first is HolePart ? 0.8 : 1.0,
-            first is HolePart ? ["URL supplied at run time"] : []);
+            first is HolePart ? ["URL supplied at run time"] : [],
+            _ => OperationTracer.HttpRequest(context, file, invocation, url));
     }
 
     /// <summary>The receiver is a local or field initialized with
@@ -196,7 +201,7 @@ public static class HttpClientDetector
 
     private static Detected Make(
         DetectionContext context, ParsedFile file, SyntaxNode site, ExpressionSyntax url, string library, string? clientName, string? typedClient,
-        double confidence, IReadOnlyList<string> reasons)
+        double confidence, IReadOnlyList<string> reasons, Func<Endpoint, IReadOnlyList<InvokedOperation>> operations)
     {
         var (endpoint, bindings, _) = Evaluate(context.Resolver, r => r.Resolve(url, CallSiteEvaluator.Empty), Endpoints.FromValue);
         var credentials = HttpCredentials.Find(context, file, site);
@@ -218,6 +223,7 @@ public static class HttpClientDetector
             Credentials = credentials,
             Http = new HttpDetail { Library = library, ClientName = clientName, TypedClient = typedClient },
             CallSites = [CallSiteOf(file, site)],
+            Operations = operations(endpoint),
             LinuxCompatibility = Pending,
             Confidence = Math.Round(confidence, 2),
             ConfidenceReasons = allReasons,
@@ -332,7 +338,7 @@ public static class GrpcClientDetector
                     case InvocationExpressionSyntax invocation when SyntaxHelpers.InvokedName(invocation) == "ForAddress"
                                                                     && SyntaxHelpers.Receiver(invocation)?.ToString() is "GrpcChannel" or "Grpc.Net.Client.GrpcChannel"
                                                                     && invocation.ArgumentList.Arguments.FirstOrDefault()?.Expression is { } address:
-                        yield return Make(context, file, invocation, address, ContractOverChannel(invocation), url: true);
+                        yield return Make(context, file, invocation, address, ContractOverChannel(invocation), url: true, registration: false);
                         break;
 
                     case InvocationExpressionSyntax invocation when SyntaxHelpers.InvokedName(invocation) == "AddGrpcClient":
@@ -345,7 +351,7 @@ public static class GrpcClientDetector
                             : null;
                         if (configured is not null)
                         {
-                            yield return Make(context, file, invocation, configured, contract, url: true);
+                            yield return Make(context, file, invocation, configured, contract, url: true, registration: true);
                         }
 
                         break;
@@ -354,7 +360,7 @@ public static class GrpcClientDetector
                     case ObjectCreationExpressionSyntax creation when SyntaxHelpers.RightmostTypeName(creation.Type) == "Channel"
                                                                       && creation.ArgumentList?.Arguments.Count >= 2
                                                                       && creation.ArgumentList.Arguments.Any(a => a.Expression.ToString().Contains("Credentials", StringComparison.Ordinal)):
-                        yield return Make(context, file, creation, creation.ArgumentList.Arguments[0].Expression, ContractOverChannel(creation), url: false);
+                        yield return Make(context, file, creation, creation.ArgumentList.Arguments[0].Expression, ContractOverChannel(creation), url: false, registration: false);
                         break;
                 }
             }
@@ -388,7 +394,7 @@ public static class GrpcClientDetector
         return name is not null && name.EndsWith("Client", StringComparison.Ordinal) && name.Length > "Client".Length ? name[..^"Client".Length] : name;
     }
 
-    private static Detected Make(DetectionContext context, ParsedFile file, SyntaxNode site, ExpressionSyntax address, string? contract, bool url)
+    private static Detected Make(DetectionContext context, ParsedFile file, SyntaxNode site, ExpressionSyntax address, string? contract, bool url, bool registration)
     {
         var (endpoint, bindings, _) = Evaluate(context.Resolver, r => r.Resolve(address, CallSiteEvaluator.Empty),
             value => url ? Endpoints.FromValue(value)
@@ -406,6 +412,7 @@ public static class GrpcClientDetector
             Credentials = credentials,
             Grpc = new GrpcDetail { Contract = contract },
             CallSites = [CallSiteOf(file, site)],
+            Operations = OperationTracer.Grpc(context, file, site, contract, registration),
             LinuxCompatibility = Pending,
             Confidence = endpoint.Resolution == Resolutions.Resolved ? 1.0 : 0.9,
             ConfidenceReasons = endpoint.Resolution == Resolutions.Resolved ? [] : [$"endpoint {endpoint.Resolution}"],

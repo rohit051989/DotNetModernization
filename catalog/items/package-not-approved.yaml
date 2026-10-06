@@ -1,0 +1,49 @@
+category: dependencies
+deleted: false
+description: The newest compatible version of a direct package on nuget.org is newer than anything the client's own feed (Artifactory, Azure Artifacts) holds, so the upgrade needs that version approved into the client feed first. The client feed is the authority; nuget.org is consulted for comparison only. Raised only when client feeds are declared. The value carries both versions. One occurrence per project per package.
+detection:
+  match:
+    all:
+    - id: not-in-client-feed
+      signal:
+        name: PACKAGE_NOT_IN_CLIENT_FEED
+    any: []
+    atLeast: []
+    metadata: []
+    none: []
+  occurrence_source:
+    group_by: source_path_and_value
+    signal: PACKAGE_NOT_IN_CLIENT_FEED
+excluded_roles: []
+id: package-not-approved
+name: Package version not in the client feed
+owner_team: null
+resolutions:
+- consumer_impact: none
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: Upgrade only as far as the client feed allows.
+  effort: low
+  id: package-not-approved-latest-approved
+  is_default: false
+  linux_compatible: true
+  name: Stay on the latest approved version
+  notes: null
+  status: active
+  target_description: The newest version the client feed holds
+- consumer_impact: none
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: Raise the newer version through the client's package-approval process, then upgrade.
+  effort: low
+  id: package-not-approved-request-approval
+  is_default: true
+  linux_compatible: true
+  name: Request approval into the client feed
+  notes: null
+  status: active
+  target_description: The public version, mirrored into the client feed
+scope: occurrence
+status: active

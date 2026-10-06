@@ -29,6 +29,49 @@ public sealed class EntryPointDatabase(string connectionString)
             await delete.ExecuteNonQueryAsync(cancellationToken);
         }
 
+        // 2.2.0: this step's architecture signals, under its own extractor
+        // name — step 3's and step 6's rows are left alone — so item
+        // detection matches them like any other signal.
+        await using (var deleteSignals = new NpgsqlCommand(
+                         "DELETE FROM fingerprint_signals WHERE repository_id = @rid AND extractor = @extractor", connection, transaction))
+        {
+            deleteSignals.Parameters.AddWithValue("rid", artifact.RepositoryId);
+            deleteSignals.Parameters.AddWithValue("extractor", ArchitectureSignals.Extractor);
+            await deleteSignals.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        foreach (var project in artifact.Projects)
+        {
+            foreach (var signal in project.Signals)
+            {
+                await using var insert = new NpgsqlCommand(
+                    """
+                    INSERT INTO fingerprint_signals
+                        (project_id, repository_id, signal_name, signal_category, signal_type, value, source_type, source_path,
+                         evidence_kind, occurrence_count, evidence, extractor, extraction_confidence)
+                    VALUES (@pid, @rid, @name, @category, @type, @value, @source_type, @source_path, @kind, @count, @evidence, @extractor, @confidence)
+                    """,
+                    connection, transaction);
+                insert.Parameters.AddWithValue("pid", project.ProjectId);
+                insert.Parameters.AddWithValue("rid", artifact.RepositoryId);
+                insert.Parameters.AddWithValue("name", signal.Name);
+                insert.Parameters.AddWithValue("category", signal.Category);
+                insert.Parameters.AddWithValue("type", signal.Type);
+                insert.Parameters.AddWithValue("value", (object?)signal.Value ?? DBNull.Value);
+                insert.Parameters.AddWithValue("source_type", signal.SourceType);
+                insert.Parameters.AddWithValue("source_path", (object?)signal.SourcePath ?? DBNull.Value);
+                insert.Parameters.AddWithValue("kind", (object?)signal.EvidenceKind ?? DBNull.Value);
+                insert.Parameters.AddWithValue("count", signal.OccurrenceCount);
+                insert.Parameters.Add(new NpgsqlParameter("evidence", NpgsqlDbType.Jsonb)
+                {
+                    Value = System.Text.Json.JsonSerializer.Serialize(signal.Evidence, DeterministicJson.Options),
+                });
+                insert.Parameters.AddWithValue("extractor", signal.Extractor);
+                insert.Parameters.AddWithValue("confidence", signal.ExtractionConfidence);
+                await insert.ExecuteNonQueryAsync(cancellationToken);
+            }
+        }
+
         foreach (var project in artifact.Projects)
         {
             foreach (var entry in project.EntryPoints)

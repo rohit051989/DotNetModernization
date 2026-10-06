@@ -1,0 +1,53 @@
+category: integration
+deleted: false
+description: 'An ASP.NET (.asmx) SOAP web service. It has no .NET Core equivalent. Converting it is one decision per project, like WCF, even when the project has several .asmx files. It can sit alongside Web Forms or MVC in the same project: those are separate items, since converting the UI does not convert the service.'
+detection:
+  match:
+    all: []
+    any:
+    - id: asmx-file
+      signal:
+        name: ASMX_FILE
+    - id: web-method
+      signal:
+        name: WEB_METHOD_ATTRIBUTE
+    - id: exposes-asmx-service
+      signal:
+        name: EXPOSES_ASMX_SERVICE
+    atLeast: []
+    metadata: []
+    none: []
+excluded_roles:
+- TEST
+id: asmx-service
+name: ASMX web service
+owner_team: null
+resolutions:
+- consumer_impact: none
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: Re-host the operations on CoreWCF with BasicHttpBinding, preserving the SOAP contract and WSDL for existing callers.
+  effort: medium
+  id: corewcf-basichttp
+  is_default: true
+  linux_compatible: true
+  name: CoreWCF with BasicHttpBinding
+  notes: null
+  status: active
+  target_description: CoreWCF on .NET 10, BasicHttpBinding
+- consumer_impact: high
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: Replace the SOAP operations with ASP.NET Core HTTP endpoints; every caller changes.
+  effort: medium
+  id: rest-api-rewrite
+  is_default: false
+  linux_compatible: true
+  name: Rewrite as a REST API
+  notes: null
+  status: active
+  target_description: ASP.NET Core minimal API or controllers
+scope: application
+status: active

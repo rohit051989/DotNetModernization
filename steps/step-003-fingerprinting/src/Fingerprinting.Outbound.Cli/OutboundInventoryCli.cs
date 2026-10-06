@@ -15,13 +15,15 @@ namespace Fingerprinting.Outbound.Cli;
 public static class OutboundInventoryCli
 {
     public const string ArtifactType = "outbound-invocation-inventory";
-    public const string ArtifactVersion = "1.1.0";
+    public const string ArtifactVersion = "1.3.0";
     public const string OutputFileName = "outbound-invocation-inventory.json";
 
     private const string InventoryType = "solution-project-inventory";
     private const string InventoryRange = "^2.0.0";
     private const string FingerprintType = "application-fingerprint";
     private const string FingerprintRange = "^1.2.0";
+    private const string EntryPointsType = "entry-point-inventory";
+    private const string EntryPointsRange = "^2.0.0";
     private const string UncSignal = "UNC_PATH_LITERAL";
 
     private static readonly JsonSerializerOptions CamelCaseRead = new()
@@ -32,9 +34,9 @@ public static class OutboundInventoryCli
 
     public static async Task<int> RunAsync(string[] args, TextReader input, TextWriter output, TextWriter error)
     {
-        if (TryParseStandaloneArgs(args, out var repo, out var inventory, out var fingerprint, out var outDir))
+        if (TryParseStandaloneArgs(args, out var repo, out var inventory, out var fingerprint, out var outDir, out var entryPoints, out var globs))
         {
-            return await RunStandaloneAsync(repo, inventory, fingerprint, outDir, error);
+            return await RunStandaloneAsync(repo, inventory, fingerprint, outDir, entryPoints, globs, error);
         }
 
         return await StepEnvelopeRunner.RunAsync(input, output, error, ExecuteAsync);
@@ -43,9 +45,12 @@ public static class OutboundInventoryCli
     // ---------- standalone ----------
 
     private static bool TryParseStandaloneArgs(
-        string[] args, out string repo, out string inventory, out string fingerprint, out string outDir)
+        string[] args, out string repo, out string inventory, out string fingerprint, out string outDir, out string? entryPoints,
+        out IReadOnlyList<string> globs)
     {
         repo = inventory = fingerprint = outDir = "";
+        entryPoints = null;
+        globs = [];
         string? r = null, i = null, f = null, o = null;
         for (var index = 0; index < args.Length; index++)
         {
@@ -55,6 +60,11 @@ public static class OutboundInventoryCli
                 case "--inventory" when index + 1 < args.Length: i = args[++index]; break;
                 case "--fingerprint" when index + 1 < args.Length: f = args[++index]; break;
                 case "--out" when index + 1 < args.Length: o = args[++index]; break;
+                // 1.3.0, both optional: step 4's artifact, and SetParameters globs (comma-separated).
+                case "--entry-points" when index + 1 < args.Length: entryPoints = Path.GetFullPath(args[++index]); break;
+                case "--deploy-globs" when index + 1 < args.Length:
+                    globs = args[++index].Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                    break;
             }
         }
 
@@ -79,7 +89,8 @@ public static class OutboundInventoryCli
         return true;
     }
 
-    private static async Task<int> RunStandaloneAsync(string repoPath, string inventoryPath, string fingerprintPath, string outDir, TextWriter error)
+    private static async Task<int> RunStandaloneAsync(
+        string repoPath, string inventoryPath, string fingerprintPath, string outDir, string? entryPointsPath, IReadOnlyList<string> globs, TextWriter error)
     {
         try
         {
@@ -89,7 +100,11 @@ public static class OutboundInventoryCli
             // No database: ids come from the fingerprint, which carries the
             // real projects.id values.
             var fingerprintIds = fingerprint.Projects.ToDictionary(p => p.ProjectPath, p => p.ProjectId, StringComparer.Ordinal);
-            var input = BuildInput(inventory, fingerprint, path => fingerprintIds.TryGetValue(path, out var id) ? id : null);
+            var input = BuildInput(inventory, fingerprint, path => fingerprintIds.TryGetValue(path, out var id) ? id : null) with
+            {
+                DeployParameterGlobs = globs,
+                EntryPoints = entryPointsPath is null ? [] : await ReadEntryPointsAsync(entryPointsPath),
+            };
 
             var artifact = await new OutboundPipeline().RunAsync(input, repoPath, CancellationToken.None);
             var outputPath = await WriteArtifactAsync(artifact, outDir);
@@ -149,7 +164,42 @@ public static class OutboundInventoryCli
         }
 
         var projectIds = await platform.ResolveProjectIdsAsync(inventory.RepositoryId, CancellationToken.None);
-        var input = BuildInput(inventory, fingerprint, path => projectIds.TryGetValue(path, out var id) ? id : null);
+
+        // 1.3.0: step 4's entry points, for which backend calls each reaches.
+        // Optional: without them the reach is simply not computed, and said so.
+        var entryPointsRef = WiredInput(context, EntryPointsType);
+        IReadOnlyList<InboundEntryPoint> entryPoints = [];
+        if (entryPointsRef is not null)
+        {
+            if (!ArtifactVersions.SatisfiesCaret(entryPointsRef.ArtifactVersion, EntryPointsRange))
+            {
+                return StepEnvelopeRunner.Failed($"{entryPointsRef.ArtifactType} {entryPointsRef.ArtifactVersion} does not satisfy {EntryPointsRange}");
+            }
+
+            entryPoints = await ReadEntryPointsAsync(ArtifactUri.ToLocalPath(entryPointsRef.Uri));
+        }
+
+        var input = BuildInput(inventory, fingerprint, path => projectIds.TryGetValue(path, out var id) ? id : null) with
+        {
+            DeployParameterGlobs = await platform.GetDeployParameterGlobsAsync(inventory.RepositoryId, CancellationToken.None),
+            EntryPoints = entryPoints,
+        };
+        if (entryPointsRef is null)
+        {
+            input = input with
+            {
+                Warnings =
+                [
+                    .. input.Warnings,
+                    new Warning
+                    {
+                        Code = WarningCodes.ProjectDirectoryNotFound,
+                        Message = "entry-point-inventory was not wired: which backend calls each entry point reaches is not computed.",
+                        Severity = WarningSeverities.Warning,
+                    },
+                ],
+            };
+        }
 
         var artifact = await new OutboundPipeline().RunAsync(input, repositoryRoot, CancellationToken.None);
         var outputPath = await WriteArtifactAsync(artifact, context.OutputDir);
@@ -236,10 +286,40 @@ public static class OutboundInventoryCli
                 .Where(u => u.MatchedValue.Length > 0)
                 .ToList();
 
-            projects.Add(new OutboundInputProject(project.RelativePath, projectId.Value, skipReason, project.Packages.Select(p => p.PackageName).ToList(), unc));
+            projects.Add(new OutboundInputProject(project.RelativePath, projectId.Value, skipReason, project.Packages.Select(p => p.PackageName).ToList(), unc)
+            {
+                OutputType = project.OutputType,
+                ProjectSdk = project.ProjectSdk,
+            });
         }
 
-        return new OutboundInput(inventory.RepositoryId, inventory.RepositorySlug, FingerprintType, projects, warnings);
+        return new OutboundInput(inventory.RepositoryId, inventory.RepositorySlug, FingerprintType, projects, warnings)
+        {
+            ProjectReferences = inventory.ProjectReferences
+                .Where(r => r.ReferencedRelativePath is not null && r.ResolutionStatus is null or "resolved")
+                .Select(r => (r.SourceRelativePath, r.ReferencedRelativePath!))
+                .ToList(),
+        };
+    }
+
+    // ---------- step 4's entry points (1.3.0) ----------
+
+    private sealed record EntryPointSlice(IReadOnlyList<EntryPointSliceProject> Projects);
+
+    private sealed record EntryPointSliceProject(string ProjectPath, IReadOnlyList<EntryPointSliceRecord>? EntryPoints);
+
+    private sealed record EntryPointSliceRecord(string EntryPointId, string Kind, EntryPointSliceHandler Handler);
+
+    private sealed record EntryPointSliceHandler(string Type, string? Member, string FilePath, int LineStart);
+
+    private static async Task<IReadOnlyList<InboundEntryPoint>> ReadEntryPointsAsync(string path)
+    {
+        var slice = JsonSerializer.Deserialize<EntryPointSlice>(await File.ReadAllTextAsync(path), CamelCaseRead)
+                    ?? throw new InvalidOperationException("entry-point-inventory deserialized to null");
+        return slice.Projects
+            .SelectMany(p => (p.EntryPoints ?? []).Select(e => new InboundEntryPoint(
+                e.EntryPointId, p.ProjectPath, e.Kind, e.Handler.Type, e.Handler.Member, e.Handler.FilePath, e.Handler.LineStart)))
+            .ToList();
     }
 
     private static async Task<SolutionProjectInventory> ReadInventoryAsync(string path) =>
@@ -251,7 +331,7 @@ public static class OutboundInventoryCli
         ?? throw new InvalidOperationException("application-fingerprint deserialized to null");
 
     private static readonly Lazy<ArtifactSchemaValidator> SchemaValidator = new(() =>
-        ArtifactSchemaValidator.Load(Path.Combine(AppContext.BaseDirectory, "schemas", "outbound-invocation-inventory-1.1.0.schema.json")));
+        ArtifactSchemaValidator.Load(Path.Combine(AppContext.BaseDirectory, "schemas", "outbound-invocation-inventory-1.3.0.schema.json")));
 
     /// <summary>Serialises deterministically, validates against the schema —
     /// a failure is a step failure — and writes.</summary>

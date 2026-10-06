@@ -9,14 +9,29 @@ namespace Fingerprinting.Outbound;
 /// packages, the database id, step 3's verdict on whether to scan it, and
 /// step 3's UNC path literals for it.</summary>
 public sealed record OutboundInputProject(
-    string RelativePath, Guid ProjectId, string? SkipReason, IReadOnlyList<string> Packages, IReadOnlyList<UncLiteral> UncLiterals);
+    string RelativePath, Guid ProjectId, string? SkipReason, IReadOnlyList<string> Packages, IReadOnlyList<UncLiteral> UncLiterals)
+{
+    /// <summary>Step 2's output type and SDK (1.3.0): whether the project is a host.</summary>
+    public string? OutputType { get; init; }
+    public string? ProjectSdk { get; init; }
+}
 
 public sealed record OutboundInput(
     Guid RepositoryId,
     string RepositorySlug,
     string SkipSource,
     IReadOnlyList<OutboundInputProject> Projects,
-    IReadOnlyList<Warning> Warnings);
+    IReadOnlyList<Warning> Warnings)
+{
+    /// <summary>Step 2's resolved references, source → referenced (1.3.0).</summary>
+    public IReadOnlyList<(string Source, string Referenced)> ProjectReferences { get; init; } = [];
+
+    /// <summary>The engagement's SetParameters globs (1.3.0); empty means the defaults.</summary>
+    public IReadOnlyList<string> DeployParameterGlobs { get; init; } = [];
+
+    /// <summary>Step 4's entry points (1.3.0), for <see cref="BackendReach"/>.</summary>
+    public IReadOnlyList<InboundEntryPoint> EntryPoints { get; init; } = [];
+}
 
 /// <summary>
 /// Builds the outbound-invocation-inventory@1.0.0 artifact for one
@@ -27,7 +42,7 @@ public sealed record OutboundInput(
 public sealed class OutboundPipeline
 {
     /// <summary>Matches the outbound-invocation-inventory step registration version.</summary>
-    public const string ScannerVersion = "1.1.0";
+    public const string ScannerVersion = "1.3.0";
 
     public async Task<OutboundInventoryArtifact> RunAsync(OutboundInput input, string repositoryRoot, CancellationToken cancellationToken)
     {
@@ -63,9 +78,21 @@ public sealed class OutboundPipeline
                 repositoryRoot, project.RelativePath, project.Packages, NoAuxiliaryFiles.Instance, cancellationToken, includeGenerated: true)));
         }
 
-        var config = RepositoryConfig.Build(repositoryRoot, cancellationToken);
-        results.AddRange(Detect(input.RepositoryId, loaded, config));
+        var projectPaths = input.Projects.Select(p => p.RelativePath).ToList();
+        var deployFiles = DeployParameterFiles.Discover(repositoryRoot, input.DeployParameterGlobs, projectPaths, cancellationToken);
+        var config = RepositoryConfig.Build(repositoryRoot, cancellationToken)
+            .WithDeployParameters(deployFiles, ReadDeclarations(repositoryRoot, deployFiles));
+        config = config.WithHosts(ResolveHosts(input.Projects, input.ProjectReferences, config));
+        results.AddRange(Detect(input.RepositoryId, loaded, config, input.EntryPoints));
         results = results.OrderBy(r => r.ProjectPath, StringComparer.Ordinal).ToList();
+
+        var warnings = input.Warnings.ToList();
+        warnings.AddRange(deployFiles.Where(f => f.ProjectPath is null).Select(f => new Warning
+        {
+            Code = WarningCodes.ProjectDirectoryNotFound,
+            Message = $"SetParameters file '{f.RelativePath}' is not under, or in a folder named after, any project; its parameters are not applied.",
+            Severity = WarningSeverities.Warning,
+        }));
 
         return new OutboundInventoryArtifact
         {
@@ -76,16 +103,104 @@ public sealed class OutboundPipeline
             SkipSource = input.SkipSource,
             Summary = Summarise(results),
             Projects = results,
-            Warnings = input.Warnings.OrderBy(w => w.Message, StringComparer.Ordinal).ToList(),
+            Warnings = warnings.OrderBy(w => w.Message, StringComparer.Ordinal).ToList(),
         };
     }
 
+    /// <summary>Each SetParameters file's project directory's parameters.xml, by directory.</summary>
+    private static IReadOnlyDictionary<string, string> ReadDeclarations(string repositoryRoot, IReadOnlyList<DeployParameterFile> files)
+    {
+        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var project in files.Select(f => f.ProjectPath).OfType<string>().Distinct(StringComparer.Ordinal))
+        {
+            var directory = project.Contains('/') ? project[..project.LastIndexOf('/')] : "";
+            var absolute = Path.Combine(repositoryRoot, directory.Replace('/', Path.DirectorySeparatorChar));
+            var declarations = Directory.Exists(absolute)
+                ? Directory.EnumerateFiles(absolute).FirstOrDefault(f => Path.GetFileName(f).Equals("parameters.xml", StringComparison.OrdinalIgnoreCase))
+                : null;
+            if (declarations is not null)
+            {
+                result[directory] = File.ReadAllText(declarations);
+            }
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// A class library's hosts (1.3.0): the executable and web projects that
+    /// reference it, directly or through other libraries. Only a project that
+    /// is not itself a host and has no configuration file of its own gets
+    /// hosts — in .NET, App.config and web.config belong to the process.
+    /// </summary>
+    public static IReadOnlyDictionary<string, IReadOnlyList<HostRef>> ResolveHosts(
+        IReadOnlyList<OutboundInputProject> projects, IReadOnlyList<(string Source, string Referenced)> references, RepositoryConfig config)
+    {
+        static string DirectoryOf(string path) => path.Contains('/') ? path[..path.LastIndexOf('/')] : "";
+        // An executable, a web SDK project, or a project with a web.config
+        // (a classic ASP.NET or WCF web host).
+        bool IsHost(OutboundInputProject p) =>
+            p.OutputType is "Exe" or "WinExe" or "AppContainerExe"
+            || (p.ProjectSdk ?? "").Contains(".Web", StringComparison.OrdinalIgnoreCase)
+            || HasWebConfig(config, DirectoryOf(p.RelativePath));
+
+        var byPath = projects.ToDictionary(p => p.RelativePath, StringComparer.Ordinal);
+        var referencedBy = references.GroupBy(r => r.Referenced, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => g.Select(r => r.Source).Distinct(StringComparer.Ordinal).ToList(), StringComparer.Ordinal);
+
+        var result = new Dictionary<string, IReadOnlyList<HostRef>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var project in projects)
+        {
+            var directory = DirectoryOf(project.RelativePath);
+            if (IsHost(project) || config.ConfigDirectories.Contains(directory))
+            {
+                continue;
+            }
+
+            var hosts = new SortedSet<string>(StringComparer.Ordinal);
+            var seen = new HashSet<string>(StringComparer.Ordinal) { project.RelativePath };
+            var pending = new Queue<string>([project.RelativePath]);
+            while (pending.Count > 0)
+            {
+                foreach (var source in referencedBy.GetValueOrDefault(pending.Dequeue()) ?? [])
+                {
+                    if (!seen.Add(source))
+                    {
+                        continue;
+                    }
+
+                    if (byPath.TryGetValue(source, out var referencing) && IsHost(referencing))
+                    {
+                        hosts.Add(source);
+                    }
+                    else
+                    {
+                        pending.Enqueue(source);   // a library in between: keep walking up
+                    }
+                }
+            }
+
+            if (hosts.Count > 0)
+            {
+                result[directory] = hosts.Select(h => new HostRef(h, DirectoryOf(h))).ToList();
+            }
+        }
+
+        return result;
+    }
+
+    private static bool HasWebConfig(RepositoryConfig config, string directory) =>
+        config.Entries.Any(e => e.Directory.Equals(directory, StringComparison.OrdinalIgnoreCase) && e.File.EndsWith("eb.config", StringComparison.OrdinalIgnoreCase))
+        || config.ClientEndpoints.Any(e => e.Directory.Equals(directory, StringComparison.OrdinalIgnoreCase) && e.File.EndsWith("eb.config", StringComparison.OrdinalIgnoreCase));
+
     /// <summary>Detection over already-loaded projects — the entry point tests use.</summary>
     public static IReadOnlyList<ProjectInvocations> Detect(
-        Guid repositoryId, IReadOnlyList<(OutboundInputProject Input, ProjectSource Source)> loaded, RepositoryConfig config)
+        Guid repositoryId, IReadOnlyList<(OutboundInputProject Input, ProjectSource Source)> loaded, RepositoryConfig config,
+        IReadOnlyList<InboundEntryPoint>? entryPoints = null)
     {
         var sources = loaded.Select(l => l.Source).ToList();
         var symbols = SymbolIndex.Build(sources);
+        var claimed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var contexts = loaded.Select(l => (l.Input, Context: new DetectionContext
         {
             Project = l.Source,
@@ -94,14 +209,21 @@ public sealed class OutboundPipeline
             Config = config,
             Repository = sources,
             UncLiterals = l.Input.UncLiterals,
+            ClaimedEndpoints = claimed,
         })).ToList();
         var references = DatabaseDetector.IndexReferences(contexts.Select(c => c.Context));
+
+        // SOAP clients in code first, for every project: a library's client
+        // claims its host's endpoint entry before the host looks for entries
+        // nothing claimed (1.3.0).
+        var soap = contexts.ToDictionary(c => c.Input.RelativePath, c => SoapClientDetector.Detect(c.Context).ToList(), StringComparer.Ordinal);
 
         var results = new List<ProjectInvocations>();
         foreach (var (project, context) in contexts)
         {
             var detected = new List<Detected>();
-            detected.AddRange(SoapClientDetector.Detect(context));
+            detected.AddRange(soap[project.RelativePath]);
+            detected.AddRange(SoapClientDetector.DetectConfigOnly(context));
             detected.AddRange(HttpClientDetector.Detect(context));
             detected.AddRange(GrpcClientDetector.Detect(context));
             detected.AddRange(DatabaseDetector.Detect(context, references));
@@ -151,7 +273,29 @@ public sealed class OutboundPipeline
             });
         }
 
-        return results;
+        // Each project's SetParameters parameters (1.3.0). A URL's value is
+        // kept only where a used invocation's binding cites the parameter —
+        // the URL then names an endpoint the platform uses — normalised as
+        // the binding holds it; a path is kept; nothing else ever is.
+        var allInvocations = results.SelectMany(r => r.Invocations).Where(i => i.Usage == Usages.Used).ToList();
+        var cited = allInvocations.SelectMany(i => i.EnvironmentBindings)
+            .Where(b => b.DeployParameter is not null)
+            .GroupBy(b => (b.SourceFile, b.DeployParameter!))
+            .ToDictionary(g => g.Key, g => g.First());
+        var deployByProject = config.DeployParameters.Where(d => d.ProjectPath is not null)
+            .Select(d => d.Kind == "url" && cited.TryGetValue((d.SourceFile, d.Name), out var binding)
+                ? d with { Value = Endpoints.Display(new Endpoint { Scheme = binding.Scheme, Host = binding.Host, Port = binding.Port, Path = binding.Path, Resolution = binding.Resolution }) }
+                : d)
+            .GroupBy(d => d.ProjectPath!, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => g.OrderBy(d => d.SourceFile, StringComparer.Ordinal).ThenBy(d => d.Line).ThenBy(d => d.Name, StringComparer.Ordinal).ToList(),
+                StringComparer.Ordinal);
+
+        var reach = BackendReach.Build(sources, allInvocations, entryPoints ?? []);
+        return results.Select(r => r with
+        {
+            DeployParameters = deployByProject.GetValueOrDefault(r.ProjectPath) ?? [],
+            EntryPointBackend = reach.GetValueOrDefault(r.ProjectPath) ?? [],
+        }).ToList();
     }
 
     /// <summary>
@@ -205,6 +349,11 @@ public sealed class OutboundPipeline
                 .DistinctBy(c => (c.FilePath, c.LineStart))
                 .OrderBy(c => c.FilePath, StringComparer.Ordinal).ThenBy(c => c.LineStart)
                 .ToList(),
+            Operations = ordered.SelectMany(r => r.Operations)
+                .DistinctBy(o => (o.CallSite.FilePath, o.CallSite.LineStart, o.Operation, o.Verb, o.Path, o.Resolution))
+                .OrderBy(o => o.CallSite.FilePath, StringComparer.Ordinal).ThenBy(o => o.CallSite.LineStart)
+                .ThenBy(o => o.Operation ?? o.Path ?? "", StringComparer.Ordinal).ThenBy(o => o.Verb ?? "", StringComparer.Ordinal)
+                .ToList(),
             Confidence = ordered.Max(r => r.Confidence),
             ConfidenceReasons = ordered.SelectMany(r => r.ConfidenceReasons).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList(),
             // Several call sites under different conditions: none applies to all.
@@ -220,6 +369,19 @@ public sealed class OutboundPipeline
 
         // Used anywhere is used.
         merged = merged with { Usage = ordered.Any(r => r.Usage == Usages.Used) ? Usages.Used : Usages.Unused };
+
+        // Call sites are where the dependency is invoked (1.3.0): each
+        // followed operation's site. Where the client is created
+        // (`using (var service = new XClient())`) is kept apart, when it differs.
+        var invokedAt = merged.Operations.Where(o => o.Resolution != Resolutions.Unresolved).Select(o => o.CallSite)
+            .DistinctBy(c => (c.FilePath, c.LineStart))
+            .OrderBy(c => c.FilePath, StringComparer.Ordinal).ThenBy(c => c.LineStart)
+            .ToList();
+        if (invokedAt.Count > 0 && !invokedAt.Select(c => (c.FilePath, c.LineStart)).SequenceEqual(merged.CallSites.Select(c => (c.FilePath, c.LineStart))))
+        {
+            merged = merged with { ConstructionSites = merged.CallSites, CallSites = invokedAt };
+        }
+
         return LinuxVerdicts.Apply(merged);
     }
 

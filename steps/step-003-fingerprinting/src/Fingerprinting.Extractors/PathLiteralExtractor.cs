@@ -32,6 +32,12 @@ public sealed class PathLiteralExtractor : IFingerprintExtractor
     public const string WindowsPathLiteral = "WINDOWS_PATH_LITERAL";
     public const string UncPathLiteral = "UNC_PATH_LITERAL";
 
+    /// <summary>Registry 1.7.0: a URL whose host is a single label
+    /// (<c>http://appsrv0341/…</c>) — resolves on Windows through NetBIOS or
+    /// the DNS suffix search, in a pod only if the cluster's search domains
+    /// cover it. The value is the host alone, never the rest of the URL.</summary>
+    public const string UnqualifiedHostnameUrl = "UNQUALIFIED_HOSTNAME_URL";
+
     private const int MaxMatchedValueLength = 512;
 
     public string Name => ExtractorName;
@@ -100,6 +106,22 @@ public sealed class PathLiteralExtractor : IFingerprintExtractor
             {
                 // ConfigurationExtractor already warns about an unparseable
                 // configuration file; saying it twice adds nothing.
+            }
+        }
+
+        // Web Deploy SetParameters files (registry 1.7.0): a value is read only
+        // when neither its name marks it secret nor it is a connection string —
+        // the same Part G rule as configuration.
+        foreach (var file in context.DeployParameterFiles)
+        {
+            foreach (var parameter in file.Parameters)
+            {
+                if (Fingerprinting.Analysis.DeployParameterFiles.Classify(parameter) is "sensitive" or "connection_string")
+                {
+                    continue;
+                }
+
+                AddMatches(parameter.RawValue, file.RelativePath, EvidenceSourceTypes.Configuration, parameter.Line, null, null, accumulator);
             }
         }
 
@@ -230,6 +252,11 @@ public sealed class PathLiteralExtractor : IFingerprintExtractor
         {
             Add(WindowsPathLiteral, Clean(match.Value), relativePath, sourceType, line, declaringType, member, accumulator);
         }
+
+        foreach (var host in Fingerprinting.Analysis.Hostnames.UnqualifiedInUrls(text))
+        {
+            Add(UnqualifiedHostnameUrl, host, relativePath, sourceType, line, declaringType, member, accumulator, SignalCategories.EndpointIndicator);
+        }
     }
 
     private static string Clean(string matched)
@@ -240,10 +267,10 @@ public sealed class PathLiteralExtractor : IFingerprintExtractor
 
     private static void Add(
         string signalName, string matchedValue, string relativePath, string sourceType, int? line,
-        string? declaringType, string? member, SignalAccumulator accumulator)
+        string? declaringType, string? member, SignalAccumulator accumulator, string category = SignalCategories.HostingIndicator)
     {
         accumulator.Add(
-            signalName, SignalCategories.HostingIndicator, SignalTypes.Literal,
+            signalName, category, SignalTypes.Literal,
             matchedValue, sourceType, relativePath, ExtractorName,
             evidence: new Evidence
             {

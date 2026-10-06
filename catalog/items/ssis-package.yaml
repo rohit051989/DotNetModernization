@@ -1,0 +1,57 @@
+category: integration
+deleted: false
+description: |-
+  Integration Services package with control flow and data flow tasks,
+  connection managers, and frequently embedded script tasks containing C# or
+  VB.NET. Executed by SQL Server Agent or the SSIS catalog.
+
+  Detection note (from the pattern's match warning): Detected structurally; package internals not yet analysed.
+detection:
+  match:
+    all: []
+    any: []
+    atLeast: []
+    metadata:
+    - equals: ssis_project
+      field: structuralType
+      id: is-ssis-project
+    none: []
+excluded_roles: []
+id: ssis-package
+name: SSIS package
+owner_team: null
+resolutions:
+- consumer_impact: medium
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: Push set-based transformation logic into SQL and keep a thin C# orchestrator for control flow.
+  effort: medium
+  id: csharp-sql-pushdown
+  is_default: false
+  linux_compatible: true
+  name: C# orchestrator with SQL pushdown
+  notes: |-
+    Prerequisites: Source and target reside on the same database platform, and the transformation is expressible as set operations.
+
+    Known limitations: Only applies where transformations are set-based. Row-by-row logic, external service calls and file-based sources still need application code. Moves load onto the database server.
+  status: active
+  target_description: .NET 10 worker + T-SQL + OCP4 CronJob
+- consumer_impact: medium
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: Convert the package to a C# worker that reimplements the data flow in code, containerized for OCP4.
+  effort: high
+  id: csharp-worker-container
+  is_default: false
+  linux_compatible: true
+  name: C# worker with in-process pipeline
+  notes: |-
+    Prerequisites: Source and target schemas documented. Representative input data available for equivalence testing.
+
+    Known limitations: Complex data flows with many transformations translate poorly to straight-line code. Package-level variables and expression evaluation need explicit reimplementation. Script tasks require porting on their own terms.
+  status: active
+  target_description: .NET 10 worker + OCP4 CronJob
+scope: application
+status: active

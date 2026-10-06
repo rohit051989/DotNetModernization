@@ -1270,6 +1270,289 @@ Confirmed and not open for re-litigation without a reason:
 
 ---
 
+## Part T — Architecture items on step 4's signals
+
+An architecture item describes something a whole application does, such as exposing a
+WCF service, serving WebForms pages, or being an MVC site. Its pieces are often spread
+over several projects, so a rule that needs every signal in one project never fires.
+Architecture items therefore detect on step 4's architecture signals (29-STEPS Part B6),
+which are emitted on the project that does the thing.
+
+**Item attribute.** An application-scope item may record one fact about what it
+detected, without matching on it:
+
+```yaml
+detection:
+  attribute: { signal: WCF_SERVICE_HOSTING, label: hosting }
+```
+
+The occurrence value is `hosting: <value>; <value>`, using the signal's distinct values
+in sorted order. The attribute signal is a referenced signal for readiness. An attribute
+on any other scope is rejected (`ATTRIBUTE_NOT_ALLOWED`).
+
+**Items.** These are applied by `app/items/architecture_items.py`
+(`python -m app.items.architecture_items [--dry-run]`, idempotent), and called by the
+seed after the authored items.
+
+| Item | Change |
+|---|---|
+| `wcf-service` (new) | Replaces `wcf-iis-servicemodel`. Detects on any `EXPOSES_WCF_SERVICE`, with the hosting as an attribute, so IIS, self-hosted and both are one item. Resolutions: CoreWCF on .NET 10 (default, impact none), REST rewrite, gRPC rewrite, Remain Windows-hosted (`linux_compatible: false`, `container_ready: false`, like every other Linux-blocker item) |
+| `wcf-service-host` (new) | Detects on any `HOSTS_WCF_SERVICE`: the process that hosts the service. Resolutions: ASP.NET Core web host (default), retire the host, remain Windows-hosted |
+| `wcf-iis-servicemodel` | Soft-deleted (`deleted_by` "architecture-items: replaced by wcf-service"). Uses insert-new, repoint and soft-delete: every decision is repointed to `wcf-service` with its id kept, and its resolution mapped (`corewcf-net10` → CoreWCF, `rest-net10` → REST, `grpc-net10` → gRPC). An evaluation note records the move. Scope rows are copied |
+| `console-batch-job` | Excluded on `HOSTS_WCF_SERVICE` and on every `EXPOSES_*`. A service host is not a batch job |
+| `aspnet-webforms` | Detects on `EXPOSES_WEBFORMS_UI`. The `.aspx` pages and their code-behind may sit in different projects from the site's configuration |
+| `fx-aspnet-mvc` | Detects on `EXPOSES_HTTP_API`. The controllers may be in a library separate from the web project |
+| `asmx-service` | Detects on `EXPOSES_ASMX_SERVICE` |
+| `aspnetcore-rest-api-legacy` | Unchanged. Its signals (the ASP.NET Core package and the legacy API constructs) sit on the same project by construction |
+| `wcf-nettcp-client` | New resolution `migrate-to-service-protocol`: an internal client whose service is being re-platformed moves to whatever the service will expose |
+
+On the WCF sample:
+- `wcf-service` is found on `Catalog.Services`.
+- `wcf-service-host` is found on `Catalog.Host`, where `console-batch-job` used to fire.
+- `wcf-nettcp-client` and `console-batch-job` are found on `Catalog.TestClient`, which is
+  a console client.
+
+---
+
+## Part U — Decision coupling
+
+Architecture decisions drive others, **by resolution, not by item**: CoreWCF and a REST
+rewrite of the same `wcf-service` mean different things for its clients. What choosing
+each resolution means for each dependent item is master catalog data.
+
+### Derivations are catalog data
+
+`resolution_derivations`, keyed by (leading resolution, dependent item), is authored
+beside the resolution in `catalog_items.yaml`:
+
+```yaml
+      - id: wcf-service-rest-rewrite
+        ...
+        derivations:
+          - item: wcf-nettcp-client
+            action: derive                       # derive | not_derived | subsume | not_subsumed
+            resolution: migrate-to-service-protocol   # derive only
+            applies_to: internal_clients         # optional; default all
+            reason: "The service stops speaking WCF: an internal client moves to its REST API ..."
+```
+
+| Action | Meaning |
+|---|---|
+| `derive` | The dependent's decision is derived as `resolution`. With `applies_to: internal_clients`, only on projects whose integration edges (lifecycle step 11) reach the leader's project |
+| `not_derived` | The leading decision does not settle the dependent. It stays awaiting_decision, and the work list shows the reason |
+| `subsume` | The dependent, on the leader's own project, is no separate work |
+| `not_subsumed` | It stays separate work, and the work list shows the reason |
+
+`app/items/derivations.py` loads the rows, and the seed runs it last (`python -m
+app.items.derivations [--dry-run]`). Validation is a hard error:
+- the dependent item exists;
+- a `derive` names a resolution of the dependent item, and every other action names none;
+- **completeness**: every live resolution of a leading item declares a row for every
+  dependent any of its resolutions names. A new resolution that forgets the clients fails
+  the seed. It cannot silently derive nothing.
+
+The YAML is a factory default (Part V):
+- **Seeding.** A row not edited since it was seeded follows the file. When the file drops
+  it, it is soft-deleted. An edited row is never overwritten.
+- **Revert.** Pattern-migration revert removes rows that name a migrated item only when
+  every one is unedited, so the seed can recreate it. Otherwise revert refuses.
+- **Where they show.** The catalog shows the rows beside each resolution ("Choosing this
+  derives"), and `GET /api/catalog/items/{id}/resolutions` returns them as
+  `derivations`.
+
+**wcf-service, as authored:**
+
+| wcf-service | wcf-service-host | wcf-nettcp-client | fx47-class-library |
+|---|---|---|---|
+| REST rewrite | derive: ASP.NET Core web host | derive: migrate to the service's new protocol (internal clients) | subsume |
+| gRPC rewrite | derive: ASP.NET Core web host | derive: migrate to the service's new protocol (internal clients) | subsume |
+| CoreWCF | derive: ASP.NET Core web host | not derived: CoreWCF keeps WCF and SOAP, so the client still needs a Linux-compatible binding | subsume |
+| Remain Windows-hosted | not derived | not derived | not subsumed |
+
+### Decisions
+
+**Columns on `engagement_decisions`.** Migrations `d82f5c3e19a4` and `e5a1b7c9d302`.
+
+| Column | Meaning |
+|---|---|
+| `source` | `manual` or `derived` |
+| `derived_from_decision_id` | The leading decision |
+| `derived_against_resolution_id` | The leading resolution the decision was derived from or overridden against. Replaces `derivation_rule`, which named a rule in code |
+| `overrides_derivation` | A manual decision that replaced, or stands in place of, a derived one |
+| `needs_review`, `review_note` | Whether the override needs review, and why |
+
+**Derivation (`rederive`).**
+- **When it runs:**
+  - after any write to a leading decision;
+  - after a supersede of a dependent's decision, so that superseding an override takes
+    the derived decision again;
+  - at the end of each step 11 run.
+- **What it does, for a dependent with no manual decision:**
+  - When the row derives, the dependent's decision is created or updated:
+    - its status follows the leader's;
+    - approver and date are copied once the leader is approved;
+    - the forcing pair is carried;
+    - the rationale names the leader and the reason.
+  - When nothing is derived (`not_derived`, no internal client, no decision on the
+    leader), a derived decision is superseded.
+- **A manual decision is never changed.** If a derivation applies to it, it is linked to
+  the leader as an override.
+
+**Overrides when the leader changes.** An override was made against a leading decision.
+When that decision no longer stands, the override is flagged `needs_review`, never kept or
+discarded silently. "No longer stands" means another resolution, another decision, or
+superseded with nothing in its place.
+- **The note** names the old and new leading decisions and what the new one would give,
+  for example: "Overridden by hand against the WCF service decision (REST rewrite on
+  .NET 10); that decision is now CoreWCF on .NET 10. It would derive ASP.NET Core web
+  host. Review the override: …".
+- **Clearing the flag:**
+  - saving the decision again keeps the override, now against the current leader;
+  - superseding it takes the derived decision;
+  - the flag clears on its own if the leader returns to what it was.
+- **The work list** shows the flag on the row, and the leader's "drives" list shows it too.
+
+**Showing the dependency.**
+- **On a decision:** `derived_from` (the leading decision, `derivation_reason`, and for an
+  override `would_derive`) and `followers`.
+- **On the work list:** `GET /api/repositories/{id}/work-list-decisions` gives per-project
+  notes:
+  - `subsumed_by`;
+  - for a dependent, the leader it `follows`, the `action` and whether it `applies` there;
+  - a note with the reason ("Not derived: the wcf-service decision (CoreWCF on .NET 10)
+    does not settle this item. CoreWCF keeps WCF and SOAP, …").
+
+**Client-scoped.** Derivation writes `engagement_decisions` only (rule 9). Derivations are
+master catalog data and are read, never written, by engagement operations.
+
+---
+
+## Part V — The database is authoritative for the catalog
+
+The item catalog is edited in the UI. These are **factory defaults**, not a second
+source of truth:
+- `catalog_items.yaml` (authored items, resolutions and derivations);
+- the pattern tables the migration reads;
+- the amendments in code (pattern migration and architecture items).
+
+A reseed must never overwrite a catalog edit (CLAUDE.md rule 10).
+
+**Baselines.** `catalog_items`, `item_resolutions` and `resolution_derivations` each carry
+`seeded_hash` (migration `a3d9e6f20b17`). It is a SHA-256 of the content the seed last
+wrote:
+- the authored fields, plus whether the row is soft-deleted;
+- not readiness, `version` or timestamps, which are computed.
+
+A row is **edited** when its current content no longer hashes to `seeded_hash`. Every seed
+write goes through `app/items/baseline.py` `seed_row`:
+
+| Row | Factory default | Outcome |
+|---|---|---|
+| missing | — | inserted, baseline recorded |
+| equals the default | — | unchanged (baseline recorded if it had none: *adopted*) |
+| unedited | changed | updated to the default, baseline re-recorded |
+| edited | unchanged since seeding | left as is: the edit stands |
+| edited | changed too | left as is, reported as a **conflict** naming the row and both versions, field by field |
+| no baseline | differs | left as is, reported as a conflict (which side changed is unknowable) |
+
+**Rules.**
+- A UI soft delete is an edit, so a reseed never restores the row.
+- A UI edit that returns a row to its default makes it unedited again.
+- An amendment for an **authored** item goes into `catalog_items.yaml`. `AMENDMENTS` in
+  code holds only migrated items' amendments, which are part of those items' defaults.
+  For example, asmx-service's `exposes-asmx-service` rule moved into the file.
+
+**Entry points.**
+- `python -m app.seed` runs the full seed, including decisions.
+- `python -m app.items.catalog_seed [--dry-run]` runs the catalog only and never reads or
+  writes engagement data.
+
+Both print every conflict. The seed never resolves a conflict: a person edits the row in
+the UI, or changes the file to match.
+
+**Existing rows.** The migration does no backfill: which rows were edited cannot be
+proved from the data. The first seed adopts every row equal to its default and reports
+the rest. On the local database, all 129 rows (items, resolutions, derivations) equalled
+their defaults and were adopted, with 0 conflicts.
+
+**Revert refuses rather than destroys.** Pattern-migration revert removes migrated items,
+their resolutions, and derivations naming them. It removes them only when every such row
+is unedited, because then it is exactly its default and the seed recreates it. Otherwise
+revert refuses (`REVERT_BLOCKED`), naming each blocking row:
+- "item_resolutions windows-service-remain-windows-hosted has been edited since it was
+  seeded";
+- "... has no seed baseline to prove it unedited".
+
+**Reviewability.** Git holds the item catalog through its export (Part W),
+`catalog/items/<item-id>.yaml`. It is read in review; it is never edited to change the
+catalog.
+
+---
+
+## Part W — Item catalog export
+
+The catalog's version history and code review, now that the database is authoritative
+(Part V). Code: `app/items/catalog_export.py`. Tests: `tests/test_catalog_export.py`.
+
+**Files.** There is one file per item, `catalog/items/<item-id>.yaml`, holding:
+- the item;
+- its resolutions;
+- each resolution's derivations.
+
+Per-item files give small git diffs and rare merge conflicts. Nested rows omit what
+nesting already says (`item_id`, `resolution_id`).
+
+**Deterministic.**
+- Keys are sorted at every level.
+- Resolutions are sorted by id, derivations by dependent item, items by id.
+- Detection is exported exactly as stored.
+- Multi-line text is a YAML literal block, with no line folding and no aliases.
+- Files are written with LF line endings. `.gitattributes` pins `catalog/items/*.yaml` to
+  `eol=lf`, so a Windows checkout stays byte-identical to a re-export.
+
+An unchanged catalog re-exports byte-identically; the command then reports "0 written".
+
+**Content only.** Each row's content is exactly its baseline content
+(`baseline.CONTENT_FIELDS`). Left out:
+- `seeded_hash`;
+- computed columns (readiness `state`, `version`);
+- timestamps;
+- engagement data: decisions and scope are client data, not catalog content.
+
+Soft-deleted rows are included with `deleted: true`, because a deletion is a reviewable
+change.
+
+**Entry points.**
+- `python -m app.items.catalog_export export [--out DIR]` writes into `catalog/items/`. The
+  command owns the directory: a file for an item that no longer exists is removed.
+- `GET /api/catalog/export/items` returns the same files as `catalog-items.zip`, with fixed
+  timestamps, so the same catalog gives the same bytes.
+- The master catalog view has an "Export catalog (YAML per item)" link. It is read-only and
+  hidden in a client catalog view.
+
+**One-way.** The export is not a second place to edit.
+`python -m app.items.catalog_export import [--from DIR] [--dry-run]` exists to bootstrap a
+new environment:
+- **Onto an empty catalog** it inserts every row.
+- **Onto a non-empty catalog** it goes through `baseline.seed_row` like any seed:
+  - missing rows are inserted;
+  - rows not edited since they were seeded are updated;
+  - an edited row is never overwritten, and a conflict is reported.
+
+Detection is validated against the signal registry exactly as the API does, so seed the
+registry first.
+
+**Round trip.** `python -m app.items.catalog_export roundtrip`:
+1. exports the configured database;
+2. creates a fresh database, migrates it to head and seeds only the signal registry;
+3. imports the export into it, then exports again;
+4. compares the two exports byte for byte;
+5. drops the database.
+
+On the local catalog: 35 files, 85,311 bytes, 130 rows inserted (bootstrap), byte-identical.
+
+---
+
 ## Acceptance criteria
 
 ### Catalog

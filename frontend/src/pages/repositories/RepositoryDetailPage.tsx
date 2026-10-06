@@ -10,6 +10,8 @@ import {
 } from '../../api/repositories'
 import type { Criticality, RepositoryDetail, RetirementStatus } from '../../types/repositories'
 import type { JobExecution } from '../../types/workflow'
+import type { WorkListDecisions } from '../../types/items'
+import { getWorkListDecisions } from '../../api/items'
 import { ApiError } from '../../api/client'
 import { CollapsibleSection } from '../../components/CollapsibleSection'
 import { EmptyState } from '../../components/EmptyState'
@@ -96,6 +98,21 @@ export function RepositoryDetailPage({
 
   const [localRefresh, setLocalRefresh] = useState(0)
   const { artifacts } = useLatestArtifacts(repositoryId, refreshToken + localRefresh)
+  // Part S: the decision behind each work-list item, derived or manual.
+  const [workListDecisions, setWorkListDecisions] = useState<WorkListDecisions | null>(null)
+  useEffect(() => {
+    let cancelled = false
+    getWorkListDecisions(repositoryId)
+      .then((result) => {
+        if (!cancelled) setWorkListDecisions(result)
+      })
+      .catch(() => {
+        if (!cancelled) setWorkListDecisions(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [repositoryId, refreshToken, localRefresh])
 
   useEffect(() => {
     let cancelled = false
@@ -418,7 +435,7 @@ export function RepositoryDetailPage({
             {occurrences ? (
               <>
                 <Provenance artifact={occurrences} onNavigateToExecution={onNavigateToExecution} />
-                <ItemOccurrencesView data={occurrences.data} localPath={repo.local_path} />
+                <ItemOccurrencesView data={occurrences.data} localPath={repo.local_path} decisions={workListDecisions} />
               </>
             ) : (
               <p className="text-sm text-neutral-400">Item detection (lifecycle step 7) hasn't run for this repository yet.</p>

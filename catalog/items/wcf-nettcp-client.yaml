@@ -1,0 +1,82 @@
+category: integration
+deleted: false
+description: |-
+  The project calls a WCF service over NetTcp. NetTcp with Windows transport security has no Kerberos identity in a Linux container; it is the canonical Linux blocker. Exact, from the client's own binding: a <client> endpoint whose binding is netTcpBinding, or a NetTcpBinding constructed in client code (a ClientBase<T> or ChannelFactory<T> file, including svcutil's generated Reference.cs). Deliberately not keyed on the System.ServiceModel.NetTcp package: Visual Studio and dotnet-svcutil add it to every WCF client whatever the binding, so it proves nothing. A project implementing a NetTcp service is wcf-service, and its host wcf-service-host, not this one; a project doing both matches both, correctly.
+  An internal client — one calling a service inside this migration (lifecycle step 11's integration edges) — follows that service's wcf-service decision where the decision settles it: a REST or gRPC rewrite derives "Migrate to the service's new protocol". CoreWCF keeps WCF and SOAP, so it settles nothing here: the client still needs a Linux-compatible binding, decided on its own. The derivations are declared on wcf-service's resolutions.
+detection:
+  match:
+    all: []
+    any:
+    - id: client-endpoint-nettcp
+      signal:
+        name: WCF_CLIENT_BINDING_CONFIG
+        value:
+          equals: netTcpBinding
+    - id: client-code-nettcp
+      signal:
+        name: WCF_CLIENT_BINDING_USAGE
+        value:
+          equals: System.ServiceModel.NetTcpBinding
+    atLeast: []
+    metadata: []
+    none: []
+excluded_roles:
+- TEST
+id: wcf-nettcp-client
+name: WCF client over NetTcp
+owner_team: null
+resolutions:
+- consumer_impact: none
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: Switch the client to a BasicHttp/WSHttp endpoint of the same service, which the service owner exposes if it does not already.
+  effort: medium
+  id: call-http-binding
+  is_default: true
+  linux_compatible: true
+  name: Call an HTTP binding of the service
+  notes: Usually needs the backend team; the endpoint register (lifecycle step 10) groups the callers into one conversation.
+  status: active
+  target_description: System.ServiceModel.Http client over HTTPS
+- consumer_impact: none
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: Keep the NetTcp client on Linux with certificate or no transport security instead of Windows authentication.
+  effort: low
+  id: keep-nettcp-certificate-security
+  is_default: false
+  linux_compatible: true
+  name: Keep NetTcp with non-Windows security
+  notes: Only if the service accepts non-Windows credentials; verify before choosing.
+  status: active
+  target_description: System.ServiceModel.NetTcp client, certificate transport security
+- consumer_impact: low
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: 'The service is inside this migration and is being rewritten to a new protocol (REST or gRPC): move the client to the new protocol, in the same coordinated change.'
+  effort: medium
+  id: migrate-to-service-protocol
+  is_default: false
+  linux_compatible: true
+  name: Migrate to the service's new protocol
+  notes: For internal clients only — a service owned outside the migration is a conversation, not a coordinated change (call-http-binding). Derived from the service's wcf-service decision.
+  status: active
+  target_description: A REST or gRPC client of the rewritten service
+- consumer_impact: none
+  container_ready: false
+  deleted: false
+  derivations: []
+  description: Out of scope for the Linux move; the application stays on Windows.
+  effort: low
+  id: wcf-nettcp-client-remain-windows-hosted
+  is_default: false
+  linux_compatible: false
+  name: Remain Windows-hosted
+  notes: null
+  status: active
+  target_description: .NET on Windows Server
+scope: application
+status: active

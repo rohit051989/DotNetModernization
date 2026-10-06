@@ -1,0 +1,71 @@
+category: hosting
+deleted: false
+description: 'A .NET worker whose work runs in BackgroundService / IHostedService implementations registered with AddHostedService, and which is not hosted as a Windows Service. It still needs containerising, and without this item it was indistinguishable from a console app. Web hosts are excluded: an ASP.NET Core application running a background task is a web application, not a worker.'
+detection:
+  match:
+    all: []
+    any:
+    - id: background-service
+      signal:
+        name: BACKGROUND_SERVICE_BASE_CLASS
+    - id: ihosted-service
+      signal:
+        name: IHOSTED_SERVICE_BASE_CLASS
+    - id: add-hosted-service
+      signal:
+        name: ADD_HOSTED_SERVICE_ENTRY_POINT
+    atLeast: []
+    metadata: []
+    none:
+    - id: not-use-windows-service
+      signal:
+        name: USE_WINDOWS_SERVICE_INVOCATION
+    - id: not-windowsservices-package
+      signal:
+        name: MICROSOFT_EXTENSIONS_HOSTING_WINDOWSSERVICES_PACKAGE
+    - id: not-web-builder
+      signal:
+        name: WEB_APPLICATION_CREATE_BUILDER_ENTRY_POINT
+    - id: not-webhost-builder
+      signal:
+        name: WEBHOST_CREATE_DEFAULT_BUILDER_ENTRY_POINT
+    - id: not-startup-class
+      signal:
+        name: STARTUP_CLASS_ENTRY_POINT
+excluded_roles:
+- DATABASE
+- DEPLOYMENT
+- LIBRARY
+- TEST
+id: modern-worker-service
+name: Worker service built on hosted services
+owner_team: null
+resolutions:
+- consumer_impact: medium
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: 'For a worker that polls on a timer: run it to completion on a schedule instead of looping in-process.'
+  effort: medium
+  id: ocp4-cronjob
+  is_default: false
+  linux_compatible: true
+  name: OCP4 CronJob (scheduled)
+  notes: null
+  status: active
+  target_description: Worker in a container, OCP4 CronJob
+- consumer_impact: none
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: Containerise the worker and run it continuously as a Deployment; for queue and stream consumers such as Kafka processors.
+  effort: low
+  id: ocp4-deployment
+  is_default: true
+  linux_compatible: true
+  name: OCP4 Deployment (continuous)
+  notes: null
+  status: active
+  target_description: Worker in a container, OCP4 Deployment
+scope: application
+status: active

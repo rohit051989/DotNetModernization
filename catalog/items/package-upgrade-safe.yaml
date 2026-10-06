@@ -1,0 +1,51 @@
+category: dependencies
+deleted: false
+description: |-
+  A direct NuGet package has a newer version that supports the target framework, and the upgrade changes nothing the code calls: by API diff of the two versions' assemblies; because it is a build, tools, analyzer or content package with no compile-time assemblies; or, where no diff was possible, because the version change is minor or patch. A content package (bootstrap, jQuery) moving a major version may still break markup or CSS, which step 6 cannot see: the Dependencies view flags it "content breaking possible". One occurrence per project per package, at the PackageReference line; the value reads "{id} {from} -> {to}".
+  Conversion ordering (docs/28 Part E): for the same package, runs as ONE UNIT with package-upgrade-breaking. Bump the version everywhere, then fix the call sites. One package can be safe in one project and breaking in another; bumping only the safe projects splits the solution across two versions of the same library.
+detection:
+  match:
+    all:
+    - id: upgrade-safe
+      signal:
+        name: PACKAGE_UPGRADE_SAFE
+    any: []
+    atLeast: []
+    metadata: []
+    none: []
+  occurrence_source:
+    group_by: source_path_and_value
+    signal: PACKAGE_UPGRADE_SAFE
+excluded_roles: []
+id: package-upgrade-safe
+name: Package upgrade, no code change
+owner_team: null
+resolutions:
+- consumer_impact: none
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: 'Change the version to step 6''s recommended version: the latest that supports the target framework.'
+  effort: low
+  id: package-upgrade-safe-bump
+  is_default: true
+  linux_compatible: true
+  name: Bump to the recommended version
+  notes: null
+  status: active
+  target_description: The recommended package version, from the authoritative feed
+- consumer_impact: none
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: 'Leave the version as it is: it already supports the target framework, and nothing forces the move.'
+  effort: low
+  id: package-upgrade-safe-keep-current
+  is_default: false
+  linux_compatible: true
+  name: Keep the current version
+  notes: null
+  status: active
+  target_description: The current package version, unchanged
+scope: occurrence
+status: active

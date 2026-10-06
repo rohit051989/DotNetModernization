@@ -1,0 +1,49 @@
+category: framework
+deleted: false
+description: Encoding.Default is the machine's ANSI code page on .NET Framework but always UTF-8 on .NET Core and later, on every OS. Code that reads or writes files, sockets or byte arrays through it changes behaviour for any non-ASCII character after migration.
+detection:
+  match:
+    all:
+    - id: encoding-default
+      signal:
+        name: ENCODING_DEFAULT_USAGE
+    any: []
+    atLeast: []
+    metadata: []
+    none: []
+  occurrence_source:
+    group_by: source_path
+    signal: ENCODING_DEFAULT_USAGE
+excluded_roles: []
+id: encoding-default
+name: Encoding.Default, which differs on Linux
+owner_team: null
+resolutions:
+- consumer_impact: none
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: Register CodePagesEncodingProvider and use Encoding.GetEncoding(<code page>) so bytes match the Windows servers exactly.
+  effort: low
+  id: explicit-legacy-code-page
+  is_default: true
+  linux_compatible: true
+  name: Explicit legacy code page
+  notes: null
+  status: active
+  target_description: System.Text.Encoding.CodePages, code page from the source servers (typically 1252)
+- consumer_impact: medium
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: Replace with Encoding.UTF8 (or UTF8Encoding without BOM) and migrate any stored data that depends on the old code page.
+  effort: medium
+  id: explicit-utf8
+  is_default: false
+  linux_compatible: true
+  name: Explicit UTF-8
+  notes: null
+  status: active
+  target_description: UTF-8 everywhere
+scope: occurrence
+status: active

@@ -1,0 +1,21 @@
+import { api } from './client'
+import type { EndpointAnnotation, EndpointAnnotationInput, EstateSettings, EstateView } from '../types/estate'
+
+export function getEstate(engagementId: string) {
+  return api.get<EstateView>(`/api/engagements/${encodeURIComponent(engagementId)}/estate`)
+}
+
+export function putEndpointAnnotation(engagementId: string, host: string, annotation: EndpointAnnotationInput) {
+  return api.put<EndpointAnnotation>(
+    `/api/engagements/${encodeURIComponent(engagementId)}/estate/annotations/${encodeURIComponent(host)}`,
+    annotation,
+  )
+}
+
+/** Only the fields given are changed. */
+export function putEstateSettings(
+  engagementId: string,
+  settings: { production_environment?: string | null; deploy_parameter_globs?: string[] | null },
+) {
+  return api.put<EstateSettings>(`/api/engagements/${encodeURIComponent(engagementId)}/estate/settings`, settings)
+}

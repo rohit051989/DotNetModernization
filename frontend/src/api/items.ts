@@ -18,6 +18,7 @@ import type {
   ResolutionWriteInput,
   SignalCoverage,
   SignalIndexEntry,
+  WorkListDecisions,
   SoftDeleteResult,
 } from '../types/items'
 
@@ -134,6 +135,12 @@ export function upsertItemDecision(engagementId: string, itemId: string, payload
     `/api/engagements/${enc(engagementId)}/items/${enc(itemId)}/decision`,
     payload,
   )
+}
+
+/** Per repository: the live decision behind each work-list item, and per
+ * project what is subsumed or follows another decision (Part S). */
+export function getWorkListDecisions(repositoryId: string) {
+  return api.get<WorkListDecisions>(`/api/repositories/${enc(repositoryId)}/work-list-decisions`)
 }
 
 export function supersedeItemDecision(decisionId: string) {

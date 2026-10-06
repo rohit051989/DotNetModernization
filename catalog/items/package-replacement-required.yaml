@@ -1,0 +1,80 @@
+category: dependencies
+deleted: false
+description: A direct NuGet package has no version supporting the target framework, or its publisher has deprecated it. Either way it is a replacement, not an upgrade, and which replacement to adopt is a client decision. The default is the publisher's suggested replacement, carried in the PACKAGE_DEPRECATED value where the publisher names one; where none is named, and for a package with no compatible version, the decision must choose another option. One occurrence per project per package, at the PackageReference line; a package with both conditions is one occurrence.
+detection:
+  match:
+    all: []
+    any:
+    - id: no-compatible-version
+      signal:
+        name: PACKAGE_NO_COMPATIBLE_VERSION
+    - id: deprecated
+      signal:
+        name: PACKAGE_DEPRECATED
+    atLeast: []
+    metadata: []
+    none: []
+  occurrence_source:
+    also:
+    - PACKAGE_DEPRECATED
+    group_by: source_path_and_value
+    signal: PACKAGE_NO_COMPATIBLE_VERSION
+excluded_roles: []
+id: package-replacement-required
+name: Package needs replacing
+owner_team: null
+resolutions:
+- consumer_impact: medium
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: Choose a different maintained library that supports the target framework.
+  effort: high
+  id: package-replacement-alternative
+  is_default: false
+  linux_compatible: true
+  name: Adopt an alternative library
+  notes: null
+  status: active
+  target_description: A maintained alternative supporting the target framework
+- consumer_impact: low
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: 'Drop the package where the target framework provides the capability itself: OWIN middleware, the compiler packages, System.Web shims.'
+  effort: medium
+  id: package-replacement-framework-builtin
+  is_default: false
+  linux_compatible: true
+  name: 'Remove it: use the framework''s own equivalent'
+  notes: null
+  status: active
+  target_description: Built-in .NET capability, no package
+- consumer_impact: low
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: Move to the replacement package the publisher names in the deprecation. Not available where none is named.
+  effort: medium
+  id: package-replacement-publisher-suggested
+  is_default: true
+  linux_compatible: true
+  name: Adopt the publisher's suggested replacement
+  notes: null
+  status: active
+  target_description: The publisher's suggested replacement package
+- consumer_impact: none
+  container_ready: false
+  deleted: false
+  derivations: []
+  description: Keep the package; the application stays on .NET Framework on Windows.
+  effort: low
+  id: package-replacement-remain-windows-hosted
+  is_default: false
+  linux_compatible: false
+  name: Remain on .NET Framework
+  notes: null
+  status: active
+  target_description: .NET Framework on Windows Server
+scope: occurrence
+status: active

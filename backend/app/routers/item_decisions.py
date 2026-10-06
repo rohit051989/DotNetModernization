@@ -12,6 +12,18 @@ choosing anything but the lowest `consumer_impact` needs the
 A1). One change from the pattern records: "lowest" is judged across the
 item's whole live resolution menu, not `candidates_considered`, which is kept
 only as a record of what was presented at decision time.
+
+Part U (app/items/coupling.py): an architecture decision drives others,
+by resolution, as declared in the catalog's resolution_derivations.
+Recording or superseding a leader's decision (wcf-service) re-derives its
+dependents (the WCF host, internal NetTcp clients). A write to a derived
+decision is a manual override: the decision becomes manual, keeps its link to
+the leader, and is marked as overriding the derivation. An override whose
+leading decision has since changed is flagged needs_review; writing it again
+answers the flag. Superseding a dependent's decision re-derives it, so
+superseding an override takes the derived decision. Derived decisions are
+made by the platform, so the approval checks — written for a person's
+decision — apply to a manual write only.
 """
 
 import datetime
@@ -23,6 +35,7 @@ from sqlalchemy.orm import Session
 from app import models
 from app.db import get_db
 from app.errors import ErrorResponse, error, errors
+from app.items import coupling
 from app.items import schemas as item_schemas
 from app.schemas import CONSUMER_IMPACT_RANK
 
@@ -70,10 +83,53 @@ def decision_warnings(db: Session, decision: models.EngagementDecision) -> list[
     return []
 
 
+def _link(db: Session, decision: models.EngagementDecision, follower: models.EngagementDecision) -> item_schemas.DecisionLink:
+    """`decision` is one end of the dependency, `follower` the dependent
+    decision: the derivation shown is the row for the resolution the
+    follower was derived from or overridden against."""
+    item = db.get(models.CatalogItem, decision.item_id)
+    resolution = db.get(models.ItemResolution, decision.resolution_id) if decision.resolution_id else None
+    row = coupling.derivation(db, follower.derived_against_resolution_id, follower.item_id)
+    return item_schemas.DecisionLink(
+        decision_id=str(decision.id), item_id=decision.item_id, item_name=item.name if item else decision.item_id,
+        resolution_id=decision.resolution_id, resolution_name=resolution.name if resolution else None,
+        status=decision.status, source=decision.source, derived_against_resolution_id=follower.derived_against_resolution_id,
+        derivation_reason=row.reason if row else None, would_derive=_would_derive(db, follower),
+        overrides_derivation=decision.overrides_derivation, needs_review=decision.needs_review,
+    )
+
+
+def _would_derive(db: Session, follower: models.EngagementDecision) -> str | None:
+    """For an override: what the live leading decision would give it now
+    (by name), or None when it gives nothing."""
+    if not follower.overrides_derivation or follower.derived_from_decision_id is None:
+        return None
+    previous = db.get(models.EngagementDecision, follower.derived_from_decision_id)
+    leader = coupling.live_decision(db, follower.engagement_id, previous.item_id) if previous else None
+    row = coupling.derivation(db, leader.resolution_id if leader else None, follower.item_id)
+    if row is None or row.action != "derive":
+        return None
+    resolution = db.get(models.ItemResolution, row.dependent_resolution_id)
+    return resolution.name if resolution else row.dependent_resolution_id
+
+
 def _response(db: Session, decision: models.EngagementDecision) -> item_schemas.EngagementDecisionOut:
     item = db.get(models.CatalogItem, decision.item_id)
     resolution = db.get(models.ItemResolution, decision.resolution_id) if decision.resolution_id else None
+    leader = db.get(models.EngagementDecision, decision.derived_from_decision_id) if decision.derived_from_decision_id else None
+    followers = (
+        db.query(models.EngagementDecision)
+        .filter(models.EngagementDecision.derived_from_decision_id == decision.id, models.EngagementDecision.status != "superseded")
+        .order_by(models.EngagementDecision.item_id)
+        .all()
+    )
     return item_schemas.EngagementDecisionOut(
+        source=decision.source,
+        derived_from=_link(db, leader, decision) if leader else None,
+        overrides_derivation=decision.overrides_derivation,
+        needs_review=decision.needs_review,
+        review_note=decision.review_note,
+        followers=[_link(db, f, f) for f in followers],
         id=str(decision.id),
         engagement_id=decision.engagement_id,
         item_id=decision.item_id,
@@ -236,6 +292,15 @@ def upsert_item_decision(
     # the field; an absent field is left alone.
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(decision, field, value)
+    # A person writing a derived decision overrides the derivation (Part U):
+    # it becomes theirs, and stays linked to the decision it would follow.
+    if decision.source == "derived":
+        decision.source = "manual"
+        decision.overrides_derivation = True
+    # Any write by a person answers a review flag: the override now stands
+    # against the current leading decision.
+    if decision.overrides_derivation:
+        coupling.rebaseline_override(db, decision)
 
     # Validate before the row joins the session, so a rejected create
     # leaves nothing behind to autoflush.
@@ -244,9 +309,93 @@ def upsert_item_decision(
     if created:
         db.add(decision)
         response.status_code = 201
+    db.flush()
+    # A leader's decision re-derives its followers in the same transaction.
+    coupling.rederive(db, engagement_id, item_id)
     db.commit()
     db.refresh(decision)
     return _response(db, decision)
+
+
+@router.get(
+    "/repositories/{repository_id}/work-list-decisions",
+    response_model=item_schemas.WorkListDecisionsOut,
+    summary="Get the decisions behind a repository's work list",
+    operation_id="get_repository_work_list_decisions",
+    responses={404: {"model": ErrorResponse, "description": "No repository exists with this id."}},
+)
+def get_work_list_decisions(repository_id: uuid.UUID, db: Session = Depends(get_db)):
+    """For each item found in the repository: the engagement's live decision
+    (with what it follows and what follows it, Part U). Per project: items
+    subsumed (or explicitly not subsumed) by another item's decision on the
+    same project, and for a dependent item, what its leader's decision means
+    there — derived, not derived and why, an internal client or not."""
+    repository = db.get(models.Repository, repository_id)
+    if repository is None or repository.deleted_at is not None:
+        raise error(404, f"Repository '{repository_id}' not found", code="NOT_FOUND")
+    engagement_id = repository.engagement_id
+
+    found: dict[uuid.UUID, set[str]] = {}
+    for occurrence in db.query(models.ItemOccurrence).filter(
+            models.ItemOccurrence.repository_id == repository_id, models.ItemOccurrence.detection_state == "found"):
+        found.setdefault(occurrence.project_id, set()).add(occurrence.item_id)
+    items = sorted({i for ids in found.values() for i in ids})
+
+    decisions = {}
+    for item_id in items:
+        decision = coupling.live_decision(db, engagement_id, item_id)
+        if decision is not None:
+            decisions[item_id] = _response(db, decision)
+
+    projects = []
+    for project_id, project_items in sorted(found.items(), key=lambda p: str(p[0])):
+        notes: dict[str, item_schemas.WorkListItemNote] = {}
+        for item_id, subsumption in coupling.subsumptions(db, engagement_id, project_items).items():
+            if subsumption["action"] == "subsume":
+                notes[item_id] = item_schemas.WorkListItemNote(subsumed_by=subsumption)
+            else:
+                notes[item_id] = item_schemas.WorkListItemNote(
+                    follows=subsumption["item_id"], action="not_subsumed", applies=False,
+                    note=f"Not subsumed by the {subsumption['item_id']} decision ({subsumption['resolution_name']}): "
+                         f"{subsumption['reason']}")
+        for item_id in sorted(project_items):
+            for leader_item_id in coupling.leaders_of(db, item_id):
+                note = _dependent_note(db, engagement_id, project_id, item_id, leader_item_id)
+                if note is not None:
+                    current = notes.get(item_id) or item_schemas.WorkListItemNote()
+                    notes[item_id] = current.model_copy(update=note)
+        projects.append(item_schemas.WorkListProjectNotes(project_id=str(project_id), items=notes))
+
+    return item_schemas.WorkListDecisionsOut(engagement_id=engagement_id, decisions=decisions, projects=projects)
+
+
+def _dependent_note(db: Session, engagement_id: str, project_id: uuid.UUID, item_id: str, leader_item_id: str) -> dict | None:
+    """What the leader's live decision means for this dependent on this project."""
+    leader = coupling.live_decision(db, engagement_id, leader_item_id)
+    if leader is None or not leader.resolution_id:
+        if not coupling.derives_anything(db, leader_item_id, item_id):
+            return None
+        return {"follows": leader_item_id, "action": None, "applies": None,
+                "note": f"Follows the {leader_item_id} decision once it is decided, where its resolution settles this item."}
+    resolution = db.get(models.ItemResolution, leader.resolution_id)
+    chosen = f"the {leader_item_id} decision ({resolution.name if resolution else leader.resolution_id})"
+    row = coupling.derivation(db, leader.resolution_id, item_id)
+    if row is None:
+        return {"follows": leader_item_id, "action": None, "applies": False,
+                "note": f"Not derived: {chosen} declares nothing for this item. Decide it on its own."}
+    if row.action == "not_derived":
+        return {"follows": leader_item_id, "action": row.action, "applies": False,
+                "note": f"Not derived: {chosen} does not settle this item. {row.reason}"}
+    if row.applies_to == "internal_clients":
+        services = sorted({c["service_project"] for c in coupling.internal_clients(db, engagement_id, item_id, leader_item_id)
+                           if c["client_project_id"] == str(project_id)})
+        if not services:
+            return {"follows": leader_item_id, "action": row.action, "applies": False,
+                    "note": f"Calls no {leader_item_id} inside this migration, so {chosen} does not apply to this project — "
+                            "a service owned elsewhere is a conversation with its owner. Decide it on its own."}
+        return {"follows": leader_item_id, "action": row.action, "applies": True,
+                "note": f"Internal client of {', '.join(services)}: follows {chosen}. {row.reason}"}
+    return {"follows": leader_item_id, "action": row.action, "applies": True, "note": f"Follows {chosen}. {row.reason}"}
 
 
 @router.post(
@@ -262,6 +411,13 @@ def supersede_item_decision(decision_id: uuid.UUID, db: Session = Depends(get_db
         raise error(404, f"Decision '{decision_id}' not found", code="NOT_FOUND")
     decision.status = "superseded"
     decision.updated_at = _now()
+    db.flush()
+    # A superseded leader leaves its derived dependents nothing to follow,
+    # and flags its overrides for review.
+    coupling.rederive(db, decision.engagement_id, decision.item_id)
+    # A superseded dependent takes what its leaders derive, if anything —
+    # superseding an override returns to the derived decision.
+    coupling.rederive_leaders_of(db, decision.engagement_id, decision.item_id)
     db.commit()
     db.refresh(decision)
     return _response(db, decision)

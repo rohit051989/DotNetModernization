@@ -1,4 +1,4 @@
-export type TabKey = 'catalog' | 'repositories' | 'applications' | 'dependencies' | 'waves' | 'dashboard' | 'workflow' | 'admin'
+export type TabKey = 'catalog' | 'repositories' | 'applications' | 'estate' | 'waves' | 'dashboard' | 'workflow' | 'admin'
 
 interface Tab {
   key: TabKey
@@ -23,7 +23,7 @@ const TABS: Tab[] = [
   { key: 'admin', label: 'Workflow Administration', engagementOnly: false, masterOnly: true, implemented: true },
   { key: 'repositories', label: 'Repositories', engagementOnly: true, masterOnly: false, implemented: true },
   { key: 'applications', label: 'Applications', engagementOnly: true, masterOnly: false, implemented: false },
-  { key: 'dependencies', label: 'Dependencies', engagementOnly: true, masterOnly: false, implemented: false },
+  { key: 'estate', label: 'Estate', engagementOnly: true, masterOnly: false, implemented: true },
   { key: 'waves', label: 'Waves', engagementOnly: true, masterOnly: false, implemented: false },
   { key: 'dashboard', label: 'Dashboard', engagementOnly: true, masterOnly: false, implemented: true },
   { key: 'workflow', label: 'Workflow', engagementOnly: true, masterOnly: false, implemented: true },

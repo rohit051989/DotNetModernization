@@ -42,17 +42,28 @@ public static class SoapClientDetector
         IReadOnlyList<CallSite> CallSites,
         double Confidence,
         IReadOnlyList<string> Reasons,
-        string Usage = Usages.Used);
+        string Usage = Usages.Used)
+    {
+        /// <summary>What the client invokes (1.2.0), set where the client is found.</summary>
+        public IReadOnlyList<InvokedOperation> Operations { get; init; } = [];
+    }
 
+    /// <summary>Clients found in code. Run for every project before
+    /// <see cref="DetectConfigOnly"/>: a library's client claims its host's
+    /// endpoint configuration (1.3.0), so the host must not then report that
+    /// entry as configured but never constructed.</summary>
     public static IEnumerable<Detected> Detect(DetectionContext context)
     {
-        var claimed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var found = new List<Found>();
-        found.AddRange(ChannelFactories(context, claimed));
-        found.AddRange(ClientBaseClients(context, claimed));
-        found.AddRange(ConfigOnly(context, claimed));
-        return found.Select(Build);
+        found.AddRange(ChannelFactories(context, context.ClaimedEndpoints));
+        found.AddRange(ClientBaseClients(context, context.ClaimedEndpoints));
+        return found.Select(Build).ToList();
     }
+
+    /// <summary>Client endpoints in this project's own configuration that no
+    /// client anywhere in the repository claimed.</summary>
+    public static IEnumerable<Detected> DetectConfigOnly(DetectionContext context) =>
+        ConfigOnly(context, context.ClaimedEndpoints).Select(Build).ToList();
 
     // ---------- ChannelFactory<T> ----------
 
@@ -84,14 +95,18 @@ public static class SoapClientDetector
                         continue;   // a generic helper nobody calls creates nothing
                     }
 
-                    yield return FromChannelFactory(context, claimed, file, creation, scope, factoryType, contractName, file, creation, CallSiteEvaluator.Empty, via: null);
+                    var single = FromChannelFactory(context, claimed, file, creation, scope, factoryType, contractName, file, creation, CallSiteEvaluator.Empty, via: null);
+                    yield return single with { Operations = OperationTracer.Soap(context, file, creation, single.Contract, null, isFactory: true) };
                     continue;
                 }
 
                 foreach (var (siteFile, call, env) in sites)
                 {
-                    yield return FromChannelFactory(context, claimed, file, creation, scope, factoryType, contractName, siteFile, call, env,
+                    var found = FromChannelFactory(context, claimed, file, creation, scope, factoryType, contractName, siteFile, call, env,
                         via: $"{method!.Identifier.Text} ({CallSiteEvaluator.Where(file, creation)})");
+                    // Each call to the helper is its own client: the operations
+                    // are the ones called on what that call returns.
+                    yield return found with { Operations = OperationTracer.Soap(context, siteFile, call, found.Contract, null, isFactory: true) };
                 }
             }
         }
@@ -268,7 +283,10 @@ public static class SoapClientDetector
                 // modernised copies of one client often coexist).
                 var client = byName[name].FirstOrDefault(c => c.Project == context.Project) ?? byName[name].First();
                 constructed.Add(client);
-                yield return FromClientBase(context, claimed, client, file, creation);
+                yield return FromClientBase(context, claimed, client, file, creation) with
+                {
+                    Operations = OperationTracer.Soap(context, file, creation, client.Contract, client.Type.Name, isFactory: false),
+                };
             }
         }
 
@@ -287,7 +305,10 @@ public static class SoapClientDetector
             {
                 claimed.Add(ClaimKey(configured));
                 yield return FromConfigEntry(context, configured, client.Contract, client.Type.Name, "hand_written", null, null, null, [], [site],
-                    0.6, ["ClientBase subclass not constructed anywhere in the repository", "binding from configuration"]);
+                    0.6, ["ClientBase subclass not constructed anywhere in the repository", "binding from configuration"]) with
+                {
+                    Operations = [OperationTracer.UnresolvedAt(site, "the client class is never constructed, so no call through it can be followed")],
+                };
                 continue;
             }
 
@@ -438,9 +459,13 @@ public static class SoapClientDetector
     /// in the project's own configuration, default environment first.</summary>
     private static ClientEndpointEntry? ConfigEndpointFor(DetectionContext context, string contract, string? endpointName)
     {
+        // Its own configuration, or for a class library its hosts' (1.3.0);
+        // a SetParameters value is never the primary entry.
+        var directory = context.Project.ProjectDirectory;
         var governed = context.Config.ClientEndpoints
-            .Where(e => context.Config.Governs(context.Project.ProjectDirectory, e.Directory))
-            .OrderBy(e => e.Environment == "default" ? 0 : 1).ThenBy(e => e.File, StringComparer.Ordinal).ThenBy(e => e.Line)
+            .Where(e => context.Config.InScope(directory, e.Directory) && e.Link is null)
+            .OrderBy(e => context.Config.ScopeRank(directory, e.Directory))
+            .ThenBy(e => e.Environment == "default" ? 0 : 1).ThenBy(e => e.File, StringComparer.Ordinal).ThenBy(e => e.Line)
             .ToList();
         return endpointName is not null and not "*"
             ? governed.FirstOrDefault(e => string.Equals(e.Name, endpointName, StringComparison.Ordinal))
@@ -452,12 +477,23 @@ public static class SoapClientDetector
         string? condition, string? via, IReadOnlyList<CredentialReference> credentials, IReadOnlyList<CallSite> callSites, double confidence,
         IReadOnlyList<string> reasons)
     {
-        // The same endpoint in each environment's file is one invocation
-        // with a binding per environment.
+        // The same endpoint in each environment's file — and each
+        // SetParameters file — is one invocation with a binding per
+        // environment. For a class library, every host that configures it
+        // contributes its own bindings (1.3.0).
+        var directory = context.Project.ProjectDirectory;
+        var hosted = context.Config.HostFor(directory, entry.Directory) is not null;
         var siblings = context.Config.ClientEndpoints
-            .Where(e => e.Directory == entry.Directory && (e.Name ?? e.Contract) == (entry.Name ?? entry.Contract))
-            .OrderBy(e => e.Environment == "default" ? 0 : 1).ThenBy(e => e.Environment, StringComparer.Ordinal).ThenBy(e => e.File, StringComparer.Ordinal)
+            .Where(e => (hosted ? context.Config.InScope(directory, e.Directory) : e.Directory == entry.Directory)
+                        && (e.Name ?? e.Contract) == (entry.Name ?? entry.Contract))
+            .OrderBy(e => context.Config.ScopeRank(directory, e.Directory))
+            .ThenBy(e => e.Environment == "default" ? 0 : 1).ThenBy(e => e.Environment, StringComparer.Ordinal).ThenBy(e => e.File, StringComparer.Ordinal)
             .ToList();
+        foreach (var sibling in siblings.Where(s => s.Link is null))
+        {
+            context.ClaimedEndpoints.Add(ClaimKey(sibling));
+        }
+
         var bindings = siblings.Select(e => new EnvironmentBinding
         {
             Environment = e.Environment,
@@ -469,7 +505,17 @@ public static class SoapClientDetector
             Path = e.Endpoint.Path,
             Resolution = e.Endpoint.Resolution,
             Placeholder = e.Endpoint.Placeholder,
+            HostProject = context.Config.HostFor(directory, e.Directory),
+            DeployParameter = e.Link?.Parameter,
+            LinkMethod = e.Link?.Method,
+            LinkConfidence = e.Link?.Confidence,
         }).ToList();
+
+        if (hosted)
+        {
+            var hosts = siblings.Select(s => context.Config.HostFor(directory, s.Directory)).OfType<string>().Distinct().Order(StringComparer.Ordinal);
+            reasons = [.. reasons, $"configuration from the host project(s) {string.Join(", ", hosts)}: the class library has none of its own"];
+        }
 
         return new Found(contract, clientType, clientSource, "config", entry.Binding, entry.SecurityMode, entry.TransportCredential, entry.MessageCredential,
             entry.Endpoint, bindings, endpointName ?? entry.Name, condition, via, credentials, callSites, confidence, reasons);
@@ -478,7 +524,7 @@ public static class SoapClientDetector
     private static IEnumerable<Found> ConfigOnly(DetectionContext context, HashSet<string> claimed)
     {
         var entries = context.Config.ClientEndpoints
-            .Where(e => context.Config.Governs(context.Project.ProjectDirectory, e.Directory) && !claimed.Contains(ClaimKey(e)))
+            .Where(e => context.Config.Governs(context.Project.ProjectDirectory, e.Directory) && e.Link is null && !claimed.Contains(ClaimKey(e)))
             .OrderBy(e => e.Environment == "default" ? 0 : 1).ThenBy(e => e.File, StringComparer.Ordinal).ThenBy(e => e.Line)
             .ToList();
         foreach (var entry in entries)
@@ -488,8 +534,12 @@ public static class SoapClientDetector
                 continue;
             }
 
+            var at = CallSiteAt(entry.File, entry.Line);
             yield return FromConfigEntry(context, entry, entry.Contract, "config_endpoint", "config_only", entry.Name, null, null, [],
-                [CallSiteAt(entry.File, entry.Line)], 0.7, ["declared in configuration; no client construction found in code"]);
+                [at], 0.7, ["declared in configuration; no client construction found in code"]) with
+            {
+                Operations = [OperationTracer.UnresolvedAt(at, "declared in configuration only; no client construction to follow")],
+            };
         }
     }
 
@@ -554,6 +604,7 @@ public static class SoapClientDetector
                 Via = found.Via,
             },
             CallSites = found.CallSites,
+            Operations = found.Operations,
             LinuxCompatibility = Pending,
             Confidence = found.Confidence,
             ConfidenceReasons = reasons,

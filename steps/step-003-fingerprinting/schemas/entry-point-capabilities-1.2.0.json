@@ -1,0 +1,265 @@
+{
+  "manifestVersion": "1.2.0",
+  "step": "entry-point-inventory",
+  "scannerVersion": "2.2.0",
+  "description": "The entry-point kinds step 4 detects. A kind listed here was looked for in every scan stamped with this manifest version, so finding none of it is a result; a pattern under notCovered was not looked for, so its absence means nothing. Same principle as extractor readiness for signals.",
+  "authDeclaredScope": "auth_declared reports authentication as declared in source and config only. Gateway, reverse-proxy and header-based authentication (an API gateway, an access manager injecting identity headers) are not visible to static analysis, so none_declared is a prompt to review how the entry point is protected, not a security finding.",
+  "kinds": [
+    {
+      "kind": "http_controller_action",
+      "label": "HTTP controller action",
+      "detects": "Public actions on ControllerBase, Controller and ApiController subclasses (directly, through in-project bases, or Ardalis EndpointBase*), or classes marked [ApiController]",
+      "identifiedBy": "Verb and composed route — [Route] + verb templates with [controller], [action] and [area] resolved; conventional routing recorded with a null template",
+      "authDeclared": "[Authorize] / [AllowAnonymous] on the action and its controller chain; global AuthorizeFilter, MapControllers().RequireAuthorization(), fallback policy",
+      "addedIn": "1.0.0",
+      "entryClass": "request"
+    },
+    {
+      "kind": "http_minimal_api",
+      "label": "HTTP minimal API",
+      "detects": "MapGet, MapPost, MapPut, MapDelete, MapPatch, MapMethods",
+      "identifiedBy": "Verb and route, with statically resolvable MapGroup prefixes composed; a prefix in a variable recorded unresolved",
+      "authDeclared": "Attributes on the lambda; RequireAuthorization() / AllowAnonymous() on the call and its groups; fallback policy",
+      "addedIn": "1.0.0",
+      "entryClass": "request"
+    },
+    {
+      "kind": "razor_page",
+      "label": "Razor Page handler",
+      "detects": ".cshtml with an @page directive and its PageModel OnGet / OnPost / named handlers",
+      "identifiedBy": "Verb, route (from the path under Pages/ or Areas/{area}/Pages/ and the @page template) and handler name",
+      "authDeclared": "[Authorize] / [AllowAnonymous] on the PageModel; AuthorizePage / AuthorizeFolder / AllowAnonymousTo* conventions; global filters",
+      "addedIn": "1.1.0",
+      "entryClass": "request"
+    },
+    {
+      "kind": "wcf_operation",
+      "label": "WCF operation",
+      "detects": "[OperationContract] members of [ServiceContract] interfaces, with the implementing class; ClientBase proxies excluded",
+      "identifiedBy": "Contract and operation; hosts from .svc files, ServiceHost in code and CoreWCF builders",
+      "authDeclared": "Each endpoint's binding, security mode and client credential type, from web.config / app.config and code; [PrincipalPermission]",
+      "addedIn": "1.0.0",
+      "entryClass": "request"
+    },
+    {
+      "kind": "asmx_web_method",
+      "label": "ASMX web method",
+      "detects": "[WebMethod] members in .asmx.cs",
+      "identifiedBy": "Service path (the .asmx) and method",
+      "authDeclared": "web.config <authorization> for the path; [PrincipalPermission]",
+      "addedIn": "1.0.0",
+      "entryClass": "request"
+    },
+    {
+      "kind": "grpc_service_method",
+      "label": "gRPC service method",
+      "detects": "Overrides on classes deriving a generated Service.ServiceBase",
+      "identifiedBy": "/package.Service/Method from the .proto",
+      "authDeclared": "[Authorize] / [AllowAnonymous]; conventions on MapGrpcService<T>(); fallback policy",
+      "addedIn": "1.0.0",
+      "entryClass": "request"
+    },
+    {
+      "kind": "signalr_hub_method",
+      "label": "SignalR hub method",
+      "detects": "Public methods on Hub and Hub<T> subclasses",
+      "identifiedBy": "Hub route from MapHub<T>(\"/path\") and method",
+      "authDeclared": "[Authorize] / [AllowAnonymous]; conventions on MapHub<T>(); fallback policy",
+      "addedIn": "1.0.0",
+      "entryClass": "request"
+    },
+    {
+      "kind": "message_consumer",
+      "label": "Message consumer",
+      "detects": "Kafka IConsumer<TKey,TValue>.Consume; MSMQ MessageQueue.Receive / BeginReceive / ReceiveCompleted; MassTransit IConsumer<T>.Consume; NServiceBus and Rebus IHandleMessages<T>.Handle",
+      "identifiedBy": "Transport, and the topic, queue or message type",
+      "authDeclared": "Not applicable",
+      "addedIn": "1.0.0; MassTransit, NServiceBus and Rebus in 2.0.0",
+      "entryClass": "request"
+    },
+    {
+      "kind": "hosted_service",
+      "label": "Hosted service",
+      "detects": "BackgroundService and IHostedService implementations",
+      "identifiedBy": "Service class; whether AddHostedService<T>() registers it",
+      "authDeclared": "Not applicable",
+      "addedIn": "1.0.0",
+      "entryClass": "lifecycle"
+    },
+    {
+      "kind": "scheduled_job",
+      "label": "Scheduled job",
+      "detects": "Quartz IJob.Execute; Hangfire RecurringJob.AddOrUpdate; System.Threading.Timer in a hosted service",
+      "identifiedBy": "Scheduler, job id and schedule expression as written",
+      "authDeclared": "Not applicable",
+      "addedIn": "1.0.0",
+      "entryClass": "request"
+    },
+    {
+      "kind": "console_main",
+      "label": "Console main",
+      "detects": "static Main or top-level statements, in a project with no other entry point",
+      "identifiedBy": "The Main method or the top-level statements file",
+      "authDeclared": "Not applicable",
+      "addedIn": "1.0.0",
+      "entryClass": "lifecycle"
+    },
+    {
+      "kind": "webforms_page",
+      "label": "WebForms page",
+      "detects": ".aspx code-behind classes deriving Page",
+      "identifiedBy": "Page path",
+      "authDeclared": "web.config <authorization> for the path",
+      "addedIn": "1.0.0",
+      "entryClass": "request"
+    },
+    {
+      "kind": "windows_service",
+      "label": "Windows service",
+      "detects": "Classic System.ServiceProcess.ServiceBase subclasses",
+      "identifiedBy": "Service class and name; the OnStart / OnStop / ... hooks it overrides; where ServiceBase.Run starts it",
+      "authDeclared": "Not applicable",
+      "addedIn": "2.0.0",
+      "entryClass": "lifecycle"
+    },
+    {
+      "kind": "http_handler",
+      "label": "HTTP handler or module",
+      "detects": "IHttpHandler, IHttpAsyncHandler, HttpTaskAsyncHandler and IHttpModule in source; .ashx files; <httpHandlers>, <handlers>, <httpModules> and <modules> registrations in web.config, including framework and package types",
+      "identifiedBy": "Role (handler or module), type, and a handler's path and verb",
+      "authDeclared": "Handlers: web.config <authorization> for the path. Modules: not applicable (they see every request)",
+      "addedIn": "2.0.0",
+      "entryClass": "request (handlers) / lifecycle (modules, which hook pipeline events at Init)"
+    },
+    {
+      "kind": "global_asax",
+      "label": "Global.asax event",
+      "detects": "Application_* and Session_* methods on HttpApplication subclasses",
+      "identifiedBy": "Event and scope (application, request, session)",
+      "authDeclared": "Not applicable",
+      "addedIn": "2.0.0",
+      "entryClass": "lifecycle"
+    },
+    {
+      "kind": "owin_startup",
+      "label": "OWIN startup",
+      "detects": "[assembly: OwinStartup(typeof(X))], the owin:appStartup app setting, or a Startup class with Configuration(IAppBuilder)",
+      "identifiedBy": "Startup class, how it is declared, and the middleware it registers",
+      "authDeclared": "Not applicable (authentication middleware is listed under middleware)",
+      "addedIn": "2.0.0",
+      "entryClass": "lifecycle"
+    },
+    {
+      "kind": "blazor_component",
+      "label": "Blazor routable component",
+      "detects": "@page \"/route\" directives in .razor files",
+      "identifiedBy": "Route and component",
+      "authDeclared": "@attribute [Authorize] / [AllowAnonymous] in the component or on its code-behind",
+      "addedIn": "2.0.0",
+      "entryClass": "request"
+    },
+    {
+      "kind": "azure_function",
+      "label": "Azure Function",
+      "detects": "[FunctionName] (in-process) and [Function] (isolated) methods",
+      "identifiedBy": "Function name and trigger type (HttpTrigger, TimerTrigger, QueueTrigger, ...)",
+      "authDeclared": "HttpTrigger authorization level: Anonymous is none declared, a key level is declared. Other triggers: not applicable",
+      "addedIn": "2.0.0",
+      "entryClass": "request"
+    },
+    {
+      "kind": "desktop_app",
+      "label": "Desktop application",
+      "detects": "WinForms [STAThread] Main (System.Windows.Forms, Application.Run); WPF Application subclass defined by App.xaml",
+      "identifiedBy": "Framework and main form or window",
+      "authDeclared": "Not applicable",
+      "addedIn": "2.0.0",
+      "entryClass": "lifecycle"
+    }
+  ],
+  "notCovered": [
+    {
+      "pattern": "ASP.NET Core middleware",
+      "marker": "app.Use(...) / UseMiddleware<T>",
+      "note": "Intercepts every request; not a handler"
+    },
+    {
+      "pattern": "Custom route handler",
+      "marker": "IRouteHandler.GetHttpHandler",
+      "note": "The handler it returns is dispatched at run time"
+    },
+    {
+      "pattern": "WebForms control event handlers",
+      "marker": "Button1_Click and siblings wired in markup",
+      "note": "Pages are inventoried; their postback events are not"
+    },
+    {
+      "pattern": "Azure Service Bus SDK processor",
+      "marker": "ServiceBusProcessor.ProcessMessageAsync registration",
+      "note": "Often a lambda at the registration site"
+    },
+    {
+      "pattern": "RabbitMQ client consumer",
+      "marker": "EventingBasicConsumer / BasicConsume",
+      "note": ""
+    },
+    {
+      "pattern": "Hangfire fire-and-forget",
+      "marker": "BackgroundJob.Enqueue(...)",
+      "note": "Recurring jobs are covered"
+    },
+    {
+      "pattern": "Azure Functions function.json",
+      "marker": "bindings[] with a *Trigger type",
+      "note": "Script-based functions; attribute-based ones are covered"
+    },
+    {
+      "pattern": "WebJobs (non-Functions)",
+      "marker": "[NoAutomaticTrigger], JobHost.Call",
+      "note": ""
+    },
+    {
+      "pattern": "Service Fabric services",
+      "marker": "StatelessService / StatefulService RunAsync, listener creation",
+      "note": ""
+    },
+    {
+      "pattern": "Orleans grains",
+      "marker": "Grain, IGrainWithGuidKey",
+      "note": ""
+    },
+    {
+      "pattern": "Dapr pub/sub",
+      "marker": "[Topic(...)], /dapr/subscribe",
+      "note": ""
+    },
+    {
+      "pattern": "BizTalk orchestrations",
+      "marker": ".odx files",
+      "note": ""
+    },
+    {
+      "pattern": "SSIS packages",
+      "marker": ".dtsx",
+      "note": ""
+    },
+    {
+      "pattern": "Sitecore / Umbraco pipelines",
+      "marker": "<processor type=...>, SurfaceController",
+      "note": ""
+    },
+    {
+      "pattern": "In-house dispatch frameworks",
+      "marker": "A bespoke base class with handler-shaped methods",
+      "note": "Needs the dispatcher read by hand"
+    }
+  ],
+  "entryClasses": {
+    "request": "A caller, message or trigger enters and is handled. What downstream steps count (risk, step 8), snapshot (contracts, step 14) and test (step 15). Only request entry points carry auth_declared.",
+    "lifecycle": "The process or pipeline starts or wires itself up — bootstrap, not a place external work enters. Inventoried, but never counted as surface, snapshotted or made a test target."
+  },
+  "origins": {
+    "application": "The entry point's code is in the repository.",
+    "framework": "A framework or package type the application only registers (web.config handler and module registrations of types no project declares). Kept — it matters for the move to middleware — but it migrates through its package's own path, not by rewriting."
+  }
+}

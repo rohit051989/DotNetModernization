@@ -1,0 +1,62 @@
+category: security
+deleted: false
+description: 'Code using System.DirectoryServices or System.DirectoryServices.AccountManagement (DirectoryEntry, DirectorySearcher, PrincipalContext), which is Windows-only. System.DirectoryServices.Protocols is not flagged: it works on Linux, and is the usual target. One occurrence per file.'
+detection:
+  match:
+    all:
+    - id: directory-services
+      signal:
+        name: DIRECTORY_SERVICES_USAGE
+    any: []
+    atLeast: []
+    metadata: []
+    none: []
+  occurrence_source:
+    group_by: source_path
+    signal: DIRECTORY_SERVICES_USAGE
+excluded_roles: []
+id: directory-services-usage
+name: System.DirectoryServices (Active Directory) usage
+owner_team: null
+resolutions:
+- consumer_impact: none
+  container_ready: false
+  deleted: false
+  derivations: []
+  description: Out of scope for the Linux move; the application stays on Windows.
+  effort: low
+  id: directory-services-usage-remain-windows-hosted
+  is_default: false
+  linux_compatible: false
+  name: Remain Windows-hosted (out of scope)
+  notes: null
+  status: active
+  target_description: .NET on Windows Server
+- consumer_impact: medium
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: Stop querying the directory at runtime; take users and groups from the identity provider's token claims.
+  effort: high
+  id: identity-provider-claims
+  is_default: false
+  linux_compatible: true
+  name: Use identity provider claims
+  notes: null
+  status: active
+  target_description: OIDC claims from the platform identity provider
+- consumer_impact: low
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: Rewrite the lookups against LdapConnection, which runs on Linux; bind with a service account from an OCP4 Secret.
+  effort: medium
+  id: ldap-protocols
+  is_default: true
+  linux_compatible: true
+  name: Port to System.DirectoryServices.Protocols
+  notes: null
+  status: active
+  target_description: System.DirectoryServices.Protocols (LDAP)
+scope: occurrence
+status: active

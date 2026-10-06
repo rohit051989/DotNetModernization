@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { ApiError } from '../../api/client'
 import { getRepositoryEntryPoints } from '../../api/surface'
+import { RepositoryBackendReachPanel } from './RepositoryBackendReachPanel'
 import { RepositoryOutboundPanel } from './RepositoryOutboundPanel'
 import { SourceLink } from './SourceLink'
 import type { EntryPoint, EntryPointInventory, EntryPointKind, HttpDetail, HttpParameter, ProjectEntryPoints, WcfEndpoint } from '../../types/surface'
@@ -436,6 +437,9 @@ export function RepositorySurfaceSection({ repositoryId, localPath, refreshToken
     <div className="grid gap-6 p-4 xl:grid-cols-2">
       <RepositoryInboundPanel repositoryId={repositoryId} localPath={localPath} refreshToken={refreshToken} />
       <RepositoryOutboundPanel repositoryId={repositoryId} localPath={localPath} refreshToken={refreshToken} />
+      <div className="min-w-0 xl:col-span-2">
+        <RepositoryBackendReachPanel repositoryId={repositoryId} localPath={localPath} refreshToken={refreshToken} />
+      </div>
     </div>
   )
 }

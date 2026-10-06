@@ -1,0 +1,49 @@
+category: framework
+deleted: false
+description: DateTime.Now and DateTime.Today return host-local time. On the Windows servers that is the site time zone; in a default Linux container it is UTC, so timestamps, schedules and date boundaries shift silently after migration.
+detection:
+  match:
+    all:
+    - id: datetime-now
+      signal:
+        name: DATETIME_NOW_USAGE
+    any: []
+    atLeast: []
+    metadata: []
+    none: []
+  occurrence_source:
+    group_by: source_path
+    signal: DATETIME_NOW_USAGE
+excluded_roles: []
+id: datetime-now-usage
+name: DateTime.Now rather than UtcNow
+owner_team: null
+resolutions:
+- consumer_impact: none
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: Keep the code; set TZ in the container to the source servers' zone so Now means what it did.
+  effort: low
+  id: container-local-timezone
+  is_default: true
+  linux_compatible: true
+  name: Set the container time zone
+  notes: Lift-and-shift. Leaves the underlying local-time dependency in place.
+  status: active
+  target_description: TZ environment variable plus tzdata in the image
+- consumer_impact: medium
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: Replace with DateTime.UtcNow (or an injected TimeProvider) and convert to local time only for display.
+  effort: high
+  id: utc-at-boundaries
+  is_default: false
+  linux_compatible: true
+  name: UtcNow internally, convert at the edges
+  notes: null
+  status: active
+  target_description: UTC throughout; TimeProvider for testability
+scope: occurrence
+status: active

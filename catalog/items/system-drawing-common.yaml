@@ -1,0 +1,78 @@
+category: dependencies
+deleted: false
+description: 'System.Drawing.Common is Windows-only from .NET 6 (the Unix support switch was removed in .NET 7). On .NET Framework the same types come from the in-box System.Drawing assembly, so there may be no package at all; detection keys on the Windows-only GDI+ types used in code, or the package. Deliberately not on SYSTEM_DRAWING_NAMESPACE: that namespace also holds the cross-platform Color, Point and Size types, so it flags files that are fine on Linux. One occurrence per file using a GDI+ type. A project with only the package and no usage matches but has no located occurrence: the fix there is removing a dead reference.'
+detection:
+  match:
+    all: []
+    any:
+    - id: gdi-type-usage
+      signal:
+        name: SYSTEM_DRAWING_USAGE
+    - id: system-drawing-common-package
+      signal:
+        name: SYSTEM_DRAWING_COMMON_PACKAGE
+    atLeast: []
+    metadata: []
+    none: []
+  occurrence_source:
+    group_by: source_path
+    signal: SYSTEM_DRAWING_USAGE
+excluded_roles: []
+id: system-drawing-common
+name: System.Drawing, unsupported on Linux
+owner_team: null
+resolutions:
+- consumer_impact: low
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: Port imaging code to SixLabors.ImageSharp.
+  effort: medium
+  id: imagesharp-replacement
+  is_default: true
+  linux_compatible: true
+  name: Replace with ImageSharp
+  notes: Check the Six Labors split licence for commercial use before adopting.
+  status: active
+  target_description: SixLabors.ImageSharp (cross-platform, managed)
+- consumer_impact: none
+  container_ready: false
+  deleted: true
+  derivations: []
+  description: Out of scope for the Linux move; the application and its queues stay on Windows.
+  effort: low
+  id: remain-windows-hosted
+  is_default: false
+  linux_compatible: false
+  name: Remain Windows-hosted (out of scope)
+  notes: null
+  status: active
+  target_description: .NET Framework on Windows Server with MSMQ
+- consumer_impact: low
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: Port imaging and drawing code to SkiaSharp.
+  effort: high
+  id: skiasharp-replacement
+  is_default: false
+  linux_compatible: true
+  name: Replace with SkiaSharp
+  notes: null
+  status: active
+  target_description: SkiaSharp with native Linux assets in the image
+- consumer_impact: none
+  container_ready: false
+  deleted: false
+  derivations: []
+  description: Out of scope for the Linux move; the application stays on Windows.
+  effort: low
+  id: system-drawing-common-remain-windows-hosted
+  is_default: false
+  linux_compatible: false
+  name: Remain Windows-hosted
+  notes: null
+  status: active
+  target_description: .NET on Windows Server
+scope: occurrence
+status: active

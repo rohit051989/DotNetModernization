@@ -1,0 +1,83 @@
+category: hosting
+deleted: false
+description: |-
+  A Windows Presentation Foundation application: `OutputType` of `WinExe`
+  together with XAML markup. XAML is what separates this from
+  winforms-desktop.
+
+  XAML alone does not distinguish WPF from UWP or MAUI, so the
+  `outputType` condition is doing real work here — and
+  `System.Windows`/`PresentationFramework` evidence, which would settle
+  it properly, is not yet emitted by step 3.
+
+  Detection note (from the pattern's match warning): Detected from OutputType WinExe plus XAML; System.Windows/PresentationFramework evidence not yet available from step 3, so UWP and MAUI are not yet positively excluded.
+detection:
+  match:
+    all:
+    - id: xaml-file
+      signal:
+        name: XAML_FILE
+    any: []
+    atLeast: []
+    metadata:
+    - equals: WinExe
+      field: outputType
+      id: windows-gui-exe
+    none:
+    - id: no-startup-class
+      signal:
+        name: STARTUP_CLASS_ENTRY_POINT
+    - id: no-web-builder
+      signal:
+        name: WEB_APPLICATION_CREATE_BUILDER_ENTRY_POINT
+    - id: no-webhost-builder
+      signal:
+        name: WEBHOST_CREATE_DEFAULT_BUILDER_ENTRY_POINT
+    - id: no-global-asax
+      signal:
+        name: GLOBAL_ASAX_ENTRY_POINT
+    - id: no-svc-file
+      signal:
+        name: SVC_FILE
+    - id: no-service-base
+      signal:
+        name: SERVICE_BASE_BASE_CLASS
+excluded_roles: []
+id: wpf-desktop
+name: WPF desktop application
+owner_team: null
+resolutions:
+- consumer_impact: none
+  container_ready: false
+  deleted: false
+  derivations: []
+  description: Move to the current .NET Windows Desktop target with the WPF UI intact. Stays Windows-only and off OCP4.
+  effort: medium
+  id: wpf-net-windows-retarget
+  is_default: true
+  linux_compatible: false
+  name: Retarget to .NET (Windows-only), UI preserved
+  notes: |-
+    Prerequisites: A Windows host remains available for build and run. Third-party control suites and custom themes checked for modern .NET support.
+
+    Known limitations: Does not reach OCP4 — WPF has no Linux or container story. Keeps the application supported, not portable.
+  status: active
+  target_description: .NET 8+ Windows Desktop (net8.0-windows), Windows host
+- consumer_impact: high
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: Keep the domain logic, replace the WPF UI. The only route to OCP4 for a desktop application.
+  effort: high
+  id: wpf-ui-rewrite
+  is_default: false
+  linux_compatible: true
+  name: Rewrite UI for the web (Blazor) or cross-platform (MAUI)
+  notes: |-
+    Prerequisites: Domain logic separable from the views and view models. User-facing change accepted by the business.
+
+    Known limitations: A rewrite, not a migration. MVVM view models often port further than WinForms code-behind does, but no accelerator covers the UI layer.
+  status: active
+  target_description: Blazor on ASP.NET Core (container on OCP4), or .NET MAUI
+scope: application
+status: active

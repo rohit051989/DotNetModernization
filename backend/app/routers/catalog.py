@@ -104,6 +104,32 @@ def _serialize(obj, fields: list[str], include_timestamps: bool) -> dict:
 
 
 @router.get(
+    "/export/items",
+    summary="Export the item catalog as one YAML file per item (zip)",
+    response_description="catalog/items/<item-id>.yaml for every item, in a zip with fixed timestamps: the same catalog gives the same bytes.",
+    operation_id="export_item_catalog",
+    response_class=Response,
+    responses={200: {"content": {"application/zip": {}}}},
+)
+def export_item_catalog(db: Session = Depends(get_db)):
+    """The item catalog — items, their resolutions, and each resolution's
+    derivations — for review and history in git (app/items/catalog_export.py,
+    28-ITEM Part W). Deterministic: sorted keys, resolutions by id,
+    derivations by dependent item. Soft-deleted rows are included with
+    `deleted: true`: a deletion is a reviewable change. Content only — no
+    seed baseline hash, no computed columns, no timestamps — and no
+    engagement data. Read-only; the same files are written into the
+    repository by `python -m app.items.catalog_export export`."""
+    from app.items import catalog_export
+
+    return Response(
+        content=catalog_export.zip_bytes(catalog_export.export_files(db)),
+        media_type="application/zip",
+        headers={"Content-Disposition": 'attachment; filename="catalog-items.zip"'},
+    )
+
+
+@router.get(
     "/export",
     summary="Export the catalog as deterministic JSON",
     response_description="A byte-identical-for-identical-data JSON document, suitable for committing to git.",

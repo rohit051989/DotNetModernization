@@ -1,0 +1,62 @@
+category: security
+deleted: false
+description: 'A direct NuGet package''s current version has a published vulnerability advisory. A flag, independent of the upgrade outcome: a vulnerable package may also be safe or breaking to upgrade, or have no compatible version. The value carries the highest severity. One occurrence per project per package, at the PackageReference line.'
+detection:
+  match:
+    all:
+    - id: vulnerable
+      signal:
+        name: PACKAGE_VULNERABLE
+    any: []
+    atLeast: []
+    metadata: []
+    none: []
+  occurrence_source:
+    group_by: source_path_and_value
+    signal: PACKAGE_VULNERABLE
+excluded_roles: []
+id: package-vulnerable
+name: Package with a known vulnerability
+owner_team: null
+resolutions:
+- consumer_impact: none
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: Keep the version with a documented mitigation, where the vulnerable code path is not reachable.
+  effort: low
+  id: package-vulnerable-accept-risk
+  is_default: false
+  linux_compatible: true
+  name: Accept the risk with a mitigation
+  notes: Needs the client's security sign-off, recorded in the decision rationale.
+  status: active
+  target_description: Unchanged package, risk accepted
+- consumer_impact: medium
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: Where no patched version exists or the package is unmaintained, move to an alternative.
+  effort: high
+  id: package-vulnerable-replace
+  is_default: false
+  linux_compatible: true
+  name: Replace the package
+  notes: null
+  status: active
+  target_description: A maintained alternative without the advisory
+- consumer_impact: low
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: Take the recommended version where step 6 reports that it resolves the advisories; otherwise the lowest patched version.
+  effort: low
+  id: package-vulnerable-upgrade
+  is_default: true
+  linux_compatible: true
+  name: Upgrade to a version without the advisory
+  notes: null
+  status: active
+  target_description: A package version with no open advisory
+scope: occurrence
+status: active

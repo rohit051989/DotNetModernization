@@ -23,7 +23,7 @@ public sealed record InventoryInput(
 public sealed class EntryPointPipeline
 {
     /// <summary>Matches the entry-point-inventory step registration version.</summary>
-    public const string ScannerVersion = "2.1.0";
+    public const string ScannerVersion = "2.2.0";
 
     private static readonly IReadOnlyList<IEntryPointDetector> Detectors =
     [
@@ -101,7 +101,11 @@ public sealed class EntryPointPipeline
             results.Add(Detect(input.RepositoryId, project, source, wcf, repository, repositoryTypes));
         }
 
-        results = results.OrderBy(r => r.ProjectPath, StringComparer.Ordinal).ToList();
+        // 2.2.0: what each project exposes or hosts, across projects.
+        var signals = ArchitectureSignals.Build(results, input.Projects.Select(p => p.RelativePath).ToList());
+        results = results
+            .Select(r => r with { Signals = signals.GetValueOrDefault(r.ProjectPath) ?? [] })
+            .OrderBy(r => r.ProjectPath, StringComparer.Ordinal).ToList();
         return new EntryPointInventoryArtifact
         {
             ScannerVersion = ScannerVersion,

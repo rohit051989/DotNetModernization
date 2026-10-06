@@ -1,0 +1,1755 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://modernization-platform.internal/schemas/entry-point-inventory-2.2.0.schema.json",
+  "title": "entry-point-inventory@2.2.0",
+  "description": "Lifecycle step 4. See 29-STEPS-004-005-INVENTORIES.md Parts B and B5. 2.0.0 (breaking): unauthorised becomes authDeclared (declared | none_declared | not_assessed) and unauthorisedCount becomes noDeclaredAuthenticationCount \u2014 gateway, proxy and header-based authentication are not visible to static analysis, so none_declared is a review prompt, not a finding; seven kinds are added; the capability manifest is stamped in. No timestamp and no absolute path belong here: two runs over unchanged input are byte-identical. 2.1.0 adds origin (application | framework) and entryClass (request | lifecycle) to every entry point, with counts by both; only request entry points carry authDeclared.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "artifactType",
+    "artifactVersion",
+    "scannerVersion",
+    "repositoryId",
+    "repositorySlug",
+    "semanticAnalysisEnabled",
+    "skipSource",
+    "summary",
+    "projects",
+    "warnings",
+    "authDeclaredScope",
+    "capabilities"
+  ],
+  "properties": {
+    "artifactType": {
+      "const": "entry-point-inventory"
+    },
+    "artifactVersion": {
+      "const": "2.2.0"
+    },
+    "scannerVersion": {
+      "type": "string"
+    },
+    "repositoryId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "repositorySlug": {
+      "type": "string"
+    },
+    "semanticAnalysisEnabled": {
+      "const": false
+    },
+    "skipSource": {
+      "enum": [
+        "application-fingerprint",
+        "solution-project-inventory"
+      ]
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "projectsScanned",
+        "projectsSkipped",
+        "projectsFailed",
+        "entryPointCount",
+        "countByKind",
+        "countByVerb",
+        "noDeclaredAuthenticationCount",
+        "authorisationNotAssessedCount",
+        "requestEntryPointCount",
+        "lifecycleHookCount",
+        "countByOrigin"
+      ],
+      "properties": {
+        "projectsScanned": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "projectsSkipped": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "projectsFailed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "entryPointCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "countByKind": {
+          "$ref": "#/$defs/countByKind"
+        },
+        "countByVerb": {
+          "$ref": "#/$defs/counts"
+        },
+        "noDeclaredAuthenticationCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "authorisationNotAssessedCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "requestEntryPointCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "lifecycleHookCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "countByOrigin": {
+          "type": "object",
+          "propertyNames": {
+            "enum": [
+              "application",
+              "framework"
+            ]
+          },
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      }
+    },
+    "projects": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/project"
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/warning"
+      }
+    },
+    "authDeclaredScope": {
+      "type": "string",
+      "minLength": 1
+    },
+    "capabilities": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "manifestVersion",
+        "kinds"
+      ],
+      "properties": {
+        "manifestVersion": {
+          "type": "string"
+        },
+        "kinds": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/kind"
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      }
+    }
+  },
+  "$defs": {
+    "kind": {
+      "enum": [
+        "http_controller_action",
+        "http_minimal_api",
+        "razor_page",
+        "wcf_operation",
+        "asmx_web_method",
+        "grpc_service_method",
+        "signalr_hub_method",
+        "message_consumer",
+        "hosted_service",
+        "scheduled_job",
+        "console_main",
+        "webforms_page",
+        "windows_service",
+        "http_handler",
+        "global_asax",
+        "owin_startup",
+        "blazor_component",
+        "azure_function",
+        "desktop_app"
+      ]
+    },
+    "counts": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 1
+      }
+    },
+    "countByKind": {
+      "type": "object",
+      "propertyNames": {
+        "$ref": "#/$defs/kind"
+      },
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 1
+      }
+    },
+    "nullableString": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "warning": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "code",
+        "message",
+        "severity"
+      ],
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "severity": {
+          "enum": [
+            "info",
+            "warning",
+            "error"
+          ]
+        }
+      }
+    },
+    "project": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "projectId",
+        "projectPath",
+        "status",
+        "skipReason",
+        "summary",
+        "entryPoints",
+        "warnings",
+        "signals"
+      ],
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "projectPath": {
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "SCANNED",
+            "SKIPPED",
+            "FAILED"
+          ]
+        },
+        "skipReason": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "summary": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "countByKind",
+            "countByVerb",
+            "noDeclaredAuthenticationCount",
+            "authorisationNotAssessedCount",
+            "globalAuthorisation",
+            "conventionalRoutes",
+            "requestEntryPointCount",
+            "lifecycleHookCount",
+            "countByOrigin"
+          ],
+          "properties": {
+            "countByKind": {
+              "$ref": "#/$defs/countByKind"
+            },
+            "countByVerb": {
+              "$ref": "#/$defs/counts"
+            },
+            "noDeclaredAuthenticationCount": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "authorisationNotAssessedCount": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "globalAuthorisation": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "conventionalRoutes": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "requestEntryPointCount": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "lifecycleHookCount": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "countByOrigin": {
+              "type": "object",
+              "propertyNames": {
+                "enum": [
+                  "application",
+                  "framework"
+                ]
+              },
+              "additionalProperties": {
+                "type": "integer",
+                "minimum": 1
+              }
+            }
+          }
+        },
+        "entryPoints": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/entryPoint"
+          }
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/warning"
+          }
+        },
+        "signals": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/signal"
+          }
+        }
+      }
+    },
+    "handler": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "namespace",
+        "member",
+        "filePath",
+        "lineStart",
+        "lineEnd"
+      ],
+      "properties": {
+        "type": {
+          "type": "string"
+        },
+        "namespace": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "member": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "filePath": {
+          "type": "string",
+          "pattern": "^[^/\\\\:][^:]*$"
+        },
+        "lineStart": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "lineEnd": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "entryPoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "entryPointId",
+        "kind",
+        "projectPath",
+        "handler",
+        "confidence",
+        "confidenceReasons",
+        "authDeclared",
+        "origin",
+        "entryClass"
+      ],
+      "properties": {
+        "entryPointId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "kind": {
+          "$ref": "#/$defs/kind"
+        },
+        "projectPath": {
+          "type": "string"
+        },
+        "handler": {
+          "$ref": "#/$defs/handler"
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "confidenceReasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "authDeclared": {
+          "enum": [
+            "declared",
+            "none_declared",
+            "not_assessed",
+            null
+          ]
+        },
+        "http": {
+          "$ref": "#/$defs/http"
+        },
+        "wcf": {
+          "$ref": "#/$defs/wcf"
+        },
+        "asmx": {
+          "$ref": "#/$defs/asmx"
+        },
+        "grpc": {
+          "$ref": "#/$defs/grpc"
+        },
+        "signalR": {
+          "$ref": "#/$defs/signalR"
+        },
+        "messaging": {
+          "$ref": "#/$defs/messaging"
+        },
+        "schedule": {
+          "$ref": "#/$defs/schedule"
+        },
+        "hosted": {
+          "$ref": "#/$defs/hosted"
+        },
+        "console": {
+          "$ref": "#/$defs/console"
+        },
+        "webForms": {
+          "$ref": "#/$defs/webForms"
+        },
+        "windowsService": {
+          "$ref": "#/$defs/windowsService"
+        },
+        "httpHandler": {
+          "$ref": "#/$defs/httpHandler"
+        },
+        "globalAsax": {
+          "$ref": "#/$defs/globalAsax"
+        },
+        "owinStartup": {
+          "$ref": "#/$defs/owinStartup"
+        },
+        "blazor": {
+          "$ref": "#/$defs/blazor"
+        },
+        "function": {
+          "$ref": "#/$defs/function"
+        },
+        "desktop": {
+          "$ref": "#/$defs/desktop"
+        },
+        "origin": {
+          "enum": [
+            "application",
+            "framework"
+          ]
+        },
+        "entryClass": {
+          "enum": [
+            "request",
+            "lifecycle"
+          ]
+        }
+      },
+      "minProperties": 10,
+      "maxProperties": 10,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "http_controller_action",
+                  "http_minimal_api",
+                  "razor_page"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "http"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "wcf_operation"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "wcf"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "asmx_web_method"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "asmx"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "grpc_service_method"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "grpc"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "signalr_hub_method"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "signalR"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "message_consumer"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "messaging"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "scheduled_job"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "schedule"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "hosted_service"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "hosted"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "console_main"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "console"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "webforms_page"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "webForms"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "http_controller_action"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "http": {
+                "properties": {
+                  "routing": {
+                    "enum": [
+                      "attribute",
+                      "conventional"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "http_minimal_api"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "http": {
+                "properties": {
+                  "routing": {
+                    "const": "minimal_api"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "razor_page"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "http": {
+                "properties": {
+                  "routing": {
+                    "const": "razor_page"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "windows_service"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "windowsService"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "http_handler"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "httpHandler"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "global_asax"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "globalAsax"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "owin_startup"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "owinStartup"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "blazor_component"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "blazor"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "azure_function"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "function"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "desktop_app"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "desktop"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "entryClass": {
+                "const": "lifecycle"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "authDeclared": {
+                "const": null
+              }
+            }
+          }
+        }
+      ]
+    },
+    "http": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "verb",
+        "routeTemplate",
+        "routing",
+        "parameters",
+        "returnType",
+        "authorisation",
+        "controller",
+        "action",
+        "mappedTemplate",
+        "groupPrefix",
+        "handlerForm",
+        "pageFile",
+        "pageHandler"
+      ],
+      "properties": {
+        "verb": {
+          "enum": [
+            "GET",
+            "POST",
+            "PUT",
+            "DELETE",
+            "PATCH",
+            "HEAD",
+            "OPTIONS",
+            "TRACE",
+            "CONNECT",
+            "ANY"
+          ]
+        },
+        "routeTemplate": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^(?![/~])"
+        },
+        "routing": {
+          "enum": [
+            "attribute",
+            "conventional",
+            "minimal_api",
+            "razor_page"
+          ]
+        },
+        "parameters": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "name",
+              "type",
+              "source",
+              "inferredSource"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "type": {
+                "$ref": "#/$defs/nullableString"
+              },
+              "source": {
+                "enum": [
+                  "route",
+                  "query",
+                  "body",
+                  "header",
+                  "form",
+                  "inferred"
+                ]
+              },
+              "inferredSource": {
+                "enum": [
+                  "route",
+                  "query",
+                  "body",
+                  "form",
+                  null
+                ]
+              }
+            }
+          }
+        },
+        "returnType": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "authorisation": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "controller": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "action": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "mappedTemplate": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "groupPrefix": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "resolution",
+                "prefix",
+                "expression"
+              ],
+              "properties": {
+                "resolution": {
+                  "enum": [
+                    "resolved",
+                    "unresolved"
+                  ]
+                },
+                "prefix": {
+                  "$ref": "#/$defs/nullableString"
+                },
+                "expression": {
+                  "$ref": "#/$defs/nullableString"
+                }
+              }
+            }
+          ]
+        },
+        "handlerForm": {
+          "enum": [
+            "lambda",
+            "method_group",
+            null
+          ]
+        },
+        "pageFile": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "pageHandler": {
+          "$ref": "#/$defs/nullableString"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "routing": {
+                "const": "conventional"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "routeTemplate": {
+                "const": null
+              }
+            }
+          }
+        }
+      ]
+    },
+    "wcf": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract",
+        "operation",
+        "implementation",
+        "isOneWay",
+        "hostedBy",
+        "hostFile",
+        "authorisation",
+        "endpoints"
+      ],
+      "properties": {
+        "contract": {
+          "type": "string"
+        },
+        "operation": {
+          "type": "string"
+        },
+        "implementation": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "isOneWay": {
+          "type": "boolean"
+        },
+        "hostedBy": {
+          "enum": [
+            "svc",
+            "service_host",
+            "corewcf",
+            null
+          ]
+        },
+        "hostFile": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "authorisation": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "endpoints": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "hostKind",
+              "hostedAt",
+              "binding",
+              "securityMode",
+              "clientCredentialType",
+              "securitySource",
+              "anonymous",
+              "address",
+              "source",
+              "declaredAt",
+              "condition"
+            ],
+            "properties": {
+              "hostKind": {
+                "enum": [
+                  "svc",
+                  "service_host",
+                  "corewcf"
+                ]
+              },
+              "hostedAt": {
+                "type": "string"
+              },
+              "binding": {
+                "type": "string"
+              },
+              "securityMode": {
+                "$ref": "#/$defs/nullableString"
+              },
+              "clientCredentialType": {
+                "$ref": "#/$defs/nullableString"
+              },
+              "securitySource": {
+                "enum": [
+                  "declared",
+                  "binding_default",
+                  "unresolved"
+                ]
+              },
+              "anonymous": {
+                "type": [
+                  "boolean",
+                  "null"
+                ]
+              },
+              "address": {
+                "$ref": "#/$defs/nullableString"
+              },
+              "source": {
+                "enum": [
+                  "config",
+                  "code"
+                ]
+              },
+              "declaredAt": {
+                "type": "string"
+              },
+              "condition": {
+                "$ref": "#/$defs/nullableString"
+              }
+            }
+          }
+        }
+      }
+    },
+    "asmx": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "servicePath",
+        "method",
+        "authorisation"
+      ],
+      "properties": {
+        "servicePath": {
+          "type": "string",
+          "pattern": "^/"
+        },
+        "method": {
+          "type": "string"
+        },
+        "authorisation": {
+          "$ref": "#/$defs/nullableString"
+        }
+      }
+    },
+    "webForms": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "pagePath",
+        "codeBehindClass",
+        "authorisation"
+      ],
+      "properties": {
+        "pagePath": {
+          "type": "string",
+          "pattern": "^/.*\\.aspx$"
+        },
+        "codeBehindClass": {
+          "type": "string"
+        },
+        "authorisation": {
+          "$ref": "#/$defs/nullableString"
+        }
+      }
+    },
+    "grpc": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "service",
+        "method",
+        "protoPackage",
+        "protoFile",
+        "fullMethod",
+        "authorisation"
+      ],
+      "properties": {
+        "service": {
+          "type": "string"
+        },
+        "method": {
+          "type": "string"
+        },
+        "protoPackage": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "protoFile": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "fullMethod": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^/"
+        },
+        "authorisation": {
+          "$ref": "#/$defs/nullableString"
+        }
+      }
+    },
+    "signalR": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "hub",
+        "method",
+        "hubRoute",
+        "authorisation"
+      ],
+      "properties": {
+        "hub": {
+          "type": "string"
+        },
+        "method": {
+          "type": "string"
+        },
+        "hubRoute": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "authorisation": {
+          "$ref": "#/$defs/nullableString"
+        }
+      }
+    },
+    "messaging": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "transport",
+        "sources",
+        "sourceResolution",
+        "hostedService"
+      ],
+      "properties": {
+        "transport": {
+          "enum": [
+            "kafka",
+            "msmq",
+            "masstransit",
+            "nservicebus",
+            "rebus"
+          ]
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "sourceResolution": {
+          "enum": [
+            "resolved",
+            "unresolved"
+          ]
+        },
+        "hostedService": {
+          "$ref": "#/$defs/nullableString"
+        }
+      }
+    },
+    "schedule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scheduler",
+        "expression",
+        "jobId"
+      ],
+      "properties": {
+        "scheduler": {
+          "enum": [
+            "quartz",
+            "hangfire",
+            "threading_timer"
+          ]
+        },
+        "expression": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "jobId": {
+          "$ref": "#/$defs/nullableString"
+        }
+      }
+    },
+    "hosted": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "serviceBase",
+        "registered"
+      ],
+      "properties": {
+        "serviceBase": {
+          "enum": [
+            "BackgroundService",
+            "IHostedService"
+          ]
+        },
+        "registered": {
+          "type": "boolean"
+        }
+      }
+    },
+    "console": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "form",
+        "staThread"
+      ],
+      "properties": {
+        "form": {
+          "enum": [
+            "main",
+            "top_level_statements"
+          ]
+        },
+        "staThread": {
+          "type": "boolean"
+        }
+      }
+    },
+    "windowsService": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "serviceClass",
+        "serviceName",
+        "hooks",
+        "runAt"
+      ],
+      "properties": {
+        "serviceClass": {
+          "type": "string"
+        },
+        "serviceName": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "hooks": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "runAt": {
+          "$ref": "#/$defs/nullableString"
+        }
+      }
+    },
+    "httpHandler": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "role",
+        "typeName",
+        "path",
+        "verb",
+        "registeredAt",
+        "configSection",
+        "inRepository",
+        "authorisation"
+      ],
+      "properties": {
+        "role": {
+          "enum": [
+            "handler",
+            "module"
+          ]
+        },
+        "typeName": {
+          "type": "string"
+        },
+        "path": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "verb": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "registeredAt": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "configSection": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "inRepository": {
+          "type": "boolean"
+        },
+        "authorisation": {
+          "$ref": "#/$defs/nullableString"
+        }
+      }
+    },
+    "globalAsax": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "applicationClass",
+        "event",
+        "scope"
+      ],
+      "properties": {
+        "applicationClass": {
+          "type": "string"
+        },
+        "event": {
+          "type": "string",
+          "pattern": "^(Application|Session)_"
+        },
+        "scope": {
+          "enum": [
+            "application",
+            "request",
+            "session"
+          ]
+        }
+      }
+    },
+    "owinStartup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "startupClass",
+        "declaredBy",
+        "declaredAt",
+        "middleware"
+      ],
+      "properties": {
+        "startupClass": {
+          "type": "string"
+        },
+        "declaredBy": {
+          "enum": [
+            "assembly_attribute",
+            "app_setting",
+            "convention"
+          ]
+        },
+        "declaredAt": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "middleware": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "blazor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "route",
+        "componentFile",
+        "authorisation"
+      ],
+      "properties": {
+        "route": {
+          "type": "string"
+        },
+        "componentFile": {
+          "type": "string",
+          "pattern": "\\.razor$"
+        },
+        "authorisation": {
+          "$ref": "#/$defs/nullableString"
+        }
+      }
+    },
+    "function": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "functionName",
+        "model",
+        "trigger",
+        "triggerAttribute",
+        "authorizationLevel",
+        "methods",
+        "route"
+      ],
+      "properties": {
+        "functionName": {
+          "type": "string"
+        },
+        "model": {
+          "enum": [
+            "in_process",
+            "isolated"
+          ]
+        },
+        "trigger": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "triggerAttribute": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "authorizationLevel": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "methods": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "route": {
+          "$ref": "#/$defs/nullableString"
+        }
+      }
+    },
+    "desktop": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "framework",
+        "mainWindow",
+        "staThread"
+      ],
+      "properties": {
+        "framework": {
+          "enum": [
+            "wpf",
+            "winforms"
+          ]
+        },
+        "mainWindow": {
+          "$ref": "#/$defs/nullableString"
+        },
+        "staThread": {
+          "type": "boolean"
+        }
+      }
+    },
+    "signalCategory": {
+      "enum": [
+        "PROJECT_METADATA",
+        "FRAMEWORK_REFERENCE",
+        "PACKAGE_DEPENDENCY",
+        "SOURCE_CONSTRUCT",
+        "FILE_INDICATOR",
+        "CONFIGURATION_INDICATOR",
+        "ENTRY_POINT",
+        "ENDPOINT_INDICATOR",
+        "EXECUTION_INDICATOR",
+        "HOSTING_INDICATOR",
+        "UI_INDICATOR",
+        "DATA_ACCESS_INDICATOR",
+        "MESSAGING_INDICATOR",
+        "SCHEDULING_INDICATOR",
+        "DEPLOYMENT_INDICATOR",
+        "TESTING_INDICATOR"
+      ]
+    },
+    "signalType": {
+      "enum": [
+        "ATTRIBUTE",
+        "BASE_CLASS",
+        "FILE_PRESENCE",
+        "INVOCATION",
+        "CONFIG_ELEMENT",
+        "PACKAGE",
+        "ASSEMBLY",
+        "NAMESPACE",
+        "ROUTE",
+        "ENTRY_POINT",
+        "API_INVOCATION",
+        "LITERAL"
+      ]
+    },
+    "evidenceSourceType": {
+      "enum": [
+        "PROJECT_FILE",
+        "SOURCE_CODE",
+        "CONFIGURATION",
+        "FILE_STRUCTURE",
+        "PACKAGE_REFERENCE",
+        "ASSEMBLY_REFERENCE",
+        "PIPELINE",
+        "DEPLOYMENT_SCRIPT",
+        "SOLUTION_METADATA"
+      ]
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "lineStart",
+        "lineEnd",
+        "declaringType",
+        "member",
+        "snippetHash"
+      ],
+      "properties": {
+        "lineStart": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "lineEnd": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "declaringType": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "member": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "snippetHash": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "matchedValue": {
+          "description": "LITERAL signals only: exactly the text the signal's pattern matched at this span, never the enclosing literal or line. Part G applies: never taken from a connection string or sensitive-key value.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        }
+      }
+    },
+    "signal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "category",
+        "type",
+        "value",
+        "sourceType",
+        "sourcePath",
+        "evidenceKind",
+        "occurrenceCount",
+        "evidence",
+        "extractor",
+        "extractionConfidence"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9_]*$"
+        },
+        "category": {
+          "$ref": "#/$defs/signalCategory"
+        },
+        "type": {
+          "$ref": "#/$defs/signalType"
+        },
+        "value": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sourceType": {
+          "$ref": "#/$defs/evidenceSourceType"
+        },
+        "sourcePath": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "evidenceKind": {
+          "$ref": "#/$defs/signalEvidenceKind"
+        },
+        "occurrenceCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "evidence": {
+          "type": "array",
+          "maxItems": 20,
+          "items": {
+            "$ref": "#/$defs/evidence"
+          }
+        },
+        "extractor": {
+          "type": "string",
+          "minLength": 1
+        },
+        "extractionConfidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "LITERAL"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "value": {
+                "type": "string",
+                "minLength": 1
+              },
+              "evidenceKind": {
+                "const": "FILE"
+              },
+              "evidence": {
+                "minItems": 1,
+                "items": {
+                  "required": [
+                    "matchedValue"
+                  ]
+                }
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "evidence": {
+                "items": {
+                  "not": {
+                    "required": [
+                      "matchedValue"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "API_INVOCATION"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "value": {
+                "type": "string",
+                "minLength": 1
+              },
+              "evidenceKind": {
+                "const": "FILE"
+              },
+              "evidence": {
+                "minItems": 1,
+                "items": {
+                  "properties": {
+                    "lineStart": {
+                      "type": "integer"
+                    },
+                    "lineEnd": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "signalEvidenceKind": {
+      "description": "What sourcePath names \u2014 from the signal registry's evidence_kind field (25-STANDARDS-AND-VIEWPOINTS.md Part A3 addendum). FOLDER and NONE must never be treated as an openable file location.",
+      "enum": [
+        "FILE",
+        "FOLDER",
+        "NONE"
+      ]
+    }
+  }
+}

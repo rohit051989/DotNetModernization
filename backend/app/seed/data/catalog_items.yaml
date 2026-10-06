@@ -541,9 +541,17 @@ items:
       ChannelFactory<T> file, including svcutil's generated Reference.cs).
       Deliberately not keyed on the System.ServiceModel.NetTcp package:
       Visual Studio and dotnet-svcutil add it to every WCF client whatever
-      the binding, so it proves nothing. A project hosting a NetTcp service
-      is the migrated wcf-iis-servicemodel item, not this one; a project
-      doing both matches both, correctly.
+      the binding, so it proves nothing. A project implementing a NetTcp
+      service is wcf-service, and its host wcf-service-host, not this one; a
+      project doing both matches both, correctly.
+
+      An internal client — one calling a service inside this migration
+      (lifecycle step 11's integration edges) — follows that service's
+      wcf-service decision where the decision settles it: a REST or gRPC
+      rewrite derives "Migrate to the service's new protocol". CoreWCF keeps
+      WCF and SOAP, so it settles nothing here: the client still needs a
+      Linux-compatible binding, decided on its own. The derivations are
+      declared on wcf-service's resolutions.
     excluded_roles: [TEST]
     detection:
       match:
@@ -578,6 +586,173 @@ items:
         name: "Remain Windows-hosted"
         description: "Out of scope for the Linux move; the application stays on Windows."
         target_description: ".NET on Windows Server"
+        consumer_impact: none
+        effort: low
+        linux_compatible: false
+        container_ready: false
+      - id: migrate-to-service-protocol
+        name: "Migrate to the service's new protocol"
+        description: "The service is inside this migration and is being rewritten to a new protocol (REST or gRPC): move the client to the new protocol, in the same coordinated change."
+        target_description: "A REST or gRPC client of the rewritten service"
+        consumer_impact: low
+        effort: medium
+        notes: "For internal clients only — a service owned outside the migration is a conversation, not a coordinated change (call-http-binding). Derived from the service's wcf-service decision."
+
+  # ---- Architecture: what a project exposes and hosts (lifecycle step 4) ----
+  #
+  # Detected on step 4's architecture signals (registry 1.8.0), which put a
+  # service together across projects: contracts, implementation, ServiceHost
+  # and .svc files usually live in different projects, so no single project's
+  # step 3 signals ever showed the whole service. wcf-service replaces the
+  # migrated wcf-iis-servicemodel (app/items/architecture_items.py repoints its
+  # decisions and soft-deletes it), and wcf-service-host is the process side.
+
+  - id: wcf-service
+    name: "WCF service"
+    scope: application
+    category: integration
+    description: >-
+      The project implements a WCF service contract (System.ServiceModel),
+      wherever the contract is declared and however the service is hosted —
+      ServiceHost in a console or Windows Service, IIS .svc files (including a
+      folder with no project file), or both. The hosting is recorded as the
+      occurrence's attribute; the host project carries wcf-service-host.
+      Frequently consumed by callers whose contracts cannot change, so the
+      lowest-impact option, CoreWCF, is the default; the rewrites change every
+      caller. Each resolution declares what it means for the dependent items
+      (`derivations`, 28-ITEM Part U): the host (wcf-service-host), internal
+      clients (wcf-nettcp-client) and a framework retarget on the same
+      project (fx47-class-library).
+    excluded_roles: [TEST]
+    detection:
+      match:
+        any:
+          - id: implements-wcf-service
+            signal:
+              name: EXPOSES_WCF_SERVICE
+        metadata:
+          - id: legacy-framework
+            field: frameworkFamily
+            equals: net-framework
+      attribute:
+        signal: WCF_SERVICE_HOSTING
+        label: hosting
+    resolutions:
+      - id: wcf-service-corewcf
+        name: "CoreWCF on .NET 10"
+        description: "Port to CoreWCF, preserving service contracts, bindings and the published WSDL."
+        target_description: ".NET 10 + CoreWCF, container on OCP4"
+        consumer_impact: none
+        effort: medium
+        is_default: true
+        notes: "Prerequisites: bindings in use must be supported by CoreWCF; capture a WSDL snapshot before migrating. Known limitations: not every WCF binding is supported — WS-* protocols, MSMQ transport and some Windows-integrated security modes need case-by-case assessment; Windows authentication needs an alternative on Linux."
+        derivations:
+          - item: wcf-service-host
+            action: derive
+            resolution: wcf-host-aspnetcore-web-host
+            reason: "CoreWCF runs inside ASP.NET Core: the process hosting the service becomes an ASP.NET Core web host."
+          - item: wcf-nettcp-client
+            action: not_derived
+            reason: "CoreWCF keeps WCF and SOAP, so the client keeps calling WCF: it still needs a Linux-compatible binding (an HTTP binding, or NetTcp without Windows security). Decide it on its own."
+          - item: fx47-class-library
+            action: subsume
+            reason: "CoreWCF on .NET 10 moves this project to the engagement framework: a separate framework retarget is no further work."
+      - id: wcf-service-rest-rewrite
+        name: "REST rewrite on .NET 10"
+        description: "Rewrite as a conventional REST API on ASP.NET Core, retiring SOAP entirely."
+        target_description: ".NET 10 + ASP.NET Core, container on OCP4"
+        consumer_impact: high
+        effort: high
+        notes: "Prerequisites: every consumer able to change; resource model designed and agreed. Known limitations: the largest change of the three; SOAP faults, message-level security and transactional semantics have no direct REST equivalent."
+        derivations:
+          - item: wcf-service-host
+            action: derive
+            resolution: wcf-host-aspnetcore-web-host
+            reason: "A REST API runs in ASP.NET Core: the process hosting the service becomes an ASP.NET Core web host."
+          - item: wcf-nettcp-client
+            action: derive
+            resolution: migrate-to-service-protocol
+            applies_to: internal_clients
+            reason: "The service stops speaking WCF: an internal client moves to its REST API in the same coordinated change."
+          - item: fx47-class-library
+            action: subsume
+            reason: "The rewrite targets .NET 10 by definition: a separate framework retarget is no further work."
+      - id: wcf-service-grpc-rewrite
+        name: "gRPC rewrite on .NET 10"
+        description: "Rewrite as a contract-first gRPC service."
+        target_description: ".NET 10 + gRPC, container on OCP4"
+        consumer_impact: high
+        effort: high
+        notes: "Prerequisites: every consumer able to adopt a gRPC client; HTTP/2 through the OCP4 ingress path. Known limitations: all callers must change — only viable where consumers are internal and in scope for coordinated change."
+        derivations:
+          - item: wcf-service-host
+            action: derive
+            resolution: wcf-host-aspnetcore-web-host
+            reason: "gRPC on .NET runs in ASP.NET Core: the process hosting the service becomes an ASP.NET Core web host."
+          - item: wcf-nettcp-client
+            action: derive
+            resolution: migrate-to-service-protocol
+            applies_to: internal_clients
+            reason: "The service stops speaking WCF: an internal client moves to a gRPC client in the same coordinated change."
+          - item: fx47-class-library
+            action: subsume
+            reason: "The rewrite targets .NET 10 by definition: a separate framework retarget is no further work."
+      - id: wcf-service-remain-windows-hosted
+        name: "Remain Windows-hosted"
+        description: "Out of scope for the Linux move; the service stays on .NET Framework WCF on Windows."
+        target_description: ".NET Framework WCF on Windows Server"
+        consumer_impact: none
+        effort: low
+        linux_compatible: false
+        container_ready: false
+        derivations:
+          - item: wcf-service-host
+            action: not_derived
+            reason: "The service stays where it is, so its decision does not settle the host: usually it stays Windows-hosted too, but decide it on its own."
+          - item: wcf-nettcp-client
+            action: not_derived
+            reason: "The service keeps its WCF bindings on Windows: whether the client can still reach it from Linux (an HTTP binding, or NetTcp without Windows security) is the client's own decision."
+          - item: fx47-class-library
+            action: not_subsumed
+            reason: "Staying on Windows does not move this project to the engagement framework: a retarget, if wanted, is separate work."
+
+  - id: wcf-service-host
+    name: "WCF service host"
+    scope: application
+    category: hosting
+    description: >-
+      The project is the process a WCF service runs in: it constructs a
+      ServiceHost (or CoreWCF host) or holds the service's .svc file. Not a
+      batch job and not the service's implementation — that is wcf-service,
+      usually on another project. The host follows the service's decision
+      where it settles the question: CoreWCF, REST and gRPC all run in ASP.NET
+      Core, so each derives "ASP.NET Core web host"; a service that remains
+      Windows-hosted leaves the host to be decided on its own.
+    excluded_roles: [TEST]
+    detection:
+      match:
+        any:
+          - id: hosts-wcf-service
+            signal:
+              name: HOSTS_WCF_SERVICE
+    resolutions:
+      - id: wcf-host-aspnetcore-web-host
+        name: "ASP.NET Core web host"
+        description: "Replace the ServiceHost or IIS hosting with an ASP.NET Core application on .NET 10 (Kestrel) that hosts the service's new endpoints — CoreWCF, REST or gRPC."
+        target_description: ".NET 10 ASP.NET Core web host, container on OCP4"
+        consumer_impact: low
+        effort: medium
+        is_default: true
+      - id: wcf-host-retire
+        name: "Retire the host"
+        description: "The re-platformed services each get their own ASP.NET Core project; this host is removed."
+        target_description: "No separate host process"
+        consumer_impact: low
+        effort: low
+      - id: wcf-host-remain-windows-hosted
+        name: "Remain Windows-hosted"
+        description: "Out of scope for the Linux move; the host stays on Windows."
+        target_description: ".NET Framework on Windows Server"
         consumer_impact: none
         effort: low
         linux_compatible: false
@@ -757,6 +932,11 @@ items:
           - id: web-method
             signal:
               name: WEB_METHOD_ATTRIBUTE
+          # Step 4's resolved web methods (registry 1.8.0): code-behind in
+          # App_Code or a library is split from the .asmx file.
+          - id: exposes-asmx-service
+            signal:
+              name: EXPOSES_ASMX_SERVICE
     resolutions:
       - id: corewcf-basichttp
         name: "CoreWCF with BasicHttpBinding"
@@ -816,6 +996,46 @@ items:
         target_description: "Vault-sourced secret, delivered to the pod"
         consumer_impact: none
         effort: medium
+
+  - id: unqualified-hostname
+    name: "Endpoint URL on an unqualified hostname"
+    scope: occurrence
+    category: configuration
+    description: >-
+      An endpoint URL whose host is a single label, such as
+      http://appsrv0341/FundsTransferWS/FundsTransferWS.asmx — in C# source, a
+      configuration value or a Web Deploy SetParameters value. On Windows the
+      name resolves through NetBIOS or the DNS suffix search list; in an
+      OpenShift container it resolves only if the cluster's DNS search domains
+      cover it. Linux verdict: requires_change (lifecycle step 5 marks the
+      environment binding the same way). One occurrence per host per file, so
+      each environment's SetParam file that names the host is its own
+      occurrence. localhost and IP addresses are not matched.
+    excluded_roles: [TEST]
+    detection:
+      match:
+        all:
+          - id: unqualified-host
+            signal:
+              name: UNQUALIFIED_HOSTNAME_URL
+      occurrence_source:
+        signal: UNQUALIFIED_HOSTNAME_URL
+        group_by: source_path_and_value
+    resolutions:
+      - id: fully-qualify-hostname
+        name: "Use the fully qualified name"
+        description: "Replace the single-label host with its fully qualified DNS name in the URL, in every environment's configuration."
+        target_description: "http://appsrv0341.corp.example.com/... (FQDN)"
+        consumer_impact: none
+        effort: low
+        is_default: true
+      - id: cluster-dns-search-domain
+        name: "Add the domain to the pod's DNS search list"
+        description: "Keep the short name and add the corporate DNS suffix to the pod's dnsConfig.searches (or the cluster DNS forwarding), so it resolves as on Windows."
+        target_description: "Pod dnsConfig.searches includes the corporate domain"
+        consumer_impact: none
+        effort: low
+        notes: "Platform-level change; every workload relying on it depends on cluster configuration staying in place."
 
   # ---- Package dependencies (lifecycle step 6, dependency-assessment) ----
   #

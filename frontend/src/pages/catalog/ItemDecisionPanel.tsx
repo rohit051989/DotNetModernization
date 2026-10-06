@@ -36,6 +36,36 @@ function DecisionBody({ decision, resolutions }: { decision: EngagementDecision;
           {decision.resolution_name ?? (decision.resolution_id ? decision.resolution_id : '— not selected yet —')}
         </dd>
       </div>
+      {decision.needs_review && (
+        <div className="col-span-2 rounded border border-amber-300 bg-amber-50 px-2 py-1.5 text-xs text-amber-900">
+          <p className="font-semibold">Needs review</p>
+          <p>{decision.review_note}</p>
+        </div>
+      )}
+      {(decision.derived_from || (decision.followers ?? []).length > 0) && (
+        <div className="col-span-2 rounded border border-violet-100 bg-violet-50/50 px-2 py-1.5 text-xs">
+          {decision.derived_from && (
+            <p className={decision.source === 'derived' ? 'text-violet-800' : 'text-amber-800'}>
+              {decision.source === 'derived'
+                ? `Derived from the ${decision.derived_from.item_name} decision (${decision.derived_from.resolution_name ?? '—'}). Recording a decision here overrides it.`
+                : decision.derived_from.would_derive
+                  ? `Overridden by hand: the ${decision.derived_from.item_name} decision (${decision.derived_from.resolution_name ?? '—'}) would give ${decision.derived_from.would_derive}.`
+                  : `Overridden by hand, against the ${decision.derived_from.item_name} decision.`}
+              {decision.source === 'derived' && decision.derived_from.derivation_reason && (
+                <span className="block text-neutral-500">{decision.derived_from.derivation_reason}</span>
+              )}
+            </p>
+          )}
+          {(decision.followers ?? []).length > 0 && (
+            <p className="text-neutral-700">
+              Drives:{' '}
+              {decision.followers!
+                .map((f) => `${f.item_name} → ${f.resolution_name ?? '—'} (${f.source === 'derived' ? 'derived' : f.needs_review ? 'overridden by hand, needs review' : 'overridden by hand'})`)
+                .join('; ')}
+            </p>
+          )}
+        </div>
+      )}
       <div className="col-span-2">
         <dt className="text-xs text-neutral-400">Candidates considered</dt>
         <dd className="text-sm text-neutral-700">

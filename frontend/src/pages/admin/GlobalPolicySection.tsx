@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { getEffectivePolicies, getPolicyMatrix } from '../../api/policies'
 import type { EffectivePolicy, PolicyMatrix } from '../../types/policy'
 import { StepPolicyDialog } from '../workflow/definition/StepPolicyDialog'
+import { ShowMoreToggle } from '../../components/ShowMoreToggle'
 
 /** 23-WORKFLOW-ADMINISTRATION.md Part C3 — one row per step appearing in an
  * active job definition, showing effective global state, reason, set by/at,
@@ -107,16 +108,7 @@ export function GlobalPolicySection() {
                     {policy.global_policy ? new Date(policy.global_policy.set_at).toLocaleString() : '—'}
                   </td>
                   <td className="px-3 py-2 text-xs text-neutral-500">
-                    {overriding.length === 0 ? (
-                      '—'
-                    ) : (
-                      <span
-                        className="cursor-default rounded bg-violet-50 px-1.5 py-0.5 font-medium text-violet-700"
-                        title={overriding.join(', ')}
-                      >
-                        {overriding.length} engagement{overriding.length === 1 ? '' : 's'}
-                      </span>
-                    )}
+                    {overriding.length === 0 ? '—' : <OverridingEngagements names={overriding} />}
                   </td>
                   <td className="px-3 py-2 text-right">
                     <button type="button" onClick={() => setTarget(policy)} className="text-xs text-violet-600 hover:underline">
@@ -142,5 +134,29 @@ export function GlobalPolicySection() {
         />
       )}
     </div>
+  )
+}
+
+/** How many overriding engagements a row names before "+N more". */
+const ENGAGEMENTS_SHOWN = 2
+
+/** The engagements overriding a global policy, named — not a count with the
+ * names behind a tooltip, which a touch screen cannot open. */
+function OverridingEngagements({ names }: { names: string[] }) {
+  const [expanded, setExpanded] = useState(false)
+  const shown = expanded ? names : names.slice(0, ENGAGEMENTS_SHOWN)
+  return (
+    <span className="block">
+      <span className="font-medium text-violet-700">
+        {names.length} engagement{names.length === 1 ? '' : 's'}:
+      </span>{' '}
+      {shown.join(', ')}
+      <ShowMoreToggle
+        expanded={expanded}
+        hidden={names.length - ENGAGEMENTS_SHOWN}
+        onToggle={() => setExpanded((v) => !v)}
+        className="ml-1"
+      />
+    </span>
   )
 }

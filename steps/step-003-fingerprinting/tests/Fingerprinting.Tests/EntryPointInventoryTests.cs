@@ -788,7 +788,7 @@ public class EntryPointInventoryTests
             Assert.DoesNotContain("\r", one);
             Assert.DoesNotContain(root.Replace('\\', '/'), one.Replace("\\\\", "/"));
 
-            ArtifactSchemaValidator.Load(Path.Combine(AppContext.BaseDirectory, "schemas", "entry-point-inventory-2.1.0.schema.json")).Validate(one);
+            ArtifactSchemaValidator.Load(Path.Combine(AppContext.BaseDirectory, "schemas", "entry-point-inventory-2.2.0.schema.json")).Validate(one);
 
             var artifact = System.Text.Json.JsonDocument.Parse(one).RootElement;
             Assert.Equal("application-fingerprint", artifact.GetProperty("skipSource").GetString());

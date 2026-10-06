@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app import catalog_rules, models
 from app.db import SessionLocal
-from app.items import pattern_migration
+from app.items import baseline, pattern_migration
 from app.items import readiness as item_readiness
 from app.items import registry as item_registry
 from app.items.detection import validate_detection
@@ -357,58 +357,75 @@ _RESOLUTION_FIELDS = (
 _RESOLUTION_DEFAULTS = {"is_default": False, "linux_compatible": True, "container_ready": True, "status": "active"}
 
 
+def authored_item(item_id: str) -> dict:
+    """One item's entry in catalog_items.yaml."""
+    return next(data for data in _load("catalog_items.yaml")["items"] if data["id"] == item_id)
+
+
+def authored_item_content(data: dict, registered: dict[str, str]) -> dict:
+    """One authored item's factory default, with the API's write-time
+    validation (app/items/baseline.py content fields)."""
+    detection, _warnings = validate_detection(data["scope"], data["detection"], registered)
+    return {
+        "name": data["name"], "description": data.get("description"), "scope": data["scope"], "category": data["category"],
+        "detection": detection, "excluded_roles": sorted(set(data.get("excluded_roles", []))),
+        "owner_team": data.get("owner_team"), "status": data.get("status", "active"), "deleted": False,
+    }
+
+
+def authored_resolution_content(item_id: str, res_data: dict) -> dict:
+    return {"item_id": item_id, "deleted": False,
+            **{field: res_data.get(field, _RESOLUTION_DEFAULTS.get(field)) for field in _RESOLUTION_FIELDS}}
+
+
+def upsert_authored_item(db, data: dict, registered: dict[str, str], report: dict | None = None) -> tuple[models.CatalogItem, bool]:
+    """Seeds one authored item and its resolutions from their factory
+    defaults — inserting what is missing and updating only rows not edited
+    since they were seeded (app/items/baseline.py: the database is
+    authoritative; an edited row is left alone, a conflict reported).
+    Readiness recomputed. Returns (item, created). Flushes; the caller commits."""
+    report = report if report is not None else baseline.new_report()
+    for res_data in data.get("resolutions", []):
+        resolution = db.get(models.ItemResolution, res_data["id"])
+        # Resolution ids are global primary keys. Reusing one under a
+        # second item would silently re-point and overwrite the first
+        # item's option, so it is a hard error.
+        if resolution is not None and resolution.item_id != data["id"]:
+            raise ValueError(
+                f"Resolution id '{res_data['id']}' under item '{data['id']}' already belongs to item "
+                f"'{resolution.item_id}'. Resolution ids are global: prefix it with the item id."
+            )
+    existing = db.get(models.CatalogItem, data["id"])
+    before = (existing.detection, existing.scope) if existing is not None else None
+    item, outcome = baseline.seed_row(db, models.CatalogItem, {"id": data["id"]}, authored_item_content(data, registered), report)
+    if outcome == "updated" and before != (item.detection, item.scope):
+        item.version += 1
+    db.flush()
+    item_readiness.recompute_item(db, item)
+
+    for res_data in data.get("resolutions", []):
+        baseline.seed_row(db, models.ItemResolution, {"id": res_data["id"]}, authored_resolution_content(item.id, res_data), report)
+    db.flush()
+    return item, outcome == "inserted"
+
+
 def seed_catalog_items() -> dict:
-    """Upserts the authored items in catalog_items.yaml and their
-    resolutions — 28-ITEM-AND-CONVERSION-MODEL.md Parts D to F. Same
-    write-time validation as the API; readiness computed, never read from
-    the file. `version` bumps only when detection or scope changes, so a
-    reseed of an unchanged file is a no-op."""
+    """Seeds the authored items in catalog_items.yaml and their resolutions
+    — 28-ITEM-AND-CONVERSION-MODEL.md Parts D to F. The file is a factory
+    default: a row edited since it was seeded is never overwritten
+    (app/items/baseline.py). Same write-time validation as the API;
+    readiness computed, never read from the file. `version` bumps only when
+    detection or scope changes, so a reseed of an unchanged file is a no-op."""
     db = SessionLocal()
     try:
         registered = {row.name: row.evidence_kind for row in db.query(models.SignalRegistryEntry)}
-        created = updated = 0
+        report = baseline.new_report()
         states = {}
         for data in _load("catalog_items.yaml")["items"]:
-            detection, _warnings = validate_detection(data["scope"], data["detection"], registered)
-            item = db.get(models.CatalogItem, data["id"])
-            if item is None:
-                item = models.CatalogItem(id=data["id"], version=1)
-                db.add(item)
-                created += 1
-            else:
-                if item.detection != detection or item.scope != data["scope"]:
-                    item.version += 1
-                updated += 1
-            item.name = data["name"]
-            item.description = data.get("description")
-            item.scope = data["scope"]
-            item.category = data["category"]
-            item.detection = detection
-            item.excluded_roles = sorted(set(data.get("excluded_roles", [])))
-            item.owner_team = data.get("owner_team")
-            item.status = data.get("status", "active")
-            db.flush()
-            item_readiness.recompute_item(db, item)
+            item, _created = upsert_authored_item(db, data, registered, report)
             states[item.id] = item.state
-
-            for res_data in data.get("resolutions", []):
-                resolution = db.get(models.ItemResolution, res_data["id"])
-                # Resolution ids are global primary keys. Reusing one under a
-                # second item would silently re-point and overwrite the first
-                # item's option, so it is a hard error.
-                if resolution is not None and resolution.item_id != item.id:
-                    raise ValueError(
-                        f"Resolution id '{res_data['id']}' under item '{item.id}' already belongs to item "
-                        f"'{resolution.item_id}'. Resolution ids are global: prefix it with the item id."
-                    )
-                if resolution is None:
-                    resolution = models.ItemResolution(id=res_data["id"], item_id=item.id)
-                    db.add(resolution)
-                for field in _RESOLUTION_FIELDS:
-                    setattr(resolution, field, res_data.get(field, _RESOLUTION_DEFAULTS.get(field)))
-            db.flush()
         db.commit()
-        return {"items_created": created, "items_updated": updated, "states": states}
+        return {"baseline": report, "states": states}
     except Exception:
         db.rollback()
         raise
@@ -419,10 +436,54 @@ def seed_catalog_items() -> dict:
 def print_catalog_items_summary(result: dict) -> None:
     ready = sorted(k for k, v in result["states"].items() if v == "ready")
     print(
-        f"Seeded: {len(result['states'])} authored catalog items "
-        f"({result['items_created']} created, {result['items_updated']} updated); "
+        f"Seeded: {len(result['states'])} authored catalog items and their resolutions "
+        f"({baseline.summary(result['baseline'])}); "
         f"{len(ready)} ready, {len(result['states']) - len(ready)} not_ready"
     )
+    print_conflicts(result["baseline"])
+
+
+def print_conflicts(report: dict) -> None:
+    """A conflict is never resolved by the seed: the database row stands."""
+    if report["conflicts"]:
+        print(baseline.format_conflicts(report["conflicts"]))
+
+
+def seed_architecture_items() -> dict:
+    """28-ITEM Part R, idempotent: wcf-service replaces wcf-iis-servicemodel
+    (decisions repointed, old item soft-deleted) and the migrated
+    architecture items gain step 4's signals. See app/items/architecture_items.py."""
+    from app.items import architecture_items
+
+    db = SessionLocal()
+    try:
+        report = architecture_items.apply(db)
+        db.commit()
+        return report
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
+def seed_resolution_derivations() -> dict:
+    """28-ITEM Part U, idempotent: the `derivations` declared beside each
+    resolution in catalog_items.yaml. Runs after every item exists — a
+    derivation may name a migrated item (fx47-class-library). See
+    app/items/derivations.py."""
+    from app.items import derivations
+
+    db = SessionLocal()
+    try:
+        report = derivations.apply(db)
+        db.commit()
+        return report
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
 
 
 def seed_pattern_migration() -> dict:
@@ -443,12 +504,11 @@ def seed_pattern_migration() -> dict:
 
 def print_pattern_migration_summary(report: dict) -> None:
     print(
-        f"Migrated patterns -> items: {len(report['items'])} new "
-        f"({len(report['skipped_existing'])} already present, {len(report['amended'])} amended), "
-        f"{report['resolutions']} resolutions, "
+        f"Migrated patterns -> items and resolutions: {baseline.summary(report['baseline'])}; "
         f"{report['decisions']} decisions; {len(report['not_migrated_decisions'])} decision(s) left on "
         "non-migrated patterns"
     )
+    print_conflicts(report["baseline"])
 
 
 def print_signal_registry_summary(result: dict) -> None:

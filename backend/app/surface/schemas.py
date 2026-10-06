@@ -41,6 +41,12 @@ class EntryPointOut(BaseModel):
         description="'application' (code in the repository) or 'framework' (a registered framework or package type — "
         "kept for the move to middleware, but it migrates through its package's own path, not by rewriting)."
     )
+    origin_reconciled_from: Origin | None = Field(
+        None,
+        description="Set when step 11 corrected the origin estate-wide (31-STEP-011 Part E4): step 4's own value, "
+        "which `origin` replaces. Step 4's rows are never rewritten; this overlay is applied when read.",
+    )
+    origin_reconciliation_reason: str | None = Field(None, description="Why step 11 reconciled the origin, when it did.")
     entry_class: EntryClass = Field(
         description="'request' (a caller, message or trigger enters — what risk scoring, contract snapshots and test "
         "generation read) or 'lifecycle' (bootstrap and wiring: Global.asax, OWIN startup, HTTP modules, services, mains)."
@@ -164,7 +170,10 @@ class OutboundInvocationOut(BaseModel):
     environment_bindings: list[dict[str, Any]] = Field(
         description="One logical endpoint's value per environment file, with the file and key it came from and that environment's own linuxVerdict and linuxReasons."
     )
-    call_sites: list[dict[str, Any]]
+    call_sites: list[dict[str, Any]] = Field(description="Step 5 1.3.0: where the dependency is invoked — each operation's call site.")
+    construction_sites: list[dict[str, Any]] = Field(
+        default_factory=list, description="Step 5 1.3.0: where the client is created, when that differs from where it is invoked."
+    )
     credentials: list[dict[str, Any]] = Field(description="Kind and key path only, never a value.")
     auth_declared: AuthDeclared | None
     linux_verdict: LinuxVerdict = Field(description="The worst environment binding's verdict: a summary. Each binding carries its own.")
@@ -182,6 +191,11 @@ class ProjectOutboundOut(BaseModel):
     count_by_mechanism: dict[str, int] = Field(description="Used invocations only.")
     count_by_verdict: dict[str, int] = Field(description="Used invocations only.")
     invocations: list[OutboundInvocationOut] = Field(description="Incompatible first (the list someone will act on), then by mechanism and endpoint.")
+    deploy_parameters: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="Step 5 1.3.0: the project's Web Deploy SetParameters parameters — name, environment, kind and how it was linked. "
+        "A value only for a path or a URL linked to a used endpoint; secrets and everything else are recorded as present.",
+    )
 
 
 class OutboundInventoryOut(BaseModel):
@@ -195,3 +209,68 @@ class OutboundInventoryOut(BaseModel):
     count_by_verdict: dict[str, int] = Field(description="Used invocations only.")
     auth_declared_scope: str
     projects: list[ProjectOutboundOut]
+
+
+# ---------- inbound operations -> backend calls (step 5 1.3.0) ----------
+
+BackendStatus = Literal["yes", "no", "unresolved", "not_assessed"]
+
+
+class BackendHostOut(BaseModel):
+    environment: str = Field(description="The environment this value is for: a configuration or SetParameters environment, or 'as found'.")
+    host: str | None
+    port: int | None
+    path: str | None
+    source_file: str | None
+    deploy_parameter: str | None = Field(description="The SetParameters parameter that sets it, when one does.")
+    host_project: str | None = Field(description="For a class library: the host project whose configuration this is.")
+    linux_verdict: str | None
+
+
+class BackendEndpointOut(BaseModel):
+    shown: BackendHostOut = Field(description="The production environment's binding when the call has one, else the endpoint as found.")
+    grouped_by: Literal["production_environment", "host"]
+    others: list[BackendHostOut] = Field(description="Every other environment's value, for expanding.")
+
+
+class BackendCallOut(BaseModel):
+    invocation_id: str
+    mechanism: str
+    contract: str | None = Field(description="The SOAP or gRPC contract, when there is one.")
+    operation: str | None = Field(description="The backend operation as step 5 records it; null for a mechanism without operations.")
+    call_site: dict[str, Any] = Field(description="{filePath, lineStart, lineEnd}: where it is invoked.")
+    depth: int = Field(description="0: in the entry point's own method; n: through n methods of the same class.")
+    via: list[str] = Field(description="The methods walked, entry point first.")
+    conditional: bool
+    in_loop: bool
+    context: list[str] = Field(description="The conditions and loops around the call, as written in code.")
+    endpoint: BackendEndpointOut
+    linux_verdict: str
+
+
+class EntryPointBackendRowOut(BaseModel):
+    number: int
+    entry_point_id: str
+    kind: str
+    service: str = Field(description="The WCF contract, controller, gRPC service or handler type.")
+    operation: str
+    handler: dict[str, Any] = Field(description="{type, member, filePath, lineStart}.")
+    status: BackendStatus = Field(
+        description="yes: a backend call is reached. no: none, and no path left unfollowed. unresolved: none found, "
+        "but a path through another class, an injected dependency or deeper calls was not followed. not_assessed: "
+        "step 5 ran without step 4's entry points."
+    )
+    calls: list[BackendCallOut]
+    unresolved: list[dict[str, Any]] = Field(description="{reason, callSite}: paths not followed — never guessed.")
+
+
+class ApplicationBackendOut(BaseModel):
+    project_id: uuid.UUID
+    project_path: str
+    rows: list[EntryPointBackendRowOut]
+
+
+class EntryPointBackendOut(BaseModel):
+    repository_id: uuid.UUID
+    production_environment: str | None = Field(description="The engagement's setting the endpoint column is shown for.")
+    applications: list[ApplicationBackendOut] = Field(description="One per project with request entry points, every operation listed.")

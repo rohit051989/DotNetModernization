@@ -71,6 +71,43 @@ public sealed class ConfigurationExtractor : IFingerprintExtractor
             }
         }
 
+        // Web Deploy SetParameters (registry 1.7.0): they mix properties,
+        // configuration and secrets. A parameter named like a secret is
+        // recorded by name only; a connection string by name, with the one
+        // permitted bool read — the same rules as web.config.
+        foreach (var file in context.DeployParameterFiles)
+        {
+            foreach (var parameter in file.Parameters)
+            {
+                var evidence = new Evidence
+                {
+                    LineStart = parameter.Line,
+                    LineEnd = parameter.Line,
+                    SnippetHash = Hashing.Sha256Hex(parameter.Name),
+                };
+                switch (Fingerprinting.Analysis.DeployParameterFiles.Classify(parameter))
+                {
+                    case "sensitive":
+                        accumulator.Add(
+                            "SENSITIVE_CONFIG_KEY", SignalCategories.ConfigurationIndicator, SignalTypes.ConfigElement,
+                            parameter.Name, EvidenceSourceTypes.Configuration, file.RelativePath, ExtractorName, evidence: evidence);
+                        break;
+                    case "connection_string":
+                        accumulator.Add(
+                            "CONNECTION_STRING_CONFIG", SignalCategories.DataAccessIndicator, SignalTypes.ConfigElement,
+                            parameter.Name, EvidenceSourceTypes.Configuration, file.RelativePath, ExtractorName, evidence: evidence);
+                        if (Secrets.UsesWindowsAuthentication(parameter.RawValue))
+                        {
+                            accumulator.Add(
+                                "WINDOWS_AUTH_CONNECTION_STRING_CONFIG", SignalCategories.DataAccessIndicator, SignalTypes.ConfigElement,
+                                parameter.Name, EvidenceSourceTypes.Configuration, file.RelativePath, ExtractorName, evidence: evidence);
+                        }
+
+                        break;
+                }
+            }
+        }
+
         return Task.FromResult(new ExtractorResult { Signals = accumulator.Build(), Warnings = warnings });
     }
 

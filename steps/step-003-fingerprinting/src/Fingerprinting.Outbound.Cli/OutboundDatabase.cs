@@ -20,7 +20,7 @@ public sealed class OutboundDatabase(string connectionString)
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
         var detectedAt = DateTimeOffset.UtcNow;
 
-        foreach (var table in new[] { "outbound_invocations", "outbound_scans" })
+        foreach (var table in new[] { "outbound_invocations", "outbound_scans", "entry_point_backend" })
         {
             await using var delete = new NpgsqlCommand($"DELETE FROM {table} WHERE repository_id = @rid", connection, transaction);
             delete.Parameters.AddWithValue("rid", artifact.RepositoryId);
@@ -36,11 +36,13 @@ public sealed class OutboundDatabase(string connectionString)
                     INSERT INTO outbound_invocations
                         (id, repository_id, project_id, mechanism, usage, endpoint_scheme, endpoint_host, endpoint_port, endpoint_path,
                          resolution, placeholder, detail, environment_bindings, call_sites, credentials, auth_declared,
-                         linux_verdict, linux_reasons, confidence, confidence_reasons, step_execution_id, detected_at)
+                         linux_verdict, linux_reasons, confidence, confidence_reasons, step_execution_id, detected_at, operations,
+                         construction_sites)
                     VALUES
                         (@id, @rid, @pid, @mechanism, @usage, @scheme, @host, @port, @path,
                          @resolution, @placeholder, @detail, @bindings, @sites, @credentials, @auth,
-                         @verdict, @reasons, @confidence, @confidence_reasons, @sid, @at)
+                         @verdict, @reasons, @confidence, @confidence_reasons, @sid, @at, @operations,
+                         @construction_sites)
                     """,
                     connection, transaction);
                 var endpoint = invocation.Endpoint;
@@ -58,6 +60,8 @@ public sealed class OutboundDatabase(string connectionString)
                 insert.Parameters.Add(new NpgsqlParameter("detail", NpgsqlDbType.Jsonb) { Value = Json(new { Endpoint = endpoint, Block = invocation.DetailBlock() }) });
                 insert.Parameters.Add(new NpgsqlParameter("bindings", NpgsqlDbType.Jsonb) { Value = Json(invocation.EnvironmentBindings) });
                 insert.Parameters.Add(new NpgsqlParameter("sites", NpgsqlDbType.Jsonb) { Value = Json(invocation.CallSites) });
+                insert.Parameters.Add(new NpgsqlParameter("operations", NpgsqlDbType.Jsonb) { Value = Json(invocation.Operations) });
+                insert.Parameters.Add(new NpgsqlParameter("construction_sites", NpgsqlDbType.Jsonb) { Value = Json(invocation.ConstructionSites) });
                 insert.Parameters.Add(new NpgsqlParameter("credentials", NpgsqlDbType.Jsonb) { Value = Json(invocation.Credentials) });
                 insert.Parameters.AddWithValue("auth", (object?)invocation.AuthDeclared ?? DBNull.Value);
                 insert.Parameters.AddWithValue("verdict", invocation.LinuxCompatibility.Verdict);
@@ -78,7 +82,30 @@ public sealed class OutboundDatabase(string connectionString)
             p.SkipReason,
             p.Summary,
             p.Warnings,
+            p.DeployParameters,
         }).ToList();
+
+        // 1.3.0: per entry point, the backend calls it reaches.
+        foreach (var project in artifact.Projects)
+        {
+            foreach (var reach in project.EntryPointBackend)
+            {
+                await using var insert = new NpgsqlCommand(
+                    """
+                    INSERT INTO entry_point_backend (entry_point_id, repository_id, project_id, status, calls, unresolved, step_execution_id)
+                    VALUES (@id, @rid, @pid, @status, @calls, @unresolved, @sid)
+                    """,
+                    connection, transaction);
+                insert.Parameters.AddWithValue("id", reach.EntryPointId);
+                insert.Parameters.AddWithValue("rid", artifact.RepositoryId);
+                insert.Parameters.AddWithValue("pid", project.ProjectId);
+                insert.Parameters.AddWithValue("status", reach.Status);
+                insert.Parameters.Add(new NpgsqlParameter("calls", NpgsqlDbType.Jsonb) { Value = Json(reach.Calls) });
+                insert.Parameters.Add(new NpgsqlParameter("unresolved", NpgsqlDbType.Jsonb) { Value = Json(reach.Unresolved) });
+                insert.Parameters.AddWithValue("sid", (object?)stepExecutionId ?? DBNull.Value);
+                await insert.ExecuteNonQueryAsync(cancellationToken);
+            }
+        }
 
         await using (var scan = new NpgsqlCommand(
                    """

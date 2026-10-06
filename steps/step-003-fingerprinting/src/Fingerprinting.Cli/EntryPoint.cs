@@ -166,7 +166,8 @@ public static class EntryPoint
             inventory,
             repositoryRoot,
             relativePath => projectIds.TryGetValue(relativePath, out var id) ? id : null,
-            CancellationToken.None);
+            CancellationToken.None,
+            await platform.GetDeployParameterGlobsAsync(inventory.RepositoryId, CancellationToken.None));
 
         var artifactJson = DeterministicJson.Serialize(artifact);
         ArtifactSchemaValidator.Load(SchemaPath()).Validate(artifactJson);

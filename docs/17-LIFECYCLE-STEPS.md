@@ -3,14 +3,46 @@
 The canonical list of lifecycle steps. **This file is the source of truth for step
 names, numbers, owners and viewpoints.** Register steps from here, not from memory.
 
-**Version 2.1 — 36 steps.** v2.1 inserts `dependency-assessment` as step 6; steps 6–35 of v2.0
-became 7–36, slugs unchanged (see *Renumbering and slug stability*).
+| Version | Change |
+|---|---|
+| **2.2** | Documentation revision. **No change to steps, numbers or slugs.** Corrects stale cross-references, updates descriptions to what was built, adds implementation status and spec pointers, and rewrites the mapping table as v1 → v2.2 directly |
+| 2.1 | Inserts `dependency-assessment` as step 6. Steps 6–35 of v2.0 became 7–36, slugs unchanged |
+| 2.0 | 35 steps, revised from 51. Track A's transformation steps collapse into two generic conversion steps; target-state governance and accelerator binding move out of the lifecycle |
+| 1.0 | The original 51-step lifecycle |
 
-**Version 2.0 — 35 steps, revised from 51.** The reduction comes from the conversion
-model in `28-CONVERSION-MODEL.md`: Track A's transformation steps collapse into two
-generic conversion steps, and target-state governance and accelerator binding move out
-of the lifecycle into the catalog and conversion-approach UIs. Two discovery steps were
-added at the delivery team's request.
+The reduction in v2.0 comes from the item and conversion model in
+`28-ITEM-AND-CONVERSION-MODEL.md`.
+
+---
+
+## Implementation status
+
+**Authoritative status is `wf_step_registrations.implementation_status`.** This table is a
+snapshot for orientation and will drift; check the registry when it matters.
+
+| Status | Steps |
+|---|---|
+| **Implemented** | 1, 2, 3, 4, 5, 6, 7 |
+| **In progress** | 11 |
+| **Stub** | 8, 9, 10, 12, and all of Track A (13–27) and Track B (28–36) |
+
+The per-repository discovery job runs real work through step 7. Steps 8 and 9 are stubs
+within it, completing as `NOT_IMPLEMENTED` under `stub_policy: continue`.
+
+### Spec for each implemented or specified step
+
+| Step | Spec |
+|---|---|
+| 1 | `13-STEP-001-REPOSITORY-INGEST.md`, `15-REPOSITORY-INGEST-UI.md` |
+| 2 | `19-STEP-002-SOLUTION-DISCOVERY.md` |
+| 3 | `21-STEP-003-FINGERPRINTING.md` |
+| 4 | `29-STEPS-004-005-INVENTORIES.md` Part B |
+| 5 | `29-STEPS-004-005-INVENTORIES.md` Part C |
+| 6 | `30-STEP-006-DEPENDENCY-ASSESSMENT.md` |
+| 7 | `28-ITEM-AND-CONVERSION-MODEL.md` Parts C–G |
+| 11 | `31-STEP-011-ESTATE-DEPENDENCY-MAP.md` |
+| 19, 20 | `28-ITEM-AND-CONVERSION-MODEL.md` Parts I–O |
+| 18, 25, 35 | Gate machinery: the `validation_queue` from `27-STEP-006-PATTERN-VALIDATION.md` Parts A–B. That step was retired; its queue survived as shared gate infrastructure |
 
 ---
 
@@ -24,7 +56,8 @@ added at the delivery team's request.
 
 The former `C` (Copilot engine) code is retired as a *step* owner. An engine is now an
 `invocation.type` on a conversion approach, alongside `python`, `process`, `skill` and
-`http` — chosen per approach rather than baked into the lifecycle.
+`http` — chosen per approach rather than baked into the lifecycle. A database constraint
+rejects `C` on any non-deprecated registration.
 
 Combined codes such as `P + S` mean shared authorship within one step. Store the
 combined string verbatim in `wf_step_registrations.owner_code`.
@@ -35,10 +68,15 @@ combined string verbatim in `wf_step_registrations.owner_code`.
 
 | Job | Steps | Scope | Status |
 |---|---|---|---|
-| `phase0-repository-discovery` | 1 – 9 | Per repository | **Defined** |
-| `phase0-estate-consolidation` | 10 – 12 | Per engagement | **Defined** |
+| `phase0-repository-discovery` | 1 – 9 | Per repository | **Defined, active** |
+| `phase0-estate-consolidation` | 10 – 12 | Per engagement | **Defined, active** |
 | `trackA-application` | 13 – 27 | Per application | Deferred |
 | `trackB-wave` | 28 – 36 | Per wave | Deferred |
+
+The two Phase 0 jobs answer different questions. The per-repository job asks *what is in
+this repository*; the estate job asks *what is in the estate* — things no single repository
+can answer, such as eight repositories calling the same backend. The estate job runs on a
+partial estate and reports its own coverage.
 
 ---
 
@@ -46,20 +84,24 @@ combined string verbatim in `wf_step_registrations.owner_code`.
 
 | # | step_name | Display name | Owner | Viewpoint | Notes |
 |---|---|---|---|---|---|
-| 1 | `repository-ingest` | Repository ingest & inventory creation | `P` | DEVELOPMENT | Register, verify path, resolve git metadata, size and language metrics |
-| 2 | `solution-discovery` | Solution & project discovery | `P` | DEVELOPMENT | Parse solution and project files; classify project, library, test |
-| 3 | `application-fingerprinting` | Application fingerprinting | `P` | DEVELOPMENT | Emit all registered signals with evidence. Extract-then-match: knows nothing about the catalog |
-| 4 | `entry-point-inventory` | Entry point inventory | `P` | FUNCTIONAL | **New.** The application's inbound surface: HTTP routes and verbs, SOAP operations and bindings, gRPC services, message consumers, scheduled handlers, `Main` methods, `BackgroundService` implementations. Feeds contract snapshot, test generation and risk scoring |
-| 5 | `outbound-invocation-inventory` | Outbound invocation inventory | `P` | CONTEXT | **New.** Everything this code calls: HTTP and gRPC clients, SOAP service references **with binding type**, databases by connection name and provider, message producers, file shares, SMTP. Each carries a Linux-compatibility verdict where determinable. NetTcp SOAP bindings are the canonical blocker |
-| 6 | `dependency-assessment` | Dependency upgrade assessment | `P` | DEVELOPMENT | **New in v2.1.** For every direct NuGet package: the latest version supporting the target framework, from the client's own feeds first; deprecated, vulnerable and not-approved flags; semver plus API-diff classification of safe versus breaking, with the call sites that break. Emits signals, so item detection picks dependency upgrades up as ordinary occurrences. See `30-STEP-006-DEPENDENCY-ASSESSMENT.md` |
-| 7 | `item-detection` | Catalog item detection & occurrence mapping | `P` | DEVELOPMENT | Match catalog items against signals; project matching signals' evidence into occurrence rows. Produces the work list, not a classification |
+| 1 | `repository-ingest` | Repository ingest & inventory creation | `P` | DEVELOPMENT | Register, verify path, resolve git metadata, size and language metrics. Folders not under source control are supported |
+| 2 | `solution-discovery` | Solution & project discovery | `P` | DEVELOPMENT | Parse solution and project files. Records each project's structural type, SDK, output type and target framework, with the source of each — declared, inherited from `Directory.*.props`, or an SDK default. Project ids are derived, so they are stable across rescans. **Role is not decided here**; it is computed at step 7 |
+| 3 | `application-fingerprinting` | Application fingerprinting | `P` | DEVELOPMENT | Emit all registered signals with evidence. Extract-then-match: knows nothing about the catalog. Also emits SARIF for external interoperability |
+| 4 | `entry-point-inventory` | Entry point inventory | `P` | FUNCTIONAL | The application's inbound surface across nineteen kinds, from HTTP routes and WCF operations to Global.asax hooks and hosted services. Each entry carries `auth_declared`, `origin` (application or framework) and `entry_class` (request or lifecycle). Publishes a capability manifest, so a pattern it does not detect is a visible gap rather than a silent miss. Feeds contract snapshot, test generation and risk |
+| 5 | `outbound-invocation-inventory` | Outbound invocation inventory | `P` | CONTEXT | Everything this code calls: HTTP and gRPC clients, SOAP clients **with binding and security mode**, databases, message brokers, caches, secret stores, file shares, SMTP, LDAP. Endpoints normalised with credentials stripped before storage. One invocation per logical endpoint, with a Linux verdict per environment binding. Unused clients are recorded but not counted |
+| 6 | `dependency-assessment` | Dependency upgrade assessment | `P` | DEVELOPMENT | For every direct NuGet package: the latest version supporting the target framework, from the client's own feeds first and nuget.org only as fallback; deprecated, vulnerable and not-approved flags; semver plus API-diff classification of safe versus breaking, with confirmed or ambiguous call sites. Emits signals, so item detection picks dependency upgrades up as ordinary occurrences |
+| 7 | `item-detection` | Catalog item detection & occurrence mapping | `P` | DEVELOPMENT | Computes each project's role, then matches ready catalog items against signals and metadata, projecting evidence into occurrence rows. Reports `found`, `checked_absent` or `not_checked` — **never `checked_absent` where the scan could not have seen the answer**, including where metadata an item reads is unknown. Carries call-site certainty into the work list |
 | 8 | `test-coverage-assessment` | Test coverage & CI maturity | `P` | DEVELOPMENT | Parse coverage reports and CI definitions. Gates characterization test generation |
-| 9 | `risk-scoring-tier-assignment` | Risk scoring & review tier assignment | `P` | DEVELOPMENT | Deterministic rules over coverage, LOC, shared-library fan-out, entry-point count, external consumers, occurrence count and criticality |
+| 9 | `risk-scoring-tier-assignment` | Risk scoring & review tier assignment | `P` | DEVELOPMENT | Deterministic rules over coverage, LOC, shared-library fan-out, **request** entry-point count, external consumers, occurrence count and criticality. Lifecycle hooks must not inflate the count. **A hosted or Windows service with zero request entry points must not read as low risk** — a poll-loop worker has exactly that shape |
 
 Steps 4 and 5 are deliberately separate from step 3. Fingerprinting detects *presence*
 — "this project has controllers". These produce an *inventory* — "`GET
 /api/accounts/{id}` handled by `AccountsController.GetById`". Different shape,
 different consumers.
+
+Step 6 sits **before** item detection so that its findings are signals, matched like any
+other. Placed after, dependency upgrades would need a parallel pipeline to reach the work
+list.
 
 ---
 
@@ -68,8 +110,8 @@ different consumers.
 | # | step_name | Display name | Owner | Viewpoint | Notes |
 |---|---|---|---|---|---|
 | 10 | `unclaimed-signal-report` | Unclaimed signal report | `P` | DEVELOPMENT | Signals observed across the estate that no catalog item references, grouped by recurring shape. A report for catalog authors, not a gate |
-| 11 | `dependency-and-context-map` | Dependency graph, context map & external endpoint register | `P` | CONTEXT | Project and package graph; external actors from step 5 aggregated across repositories. **The endpoint register is the deliverable** — if eight repos call one SOAP endpoint over NetTcp, that is one backend conversation, invisible from eight separate scans |
-| 12 | `migration-wave-planning` | Migration wave planning | `P + H` | DEVELOPMENT | Topological grouping from the dependency graph; human confirms boundaries. Emits a C4 container view |
+| 11 | `dependency-and-context-map` | Dependency graph, context map & external endpoint register | `P` | CONTEXT | Four outputs. **The external endpoint register is the deliverable**: step 5's invocations grouped by host, with `requires_backend_change` marking calls only the endpoint's owner can fix, and annotations that turn it into a conversation tracker. Also the package estate view, the cross-repository dependency graph with shared libraries and cycles, and a C4 context map. Reconciles step 4's per-repository origin decisions without rewriting step 4's rows |
+| 12 | `migration-wave-planning` | Migration wave planning | `P + H` | DEVELOPMENT | Topological grouping from step 11's dependency graph; shared libraries first, cycles as single units. Human confirms boundaries. Emits a C4 container view |
 
 ---
 
@@ -80,18 +122,30 @@ different consumers.
 | 13 | `branch-baseline-record` | Branch creation & baseline SHA | `P` | DEVELOPMENT | |
 | 14 | `baseline-verification` | Baseline verification | `P` | DEVELOPMENT | Build and test in a clean container **before** any change. Establishes attributability |
 | 15 | `contract-snapshot` | Contract snapshot | `P` | FUNCTIONAL | OpenAPI for REST, WSDL for SOAP, from step 4's entry-point inventory. The parity baseline for step 22 |
-| 16 | `characterization-test-generation` | Characterization test generation | `S` | FUNCTIONAL | Conditional on step 8 coverage falling below threshold |
-| 17 | `work-list-assembly` | Work list assembly & dry run | `P` | DEVELOPMENT | **New.** Join occurrences to engagement decisions to conversion approaches. Dry-run every approach to produce diffs. Flags `awaiting_decision` and `awaiting_approach` rows. This is the migration plan |
+| 16 | `characterization-test-generation` | Characterization test generation | `S` | FUNCTIONAL | Conditional on step 8 coverage falling below threshold. Targets request entry points only — never lifecycle hooks |
+| 17 | `work-list-assembly` | Work list assembly & dry run | `P` | DEVELOPMENT | Join occurrences to engagement decisions to conversion approaches. Dry-run every approach to produce diffs. Flags `awaiting_decision` and `awaiting_approach` rows. This is the migration plan |
 | 18 | `plan-approval-gate` | Plan approval gate | `H` | — | Tier-conditional. The dry-run work list **is** the plan |
 | 19 | `application-scope-conversion` | Application-scope conversions | `P` | DEVELOPMENT | Runs first. One invocation per project per item. Includes containerization, OCP4 manifests and CI/CD pipeline changes — anything creating files in the repository |
-| 20 | `occurrence-scope-conversion` | Occurrence-scope conversions | `P` | DEVELOPMENT | Per occurrence or batched per the approach's `batching` declaration |
+| 20 | `occurrence-scope-conversion` | Occurrence-scope conversions | `P` | DEVELOPMENT | Per occurrence or batched per the approach's `batching` declaration. Includes package upgrades and their call-site fixes from step 6 |
 | 21 | `independent-verification` | Independent build, test & scan verification | `P` | DEVELOPMENT | Clean CI. Build, unit and integration tests, characterization replay, Linux compatibility, security and vulnerability scans. **The engine reporting its own success is not verification** |
-| 22 | `contract-parity-verification` | Contract parity verification | `P` | FUNCTIONAL | Diff post-migration OpenAPI or WSDL against step 14, with breaking/non-breaking classification. Separate from step 20 because it is the headline consumer-impact evidence |
+| 22 | `contract-parity-verification` | Contract parity verification | `P` | FUNCTIONAL | Diff post-migration OpenAPI or WSDL against step 15, with breaking/non-breaking classification. Separate from step 21 because it is the headline consumer-impact evidence |
 | 23 | `evidence-bundle-assembly` | Evidence bundle assembly | `P + S` | DEVELOPMENT | Platform assembles the facts; skill writes the narrative only |
 | 24 | `pr-creation` | PR creation | `P + S` | DEVELOPMENT | One commit per conversion execution, so the PR reads as named remediations |
 | 25 | `code-review` | Code review | `H` | — | Tier-routed |
 | 26 | `feedback-capture` | Feedback capture | `P` | DEVELOPMENT | Tag corrections by item, approach and error category |
 | 27 | `merge-version-record` | Merge, version record, dashboard update | `P` | DEVELOPMENT | Record approach versions used per application |
+
+### Two engine requirements before Track A
+
+Found by crash-testing the per-step commit engine; both must be met before any step that
+writes to a repository is built:
+
+- **Conversions must be safe to run twice.** A step rerun after a crash reapplies its work.
+  The `idempotent` field on conversion approaches anticipates this
+- **A crashed engine must terminate the step's child processes.** Today a child process a
+  step launched keeps running after the engine dies and can still write. Use a Windows job
+  object so a step's processes die with it. Otherwise git can hold commits the database has
+  no record of
 
 ---
 
@@ -113,68 +167,79 @@ different consumers.
 
 ## Renumbering and slug stability
 
-### v2.1: dependency-assessment inserted at 6
-
-`dependency-assessment` is a new step 6, between the inventories and item detection, so
-that its findings are signals item detection matches like any other (docs/30 Part A).
-Every v2.0 step numbered 6 or higher moves up by one — `item-detection` is 7,
-`production-cutover` is 36 — and **no slug changes**, so execution history and job
-definitions bind exactly as before. Only `lifecycle_step_no` and the job descriptions
-that quote number ranges changed.
-
-### v2.0
-
-`lifecycle_step_no` was renumbered 1–35. **Where a step survives unchanged, its
-`step_name` slug is unchanged** — `wf_step_executions` history references step names,
-so renumbering alone preserves linkage.
-
-Four slugs change because the step genuinely does something different. Follow the
-insert-new, repoint, soft-delete-old pattern so historical executions stay resolvable:
+`lifecycle_step_no` is ordering only. **`step_name` slugs are what job definitions and
+execution history bind to**, so a slug is never changed in place. Where a step's meaning
+genuinely changed, the old slug was soft-deleted and a new one inserted, so historical
+executions stay resolvable.
 
 | Old slug | New slug | Why |
 |---|---|---|
 | `pattern-classification` | `item-detection` | Produces occurrences, not a classification |
 | `pattern-discovery-clustering` + `pattern-validation` | `unclaimed-signal-report` | Merged; no longer a gate |
+| `api-contract-snapshot` | `contract-snapshot` | Renamed in v2.0 |
 | `independent-build-test-verification` | `independent-verification` | Absorbed two other steps |
 | `dependency-graph-construction` | `dependency-and-context-map` | Scope extended |
 
-### Old to new mapping (v1 → v2.0 numbering; add 1 to any v2.0 number from 6 up for v2.1)
+New job definitions cannot reference a retired step; validation fails with
+`STEP_RETIRED`, naming the successor.
 
-| Old | New | Old | New |
-|---|---|---|---|
-| 1 | 1 | 27 | 18 or 19 |
-| 2 | 2 | 28 | 19 |
-| 3 | 3 | 29 | 19 |
-| 4 | 6 | 30 | 19 |
-| 5, 6 | 9 | 31 | 20 |
-| 7 | 10 | 32 | 21 |
-| 8 | *retired* | 33 | 20 |
-| 9 | 7 | 34 | 20 |
-| 10 | 8 | 35 | 18 |
-| 11 | *retired* | 36 | 22 |
-| 12 | 11 | 37 | 23 |
-| 13, 14, 15 | *retired* | 38 | 24 |
-| 16 | *retired* | 39 | 25 |
-| 17 | 12 | 40 | 26 |
-| 18 | 13 | 41 | 27 |
-| 19 | 14 | 42 | 18 |
-| 20 | 15 | 43 | 28 |
-| 21 | *retired* | 44 | 29 |
-| 22, 24 | 17 | 45 | 18 |
-| 23 | 18 or 19 | 46 – 51 | 30 – 35 |
-| 25, 26 | 18 or 19 | | |
-| — | 4, 5, 16 *(new)* | | |
+### v1 → v2.2 mapping
 
-Old steps 23 and 25–30 map to 18 or 19 depending on the item's scope, which is the
-point of the collapse.
+Direct from the original 51 steps to today's numbering.
+
+| v1 | Was | Now |
+|---|---|---|
+| 1 | repository ingest | 1 |
+| 2 | solution discovery | 2 |
+| 3 | application fingerprinting | 3 |
+| 4 | pattern classification | 7 |
+| 5, 6 | pattern discovery, pattern validation | 10 |
+| 7 | dependency graph construction | 11 |
+| 8 | impact map generation | *retired* |
+| 9 | test coverage assessment | 8 |
+| 10 | risk scoring | 9 |
+| 11 | inventory dashboard population | *retired* |
+| 12 | migration wave planning | 12 |
+| 13, 14, 15 | target state governance | *retired* |
+| 16 | accelerator binding | *retired* |
+| 17 | branch & baseline | 13 |
+| 18 | baseline verification | 14 |
+| 19 | API contract snapshot | 15 |
+| 20 | characterization test generation | 16 |
+| 21 | guardrail playbook generation | *retired* |
+| 22, 24 | plan approval gate, plan validation | 18 |
+| 23 | engine assessment | 19 or 20 |
+| 25 | framework retarget & package upgrade | 19 or 20 — package discovery is now step 6 |
+| 26, 27 | build-fix loop, breaking-change remediation | 19 or 20 |
+| 28, 29, 30 | Windows-to-Linux, config externalisation, logging & health | 20 |
+| 31, 33, 34 | independent verification, characterization execution, Linux & security scan | 21 |
+| 32 | contract parity verification | 22 |
+| 35 | container build file generation | 19 |
+| 36 | evidence bundle | 23 |
+| 37 | PR creation | 24 |
+| 38 | code review | 25 |
+| 39 | feedback capture | 26 |
+| 40 | merge & version record | 27 |
+| 41 | wave readiness | 28 |
+| 42 | OCP4 manifest generation | 19 |
+| 43 | image build & push | 29 |
+| 44 | container smoke test | 30 |
+| 45 | CI/CD pipeline update | 19 |
+| 46 – 51 | non-prod deploy through production cutover | 31 – 36 |
+
+**New since v1:** 4 entry-point inventory, 5 outbound-invocation inventory and 17 work-list
+assembly in v2.0; 6 dependency assessment in v2.1.
+
+"19 or 20" is the point of the collapse: the same kind of work runs in whichever conversion
+step matches its item's scope.
 
 ---
 
 ## Retired from the lifecycle
 
-Not deleted — moved somewhere better.
+Not deleted — moved somewhere better. Numbers below are **v1**.
 
-| Old step | Where it went |
+| v1 step | Where it went |
 |---|---|
 | 8 — Impact map generation | **The work list is the impact map.** Same data, better shape |
 | 11 — Inventory dashboard population | A read view over platform tables. Never really a step |
@@ -194,8 +259,8 @@ Not deleted — moved somewhere better.
 | `P + S` | 2 | 23, 24 |
 | `S` | 1 | 16 |
 
-Totals to 36. (Step 6 is `P`; its advisory explanation of breaking changes is an
-optional `S` sub-task inside the step, not a separate step.)
+Totals to 36. Step 6 is `P`; its optional advisory explanation of breaking changes is an
+`S` sub-task inside the step, not a separate step.
 
 **No step is owned by an external engine.** Engine choice is a property of a
 conversion approach, selected per item and resolution. That is what makes the platform
@@ -214,10 +279,14 @@ shared with the platform.
 - Every step registers as a stub initially: `adapter_type: stub`,
   `exit_status: NOT_IMPLEMENTED`, empty `consumes` and `produces`,
   `implementation_status: stub`
-- Replacing a stub is a registration update only — no job definition change, provided
-  `consumes` and `produces` are unchanged
+- Replacing a stub needs no job definition change **only if `consumes` and `produces` are
+  unchanged**. A step that gains inputs must have them wired in the job definition, and
+  validation rule 9 (`UNWIRED_INPUT`) enforces it. Never make an input optional to avoid
+  wiring it — that works around the tripwire rather than satisfying it
 - Renaming a `step_name` after registration breaks every job definition binding to it.
   Register the new name, update affected definitions, then deprecate the old
+- A reseed must never revert an implemented step to stub, nor overwrite a catalog edit made in
+  the UI (CLAUDE.md rule 10; 28-ITEM Part V)
 
 Viewpoints are derived per `25-STANDARDS-AND-VIEWPOINTS.md` Part A2 and drive the
 coverage report. Gate steps carry no viewpoint — they are governance, not analysis.
