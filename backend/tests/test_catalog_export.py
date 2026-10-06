@@ -9,7 +9,10 @@ Run from backend/:  python -m unittest tests.test_catalog_export -v
 """
 
 import copy
+import shutil
+import tempfile
 import unittest
+from pathlib import Path
 
 import yaml
 from fastapi import Response
@@ -136,6 +139,74 @@ class ImportTests(ExportTestCase):
     def test_a_file_must_be_named_for_its_item(self):
         with self.assertRaises(ValueError):
             catalog_export.import_files(self.db, {"other.yaml": catalog_export.render(self.document())})
+
+
+class StalenessTests(ExportTestCase):
+    """What the master catalog view and the dashboard show: items changed
+    since the last export into the repository. Exports go to a temporary
+    directory standing in for catalog/items/ — never the repository."""
+
+    def setUp(self):
+        super().setUp()
+        self.out = Path(tempfile.mkdtemp())
+        self.repository_dir = catalog_export.DEFAULT_DIR
+        catalog_export.DEFAULT_DIR = self.out
+
+    def tearDown(self):
+        catalog_export.DEFAULT_DIR = self.repository_dir
+        shutil.rmtree(self.out, ignore_errors=True)
+        super().tearDown()
+
+    def changes(self):
+        return {c["item_id"]: c["change"] for c in catalog_export.status(self.db)["changes"]}
+
+    def test_an_export_into_the_repository_is_recorded_and_current(self):
+        report = catalog_export.write(self.db, self.out)
+        self.assertTrue(report["recorded"])
+        status = catalog_export.status(self.db)
+        self.assertEqual((status["is_current"], status["changed"], status["changes"]), (True, 0, []))
+        self.assertEqual(status["current_hash"], status["last_export"]["catalog_hash"])
+
+    def test_an_export_anywhere_else_is_not_recorded(self):
+        elsewhere = Path(tempfile.mkdtemp())
+        try:
+            self.assertFalse(catalog_export.write(self.db, elsewhere)["recorded"])
+        finally:
+            shutil.rmtree(elsewhere, ignore_errors=True)
+
+    def test_added_edited_and_deleted_items_are_listed(self):
+        catalog_export.write(self.db, self.out)
+        item = self.db.get(models.CatalogItem, "t-export")
+        catalog_items.update_item("t-export", s.CatalogItemWrite(
+            name=item.name, description="Edited in the UI.", scope=item.scope, category=item.category, detection=item.detection,
+            excluded_roles=item.excluded_roles, owner_team=item.owner_team, status=item.status), db=self.db)
+        self.create_item("t-export-added", "application", DETECTION)
+        catalog_items.delete_item("t-export-dependent", deleted_by="team", db=self.db)
+        self.assertEqual(self.changes(), {"t-export": "edited", "t-export-added": "added", "t-export-dependent": "deleted"})
+        status = catalog_export.status(self.db)
+        self.assertEqual((status["is_current"], status["changed"]), (False, 3))
+
+    def test_a_resolution_or_derivation_change_marks_its_item_edited(self):
+        catalog_export.write(self.db, self.out)
+        self.db.get(models.ResolutionDerivation, ("t-export-a", "t-export-dependent")).reason = "Changed."
+        self.db.flush()
+        self.assertEqual(self.changes(), {"t-export": "edited"})
+
+    def test_re_exporting_makes_it_current_again(self):
+        catalog_export.write(self.db, self.out)
+        self.create_item("t-export-added", "application", DETECTION)
+        self.assertEqual(self.changes(), {"t-export-added": "added"})
+        catalog_export.write(self.db, self.out)
+        self.assertTrue(catalog_export.status(self.db)["is_current"])
+
+    def test_with_no_export_recorded_every_item_is_listed_as_added(self):
+        self.db.query(models.CatalogExport).delete()
+        self.db.flush()
+        status = catalog_export.status(self.db)
+        self.assertIsNone(status["last_export"])
+        self.assertFalse(status["is_current"])
+        self.assertEqual(status["changed"], self.db.query(models.CatalogItem).count())
+        self.assertEqual(set(self.changes().values()), {"added"})
 
 
 if __name__ == "__main__":

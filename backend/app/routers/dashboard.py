@@ -17,6 +17,8 @@ from sqlalchemy.orm import Session
 from app import models
 from app.db import get_db
 from app.errors import ErrorResponse, error
+from app.items import catalog_export
+from app.items.schemas import CatalogExportSummary
 from app.routers.engagements import compute_coverage
 from app.structure import service as structure_service
 from app.workflow.runtime import service as runtime_service
@@ -195,6 +197,9 @@ class DashboardSummary(BaseModel):
     decisions: DecisionCounts = Field(description="Real now — computed the same way as GET /api/engagements/{eid}/coverage.")
     capabilities: DashboardCapabilities
     recent_executions: list[RecentExecution] = Field(description="Last 10 executions across every job for this engagement.")
+    catalog_export: CatalogExportSummary = Field(
+        description="Master catalog: items changed since the last export into the repository's catalog/items/ "
+                    "(GET /api/catalog/export/items/status lists them). The same for every engagement.")
 
 
 class StepBrief(BaseModel):
@@ -504,7 +509,17 @@ def get_dashboard(
         decisions=decisions,
         capabilities=capabilities,
         recent_executions=recent_executions,
+        catalog_export=_catalog_export_summary(db),
     )
+
+
+def _catalog_export_summary(db: Session) -> CatalogExportSummary:
+    """Master-catalog data on an engagement's dashboard: how many items the
+    files in git no longer match (28-ITEM Part W)."""
+    status = catalog_export.status(db)
+    last = status["last_export"]
+    return CatalogExportSummary(is_current=status["is_current"], changed=status["changed"],
+                                last_exported_at=last["exported_at"] if last else None)
 
 
 @router.get(

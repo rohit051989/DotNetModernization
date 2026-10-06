@@ -231,6 +231,24 @@ export function DashboardPage({ engagementId, onNavigateToRepositories, onNaviga
             {summary.decisions.in_review} in review · {summary.decisions.parked} parked
           </p>
         </SummaryCard>
+        <SummaryCard title="Catalog export">
+          {summary.catalog_export.is_current ? (
+            <>
+              <p className="text-2xl font-semibold text-emerald-700">Current</p>
+              <p className="text-xs text-neutral-400">git matches the catalog</p>
+            </>
+          ) : (
+            <>
+              <p className="text-2xl font-semibold text-amber-700">{summary.catalog_export.changed}</p>
+              <p className="text-xs text-neutral-500">
+                {summary.catalog_export.last_exported_at
+                  ? `item${summary.catalog_export.changed === 1 ? '' : 's'} changed since the last export`
+                  : 'items not in git: no export recorded'}
+              </p>
+              <p className="text-xs text-neutral-400">listed in the Catalog tab</p>
+            </>
+          )}
+        </SummaryCard>
         <UnavailableCard title="Waves" awaiting="wave planning (step 12)" />
       </div>
 

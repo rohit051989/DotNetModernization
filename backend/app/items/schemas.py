@@ -466,6 +466,41 @@ class WorkListDecisionsOut(BaseModel):
     projects: list[WorkListProjectNotes]
 
 
+# ---------- catalog export staleness (Part W) ----------
+
+
+class CatalogExportChange(BaseModel):
+    item_id: str
+    item_name: str | None = Field(description="Null when the item is no longer in the database at all.")
+    change: Literal["added", "edited", "deleted"]
+
+
+class CatalogExportLast(BaseModel):
+    exported_at: datetime.datetime
+    catalog_hash: str
+    item_count: int
+
+
+class CatalogExportStatus(BaseModel):
+    """How far the database has drifted from the last export into the
+    repository's catalog/items/. Nothing exports automatically."""
+
+    last_export: CatalogExportLast | None = Field(description="Null: no export into the repository has been recorded.")
+    current_hash: str = Field(description="What the export would hash to now; equal to last_export.catalog_hash when current.")
+    is_current: bool
+    changed: int = Field(description="Items added, edited or deleted since the last export (every item when none is recorded).")
+    changes: list[CatalogExportChange]
+    command: str = Field(description="The command that exports into the repository, for a person to run and commit.")
+
+
+class CatalogExportSummary(BaseModel):
+    """The dashboard's staleness count: the master catalog's, the same for every engagement."""
+
+    is_current: bool
+    changed: int
+    last_exported_at: datetime.datetime | None
+
+
 # ---------- coverage (Part H) ----------
 
 

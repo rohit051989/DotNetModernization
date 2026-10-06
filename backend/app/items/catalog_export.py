@@ -16,6 +16,13 @@ version), no timestamps. A soft-deleted row is exported with
 `deleted: true` — a deletion is a reviewable change. Engagement data
 (decisions, scope) is client data, not catalog content, and never exported.
 
+**Staleness.** Each export into the repository's catalog/items/ is
+recorded (catalog_exports) with a hash per item. `status` compares the
+database against the last one — which items were added, edited or deleted
+since — for the master catalog view and the dashboard. Nothing exports
+automatically: writing into the repository from a web request would couple
+the running server to the working tree, so a person exports and commits.
+
 **One-way.** The export is for review and history, not a second place to
 edit. `import` exists to bootstrap a new environment: onto an empty catalog
 it inserts every row; onto a non-empty one it goes through
@@ -29,6 +36,7 @@ never overwriting it.
 """
 
 import argparse
+import hashlib
 import io
 import os
 import subprocess
@@ -47,6 +55,7 @@ from app.items import baseline, readiness
 from app.items.detection import validate_detection
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
+EXPORT_COMMAND = "python -m app.items.catalog_export export"
 DEFAULT_DIR = REPO_ROOT / "catalog" / "items"
 ZIP_PREFIX = "catalog/items/"
 IMPORTED_BY = "catalog import"
@@ -82,31 +91,101 @@ def _without(values: dict, *fields: str) -> dict:
     return {k: v for k, v in values.items() if k not in fields}
 
 
-def item_document(db: Session, item: models.CatalogItem) -> dict:
-    """The item's content, its resolutions' and their derivations'. Nested
-    rows omit what nesting already says (item_id, resolution_id)."""
-    resolutions = []
-    for resolution in db.query(models.ItemResolution).filter(models.ItemResolution.item_id == item.id).order_by(models.ItemResolution.id):
-        derivations = [
-            {"dependent_item_id": row.dependent_item_id, **_without(baseline.content(row), "item_id")}
-            for row in db.query(models.ResolutionDerivation)
-            .filter(models.ResolutionDerivation.resolution_id == resolution.id)
-            .order_by(models.ResolutionDerivation.dependent_item_id)
-        ]
-        resolutions.append({"id": resolution.id, **_without(baseline.content(resolution), "item_id"), "derivations": derivations})
-    return {"id": item.id, **baseline.content(item), "resolutions": resolutions}
+def documents(db: Session) -> list[tuple[models.CatalogItem, dict]]:
+    """(item, document) for every item, soft-deleted included, in id order:
+    the item's content, its resolutions' and their derivations'. Nested rows
+    omit what nesting already says (item_id, resolution_id). Three queries
+    for the whole catalog — the dashboard computes staleness on every poll."""
+    derivations_by_resolution: dict[str, list[dict]] = {}
+    for row in db.query(models.ResolutionDerivation).order_by(
+            models.ResolutionDerivation.resolution_id, models.ResolutionDerivation.dependent_item_id):
+        derivations_by_resolution.setdefault(row.resolution_id, []).append(
+            {"dependent_item_id": row.dependent_item_id, **_without(baseline.content(row), "item_id")})
+    resolutions_by_item: dict[str, list[dict]] = {}
+    for resolution in db.query(models.ItemResolution).order_by(models.ItemResolution.item_id, models.ItemResolution.id):
+        resolutions_by_item.setdefault(resolution.item_id, []).append({
+            "id": resolution.id, **_without(baseline.content(resolution), "item_id"),
+            "derivations": derivations_by_resolution.get(resolution.id, []),
+        })
+    return [(item, {"id": item.id, **baseline.content(item), "resolutions": resolutions_by_item.get(item.id, [])})
+            for item in db.query(models.CatalogItem).order_by(models.CatalogItem.id)]
 
 
 def export_files(db: Session) -> dict[str, str]:
     """{"<item-id>.yaml": text} for every item, soft-deleted included."""
-    return {f"{item.id}.yaml": render(item_document(db, item))
-            for item in db.query(models.CatalogItem).order_by(models.CatalogItem.id)}
+    return {f"{item.id}.yaml": render(document) for item, document in documents(db)}
+
+
+# ---------- staleness ----------
+
+
+def _sha(text_: str) -> str:
+    return hashlib.sha256(text_.encode("utf-8")).hexdigest()
+
+
+def item_states(db: Session) -> dict[str, dict]:
+    """{item_id: {"hash", "deleted", "name"}}: the hash is of the item's
+    exported file, so it changes exactly when its file would."""
+    return {item.id: {"hash": _sha(render(document)), "deleted": item.deleted_at is not None, "name": item.name}
+            for item, document in documents(db)}
+
+
+def catalog_hash(states: dict[str, dict]) -> str:
+    return _sha("\n".join(f"{item_id} {state['hash']}" for item_id, state in sorted(states.items())))
+
+
+def record_export(db: Session, out_dir: Path, states: dict[str, dict]) -> models.CatalogExport:
+    row = models.CatalogExport(
+        catalog_hash=catalog_hash(states), item_count=len(states), out_dir=str(out_dir),
+        items={item_id: {"hash": state["hash"], "deleted": state["deleted"]} for item_id, state in sorted(states.items())},
+    )
+    db.add(row)
+    db.flush()
+    return row
+
+
+def status(db: Session) -> dict:
+    """How far the database has drifted from the last export into the
+    repository. Read-only — never exports. Each changed item is `added` (not
+    in the last export), `deleted` (soft-deleted since, or no longer in the
+    database) or `edited` (its file would differ; a restore is an edit)."""
+    last = db.query(models.CatalogExport).order_by(models.CatalogExport.id.desc()).first()
+    current = item_states(db)
+    exported = last.items if last is not None else {}
+    changes = []
+    for item_id, state in sorted(current.items()):
+        before = exported.get(item_id)
+        if before is None:
+            change = "added"
+        elif state["deleted"] and not before["deleted"]:
+            change = "deleted"
+        elif state["hash"] != before["hash"]:
+            change = "edited"
+        else:
+            continue
+        changes.append({"item_id": item_id, "item_name": state["name"], "change": change})
+    for item_id in sorted(set(exported) - set(current)):
+        changes.append({"item_id": item_id, "item_name": None, "change": "deleted"})
+    changes.sort(key=lambda c: c["item_id"])
+    return {
+        "last_export": None if last is None else {
+            "exported_at": last.exported_at, "catalog_hash": last.catalog_hash, "item_count": last.item_count,
+        },
+        "current_hash": catalog_hash(current),
+        "is_current": last is not None and not changes,
+        "changed": len(changes),
+        "changes": changes,
+        "command": EXPORT_COMMAND,
+    }
 
 
 def write(db: Session, out_dir: Path = DEFAULT_DIR) -> dict:
     """Writes the export into `out_dir`, which it owns: a .yaml file there
     for an item that no longer exists is removed. Bytes are written as-is
-    (LF line endings), so an unchanged catalog leaves every file untouched."""
+    (LF line endings), so an unchanged catalog leaves every file untouched.
+    An export into the repository's catalog/items/ is recorded
+    (catalog_exports), which is what staleness is measured against; an
+    export anywhere else is not. Flushes; the caller commits."""
     files = export_files(db)
     out_dir.mkdir(parents=True, exist_ok=True)
     report = {"written": [], "unchanged": 0, "removed": []}
@@ -122,6 +201,11 @@ def write(db: Session, out_dir: Path = DEFAULT_DIR) -> dict:
         if path.name not in files:
             path.unlink()
             report["removed"].append(path.name)
+    report["recorded"] = False
+    if out_dir.resolve() == DEFAULT_DIR.resolve():
+        record_export(db, out_dir, {name[: -len(".yaml")]: {"hash": _sha(text_), "deleted": yaml.safe_load(text_)["deleted"]}
+                                    for name, text_ in files.items()})
+        report["recorded"] = True
     return report
 
 
@@ -276,8 +360,10 @@ def main() -> None:
     with SessionLocal() as db:
         if args.command == "export":
             report = write(db, args.out)
+            db.commit()
             print(f"Exported to {args.out}: {len(report['written'])} written, {report['unchanged']} unchanged, "
-                  f"{len(report['removed'])} removed")
+                  f"{len(report['removed'])} removed" + ("; recorded as the current export" if report["recorded"] else
+                                                       "; not recorded (not the repository's catalog/items)"))
             for name in report["written"] + report["removed"]:
                 print(f"  {name}")
             return

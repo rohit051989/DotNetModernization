@@ -1,5 +1,6 @@
 import { api } from './client'
 import type {
+  CatalogExportStatus,
   CatalogItem,
   CatalogItemCreateInput,
   CatalogItemWriteInput,
@@ -145,4 +146,8 @@ export function getWorkListDecisions(repositoryId: string) {
 
 export function supersedeItemDecision(decisionId: string) {
   return api.post<EngagementDecision>(`/api/item-decisions/${enc(decisionId)}/supersede`)
+}
+
+export function getCatalogExportStatus() {
+  return api.get<CatalogExportStatus>('/api/catalog/export/items/status')
 }

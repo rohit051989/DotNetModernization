@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app import catalog_rules, models, schemas
 from app.db import get_db
 from app.errors import ErrorResponse, errors
+from app.items import schemas as item_schemas
 
 router = APIRouter(prefix="/api/catalog", tags=["Catalog"])
 
@@ -101,6 +102,24 @@ def _serialize(obj, fields: list[str], include_timestamps: bool) -> dict:
         for field in _TIMESTAMP_FIELDS:
             data[field] = _iso_utc(getattr(obj, field))
     return data
+
+
+@router.get(
+    "/export/items/status",
+    response_model=item_schemas.CatalogExportStatus,
+    summary="Item catalog changes since the last export into the repository",
+    operation_id="get_item_catalog_export_status",
+)
+def get_item_catalog_export_status(db: Session = Depends(get_db)):
+    """Compares the database with the last export recorded by
+    `python -m app.items.catalog_export export` into catalog/items/: which
+    items were added, edited or deleted since. Read-only. Nothing exports
+    automatically — writing into the repository from a web request would
+    couple the running server to the working tree; a person exports and
+    commits (28-ITEM Part W)."""
+    from app.items import catalog_export
+
+    return catalog_export.status(db)
 
 
 @router.get(

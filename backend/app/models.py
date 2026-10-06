@@ -1501,6 +1501,27 @@ class ResolutionDerivation(Base):
     )
 
 
+class CatalogExport(Base):
+    """One run of the item catalog export into the repository's
+    catalog/items/ (28-ITEM Part W). What was exported, item by item, so the
+    UI can show how far the database has drifted from the files in git since
+    (`app/items/catalog_export.py` status). Nothing exports automatically: a
+    person runs the export and commits."""
+
+    __tablename__ = "catalog_exports"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    exported_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    # SHA-256 over every item's file: equal hashes, identical export.
+    catalog_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    item_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    # {item_id: {"hash": sha256 of the item's file, "deleted": bool}}
+    items: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    out_dir: Mapped[str] = mapped_column(Text, nullable=False)
+
+
 class EngagementDecision(Base):
     """An engagement's chosen resolution for one item (Part F). Engagement
     data: never written by, or into, the master catalog tables."""

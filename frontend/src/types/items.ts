@@ -392,3 +392,24 @@ export interface ItemSignal {
   state: ReadinessState | null
   usages: SignalUsage[]
 }
+
+// ---------- catalog export staleness (28-ITEM Part W) ----------
+
+export interface CatalogExportChange {
+  item_id: string
+  /** Null when the item is no longer in the database at all. */
+  item_name: string | null
+  change: 'added' | 'edited' | 'deleted'
+}
+
+/** How far the database has drifted from the last export into the
+ * repository's catalog/items/. Nothing exports automatically. */
+export interface CatalogExportStatus {
+  last_export: { exported_at: string; catalog_hash: string; item_count: number } | null
+  current_hash: string
+  is_current: boolean
+  changed: number
+  changes: CatalogExportChange[]
+  /** The command a person runs to export into the repository, then commits. */
+  command: string
+}

@@ -1530,6 +1530,30 @@ change.
 - The master catalog view has an "Export catalog (YAML per item)" link. It is read-only and
   hidden in a client catalog view.
 
+**Staleness.** `catalog/` reflects the catalog only as of the last export, and the team
+edits in the UI. To stop git silently drifting while it looks like the record:
+- **Recording.** Each export into the repository's `catalog/items/` records a
+  `catalog_exports` row (migration `b4e8c1a73d50`): the time, a hash of the whole catalog,
+  and a hash and deleted flag per item. An export to any other directory is not recorded.
+- **Status.** `GET /api/catalog/export/items/status` compares the database with the last
+  record. It lists each changed item as one of:
+  - `added`: not in the last export;
+  - `deleted`: soft-deleted since, or no longer in the database;
+  - `edited`: its file would differ, including a change to one of its resolutions or
+    derivations, or a restore.
+
+  With no export recorded, every item is listed as not in git.
+- **Master catalog view.** Beside the export link it shows "Export is current", or "N items
+  changed since the last export" with the items, their change type, and the command to
+  run.
+- **Dashboard.** The dashboard summary carries the same count (`catalog_export`) on a
+  "Catalog export" card. It is master-catalog data, the same for every engagement.
+- **Cost.** Status renders every item from three bulk queries, about 0.2 s on the local
+  catalog, so the dashboard's 5-second poll stays cheap.
+- **Nothing exports automatically.** Writing into the repository from a web request would
+  couple the running server to the working tree, so a person runs the export and commits.
+- **The zip download is not recorded.** It does not put files in the repository.
+
 **One-way.** The export is not a second place to edit.
 `python -m app.items.catalog_export import [--from DIR] [--dry-run]` exists to bootstrap a
 new environment:
