@@ -287,6 +287,32 @@ shared with the platform.
   Register the new name, update affected definitions, then deprecate the old
 - A reseed must never revert an implemented step to stub, nor overwrite a catalog edit made in
   the UI (CLAUDE.md rule 10; 28-ITEM Part V)
+- **An implemented step's registration is a file in the repository** (CLAUDE.md rule 11):
+  `steps/<step>/registration/<step-name>.json` for an external step, or
+  `backend/app/steps/<step-name>.registration.json` for a `python` adapter. Job definitions
+  are `backend/app/jobs/<job-name>.yaml`.
+  - **Seeding.** `python -m app.seed` registers both after the lifecycle stubs
+    (`app/seed/platform.py`). A missing row or stub is registered, and a newer file upgrades
+    the row. A machine ahead of the repository is never downgraded but is reported, and a
+    same-version difference is reported as a conflict and left as is.
+  - **Proving it.** `python -m app.seed.reproduce` creates a scratch database and
+    bootstraps it as a new environment: migrate, then `python -m app.seed`, which takes the
+    catalog from the committed export (01-ENVIRONMENT-SETUP.md section 9). It then compares
+    it with this machine:
+    - step registrations and their adapters;
+    - job definitions and the active version;
+    - global step policies;
+    - the signal registry and extractors;
+    - the legacy and item catalogs.
+
+    Client data and run history are not compared. Historical records are intentionally not
+    reproduced and are not differences: retired registrations, superseded job versions, and
+    soft-deleted catalog rows a bootstrap never creates. A clean run prints one line counting
+    them, then "0 differences". Any difference fails the command (exit 1). `--verbose` lists
+    the history and the seed output.
+  - **The 2026-10-07 sweep.** Three implemented steps existed only in the database and were
+    written to files: `repository-ingest`, `solution-discovery` and `item-detection`. Step 3's
+    had been written the round before.
 
 Viewpoints are derived per `25-STANDARDS-AND-VIEWPOINTS.md` Part A2 and drive the
 coverage report. Gate steps carry no viewpoint — they are governance, not analysis.

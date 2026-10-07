@@ -1,0 +1,139 @@
+category: hosting
+deleted: false
+description: 'A console application that needs a person at the keyboard: it reads a key (Console.ReadKey), uses what is typed (Console.ReadLine or Read whose result is used), or prompts with a library such as Spectre.Console or Sharprompt. It is a developer, test or operations tool, not a deployable workload — a CronJob or a worker Deployment has no one to answer it. A console application that only pauses ("Press ENTER to exit") and otherwise runs unattended is console-batch-job, whose "Not a deployable workload" resolution covers a tool detection cannot tell apart.'
+detection:
+  match:
+    all:
+    - id: interactive-input
+      signal:
+        name: INTERACTIVE_CONSOLE_INPUT
+    any:
+    - id: main-entry
+      signal:
+        name: MAIN_METHOD_ENTRY_POINT
+    - id: toplevel-entry
+      signal:
+        name: TOP_LEVEL_STATEMENTS_ENTRY_POINT
+    atLeast: []
+    metadata:
+    - field: outputType
+      id: not-desktop-exe
+      notEquals: WinExe
+    none:
+    - id: not-service-base
+      signal:
+        name: SERVICE_BASE_BASE_CLASS
+    - id: not-servicebase-run
+      signal:
+        name: SERVICEBASE_RUN_ENTRY_POINT
+    - id: not-web-builder
+      signal:
+        name: WEB_APPLICATION_CREATE_BUILDER_ENTRY_POINT
+    - id: not-webhost-builder
+      signal:
+        name: WEBHOST_CREATE_DEFAULT_BUILDER_ENTRY_POINT
+    - id: not-global-asax
+      signal:
+        name: GLOBAL_ASAX_ENTRY_POINT
+    - id: not-startup-class
+      signal:
+        name: STARTUP_CLASS_ENTRY_POINT
+    - id: not-razor-file
+      signal:
+        name: RAZOR_FILE
+    - id: not-cshtml-file
+      signal:
+        name: CSHTML_FILE
+    - id: not-background-service
+      signal:
+        name: BACKGROUND_SERVICE_BASE_CLASS
+    - id: not-ihosted-service
+      signal:
+        name: IHOSTED_SERVICE_BASE_CLASS
+    - id: not-add-hosted-service
+      signal:
+        name: ADD_HOSTED_SERVICE_ENTRY_POINT
+    - id: not-use-windows-service
+      signal:
+        name: USE_WINDOWS_SERVICE_INVOCATION
+    - id: not-windowsservices-package
+      signal:
+        name: MICROSOFT_EXTENSIONS_HOSTING_WINDOWSSERVICES_PACKAGE
+    - id: not-wcf-host
+      signal:
+        name: HOSTS_WCF_SERVICE
+    - id: not-exposes-wcf-service
+      signal:
+        name: EXPOSES_WCF_SERVICE
+    - id: not-exposes-http-api
+      signal:
+        name: EXPOSES_HTTP_API
+    - id: not-exposes-asmx-service
+      signal:
+        name: EXPOSES_ASMX_SERVICE
+    - id: not-exposes-grpc-service
+      signal:
+        name: EXPOSES_GRPC_SERVICE
+    - id: not-exposes-webforms-ui
+      signal:
+        name: EXPOSES_WEBFORMS_UI
+excluded_roles:
+- TEST
+id: interactive-console-tool
+name: Interactive console tool
+owner_team: null
+resolutions:
+- consumer_impact: none
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: What a person checks by running the tool becomes an automated integration or smoke test that runs in the pipeline, with no keyboard input.
+  effort: medium
+  id: interactive-tool-automated-test
+  is_default: false
+  linux_compatible: true
+  name: Convert to an automated test
+  notes: null
+  status: active
+  target_description: Automated test in the CI pipeline
+- consumer_impact: none
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: The tool stays in the repository, built and run by hand by developers or operators. It is not part of the OCP4 deployment.
+  effort: low
+  id: interactive-tool-keep-not-deployed
+  is_default: true
+  linux_compatible: true
+  name: Keep as a developer or operations tool, not deployed
+  notes: null
+  status: active
+  target_description: Run by hand outside OCP4; retargeted only if its own build needs it
+- consumer_impact: none
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: Build an image operators run on demand inside the cluster, attached to a terminal (oc run -it, or a debug pod), for tasks that must run next to the services.
+  effort: medium
+  id: interactive-tool-ops-container
+  is_default: false
+  linux_compatible: true
+  name: Containerise as an operations tool
+  notes: 'The pod needs stdin: true and tty: true, or every read sees end of input.'
+  status: active
+  target_description: On-demand image run with stdin and a TTY; never a Deployment or CronJob
+- consumer_impact: none
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: 'Nobody needs the tool after the migration: remove it from the repository and the build.'
+  effort: low
+  id: interactive-tool-retire
+  is_default: false
+  linux_compatible: true
+  name: Retire
+  notes: null
+  status: active
+  target_description: Removed
+scope: application
+status: active

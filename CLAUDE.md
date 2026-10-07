@@ -130,6 +130,17 @@ modernization-platform/
     `seeded_hash`). Where both the database and the default changed, the seed
     reports a conflict and leaves the row as it is. Never write catalog rows
     from a seed, script or migration any other way.
+11. **The platform reproduces from the repository alone.** Every implemented
+    step registration lives in a file (`steps/*/registration/*.json` or
+    `backend/app/steps/*.registration.json`), every job definition in
+    `backend/app/jobs/*.yaml`, and the seed loads them (`app/seed/platform.py`).
+    Registering a step or storing a job through the API is not enough on its
+    own: commit the file in the same change. The catalog's record in the
+    repository is the export in `catalog/items/`, and a new environment imports
+    it (`01-ENVIRONMENT-SETUP.md` section 9). After catalog changes, export and
+    commit. Before calling such work done, run `python -m app.seed.reproduce`.
+    It bootstraps a scratch database from the repository and compares it with
+    this machine, and must report 0 differences.
 
 ## Domain vocabulary
 

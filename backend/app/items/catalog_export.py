@@ -13,7 +13,8 @@ stored. An unchanged catalog exports byte-identically.
 **Content only.** Exactly the baseline content of each row
 (baseline.CONTENT_FIELDS): no `seeded_hash`, no computed columns (readiness,
 version), no timestamps. A soft-deleted row is exported with
-`deleted: true` — a deletion is a reviewable change. Engagement data
+`deleted: true` and its `deleted_by` — a deletion, and why, is a reviewable
+change. Engagement data
 (decisions, scope) is client data, not catalog content, and never exported.
 
 **Staleness.** Each export into the repository's catalog/items/ is
@@ -94,6 +95,17 @@ def _without(values: dict, *fields: str) -> dict:
     return {k: v for k, v in values.items() if k not in fields}
 
 
+def _exported(row, *omit: str) -> dict:
+    """A row's exported content: its baseline content, and for a
+    soft-deleted row why it was deleted (`deleted_by`) — the reason is
+    reviewable history, and a bootstrap must keep it. Not part of the seed
+    baseline: a reseed never changes it."""
+    values = _without(baseline.content(row), *omit)
+    if row.deleted_at is not None:
+        values["deleted_by"] = row.deleted_by
+    return values
+
+
 def documents(db: Session) -> list[tuple[models.CatalogItem, dict]]:
     """(item, document) for every item, soft-deleted included, in id order:
     the item's content, its resolutions' and their derivations'. Nested rows
@@ -103,14 +115,14 @@ def documents(db: Session) -> list[tuple[models.CatalogItem, dict]]:
     for row in db.query(models.ResolutionDerivation).order_by(
             models.ResolutionDerivation.resolution_id, models.ResolutionDerivation.dependent_item_id):
         derivations_by_resolution.setdefault(row.resolution_id, []).append(
-            {"dependent_item_id": row.dependent_item_id, **_without(baseline.content(row), "item_id")})
+            {"dependent_item_id": row.dependent_item_id, **_exported(row, "item_id")})
     resolutions_by_item: dict[str, list[dict]] = {}
     for resolution in db.query(models.ItemResolution).order_by(models.ItemResolution.item_id, models.ItemResolution.id):
         resolutions_by_item.setdefault(resolution.item_id, []).append({
-            "id": resolution.id, **_without(baseline.content(resolution), "item_id"),
+            "id": resolution.id, **_exported(resolution, "item_id"),
             "derivations": derivations_by_resolution.get(resolution.id, []),
         })
-    return [(item, {"id": item.id, **baseline.content(item), "resolutions": resolutions_by_item.get(item.id, [])})
+    return [(item, {"id": item.id, **_exported(item), "resolutions": resolutions_by_item.get(item.id, [])})
             for item in db.query(models.CatalogItem).order_by(models.CatalogItem.id)]
 
 
@@ -272,8 +284,11 @@ def read_files(in_dir: Path = DEFAULT_DIR) -> dict[str, str]:
     return {path.name: path.read_text(encoding="utf-8") for path in sorted(in_dir.glob("*.yaml"))}
 
 
-def _deleted(values: dict) -> dict:
-    return {**values, "_deleted_by": IMPORTED_BY} if values.get("deleted") else values
+def _deleted(values: dict, document: dict) -> dict:
+    """A soft-deleted row keeps the reason it was deleted, as exported."""
+    if not values.get("deleted"):
+        return values
+    return {**values, "_deleted_by": document.get("deleted_by") or IMPORTED_BY}
 
 
 def import_files(db: Session, files: dict[str, str]) -> dict:
@@ -300,7 +315,7 @@ def import_files(db: Session, files: dict[str, str]) -> dict:
         values["detection"], _warnings = validate_detection(values["scope"], values["detection"], registered)
         existing = db.get(models.CatalogItem, document["id"])
         before = (existing.detection, existing.scope) if existing is not None else None
-        item, outcome = baseline.seed_row(db, models.CatalogItem, {"id": document["id"]}, _deleted(values), report)
+        item, outcome = baseline.seed_row(db, models.CatalogItem, {"id": document["id"]}, _deleted(values, document), report)
         if outcome == "updated" and before != (item.detection, item.scope):
             item.version += 1
     db.flush()
@@ -311,7 +326,7 @@ def import_files(db: Session, files: dict[str, str]) -> dict:
     for document in documents:
         for resolution in document.get("resolutions", []):
             values = {"item_id": document["id"], **{field: resolution[field] for field in resolution_fields}}
-            baseline.seed_row(db, models.ItemResolution, {"id": resolution["id"]}, _deleted(values), report)
+            baseline.seed_row(db, models.ItemResolution, {"id": resolution["id"]}, _deleted(values, resolution), report)
     db.flush()
 
     derivation_fields = [f for f in baseline.CONTENT_FIELDS[models.ResolutionDerivation] if f != "item_id"]
@@ -320,7 +335,7 @@ def import_files(db: Session, files: dict[str, str]) -> dict:
             for derivation in resolution.get("derivations", []):
                 key = {"resolution_id": resolution["id"], "dependent_item_id": derivation["dependent_item_id"]}
                 values = {"item_id": document["id"], **{field: derivation[field] for field in derivation_fields}}
-                baseline.seed_row(db, models.ResolutionDerivation, key, _deleted(values), report)
+                baseline.seed_row(db, models.ResolutionDerivation, key, _deleted(values, derivation), report)
     db.flush()
     return report
 

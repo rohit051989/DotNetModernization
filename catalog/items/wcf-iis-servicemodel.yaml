@@ -1,5 +1,6 @@
 category: integration
 deleted: true
+deleted_by: 'architecture-items: replaced by wcf-service'
 description: |-
   WCF service using ServiceContract and OperationContract attributes, with
   bindings and behaviours configured in web.config, hosted in IIS. Frequently

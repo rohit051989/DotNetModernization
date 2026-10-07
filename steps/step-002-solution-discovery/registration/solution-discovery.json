@@ -1,0 +1,31 @@
+{
+  "step_name": "solution-discovery",
+  "lifecycle_step_no": 2,
+  "display_name": "Solution & project discovery",
+  "owner_code": "P",
+  "version": "2.1.0",
+  "owner_team": "platform",
+  "viewpoint": "DEVELOPMENT",
+  "implementation_status": "implemented",
+  "consumes": [
+    {
+      "artifact_type": "repository-inventory",
+      "version_range": "^1.0.0",
+      "optional": false
+    }
+  ],
+  "produces": [
+    {
+      "artifact_type": "solution-project-inventory",
+      "artifact_version": "2.1.0"
+    }
+  ],
+  "adapter_type": "process",
+  "adapter_config": {
+    "command": [
+      "backend/.venv/Scripts/python.exe",
+      "steps/step-002-solution-discovery/main.py"
+    ],
+    "timeout_seconds": 1800
+  }
+}

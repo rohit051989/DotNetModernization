@@ -1577,6 +1577,34 @@ new environment:
 Detection is validated against the signal registry exactly as the API does, so seed the
 registry first.
 
+**Standing up a new environment.** The canonical bootstrap takes platform configuration
+from the seed's files and catalog content from this export. The procedure is
+`01-ENVIRONMENT-SETUP.md` section 9. `python -m app.seed` chooses the catalog source
+(`app/seed/catalog_source.py`):
+
+| Catalog in the database | Export in the repository | Source |
+|---|---|---|
+| empty | present | the export, imported |
+| not empty | present | the database's own, untouched: it is authoritative, and a stale export would roll back newer rows. Merge explicitly with `catalog_export import` |
+| either | absent | the factory defaults (`catalog_items.yaml`, the pattern migration, amendments) |
+
+The engagement data tied to the catalog comes along in every case and writes no catalog
+rows: legacy decision records and overlays migrated onto items, and decisions repointed
+off replaced items.
+
+A changed factory default therefore no longer reaches an existing machine on reseed once
+an export exists. Apply it with `python -m app.items.catalog_seed`, which is protected by
+the baseline. Then export and commit.
+
+A soft-deleted row is exported with its `deleted_by`, and import restores it: why a row
+was deleted is part of the reviewable record.
+
+`python -m app.seed.reproduce --prove-export-bootstrap` proves the path:
+1. it bootstraps environment A and edits an item in A through the UI's handler;
+2. it exports A and bootstraps B from that export alone;
+3. it requires B to carry the edit, not the factory description, and to export
+   byte-identically to A.
+
 **Round trip.** `python -m app.items.catalog_export roundtrip`:
 1. exports the configured database;
 2. creates a fresh database, migrates it to head and seeds only the signal registry;

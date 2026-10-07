@@ -75,6 +75,8 @@ class ExportTests(ExportTestCase):
     def test_soft_deleted_rows_are_exported_marked_deleted(self):
         catalog_items.delete_resolution("t-export", "t-export-b", deleted_by="team", db=self.db)
         self.assertTrue(self.document()["resolutions"][1]["deleted"])
+        self.assertEqual(self.document()["resolutions"][1]["deleted_by"], "team")   # why, too
+        self.assertNotIn("deleted_by", self.document()["resolutions"][0])          # live rows carry none
         catalog_items.delete_item("t-export-dependent", deleted_by="team", db=self.db)
         self.assertTrue(self.document("t-export-dependent")["deleted"])
 

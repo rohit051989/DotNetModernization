@@ -1,6 +1,9 @@
 import argparse
 
 from app.items import baseline
+from app.seed.catalog_source import print_report as print_catalog_report
+from app.seed.catalog_source import seed_from_export_or_database
+from app.seed.platform import print_platform_summary, seed_platform
 from app.seed.seed_data import (
     print_conflicts,
     print_catalog_items_summary,
@@ -37,10 +40,22 @@ def main() -> None:
 
     steps_result = seed_lifecycle_steps()
     print_steps_summary(steps_result)
+    # After the stubs: implemented registrations and job definitions from
+    # the repository (app/seed/platform.py). Never downgrades.
+    print_platform_summary(seed_platform())
 
     # Order matters: items compute readiness from the signal registry, and
     # the pattern migration reads the pattern tables seeded above.
     print_signal_registry_summary(seed_signal_registry())
+
+    # The item catalog: from the export when the catalog is empty, left as
+    # it is when it is not, factory defaults only when no export exists
+    # (app/seed/catalog_source.py).
+    catalog = seed_from_export_or_database()
+    if catalog is not None:
+        print_catalog_report(catalog)
+        return
+    print("Catalog from the factory defaults (no export in the repository):")
     print_pattern_migration_summary(seed_pattern_migration())
     print_catalog_items_summary(seed_catalog_items())
     # After both: it repoints migrated decisions onto authored items.

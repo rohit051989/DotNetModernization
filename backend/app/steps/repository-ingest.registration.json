@@ -1,0 +1,21 @@
+{
+  "step_name": "repository-ingest",
+  "lifecycle_step_no": 1,
+  "display_name": "Repository ingest & inventory creation",
+  "owner_code": "P",
+  "version": "1.0.0",
+  "owner_team": null,
+  "viewpoint": "DEVELOPMENT",
+  "implementation_status": "implemented",
+  "consumes": [],
+  "produces": [
+    {
+      "artifact_type": "repository-inventory",
+      "artifact_version": "1.2.0"
+    }
+  ],
+  "adapter_type": "python",
+  "adapter_config": {
+    "entrypoint": "app.steps.repository_ingest:run"
+  }
+}

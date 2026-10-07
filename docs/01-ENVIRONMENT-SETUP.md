@@ -265,3 +265,65 @@ bin/
 obj/
 steps/*/publish/
 ```
+
+## 9. Standing up a new environment (a new client machine)
+
+The repository alone rebuilds the platform. The database is authoritative for the item
+catalog, and the committed export in `catalog/items/` is the catalog's record in git.
+**Platform configuration comes from the seed's files. Catalog content comes from the
+export.** The factory defaults in `catalog_items.yaml` apply only when there is no export.
+
+1. **Build what the steps run.** Publish the .NET steps (section 8), and create the
+   backend and step 2 virtual environments (section 3).
+2. **Start an empty database** (section 2), then migrate it, from `backend/` with the venv
+   active:
+
+   ```powershell
+   alembic upgrade head
+   ```
+
+3. **Seed from the repository:**
+
+   ```powershell
+   python -m app.seed
+   ```
+
+   It loads, in order:
+   1. the legacy patterns;
+   2. the lifecycle steps;
+   3. every implemented step registration (`steps/*/registration/*.json`,
+      `backend/app/steps/*.registration.json`);
+   4. the job definitions (`backend/app/jobs/*.yaml`), each activated;
+   5. the signal registry and extractors;
+   6. **the item catalog from `catalog/items/`**, imported into the empty catalog.
+
+   The seed prints which catalog source it used.
+4. **Check that it reproduces the source machine.** On the machine you are copying from,
+   with its database live, run:
+
+   ```powershell
+   python -m app.seed.reproduce
+   ```
+
+   A clean run reports one line counting the historical records it does not reproduce, and
+   **0 differences**. Any difference exists only on that machine. Write it into the
+   repository before standing up the copy:
+   - a step registration file;
+   - a job YAML;
+   - for the catalog, `python -m app.items.catalog_export export` and commit.
+5. **Optionally, prove the export path.** This edits an item in a scratch environment,
+   exports it, bootstraps a second one from that export, and checks the edit arrives:
+
+   ```powershell
+   python -m app.seed.reproduce --prove-export-bootstrap
+   ```
+
+6. **Engagements are client data.** Create them in the UI or API; the seed creates none.
+   `scripts/reset-demo.ps1` creates the two demo engagements.
+
+**Reseeding an existing machine** (`python -m app.seed` again) never touches a catalog
+that is not empty when an export exists: the database is authoritative. Two explicit
+commands bring catalog changes from the repository in, both through the seed baseline so
+no UI edit is overwritten:
+- `python -m app.items.catalog_export import` merges an export;
+- `python -m app.items.catalog_seed` applies changed factory defaults.

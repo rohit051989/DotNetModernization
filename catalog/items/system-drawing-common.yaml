@@ -38,6 +38,7 @@ resolutions:
 - consumer_impact: none
   container_ready: false
   deleted: true
+  deleted_by: 'seed id collision: six items shared this id; replaced by <item>-remain-windows-hosted'
   derivations: []
   description: Out of scope for the Linux move; the application and its queues stay on Windows.
   effort: low

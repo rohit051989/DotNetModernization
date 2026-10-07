@@ -1,0 +1,27 @@
+{
+  "step_name": "item-detection",
+  "lifecycle_step_no": 7,
+  "display_name": "Catalog item detection & occurrence mapping",
+  "owner_code": "P",
+  "version": "1.1.0",
+  "owner_team": "platform",
+  "viewpoint": "DEVELOPMENT",
+  "implementation_status": "implemented",
+  "consumes": [
+    {
+      "artifact_type": "application-fingerprint",
+      "version_range": "^1.0.0",
+      "optional": false
+    }
+  ],
+  "produces": [
+    {
+      "artifact_type": "item-occurrences",
+      "artifact_version": "1.1.0"
+    }
+  ],
+  "adapter_type": "python",
+  "adapter_config": {
+    "entrypoint": "app.steps.item_detection:run"
+  }
+}

@@ -59,6 +59,9 @@ detection:
     - id: not-windowsservices-package
       signal:
         name: MICROSOFT_EXTENSIONS_HOSTING_WINDOWSSERVICES_PACKAGE
+    - id: not-interactive-console-input
+      signal:
+        name: INTERACTIVE_CONSOLE_INPUT
     - id: not-wcf-host
       signal:
         name: HOSTS_WCF_SERVICE
@@ -82,6 +85,19 @@ id: console-batch-job
 name: Console batch application
 owner_team: null
 resolutions:
+- consumer_impact: none
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: 'The console application is a harness or tool a person runs by hand, not a workload: it is not deployed. A console application that calls services and exits without keyboard input looks identical to a batch job from its syntax, so this is the honest answer where detection cannot tell them apart.'
+  effort: low
+  id: console-batch-job-not-deployable
+  is_default: false
+  linux_compatible: true
+  name: Not a deployable workload — developer or test tool
+  notes: null
+  status: active
+  target_description: Stays in the repository, run by hand outside OCP4
 - consumer_impact: low
   container_ready: true
   deleted: false

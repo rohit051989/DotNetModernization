@@ -331,10 +331,15 @@ def migrate_catalog(db: Session, report: dict | None = None) -> tuple[dict, list
 
 def migrate(db: Session) -> dict:
     catalog, inserted = migrate_catalog(db)
-    report = {
-        "items": inserted, "baseline": catalog, "decisions": 0, "scope_rows": 0, "not_migrated_decisions": [],
-    }
-    migrated_ids = set(MIGRATED)
+    return {"items": inserted, "baseline": catalog, **migrate_engagement_data(db)}
+
+
+def migrate_engagement_data(db: Session) -> dict:
+    """The engagement half: legacy decision records and pattern overlays onto
+    the migrated items, whichever way those items arrived (this migration,
+    or a catalog export imported at bootstrap). Never writes catalog rows."""
+    report = {"decisions": 0, "scope_rows": 0, "not_migrated_decisions": []}
+    migrated_ids = {item_id for item_id in MIGRATED if db.get(models.CatalogItem, item_id) is not None}
 
     for record in db.query(models.DecisionRecord).filter(models.DecisionRecord.deleted_at.is_(None)).order_by(
         models.DecisionRecord.engagement_id, models.DecisionRecord.pattern_id
