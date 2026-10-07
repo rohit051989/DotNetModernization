@@ -516,7 +516,7 @@ def get_dashboard(
 def _catalog_export_summary(db: Session) -> CatalogExportSummary:
     """Master-catalog data on an engagement's dashboard: how many items the
     files in git no longer match (28-ITEM Part W)."""
-    status = catalog_export.status(db)
+    status = catalog_export.cached_status(db)   # a cache read unless the catalog changed
     last = status["last_export"]
     return CatalogExportSummary(is_current=status["is_current"], changed=status["changed"],
                                 last_exported_at=last["exported_at"] if last else None)

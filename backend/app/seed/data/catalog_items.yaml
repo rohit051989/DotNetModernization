@@ -222,8 +222,9 @@ items:
 
   # ---- Hosting shape (application scope) ----
   #
-  # Three items describe how a .NET host runs, from most to least specific:
-  # windows-service-hosting > modern-worker-service > console-batch-job. Each
+  # Four items describe how a .NET host runs, from most to least specific:
+  # windows-service-hosting > modern-worker-service > interactive-console-tool
+  # > console-batch-job. Each
   # less specific item carries `none` conditions over the more specific
   # items' positive signals, so a project matches exactly one of them
   # (28-ITEM-AND-CONVERSION-MODEL.md Part E "Overlapping items").
@@ -329,6 +330,136 @@ items:
         target_description: "Worker in a container, OCP4 CronJob"
         consumer_impact: medium
         effort: medium
+
+  # interactive-console-tool sits between modern-worker-service and
+  # console-batch-job: a console application that needs a person at the
+  # keyboard is a tool, not a batch job. Keyboard input that needs a person
+  # (INTERACTIVE_CONSOLE_INPUT) is definitive — a scheduled job has no one to
+  # answer it, and Console.ReadKey throws without a console. A discarded
+  # "Press ENTER to exit" read (CONSOLE_PAUSE_FOR_INPUT) is not: it returns at
+  # once without a console, so it does not move a project off
+  # console-batch-job.
+
+  - id: interactive-console-tool
+    name: "Interactive console tool"
+    scope: application
+    category: hosting
+    description: >-
+      A console application that needs a person at the keyboard: it reads a
+      key (Console.ReadKey), uses what is typed (Console.ReadLine or Read
+      whose result is used), or prompts with a library such as
+      Spectre.Console or Sharprompt. It is a developer, test or operations
+      tool, not a deployable workload — a CronJob or a worker Deployment has
+      no one to answer it. A console application that only pauses ("Press
+      ENTER to exit") and otherwise runs unattended is console-batch-job,
+      whose "Not a deployable workload" resolution covers a tool detection
+      cannot tell apart.
+    excluded_roles: [TEST]
+    detection:
+      match:
+        all:
+          - id: interactive-input
+            signal:
+              name: INTERACTIVE_CONSOLE_INPUT
+        any:
+          - id: main-entry
+            signal:
+              name: MAIN_METHOD_ENTRY_POINT
+          - id: toplevel-entry
+            signal:
+              name: TOP_LEVEL_STATEMENTS_ENTRY_POINT
+        metadata:
+          - id: not-desktop-exe
+            field: outputType
+            notEquals: WinExe
+        none:
+          # Every more specific hosting shape takes precedence, exactly as
+          # for console-batch-job: services, workers, web and WCF hosts, and
+          # anything step 4 says the project exposes.
+          - id: not-service-base
+            signal:
+              name: SERVICE_BASE_BASE_CLASS
+          - id: not-servicebase-run
+            signal:
+              name: SERVICEBASE_RUN_ENTRY_POINT
+          - id: not-web-builder
+            signal:
+              name: WEB_APPLICATION_CREATE_BUILDER_ENTRY_POINT
+          - id: not-webhost-builder
+            signal:
+              name: WEBHOST_CREATE_DEFAULT_BUILDER_ENTRY_POINT
+          - id: not-global-asax
+            signal:
+              name: GLOBAL_ASAX_ENTRY_POINT
+          - id: not-startup-class
+            signal:
+              name: STARTUP_CLASS_ENTRY_POINT
+          - id: not-razor-file
+            signal:
+              name: RAZOR_FILE
+          - id: not-cshtml-file
+            signal:
+              name: CSHTML_FILE
+          - id: not-background-service
+            signal:
+              name: BACKGROUND_SERVICE_BASE_CLASS
+          - id: not-ihosted-service
+            signal:
+              name: IHOSTED_SERVICE_BASE_CLASS
+          - id: not-add-hosted-service
+            signal:
+              name: ADD_HOSTED_SERVICE_ENTRY_POINT
+          - id: not-use-windows-service
+            signal:
+              name: USE_WINDOWS_SERVICE_INVOCATION
+          - id: not-windowsservices-package
+            signal:
+              name: MICROSOFT_EXTENSIONS_HOSTING_WINDOWSSERVICES_PACKAGE
+          - id: not-wcf-host
+            signal:
+              name: HOSTS_WCF_SERVICE
+          - id: not-exposes-wcf-service
+            signal:
+              name: EXPOSES_WCF_SERVICE
+          - id: not-exposes-http-api
+            signal:
+              name: EXPOSES_HTTP_API
+          - id: not-exposes-asmx-service
+            signal:
+              name: EXPOSES_ASMX_SERVICE
+          - id: not-exposes-grpc-service
+            signal:
+              name: EXPOSES_GRPC_SERVICE
+          - id: not-exposes-webforms-ui
+            signal:
+              name: EXPOSES_WEBFORMS_UI
+    resolutions:
+      - id: interactive-tool-keep-not-deployed
+        name: "Keep as a developer or operations tool, not deployed"
+        description: "The tool stays in the repository, built and run by hand by developers or operators. It is not part of the OCP4 deployment."
+        target_description: "Run by hand outside OCP4; retargeted only if its own build needs it"
+        consumer_impact: none
+        effort: low
+        is_default: true
+      - id: interactive-tool-retire
+        name: "Retire"
+        description: "Nobody needs the tool after the migration: remove it from the repository and the build."
+        target_description: "Removed"
+        consumer_impact: none
+        effort: low
+      - id: interactive-tool-automated-test
+        name: "Convert to an automated test"
+        description: "What a person checks by running the tool becomes an automated integration or smoke test that runs in the pipeline, with no keyboard input."
+        target_description: "Automated test in the CI pipeline"
+        consumer_impact: none
+        effort: medium
+      - id: interactive-tool-ops-container
+        name: "Containerise as an operations tool"
+        description: "Build an image operators run on demand inside the cluster, attached to a terminal (oc run -it, or a debug pod), for tasks that must run next to the services."
+        target_description: "On-demand image run with stdin and a TTY; never a Deployment or CronJob"
+        consumer_impact: none
+        effort: medium
+        notes: "The pod needs stdin: true and tty: true, or every read sees end of input."
 
   # ---- Absence items (application scope, `none` over presence signals) ----
   #

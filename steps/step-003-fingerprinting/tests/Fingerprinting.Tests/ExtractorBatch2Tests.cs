@@ -106,6 +106,90 @@ public sealed class ExtractorBatch2Tests
         Assert.Equal("System.DirectoryServices.AccountManagement.PrincipalContext", directory.Value);
     }
 
+    // ---- console input (registry 1.9.0) ----
+
+    [Fact]
+    public async Task ApiUsage_ConsoleInput_ReadsThatNeedAPerson_AreInteractive()
+    {
+        using var repo = new TempRepo();
+        repo.Write("Menu.cs", """
+            using System;
+            class Menu
+            {
+                void Run()
+                {
+                    var choice = Console.ReadLine();
+                    if (Console.ReadKey().Key == ConsoleKey.Q) return;
+                    int c = System.Console.Read();
+                }
+            }
+            """);
+
+        var signals = await Extract(new ApiUsageExtractor(), repo);
+
+        Assert.Equal(["System.Console.Read", "System.Console.ReadKey", "System.Console.ReadLine"],
+            Values(signals, "INTERACTIVE_CONSOLE_INPUT"));
+        Assert.DoesNotContain(signals, s => s.Name == "CONSOLE_PAUSE_FOR_INPUT");
+    }
+
+    [Fact]
+    public async Task ApiUsage_ConsoleInput_DiscardedReadIsAPause_NotInteractive()
+    {
+        // The WCF sample's Catalog.TestClient and Catalog.Host: "Press ENTER
+        // to exit" / "to shut down". With no console the read returns at once.
+        using var repo = new TempRepo();
+        repo.Write("Program.cs", """
+            using System;
+            class Program
+            {
+                static void Main()
+                {
+                    Console.WriteLine("Done. Press ENTER to exit.");
+                    Console.ReadLine();
+                    _ = Console.Read();
+                }
+            }
+            """);
+
+        var signals = await Extract(new ApiUsageExtractor(), repo);
+
+        Assert.Equal(["System.Console.Read", "System.Console.ReadLine"], Values(signals, "CONSOLE_PAUSE_FOR_INPUT"));
+        Assert.DoesNotContain(signals, s => s.Name == "INTERACTIVE_CONSOLE_INPUT");
+    }
+
+    [Fact]
+    public async Task ApiUsage_ConsoleInput_PromptLibraries_OnlyWhereImported()
+    {
+        using var repo = new TempRepo();
+        repo.Write("Spectre.cs", """
+            using Spectre.Console;
+            class Wizard
+            {
+                void Run()
+                {
+                    var name = AnsiConsole.Ask<string>("Name?");
+                    var env = AnsiConsole.Prompt(new SelectionPrompt<string>().AddChoices("dev", "prod"));
+                }
+            }
+            """);
+        repo.Write("Sharp.cs", """
+            using Sharprompt;
+            class Setup { void Run() { var ok = Prompt.Confirm("Continue?"); } }
+            """);
+        repo.Write("Unrelated.cs", """
+            class Prompt { public static bool Confirm(string s) => true; }
+            class AnsiConsole { public static string Ask<T>(string s) => s; }
+            class User { void Run() { Prompt.Confirm("x"); AnsiConsole.Ask<string>("y"); } }
+            """);
+
+        var signals = await Extract(new ApiUsageExtractor(), repo);
+
+        var interactive = signals.Where(s => s.Name == "INTERACTIVE_CONSOLE_INPUT").ToList();
+        Assert.Equal(["Sharp.cs", "Spectre.cs"], interactive.Select(s => s.SourcePath).Distinct().OrderBy(p => p, StringComparer.Ordinal).ToList());
+        Assert.Equal(["Sharprompt.Prompt.Confirm", "Spectre.Console.AnsiConsole.Ask", "Spectre.Console.AnsiConsole.Prompt",
+                      "Spectre.Console.SelectionPrompt"], Values(signals, "INTERACTIVE_CONSOLE_INPUT"));
+    }
+
     // ---- PathLiteralExtractor ----
 
     [Fact]
@@ -395,13 +479,14 @@ public sealed class ExtractorBatch2Tests
         // 1.4.0 batch 2 (119) + 1.5.0 WCF_CLIENT_BINDING_CONFIG and _USAGE
         // + 1.6.0 the six PACKAGE_* signals, produced by step 6 (not step 3)
         // + 1.7.0 UNQUALIFIED_HOSTNAME_URL
-        // + 1.8.0 seven architecture signals, produced by step 4 (not step 3).
-        Assert.Equal("1.8.0", registry.RegistryVersion);
-        Assert.Equal(135, registry.Entries.Count);
+        // + 1.8.0 seven architecture signals, produced by step 4 (not step 3)
+        // + 1.9.0 INTERACTIVE_CONSOLE_INPUT and CONSOLE_PAUSE_FOR_INPUT.
+        Assert.Equal("1.9.0", registry.RegistryVersion);
+        Assert.Equal(137, registry.Entries.Count);
         Assert.Equal(7, registry.Entries.Count(e => e.Extractor == "EntryPointInventory"));
         Assert.Equal(6, registry.Entries.Count(e => e.Extractor == "DependencyAssessment" && e.Category == SignalCategories.PackageDependency));
         Assert.Contains(registry.Entries, e => e.Name == "WCF_CLIENT_BINDING_CONFIG" && e.Extractor == ConfigurationExtractor.ExtractorName);
-        Assert.Equal(10, registry.Entries.Count(e => e.Extractor == ApiUsageExtractor.ExtractorName));
+        Assert.Equal(12, registry.Entries.Count(e => e.Extractor == ApiUsageExtractor.ExtractorName));
         Assert.Equal(3, registry.Entries.Count(e => e.Extractor == PathLiteralExtractor.ExtractorName));
         Assert.All(registry.Entries.Where(e => e.Type is SignalTypes.ApiInvocation or SignalTypes.Literal),
             e => Assert.Equal(SignalEvidenceKinds.File, e.EvidenceKind));

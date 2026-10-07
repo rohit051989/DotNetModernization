@@ -1,0 +1,22 @@
+{
+  "step_name": "application-fingerprinting",
+  "lifecycle_step_no": 3,
+  "display_name": "Application fingerprinting",
+  "owner_code": "P",
+  "version": "1.4.0",
+  "owner_team": null,
+  "viewpoint": "DEVELOPMENT",
+  "implementation_status": "implemented",
+  "consumes": [
+    { "artifact_type": "solution-project-inventory", "version_range": "^2.0.0", "optional": false }
+  ],
+  "produces": [
+    { "artifact_type": "application-fingerprint", "artifact_version": "1.2.0" },
+    { "artifact_type": "fingerprint-sarif", "artifact_version": "2.1.0" }
+  ],
+  "adapter_type": "process",
+  "adapter_config": {
+    "command": ["steps/step-003-fingerprinting/publish/Fingerprinting.Cli.exe"],
+    "timeout_seconds": 3600
+  }
+}

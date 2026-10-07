@@ -530,7 +530,7 @@ class AuthoredItemTests(unittest.TestCase):
         "directory-services-usage", "sensitive-config-key", "unqualified-hostname",
     }
     ABSENCE = {"missing-dockerfile", "missing-health-endpoint", "missing-ocp4-manifests"}
-    HOSTING = {"windows-service-hosting", "modern-worker-service", "wcf-service-host"}
+    HOSTING = {"windows-service-hosting", "modern-worker-service", "wcf-service-host", "interactive-console-tool"}
     APPLICATION_WORK = {"wcf-nettcp-client", "msmq-usage", "asmx-service", "wcf-service"}
     # Generic, parameterised by package (30-STEP-006 Part D2); signals from step 6.
     PACKAGE = {
@@ -545,7 +545,11 @@ class AuthoredItemTests(unittest.TestCase):
     # items"). Each later item must exclude every positive signal of each
     # earlier one. Add a chain here when two items become alternatives.
     PRECEDENCE_CHAINS = [
-        ["windows-service-hosting", "modern-worker-service", "console-batch-job"],
+        ["windows-service-hosting", "modern-worker-service", "interactive-console-tool", "console-batch-job"],
+        # A .NET Framework Windows Service, a WCF service host and anything
+        # step 4 says a project exposes are never console tools or batch jobs.
+        ["windows-service", "interactive-console-tool", "console-batch-job"],
+        ["wcf-service-host", "interactive-console-tool", "console-batch-job"],
     ]
 
     def _items(self):
@@ -744,9 +748,11 @@ class AuthoredItemTests(unittest.TestCase):
                 self.assertFalse(stay[0].get("is_default", False))
 
     def _detection(self, item_id: str) -> dict:
-        """Authored items from the YAML; migrated ones as the migration
-        produces them (pattern rules plus AMENDMENTS)."""
+        """Authored items from the YAML; migrated ones as their factory
+        default (pattern rules plus the migration's and the architecture
+        items' AMENDMENTS)."""
         from app.db import SessionLocal
+        from app.items.architecture_items import amend
         from app.items.pattern_migration import MIGRATED, item_detection
 
         if item_id in self._items():
@@ -754,7 +760,7 @@ class AuthoredItemTests(unittest.TestCase):
         self.assertIn(item_id, MIGRATED)
         db = SessionLocal()
         try:
-            return item_detection(db.get(models.Pattern, item_id).detection_rules, item_id)
+            return amend(item_id, item_detection(db.get(models.Pattern, item_id).detection_rules, item_id))
         finally:
             db.close()
 
@@ -809,15 +815,44 @@ class AuthoredItemTests(unittest.TestCase):
         self.assertIs(stay[0]["linux_compatible"], False)
         self.assertIs(stay[0]["is_default"], False)
 
+    def test_console_input_separates_tools_from_batch_jobs(self):
+        """Registry 1.9.0. Keyboard input that needs a person moves a console
+        application to interactive-console-tool; a discarded "Press ENTER to
+        exit" read (the WCF sample's Catalog.TestClient) does not."""
+        from app.items.evaluation import evaluate_match
+        from tests.test_item_detection import row
+
+        tool, batch = self._detection("interactive-console-tool")["match"], self._detection("console-batch-job")["match"]
+        console = {"outputType": "Exe"}
+        main = {"MAIN_METHOD_ENTRY_POINT": [row()]}
+        cases = {
+            "pause only (Catalog.TestClient)": ({**main, "CONSOLE_PAUSE_FOR_INPUT": [row()]}, (False, True)),
+            "reads what is typed": ({**main, "INTERACTIVE_CONSOLE_INPUT": [row()]}, (True, False)),
+            "no input at all": (main, (False, True)),
+            "WCF host waiting on ENTER (Catalog.Host)": (
+                {**main, "CONSOLE_PAUSE_FOR_INPUT": [row()], "HOSTS_WCF_SERVICE": [row()]}, (False, False)),
+            "interactive WCF host": ({**main, "INTERACTIVE_CONSOLE_INPUT": [row()], "HOSTS_WCF_SERVICE": [row()]}, (False, False)),
+        }
+        for name, (signals, expected) in cases.items():
+            with self.subTest(case=name):
+                self.assertEqual((evaluate_match(tool, signals, console)[0], evaluate_match(batch, signals, console)[0]), expected)
+
     def test_precedence_chains_are_mutually_exclusive(self):
         from app.items.detection import positive_signal_names
 
         for chain in self.PRECEDENCE_CHAINS:
             for i, specific in enumerate(chain):
-                specific_signals = positive_signal_names(self._detection(specific)["match"])
+                specific_match = self._detection(specific)["match"]
+                specific_signals = positive_signal_names(specific_match)
+                required = {c["signal"]["name"] for c in specific_match.get("all", []) if "signal" in c}
                 for general in chain[i + 1:]:
                     with self.subTest(specific=specific, general=general):
                         excluded = {c["signal"]["name"] for c in self._detection(general)["match"].get("none", [])}
+                        # A refinement (interactive-console-tool of a console
+                        # application) requires its `all` signals: excluding
+                        # any one of them keeps the general item off it.
+                        if required & excluded:
+                            continue
                         self.assertTrue(
                             specific_signals <= excluded,
                             f"{general} must exclude {sorted(specific_signals - excluded)} so it cannot match alongside {specific}",

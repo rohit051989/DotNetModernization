@@ -1548,8 +1548,19 @@ edits in the UI. To stop git silently drifting while it looks like the record:
   run.
 - **Dashboard.** The dashboard summary carries the same count (`catalog_export`) on a
   "Catalog export" card. It is master-catalog data, the same for every engagement.
-- **Cost.** Status renders every item from three bulk queries, about 0.2 s on the local
-  catalog, so the dashboard's 5-second poll stays cheap.
+- **Cost.** Computing status renders every item from three bulk queries, about 0.2 s on
+  the local catalog. It is cached (`cached_status`) against `catalog_change_counter`, a
+  one-row counter (migration `d3b8e5f07a29`).
+  - **What bumps it.** A statement-level trigger on `catalog_items`, `item_resolutions`,
+    `resolution_derivations` and `catalog_exports` bumps the counter on every write, from
+    any process: the API, the seed or the export command. It catches ORM writes, bulk
+    updates and raw SQL alike.
+  - **Why a counter, not a sequence.** The bump is inside the writer's transaction, so the
+    new version becomes visible together with the rows. Reading it before computing means
+    a stale status is never cached under a current version. A sequence (`c7f2a9d41e86`,
+    replaced) advanced before commit and could do exactly that.
+  - **Effect.** A dashboard poll reads one number and returns the cached status, in about
+    10 ms. The cache is per server process.
 - **Nothing exports automatically.** Writing into the repository from a web request would
   couple the running server to the working tree, so a person runs the export and commits.
 - **The zip download is not recorded.** It does not put files in the repository.

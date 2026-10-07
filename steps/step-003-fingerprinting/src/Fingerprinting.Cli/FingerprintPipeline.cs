@@ -16,8 +16,10 @@ public sealed class FingerprintPipeline(SignalRegistry registry, IReadOnlyList<I
     // 1.2.0: WCF_CLIENT_BINDING_CONFIG (signal registry 1.5.0).
     // 1.3.0: Web Deploy SetParameters files read for path literals, sensitive
     // keys and connection strings; UNQUALIFIED_HOSTNAME_URL (registry 1.7.0).
+    // 1.4.0: console input — INTERACTIVE_CONSOLE_INPUT and
+    // CONSOLE_PAUSE_FOR_INPUT from ApiUsageExtractor (registry 1.9.0).
     // Matches the application-fingerprinting step registration version.
-    public const string ScannerVersion = "1.3.0";
+    public const string ScannerVersion = "1.4.0";
 
     // The registry is the single source of truth for evidence_kind per
     // signal name (25-STANDARDS-AND-VIEWPOINTS.md Part A3 addendum) —

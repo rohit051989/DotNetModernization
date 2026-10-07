@@ -123,6 +123,27 @@ AMENDMENTS: dict[str, dict] = {
             {"id": "not-add-hosted-service", "signal": {"name": "ADD_HOSTED_SERVICE_ENTRY_POINT"}},
             {"id": "not-use-windows-service", "signal": {"name": "USE_WINDOWS_SERVICE_INVOCATION"}},
             {"id": "not-windowsservices-package", "signal": {"name": "MICROSOFT_EXTENSIONS_HOSTING_WINDOWSSERVICES_PACKAGE"}},
+            # interactive-console-tool (registry 1.9.0) takes precedence: a
+            # program that needs a person at the keyboard is not a batch job.
+            {"id": "not-interactive-console-input", "signal": {"name": "INTERACTIVE_CONSOLE_INPUT"}},
+        ],
+        "resolutions": [
+            {
+                "id": "console-batch-job-not-deployable",
+                "name": "Not a deployable workload — developer or test tool",
+                "description": (
+                    "The console application is a harness or tool a person runs by hand, not a workload: it is not "
+                    "deployed. A console application that calls services and exits without keyboard input looks "
+                    "identical to a batch job from its syntax, so this is the honest answer where detection cannot "
+                    "tell them apart."
+                ),
+                "target_description": "Stays in the repository, run by hand outside OCP4",
+                "consumer_impact": "none",
+                "effort": "low",
+                "is_default": False,
+                "linux_compatible": True,
+                "container_ready": True,
+            },
         ],
     },
     "windows-service": {

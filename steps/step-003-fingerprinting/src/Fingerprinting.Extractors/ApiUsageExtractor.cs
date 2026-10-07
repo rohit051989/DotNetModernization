@@ -21,6 +21,18 @@ namespace Fingerprinting.Extractors;
 /// type name matched because the file imports the namespace (<c>new
 /// Bitmap(…)</c> under <c>using System.Drawing</c>).</item>
 /// </list>
+///
+/// <para><b>Console input</b> (registry 1.9.0). <c>INTERACTIVE_CONSOLE_INPUT</c>
+/// is a program that needs a person at a keyboard: <c>Console.ReadKey</c>
+/// (which throws when there is no console or input is redirected — a
+/// CronJob pod, a scheduled task), a <c>Console.Read</c>/<c>ReadLine</c>
+/// whose result is used, or an interactive prompt library (Spectre.Console
+/// prompts, Sharprompt). A <c>Console.Read</c>/<c>ReadLine</c> whose result
+/// is discarded — "Press ENTER to exit", or a self-hosted service waiting to
+/// be stopped — is <c>CONSOLE_PAUSE_FOR_INPUT</c> instead: with no console it
+/// returns null at once rather than blocking, so it does not prove a person
+/// is needed, and a batch job ending in a debug pause is still a batch job.
+/// It is recorded, not used to exclude.</para>
 /// </summary>
 public sealed class ApiUsageExtractor : IFingerprintExtractor
 {
@@ -106,6 +118,14 @@ public sealed class ApiUsageExtractor : IFingerprintExtractor
         "WS2007HttpBinding", "WSDualHttpBinding", "NetTcpBinding", "NetNamedPipeBinding", "CustomBinding",
     };
 
+    private static readonly string[] ConsoleTypeNames = ["Console", "System.Console"];
+
+    // Spectre.Console: AnsiConsole.Prompt/Ask/Confirm, and the prompt types
+    // passed to IAnsiConsole.Prompt. Sharprompt: Prompt.Input/Select/...
+    private static readonly string[] SpectrePromptMembers = ["Prompt", "Ask", "Confirm"];
+    private static readonly string[] SpectrePromptTypes = ["TextPrompt", "SelectionPrompt", "MultiSelectionPrompt"];
+    private static readonly string[] SharpromptMembers = ["Input", "Select", "MultiSelect", "Confirm", "Password", "List"];
+
     public bool CanProcess(ProjectContext context) => Directory.Exists(context.ProjectDirectory);
 
     public async Task<ExtractorResult> ExtractAsync(ProjectContext context, CancellationToken cancellationToken)
@@ -137,6 +157,8 @@ public sealed class ApiUsageExtractor : IFingerprintExtractor
             var importsDrawing = usings.Any(u => u == "System.Drawing" || u.StartsWith("System.Drawing.", StringComparison.Ordinal));
             var importsDirectory = usings.Any(u => u is "System.DirectoryServices" or "System.DirectoryServices.AccountManagement");
             var isWcfClientFile = IsWcfClientFile(root);
+            var importsSpectre = usings.Any(u => u == "Spectre.Console");
+            var importsSharprompt = usings.Any(u => u == "Sharprompt");
 
             foreach (var node in root.DescendantNodes())
             {
@@ -160,6 +182,14 @@ public sealed class ApiUsageExtractor : IFingerprintExtractor
                         break;
                     case InvocationExpressionSyntax invocation:
                         MatchMethodCall(invocation, file.RelativePath, accumulator);
+                        MatchConsoleInput(invocation, importsSpectre, importsSharprompt, file.RelativePath, accumulator);
+                        break;
+                    case ObjectCreationExpressionSyntax { Type: var promptType }
+                        when RoslynNameHelpers.RightmostIdentifier(promptType) is { } promptName
+                             && SpectrePromptTypes.Contains(promptName)
+                             && (importsSpectre || promptType.ToString().StartsWith("Spectre.Console.", StringComparison.Ordinal)):
+                        Add(accumulator, "INTERACTIVE_CONSOLE_INPUT", SignalCategories.ExecutionIndicator,
+                            $"Spectre.Console.{promptName}", file.RelativePath, node, NameOnly);
                         break;
                     case ObjectCreationExpressionSyntax { Type: var bindingType }
                         when isWcfClientFile && RoslynNameHelpers.RightmostIdentifier(bindingType) is { } bindingName
@@ -228,6 +258,55 @@ public sealed class ApiUsageExtractor : IFingerprintExtractor
             }
         }
     }
+
+    /// <summary>Console input (see the class remarks): keyboard reads that need
+    /// a person, versus a discarded read that only pauses.</summary>
+    private static void MatchConsoleInput(
+        InvocationExpressionSyntax invocation, bool importsSpectre, bool importsSharprompt, string path, SignalAccumulator accumulator)
+    {
+        if (invocation.Expression is not MemberAccessExpressionSyntax access)
+        {
+            return;
+        }
+
+        var receiver = access.Expression.ToString();
+        var member = access.Name.Identifier.Text;
+        if (ConsoleTypeNames.Contains(receiver))
+        {
+            if (member == "ReadKey")
+            {
+                Add(accumulator, "INTERACTIVE_CONSOLE_INPUT", SignalCategories.ExecutionIndicator,
+                    "System.Console.ReadKey", path, invocation, QualifiedMember);
+            }
+            else if (member is "ReadLine" or "Read")
+            {
+                Add(accumulator, IsDiscarded(invocation) ? "CONSOLE_PAUSE_FOR_INPUT" : "INTERACTIVE_CONSOLE_INPUT",
+                    SignalCategories.ExecutionIndicator, $"System.Console.{member}", path, invocation, QualifiedMember);
+            }
+
+            return;
+        }
+
+        if (SpectrePromptMembers.Contains(member)
+            && (receiver == "Spectre.Console.AnsiConsole" || (receiver == "AnsiConsole" && importsSpectre)))
+        {
+            Add(accumulator, "INTERACTIVE_CONSOLE_INPUT", SignalCategories.ExecutionIndicator,
+                $"Spectre.Console.AnsiConsole.{member}", path, invocation, QualifiedMember);
+        }
+        else if (SharpromptMembers.Contains(member)
+                 && (receiver == "Sharprompt.Prompt" || (receiver == "Prompt" && importsSharprompt)))
+        {
+            Add(accumulator, "INTERACTIVE_CONSOLE_INPUT", SignalCategories.ExecutionIndicator,
+                $"Sharprompt.Prompt.{member}", path, invocation, QualifiedMember);
+        }
+    }
+
+    /// <summary>The call is a statement on its own (<c>Console.ReadLine();</c>)
+    /// or assigned to a discard (<c>_ = Console.ReadLine();</c>): nothing
+    /// reads what was typed.</summary>
+    private static bool IsDiscarded(InvocationExpressionSyntax invocation) =>
+        invocation.Parent is ExpressionStatementSyntax
+        || invocation.Parent is AssignmentExpressionSyntax { Left: IdentifierNameSyntax { Identifier.Text: "_" }, Parent: ExpressionStatementSyntax };
 
     /// <summary>A GDI+ or directory-services type used as a type — created,
     /// declared, or as the receiver of a static call — in a file importing

@@ -16,6 +16,7 @@ from pathlib import Path
 
 import yaml
 from fastapi import Response
+from sqlalchemy import text
 
 from app import models
 from app.items import catalog_export
@@ -141,13 +142,13 @@ class ImportTests(ExportTestCase):
             catalog_export.import_files(self.db, {"other.yaml": catalog_export.render(self.document())})
 
 
-class StalenessTests(ExportTestCase):
-    """What the master catalog view and the dashboard show: items changed
-    since the last export into the repository. Exports go to a temporary
-    directory standing in for catalog/items/ — never the repository."""
+class TempExportDirCase(ExportTestCase):
+    """Exports go to a temporary directory standing in for catalog/items/ —
+    never the repository. No tests of its own."""
 
     def setUp(self):
         super().setUp()
+        catalog_export.clear_cache()
         self.out = Path(tempfile.mkdtemp())
         self.repository_dir = catalog_export.DEFAULT_DIR
         catalog_export.DEFAULT_DIR = self.out
@@ -159,6 +160,11 @@ class StalenessTests(ExportTestCase):
 
     def changes(self):
         return {c["item_id"]: c["change"] for c in catalog_export.status(self.db)["changes"]}
+
+
+class StalenessTests(TempExportDirCase):
+    """What the master catalog view and the dashboard show: items changed
+    since the last export into the repository."""
 
     def test_an_export_into_the_repository_is_recorded_and_current(self):
         report = catalog_export.write(self.db, self.out)
@@ -207,6 +213,47 @@ class StalenessTests(ExportTestCase):
         self.assertFalse(status["is_current"])
         self.assertEqual(status["changed"], self.db.query(models.CatalogItem).count())
         self.assertEqual(set(self.changes().values()), {"added"})
+
+
+class StatusCacheTests(TempExportDirCase):
+    """A poll is a cache read unless a catalog row was written or an export
+    ran — whatever process wrote it (the counter is bumped by triggers)."""
+
+    def computed(self):
+        return catalog_export._cache["computed"]
+
+    def test_repeated_polls_without_writes_are_cache_reads(self):
+        first = catalog_export.cached_status(self.db)
+        count = self.computed()
+        for _ in range(5):
+            self.assertIs(catalog_export.cached_status(self.db), first)
+        self.assertEqual(self.computed(), count)
+
+    def test_a_catalog_write_recomputes(self):
+        catalog_export.write(self.db, self.out)
+        self.assertTrue(catalog_export.cached_status(self.db)["is_current"])
+        count = self.computed()
+        before = catalog_export.catalog_version(self.db)
+        self.create_item("t-export-added", "application", DETECTION)
+        self.assertGreater(catalog_export.catalog_version(self.db), before)
+        status = catalog_export.cached_status(self.db)
+        self.assertEqual(self.computed(), count + 1)
+        self.assertEqual([(c["item_id"], c["change"]) for c in status["changes"]], [("t-export-added", "added")])
+
+    def test_an_export_recomputes(self):
+        self.create_item("t-export-added", "application", DETECTION)
+        catalog_export.write(self.db, self.out)
+        self.assertFalse(catalog_export.status(self.db)["changes"])
+        self.assertTrue(catalog_export.cached_status(self.db)["is_current"])
+
+    def test_a_bulk_update_bypassing_the_orm_still_recomputes(self):
+        catalog_export.write(self.db, self.out)
+        catalog_export.cached_status(self.db)
+        count = self.computed()
+        self.db.execute(text("UPDATE item_resolutions SET notes = 'raw SQL' WHERE id = 't-export-b'"))
+        status = catalog_export.cached_status(self.db)
+        self.assertEqual(self.computed(), count + 1)
+        self.assertEqual([(c["item_id"], c["change"]) for c in status["changes"]], [("t-export", "edited")])
 
 
 if __name__ == "__main__":

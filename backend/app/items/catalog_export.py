@@ -19,7 +19,9 @@ version), no timestamps. A soft-deleted row is exported with
 **Staleness.** Each export into the repository's catalog/items/ is
 recorded (catalog_exports) with a hash per item. `status` compares the
 database against the last one — which items were added, edited or deleted
-since — for the master catalog view and the dashboard. Nothing exports
+since — for the master catalog view and the dashboard, cached against a change
+sequence the database advances on every catalog write (`cached_status`), so
+a dashboard poll is a cache read. Nothing exports
 automatically: writing into the repository from a web request would couple
 the running server to the working tree, so a person exports and commits.
 
@@ -41,6 +43,7 @@ import io
 import os
 import subprocess
 import sys
+import threading
 import uuid
 import zipfile
 from pathlib import Path
@@ -220,6 +223,46 @@ def zip_bytes(files: dict[str, str]) -> bytes:
             info.external_attr = 0o644 << 16
             archive.writestr(info, files[name].encode("utf-8"))
     return buffer.getvalue()
+
+
+# ---------- cached status ----------
+
+# The status is a function of the catalog tables and catalog_exports only,
+# and they change only when a person edits the catalog or runs the export.
+# catalog_change_counter is bumped by a trigger on every statement that
+# writes any of them, from any process (migration d3b8e5f07a29), inside the
+# writer's transaction — so the new version becomes visible together with
+# the rows it describes. A poll reads one number and recomputes only when it
+# moved. Per server process; sync endpoints run on a thread pool, hence the
+# lock.
+_cache_lock = threading.Lock()
+_cache: dict = {"version": None, "status": None, "computed": 0}
+
+
+def catalog_version(db: Session) -> int:
+    """The committed catalog change counter (or this session's own, if it has
+    written catalog rows in its open transaction)."""
+    return int(db.execute(text("SELECT version FROM catalog_change_counter WHERE id = 1")).scalar_one())
+
+
+def cached_status(db: Session) -> dict:
+    """`status`, recomputed only when a catalog row was written or an export
+    ran since the last computation. The version is read before computing: a
+    write committed during the computation moves the version, so the next
+    poll recomputes; a stale status is never stored under a current version."""
+    version = catalog_version(db)
+    with _cache_lock:
+        if _cache["version"] == version and _cache["status"] is not None:
+            return _cache["status"]
+    computed = status(db)
+    with _cache_lock:
+        _cache.update(version=version, status=computed, computed=_cache["computed"] + 1)
+    return computed
+
+
+def clear_cache() -> None:
+    with _cache_lock:
+        _cache.update(version=None, status=None)
 
 
 # ---------- import ----------

@@ -1522,6 +1522,21 @@ class CatalogExport(Base):
     out_dir: Mapped[str] = mapped_column(Text, nullable=False)
 
 
+class CatalogChangeCounter(Base):
+    """One row, bumped by a trigger on every statement that writes
+    catalog_items, item_resolutions, resolution_derivations or
+    catalog_exports, inside the writer's transaction (migration
+    d3b8e5f07a29). The catalog export status cache is keyed on it. Never
+    written by application code."""
+
+    __tablename__ = "catalog_change_counter"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    version: Mapped[int] = mapped_column(BigInteger, nullable=False)
+
+    __table_args__ = (CheckConstraint("id = 1", name="catalog_change_counter_id_check"),)
+
+
 class EngagementDecision(Base):
     """An engagement's chosen resolution for one item (Part F). Engagement
     data: never written by, or into, the master catalog tables."""

@@ -119,7 +119,7 @@ def get_item_catalog_export_status(db: Session = Depends(get_db)):
     commits (28-ITEM Part W)."""
     from app.items import catalog_export
 
-    return catalog_export.status(db)
+    return catalog_export.cached_status(db)
 
 
 @router.get(
