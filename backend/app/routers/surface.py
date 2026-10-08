@@ -1,5 +1,5 @@
 """Read-only endpoints for the repository Surface section —
-29-STEPS-004-005-INVENTORIES.md Part D. Nothing here mutates: step 4
+29-ENTRY-POINT-AND-OUTBOUND-INVENTORIES.md Part D. Nothing here mutates: step 4
 (entry-point-inventory) and step 5 (outbound-invocation-inventory), both in
 steps/step-003-fingerprinting/, own every row read.
 """
@@ -80,7 +80,7 @@ def get_repository_entry_points(repository_id: uuid.UUID, db: Session = Depends(
     for row in db.query(models.EntryPoint).filter(models.EntryPoint.repository_id == repository_id):
         rows_by_project.setdefault(row.project_id, []).append(row)
 
-    # Step 11's origin reconciliations (31-STEP-011 Part E4), applied as an
+    # Step 11's origin reconciliations (31-DEPENDENCY-AND-CONTEXT-MAP Part E4), applied as an
     # overlay: step 4 owns its rows and its next rescan would revert an edit.
     reconciled = {
         r.entry_point_id: r
@@ -313,7 +313,7 @@ def _host_out(binding: dict) -> BackendHostOut:
 
 def _endpoint(invocation: models.OutboundInvocation, production_environment: str | None) -> BackendEndpointOut:
     """The production environment's binding where the call has one (the
-    same rule as the estate register, 31-STEP-011 Part C1), with every
+    same rule as the estate register, 31-DEPENDENCY-AND-CONTEXT-MAP Part C1), with every
     other environment beneath."""
     bindings = invocation.environment_bindings or []
     production = production_binding({"environment_bindings": bindings}, production_environment)

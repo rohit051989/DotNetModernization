@@ -1,6 +1,6 @@
 job_name: phase0-repository-discovery
-version: 11
-description: "Per-repository discovery and analysis. Lifecycle steps 1-9 (17-LIFECYCLE-STEPS.md v2.1)."
+version: 14
+description: "Per-repository discovery and analysis, repository-ingest through risk-scoring-tier-assignment (17-LIFECYCLE-STEPS.md)."
 
 parameters:
   - name: engagement_id
@@ -29,26 +29,28 @@ flow:
   - step: application-fingerprinting
     inputs:
       solution-project-inventory: "${artifacts.solution-project-inventory}"
-  # v7: step 4 is implemented and consumes both upstream artifacts, so both
-  # are wired here.
+  # v7: entry-point-inventory is implemented and consumes both upstream
+  # artifacts, so both are wired here.
   - step: entry-point-inventory
     inputs:
       solution-project-inventory: "${artifacts.solution-project-inventory}"
       application-fingerprint: "${artifacts.application-fingerprint}"
-  # v8: step 5 is implemented. It consumes the same two artifacts, both
-  # required: step 2's project list and step 3's skip verdicts and
-  # UNC_PATH_LITERAL signals.
-  # v10: step 5 1.3.0 also reads step 4's entry points, to record which
-  # backend calls each inbound operation reaches (29-STEPS Part C9).
+  # v8: outbound-invocation-inventory is implemented. It consumes the same
+  # two artifacts, both required: solution-discovery's project list and
+  # application-fingerprinting's skip verdicts and UNC_PATH_LITERAL signals.
+  # v10: outbound-invocation-inventory 1.3.0 also reads entry-point-inventory's
+  # entry points, to record which backend calls each inbound operation
+  # reaches (29-ENTRY-POINT-AND-OUTBOUND-INVENTORIES Part C9).
   - step: outbound-invocation-inventory
     inputs:
       solution-project-inventory: "${artifacts.solution-project-inventory}"
       application-fingerprint: "${artifacts.application-fingerprint}"
       entry-point-inventory: "${artifacts.entry-point-inventory}"
-  # v9: step 6, dependency-assessment, inserted before item detection
-  # (30-STEP-006-DEPENDENCY-ASSESSMENT.md). It needs step 2's direct
-  # packages and step 3's skip verdicts, and its PACKAGE_* signals must be
-  # in fingerprint_signals before step 7 reads them. Config is Part B6/E:
+  # v9: dependency-assessment inserted before item-detection
+  # (30-DEPENDENCY-ASSESSMENT.md). It needs solution-discovery's direct
+  # packages and application-fingerprinting's skip verdicts, and its
+  # PACKAGE_* signals must be in fingerprint_signals before item-detection
+  # reads them. Config is Part B6/E:
   # the lookup-cache TTL, and the advisory explanation, off (not built).
   - step: dependency-assessment
     inputs:
@@ -60,16 +62,17 @@ flow:
       force_refresh: false
       include_transitive: false
       enable_change_explanation: false
-  # Step 7 replaces pattern-classification: it matches catalog items against
-  # the fingerprint's signals (step 3's and step 6's) and emits occurrences,
-  # not a classification.
+  # item-detection replaces pattern-classification: it matches catalog items
+  # against the fingerprint's signals (application-fingerprinting's and
+  # dependency-assessment's) and emits occurrences, not a classification.
   - step: item-detection
     inputs:
       application-fingerprint: "${artifacts.application-fingerprint}"
-  # v11: step 8, test-coverage-assessment, phase 1 (32-STEP-008 Part L):
+  # v11: test-coverage-assessment, phase 1 (32-TEST-COVERAGE-ASSESSMENT Part L):
   # test discovery and classification, mapping, buckets, existing coverage
-  # reports, CI maturity. Both inputs required from the start: step 2's
-  # projects and packages, step 3's test signals. coverage_report_locations
+  # reports, CI maturity. Both inputs required from the start:
+  # solution-discovery's projects and packages, application-fingerprinting's
+  # test signals. coverage_report_locations
   # adds CI output directories to search beside the repository (none here).
   # No LLM and no test execution in this phase.
   - step: test-coverage-assessment
@@ -78,4 +81,20 @@ flow:
       application-fingerprint: "${artifacts.application-fingerprint}"
     config:
       coverage_report_locations: []
+  # v12: impact-analysis inserted before risk-scoring-tier-assignment
+  # (17-LIFECYCLE-STEPS.md v2.3; 33-IMPACT-ANALYSIS.md).
+  # v13: impact-analysis is implemented. All four inputs are required:
+  # solution-discovery's projects, entry-point-inventory's entry points
+  # (convention files and handlers), item-detection's occurrences (the work
+  # items and their seed files) and test-coverage-assessment's test mappings
+  # (referencing_tests). Decisions and the catalog's impact rules are read
+  # from the database at run time.
+  # v14: no change to the flow. Comments and doc references name steps by
+  # slug, and step specs by their renamed files (CLAUDE.md rule 12).
+  - step: impact-analysis
+    inputs:
+      solution-project-inventory: "${artifacts.solution-project-inventory}"
+      entry-point-inventory: "${artifacts.entry-point-inventory}"
+      item-occurrences: "${artifacts.item-occurrences}"
+      test-coverage: "${artifacts.test-coverage}"
   - step: risk-scoring-tier-assignment

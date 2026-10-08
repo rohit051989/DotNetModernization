@@ -59,7 +59,7 @@ from sqlalchemy.orm import Session
 from app import models
 from app.db import SessionLocal
 from app.errors import errors
-from app.items import baseline, readiness
+from app.items import baseline, impact_rules, readiness
 from app.items.detection import validate_detection
 
 # pattern id -> item category. All application scope.
@@ -166,6 +166,45 @@ AMENDMENTS: dict[str, dict] = {
             },
         ],
     },
+}
+
+# Impact rules (33-IMPACT-ANALYSIS Part D, K) for migrated resolutions, which have
+# no YAML of their own to carry them: part of their factory default, seeded
+# through the baseline like everything else. Keyed by resolution id.
+_WEBFORMS_REWRITE = [
+    {"id": "code-behind", "from": "seed", "select": "self", "filter": {"extension": ".cs"}, "action": "rewrite",
+     "reason": "Page code-behind is rewritten as {target} — logic carried, the page lifecycle and ViewState are not"},
+    # Markup that is itself the evidence (an .aspx found by its directives)
+    # is replaced, not rewritten in place.
+    {"id": "markup-evidence", "from": "seed", "select": "self", "filter": {"extension": [".aspx", ".ascx", ".master"]},
+     "action": "delete", "reason": "Web Forms markup is replaced by {target}"},
+    {"id": "markup", "from": "code-behind", "traverse": "convention_files", "kind": "webforms_markup", "action": "delete",
+     "reason": "Web Forms markup (.aspx, .ascx, .master) does not run on ASP.NET Core; it is replaced by the new views"},
+    {"id": "project", "from": "seed", "traverse": "project_file", "action": "rewrite",
+     "reason": "The Web Application project becomes an SDK-style Microsoft.NET.Sdk.Web project"},
+    {"id": "config", "from": "seed", "traverse": "config_elements", "path": "system.web", "action": "update",
+     "reason": "system.web settings move to ASP.NET Core configuration and middleware"},
+    {"id": "tests", "from": "code-behind", "traverse": "referencing_tests", "action": "update",
+     "reason": "Tests of page code target the rewritten classes"},
+]
+RESOLUTION_IMPACT: dict[str, list] = {
+    "aspnetcore-mvc-rewrite": [
+        {**rule, "reason": rule["reason"].replace("{target}", "MVC controllers and Razor views")} for rule in _WEBFORMS_REWRITE
+    ],
+    "blazor-server-net10": [
+        {**rule, "reason": rule["reason"].replace("{target}", "Blazor Server components")} for rule in _WEBFORMS_REWRITE
+    ],
+}
+
+# Defaults for migrated items whose patterns recommended no option. Every
+# active item has exactly one default (app/items/defaults.py); these two had
+# none, and their options tie on consumer impact. Chosen in review:
+# aspnet-webforms -> ASP.NET Core MVC rewrite, the conventional target for
+# server-rendered pages; ssis-package -> SQL pushdown, lower effort at equal
+# consumer impact. The pattern tables are not touched.
+DEFAULT_AMENDMENTS: dict[str, str] = {
+    "aspnet-webforms": "aspnetcore-mvc-rewrite",
+    "ssis-package": "csharp-sql-pushdown",
 }
 
 _DECISION_STATUS = {"parked": "pending", "in_review": "in_review", "approved": "approved", "superseded": "superseded"}
@@ -281,16 +320,19 @@ def migrated_resolution_contents(db: Session) -> list[tuple[str, dict]]:
         contents.append((option.id, {
             "item_id": option.pattern_id, "name": option.name, "description": option.summary,
             "target_description": option.target_stack, "consumer_impact": option.consumer_impact, "effort": option.effort,
-            "is_default": option.is_recommended, "linux_compatible": option.linux_compatible,
+            "is_default": option.is_recommended or DEFAULT_AMENDMENTS.get(option.pattern_id) == option.id,
+            "linux_compatible": option.linux_compatible,
             "container_ready": option.container_ready, "notes": _resolution_notes(option),
             "status": "deprecated" if option.status == "deprecated" else "active",
             "deleted": option.deleted_at is not None, "_deleted_at": option.deleted_at, "_deleted_by": option.deleted_by,
+            "impact_rules": impact_rules.checked(RESOLUTION_IMPACT.get(option.id), f"resolution {option.id}"),
         }))
     for pattern_id in sorted(MIGRATED):
         for data in AMENDMENTS.get(pattern_id, {}).get("resolutions", []):
             contents.append((data["id"], {
                 "item_id": pattern_id, "description": None, "target_description": None, "notes": None, "status": "active",
-                "deleted": False, **{k: v for k, v in data.items() if k != "id"},
+                "deleted": False, "impact_rules": impact_rules.checked(RESOLUTION_IMPACT.get(data["id"]), f"resolution {data['id']}"),
+                **{k: v for k, v in data.items() if k != "id"},
             }))
     return contents
 
@@ -393,6 +435,10 @@ def revert(db: Session) -> dict:
     occurrences = db.query(models.ItemOccurrence).filter(models.ItemOccurrence.item_id.in_(item_ids)).count()
     if occurrences:
         problems.append(f"{occurrences} item_occurrences reference migrated items")
+    # Step 9's impact is built on those occurrences, and names the items' resolutions.
+    impacts = db.query(models.ImpactSummary).filter(models.ImpactSummary.item_id.in_(item_ids)).count()
+    if impacts:
+        problems.append(f"{impacts} impact_summaries (step 9) reference migrated items")
     foreign_resolutions = sorted(
         r.id
         for r in db.query(models.ItemResolution).filter(models.ItemResolution.item_id.in_(item_ids))

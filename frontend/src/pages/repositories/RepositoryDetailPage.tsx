@@ -25,6 +25,7 @@ import { DependenciesView, FingerprintView, ItemOccurrencesView, formatBytes } f
 import { num, obj } from '../workflow/artifacts/adapters'
 import { RepositoryStructureSection } from './RepositoryStructureSection'
 import { RepositorySurfaceSection } from './RepositorySurfaceSection'
+import { RepositoryImpactSection } from './RepositoryImpactSection'
 import { RepositoryTestsSection } from './RepositoryTestsSection'
 import { useLatestArtifacts, type LatestArtifact } from './useLatestArtifacts'
 
@@ -450,6 +451,14 @@ export function RepositoryDetailPage({
         <CollapsibleSection id="repo:tests" anchorId="repo-tests" title="Tests">
           <div className="p-4">
             <RepositoryTestsSection repositoryId={repo.id} localPath={repo.local_path} refreshToken={localRefresh} />
+          </div>
+        </CollapsibleSection>
+      )}
+
+      {!editing && (
+        <CollapsibleSection id="repo:impact" anchorId="repo-impact" title="Impact">
+          <div className="p-4">
+            <RepositoryImpactSection repositoryId={repo.id} localPath={repo.local_path} refreshToken={localRefresh} />
           </div>
         </CollapsibleSection>
       )}

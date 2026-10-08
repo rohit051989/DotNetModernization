@@ -7,7 +7,7 @@ using Fingerprinting.StepHost;
 namespace Fingerprinting.Outbound.Cli;
 
 /// <summary>
-/// Lifecycle step 5, outbound-invocation-inventory — 29-STEPS-004-005-INVENTORIES.md
+/// Lifecycle step 5, outbound-invocation-inventory — 29-ENTRY-POINT-AND-OUTBOUND-INVENTORIES.md
 /// Part C. Two modes, as steps 3 and 4: the process-adapter envelope
 /// (StepContext on stdin, StepResult on stdout), and a standalone mode for
 /// iterating without the engine.

@@ -1,5 +1,5 @@
 """`.sln` parsing — line-oriented, not XML. See
-19-STEP-002-SOLUTION-DISCOVERY.md Part F.
+19-SOLUTION-DISCOVERY.md Part F.
 """
 
 import re

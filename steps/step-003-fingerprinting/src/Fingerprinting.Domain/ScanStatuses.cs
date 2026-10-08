@@ -2,7 +2,7 @@ namespace Fingerprinting.Domain;
 
 /// <summary>
 /// Repository-level scan status values. Lower-case in both the JSON artifact
-/// and the database — see 21-STEP-003-FINGERPRINTING.md Part E and Part F.
+/// and the database — see 21-APPLICATION-FINGERPRINTING.md Part E and Part F.
 /// </summary>
 public static class ScanStatuses
 {

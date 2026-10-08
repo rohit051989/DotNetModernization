@@ -2,7 +2,7 @@
 results. Raw psycopg SQL — no ORM, since this package must not import
 backend.app, where the SQLAlchemy models live.
 
-See 19-STEP-002-SOLUTION-DISCOVERY.md Part C: every row is owned by step 2
+See 19-SOLUTION-DISCOVERY.md Part C: every row is owned by step 2
 and rewritten on rescan. One exception: `projects` is UPSERTED, not replaced.
 Project ids are derived from repository id + relative path (main.py
 project_id_for), so a rescan finds the same ids; updating those rows in place

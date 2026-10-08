@@ -764,8 +764,8 @@ decision_records:
   single strongest differentiation point in the catalog — verify it renders
   prominently in the UI.
 - **This document is the initial seed, not the live catalog.** Patterns added
-  after step 4 landed carry step-4 `detection_rules` (the signal-rules schema in
-  `24-STEP-004-CLASSIFICATION.md` Part C), not the `target_frameworks` /
+  after `pattern-classification` landed carry `pattern-classification` `detection_rules` (the signal-rules schema in
+  `24-PATTERN-CLASSIFICATION.md` Part C), not the `target_frameworks` /
   `forbidden_namespaces` shape written here. Two such patterns exist so far —
   `winforms-desktop` and `wpf-desktop` (category `desktop`, ids 6a/6b in the
   YAML), added because desktop applications are common in legacy .NET estates

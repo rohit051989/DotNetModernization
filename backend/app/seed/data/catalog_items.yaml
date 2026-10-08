@@ -17,8 +17,7 @@
 # CONVERSION-MODEL.md Part E): a Dockerfile or manifest at the repository
 # root must count for every project in that repository.
 #
-# The last five are the generic package items (30-STEP-006-DEPENDENCY-
-# ASSESSMENT.md Part D2), detected on the signals lifecycle step 6 emits.
+# The last five are the generic package items (30-DEPENDENCY-ASSESSMENT.md Part D2), detected on the signals lifecycle step 6 emits.
 #
 # `state` is computed and must not appear in this file.
 
@@ -706,6 +705,10 @@ items:
         effort: medium
         is_default: true
         notes: "Usually needs the backend team; the endpoint register (lifecycle step 10) groups the callers into one conversation."
+        impact:
+        - {id: client-code, from: seed, select: self, action: update, reason: A NetTcpBinding constructed in code becomes an HTTP binding}
+        - {id: client-config, from: seed, traverse: config_elements, path: system.serviceModel/client, action: update, reason: The <client> endpoint switches to the service's HTTP address and binding}
+        - {id: bindings-config, from: seed, traverse: config_elements, path: system.serviceModel/bindings, action: update, reason: netTcpBinding configuration becomes basicHttpsBinding or wsHttpBinding}
       - id: keep-nettcp-certificate-security
         name: "Keep NetTcp with non-Windows security"
         description: "Keep the NetTcp client on Linux with certificate or no transport security instead of Windows authentication."
@@ -721,6 +724,8 @@ items:
         effort: low
         linux_compatible: false
         container_ready: false
+        impact:
+        - {id: evidence, from: seed, select: self, action: review, reason: 'Stays on Windows: nothing structural changes. Listed so the work item stays visible, not to imply edits'}
       - id: migrate-to-service-protocol
         name: "Migrate to the service's new protocol"
         description: "The service is inside this migration and is being rewritten to a new protocol (REST or gRPC): move the client to the new protocol, in the same coordinated change."
@@ -728,6 +733,11 @@ items:
         consumer_impact: low
         effort: medium
         notes: "For internal clients only — a service owned outside the migration is a conversation, not a coordinated change (call-http-binding). Derived from the service's wcf-service decision."
+        impact:
+        - {id: client-code, from: seed, select: self, action: rewrite, reason: The WCF client is replaced by a client of the service's new protocol}
+        - {id: proxy, from: seed, traverse: convention_files, kind: reference, action: delete, reason: The svcutil-generated proxy goes with the WCF client}
+        - {id: client-config, from: seed, traverse: config_elements, path: system.serviceModel/client, action: update, reason: 'Remove the <client> endpoints: they go with the WCF client'}
+        - {id: project, from: seed, traverse: project_file, action: update, reason: WCF client packages are replaced by the new protocol's client packages}
 
   # ---- Architecture: what a project exposes and hosts (lifecycle step 4) ----
   #
@@ -788,6 +798,28 @@ items:
           - item: fx47-class-library
             action: subsume
             reason: "CoreWCF on .NET 10 moves this project to the engagement framework: a separate framework retarget is no further work."
+        impact:
+        - {id: impl, from: seed, select: self, action: update, reason: 'Retargeted to CoreWCF: the implementation is kept; namespaces and the host change'}
+        - id: contracts
+          from: impl
+          traverse: implemented_interfaces
+          filter: {has_attribute: ServiceContract}
+          action: update
+          reason: Service contract kept; System.ServiceModel attributes resolve from CoreWCF
+        - id: data-contracts
+          from: contracts
+          traverse: signature_types
+          filter: {has_attribute: DataContract}
+          action: review
+          reason: DataContract serialization is kept; check for types or behaviours CoreWCF does not support
+        - {id: svc, from: impl, traverse: convention_files, kind: svc, action: delete, reason: '.svc activation does not exist in CoreWCF: services are registered in the ASP.NET Core host'}
+        - {id: service-config, from: impl, traverse: config_elements, path: system.serviceModel/services, action: update, reason: <service> registration moves into the ASP.NET Core host's CoreWCF configuration}
+        - id: tests
+          from: [impl, contracts]
+          traverse: referencing_tests
+          action: review
+          reason: Tests use the same contract; check how they create the service or channel
+        - {id: clients, from: contracts, traverse: client_call_sites, action: review, reason: Callers keep SOAP; check their address and binding against the CoreWCF endpoint}
       - id: wcf-service-rest-rewrite
         name: "REST rewrite on .NET 10"
         description: "Rewrite as a conventional REST API on ASP.NET Core, retiring SOAP entirely."
@@ -808,6 +840,29 @@ items:
           - item: fx47-class-library
             action: subsume
             reason: "The rewrite targets .NET 10 by definition: a separate framework retarget is no further work."
+        impact:
+        - {id: impl, from: seed, select: self, action: rewrite, reason: Service implementation becomes REST controller logic}
+        - id: contracts
+          from: impl
+          traverse: implemented_interfaces
+          filter: {has_attribute: ServiceContract}
+          action: delete
+          reason: WCF service contract is replaced by controller routes
+        - id: data-contracts
+          from: contracts
+          traverse: signature_types
+          filter: {has_attribute: DataContract}
+          action: update
+          reason: Remove DataContract attributes; keep as request and response models
+        - {id: svc, from: impl, traverse: convention_files, kind: svc, action: delete, reason: .svc activation goes with WCF}
+        - {id: service-config, from: impl, traverse: config_elements, path: system.serviceModel/services, action: update, reason: 'Remove the <service> registration: it goes with WCF'}
+        - id: tests
+          from: [impl, contracts]
+          traverse: referencing_tests
+          action: update
+          reason: Tests call the service through its WCF contract; they move to the controllers
+        - {id: controllers, create: REST controller per service contract, for_each: contracts, proposed_path: '{project.dir}/Controllers/{type.base_name}Controller.cs', action: create}
+        - {id: clients, from: contracts, traverse: client_call_sites, action: rewrite, reason: Callers move from the WCF client to the REST API}
       - id: wcf-service-grpc-rewrite
         name: "gRPC rewrite on .NET 10"
         description: "Rewrite as a contract-first gRPC service."
@@ -828,6 +883,29 @@ items:
           - item: fx47-class-library
             action: subsume
             reason: "The rewrite targets .NET 10 by definition: a separate framework retarget is no further work."
+        impact:
+        - {id: impl, from: seed, select: self, action: rewrite, reason: Service implementation becomes a gRPC service implementation}
+        - id: contracts
+          from: impl
+          traverse: implemented_interfaces
+          filter: {has_attribute: ServiceContract}
+          action: delete
+          reason: WCF service contract is replaced by a .proto service definition
+        - id: data-contracts
+          from: contracts
+          traverse: signature_types
+          filter: {has_attribute: DataContract}
+          action: rewrite
+          reason: DataContracts become protobuf messages, generated from the .proto file
+        - {id: svc, from: impl, traverse: convention_files, kind: svc, action: delete, reason: .svc activation goes with WCF}
+        - {id: service-config, from: impl, traverse: config_elements, path: system.serviceModel/services, action: update, reason: 'Remove the <service> registration: it goes with WCF'}
+        - id: tests
+          from: [impl, contracts]
+          traverse: referencing_tests
+          action: update
+          reason: Tests call the service through its WCF contract; they move to the gRPC client
+        - {id: protos, create: .proto service definition per service contract, for_each: contracts, proposed_path: '{project.dir}/Protos/{type.base_name}.proto', action: create}
+        - {id: clients, from: contracts, traverse: client_call_sites, action: rewrite, reason: Callers move from the WCF client to a gRPC client}
       - id: wcf-service-remain-windows-hosted
         name: "Remain Windows-hosted"
         description: "Out of scope for the Linux move; the service stays on .NET Framework WCF on Windows."
@@ -846,6 +924,8 @@ items:
           - item: fx47-class-library
             action: not_subsumed
             reason: "Staying on Windows does not move this project to the engagement framework: a retarget, if wanted, is separate work."
+        impact:
+        - {id: evidence, from: seed, select: self, action: review, reason: 'Stays on Windows: nothing structural changes. Listed so the work item stays visible, not to imply edits'}
 
   - id: wcf-service-host
     name: "WCF service host"
@@ -874,6 +954,16 @@ items:
         consumer_impact: low
         effort: medium
         is_default: true
+        impact:
+        - {id: host, from: seed, select: self, filter: {extension: .cs}, action: rewrite, reason: A self-hosted ServiceHost process becomes an ASP.NET Core host (Program.cs with Kestrel)}
+        - {id: svc-activation, from: seed, select: self, filter: {extension: .svc}, action: delete, reason: 'IIS .svc activation is obsolete: the ASP.NET Core host registers the service'}
+        - id: host-entry-point
+          create: ASP.NET Core host entry point (Kestrel) replacing IIS .svc activation
+          for_each: svc-activation
+          proposed_path: '{project.dir}/Program.cs'
+          action: create
+        - {id: project, from: seed, traverse: project_file, action: update, reason: Becomes an SDK-style Microsoft.NET.Sdk.Web project on .NET 10}
+        - {id: host-config, from: seed, traverse: config_elements, path: system.serviceModel, action: update, reason: system.serviceModel hosting configuration moves into the ASP.NET Core host}
       - id: wcf-host-retire
         name: "Retire the host"
         description: "The re-platformed services each get their own ASP.NET Core project; this host is removed."
@@ -888,6 +978,8 @@ items:
         effort: low
         linux_compatible: false
         container_ready: false
+        impact:
+        - {id: evidence, from: seed, select: self, action: review, reason: 'Stays on Windows: nothing structural changes. Listed so the work item stays visible, not to imply edits'}
 
   - id: windows-auth-connection-string
     name: "Connection string using Windows authentication"
@@ -1076,12 +1168,24 @@ items:
         consumer_impact: none
         effort: medium
         is_default: true
+        impact:
+        - {id: code-behind, from: seed, select: self, filter: {extension: .cs}, action: rewrite, reason: '[WebMethod] operations become a CoreWCF service contract and implementation'}
+        - {id: asmx-evidence, from: seed, select: self, filter: {extension: .asmx}, action: delete, reason: .asmx activation goes with ASP.NET Web Services}
+        - {id: asmx, from: code-behind, traverse: convention_files, kind: asmx, action: delete, reason: .asmx activation goes with ASP.NET Web Services}
+        - {id: project, from: seed, traverse: project_file, action: update, reason: CoreWCF packages added; retargeted}
+        - {id: tests, from: code-behind, traverse: referencing_tests, action: update, reason: Tests of the web service target the CoreWCF service}
       - id: rest-api-rewrite
         name: "Rewrite as a REST API"
         description: "Replace the SOAP operations with ASP.NET Core HTTP endpoints; every caller changes."
         target_description: "ASP.NET Core minimal API or controllers"
         consumer_impact: high
         effort: medium
+        impact:
+        - {id: code-behind, from: seed, select: self, filter: {extension: .cs}, action: rewrite, reason: '[WebMethod] operations become REST controller actions'}
+        - {id: asmx-evidence, from: seed, select: self, filter: {extension: .asmx}, action: delete, reason: .asmx activation goes with ASP.NET Web Services}
+        - {id: asmx, from: code-behind, traverse: convention_files, kind: asmx, action: delete, reason: .asmx activation goes with ASP.NET Web Services}
+        - {id: project, from: seed, traverse: project_file, action: update, reason: Becomes an ASP.NET Core project}
+        - {id: tests, from: code-behind, traverse: referencing_tests, action: update, reason: Tests of the web service move to the controllers}
 
   - id: sensitive-config-key
     name: "Secret in a configuration file"
@@ -1171,8 +1275,7 @@ items:
   # ---- Package dependencies (lifecycle step 6, dependency-assessment) ----
   #
   # Generic and parameterised by package: never one item per library, which
-  # would turn the catalog into a package index (30-STEP-006-DEPENDENCY-
-  # ASSESSMENT.md Part D2). The package is in the signal value, so
+  # would turn the catalog into a package index (30-DEPENDENCY-ASSESSMENT.md Part D2). The package is in the signal value, so
   # group_by source_path_and_value makes two packages in one project file
   # two occurrences. The signals come from step 6, not step 3, and reach
   # item-detection through fingerprint_signals like any other signal.
@@ -1259,12 +1362,18 @@ items:
         consumer_impact: low
         effort: medium
         is_default: true
+        impact:
+        - {id: call-sites, from: seed, select: self, action: update, reason: Call sites of the changed members are adapted to the new version}
+        - {id: project, from: seed, traverse: project_file, action: update, reason: The PackageReference version is bumped}
       - id: package-upgrade-breaking-replace
         name: "Replace the package"
         description: "Where the new major version is a rewrite rather than an evolution, adopt a different library instead."
         target_description: "An alternative library supporting the target framework"
         consumer_impact: medium
         effort: high
+        impact:
+        - {id: call-sites, from: seed, select: self, action: rewrite, reason: Call sites move to the replacement package's API}
+        - {id: project, from: seed, traverse: project_file, action: update, reason: The PackageReference is replaced by the replacement package}
 
   - id: package-replacement-required
     name: "Package needs replacing"

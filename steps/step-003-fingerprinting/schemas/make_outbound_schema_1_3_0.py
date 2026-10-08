@@ -1,6 +1,6 @@
 """Writes outbound-invocation-inventory-1.3.0.schema.json from 1.2.0.
 
-1.3.0 (additive), 29-STEPS-004-005-INVENTORIES.md Part C9:
+1.3.0 (additive), 29-ENTRY-POINT-AND-OUTBOUND-INVENTORIES.md Part C9:
 - environmentBinding: hostProject (a class library's configuration comes from
   the host that runs it), deployParameter / linkMethod / linkConfidence (a
   value set by a Web Deploy SetParameters file, and how it was linked).

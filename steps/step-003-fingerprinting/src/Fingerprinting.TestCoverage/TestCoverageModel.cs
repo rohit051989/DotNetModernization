@@ -4,7 +4,7 @@ using Fingerprinting.Domain;
 namespace Fingerprinting.TestCoverage;
 
 /// <summary>
-/// Artifact <c>test-coverage@1.0.0</c> — 32-STEP-008-TEST-COVERAGE.md Part J.
+/// Artifact <c>test-coverage@1.0.0</c> — 32-TEST-COVERAGE-ASSESSMENT.md Part J.
 /// Phase 1 (Part L): discovery, classification, mapping, buckets, existing
 /// coverage reports and CI maturity. No LLM, no test execution. Deterministic
 /// for a given commit: every list is sorted, nothing time-dependent is in it.

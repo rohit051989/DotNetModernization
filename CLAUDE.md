@@ -141,6 +141,22 @@ modernization-platform/
     commit. Before calling such work done, run `python -m app.seed.reproduce`.
     It bootstraps a scratch database from the repository and compares it with
     this machine, and must report 0 differences.
+12. **Docs name lifecycle steps by slug, never by number.** Write
+    `item-detection`, not "step 7". Steps get renumbered whenever one is
+    inserted, and every numbered reference goes stale. Slugs never change in
+    place (`17-LIFECYCLE-STEPS.md`, "Renumbering and slug stability"). The same
+    applies to doc file names: name a step's spec after its slug
+    (`33-IMPACT-ANALYSIS.md`), not its number. `17-LIFECYCLE-STEPS.md` is
+    the one place numbers belong: its step tables, version history and
+    mapping. New code comments do the same; older comments still carry
+    numbers and are converted when their file is next edited. Applied
+    migrations keep the names they were written with (rule 4).
+13. **Every active item has exactly one default resolution.** The database
+    enforces it: `uq_item_resolutions_one_default` allows at most one, and the
+    deferred trigger `trg_item_resolutions_one_default` requires at least one,
+    at commit. The API moves the default with make-default; it never unsets,
+    deprecates or deletes it while the item has other resolutions. List any
+    violations with `python -m app.items.catalog_seed --check-defaults`.
 
 ## Domain vocabulary
 

@@ -61,7 +61,7 @@ function TypeChip({ type, count }: { type: TestType; count?: number }) {
   )
 }
 
-/** Step 8's Tests section (32-STEP-008 Part K): CI maturity, test projects
+/** Step 8's Tests section (32-TEST-COVERAGE-ASSESSMENT Part K): CI maturity, test projects
  * and classes by type, the per-project table, and the per-file table. */
 export function RepositoryTestsSection({ repositoryId, localPath, refreshToken }: { repositoryId: string; localPath: string | null; refreshToken: number }) {
   const [data, setData] = useState<RepositoryTests | null>(null)

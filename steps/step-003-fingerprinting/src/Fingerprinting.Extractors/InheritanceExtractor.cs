@@ -4,7 +4,7 @@ using Fingerprinting.Domain;
 namespace Fingerprinting.Extractors;
 
 /// <summary>
-/// Level 3 (Roslyn syntax) extraction — step-3-application-fingerprinting.md
+/// Level 3 (Roslyn syntax) extraction — application-fingerprinting-v1.md
 /// section 6.2: base classes and implemented interfaces. Roslyn's syntax
 /// tree does not distinguish a base class from an implemented interface in a
 /// type's base list without semantic binding, so both use signal type

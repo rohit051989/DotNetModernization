@@ -1,18 +1,18 @@
-# 32 — Step 8: Test Coverage & CI Maturity
+# 32 — `test-coverage-assessment`: Test Coverage & CI Maturity
 
-Lifecycle step 8. Owner: **P**, with an LLM veto as a safety sub-task.
+Lifecycle step `test-coverage-assessment`. Owner: **P**, with an LLM veto as a safety sub-task.
 Job: `phase0-repository-discovery`, after item detection.
-Implemented in **C# / .NET** in the step 3 solution, `process` adapter.
+Implemented in **C# / .NET** in the `application-fingerprinting` solution, `process` adapter.
 
 Answers, per source file: is there a test, which test file covers it, what percentage is
 covered, and is that unit or integration coverage. Feeds risk scoring and gates
 characterization test generation.
 
 This spec also defines the **shared LLM provider** (Part G), which every LLM use in the
-platform adopts. Step 8 is its first consumer.
+platform adopts. `test-coverage-assessment` is its first consumer.
 
-> Step 9, impact analysis, is inserted after this step in a later change. Step 8 keeps its
-> number.
+> `impact-analysis` is inserted after this step in a later change. This step keeps its
+> place.
 
 ---
 
@@ -35,7 +35,7 @@ platform adopts. Step 8 is its first consumer.
 
 A test project references a test framework — xUnit, NUnit, MSTest — or a test SDK. A test
 class carries test attributes: `[Fact]`, `[Theory]`, `[Test]`, `[TestMethod]`, `[TestCase]`.
-Step 3 already emits most of these signals; reuse them.
+`application-fingerprinting` already emits most of these signals; reuse them.
 
 ### B2. Classifying test type
 
@@ -134,8 +134,8 @@ the platform already has:
 
 | Check | Fails when |
 |---|---|
-| Outbound reachability | A production type the test exercises has an outbound call site, from step 5, reachable from the exercised members, and that dependency is not mocked |
-| Entry-point reachability | The test calls an entry point, from step 4, that the step 4–5 linkage shows reaching a backend, unmocked |
+| Outbound reachability | A production type the test exercises has an outbound call site, from `outbound-invocation-inventory`, reachable from the exercised members, and that dependency is not mocked |
+| Entry-point reachability | The test calls an entry point, from `entry-point-inventory`, that the `entry-point-inventory`–`outbound-invocation-inventory` linkage shows reaching a backend, unmocked |
 | Infrastructure in the test | Connection strings, service URLs, file paths outside the scratch area, `Process.Start`, network APIs |
 | Untraceable paths | Reflection, dependency injection the syntax cannot resolve, a base-class helper outside the traced set |
 
@@ -177,8 +177,8 @@ executed or not, and why. A reviewer can see exactly why any test did or did not
 
 ## Part G — Shared LLM provider
 
-Every LLM use in the platform goes through one provider. Step 8 is the first consumer; step 6's
-advisory explanation, step 9's impact residue and Track A's skills adopt it later.
+Every LLM use in the platform goes through one provider. `test-coverage-assessment` is the first consumer; `dependency-assessment`'s
+advisory explanation, `impact-analysis`'s impact residue and Track A's skills adopt it later.
 
 ### G1. Configurable per environment
 
@@ -213,8 +213,8 @@ environment. This contract defines what the adapter must satisfy, not how Devin 
 
 | Kind | On failure | Example |
 |---|---|---|
-| `safety` | **Fail closed** — treat as a block | Step 8 veto |
-| `advisory` | **Fail open** — omit the advisory output | Step 6 breaking-change explanation |
+| `safety` | **Fail closed** — treat as a block | `test-coverage-assessment` veto |
+| `advisory` | **Fail open** — omit the advisory output | `dependency-assessment` breaking-change explanation |
 
 Every LLM use declares its kind. A provider outage on the VDI must never silently switch off a
 safety check.
@@ -222,7 +222,7 @@ safety check.
 ### G4. Source code consent
 
 `llm_may_receive_source_code`, per engagement, default **false**. Uses that need source — the
-step 8 veto — cannot run while it is false. Uses that send only names and signals are unaffected.
+`test-coverage-assessment` veto — cannot run while it is false. Uses that send only names and signals are unaffected.
 
 ### G5. Audit
 
@@ -345,13 +345,14 @@ Each phase lands and is verified before the next. Phase 3 depends on both earlie
 - `src/Fingerprinting.TestCoverage` holds the analysis: `TestDiscovery`, `TestMapper`,
   `TestableLogic`, `CoverageReports`, `CiMaturityScanner` and `TestCoveragePipeline`.
 - `src/Fingerprinting.TestCoverage.Cli` holds the envelope, the database and the cache. It
-  shares `Fingerprinting.Analysis` and `Fingerprinting.StepHost` with steps 3 to 6, and is
+  shares `Fingerprinting.Analysis` and `Fingerprinting.StepHost` with `application-fingerprinting`, `entry-point-inventory`,
+  `outbound-invocation-inventory` and `dependency-assessment`, and is
   published to `publish/test-coverage-assessment/`.
 
 **Registration and job.**
 - Registration: `registration/test-coverage-assessment.json`.
-- Job: `phase0-repository-discovery` v11 wires both inputs as required, step 2's
-  `solution-project-inventory` and step 3's `application-fingerprint`.
+- Job: `phase0-repository-discovery` v11 wires both inputs as required, `solution-discovery`'s
+  `solution-project-inventory` and `application-fingerprinting`'s `application-fingerprint`.
 - Config: `coverage_report_locations` (CI output directories to search, default none).
 - Schema: `schemas/test-coverage-1.0.0.schema.json`, generated by
   `make_test_coverage_schema_1_0_0.py`.
@@ -362,7 +363,7 @@ phases 2 and 3.
 
 **B — discovery and classification.**
 - **Test projects** are those with a test package (xunit, nunit, mstest,
-  Microsoft.NET.Test.Sdk) or one of step 3's test signals.
+  Microsoft.NET.Test.Sdk) or one of `application-fingerprinting`'s test signals.
 - **Test classes** declare at least one `[Fact]`, `[Theory]`, `[Test]`, `[TestMethod]`,
   `[TestCase]`, `[DataTestMethod]` or `[TestCaseSource]` method. This is syntax, so a
   commented-out class is not a test class.
@@ -430,7 +431,7 @@ fact is a line-level match recorded as evidence with file and line, and the UI s
   reused row holds none and points at its source; only a `computed` row is ever reused.
 
 **K — UI and API.**
-- **API:** `GET /api/repositories/{id}/tests`, 409 until step 8 has run.
+- **API:** `GET /api/repositories/{id}/tests`, 409 until `test-coverage-assessment` has run.
 - **Tests section** on the repository page:
   - the commit and cache state;
   - the five CI facts, with their evidence;

@@ -7,7 +7,7 @@ using Fingerprinting.StepHost;
 namespace Fingerprinting.EntryPoints.Cli;
 
 /// <summary>
-/// Lifecycle step 4, entry-point-inventory — 29-STEPS-004-005-INVENTORIES.md
+/// Lifecycle step 4, entry-point-inventory — 29-ENTRY-POINT-AND-OUTBOUND-INVENTORIES.md
 /// Part B. Two modes, as step 3: the process-adapter envelope (StepContext on
 /// stdin, StepResult on stdout), and a standalone mode for iterating without
 /// the engine.

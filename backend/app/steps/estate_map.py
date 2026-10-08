@@ -1,7 +1,8 @@
-"""Lifecycle step 11 — dependency-and-context-map. 31-STEP-011-ESTATE-DEPENDENCY-MAP.md.
+"""Lifecycle step dependency-and-context-map. 31-DEPENDENCY-AND-CONTEXT-MAP.md.
 
 Engagement-scoped, in phase0-estate-consolidation. Reads the per-repository
-rows of steps 2, 4, 5 and 6 straight from the database for every in-scope
+rows of solution-discovery, entry-point-inventory,
+outbound-invocation-inventory and dependency-assessment straight from the database for every in-scope
 repository (Part B1) — artifact resolution cannot reach another job's
 artifacts — and records, per repository, the step execution whose rows it
 read. Writes the endpoint register, the package estate, the dependency graph
@@ -12,6 +13,15 @@ endpoint_annotations is human data: this step reads it only to keep a host a
 human annotated but nothing calls any more, as no_longer_called (Part C4).
 
 The analysis is app/estate/analysis.py; this module loads and writes.
+
+Step 1.4.0: at the end of each run, impact-analysis's client impact
+(33-IMPACT-ANALYSIS.md Part B) from this run's integration edges,
+labelled client (app/impact/client.py), after impact staleness is brought in
+step with the re-derived decisions (app/impact/stale.py).
+
+Step 1.5.0: then catalog rule conflicts across the estate
+(app/impact/conflicts.py): conflicts grouped by the rule pair that produces
+them across every repository in the engagement.
 """
 
 import datetime
@@ -23,6 +33,9 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app import models
 from app.estate import analysis
+from app.impact import client as client_impact
+from app.impact import conflicts as impact_conflicts
+from app.impact import stale as impact_stale
 from app.items import coupling
 from app.workflow.adapters.base import compute_checksum
 from app.workflow.contract import StepContext, StepOutput, StepResult
@@ -198,7 +211,7 @@ def build(db: Session, engagement_id: str) -> dict:
 
 
 def write_tables(db: Session, engagement_id: str, result: dict, step_execution_id) -> None:
-    """Replaces this engagement's rows in every step 11 table except
+    """Replaces this engagement's rows in every dependency-and-context-map table except
     endpoint_annotations, which only humans write."""
     for model in (models.EstateSource, models.EndpointRegisterService, models.EndpointRegisterHost, models.PackageEstateRow,
                   models.DependencyEdge, models.SharedLibrary, models.DependencyCycle, models.OriginReconciliation,
@@ -404,6 +417,13 @@ def run(context: StepContext) -> StepResult:
         # integration edges, so derived decisions are brought in step here.
         for leader in coupling.leader_items(db):
             coupling.rederive(db, engagement_id, leader)
+        # impact-analysis's impact: stale where a decision has changed since it was
+        # computed, then client impact from this run's edges (Part B).
+        stale = impact_stale.refresh(db, engagement_id)
+        clients = client_impact.apply(db, engagement_id, context.step_execution_id)
+        # Then catalog rule conflicts, estate-wide: a rule pair conflicting on
+        # more than one pair of work items anywhere in the engagement.
+        rule_conflicts = impact_conflicts.apply_estate(db, engagement_id, context.step_execution_id)
         db.commit()
 
         output_dir = Path(context.output_dir)
@@ -430,7 +450,9 @@ def run(context: StepContext) -> StepResult:
                 f"{sum(1 for p in result['packages'] if p['estateDrift'])} with estate drift; "
                 f"{sum(1 for e in graph['edges'] if e['crossRepository'])} cross-repository edge(s), "
                 f"{len(graph['sharedLibraries'])} shared librar(ies), {len(graph['cycles'])} cycle(s); "
-                f"{len(result['integration']['edges'])} integration edge(s)."
+                f"{len(result['integration']['edges'])} integration edge(s); "
+                f"{clients['client_rows']} client impact row(s), {stale} stale impact summar(ies), "
+                f"{rule_conflicts['rule_conflicts']} catalog rule conflict(s) affecting {rule_conflicts['work_items']} work item(s)."
             ),
             metrics={"read_count": cov["repositoriesIncluded"], "write_count": len(register["hosts"]) + len(result["packages"]),
                      "skip_count": cov["repositoriesPending"], "commit_count": 1},

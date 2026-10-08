@@ -1,11 +1,11 @@
-# 24 — Step 4: Pattern Classification Against Catalog
+# 24 — `pattern-classification`: Pattern Classification Against Catalog
 
-> **Superseded by [28-ITEM-AND-CONVERSION-MODEL.md](28-ITEM-AND-CONVERSION-MODEL.md).** Kept as history; do not build from it. Lifecycle step 6 is now `item-detection` (`backend/app/steps/item_detection.py`); this document's classification engine, scoring, conflicts and role patterns were removed.
+> **Superseded by [28-ITEM-AND-CONVERSION-MODEL.md](28-ITEM-AND-CONVERSION-MODEL.md).** Kept as history; do not build from it. Its successor lifecycle step is `item-detection` (`backend/app/steps/item_detection.py`); this document's classification engine, scoring, conflicts and role patterns were removed.
 
-Lifecycle step 4. Owner: **P + S**. Job: `phase0-repository-discovery`, after step 3.
+Lifecycle step `pattern-classification`. Owner: **P + S**. Job: `phase0-repository-discovery`, after `application-fingerprinting`.
 Implemented in **Python**, invoked via the `process` adapter.
 
-Read `step-4-pattern-classification-against-catalog.md` alongside this. That document
+Read `pattern-classification-against-catalog-v1.md` alongside this. That document
 is the authority on **classification design**; this spec is the authority on how it
 integrates with the existing catalog, engine and UI, and **overrides it** where they
 disagree.
@@ -21,7 +21,7 @@ validation — use Part B3).
 
 ### A1. Catalog reshaping is a prerequisite phase
 
-§21 treats migrating the eight seeded patterns as a task inside step 4. It is larger:
+§21 treats migrating the eight seeded patterns as a task inside `pattern-classification`. It is larger:
 the catalog is a live database with a structured rules editor, master/client scoping,
 engagement overlays and decision records referencing patterns. Reshaping
 `detection_rules` means new columns, a new schema, signal validation on write, a
@@ -54,7 +54,7 @@ Classify against **every active master pattern**, then annotate each match with 
 engagement scope status. If a client deferred Web Forms and a project matches it, that
 is a finding they need. Exclude nothing; label everything.
 
-### A6. Only classify what step 3 can see, and make the gap actionable
+### A6. Only classify what `application-fingerprinting` can see, and make the gap actionable
 
 Coverage across the eight seeded patterns is uneven with batch 1 extractors:
 
@@ -67,18 +67,18 @@ Coverage across the eight seeded patterns is uneven with batch 1 extractors:
 | `wcf-iis-servicemodel` | Yes | — |
 | `console-batch-job` | Partly | No scheduling signals |
 | `windows-service` | Yes | — |
-| `ssis-package` | **Yes, on metadata alone** | Step 3 emits no SSIS signals, but step 2 already derives `structuralType: ssis_project` from the `.dtproj` extension — a metadata-only rule is confident but has no package-internals evidence; see the `matchWarnings` note on it in Part C |
+| `ssis-package` | **Yes, on metadata alone** | `application-fingerprinting` emits no SSIS signals, but `solution-discovery` already derives `structuralType: ssis_project` from the `.dtproj` extension — a metadata-only rule is confident but has no package-internals evidence; see the `matchWarnings` note on it in Part C |
 
 A pattern that cannot yet be expressed is recorded with `rules_status:
 awaiting_signals` and a **structured** `required_signals_pending` list (Part B2) —
-not free text. That turns a gap into a work queue driving step 3's extractor
+not free text. That turns a gap into a work queue driving `application-fingerprinting`'s extractor
 priorities, and it surfaces in catalog coverage.
 
-**"What step 3 can see" is not the only source of detection.** `ssis-package` is
+**"What `application-fingerprinting` can see" is not the only source of detection.** `ssis-package` is
 `active`, not `awaiting_signals` — a `.dtproj` file's `structuralType: ssis_project`
-is step 2 metadata (§10.6, Part C "Metadata conditions"), available today regardless
-of what step 3 extracts. Before authoring a pattern as `awaiting_signals`, check
-whether step 2 metadata alone gives a usable — if thin — detection; `required_signals_
+is `solution-discovery` metadata (§10.6, Part C "Metadata conditions"), available today regardless
+of what `application-fingerprinting` extracts. Before authoring a pattern as `awaiting_signals`, check
+whether `solution-discovery` metadata alone gives a usable — if thin — detection; `required_signals_
 pending` still tracks the richer signals a future extractor will add, independent of
 whether the pattern is already active on metadata. A metadata-only match should
 declare a `matchWarnings` entry (Part C) naming the gap, so "confidently detected,
@@ -95,7 +95,7 @@ regression corpus is worthless.
 
 The `scope` column exists for future use, but **v1 evaluates `PROJECT` scope only**.
 A `REPOSITORY`-scoped pattern is skipped with a governance observation. Repository
-signals from step 3 are retained but unused here. Revisit when a real
+signals from `application-fingerprinting` are retained but unused here. Revisit when a real
 repository-scoped pattern appears.
 
 ---
@@ -177,7 +177,7 @@ Validation depends on `rules_status`:
 | `awaiting_signals` | Unregistered signals are **permitted**, and each must appear in `required_signals_pending`. A referenced-but-not-declared unknown signal → 422 |
 | `draft` | Unregistered signals permitted, warned not rejected. Draft patterns are never evaluated |
 
-Only `active` patterns are evaluated by step 4. This lets you author the intended SSIS
+Only `active` patterns are evaluated by `pattern-classification`. This lets you author the intended SSIS
 rules today, declare exactly which signals they await, and have them start working the
 moment the extractor lands — with a governance report telling you that.
 
@@ -270,7 +270,7 @@ the next section.
 
 ### Metadata conditions
 
-From step 2 and step 3 project data rather than signals: `outputType`,
+From `solution-discovery` and `application-fingerprinting` project data rather than signals: `outputType`,
 `projectFormat`, `frameworkFamily`, `frameworkVersion`, `projectSdk`,
 `structuralType`, `extension`, `fingerprintStatus`. Per §10.6, not everything needs to
 become a signal. A pattern detectable from these alone can be `active` with empty
@@ -293,9 +293,9 @@ Null handling differs between the two kinds, deliberately:
 This matters most for **absence-based patterns** — the class of pattern with no
 positive signal of its own, which matches by denying everything else
 (`fx47-class-library`, `netstandard-modern-library`, `role-library-project`).
-Their signal disqualifiers hold only when step 3 actually extracted the signal;
+Their signal disqualifiers hold only when `application-fingerprinting` actually extracted the signal;
 on a `PARTIAL` fingerprint with syntax analysis unavailable they go blind and
-co-match whatever they were meant to exclude. Step 2 msbuild metadata is
+co-match whatever they were meant to exclude. `solution-discovery` msbuild metadata is
 recorded whether or not syntax analysis ran, so a metadata exclusion holds
 where the signal one does not. Both library patterns therefore carry
 `outputType notIn ["WinExe", "Exe"]` alongside their entry-point disqualifiers:
@@ -321,8 +321,8 @@ two shapes, the real discriminator is almost always something else — for
 Version is still recorded, and deliberately: `framework_family` and
 `framework_version` are echoed onto `project_classifications` and onto the artifact's
 per-project block (Part F), so it is an explicit **pattern parameter** rather than
-something implicit that a consumer has to join back to step 2 to recover. Step 10's
-risk scoring reads the version, and so does an accelerator deciding which breaking
+something implicit that a consumer has to join back to `solution-discovery` to recover. `risk-scoring-tier-assignment`
+reads the version, and so does an accelerator deciding which breaking
 changes apply. That is the division: **family selects the pattern, version
 parameterises whatever acts on it.**
 
@@ -332,7 +332,7 @@ supported" is a fact about the version, not a different code shape — so it is 
 `framework_version` judgement, never a pattern boundary. This is why
 `netstandard-modern-library` covers `net-core` alongside `net` and `net-standard`:
 the shape is identical, and excluding the out-of-support family left a common real
-project matching no library pattern at all and falling through to step 5's discovery
+project matching no library pattern at all and falling through to `pattern-discovery-clustering`'s discovery
 queue.
 
 **Support lifecycle parameterises target-state selection, not pattern detection.**
@@ -343,7 +343,7 @@ options rather than one:
 - *"No migration required — supported version"*
 - *"Retarget to current LTS — version out of support"*
 
-Same pattern, same code shape, two destinations, and step 14 picks between them from
+Same pattern, same code shape, two destinations, and the v1 target state governance step picks between them from
 the classification's `framework_version`. Neither is `is_recommended`: the condition
 is in the option names, and recommending either unconditionally would assert a
 version fact the catalog cannot know — a .NET 6 web app is `ALREADY_MODERN` today and
@@ -451,7 +451,7 @@ engine. Seed six:
 |---|---|---|
 | `role-test-project` | `TEST` | `TESTING_INDICATOR` signals, test framework packages |
 | `role-database-project` | `DATABASE` | `structuralType: sql_database_project` |
-| `role-deployment-project` | `DEPLOYMENT` | Out-of-scope structural types from step 2 |
+| `role-deployment-project` | `DEPLOYMENT` | Out-of-scope structural types from `solution-discovery` |
 | `role-library-project` | `LIBRARY` | No entry point signals, no IIS-hosted evidence, no test attributes |
 | `role-application-project` | `APPLICATION` | Entry point signals, IIS-hosted evidence (`SVC_FILE`, `SYSTEM_SERVICE_MODEL_CONFIG`, `ASPX_FILE`, `ASMX_FILE`, `IHTTP_HANDLER_BASE_CLASS`, `IHTTP_MODULE_BASE_CLASS`), `outputType` Exe/WinExe, or a web SDK |
 | `role-unknown` | `UNKNOWN` | Fallback, lowest priority, always matches |
@@ -469,8 +469,8 @@ this step.
 
 **The role pass runs for `SKIPPED` projects too.** It comes before the
 `fingerprint_status == SKIPPED` gate, not after it. Role determination rests
-mostly on step 2 metadata (`structuralType`, `outputType`), which exists for a
-project step 3 declined to fingerprint — a `docker-compose.dcproj` is
+mostly on `solution-discovery` metadata (`structuralType`, `outputType`), which exists for a
+project `application-fingerprinting` declined to fingerprint — a `docker-compose.dcproj` is
 recognisably `DEPLOYMENT` whether or not anything was extracted from it. Leaving
 `project_role` null on those rows loses information the platform already has,
 and makes the estate view report an unknown role for projects whose role is not
@@ -584,7 +584,7 @@ way two primaries stop competing — silence is never read as compatibility.
 8. Engine error → `CLASSIFICATION_FAILED`
 
 `INSUFFICIENT_FINGERPRINT` versus `NO_PATTERN_MATCHED` matters most — only the latter
-is a step 5 candidate. Clustering projects that failed to match because analysis was
+is a `pattern-discovery-clustering` candidate. Clustering projects that failed to match because analysis was
 incomplete would poison pattern discovery.
 
 ---
@@ -601,10 +601,10 @@ Replaced wholesale per repository on rescan.
 `config_version`, `evaluated_pattern_count`, `primary_pattern_id` (FK, nullable),
 `warnings` JSONB, `step_execution_id`, `classified_at`.
 
-`framework_family` and `framework_version` are echoed from step 2's `projects` row
-(both nullable — step 2 leaves them null for a project with no parseable target
+`framework_family` and `framework_version` are echoed from `solution-discovery`'s `projects` row
+(both nullable — `solution-discovery` leaves them null for a project with no parseable target
 framework) and also appear on the artifact's per-project block, so the artifact is
-self-contained and no downstream consumer has to join back to step 2. See Part C,
+self-contained and no downstream consumer has to join back to `solution-discovery`. See Part C,
 "Framework family discriminates patterns; framework version parameterises
 accelerators".
 
@@ -664,14 +664,14 @@ the most frequent unmatched signal combinations.
 `most_frequent_unmatched_signal_combinations` is the recurring **shapes of
 signals present on projects whose status is `NO_PATTERN_MATCHED`** — each entry
 a `{signals, project_count}` pair, top five by count. It is the direct input to
-step 5's clustering: two projects that matched nothing and carry the same signal
+`pattern-discovery-clustering`: two projects that matched nothing and carry the same signal
 shape are one candidate pattern, not two gaps. A repository with no
 `NO_PATTERN_MATCHED` projects therefore reports an empty list, and that is the
 correct output rather than a missing metric.
 
 It is **not** a count of failed patterns' `anchor_signals`. Computing it that way
 restates `never_matched_pattern_ids` — every entry's count equals the project
-count — and gives step 5 nothing to cluster on. The
+count — and gives `pattern-discovery-clustering` nothing to cluster on. The
 `corpus/fingerprints/unmatched-cluster/` fixtures pin the intended behaviour
 with two unmatched projects sharing a shape, asserted through
 `corpus/expected/unmatched-cluster/_coverage.json`; that file is the repo-level
@@ -714,7 +714,7 @@ adapter_config:
   timeout_seconds: 1800
 ```
 
-Own virtualenv, per the convention from step 2. Artifact follows §19's per-project
+Own virtualenv, per the convention from `solution-discovery`. Artifact follows §19's per-project
 structure with a repository envelope and governance summary, deterministic — sorted
 keys, volatile fields in `StepOutput.metadata`.
 
@@ -774,12 +774,12 @@ status, expanding to the §25.4 detail tree.
 
 Matched patterns with score, confidence and explanation, then **near-miss patterns
 with their failed rules** — what makes tuning possible. Every matched rule links to
-its step 3 signal and evidence, satisfying §20's traceability requirement.
+its `application-fingerprinting` signal and evidence, satisfying §20's traceability requirement.
 
 ### Dashboard
 
 **The Patterns card becomes real.** Applications stays `—` until deployable
-application aggregation exists, which §26 places outside step 4.
+application aggregation exists, which §26 places outside `pattern-classification`.
 
 Label honestly: *"Projects classified as WCF Service: 12"*, never *"WCF applications: 12"*.
 
@@ -787,8 +787,8 @@ Label honestly: *"Projects classified as WCF Service: 12"*, never *"WCF applicat
 
 In Workflow Administration: registered versus referenced signals, unused signals,
 patterns never matched, **patterns awaiting signals grouped by expected extractor**,
-and the most frequent unmatched signal combinations. The middle one is your step 3
-extractor backlog; the last is the direct input to step 5.
+and the most frequent unmatched signal combinations. The middle one is your `application-fingerprinting`
+extractor backlog; the last is the direct input to `pattern-discovery-clustering`.
 
 ---
 
@@ -804,7 +804,7 @@ and decision records are intact.
 **J2 — Re-author patterns.** The eight seeded patterns plus six role patterns, using
 real registry signal names. `ssis-package` marked `awaiting_signals` with structured
 `required_signals_pending` (later promoted to `active` on a metadata-only rule — see
-Part A6 — once it was clear step 2 metadata alone gave a usable detection;
+Part A6 — once it was clear `solution-discovery` metadata alone gave a usable detection;
 `required_signals_pending` stayed as the extractor backlog for what the rule still
 lacks). Gate: every `active` pattern's signals exist; every `awaiting_signals` pattern
 declares its pending signals; all validate.
@@ -833,8 +833,8 @@ rescan.
       `thresholds.minimumScore` lowered to the base score, `required_signals_pending`
       still populated for the package-internals signals SsisExtractor will add, and
       every match carries a `matchWarnings` entry saying so
-- [ ] Every other `awaiting_signals` pattern has been audited for a step 2
-      metadata-only detection before assuming it must wait on step 3 signals
+- [ ] Every other `awaiting_signals` pattern has been audited for a `solution-discovery`
+      metadata-only detection before assuming it must wait on `application-fingerprinting` signals
 - [ ] No pattern carries a `frameworkVersion` condition; `frameworkFamily`
       conditions remain and every application-type pattern has one
 - [ ] `framework_family` and `framework_version` appear on
@@ -864,7 +864,7 @@ rescan.
 - [ ] `disqualify` and `penalty` behave differently and are both exercised
 - [ ] A pattern deferred for an engagement still classifies, annotated `deferred`
 - [ ] Failed matches persist with their failed rules and stable rule ids
-- [ ] Every matched rule links to its step 3 signal and evidence
+- [ ] Every matched rule links to its `application-fingerprinting` signal and evidence
 - [ ] `catalog_revision` increments on a pattern edit and is recorded
 - [ ] Corpus mode ignores volatile fields and reports score deltas beyond ±2
 - [ ] Re-running classification after a rule change requires no rescan

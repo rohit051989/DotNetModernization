@@ -322,7 +322,7 @@ def get_pending_signal_promotions(db: Session = Depends(get_db)):
     `promotable: true` means every *blocking* pending signal is now
     registered — promoting the pattern to `active` (via `PUT
     /api/patterns/{id}`) stays a human action; this endpoint only reports
-    readiness (24-STEP-004-CLASSIFICATION.md Part B3).
+    readiness (24-PATTERN-CLASSIFICATION.md Part B3).
     """
     return catalog_rules.pending_signal_promotions(db)
 

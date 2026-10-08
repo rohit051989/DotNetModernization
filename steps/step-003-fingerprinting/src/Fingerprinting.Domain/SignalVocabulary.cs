@@ -1,8 +1,8 @@
 namespace Fingerprinting.Domain;
 
 /// <summary>
-/// The sixteen fingerprint categories from step-3-application-fingerprinting.md
-/// section 19, SCREAMING_SNAKE_CASE per 21-STEP-003-FINGERPRINTING.md Part D.
+/// The sixteen fingerprint categories from application-fingerprinting-v1.md
+/// section 19, SCREAMING_SNAKE_CASE per 21-APPLICATION-FINGERPRINTING.md Part D.
 /// Mirrors the SIGNAL_CATEGORY tuple in backend/app/models.py — keep both in
 /// sync; renaming either without the other breaks DB writes.
 /// </summary>
@@ -28,7 +28,7 @@ public static class SignalCategories
 
 /// <summary>
 /// The twelve <c>fingerprint_signals.signal_type</c> values from
-/// 21-STEP-003-FINGERPRINTING.md Part D "Signal types". Mirrors the
+/// 21-APPLICATION-FINGERPRINTING.md Part D "Signal types". Mirrors the
 /// SIGNAL_TYPE tuple in backend/app/models.py — keep both in sync.
 /// <see cref="ApiInvocation"/> and <see cref="Literal"/> are part of the
 /// application-fingerprint@1.2.0 contract: no extractor emits them yet, and
@@ -85,7 +85,7 @@ public static class SignalEvidenceKinds
 }
 
 /// <summary>
-/// The nine evidence source types from step-3-application-fingerprinting.md
+/// The nine evidence source types from application-fingerprinting-v1.md
 /// section 18.
 /// </summary>
 public static class EvidenceSourceTypes

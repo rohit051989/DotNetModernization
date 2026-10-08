@@ -17,7 +17,7 @@ public sealed record InventoryInput(
 
 /// <summary>
 /// Builds the entry-point-inventory@1.0.0 artifact for one repository —
-/// 29-STEPS-004-005-INVENTORIES.md Part B. Deterministic per step 3's rules:
+/// 29-ENTRY-POINT-AND-OUTBOUND-INVENTORIES.md Part B. Deterministic per step 3's rules:
 /// every collection sorted, ids derived, nothing time- or machine-dependent.
 /// </summary>
 public sealed class EntryPointPipeline

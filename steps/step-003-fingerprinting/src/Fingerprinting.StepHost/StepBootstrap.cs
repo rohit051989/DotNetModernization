@@ -5,7 +5,7 @@ namespace Fingerprinting.StepHost;
 
 /// <summary>
 /// The ordering-sensitive start of every step exe's <c>Main</c> —
-/// 21-STEP-003-FINGERPRINTING.md Part B's three hard rules. Call it as the
+/// 21-APPLICATION-FINGERPRINTING.md Part B's three hard rules. Call it as the
 /// first statement, before anything else runs.
 /// </summary>
 public static class StepBootstrap

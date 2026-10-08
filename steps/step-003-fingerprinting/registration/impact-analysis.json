@@ -1,0 +1,24 @@
+{
+  "step_name": "impact-analysis",
+  "lifecycle_step_no": 9,
+  "display_name": "Impact analysis",
+  "owner_code": "P",
+  "version": "2.1.0",
+  "owner_team": "platform",
+  "viewpoint": "DEVELOPMENT",
+  "implementation_status": "implemented",
+  "consumes": [
+    { "artifact_type": "solution-project-inventory", "version_range": "^2.0.0", "optional": false },
+    { "artifact_type": "entry-point-inventory", "version_range": "^2.0.0", "optional": false },
+    { "artifact_type": "item-occurrences", "version_range": "^1.0.0", "optional": false },
+    { "artifact_type": "test-coverage", "version_range": "^1.0.0", "optional": false }
+  ],
+  "produces": [
+    { "artifact_type": "impact-analysis", "artifact_version": "2.1.0" }
+  ],
+  "adapter_type": "process",
+  "adapter_config": {
+    "command": ["steps/step-003-fingerprinting/publish/impact-analysis/ImpactAnalysis.Cli.exe"],
+    "timeout_seconds": 3600
+  }
+}

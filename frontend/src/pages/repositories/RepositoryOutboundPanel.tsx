@@ -381,7 +381,7 @@ function Stat({ label, value, verdict }: { label: string; value: number; verdict
   )
 }
 
-/** Outbound — 29-STEPS-004-005-INVENTORIES.md Part D: step 5's
+/** Outbound — 29-ENTRY-POINT-AND-OUTBOUND-INVENTORIES.md Part D: step 5's
  * invocations grouped by mechanism, a verdict badge on each, environment
  * bindings expandable, incompatible first. */
 export function RepositoryOutboundPanel({ repositoryId, localPath, refreshToken }: RepositoryOutboundPanelProps) {

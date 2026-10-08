@@ -1,7 +1,7 @@
 """Raw target framework -> family/version normalisation, for dashboard
 grouping only. `target_framework_raw`/`target_frameworks_raw` always keep
 the verbatim declared value(s) separately — this module never overwrites
-them. See 19-STEP-002-SOLUTION-DISCOVERY.md Part E.
+them. See 19-SOLUTION-DISCOVERY.md Part E.
 """
 
 import re

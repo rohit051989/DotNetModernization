@@ -6,7 +6,7 @@ namespace Fingerprinting.Domain;
 
 /// <summary>
 /// The one JSON configuration every artifact and StepResult write must go
-/// through — see 21-STEP-003-FINGERPRINTING.md Part B rule 2:
+/// through — see 21-APPLICATION-FINGERPRINTING.md Part B rule 2:
 /// alphabetical keys at every level, two-space indent, explicit '\n' line
 /// endings, invariant culture. Two runs over unchanged input must produce
 /// identical bytes.

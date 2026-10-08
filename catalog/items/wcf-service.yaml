@@ -48,6 +48,50 @@ resolutions:
   description: Port to CoreWCF, preserving service contracts, bindings and the published WSDL.
   effort: medium
   id: wcf-service-corewcf
+  impact_rules:
+  - action: update
+    from: seed
+    id: impl
+    reason: 'Retargeted to CoreWCF: the implementation is kept; namespaces and the host change'
+    select: self
+  - action: update
+    filter:
+      has_attribute: ServiceContract
+    from: impl
+    id: contracts
+    reason: Service contract kept; System.ServiceModel attributes resolve from CoreWCF
+    traverse: implemented_interfaces
+  - action: review
+    filter:
+      has_attribute: DataContract
+    from: contracts
+    id: data-contracts
+    reason: DataContract serialization is kept; check for types or behaviours CoreWCF does not support
+    traverse: signature_types
+  - action: delete
+    from: impl
+    id: svc
+    kind: svc
+    reason: '.svc activation does not exist in CoreWCF: services are registered in the ASP.NET Core host'
+    traverse: convention_files
+  - action: update
+    from: impl
+    id: service-config
+    path: system.serviceModel/services
+    reason: <service> registration moves into the ASP.NET Core host's CoreWCF configuration
+    traverse: config_elements
+  - action: review
+    from:
+    - impl
+    - contracts
+    id: tests
+    reason: Tests use the same contract; check how they create the service or channel
+    traverse: referencing_tests
+  - action: review
+    from: contracts
+    id: clients
+    reason: Callers keep SOAP; check their address and binding against the CoreWCF endpoint
+    traverse: client_call_sites
   is_default: true
   linux_compatible: true
   name: CoreWCF on .NET 10
@@ -79,6 +123,55 @@ resolutions:
   description: Rewrite as a contract-first gRPC service.
   effort: high
   id: wcf-service-grpc-rewrite
+  impact_rules:
+  - action: rewrite
+    from: seed
+    id: impl
+    reason: Service implementation becomes a gRPC service implementation
+    select: self
+  - action: delete
+    filter:
+      has_attribute: ServiceContract
+    from: impl
+    id: contracts
+    reason: WCF service contract is replaced by a .proto service definition
+    traverse: implemented_interfaces
+  - action: rewrite
+    filter:
+      has_attribute: DataContract
+    from: contracts
+    id: data-contracts
+    reason: DataContracts become protobuf messages, generated from the .proto file
+    traverse: signature_types
+  - action: delete
+    from: impl
+    id: svc
+    kind: svc
+    reason: .svc activation goes with WCF
+    traverse: convention_files
+  - action: update
+    from: impl
+    id: service-config
+    path: system.serviceModel/services
+    reason: 'Remove the <service> registration: it goes with WCF'
+    traverse: config_elements
+  - action: update
+    from:
+    - impl
+    - contracts
+    id: tests
+    reason: Tests call the service through its WCF contract; they move to the gRPC client
+    traverse: referencing_tests
+  - action: create
+    create: .proto service definition per service contract
+    for_each: contracts
+    id: protos
+    proposed_path: '{project.dir}/Protos/{type.base_name}.proto'
+  - action: rewrite
+    from: contracts
+    id: clients
+    reason: Callers move from the WCF client to a gRPC client
+    traverse: client_call_sites
   is_default: false
   linux_compatible: true
   name: gRPC rewrite on .NET 10
@@ -110,6 +203,12 @@ resolutions:
   description: Out of scope for the Linux move; the service stays on .NET Framework WCF on Windows.
   effort: low
   id: wcf-service-remain-windows-hosted
+  impact_rules:
+  - action: review
+    from: seed
+    id: evidence
+    reason: 'Stays on Windows: nothing structural changes. Listed so the work item stays visible, not to imply edits'
+    select: self
   is_default: false
   linux_compatible: false
   name: Remain Windows-hosted
@@ -141,6 +240,55 @@ resolutions:
   description: Rewrite as a conventional REST API on ASP.NET Core, retiring SOAP entirely.
   effort: high
   id: wcf-service-rest-rewrite
+  impact_rules:
+  - action: rewrite
+    from: seed
+    id: impl
+    reason: Service implementation becomes REST controller logic
+    select: self
+  - action: delete
+    filter:
+      has_attribute: ServiceContract
+    from: impl
+    id: contracts
+    reason: WCF service contract is replaced by controller routes
+    traverse: implemented_interfaces
+  - action: update
+    filter:
+      has_attribute: DataContract
+    from: contracts
+    id: data-contracts
+    reason: Remove DataContract attributes; keep as request and response models
+    traverse: signature_types
+  - action: delete
+    from: impl
+    id: svc
+    kind: svc
+    reason: .svc activation goes with WCF
+    traverse: convention_files
+  - action: update
+    from: impl
+    id: service-config
+    path: system.serviceModel/services
+    reason: 'Remove the <service> registration: it goes with WCF'
+    traverse: config_elements
+  - action: update
+    from:
+    - impl
+    - contracts
+    id: tests
+    reason: Tests call the service through its WCF contract; they move to the controllers
+    traverse: referencing_tests
+  - action: create
+    create: REST controller per service contract
+    for_each: contracts
+    id: controllers
+    proposed_path: '{project.dir}/Controllers/{type.base_name}Controller.cs'
+  - action: rewrite
+    from: contracts
+    id: clients
+    reason: Callers move from the WCF client to the REST API
+    traverse: client_call_sites
   is_default: false
   linux_compatible: true
   name: REST rewrite on .NET 10

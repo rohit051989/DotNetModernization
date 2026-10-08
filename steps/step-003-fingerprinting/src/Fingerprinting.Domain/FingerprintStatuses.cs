@@ -1,7 +1,7 @@
 namespace Fingerprinting.Domain;
 
 /// <summary>
-/// Project-level fingerprint status values, per 21-STEP-003-FINGERPRINTING.md
+/// Project-level fingerprint status values, per 21-APPLICATION-FINGERPRINTING.md
 /// Part E. JSON (and this class) use SCREAMING_SNAKE_CASE; the database column
 /// stores the lower-cased form — see <see cref="ToDbValue"/>.
 /// </summary>

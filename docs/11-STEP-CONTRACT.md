@@ -239,7 +239,7 @@ executable search does not behave like a shell's). Prefer a path relative to
 `PLATFORM_ROOT` for the interpreter itself (e.g.
 `["backend/.venv/Scripts/python.exe", "steps/step-002-solution-discovery/main.py"]`)
 over a bare `python`/`node` whenever the interpreter lives in a project-local
-virtualenv — this is what steps 2 and 3 both do, consistently, for exactly this
+virtualenv — this is what `solution-discovery` and `application-fingerprinting` both do, consistently, for exactly this
 reason.
 
 **Known constraint — command paths are currently Windows-resolved.** The examples
@@ -247,7 +247,7 @@ above (and every `process`-adapter step registered today) use Windows path
 separators and, for compiled steps, a `.exe` suffix. This matches the single-machine,
 Windows-first operating model this build targets (`CLAUDE.md`); nothing here does
 POSIX-style path handling or extension-less executable resolution. A Linux worker
-profile — raised and deliberately deferred in `21-STEP-003-FINGERPRINTING.md` Part A5
+profile — raised and deliberately deferred in `21-APPLICATION-FINGERPRINTING.md` Part A5
 — would need this revisited, not just the step's own build output.
 
 ### `http` — remote service

@@ -1,10 +1,10 @@
-# Step 2 — Solution & Project Discovery
+# `solution-discovery` — Solution & Project Discovery
 
-Lifecycle step 2. See `docs/19-STEP-002-SOLUTION-DISCOVERY.md`.
+Lifecycle step `solution-discovery`. See `docs/19-SOLUTION-DISCOVERY.md`.
 
 Standalone by design: invoked by the platform's `process` adapter, but this
 directory has no dependency on `backend/app` — it is a separate deliverable
-that happens to live in the same repository (Part B). Steps 3 onward will be
+that happens to live in the same repository (Part B). Steps from `application-fingerprinting` onward will be
 written by other people, and the `process` adapter is the integration path
 they will use.
 
@@ -22,7 +22,7 @@ goes to stdout. Required pieces:
 
 - `parameters.repository_id` — the repository's UUID
 - `inputs.repository-inventory` — `{artifact_type, artifact_version, uri, checksum}`
-  pointing at a `repository-inventory.json` written by step 1 (the script
+  pointing at a `repository-inventory.json` written by `repository-ingest` (the script
   reads `local_path` and `slug` from *that file*, never from the database)
 - `output_dir` — where to write `solution-project-inventory.json`
 - `database_url` — a plain `postgresql://user:pass@host:port/db` URL.

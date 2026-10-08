@@ -55,7 +55,7 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session
 
 from app import models
-from app.items import baseline, readiness
+from app.items import baseline, defaults, impact_rules, readiness
 from app.items.detection import validate_detection
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -325,7 +325,9 @@ def import_files(db: Session, files: dict[str, str]) -> dict:
     resolution_fields = [f for f in baseline.CONTENT_FIELDS[models.ItemResolution] if f != "item_id"]
     for document in documents:
         for resolution in document.get("resolutions", []):
-            values = {"item_id": document["id"], **{field: resolution[field] for field in resolution_fields}}
+            # Optional fields (impact_rules) are absent when empty.
+            values = {"item_id": document["id"], **{field: resolution[field] for field in resolution_fields if field in resolution}}
+            impact_rules.checked(values.get("impact_rules"), f"{document['id']}.yaml resolution {resolution['id']}")
             baseline.seed_row(db, models.ItemResolution, {"id": resolution["id"]}, _deleted(values, resolution), report)
     db.flush()
 
@@ -337,6 +339,7 @@ def import_files(db: Session, files: dict[str, str]) -> dict:
                 values = {"item_id": document["id"], **{field: derivation[field] for field in derivation_fields}}
                 baseline.seed_row(db, models.ResolutionDerivation, key, _deleted(values, derivation), report)
     db.flush()
+    defaults.check(db, "catalog import")
     return report
 
 

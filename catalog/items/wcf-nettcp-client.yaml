@@ -33,6 +33,24 @@ resolutions:
   description: Switch the client to a BasicHttp/WSHttp endpoint of the same service, which the service owner exposes if it does not already.
   effort: medium
   id: call-http-binding
+  impact_rules:
+  - action: update
+    from: seed
+    id: client-code
+    reason: A NetTcpBinding constructed in code becomes an HTTP binding
+    select: self
+  - action: update
+    from: seed
+    id: client-config
+    path: system.serviceModel/client
+    reason: The <client> endpoint switches to the service's HTTP address and binding
+    traverse: config_elements
+  - action: update
+    from: seed
+    id: bindings-config
+    path: system.serviceModel/bindings
+    reason: netTcpBinding configuration becomes basicHttpsBinding or wsHttpBinding
+    traverse: config_elements
   is_default: true
   linux_compatible: true
   name: Call an HTTP binding of the service
@@ -59,6 +77,29 @@ resolutions:
   description: 'The service is inside this migration and is being rewritten to a new protocol (REST or gRPC): move the client to the new protocol, in the same coordinated change.'
   effort: medium
   id: migrate-to-service-protocol
+  impact_rules:
+  - action: rewrite
+    from: seed
+    id: client-code
+    reason: The WCF client is replaced by a client of the service's new protocol
+    select: self
+  - action: delete
+    from: seed
+    id: proxy
+    kind: reference
+    reason: The svcutil-generated proxy goes with the WCF client
+    traverse: convention_files
+  - action: update
+    from: seed
+    id: client-config
+    path: system.serviceModel/client
+    reason: 'Remove the <client> endpoints: they go with the WCF client'
+    traverse: config_elements
+  - action: update
+    from: seed
+    id: project
+    reason: WCF client packages are replaced by the new protocol's client packages
+    traverse: project_file
   is_default: false
   linux_compatible: true
   name: Migrate to the service's new protocol
@@ -72,6 +113,12 @@ resolutions:
   description: Out of scope for the Linux move; the application stays on Windows.
   effort: low
   id: wcf-nettcp-client-remain-windows-hosted
+  impact_rules:
+  - action: review
+    from: seed
+    id: evidence
+    reason: 'Stays on Windows: nothing structural changes. Listed so the work item stays visible, not to imply edits'
+    select: self
   is_default: false
   linux_compatible: false
   name: Remain Windows-hosted

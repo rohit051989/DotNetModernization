@@ -70,7 +70,7 @@ class RegisterRepositoryRequest(BaseModel):
     )
     criticality: Criticality = Field(
         default=Criticality.medium,
-        description="Business criticality. Feeds review tier assignment at lifecycle step 10.",
+        description="Business criticality. Feeds review tier assignment (risk-scoring-tier-assignment).",
     )
 ```
 

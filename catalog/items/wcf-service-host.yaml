@@ -24,6 +24,37 @@ resolutions:
   description: Replace the ServiceHost or IIS hosting with an ASP.NET Core application on .NET 10 (Kestrel) that hosts the service's new endpoints — CoreWCF, REST or gRPC.
   effort: medium
   id: wcf-host-aspnetcore-web-host
+  impact_rules:
+  - action: rewrite
+    filter:
+      extension: .cs
+    from: seed
+    id: host
+    reason: A self-hosted ServiceHost process becomes an ASP.NET Core host (Program.cs with Kestrel)
+    select: self
+  - action: delete
+    filter:
+      extension: .svc
+    from: seed
+    id: svc-activation
+    reason: 'IIS .svc activation is obsolete: the ASP.NET Core host registers the service'
+    select: self
+  - action: create
+    create: ASP.NET Core host entry point (Kestrel) replacing IIS .svc activation
+    for_each: svc-activation
+    id: host-entry-point
+    proposed_path: '{project.dir}/Program.cs'
+  - action: update
+    from: seed
+    id: project
+    reason: Becomes an SDK-style Microsoft.NET.Sdk.Web project on .NET 10
+    traverse: project_file
+  - action: update
+    from: seed
+    id: host-config
+    path: system.serviceModel
+    reason: system.serviceModel hosting configuration moves into the ASP.NET Core host
+    traverse: config_elements
   is_default: true
   linux_compatible: true
   name: ASP.NET Core web host
@@ -37,6 +68,12 @@ resolutions:
   description: Out of scope for the Linux move; the host stays on Windows.
   effort: low
   id: wcf-host-remain-windows-hosted
+  impact_rules:
+  - action: review
+    from: seed
+    id: evidence
+    reason: 'Stays on Windows: nothing structural changes. Listed so the work item stays visible, not to imply edits'
+    select: self
   is_default: false
   linux_compatible: false
   name: Remain Windows-hosted

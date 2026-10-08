@@ -11,7 +11,7 @@ namespace Fingerprinting.TestCoverage.Cli;
 
 /// <summary>
 /// Lifecycle step 8, test-coverage-assessment, phase 1 —
-/// 32-STEP-008-TEST-COVERAGE.md. Two modes, as steps 3 to 6: the
+/// 32-TEST-COVERAGE-ASSESSMENT.md. Two modes, as steps 3 to 6: the
 /// process-adapter envelope (StepContext on stdin, StepResult on stdout), and
 /// a standalone mode for iterating without the engine (no database, no cache).
 ///

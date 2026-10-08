@@ -5,7 +5,7 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 namespace Fingerprinting.Extractors;
 
 /// <summary>
-/// <c>API_INVOCATION</c> signals (21-STEP-003-FINGERPRINTING.md Part D "Signal
+/// <c>API_INVOCATION</c> signals (21-APPLICATION-FINGERPRINTING.md Part D "Signal
 /// types"): uses of specific framework members whose behaviour changes, or
 /// which do not exist, on Linux — plus the hosting calls a containerised
 /// service needs. Signal <c>value</c> is the fully qualified member; one row

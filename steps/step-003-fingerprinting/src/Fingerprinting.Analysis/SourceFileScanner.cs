@@ -8,7 +8,7 @@ namespace Fingerprinting.Analysis;
 /// extractors (Attribute, Inheritance, EntryPoint, and the namespace-using
 /// pass of FrameworkReference) and for step 4's entry-point inventory, so
 /// both steps read exactly the same file set. Excludes generated code and caps the file
-/// count per 21-STEP-003-FINGERPRINTING.md Part G. Never touches semantic
+/// count per 21-APPLICATION-FINGERPRINTING.md Part G. Never touches semantic
 /// analysis — Part A4 keeps that off by default.
 /// </summary>
 public static class SourceFileScanner

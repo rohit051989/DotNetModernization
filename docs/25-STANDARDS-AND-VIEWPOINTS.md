@@ -1,8 +1,8 @@
 # 25 — Standards Conformance & Architecture Viewpoints
 
 Amends `11-STEP-CONTRACT.md`, `02-DATA-MODEL.md`, `10-ENGINE-CONCEPTS.md`,
-`17-LIFECYCLE-STEPS.md`, `21-STEP-003-FINGERPRINTING.md` and
-`24-STEP-004-CLASSIFICATION.md`.
+`17-LIFECYCLE-STEPS.md`, `21-APPLICATION-FINGERPRINTING.md` and
+`24-PATTERN-CLASSIFICATION.md`.
 
 Two changes, in decreasing order of urgency:
 
@@ -84,7 +84,7 @@ preempts the question rather than being caught by it.
 Update `docs/17-LIFECYCLE-STEPS.md` with a viewpoint column, and
 `docs/10-ENGINE-CONCEPTS.md` with the new registration field.
 
-### A3. SARIF export from step 3
+### A3. SARIF export from `application-fingerprinting`
 
 Additive — the native artifact stays. Emit `application-fingerprint.sarif` alongside
 it as a second declared output, `artifact_type: fingerprint-sarif`, version `2.1.0`
@@ -154,7 +154,7 @@ A step emitting SARIF should build both from the same in-memory log — everythi
 except that one field is shared — rather than writing the sibling as a
 post-processing patch over the registered file.
 
-Note in the step 3 README that a colleague contributing an extractor may deliver
+Note in the `application-fingerprinting` README that a colleague contributing an extractor may deliver
 SARIF directly rather than the native signal format, since Roslyn analyzers emit it
 natively — that is the point of adopting it.
 
@@ -181,12 +181,12 @@ populated.
 
 **Fix it at the source, not only in the SARIF writer.** The same `sourcePath` is
 recorded in the native `application-fingerprint` artifact and in
-`fingerprint_signals` — a future consumer of either (step 4's evidence links per
+`fingerprint_signals` — a future consumer of either (`pattern-classification`'s evidence links per
 §20/§24, a "view evidence" UI) would hit the identical bug the SARIF viewer did if
 `evidence_kind` only existed inside the SARIF builder's head. Stamp
 `Signal.evidenceKind` centrally, once, from the registry — the single source of
 truth per signal name — onto every signal in the native artifact
-(`application-fingerprint@1.1.0`, see `21-STEP-003-FINGERPRINTING.md` Part F) and the
+(`application-fingerprint@1.1.0`, see `21-APPLICATION-FINGERPRINTING.md` Part F) and the
 `fingerprint_signals.evidence_kind` column, not just the SARIF projection.
 
 Add a test asserting every `physicalLocation` in the emitted SARIF resolves to a real
@@ -210,9 +210,9 @@ work on making a third-party viewer render this file.
 
 ## Part B — Spec-only changes to unimplemented steps
 
-### B1. Step 7 — context map (the capability gap)
+### B1. `dependency-graph-construction` — context map (the capability gap)
 
-Step 7 currently builds a dependency graph of applications and libraries. Extend its
+`dependency-graph-construction` currently builds a dependency graph of applications and libraries. Extend its
 scope to also produce the **Context viewpoint**: which systems call which, including
 parties outside the estate.
 
@@ -221,39 +221,39 @@ impact, and open question 2 in the architecture document — *"are any WCF endpo
 consumed by external clients who cannot change their contract?"* — is currently
 answered by asking humans in a workshop. Much of it is derivable.
 
-**Second artifact from step 7: `context-map@1.0.0`.**
+**Second artifact from `dependency-graph-construction`: `context-map@1.0.0`.**
 
-Nodes: applications from step 2, plus **external actors** — systems referenced but
+Nodes: applications from `solution-discovery`, plus **external actors** — systems referenced but
 not present in the estate.
 
 Edges typed by integration mechanism: `HTTP_CLIENT`, `SOAP_CLIENT`, `GRPC_CLIENT`,
 `DATABASE`, `MESSAGE_QUEUE`, `FILE_SHARE`, `SCHEDULED_TRIGGER`, `EMAIL`, `UNKNOWN`.
 Each edge carries direction, confidence, and the signals that evidenced it.
 
-**This requires new step 3 signals**, which do not exist in batch 1. Add an
+**This requires new `application-fingerprinting` signals**, which do not exist in batch 1. Add an
 `IntegrationExtractor` to a later extractor batch covering: `HttpClient` and
 `WebClient` base addresses, WCF client proxies and `ChannelFactory` usage, generated
 service reference clients, connection strings pointing at hosts not in the estate,
 `System.Messaging` and `ServiceBus` queue and topic names, SMTP configuration, and
 file share paths.
 
-Until those signals exist, step 7 emits a context map containing internal edges only,
+Until those signals exist, `dependency-graph-construction` emits a context map containing internal edges only,
 with a governance observation naming the missing extractor. Same honesty rule as
 `ssis-package` in the catalog: declare the gap, don't fake the output.
 
 Also emit a **C4 System Context view** from the context map, and a **C4 Container
-view** per wave from step 12. Structurizr DSL is machine-readable and renders without
+view** per wave from `migration-wave-planning`. Structurizr DSL is machine-readable and renders without
 bespoke tooling.
 
-### B2. Step 7 — CycloneDX
+### B2. `dependency-graph-construction` — CycloneDX
 
 Emit the external dependency inventory as CycloneDX alongside the native artifact.
 Often already a client requirement, and free once the data exists.
 
-### B3. Steps 19 and 32 — OpenAPI and WSDL natively
+### B3. `contract-snapshot` and `contract-parity-verification` — OpenAPI and WSDL natively
 
-Step 19 currently specifies "OpenAPI or route table". Make it definite: **emit OpenAPI
-3.1 for REST and WSDL 1.1 for SOAP**, never a proprietary snapshot. Step 32 then diffs
+`contract-snapshot` currently specifies "OpenAPI or route table". Make it definite: **emit OpenAPI
+3.1 for REST and WSDL 1.1 for SOAP**, never a proprietary snapshot. `contract-parity-verification` then diffs
 standard artifacts, which means the diff can be done with existing tooling and the
 result is meaningful to a client architect without explanation.
 
@@ -273,7 +273,7 @@ cross-industry, BIAN for banking, eTOM for telecom.
 If capability mapping is later required, the approach is: adopt an external reference
 taxonomy rather than inventing one, and treat code-to-capability mapping as
 LLM-proposed and human-validated. That is the one place in this pipeline where an LLM
-genuinely earns its keep, and it is what the reserved `S` in steps 3 and 4 owner codes
+genuinely earns its keep, and it is what the reserved `S` in the `application-fingerprinting` and `pattern-classification` owner codes
 anticipates. It stays out of the deterministic path.
 
 ---
@@ -305,7 +305,7 @@ implement — with reasons — reads as judgement rather than ignorance.
 - [ ] `viewpoint` added to step registrations and populated for all 51 steps
 - [ ] `GET /api/engagements/{eid}/viewpoint-coverage` returns per-viewpoint coverage
       labels, surfaced in Workflow Administration and the dashboard
-- [ ] Step 3 emits `fingerprint-sarif@2.1.0` as a second output, validating against
+- [ ] `application-fingerprinting` emits `fingerprint-sarif@2.1.0` as a second output, validating against
       the SARIF 2.1.0 schema before write
 - [ ] Two runs produce identical SARIF checksums
 - [ ] Every location carries `uriBaseId: "REPOROOT"`; the registered file declares
@@ -319,5 +319,6 @@ implement — with reasons — reads as judgement rather than ignorance.
       only computed inside the SARIF builder
 - [ ] A test asserts every emitted `physicalLocation` resolves to a real file on
       disk (never a directory, never a missing path), run against a real repository
-- [ ] Specs 19, 32 and the step 7 entry in docs/17 updated per Part B
+- [ ] The `contract-snapshot` and `contract-parity-verification` specs and the
+      `dependency-graph-construction` entry in docs/17 updated per Part B
 - [ ] `docs/17-LIFECYCLE-STEPS.md` gains a viewpoint column

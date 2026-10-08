@@ -1,4 +1,4 @@
-"""The Surface section's inbound read — 29-STEPS-004-005-INVENTORIES.md Parts B4
+"""The Surface section's inbound read — 29-ENTRY-POINT-AND-OUTBOUND-INVENTORIES.md Parts B4
 and D.
 
 stdlib unittest; every test runs in one rolled-back transaction, so nothing

@@ -5,7 +5,7 @@ namespace Fingerprinting.Extractors;
 
 /// <summary>
 /// Evidence carries a hash of a source snippet, never the snippet itself
-/// (21-STEP-003-FINGERPRINTING.md Part G) — snippets risk carrying secrets
+/// (21-APPLICATION-FINGERPRINTING.md Part G) — snippets risk carrying secrets
 /// and inflate storage; a hash still lets a consumer detect change between
 /// scans.
 /// </summary>

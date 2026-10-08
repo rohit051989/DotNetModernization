@@ -1,5 +1,5 @@
 """Response shapes for the repository page's Tests section —
-32-STEP-008-TEST-COVERAGE.md Part K, phase 1."""
+32-TEST-COVERAGE-ASSESSMENT.md Part K, phase 1."""
 
 import datetime
 from typing import Literal

@@ -1,16 +1,16 @@
-# 27 — Step 6: Pattern Validation
+# 27 — `pattern-validation`: Pattern Validation
 
-> **Superseded by [28-ITEM-AND-CONVERSION-MODEL.md](28-ITEM-AND-CONVERSION-MODEL.md).** Kept as history; do not build from it. Pattern validation is no longer a gate; the validation_queue infrastructure it introduced is kept for lifecycle steps 17, 24 and 34.
+> **Superseded by [28-ITEM-AND-CONVERSION-MODEL.md](28-ITEM-AND-CONVERSION-MODEL.md).** Kept as history; do not build from it. Pattern validation is no longer a gate; the validation_queue infrastructure it introduced is kept for the lifecycle steps `plan-approval-gate`, `code-review` and `release-approval`.
 
-Lifecycle step 6. Owner: **H**. Job: `phase0-estate-consolidation`, after step 5.
+Lifecycle step `pattern-validation`. Owner: **H**. Job: `phase0-estate-consolidation`, after `pattern-discovery-clustering`.
 
 A human decides what each candidate cluster is: a new catalog pattern, an extension of
 an existing one, or out of scope.
 
 **This is the platform's first genuine human gate**, and the machinery it establishes —
-`AWAITING_APPROVAL`, the validation queue, resume-by-approval — is inherited by steps
-22 (plan approval), 38 (code review) and 50 (release approval). Build it as shared
-infrastructure with step 6 as its first consumer, not as a one-off.
+`AWAITING_APPROVAL`, the validation queue, resume-by-approval — is inherited by
+`plan-approval-gate`, `code-review` and `release-approval`. Build it as shared
+infrastructure with `pattern-validation` as its first consumer, not as a one-off.
 
 ---
 
@@ -31,7 +31,7 @@ So a gate step **ends its execution cleanly** rather than waiting:
 5. On resume the step re-evaluates: all items decided → `COMPLETED`; some still open →
    `AWAITING_APPROVAL` again
 
-Step 5 in the same job is `COMPLETED` and carried forward, so a resume does not
+`pattern-discovery-clustering` in the same job is `COMPLETED` and carried forward, so a resume does not
 re-cluster. That property already exists in the runtime and this is its first real use.
 
 ### Generic queue, typed payloads
@@ -41,7 +41,7 @@ lifecycle — open, decided, expired, superseded — does not.
 
 Resisting a per-step queue matters. Four bespoke queues means four notification paths,
 four "what is waiting on me" views, and four sets of bugs. One queue with typed
-payloads means step 22 inherits a working surface.
+payloads means `plan-approval-gate` inherits a working surface.
 
 ---
 
@@ -79,7 +79,7 @@ superseded and a new one raised, so the stale question is not answered by accide
 **`withdrawn`** covers the subject disappearing entirely, such as a cluster whose
 members all vanished.
 
-### Step 6 payload
+### `pattern-validation` payload
 
 ```json
 {
@@ -224,8 +224,8 @@ restart:
   start_limit: 20
 ```
 
-Both inputs `optional: true` — this is what makes step 5 genuinely skippable. With
-step 5 stubbed or disabled by policy, step 6 finds no clusters and returns `NOOP`.
+Both inputs `optional: true` — this is what makes `pattern-discovery-clustering` genuinely skippable. With
+`pattern-discovery-clustering` stubbed or disabled by policy, `pattern-validation` finds no clusters and returns `NOOP`.
 
 That required a runtime change, because `optional` was honoured only by the *validator*
 (rule 9 lets an optional entry go unwired) and ignored by the resolver: a wired input
@@ -235,9 +235,9 @@ cannot survive its producer being stubbed is not optional. The resolver now omit
 "we looked for it and it was not there" is exactly the evidence docs/20 Part A wants
 visible, and is very different from the input never having been wired.
 
-Step 6 reads cluster *state* from the database rather than from the artifact, because
+`pattern-validation` reads cluster *state* from the database rather than from the artifact, because
 status, `needs_rereview` and `is_stale` are authoritative there and the artifact is a
-snapshot. The artifact's absence is the signal that step 5 did not run; the absence of
+snapshot. The artifact's absence is the signal that `pattern-discovery-clustering` did not run; the absence of
 clusters is what makes the step a `NOOP`. Both can be true at once, and a run where the
 artifact is absent but clusters remain from an earlier run still applies any decisions
 made in the meantime.
@@ -245,7 +245,7 @@ made in the meantime.
 `allow_start_if_complete: true` with a high `start_limit`: a gate may be resumed many
 times as decisions trickle in.
 
-In-process `python` adapter, unlike steps 2, 4 and 5 — it reads and writes platform
+In-process `python` adapter, unlike `solution-discovery`, `pattern-classification` and `pattern-discovery-clustering` — it reads and writes platform
 tables and does no analysis, so a separate process buys nothing.
 
 **A gate step runs inside the engine's transaction.** It writes `validation_queue` rows
@@ -261,7 +261,7 @@ boundary, and committing mid-job would publish a partially-run execution. It is 
 better semantics: if a later step fails, the questions this step raised roll back with
 it, rather than stranding a queue pointing at an execution nobody can see.
 
-This applies to steps 22, 38 and 50 equally — every gate raises items keyed to its own
+This applies to `plan-approval-gate`, `code-review` and `release-approval` equally — every gate raises items keyed to its own
 execution.
 
 ### Execution logic
@@ -285,7 +285,7 @@ execution.
    Otherwise                                        → COMPLETED
 ```
 
-Step 6 **applies** decisions to the cluster table rather than the UI writing them
+`pattern-validation` **applies** decisions to the cluster table rather than the UI writing them
 directly. The queue records the human's answer; the step is what acts on it. That keeps
 the decision auditable to a specific job execution and means a decision made while no
 execution is running is picked up on the next resume.
@@ -313,7 +313,7 @@ POST  /api/validation-queue/{id}/defer            { until_coverage, until_member
 GET   /api/engagements/{eid}/validation-queue/summary
 ```
 
-Step 6 specific:
+`pattern-validation` specific:
 
 ```
 POST /api/engagements/{eid}/pattern-candidates/{cluster_id}/create-pattern
@@ -337,7 +337,7 @@ Two surfaces, because two different people need them.
 ### Pending approvals — Workflow tab
 
 The cross-cutting queue. Every open item across all gate types, grouped by step, with
-item type, title, age, priority, and the job execution it blocks. Steps 22, 38 and 50
+item type, title, age, priority, and the job execution it blocks. `plan-approval-gate`, `code-review` and `release-approval`
 appear here later with no further work.
 
 An execution in `STOPPED / AWAITING_APPROVAL` shows how many items block it and links
@@ -345,7 +345,7 @@ through.
 
 ### Pattern Candidates tab
 
-Extend the existing tab from the step 5 work with decision actions.
+Extend the existing tab from the `pattern-discovery-clustering` work with decision actions.
 
 Per cluster card: suggested name with its `suggested · confidence` badge, or
 "Unnamed shape" with the signature; member and repository counts with the distribution;
@@ -375,7 +375,7 @@ Pending approvals sits **above** the jobs list on the Workflow tab, not below th
 execution history: a held gate is the one thing on that page that needs a person, and
 burying it is how it gets missed at fleet scale. Its labels cover all five gate item
 types, including the three whose steps do not exist yet — a label table that only knew
-about step 6 would quietly undo Part A's "steps 22, 38 and 50 appear here with no
+about `pattern-validation` would quietly undo Part A's "`plan-approval-gate`, `code-review` and `release-approval` appear here with no
 further work".
 
 The merge-target selector excludes `PROJECT_ROLE` and deprecated patterns. A discovered
@@ -394,19 +394,19 @@ that silently updated to current coverage would misrepresent what was being deci
 
 - [x] `validation_queue` is generic across item types, with the partial unique index
       on open items
-- [x] Step 6 returns `AWAITING_APPROVAL` with open items; execution ends `STOPPED`
-- [x] Resume creates a new execution; step 5 is carried forward and does not re-cluster
+- [x] `pattern-validation` returns `AWAITING_APPROVAL` with open items; execution ends `STOPPED`
+- [x] Resume creates a new execution; `pattern-discovery-clustering` is carried forward and does not re-cluster
 - [x] All items decided → resume completes the step
 - [x] Some items decided → resume returns `AWAITING_APPROVAL` again
-- [x] Both inputs optional: with step 5 stubbed, step 6 returns `NOOP`
-- [x] With step 5 disabled by engagement policy, step 6 still returns `NOOP` — step 5
+- [x] Both inputs optional: with `pattern-discovery-clustering` stubbed, `pattern-validation` returns `NOOP`
+- [x] With `pattern-discovery-clustering` disabled by engagement policy, `pattern-validation` still returns `NOOP` — `pattern-discovery-clustering`
       records `SKIPPED` with `skip_reason: POLICY_DISABLED_ENGAGEMENT`
 - [x] `create_pattern` pre-populates the rule builder with anchors ranked by rarity,
       an `all` group of universal signals, weighted supporting signals, and
       `rules_status: draft`
 - [x] A created pattern is never auto-activated
 - [x] Re-running classification after creating a pattern captures its cluster, with no
-      repository rescan — demonstrated end to end: draft → persist → promote → step 4
+      repository rescan — demonstrated end to end: draft → persist → promote → `pattern-classification`
       alone → the cluster's member matched the new pattern
 - [x] `merge_into_pattern` marks the cluster merged and produces a rule diff **without**
       modifying the target pattern

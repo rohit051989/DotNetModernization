@@ -5,7 +5,7 @@ using NpgsqlTypes;
 namespace Fingerprinting.EntryPoints.Cli;
 
 /// <summary>
-/// Npgsql persistence for 29-STEPS-004-005-INVENTORIES.md Part B4:
+/// Npgsql persistence for 29-ENTRY-POINT-AND-OUTBOUND-INVENTORIES.md Part B4:
 /// <c>entry_points</c>, one row per entry point, plus
 /// <c>entry_point_scans</c>, one row per repository carrying the summaries
 /// (the per-project counts, global authorisation and conventional route

@@ -9,7 +9,7 @@ using Xunit;
 
 namespace Fingerprinting.Tests;
 
-/// <summary>Step 6, dependency-assessment — 30-STEP-006-DEPENDENCY-ASSESSMENT.md.
+/// <summary>Step 6, dependency-assessment — 30-DEPENDENCY-ASSESSMENT.md.
 /// Offline: feeds are local folders of packages built here, their assemblies
 /// compiled with Roslyn, so the API diff runs against real metadata.</summary>
 public sealed class DependencyAssessmentTests : IDisposable

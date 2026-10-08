@@ -2,6 +2,7 @@ import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import { getEstate, putEndpointAnnotation, putEstateSettings } from '../api/estate'
 import { launchJob } from '../api/workflow'
 import { useToast } from '../components/Toast'
+import { EstateRuleConflictsView } from './RuleConflictsViews'
 import type {
   ContextMapArtifact,
   ConversationStatus,
@@ -17,11 +18,11 @@ import type {
   RegisterHost,
 } from '../types/estate'
 
-// The Estate tab — lifecycle step 11, 31-STEP-011-ESTATE-DEPENDENCY-MAP.md
+// The Estate tab — lifecycle step 11, 31-DEPENDENCY-AND-CONTEXT-MAP.md
 // Part H. Five views over the newest run's artifacts; coverage on each, since
 // a register built from part of the estate is provisional.
 
-type View = 'register' | 'integration' | 'packages' | 'dependencies' | 'context'
+type View = 'register' | 'integration' | 'packages' | 'dependencies' | 'context' | 'rule-conflicts'
 
 const VIEWS: { key: View; label: string }[] = [
   { key: 'register', label: 'Endpoint register' },
@@ -29,6 +30,7 @@ const VIEWS: { key: View; label: string }[] = [
   { key: 'packages', label: 'Packages' },
   { key: 'dependencies', label: 'Dependencies' },
   { key: 'context', label: 'Context' },
+  { key: 'rule-conflicts', label: 'Catalog rule conflicts' },
 ]
 
 const STATUS_LABEL: Record<ConversationStatus, string> = {
@@ -115,7 +117,7 @@ export function EstatePage({ engagementId, onOpenRepository }: { engagementId: s
         <div className="min-w-0">
           <h2 className="text-xl font-semibold text-neutral-900">Estate</h2>
           <p className="text-sm text-neutral-500">
-            Across every repository in the engagement: who the estate calls, which upgrades recur, and what depends on what (lifecycle step 11).
+            Across every repository in the engagement: who the estate calls, which upgrades recur, and what depends on what (dependency-and-context-map).
           </p>
           {estate?.run && (
             <p className="text-xs text-neutral-400">
@@ -176,6 +178,7 @@ export function EstatePage({ engagementId, onOpenRepository }: { engagementId: s
           {view === 'packages' && estate.artifacts['package-estate'] && <PackagesView data={estate.artifacts['package-estate']} />}
           {view === 'dependencies' && estate.artifacts['dependency-graph'] && <DependenciesView data={estate.artifacts['dependency-graph']} />}
           {view === 'context' && estate.artifacts['context-map'] && <ContextView data={estate.artifacts['context-map']} />}
+          {view === 'rule-conflicts' && <EstateRuleConflictsView engagementId={engagementId} onOpenRepository={onOpenRepository} />}
         </>
       )}
     </div>

@@ -1,32 +1,32 @@
-# Step 3 — Application Fingerprinting
+# `application-fingerprinting` — Application Fingerprinting
 
 ## 1. Purpose
 
-Step 3 creates a detailed, evidence-backed technical fingerprint for each project or application candidate discovered in Step 2.
+`application-fingerprinting` creates a detailed, evidence-backed technical fingerprint for each project or application candidate discovered in `solution-discovery`.
 
-Step 2 answers:
+`solution-discovery` answers:
 
 > What solutions and projects exist in each repository?
 
-Step 3 answers:
+`application-fingerprinting` answers:
 
 > What technical characteristics does each discovered project exhibit?
 
-Step 3 should not assign the final application pattern. It should extract, normalize, and structure the technical evidence that will later be evaluated against the pattern catalog in Step 4.
+`application-fingerprinting` should not assign the final application pattern. It should extract, normalize, and structure the technical evidence that will later be evaluated against the pattern catalog in `pattern-classification`.
 
 ```text
-Step 2 — Solution and Project Discovery
+solution-discovery — Solution and Project Discovery
         ↓
-Step 3 — Application Fingerprinting
+application-fingerprinting — Application Fingerprinting
         ↓
-Step 4 — Pattern Classification Against Catalog
+pattern-classification — Pattern Classification Against Catalog
         ↓
-Step 5 — Pattern Discovery and Clustering for Unmatched Applications
+pattern-discovery-clustering — Pattern Discovery and Clustering for Unmatched Applications
 ```
 
 ---
 
-## 2. Step 3 Objective
+## 2. `application-fingerprinting` Objective
 
 For every discovered project or application candidate, generate a structured fingerprint containing:
 
@@ -67,7 +67,7 @@ Observed fingerprint:
 - IIS hosting indicators are present
 ```
 
-Step 4 may later classify this fingerprint as:
+`pattern-classification` may later classify this fingerprint as:
 
 ```text
 Pattern: WCF Service hosted in IIS
@@ -76,11 +76,11 @@ Confidence: 96%
 
 ---
 
-# Part A — What Step 3 Should Contain
+# Part A — What `application-fingerprinting` Should Contain
 
-## 3. Input from Step 2
+## 3. Input from `solution-discovery`
 
-Step 3 should consume the structural inventory produced in Step 2.
+`application-fingerprinting` should consume the structural inventory produced in `solution-discovery`.
 
 Typical input fields include:
 
@@ -96,9 +96,9 @@ Typical input fields include:
 - Project references
 - Configuration-file locations
 - Supporting artifact locations
-- Step 2 scan status and warnings
+- `solution-discovery` scan status and warnings
 
-Step 3 should normally execute at project level while retaining repository and solution context.
+`application-fingerprinting` should normally execute at project level while retaining repository and solution context.
 
 ```text
 Repository
@@ -167,7 +167,7 @@ Suggested fields:
 | Occurrence Count | Number of occurrences |
 | Extraction Confidence | Confidence in the extracted fact |
 
-Step 3 records a signal such as `Uses System.ServiceModel`; it does not yet conclude that the project is a WCF Service.
+`application-fingerprinting` records a signal such as `Uses System.ServiceModel`; it does not yet conclude that the project is a WCF Service.
 
 ---
 
@@ -289,7 +289,7 @@ Functions/
 
 Capture the indicator type, relative path, count, owning project, and extraction source.
 
-These remain signals. Step 4 performs the interpretation.
+These remain signals. `pattern-classification` performs the interpretation.
 
 ---
 
@@ -350,7 +350,7 @@ Capture queue names, topic names, Service Bus configuration, RabbitMQ configurat
 
 ## 9. Endpoint Fingerprint
 
-Step 3 should identify endpoint-related evidence without assigning a final application pattern.
+`application-fingerprinting` should identify endpoint-related evidence without assigning a final application pattern.
 
 | Indicator | Example |
 |---|---|
@@ -612,7 +612,7 @@ DEPLOYMENT_SCRIPT
 SOLUTION_METADATA
 ```
 
-Evidence is required because Step 4 must be able to explain why a pattern matched.
+Evidence is required because `pattern-classification` must be able to explain why a pattern matched.
 
 ---
 
@@ -744,11 +744,11 @@ A partial fingerprint should remain usable.
 }
 ```
 
-The output must not yet contain an `applicationPattern` field. That belongs to Step 4.
+The output must not yet contain an `applicationPattern` field. That belongs to `pattern-classification`.
 
 ---
 
-## 22. Dashboard Views for Step 3
+## 22. Dashboard Views for `application-fingerprinting`
 
 ### 22.1 Fingerprinting Coverage
 
@@ -774,7 +774,7 @@ Correct:
 Projects containing WCF-related signals: 145
 ```
 
-Incorrect for Step 3:
+Incorrect for `application-fingerprinting`:
 
 ```text
 WCF applications: 145
@@ -802,9 +802,9 @@ Project Fingerprint
 
 ---
 
-## 23. Out of Scope for Step 3
+## 23. Out of Scope for `application-fingerprinting`
 
-The following remain outside Step 3:
+The following remain outside `application-fingerprinting`:
 
 - Final application-pattern assignment
 - WCF, REST, batch, web, or desktop classification
@@ -820,13 +820,13 @@ The following remain outside Step 3:
 - Migration-wave planning
 - Cloud-readiness assessment
 
-These belong to Steps 4 and 5.
+These belong to `pattern-classification` and `pattern-discovery-clustering`.
 
 ---
 
-## 24. Boundary Between Step 3 and Step 4
+## 24. Boundary Between `application-fingerprinting` and `pattern-classification`
 
-| Step 3 — Fingerprinting | Step 4 — Classification |
+| `application-fingerprinting` — Fingerprinting | `pattern-classification` — Classification |
 |---|---|
 | Detect `.svc` files | Classify as WCF Service |
 | Detect `ApiController` | Classify as REST API |
@@ -837,7 +837,7 @@ These belong to Steps 4 and 5.
 | Detect `ServiceContract` attributes | Apply WCF catalog rule |
 | Detect controller routes | Apply REST application rule |
 
-Step 3 captures facts. Step 4 interprets those facts against the catalog.
+`application-fingerprinting` captures facts. `pattern-classification` interprets those facts against the catalog.
 
 ---
 
@@ -855,9 +855,9 @@ Primary tools:  MSBuild APIs and Roslyn
 Output:         Versioned JSON
 ```
 
-Step 2 can remain in Python. Step 3 can be independently implemented in .NET because the architecture is decoupled.
+`solution-discovery` can remain in Python. `application-fingerprinting` can be independently implemented in .NET because the architecture is decoupled.
 
-Use .NET for Step 3 because it provides native support for Visual Studio solutions, MSBuild projects, C# and VB.NET syntax, semantic symbol resolution, base-class and interface resolution, attribute resolution, and cross-project compilation context.
+Use .NET for `application-fingerprinting` because it provides native support for Visual Studio solutions, MSBuild projects, C# and VB.NET syntax, semantic symbol resolution, base-class and interface resolution, attribute resolution, and cross-project compilation context.
 
 ---
 
@@ -1050,7 +1050,7 @@ Each extractor should produce signals and evidence, not final classifications.
 
 ## 31. Separate Fingerprint Extraction from Pattern Classification
 
-Do not implement Step 4 logic inside Step 3.
+Do not implement `pattern-classification` logic inside `application-fingerprinting`.
 
 Avoid:
 
@@ -1061,7 +1061,7 @@ if (hasSvcFile && hasServiceContract)
 }
 ```
 
-Instead, Step 3 should produce signals:
+Instead, `application-fingerprinting` should produce signals:
 
 ```json
 {
@@ -1074,9 +1074,9 @@ Instead, Step 3 should produce signals:
 }
 ```
 
-Step 4 may later apply configurable rules.
+`pattern-classification` may later apply configurable rules.
 
-This separation enables reusable fingerprints, reclassification without rescanning, explainability, configurable catalogs, and Step 5 clustering.
+This separation enables reusable fingerprints, reclassification without rescanning, explainability, configurable catalogs, and `pattern-discovery-clustering`.
 
 ---
 
@@ -1217,37 +1217,37 @@ Important scenarios:
 | Inventory Database | PostgreSQL |
 | API | ASP.NET Core Web API |
 | Dashboard | Existing dashboard technology |
-| Step 5 Clustering | Python |
+| `pattern-discovery-clustering` | Python |
 
 ---
 
 ## 37. Role of Python
 
-Python can remain the implementation language for Step 2.
+Python can remain the implementation language for `solution-discovery`.
 
 ```text
-Step 2:
+solution-discovery:
 Python
 - Repository scanning
 - Solution and project discovery
 - Structural inventory
 - Initial metadata extraction
 
-Step 3:
+application-fingerprinting:
 C# and .NET
 - MSBuild evaluation
 - Roslyn syntax analysis
 - Roslyn semantic analysis
 - Technical fingerprint extraction
 
-Step 4:
+pattern-classification:
 Configurable classification engine
 
-Step 5:
+pattern-discovery-clustering:
 Python-based clustering and pattern discovery
 ```
 
-There is no need to rewrite Step 2 in .NET merely for language consistency.
+There is no need to rewrite `solution-discovery` in .NET merely for language consistency.
 
 ---
 
@@ -1256,7 +1256,7 @@ There is no need to rewrite Step 2 in .NET merely for language consistency.
 1. **Partial success over total failure** — a broken legacy project should still produce a useful partial fingerprint.
 2. **Evidence for every meaningful signal** — every signal should identify where and how it was extracted.
 3. **Syntax analysis must work without compilation** — semantic analysis improves accuracy but is not mandatory.
-4. **No classification inside fingerprint extraction** — Step 3 extracts facts; Step 4 assigns patterns.
+4. **No classification inside fingerprint extraction** — `application-fingerprinting` extracts facts; `pattern-classification` assigns patterns.
 5. **Version every schema and scanner output** — fingerprints must remain comparable and reprocessable.
 6. **Preserve raw and evaluated values** — MSBuild-evaluated metadata should not silently erase raw values.
 7. **Avoid storing secrets** — credentials, tokens, and sensitive configuration must be excluded or masked.
@@ -1266,10 +1266,10 @@ There is no need to rewrite Step 2 in .NET merely for language consistency.
 
 ---
 
-# Step 3 Outcome
+# `application-fingerprinting` Outcome
 
 > For every discovered project or application candidate, generate a normalized, versioned, and evidence-backed technical fingerprint describing its framework usage, source constructs, configuration, endpoints, execution model, hosting, integrations, data access, scheduling, testing, and deployment indicators, without yet assigning a final application pattern.
 
 ## Recommended Technical Direction
 
-> Implement Step 3 as a modular C#/.NET scanner using MSBuild for project evaluation, Roslyn for syntax and semantic analysis, structured configuration parsers for XML/JSON/YAML, layered fallbacks for non-buildable legacy applications, and a versioned JSON Schema for the final fingerprint output.
+> Implement `application-fingerprinting` as a modular C#/.NET scanner using MSBuild for project evaluation, Roslyn for syntax and semantic analysis, structured configuration parsers for XML/JSON/YAML, layered fallbacks for non-buildable legacy applications, and a versioned JSON Schema for the final fingerprint output.

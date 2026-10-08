@@ -1,4 +1,4 @@
-"""Lifecycle step 11's analysis — 31-STEP-011-ESTATE-DEPENDENCY-MAP.md. Pure
+"""Lifecycle step 11's analysis — 31-DEPENDENCY-AND-CONTEXT-MAP.md. Pure
 functions over plain rows, so no database: each test builds the rows it needs."""
 
 import json

@@ -10,7 +10,7 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 namespace Fingerprinting.Extractors;
 
 /// <summary>
-/// <c>LITERAL</c> signals (21-STEP-003-FINGERPRINTING.md Part D "Signal
+/// <c>LITERAL</c> signals (21-APPLICATION-FINGERPRINTING.md Part D "Signal
 /// types"): Windows drive-letter and UNC path literals in C# source and in
 /// configuration values. Each distinct matched value is its own row, and each
 /// evidence entry carries <see cref="Evidence.MatchedValue"/>.

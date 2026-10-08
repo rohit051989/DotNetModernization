@@ -1,5 +1,5 @@
 """Supporting-file discovery — presence only, no content interpretation.
-See 19-STEP-002-SOLUTION-DISCOVERY.md Part C (`repository_artifacts`).
+See 19-SOLUTION-DISCOVERY.md Part C (`repository_artifacts`).
 
 The step 2 requirements document (referenced but not present in this
 checkout) is the authority on the exact category/pattern mapping; the table

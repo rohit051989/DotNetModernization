@@ -17,7 +17,7 @@
 # Part G). The registry file bumps in the same change that ships the code.
 #
 # API_INVOCATION and LITERAL are the two signal types added to the step 3
-# contract for findings like these (21-STEP-003-FINGERPRINTING.md Part D
+# contract for findings like these (21-APPLICATION-FINGERPRINTING.md Part D
 # "Signal types", application-fingerprint@1.2.0).
 
 #

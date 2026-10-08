@@ -1,5 +1,5 @@
 """Project file (`*proj`) discovery and MSBuild XML parsing. See
-19-STEP-002-SOLUTION-DISCOVERY.md Parts D and F.
+19-SOLUTION-DISCOVERY.md Parts D and F.
 
 MSBuild XML is read for declared values only — conditions are never
 evaluated and arbitrary `.props`/`.targets` imports are not followed. That is

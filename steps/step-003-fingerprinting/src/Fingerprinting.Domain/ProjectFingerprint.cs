@@ -2,7 +2,7 @@ namespace Fingerprinting.Domain;
 
 /// <summary>
 /// One project's fingerprint within the artifact — see
-/// 21-STEP-003-FINGERPRINTING.md Part F. One row per project row from step 2;
+/// 21-APPLICATION-FINGERPRINTING.md Part F. One row per project row from step 2;
 /// no aggregation, no judgement about which projects are applications
 /// (Part C).
 /// </summary>

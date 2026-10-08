@@ -1,18 +1,18 @@
-# Step 3 — Application Fingerprinting
+# `application-fingerprinting` — Application Fingerprinting
 
-Lifecycle step 3. See `docs/21-STEP-003-FINGERPRINTING.md` and
+Lifecycle step `application-fingerprinting`. See `docs/21-APPLICATION-FINGERPRINTING.md` and
 `docs/25-STANDARDS-AND-VIEWPOINTS.md` Part A3.
 
 Standalone by design: invoked by the platform's `process` adapter, but this
 directory has no dependency on `backend/app` — it is a separate deliverable
 that happens to live in the same repository. Written in C# because it does
 real Roslyn syntax analysis (`Microsoft.CodeAnalysis`) and MSBuild-adjacent
-project parsing, unlike step 2's lightweight Python XML parsing.
+project parsing, unlike `solution-discovery`'s lightweight Python XML parsing.
 
 ## Solution layout
 
-This solution also builds **step 4, entry-point-inventory**
-(`docs/29-STEPS-004-005-INVENTORIES.md` Part B) — see the section at the end.
+This solution also builds **`entry-point-inventory`**
+(`docs/29-ENTRY-POINT-AND-OUTBOUND-INVENTORIES.md` Part B) — see the section at the end.
 The steps share libraries, never a contract: each has its own exe,
 registration, artifact and tables.
 
@@ -20,15 +20,17 @@ registration, artifact and tables.
 |---|---|---|
 | `Fingerprinting.Domain` | Artifact records, `DeterministicJson` (sorted keys, LF line endings) | both |
 | `Fingerprinting.Analysis` | `FileSystemWalk`, `SourceFileScanner` (generated-code exclusion, file cap, Roslyn syntax parse), `RoslynNameHelpers` | both |
-| `Fingerprinting.StepHost` | `StepBootstrap` (MSBuildLocator first, stdout guard, invariant culture), `StepEnvelopeRunner`, the StepContext/StepResult envelope, artifact URIs and checksums, the schema gate, step 2's inventory model, `PlatformDatabase` | both |
-| `Fingerprinting.Extractors` / `Fingerprinting.Cli` | Step 3's extractors and exe | step 3 |
-| `Fingerprinting.EntryPoints` / `Fingerprinting.EntryPoints.Cli` | Step 4's detectors, route composition and exe | step 4 |
+| `Fingerprinting.StepHost` | `StepBootstrap` (MSBuildLocator first, stdout guard, invariant culture), `StepEnvelopeRunner`, the StepContext/StepResult envelope, artifact URIs and checksums, the schema gate, `solution-discovery`'s inventory model, `PlatformDatabase` | both |
+| `Fingerprinting.Extractors` / `Fingerprinting.Cli` | `application-fingerprinting`'s extractors and exe | `application-fingerprinting` |
+| `Fingerprinting.EntryPoints` / `Fingerprinting.EntryPoints.Cli` | `entry-point-inventory`'s detectors, route composition and exe | `entry-point-inventory` |
+| `Fingerprinting.Impact` / `Fingerprinting.Impact.Cli` | `impact-analysis`'s code index, impact-rule engine, rollup and exe (`docs/33-IMPACT-ANALYSIS.md`) | `impact-analysis` |
 
 ## Build
 
 ```powershell
 dotnet publish src/Fingerprinting.Cli -c Release -o publish
 dotnet publish src/Fingerprinting.EntryPoints.Cli -c Release -o publish/entry-point-inventory
+dotnet publish src/Fingerprinting.Impact.Cli -c Release -o publish/impact-analysis
 ```
 
 `publish/Fingerprinting.Cli.exe` is what `wf_step_registrations.adapter_config`
@@ -37,7 +39,7 @@ runs the published exe, not `dotnet run`.
 
 ## Run standalone
 
-Reads a repository directly and step 2's `solution-project-inventory.json`,
+Reads a repository directly and `solution-discovery`'s `solution-project-inventory.json`,
 skipping the database and the `StepContext`/`StepResult` envelope entirely —
 useful for iterating on an extractor without the engine:
 
@@ -50,7 +52,7 @@ useful for iterating on an extractor without the engine:
 The normal path: a `StepContext` JSON object (see `docs/11-STEP-CONTRACT.md`)
 on stdin, a `StepResult` JSON object on stdout, nothing else on stdout.
 Requires `inputs.solution-project-inventory` and a `database_url` — unlike
-step 2, step 3 has no other source for the repository's `local_path` or for
+`solution-discovery`, `application-fingerprinting` has no other source for the repository's `local_path` or for
 project ids, so `database_url` is not optional here.
 
 ## Outputs
@@ -96,7 +98,7 @@ fragment directly instead of translating into the native `Signal` shape —
 Roslyn analyzers emit SARIF natively, and that's the actual reason this step
 adopted the format rather than inventing another proprietary one. Ask before
 doing this for a first extractor; the fragment still needs to fold into the
-per-project native artifact so pattern classification (step 4) keeps working
+per-project native artifact so `pattern-classification` keeps working
 unchanged.
 
 ## Tests
@@ -105,12 +107,12 @@ unchanged.
 dotnet test tests/Fingerprinting.Tests
 ```
 
-## Step 4 — entry-point-inventory
+## `entry-point-inventory`
 
 What can call each application: HTTP controller actions and minimal APIs
 (with composed routes), WCF operations, ASMX web methods, gRPC and SignalR
 methods, message consumers, hosted services, scheduled jobs, console mains
-and WebForms pages. Syntax only, like step 3; everything below 1.0
+and WebForms pages. Syntax only, like `application-fingerprinting`; everything below 1.0
 confidence says why. Entirely deterministic — no model is called.
 
 Capability manifest: `schemas/entry-point-capabilities-1.0.0.json` — every kind
@@ -137,6 +139,6 @@ makes the output byte-identical to an engine run):
 .\publish\entry-point-inventory\EntryPointInventory.Cli.exe --repo <repository-root> --inventory <solution-project-inventory.json> --fingerprint <application-fingerprint.json> --out <output-dir>
 ```
 
-`--fingerprint` is optional; without it projects are skipped by step 2's
-out-of-scope rule instead of step 3's verdict.
+`--fingerprint` is optional; without it projects are skipped by `solution-discovery`'s
+out-of-scope rule instead of `application-fingerprinting`'s verdict.
 

@@ -1,4 +1,4 @@
-"""The repository page's Tests section — 32-STEP-008-TEST-COVERAGE.md
+"""The repository page's Tests section — 32-TEST-COVERAGE-ASSESSMENT.md
 Part K, phase 1.
 
 Rows come from the tables step 8 writes (test_classes, test_mappings,
@@ -31,7 +31,7 @@ from app.test_coverage.schemas import (
 router = APIRouter(prefix="/api", tags=["Test Coverage"])
 
 PHASE_1_EXECUTION = (
-    "No test is executed: execution is phase 3 of step 8 (32-STEP-008 Part F), behind two keys and opt-in per engagement. "
+    "No test is executed: execution is phase 3 of step 8 (32-TEST-COVERAGE-ASSESSMENT Part F), behind two keys and opt-in per engagement. "
     "Coverage comes only from existing reports."
 )
 

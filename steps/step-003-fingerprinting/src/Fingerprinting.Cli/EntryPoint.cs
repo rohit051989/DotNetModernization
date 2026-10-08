@@ -249,7 +249,7 @@ public static class EntryPoint
 
     /// <summary>Every registered extractor, in the order they run — order is
     /// otherwise immaterial since FingerprintPipeline sorts signals centrally
-    /// after collection (21-STEP-003-FINGERPRINTING.md Part B rule 2).</summary>
+    /// after collection (21-APPLICATION-FINGERPRINTING.md Part B rule 2).</summary>
     private static IReadOnlyList<IFingerprintExtractor> Extractors() =>
     [
         new FileIndicatorExtractor(),

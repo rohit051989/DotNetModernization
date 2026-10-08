@@ -5,7 +5,7 @@ using Xunit;
 namespace Fingerprinting.Tests;
 
 /// <summary>
-/// Mechanical proof of 21-STEP-003-FINGERPRINTING.md Part G's secrets rule:
+/// Mechanical proof of 21-APPLICATION-FINGERPRINTING.md Part G's secrets rule:
 /// "A fixture containing a full connection string with credentials produces
 /// an artifact whose text does not contain the password." Covers both the
 /// web.config/app.config (XML) and appsettings.json (JSON) parsing paths.

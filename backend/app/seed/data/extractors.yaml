@@ -95,7 +95,7 @@ extractors:
   - name: DependencyAssessment
     status: implemented
     owner_team: platform
-    description: "Lifecycle step 6, not a step 3 extractor: NuGet feed lookup, recommended version for the target framework, and the API diff of each upgrade (30-STEP-006-DEPENDENCY-ASSESSMENT.md)."
+    description: "Lifecycle step 6, not a step 3 extractor: NuGet feed lookup, recommended version for the target framework, and the API diff of each upgrade (30-DEPENDENCY-ASSESSMENT.md)."
     emits:
       - PACKAGE_DEPRECATED
       - PACKAGE_NOT_IN_CLIENT_FEED

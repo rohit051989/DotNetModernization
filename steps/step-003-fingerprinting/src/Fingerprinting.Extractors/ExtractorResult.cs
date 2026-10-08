@@ -4,7 +4,7 @@ namespace Fingerprinting.Extractors;
 
 /// <summary>
 /// What one extractor produced for one project. Signals only, never a
-/// classification — see step-3-application-fingerprinting.md section 31.
+/// classification — see application-fingerprinting-v1.md section 31.
 /// </summary>
 public sealed record ExtractorResult
 {

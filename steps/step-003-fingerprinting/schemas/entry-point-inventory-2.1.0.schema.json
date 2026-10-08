@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://modernization-platform.internal/schemas/entry-point-inventory-2.1.0.schema.json",
   "title": "entry-point-inventory@2.1.0",
-  "description": "Lifecycle step 4. See 29-STEPS-004-005-INVENTORIES.md Parts B and B5. 2.0.0 (breaking): unauthorised becomes authDeclared (declared | none_declared | not_assessed) and unauthorisedCount becomes noDeclaredAuthenticationCount — gateway, proxy and header-based authentication are not visible to static analysis, so none_declared is a review prompt, not a finding; seven kinds are added; the capability manifest is stamped in. No timestamp and no absolute path belong here: two runs over unchanged input are byte-identical. 2.1.0 adds origin (application | framework) and entryClass (request | lifecycle) to every entry point, with counts by both; only request entry points carry authDeclared.",
+  "description": "Lifecycle step 4. See 29-ENTRY-POINT-AND-OUTBOUND-INVENTORIES.md Parts B and B5. 2.0.0 (breaking): unauthorised becomes authDeclared (declared | none_declared | not_assessed) and unauthorisedCount becomes noDeclaredAuthenticationCount — gateway, proxy and header-based authentication are not visible to static analysis, so none_declared is a review prompt, not a finding; seven kinds are added; the capability manifest is stamped in. No timestamp and no absolute path belong here: two runs over unchanged input are byte-identical. 2.1.0 adds origin (application | framework) and entryClass (request | lifecycle) to every entry point, with counts by both; only request entry points carry authDeclared.",
   "type": "object",
   "additionalProperties": false,
   "required": [

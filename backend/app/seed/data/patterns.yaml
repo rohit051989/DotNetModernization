@@ -667,7 +667,7 @@ patterns:
     rules_status: active
     required_signals_pending: []
     rules:
-      # Mirrors the worked example in step-4-pattern-classification-against-catalog.md
+      # Mirrors the worked example in pattern-classification-against-catalog-v1.md
       # section 8 almost exactly — this pattern is what that example describes.
       schema: signal-rules/1.0
       all:
@@ -2183,7 +2183,7 @@ patterns:
           4. Work the build-fix loop, then run the characterization and
              contract-parity checks for the versions actually crossed.
   # ---------------------------------------------------------- role patterns
-  # 24-STEP-004-CLASSIFICATION.md Part D. Evaluated in a first pass, ahead of
+  # 24-PATTERN-CLASSIFICATION.md Part D. Evaluated in a first pass, ahead of
   # the application patterns above, to determine project_role — which then
   # gates eligibility via each application pattern's
   # eligibility.excludedProjectRoles. No target_state_options: these exist
@@ -2224,7 +2224,7 @@ patterns:
       # expressible alongside the four attributes. Supporting weights let a
       # project with both a test-framework package reference AND a healthy
       # number of test-attribute occurrences score above one with only a
-      # single weak attribute match, per 24-STEP-004-CLASSIFICATION.md Part D.
+      # single weak attribute match, per 24-PATTERN-CLASSIFICATION.md Part D.
       schema: signal-rules/1.0
       all: []
       any:

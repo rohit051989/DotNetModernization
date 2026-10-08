@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- Step 5, outbound-invocation inventory (29-STEPS-004-005-INVENTORIES.md
+  <!-- Step 5, outbound-invocation inventory (29-ENTRY-POINT-AND-OUTBOUND-INVENTORIES.md
        Part C). Detection, configuration resolution and verdicts only; the
        envelope and database live in Fingerprinting.Outbound.Cli. Shares
        Fingerprinting.Analysis with steps 3 and 4: the syntax model, config

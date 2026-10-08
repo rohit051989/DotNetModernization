@@ -2,8 +2,8 @@ namespace Fingerprinting.Domain;
 
 /// <summary>
 /// Which analysis levels actually ran for one project, per
-/// step-3-application-fingerprinting.md section 20 and
-/// 21-STEP-003-FINGERPRINTING.md Part F. Lets a consumer judge a fingerprint's
+/// application-fingerprinting-v1.md section 20 and
+/// 21-APPLICATION-FINGERPRINTING.md Part F. Lets a consumer judge a fingerprint's
 /// precision ceiling without inferring it from which signals are absent.
 /// </summary>
 public sealed record AnalysisCapabilities

@@ -6,7 +6,7 @@ using Xunit;
 
 namespace Fingerprinting.Tests;
 
-/// <summary>Step 5, outbound-invocation-inventory — 29-STEPS-004-005-INVENTORIES.md
+/// <summary>Step 5, outbound-invocation-inventory — 29-ENTRY-POINT-AND-OUTBOUND-INVENTORIES.md
 /// Part C and its acceptance criteria.</summary>
 public class OutboundInvocationTests
 {

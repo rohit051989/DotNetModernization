@@ -5,7 +5,7 @@ using Xunit;
 
 namespace Fingerprinting.Tests;
 
-/// <summary>Step 8, phase 1 — 32-STEP-008-TEST-COVERAGE.md: classification
+/// <summary>Step 8, phase 1 — 32-TEST-COVERAGE-ASSESSMENT.md: classification
 /// (B), mapping (C), buckets (D), existing reports (E), CI maturity (H).</summary>
 public sealed class TestCoverageTests
 {

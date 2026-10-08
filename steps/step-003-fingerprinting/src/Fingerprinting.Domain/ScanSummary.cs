@@ -2,7 +2,7 @@ namespace Fingerprinting.Domain;
 
 /// <summary>
 /// Repository-level rollup embedded in the artifact — see
-/// 21-STEP-003-FINGERPRINTING.md Part F. <c>SignalsByCategory</c> is a
+/// 21-APPLICATION-FINGERPRINTING.md Part F. <c>SignalsByCategory</c> is a
 /// <see cref="SortedDictionary{TKey,TValue}"/> so its keys serialize in
 /// alphabetical order without a separate sort pass.
 /// </summary>

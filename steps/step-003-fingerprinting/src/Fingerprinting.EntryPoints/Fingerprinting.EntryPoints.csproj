@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- Step 4, entry-point inventory (29-STEPS-004-005-INVENTORIES.md Part B).
+  <!-- Step 4, entry-point inventory (29-ENTRY-POINT-AND-OUTBOUND-INVENTORIES.md Part B).
        Detection and composition only — no I/O beyond reading source files, no
        envelope, no database; those live in Fingerprinting.EntryPoints.Cli.
        Source enumeration and Roslyn parsing come from Fingerprinting.Analysis,

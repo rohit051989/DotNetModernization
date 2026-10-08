@@ -4,7 +4,7 @@ using Fingerprinting.Domain;
 namespace Fingerprinting.Extractors;
 
 /// <summary>
-/// Level 3 (Roslyn syntax) extraction — step-3-application-fingerprinting.md
+/// Level 3 (Roslyn syntax) extraction — application-fingerprinting-v1.md
 /// section 6.3: framework-relevant attributes, by simple name as written
 /// (never a fabricated fully-qualified name — semantic analysis is off by
 /// default per Part A4, and several of these attribute names exist in more
@@ -37,7 +37,7 @@ public sealed class AttributeExtractor : IFingerprintExtractor
             ["WebMethod"] = new("WEB_METHOD_ATTRIBUTE", SignalCategories.SourceConstruct),
             ["FunctionName"] = new("FUNCTION_NAME_ATTRIBUTE", SignalCategories.SourceConstruct),
             // Test attributes get TESTING_INDICATOR, not SOURCE_CONSTRUCT —
-            // step-3-application-fingerprinting.md section 16 calls out "Test
+            // application-fingerprinting-v1.md section 16 calls out "Test
             // attributes" as their own Test Fingerprint concern.
             ["TestMethod"] = new("TEST_METHOD_ATTRIBUTE", SignalCategories.TestingIndicator),
             ["Fact"] = new("FACT_ATTRIBUTE", SignalCategories.TestingIndicator),

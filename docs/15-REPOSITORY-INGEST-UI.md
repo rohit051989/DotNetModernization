@@ -1,7 +1,7 @@
 # 15 — Repository Registration UI & Orchestrator Trigger
 
-UI-driven registration for lifecycle step 1. Amends
-`13-STEP-001-REPOSITORY-INGEST.md` and `12-JOB-DEFINITION-FORMAT.md`.
+UI-driven registration for the `repository-ingest` lifecycle step. Amends
+`13-REPOSITORY-INGEST.md` and `12-JOB-DEFINITION-FORMAT.md`.
 
 **There is no file upload.** The repository already exists on the operating machine;
 the user registers its folder path. Any earlier archive-upload design is superseded.
@@ -30,7 +30,9 @@ server, containerised deployment — the things that break are local path validi
 
 ### `phase0-repository-discovery` — per repository
 
-Launched automatically on registration or rescan. Steps 1, 2, 3, 4, 8, 9, 10.
+Launched automatically on registration or rescan. Steps `repository-ingest`,
+`solution-discovery`, `application-fingerprinting`, `pattern-classification`, the v1
+impact map step, `test-coverage-assessment` and `risk-scoring-tier-assignment`.
 
 ```yaml
 job_name: phase0-repository-discovery
@@ -66,26 +68,28 @@ token and therefore its instance, preserving restart semantics.
 
 ### `phase0-estate-consolidation` — engagement scoped
 
-Steps 5, 6, 7, 11, 12. Defined in `backend/app/jobs/phase0-estate-consolidation.yaml`.
+Steps `pattern-discovery-clustering`, `pattern-validation`, `dependency-graph-construction`,
+the v1 inventory dashboard population step and `migration-wave-planning`. Defined in
+`backend/app/jobs/phase0-estate-consolidation.yaml`.
 All five steps are still stubs, so the job runs under `stub_policy: continue` and
-completes with each step reporting `NOT_IMPLEMENTED` until step 5 lands.
+completes with each step reporting `NOT_IMPLEMENTED` until `pattern-discovery-clustering` lands.
 
 **No estate-completeness precondition.** An earlier draft required every in-scope,
 non-deleted repository to have a completed `phase0-repository-discovery` execution
 before this job could run. That condition is unsatisfiable at fleet scale —
 repositories are registered over weeks and rescanned continuously, so some repository
 is always mid-flight — and it would make the job unlaunchable in exactly the estates it
-exists for. Step 5 clusters over whatever has classification results and reports its own
-coverage instead; see `26-STEP-005-PATTERN-DISCOVERY.md` A5.
+exists for. `pattern-discovery-clustering` clusters over whatever has classification results and reports its own
+coverage instead; see `26-PATTERN-DISCOVERY-CLUSTERING.md` A5.
 
 Takes `engagement_id` only. Job scope is derived from declared parameters, so declaring
 `engagement_id` without `repository_id` is what makes this job `per_engagement`.
 
 ---
 
-## Part B — Step 1 source types
+## Part B — `repository-ingest` source types
 
-Replaces the four source types in `13-STEP-001-REPOSITORY-INGEST.md` with two.
+Replaces the four source types in `13-REPOSITORY-INGEST.md` with two.
 
 ### `local_path` — the only implemented source
 
@@ -129,7 +133,7 @@ Bulk registration from a manifest is a future addition, out of scope.
 
 ## Part C — `repositories` table
 
-Replaces the table definition in `13-STEP-001-REPOSITORY-INGEST.md` entirely.
+Replaces the table definition in `13-REPOSITORY-INGEST.md` entirely.
 
 ### Identity and location
 
@@ -157,13 +161,13 @@ Replaces the table definition in `13-STEP-001-REPOSITORY-INGEST.md` entirely.
 |---|---|---|
 | `description` | `TEXT` | Optional. What this repository contains |
 | `technical_owner` | `TEXT` | Optional. Who to ask about it. Invaluable at 50+ repos |
-| `criticality` | `TEXT` NOT NULL DEFAULT `'medium'` | CHECK IN (`low`, `medium`, `high`, `critical`). Business criticality, an input to risk scoring at step 10 |
+| `criticality` | `TEXT` NOT NULL DEFAULT `'medium'` | CHECK IN (`low`, `medium`, `high`, `critical`). Business criticality, an input to risk scoring at `risk-scoring-tier-assignment` |
 | `retirement_status` | `TEXT` NOT NULL DEFAULT `'active'` | CHECK IN (`active`, `slated_for_retirement`, `decommissioned`) |
 | `tags` | `JSONB` NOT NULL DEFAULT `'[]'` | |
 | `notes` | `TEXT` | Free text |
 
 `criticality` and `retirement_status` are deliberate. Criticality feeds the tier
-assignment at step 10, which otherwise has only technical signals to work from —
+assignment at `risk-scoring-tier-assignment`, which otherwise has only technical signals to work from —
 a small, well-tested repository running payments is not Tier 0 regardless of what
 static analysis says. Retirement status answers an open question already recorded in
 the v2 architecture document: some repositories will be retired rather than
@@ -173,7 +177,7 @@ Repositories with `retirement_status` other than `active` are still registered a
 still scanned — the inventory is useful — but are **excluded from modernization scope
 counts** on the dashboard.
 
-### Scan results — written by step 1
+### Scan results — written by `repository-ingest`
 
 | Column | Type | Notes |
 |---|---|---|
@@ -300,7 +304,7 @@ on the repository detail page rather than buried.
 **A folder that was never under source control is a real, common case for a legacy
 estate** — a file share, an old FTP drop, code that predates the team's adoption of
 git — not an edge case. `clone_url` is nullable and required only when
-`source_control_status` is `GIT`; making it universally mandatory made step 1 unable
+`source_control_status` is `GIT`; making it universally mandatory made `repository-ingest` unable
 to register exactly the repositories a modernization program most needs visibility
 into. The operator may still supply a clone URL on a non-git folder — the
 "repository being migrated into source control" case — in which case it is recorded
@@ -610,7 +614,7 @@ producing step is still a stub. Do not fabricate zeros.
 - [ ] Registering `C:\` or `C:\Windows` is rejected
 - [ ] Registering a relative path is rejected
 - [ ] A clone URL with embedded credentials is rejected
-- [ ] Discovery progress reaches `7/7` — step 1 `COMPLETED`, the other six
+- [ ] Discovery progress reaches `7/7` — `repository-ingest` `COMPLETED`, the other six
       `NOT_IMPLEMENTED`
 - [ ] Applications and patterns columns show `—`, not `0`
 - [ ] Rescan creates a new job instance rather than restarting the old one

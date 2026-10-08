@@ -1,4 +1,4 @@
-// Lifecycle step 8, test-coverage-assessment, phase 1 (32-STEP-008 Part K).
+// Lifecycle step 8, test-coverage-assessment, phase 1 (32-TEST-COVERAGE-ASSESSMENT Part K).
 
 export type TestType = 'unit' | 'integration' | 'functional' | 'smoke' | 'unclassified'
 export type TestBucket = 'has_tests' | 'missing_tests' | 'no_testable_logic'

@@ -2,7 +2,7 @@ namespace Fingerprinting.Extractors;
 
 /// <summary>
 /// Everything an <see cref="IFingerprintExtractor"/> needs about one project.
-/// See step-3-application-fingerprinting.md section 30.
+/// See application-fingerprinting-v1.md section 30.
 /// </summary>
 public sealed record ProjectContext
 {
@@ -21,7 +21,7 @@ public sealed record ProjectContext
 
     /// <summary>Package references step 2 already recorded for this project —
     /// read here, never re-parsed from the project file
-    /// (21-STEP-003-FINGERPRINTING.md Part A7). Empty for projects step 2
+    /// (21-APPLICATION-FINGERPRINTING.md Part A7). Empty for projects step 2
     /// found no packages for.</summary>
     public IReadOnlyList<PackageReferenceInfo> Packages { get; init; } = [];
 

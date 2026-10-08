@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://modernization-platform.internal/schemas/application-fingerprint-1.0.0.schema.json",
   "title": "application-fingerprint@1.0.0",
-  "description": "See 21-STEP-003-FINGERPRINTING.md Part F. No schemaVersion, scanId, timestamp or applicationPattern field belongs here.",
+  "description": "See 21-APPLICATION-FINGERPRINTING.md Part F. No schemaVersion, scanId, timestamp or applicationPattern field belongs here.",
   "type": "object",
   "additionalProperties": false,
   "required": [

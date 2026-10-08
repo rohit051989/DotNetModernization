@@ -151,7 +151,7 @@ Group by phase using the `17-LIFECYCLE-STEPS.md` boundaries, with a per-phase co
 platform has been built, and it is worth having for its own sake.
 
 Row expands to show `adapter_config` as formatted JSON — the resolved command or URL
-for that step. That answers "where does step 3 actually run from" without psql.
+for that step. That answers "where does `application-fingerprinting` actually run from" without psql.
 
 ### C2. Job definitions
 

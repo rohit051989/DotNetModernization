@@ -4,7 +4,7 @@ The execution surface: what ran, what it produced, and why it failed. This is th
 debugging tool for every step built from here on, and it is also the screen that
 carries the fleet-view demo narrative.
 
-Build this **before step 2**. Adding a parser-heavy step without execution
+Build this **before `solution-discovery`**. Adding a parser-heavy step without execution
 visibility means debugging through psql and log tails.
 
 ---
@@ -122,7 +122,7 @@ execution on restart rather than re-run — otherwise a restarted execution look
 it re-ran everything.
 
 `inputs_resolved` is worth surfacing prominently. It is the visible evidence that the
-contract machinery works: you can see step 2 received step 1's artifact, and which
+contract machinery works: you can see `solution-discovery` received `repository-ingest`'s artifact, and which
 version.
 
 ---
@@ -209,7 +209,7 @@ A drawer, not a new page.
 - Over the inline size limit: show metadata plus a download prompt instead of the body
 - Checksum mismatch (409): show a prominent error rather than the content
 
-This is the "result of that step" view. When step 2 lands, this is where you will
+This is the "result of that step" view. When `solution-discovery` lands, this is where you will
 read the discovered solutions and projects.
 
 ---
@@ -263,9 +263,9 @@ failure and want to send someone the exact run.
 - [ ] Launch drawer builds its inputs from the parameters endpoint, with a repository
       select rather than a UUID field, and auto-generates `ingest_token`
 - [ ] Executions list filters by job, status and repository
-- [ ] Execution detail shows all seven steps in flow order, with step 1 solid and the
+- [ ] Execution detail shows all seven steps in flow order, with `repository-ingest` solid and the
       other six visibly stubbed
-- [ ] Step 1 expanded shows metrics, exit message, working directory and its produced
+- [ ] `repository-ingest` expanded shows metrics, exit message, working directory and its produced
       artifact
 - [ ] The artifact viewer renders `repository-inventory` JSON, with copy and download
 - [ ] Download returns the file, and the checksum matches what the UI displays

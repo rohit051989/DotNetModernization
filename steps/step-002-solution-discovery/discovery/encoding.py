@@ -1,6 +1,6 @@
 """BOM / encoding detection for legacy-era text files.
 
-See 19-STEP-002-SOLUTION-DISCOVERY.md Part F: "Legacy files are frequently
+See 19-SOLUTION-DISCOVERY.md Part F: "Legacy files are frequently
 UTF-8 with BOM, occasionally UTF-16. Detect BOM, fall back to UTF-8 with
 replacement, and warn rather than fail."
 """

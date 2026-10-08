@@ -24,6 +24,11 @@ answers the flag. Superseding a dependent's decision re-derives it, so
 superseding an override takes the derived decision. Derived decisions are
 made by the platform, so the approval checks — written for a person's
 decision — apply to a manual write only.
+
+Every decision write ends by refreshing step 9's impact staleness
+(app/impact/stale.py): impact computed for another decision is marked stale,
+naming the resolution, until the next scan. That writes impact_summaries,
+which is engagement data, not a master table.
 """
 
 import datetime
@@ -35,6 +40,7 @@ from sqlalchemy.orm import Session
 from app import models
 from app.db import get_db
 from app.errors import ErrorResponse, error, errors
+from app.impact import stale as impact_stale
 from app.items import coupling
 from app.items import schemas as item_schemas
 from app.schemas import CONSUMER_IMPACT_RANK
@@ -312,6 +318,9 @@ def upsert_item_decision(
     db.flush()
     # A leader's decision re-derives its followers in the same transaction.
     coupling.rederive(db, engagement_id, item_id)
+    # Step 9's impact computed for another decision is stale until the next
+    # scan (33-IMPACT-ANALYSIS Part C) — this item's and any follower's.
+    impact_stale.refresh(db, engagement_id)
     db.commit()
     db.refresh(decision)
     return _response(db, decision)
@@ -418,6 +427,7 @@ def supersede_item_decision(decision_id: uuid.UUID, db: Session = Depends(get_db
     # A superseded dependent takes what its leaders derive, if anything —
     # superseding an override returns to the derived decision.
     coupling.rederive_leaders_of(db, decision.engagement_id, decision.item_id)
+    impact_stale.refresh(db, decision.engagement_id)
     db.commit()
     db.refresh(decision)
     return _response(db, decision)

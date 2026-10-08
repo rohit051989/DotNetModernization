@@ -24,7 +24,7 @@ public sealed record DependencyInput(
 
 /// <summary>
 /// Builds the dependency-assessment@1.1.0 artifact for one repository —
-/// 30-STEP-006-DEPENDENCY-ASSESSMENT.md Parts B to D. Read-only against the
+/// 30-DEPENDENCY-ASSESSMENT.md Parts B to D. Read-only against the
 /// repository (Part B5): direct dependencies come from step 2, packages are
 /// fetched into a cache outside it, and transitive resolution, when enabled,
 /// restores a scratch copy. Deterministic against the lookup cache (Part B6).

@@ -49,7 +49,7 @@ file sealed record SignalRegistryFile
 /// <summary>
 /// Thrown when a signal carries a name absent from the registry — a
 /// validation failure, not a warning, per
-/// 21-STEP-003-FINGERPRINTING.md Part D.
+/// 21-APPLICATION-FINGERPRINTING.md Part D.
 /// </summary>
 public sealed class UnregisteredSignalException(IReadOnlyList<string> unregisteredNames)
     : Exception(

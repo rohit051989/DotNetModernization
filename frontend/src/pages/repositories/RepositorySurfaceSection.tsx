@@ -429,7 +429,7 @@ function Stat({ label, value, tone }: { label: string; value: number; tone?: 'am
   )
 }
 
-/** Surface — 29-STEPS-004-005-INVENTORIES.md Part D: inbound (step 4's
+/** Surface — 29-ENTRY-POINT-AND-OUTBOUND-INVENTORIES.md Part D: inbound (step 4's
  * entry points) and outbound (step 5's invocations), side by side where
  * the page is wide enough. */
 export function RepositorySurfaceSection({ repositoryId, localPath, refreshToken }: RepositorySurfaceSectionProps) {

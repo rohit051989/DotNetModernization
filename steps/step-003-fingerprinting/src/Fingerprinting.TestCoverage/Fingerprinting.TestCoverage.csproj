@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- Step 8, test-coverage-assessment (32-STEP-008-TEST-COVERAGE.md),
+  <!-- Step 8, test-coverage-assessment (32-TEST-COVERAGE-ASSESSMENT.md),
        phase 1: test discovery and classification, source-to-test mapping,
        buckets, existing coverage reports, CI maturity. Syntax only, like
        steps 3 to 5. No LLM and no test execution (Part L). The envelope,

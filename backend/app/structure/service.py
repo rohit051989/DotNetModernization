@@ -1,5 +1,5 @@
 """Read-only query logic for step 2's discovery results — see
-19-STEP-002-SOLUTION-DISCOVERY.md Part I. Nothing here mutates; solution-
+19-SOLUTION-DISCOVERY.md Part I. Nothing here mutates; solution-
 discovery (the standalone script) owns every row in these tables.
 """
 

@@ -1,4 +1,4 @@
-"""Step 8's Tests section API and its tables — 32-STEP-008-TEST-COVERAGE.md
+"""Step 8's Tests section API and its tables — 32-TEST-COVERAGE-ASSESSMENT.md
 Parts E1, I, J and K, phase 1.
 
 Hermetic: a fixture repository and scan rows inside one rolled-back

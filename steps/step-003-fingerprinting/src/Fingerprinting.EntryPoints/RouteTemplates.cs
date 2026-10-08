@@ -2,7 +2,7 @@ using System.Text.RegularExpressions;
 
 namespace Fingerprinting.EntryPoints;
 
-/// <summary>HTTP route composition — 29-STEPS-004-005-INVENTORIES.md Part B2.
+/// <summary>HTTP route composition — 29-ENTRY-POINT-AND-OUTBOUND-INVENTORIES.md Part B2.
 /// Pure string rules, no syntax.</summary>
 public static partial class RouteTemplates
 {

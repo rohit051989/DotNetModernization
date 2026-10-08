@@ -1,4 +1,4 @@
-"""Step 4 catalog schema support (24-STEP-004-CLASSIFICATION.md Parts B and C).
+"""Step 4 catalog schema support (24-PATTERN-CLASSIFICATION.md Parts B and C).
 
 Everything here is write-time validation and bookkeeping for the catalog
 schema migration (J1). No classification logic lives here — the engine that

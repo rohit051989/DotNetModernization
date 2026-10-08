@@ -1,0 +1,622 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://modernization-platform.local/schemas/impact-analysis-2.1.0.schema.json",
+  "title": "impact-analysis 2.1.0",
+  "description": "impact-analysis (33-IMPACT-ANALYSIS.md): per work item, the files its conversion touches under the default resolution and, where decided, the chosen one \u2014 each with an action, a certainty and a traversal path, counted as files changed, new files and files to review, never added together; per file, the work items touching it under their effective resolutions, with hotspots and conflicts. Structural only: client impact is added by dependency-and-context-map. Deterministic, no LLM.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "artifactVersion",
+    "repositoryId",
+    "repositorySlug",
+    "engagementId",
+    "summary",
+    "workItems",
+    "rollup",
+    "warnings"
+  ],
+  "properties": {
+    "artifactVersion": {
+      "const": "2.1.0"
+    },
+    "repositoryId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "repositorySlug": {
+      "type": "string"
+    },
+    "engagementId": {
+      "type": "string"
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "workItems",
+        "changes",
+        "filesChanged",
+        "byAction",
+        "newFiles",
+        "filesToReview",
+        "hotspots",
+        "conflicts"
+      ],
+      "properties": {
+        "workItems": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "changes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "filesChanged": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "byAction": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "update",
+            "rewrite",
+            "delete",
+            "create",
+            "review"
+          ],
+          "properties": {
+            "update": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "rewrite": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "delete": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "create": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "review": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "newFiles": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "filesToReview": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "hotspots": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "conflicts": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "workItems": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "itemId",
+          "itemName",
+          "projectPath",
+          "projectId",
+          "effectiveResolutionId",
+          "resolutions",
+          "pendingResolutions"
+        ],
+        "properties": {
+          "itemId": {
+            "type": "string"
+          },
+          "itemName": {
+            "type": "string"
+          },
+          "projectPath": {
+            "type": "string"
+          },
+          "projectId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "effectiveResolutionId": {
+            "type": "string"
+          },
+          "resolutions": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "resolutionId",
+                "name",
+                "roles",
+                "effective",
+                "rulesSource",
+                "decisionResolutionId",
+                "counts",
+                "changed",
+                "created",
+                "toReview",
+                "confirmed",
+                "possible",
+                "entries",
+                "knownLimits",
+                "deferredRules"
+              ],
+              "properties": {
+                "resolutionId": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "roles": {
+                  "type": "array",
+                  "minItems": 1,
+                  "items": {
+                    "enum": [
+                      "default",
+                      "presumptive",
+                      "chosen"
+                    ]
+                  }
+                },
+                "effective": {
+                  "type": "boolean"
+                },
+                "rulesSource": {
+                  "enum": [
+                    "explicit",
+                    "default"
+                  ]
+                },
+                "decisionResolutionId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "counts": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "update",
+                    "rewrite",
+                    "delete",
+                    "create",
+                    "review"
+                  ],
+                  "properties": {
+                    "update": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "rewrite": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "delete": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "create": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "review": {
+                      "type": "integer",
+                      "minimum": 0
+                    }
+                  }
+                },
+                "changed": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "created": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "toReview": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "confirmed": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "possible": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "entries": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "filePath",
+                      "proposedPath",
+                      "description",
+                      "action",
+                      "certainty",
+                      "reasons",
+                      "traversalPaths",
+                      "details"
+                    ],
+                    "properties": {
+                      "filePath": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "proposedPath": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "description": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "action": {
+                        "enum": [
+                          "update",
+                          "rewrite",
+                          "delete",
+                          "create",
+                          "review"
+                        ]
+                      },
+                      "certainty": {
+                        "enum": [
+                          "confirmed",
+                          "possible"
+                        ]
+                      },
+                      "reasons": {
+                        "type": "array",
+                        "minItems": 1,
+                        "items": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "required": [
+                            "ruleId",
+                            "action",
+                            "reason"
+                          ],
+                          "properties": {
+                            "ruleId": {
+                              "type": "string"
+                            },
+                            "action": {
+                              "enum": [
+                                "update",
+                                "rewrite",
+                                "delete",
+                                "create",
+                                "review"
+                              ]
+                            },
+                            "reason": {
+                              "type": "string"
+                            }
+                          }
+                        }
+                      },
+                      "traversalPaths": {
+                        "type": "array",
+                        "minItems": 1,
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "details": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "allOf": [
+                      {
+                        "if": {
+                          "properties": {
+                            "action": {
+                              "const": "create"
+                            }
+                          }
+                        },
+                        "then": {
+                          "properties": {
+                            "filePath": {
+                              "type": "null"
+                            },
+                            "proposedPath": {
+                              "type": "string"
+                            },
+                            "description": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        "else": {
+                          "properties": {
+                            "filePath": {
+                              "type": "string"
+                            }
+                          }
+                        }
+                      }
+                    ]
+                  }
+                },
+                "knownLimits": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "deferredRules": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "pendingResolutions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "resolutionId",
+                "name"
+              ],
+              "properties": {
+                "resolutionId": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "rollup": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "fileKey",
+          "workItems",
+          "hotspot",
+          "conflicts"
+        ],
+        "properties": {
+          "fileKey": {
+            "type": "string"
+          },
+          "workItems": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "itemId",
+                "projectPath",
+                "resolutionId",
+                "action",
+                "source",
+                "ruleIds"
+              ],
+              "properties": {
+                "itemId": {
+                  "type": "string"
+                },
+                "projectPath": {
+                  "type": "string"
+                },
+                "resolutionId": {
+                  "type": "string"
+                },
+                "action": {
+                  "enum": [
+                    "update",
+                    "rewrite",
+                    "delete",
+                    "create",
+                    "review"
+                  ]
+                },
+                "source": {
+                  "enum": [
+                    "structural",
+                    "client"
+                  ]
+                },
+                "ruleIds": {
+                  "type": "array",
+                  "minItems": 1,
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "hotspot": {
+            "type": "boolean"
+          },
+          "conflicts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "kind",
+                "first",
+                "second"
+              ],
+              "properties": {
+                "kind": {
+                  "enum": [
+                    "delete_with_change",
+                    "create_same_path"
+                  ]
+                },
+                "first": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "itemId",
+                    "projectPath",
+                    "resolutionId",
+                    "action",
+                    "source",
+                    "ruleIds"
+                  ],
+                  "properties": {
+                    "itemId": {
+                      "type": "string"
+                    },
+                    "projectPath": {
+                      "type": "string"
+                    },
+                    "resolutionId": {
+                      "type": "string"
+                    },
+                    "action": {
+                      "enum": [
+                        "update",
+                        "rewrite",
+                        "delete",
+                        "create",
+                        "review"
+                      ]
+                    },
+                    "source": {
+                      "enum": [
+                        "structural",
+                        "client"
+                      ]
+                    },
+                    "ruleIds": {
+                      "type": "array",
+                      "minItems": 1,
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                },
+                "second": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "itemId",
+                    "projectPath",
+                    "resolutionId",
+                    "action",
+                    "source",
+                    "ruleIds"
+                  ],
+                  "properties": {
+                    "itemId": {
+                      "type": "string"
+                    },
+                    "projectPath": {
+                      "type": "string"
+                    },
+                    "resolutionId": {
+                      "type": "string"
+                    },
+                    "action": {
+                      "enum": [
+                        "update",
+                        "rewrite",
+                        "delete",
+                        "create",
+                        "review"
+                      ]
+                    },
+                    "source": {
+                      "enum": [
+                        "structural",
+                        "client"
+                      ]
+                    },
+                    "ruleIds": {
+                      "type": "array",
+                      "minItems": 1,
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "message",
+          "severity"
+        ],
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "severity": {
+            "enum": [
+              "info",
+              "warning",
+              "error"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

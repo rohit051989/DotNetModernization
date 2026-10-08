@@ -1,6 +1,6 @@
-# 13 — Step 1: Repository Ingest
+# 13 — `repository-ingest`: Repository Ingest
 
-Lifecycle step 1. Owner: **P** (platform, deterministic). Job:
+Lifecycle step `repository-ingest`. Owner: **P** (platform, deterministic). Job:
 `phase0-repository-discovery`, per repository — see `15-REPOSITORY-INGEST-UI.md`
 Part A.
 
@@ -16,8 +16,8 @@ builds on its output.
 metadata when present, verify its asserted clone URL, capture coarse size metrics,
 and update its `repositories` row.
 
-**Out:** solution or project parsing (step 2), fingerprinting (step 3), dependency
-analysis (step 7). This step does not open a single `.csproj`. Also out: discovering
+**Out:** solution or project parsing (`solution-discovery`), fingerprinting
+(`application-fingerprinting`), dependency analysis (`dependency-and-context-map`). This step does not open a single `.csproj`. Also out: discovering
 or registering repositories — that is the registration API (`15-REPOSITORY-INGEST-UI.md`
 Part D), which runs before this step and creates the `repositories` row this step
 reads.
@@ -267,8 +267,8 @@ exercise it without the engine.
 - [ ] Registers in `wf_step_registrations` with the declared contract: `consumes: []`,
       `produces: [repository-inventory@1.0.0]`, `adapter_type: python`,
       `implementation_status: implemented`
-- [ ] `phase0-repository-discovery` validates with step 1 real and steps 2–10 as
-      stubs, with **no change to the job definition YAML**
+- [ ] `phase0-repository-discovery` validates with `repository-ingest` real and the job's
+      other steps as stubs, with **no change to the job definition YAML**
 - [ ] Runs against a local folder with `.git`: resolves HEAD SHA, current branch,
       origin remote, and sets `clone_url_verification` correctly
 - [ ] Runs against a local folder without `.git`: `has_git_history: false`,

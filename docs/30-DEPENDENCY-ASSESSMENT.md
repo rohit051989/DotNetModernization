@@ -1,8 +1,8 @@
-# 30 — Step 6: Dependency Upgrade Assessment
+# 30 — `dependency-assessment`: Dependency Upgrade Assessment
 
-New lifecycle step 6. Owner: **P**, with an advisory **S** sub-task. Job:
-`phase0-repository-discovery`, after step 5 and **before** item detection.
-Implemented in **C# / .NET** in the step 3 solution, invoked via the `process` adapter.
+New lifecycle step `dependency-assessment`. Owner: **P**, with an advisory **S** sub-task. Job:
+`phase0-repository-discovery`, after `outbound-invocation-inventory` and **before** item detection.
+Implemented in **C# / .NET** in the `application-fingerprinting` solution, invoked via the `process` adapter.
 
 Determines, for every third-party package a project uses, whether it can move to the
 engagement's target framework, what version it should move to, and which lines of code
@@ -21,8 +21,8 @@ API that moved. For a .NET Framework estate this is often the larger share of th
 
 ### Placement: before item detection
 
-Inserted as step 6, so `item-detection` becomes step 7 and steps 6–35 renumber to 7–36.
-Slugs are unchanged.
+Inserted between `outbound-invocation-inventory` and `item-detection`, so every later step
+moves down one place. Slugs are unchanged.
 
 The reason it precedes item detection: its findings are emitted as **signals**. Item
 detection then matches catalog items against them exactly as it does every other
@@ -31,7 +31,7 @@ decisions and conversion with no special handling. Placed after item detection, 
 findings would need a parallel pipeline.
 
 This step is therefore registered as a signal **producer**, declaring its emitted
-signals alongside the step 3 extractors.
+signals alongside the `application-fingerprinting` extractors.
 
 ---
 
@@ -83,14 +83,14 @@ resolution — `packageSourceCredentials`, environment variables, credential pro
 
 **Nothing derived from a feed credential is ever persisted**, the same invariant as
 connection strings in docs/21 Part G. Feed URLs are stored with userinfo, query and
-fragment stripped, per step 5's normalisation.
+fragment stripped, per `outbound-invocation-inventory`'s normalisation.
 
 ### B5. The repository stays read-only
 
-`dotnet restore` writes `obj/` and `project.assets.json` into the repository, which steps
-1–7 must never do. So:
+`dotnet restore` writes `obj/` and `project.assets.json` into the repository, which the steps
+`repository-ingest` through `item-detection` must never do. So:
 
-- direct dependencies come from step 2's `project_packages` — no restore needed
+- direct dependencies come from `solution-discovery`'s `project_packages` — no restore needed
 - metadata and package contents are fetched with NuGet's protocol libraries into a cache
   **outside** the repository
 - transitive dependencies, if enabled, are resolved by restoring a **copy** of the project
@@ -163,7 +163,7 @@ surface. ApiCompat or reflection-based comparison. Produces the precise list of 
 types, removed members and changed signatures.
 
 Then intersect with the code: find call sites of each changed member. Syntax search,
-guarded by `using` of the package's namespaces — the same approach as step 3's
+guarded by `using` of the package's namespaces — the same approach as `application-fingerprinting`'s
 `SYSTEM_DRAWING_USAGE`, so confidence below 1.0.
 
 Record `classification_method`: `api_diff` or `semver_heuristic`. An API diff showing no
@@ -221,8 +221,8 @@ the default where one exists.
 
 A natural fit for `invocation.type: copilot` — the Copilot upgrade agent already bumps
 packages and fixes common breaking changes — with platform approaches for the cases it does
-not handle. Not built in this step; approaches arrive with steps 19 and 20 (renumbered
-from 18 and 19 when this step was inserted at 6).
+not handle. Not built in this step; approaches arrive with `application-scope-conversion`
+and `occurrence-scope-conversion`.
 
 ---
 
@@ -281,7 +281,7 @@ from the client's Artifactory or the nuget.org fallback.
 ## Part H — Not in this step
 
 - **Estate view.** *"Newtonsoft.Json 12 is used in 40 repositories"* aggregates across the
-  engagement and belongs with step 11's consolidation, alongside the endpoint register
+  engagement and belongs with `dependency-and-context-map`'s consolidation, alongside the endpoint register
 - **Transitive vulnerability remediation** beyond reporting — fixing a transitive package
   is a package-reference change best made once the direct upgrades land
 - **Non-NuGet dependencies** — npm for the parked React work, vendored DLLs referenced by
@@ -292,7 +292,7 @@ from the client's Artifactory or the nuget.org fallback.
 
 ## Acceptance criteria
 
-- [ ] Step inserted at 6; item-detection is 7; steps renumbered to 36 with slugs unchanged;
+- [ ] Step inserted between `outbound-invocation-inventory` and `item-detection`; later steps renumbered with slugs unchanged;
       both job definitions updated and valid
 - [ ] Registered as a signal producer; its signals in the registry; registry version bumped
 - [ ] With a `NuGet.config` declaring sources, those feeds answer and `feed_source` is
@@ -317,11 +317,12 @@ from the client's Artifactory or the nuget.org fallback.
 
 ---
 
-## As implemented (step 6, scanner 1.1.0, artifact `dependency-assessment@1.1.0`)
+## As implemented (`dependency-assessment`, scanner 1.1.0, artifact `dependency-assessment@1.1.0`)
 
 Code: `steps/step-003-fingerprinting/src/Fingerprinting.Dependencies` (pipeline) and
 `Fingerprinting.Dependencies.Cli` (`DependencyAssessment.Cli.exe`), sharing
-`Fingerprinting.Analysis` and `Fingerprinting.StepHost` with steps 3 to 5. Tests in
+`Fingerprinting.Analysis` and `Fingerprinting.StepHost` with `application-fingerprinting`,
+`entry-point-inventory` and `outbound-invocation-inventory`. Tests in
 `tests/Fingerprinting.Dependencies.Tests`, offline: feeds are local folders of packages built
 in the test, their assemblies compiled with Roslyn. NuGet's own libraries do the feed work:
 `NuGet.Protocol` and `NuGet.Credentials` 7.9.0.
@@ -337,14 +338,14 @@ every one must answer: an unreachable one makes the package `unknown` (B7), and 
 consulted for the B3 comparison only. With none, nuget.org answers as
 `nuget_org_fallback`.
 
-**Versions.** Step 2's version text, with central package management resolved from the
+**Versions.** `solution-discovery`'s version text, with central package management resolved from the
 nearest `Directory.Packages.props`, and `$(Property)` versions expanded from unconditional
 literal properties in the project file and the `Directory.Packages.props` /
 `Directory.Build.props` files up to the repository root (nearer wins). A version that still
 cannot be read is `unknown` with the reason. The project's **current framework** comes from
-step 2 only — including a framework set in `Directory.Build.props` or
+`solution-discovery` only — including a framework set in `Directory.Build.props` or
 `Directory.Packages.props` (solution-project-inventory 2.1.0, `target_framework_source`) —
-so step 6 and item detection see one answer for the same project.
+so `dependency-assessment` and item detection see one answer for the same project.
 
 **Compatibility.** A version supports the target when a dependency group is compatible with
 it; when the groups say no, the newest version's own lib/ref folders get a second opinion,

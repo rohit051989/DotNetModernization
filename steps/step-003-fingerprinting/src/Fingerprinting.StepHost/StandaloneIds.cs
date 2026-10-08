@@ -8,7 +8,7 @@ public static class StandaloneIds
 {
     /// <summary>A stable id derived from (repository, relative path) —
     /// deterministic across reruns, unlike <see cref="Guid.NewGuid"/>, which
-    /// the checksum determinism requirement (21-STEP-003-FINGERPRINTING.md
+    /// the checksum determinism requirement (21-APPLICATION-FINGERPRINTING.md
     /// Part B rule 2) rules out.</summary>
     public static Guid ProjectId(Guid repositoryId, string relativePath)
     {
@@ -21,7 +21,7 @@ public static class StandaloneIds
 /// <summary>The slice of step 3's <c>application-fingerprint</c> that
 /// downstream steps read: which projects were fingerprinted, under which
 /// id, and which were skipped. Steps 4 and 5 skip what step 3 skipped
-/// (29-STEPS-004-005-INVENTORIES.md Part A3) rather than re-deriving it.</summary>
+/// (29-ENTRY-POINT-AND-OUTBOUND-INVENTORIES.md Part A3) rather than re-deriving it.</summary>
 public sealed record ApplicationFingerprintSlice
 {
     public required Guid RepositoryId { get; init; }

@@ -5,7 +5,7 @@ using Fingerprinting.Domain;
 namespace Fingerprinting.Extractors;
 
 /// <summary>
-/// Level 3 (Roslyn syntax) extraction — step-3-application-fingerprinting.md
+/// Level 3 (Roslyn syntax) extraction — application-fingerprinting-v1.md
 /// section 6.1: entry-point constructs. Distinct from FileIndicatorExtractor,
 /// which only records that a file named Program.cs/Startup.cs/Global.asax
 /// exists (category FILE_INDICATOR); this extractor confirms a genuine

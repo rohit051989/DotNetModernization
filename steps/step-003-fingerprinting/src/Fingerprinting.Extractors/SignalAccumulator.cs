@@ -5,7 +5,7 @@ namespace Fingerprinting.Extractors;
 /// <summary>
 /// Aggregates repeated occurrences of the same (name, sourcePath, value) into
 /// one <see cref="Signal"/> row with a running <c>occurrenceCount</c> and
-/// evidence capped at 20 entries — 21-STEP-003-FINGERPRINTING.md Part E:
+/// evidence capped at 20 entries — 21-APPLICATION-FINGERPRINTING.md Part E:
 /// "twenty-one OperationContract attributes in one file is one row with
 /// occurrence_count: 21, not twenty-one rows." Shared by every extractor that
 /// walks source or configuration files looking for repeated constructs.

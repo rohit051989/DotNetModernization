@@ -1,5 +1,5 @@
 """Artifact read access — list, detail, content, download. See
-19-STEP-002-SOLUTION-DISCOVERY.md-adjacent 20-WORKFLOW-OBSERVABILITY-UI.md
+19-SOLUTION-DISCOVERY.md-adjacent 20-WORKFLOW-OBSERVABILITY-UI.md
 Part A: 'Both must verify the on-disk checksum against wf_artifacts.checksum
 before returning, and respond 409 ... if they differ.'
 """

@@ -3,6 +3,7 @@ import { ItemList } from './catalog/ItemList'
 import { ItemDetail } from './catalog/ItemDetail'
 import { ExtractorBacklogView } from './catalog/ExtractorBacklogView'
 import { SignalIndexView } from './catalog/SignalIndexView'
+import { MasterRuleConflictsView } from './RuleConflictsViews'
 import { EmptyState } from '../components/EmptyState'
 import type { Engagement } from '../types/catalog'
 
@@ -12,7 +13,7 @@ interface CatalogPageProps {
   selectedEngagementId: string | null
 }
 
-type MasterSection = 'items' | 'signals' | 'backlog'
+type MasterSection = 'items' | 'signals' | 'backlog' | 'rule-conflicts'
 
 /** The item catalog — 28-ITEM-AND-CONVERSION-MODEL.md. Master view: the
  * client-agnostic items, their resolutions and the extractor backlog, all
@@ -66,13 +67,20 @@ export function CatalogPage({ engagements, selectedEngagementId }: CatalogPagePr
   // The Signals view is read-only and client-agnostic, so the client view has
   // it too: signal names in an item's detection link there from either view.
   // The extractor backlog is master-only.
-  const activeSection: MasterSection = !isMaster && section === 'backlog' ? 'items' : section
+  // Catalog rule conflicts are master-only too: they are for catalog authors.
+  const activeSection: MasterSection = !isMaster && (section === 'backlog' || section === 'rule-conflicts') ? 'items' : section
   const showBacklog = activeSection === 'backlog'
+  const showRuleConflicts = activeSection === 'rule-conflicts'
   const showSignals = activeSection === 'signals'
   const tabs: { key: MasterSection; label: string }[] = [
     { key: 'items', label: 'Items' },
     { key: 'signals', label: 'Signals' },
-    ...(isMaster ? [{ key: 'backlog' as const, label: 'Extractor backlog & coverage' }] : []),
+    ...(isMaster
+      ? [
+          { key: 'backlog' as const, label: 'Extractor backlog & coverage' },
+          { key: 'rule-conflicts' as const, label: 'Rule conflicts' },
+        ]
+      : []),
   ]
 
   return (
@@ -102,6 +110,10 @@ export function CatalogPage({ engagements, selectedEngagementId }: CatalogPagePr
             onSelectSignal={setSelectedSignal}
             onSelectItem={handleSelectItem}
           />
+        </div>
+      ) : showRuleConflicts ? (
+        <div className="flex-1 overflow-y-auto">
+          <MasterRuleConflictsView onSelectItem={handleSelectItem} />
         </div>
       ) : showBacklog ? (
         <div className="flex-1 overflow-y-auto">

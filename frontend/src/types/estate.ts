@@ -1,5 +1,5 @@
 // Lifecycle step 11's artifacts as GET /api/engagements/{eid}/estate returns
-// them — 31-STEP-011-ESTATE-DEPENDENCY-MAP.md. Artifacts are camelCase files;
+// them — 31-DEPENDENCY-AND-CONTEXT-MAP.md. Artifacts are camelCase files;
 // annotations are the API's own snake_case rows.
 
 export type ConversationStatus = 'not_started' | 'in_progress' | 'agreed' | 'resolved' | 'not_required'

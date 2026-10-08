@@ -13,7 +13,7 @@ public sealed record TestCoverageInput(
 public sealed record InputProject(string ProjectPath, IReadOnlyList<string> Packages, IReadOnlyCollection<string> TestSignals);
 
 /// <summary>
-/// Lifecycle step 8, phase 1 — 32-STEP-008-TEST-COVERAGE.md Part L: test
+/// Lifecycle step 8, phase 1 — 32-TEST-COVERAGE-ASSESSMENT.md Part L: test
 /// discovery and classification (B), mapping (C), buckets (D), existing
 /// coverage reports (E), CI maturity (H). No LLM, no test execution.
 /// </summary>

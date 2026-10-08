@@ -7,21 +7,26 @@ committed to git.
 ## Phase 0 is two jobs, not one
 
 Earlier drafts of this document showed a single `phase0-estate-discovery` job
-covering lifecycle steps 1-12. That job does not exist. `15-REPOSITORY-INGEST-UI.md`
-Part A splits phase 0 by scope instead:
+covering every phase 0 step. That job does not exist. `15-REPOSITORY-INGEST-UI.md`
+Part A splits phase 0 by scope instead. The step lists below are today's; the job files
+are authoritative:
 
-- `phase0-repository-discovery` — per repository, steps 1, 2, 3, 4, 8, 9, 10. Defined
+- `phase0-repository-discovery` — per repository: `repository-ingest`,
+  `solution-discovery`, `application-fingerprinting`, `entry-point-inventory`,
+  `outbound-invocation-inventory`, `dependency-assessment`, `item-detection`,
+  `test-coverage-assessment`, `impact-analysis`, `risk-scoring-tier-assignment`. Defined
   in `backend/app/jobs/phase0-repository-discovery.yaml`. Launched automatically on
   registration or rescan.
-- `phase0-estate-consolidation` — engagement-scoped, steps 5, 6, 7, 11, 12. Defined in
-  `backend/app/jobs/phase0-estate-consolidation.yaml`. All five steps are still stubs,
-  so it runs under `stub_policy: continue`. It declares **no preconditions**: an
-  estate-completeness precondition is unsatisfiable at fleet scale, and step 5 reports
-  its own coverage instead — see `26-STEP-005-PATTERN-DISCOVERY.md` A5.
+- `phase0-estate-consolidation` — engagement-scoped: `unclaimed-signal-report`,
+  `dependency-and-context-map`, `migration-wave-planning`. Defined in
+  `backend/app/jobs/phase0-estate-consolidation.yaml`. Only
+  `dependency-and-context-map` is implemented, so it runs under `stub_policy: continue`. It declares **no preconditions**: an
+  estate-completeness precondition is unsatisfiable at fleet scale, and each estate step reports
+  its own coverage instead — see `26-PATTERN-DISCOVERY-CLUSTERING.md` A5.
 
-Steps 5, 6, 7, 11 and 12 are genuinely estate-wide — clustering unmatched patterns,
-building a cross-repository dependency graph, or planning waves cannot be done from a
-single repository. That is the reason for the split, not an arbitrary size limit.
+The estate steps are genuinely estate-wide — reporting unclaimed signals across the
+estate, building a cross-repository dependency graph, or planning waves cannot be done
+from a single repository. That is the reason for the split, not an arbitrary size limit.
 
 The minimal example below is illustrative of the format's features, not a literal
 job. See `backend/app/jobs/phase0-repository-discovery.yaml` for the real,
@@ -282,7 +287,7 @@ any of these fail. Report **all** errors at once, not just the first.
    entry is *satisfiable* by something upstream; rule 9 checks it is *plumbed
    through*. A `consumes` entry can pass rule 2 and still never be resolved at
    runtime because nobody wrote the `inputs:` entry — this is `UNWIRED_INPUT`, and it
-   is exactly the gap that let step 3 pass validation and then fail at launch with
+   is exactly the gap that let `application-fingerprinting` pass validation and then fail at launch with
    "input was not resolved" (`22-STEP-SEQUENCING-AND-POLICY.md` Part A). The check is
    by resolved artifact type, not by the mapping's key name — a key can legitimately
    differ from the artifact type it wires (see "Input wiring" above), so `UNWIRED_INPUT`
@@ -350,7 +355,7 @@ real. Switch to `halt` before anything touches a real repository.
 Replacing a stub is a step registration update — change `adapter_type` from `stub`
 to its real adapter and set `implementation_status: implemented`. **No job
 definition change is required**, provided the declared `consumes` and `produces` are
-unchanged. That is the decoupling working: whoever builds step 32 never edits the
+unchanged. That is the decoupling working: whoever builds `contract-parity-verification` never edits the
 job definition.
 
 ## Registration and activation

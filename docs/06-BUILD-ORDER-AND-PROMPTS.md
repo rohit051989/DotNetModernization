@@ -254,6 +254,6 @@ only the README.
 ## What comes after
 
 Once the catalog is working, the next build is the repository scanner
-(lifecycle steps 1-10), which populates the inventory the Catalog tab already sits
+(lifecycle steps `repository-ingest` through `risk-scoring-tier-assignment`), which populates the inventory the Catalog tab already sits
 alongside. The Applications and Repositories tabs light up at that point. Keep the
 disabled tabs in place until then.

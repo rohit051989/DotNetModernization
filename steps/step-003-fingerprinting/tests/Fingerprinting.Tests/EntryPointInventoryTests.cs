@@ -8,7 +8,7 @@ using Xunit;
 namespace Fingerprinting.Tests;
 
 /// <summary>Step 4, entry-point-inventory â€” the acceptance criteria in
-/// 29-STEPS-004-005-INVENTORIES.md, one or more tests each.</summary>
+/// 29-ENTRY-POINT-AND-OUTBOUND-INVENTORIES.md, one or more tests each.</summary>
 public class EntryPointInventoryTests
 {
     private static readonly Guid RepositoryId = Guid.Parse("11111111-2222-3333-4444-555555555555");

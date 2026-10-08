@@ -206,7 +206,7 @@ def _resolve_inputs(
             # stubbed, skipped by policy, or returned NOOP.
             #
             # Without this, step 6 declaring both its inputs optional
-            # (27-STEP-006-PATTERN-VALIDATION.md Part D) still hard-fails
+            # (27-PATTERN-VALIDATION.md Part D) still hard-fails
             # the moment step 5 is stubbed, which is exactly the case
             # `optional` exists to survive. The step is invoked with the
             # input simply absent from `inputs` and decides for itself —

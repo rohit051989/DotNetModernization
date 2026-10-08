@@ -330,10 +330,9 @@ class DecisionTests(ItemCatalogTestCase):
         self.assert_http(422, "RESOLUTION_WRONG_ITEM", self.upsert, TEST_ENGAGEMENT_ID, resolution_id="t-other-r")
 
     def test_one_default_per_item(self):
-        catalog_items.create_resolution(
-            "t-app", s.ResolutionCreate(id="t-d1", name="d1", consumer_impact="low", effort="low", is_default=True),
-            db=self.db,
-        )
+        # The item's first resolution is already its default (exactly one per
+        # item, tests.test_item_defaults), so a second is refused.
+        self.assertTrue(any(r.is_default for r in catalog_items.list_resolutions("t-app", include_deleted=False, db=self.db)))
         self.assert_http(
             409, "DEFAULT_ALREADY_SET", catalog_items.create_resolution, "t-app",
             s.ResolutionCreate(id="t-d2", name="d2", consumer_impact="low", effort="low", is_default=True),
@@ -384,15 +383,27 @@ class PatternMigrationTests(ItemCatalogTestCase):
 
     def clear_occurrences(self):
         """Once step 7 has written occurrences for migrated items, revert must
-        refuse: work is built on them. Cleared (inside this rolled-back
-        transaction only) to exercise revert itself."""
+        refuse: work is built on them — and on impact-analysis's rows, built on
+        the occurrences, and on decisions recorded since. All cleared (inside
+        this rolled-back transaction only) to exercise revert itself."""
         from app.items import pattern_migration
 
-        occurrences = self.db.query(models.ItemOccurrence).filter(
-            models.ItemOccurrence.item_id.in_(pattern_migration.MIGRATED))
-        if occurrences.count():
+        migrated = pattern_migration.MIGRATED
+        # Decisions recorded on migrated items since the migration block
+        # revert too: client work built on the items.
+        record_ids = {row.id for row in self.db.query(models.DecisionRecord.id)}
+        later_decisions = self.db.query(models.EngagementDecision).filter(
+            models.EngagementDecision.item_id.in_(migrated), models.EngagementDecision.id.notin_(record_ids))
+        derived = [
+            self.db.query(models.WorkItemImpact).filter(models.WorkItemImpact.item_id.in_(migrated)),
+            self.db.query(models.ImpactSummary).filter(models.ImpactSummary.item_id.in_(migrated)),
+            self.db.query(models.ItemOccurrence).filter(models.ItemOccurrence.item_id.in_(migrated)),
+            later_decisions,
+        ]
+        if any(query.count() for query in derived):
             self.assert_http(409, "REVERT_BLOCKED", pattern_migration.revert, self.db)
-            occurrences.delete(synchronize_session=False)
+            for query in derived:
+                query.delete(synchronize_session=False)
             self.db.flush()
 
     def setUp(self):
@@ -532,7 +543,7 @@ class AuthoredItemTests(unittest.TestCase):
     ABSENCE = {"missing-dockerfile", "missing-health-endpoint", "missing-ocp4-manifests"}
     HOSTING = {"windows-service-hosting", "modern-worker-service", "wcf-service-host", "interactive-console-tool"}
     APPLICATION_WORK = {"wcf-nettcp-client", "msmq-usage", "asmx-service", "wcf-service"}
-    # Generic, parameterised by package (30-STEP-006 Part D2); signals from step 6.
+    # Generic, parameterised by package (30-DEPENDENCY-ASSESSMENT Part D2); signals from step 6.
     PACKAGE = {
         "package-upgrade-safe", "package-upgrade-breaking", "package-replacement-required",
         "package-vulnerable", "package-not-approved",

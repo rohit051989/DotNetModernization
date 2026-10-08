@@ -1,5 +1,5 @@
 """Lifecycle step 1 — repository estate ingest & inventory creation. See
-13-STEP-001-REPOSITORY-INGEST.md and 15-REPOSITORY-INGEST-UI.md Parts B and C.
+13-REPOSITORY-INGEST.md and 15-REPOSITORY-INGEST-UI.md Parts B and C.
 
 `local_path` is the only implemented source: the repository already exists on
 disk, at the path recorded on its `repositories` row (never from step
@@ -36,7 +36,7 @@ ARTIFACT_VERSION = "1.2.0"
 
 SKIP_DIR_NAMES = {".git", "node_modules", "bin", "obj", "packages"}
 
-# docs/19-STEP-002-SOLUTION-DISCOVERY.md Part A — "Language detection".
+# docs/19-SOLUTION-DISCOVERY.md Part A — "Language detection".
 EXTENSION_LANGUAGE_MAP = {
     ".cs": "C#",
     ".vb": "VB.NET",
@@ -266,7 +266,7 @@ def run(context: StepContext) -> StepResult:
         db.commit()
 
         # generated_at is deliberately NOT part of this file — see
-        # 13-STEP-001-REPOSITORY-INGEST.md. It would make the checksum differ
+        # 13-REPOSITORY-INGEST.md. It would make the checksum differ
         # between two runs over an unchanged repository, since the engine's
         # checksum is computed over the file's actual bytes. It's carried in
         # the output's `metadata` instead.

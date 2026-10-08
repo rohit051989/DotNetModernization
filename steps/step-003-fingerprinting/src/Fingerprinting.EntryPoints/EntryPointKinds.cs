@@ -1,6 +1,6 @@
 namespace Fingerprinting.EntryPoints;
 
-/// <summary>The entry point kinds — 29-STEPS-004-005-INVENTORIES.md Part B1,
+/// <summary>The entry point kinds — 29-ENTRY-POINT-AND-OUTBOUND-INVENTORIES.md Part B1,
 /// razor_page (1.1.0), and seven more (2.0.0) ported from the
 /// find-dotnet-entry-points pattern catalog. Published, with a version, in
 /// schemas/entry-point-capabilities-*.json.</summary>

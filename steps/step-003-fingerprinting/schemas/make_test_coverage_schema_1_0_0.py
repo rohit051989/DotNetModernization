@@ -1,5 +1,5 @@
 """Writes test-coverage-1.0.0.schema.json — lifecycle step 8, phase 1
-(32-STEP-008-TEST-COVERAGE.md Part J).
+(32-TEST-COVERAGE-ASSESSMENT.md Part J).
 
 Run from this folder:  python make_test_coverage_schema_1_0_0.py
 """
@@ -83,7 +83,7 @@ schema = {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "$id": "https://modernization-platform.local/schemas/test-coverage-1.0.0.schema.json",
     "title": "test-coverage 1.0.0",
-    "description": "Lifecycle step 8, phase 1 (32-STEP-008-TEST-COVERAGE.md): test classes and their type, source-to-test "
+    "description": "Lifecycle step 8, phase 1 (32-TEST-COVERAGE-ASSESSMENT.md): test classes and their type, source-to-test "
                    "mappings with confidence, every non-generated source file in exactly one bucket, coverage from existing "
                    "Cobertura / OpenCover / lcov reports, and CI maturity. No LLM, no test execution. A figure that is not "
                    "measured carries a reason and no percentage — never 0%. Deterministic for a given commit.",

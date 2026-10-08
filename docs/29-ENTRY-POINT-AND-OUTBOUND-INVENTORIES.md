@@ -1,30 +1,30 @@
-# 29 — Steps 4 & 5: Entry-Point and Outbound-Invocation Inventories
+# 29 — Entry-Point and Outbound-Invocation Inventories (`entry-point-inventory`, `outbound-invocation-inventory`)
 
-Lifecycle steps 4 and 5. Owner: **P**. Job: `phase0-repository-discovery`, after
-step 3. Implemented in **C# / .NET**, invoked via the `process` adapter.
+Lifecycle steps `entry-point-inventory` and `outbound-invocation-inventory`. Owner: **P**. Job: `phase0-repository-discovery`, after
+`application-fingerprinting`. Implemented in **C# / .NET**, invoked via the `process` adapter.
 
-Step 3 detects **presence** — "this project has controllers". These steps produce
+`application-fingerprinting` detects **presence** — "this project has controllers". These steps produce
 **inventories** — "`GET /api/accounts/{id}` is handled by
 `AccountsController.GetById`", and "this project calls `wsse0.saifg.rbc.com` over
 NetTcp". Different shape, different consumers.
 
-| | Step 4 — inbound | Step 5 — outbound |
+| | `entry-point-inventory` — inbound | `outbound-invocation-inventory` — outbound |
 |---|---|---|
 | Question | What can call this application? | What does this application call? |
 | Viewpoint | FUNCTIONAL | CONTEXT |
-| Feeds | Contract snapshot (14), test generation (15), risk (8) | Endpoint register (10), risk (8), decisions |
+| Feeds | `contract-snapshot`, `characterization-test-generation`, `risk-scoring-tier-assignment` | Endpoint register (`dependency-and-context-map`), `risk-scoring-tier-assignment`, decisions |
 
 ---
 
 ## Part A — Shared decisions
 
-### A1. Extend the step 3 solution
+### A1. Extend the `application-fingerprinting` solution
 
 Both steps are new projects in `steps/step-003-fingerprinting/`, sharing
 `Fingerprinting.Analysis` for project loading and Roslyn parsing, and the Cli
 infrastructure for the envelope.
 
-This reuses what step 3 already solved: `MSBuildLocator` registered before any MSBuild
+This reuses what `application-fingerprinting` already solved: `MSBuildLocator` registered before any MSBuild
 type loads, stdout carrying only the StepResult, deterministic JSON with sorted keys and
 `\n` line endings, generated-code exclusion, SARIF-safe path encoding, and the secrets
 rules. Rebuilding any of that is risk with no benefit.
@@ -34,7 +34,7 @@ and its own tables. Sharing a library is not sharing a contract.
 
 ### A2. Syntax analysis, with honest confidence
 
-Semantic analysis stays off, per step 3's Part A4. Route templates, type names and
+Semantic analysis stays off, per `application-fingerprinting`'s Part A4. Route templates, type names and
 member names are recorded **as written in source**. Where a value cannot be confirmed
 syntactically — a base class that might be user-defined, a route token needing
 resolution — confidence is below 1.0 and the reason is recorded.
@@ -49,18 +49,18 @@ consumes:
     version_range: "^1.2.0"
 ```
 
-Step 2 supplies the project list and paths. Step 3 supplies which projects are
-out-of-scope, so these steps skip what step 3 skipped. Neither re-derives project
+`solution-discovery` supplies the project list and paths. `application-fingerprinting` supplies which projects are
+out-of-scope, so these steps skip what `application-fingerprinting` skipped. Neither re-derives project
 structure.
 
 ### A4. Secrets
 
-Both steps inherit docs/21 Part G. Step 5 carries the most risk, since outbound
+Both steps inherit docs/21 Part G. `outbound-invocation-inventory` carries the most risk, since outbound
 configuration is where credentials live. Specific rules in Part C5.
 
 ---
 
-## Part B — Step 4: entry-point inventory
+## Part B — `entry-point-inventory`
 
 ### B1. Entry point kinds
 
@@ -148,28 +148,28 @@ to risk scoring, and a public endpoint is a different risk from an authorised on
 Indexes on `(project_id, kind)` and `(repository_id, kind)`.
 
 Artifact `entry-point-inventory@1.0.0` — per project, entry points sorted by kind then
-route or handler. Deterministic per step 3's rules.
+route or handler. Deterministic per `application-fingerprinting`'s rules.
 
 A per-project summary: count by kind, count by HTTP verb, count unauthorised. The
 unauthorised count is worth surfacing prominently.
 
-### B5. As implemented (step 4, scanner 2.1.0)
+### B5. As implemented (`entry-point-inventory`, scanner 2.1.0)
 
 **Layout.** `Fingerprinting.EntryPoints` (detectors, composition) and
 `Fingerprinting.EntryPoints.Cli` (exe, published to
-`publish/entry-point-inventory/`). Step 3's shared plumbing moved into libraries,
+`publish/entry-point-inventory/`). `application-fingerprinting`'s shared plumbing moved into libraries,
 not copied: `Fingerprinting.Analysis` now holds the file walk, `SourceFileScanner`
 and the Roslyn name helpers; the new `Fingerprinting.StepHost` holds the envelope,
 `StepBootstrap` (MSBuildLocator, stdout guard, culture), `StepEnvelopeRunner`, the
-schema gate, artifact URIs and `PlatformDatabase`. Step 3's artifacts are
+schema gate, artifact URIs and `PlatformDatabase`. `application-fingerprinting`'s artifacts are
 byte-identical before and after the move.
 
 **Inputs (A3).** Both `consumes` entries are required, and
 `phase0-repository-discovery` v7 wires them (`${artifacts.solution-project-inventory}`,
 `${artifacts.application-fingerprint}`). They are the only input path. The "no job
 definition change" rule holds only while a step's consumes and produces are unchanged,
-and step 4 gained two inputs. An earlier build registered them optional and read
-steps 2 and 3's tables when they were unwired; that fallback is deleted. Two input
+and `entry-point-inventory` gained two inputs. An earlier build registered them optional and read
+`solution-discovery`'s and `application-fingerprinting`'s tables when they were unwired; that fallback is deleted. Two input
 paths are two behaviours that can drift, and a fallback keeps working silently when
 the wiring breaks. Registering the required inputs invalidated v6 — validator rule 9,
 `UNWIRED_INPUT`, as intended — and v7 replaces it. The engine records each run's
@@ -206,7 +206,7 @@ service is not decidable without binding). `[FromServices]` and framework types
   a match elsewhere, because two copies of one service in a repository would
   otherwise claim each other's. When a `.svc` file or `new ServiceHost(typeof(X))`
   names an implementation, the others (mocks) are not recorded. A contract
-  implemented only by `ClientBase<T>` proxies is outbound (step 5), not an entry
+  implemented only by `ClientBase<T>` proxies is outbound (`outbound-invocation-inventory`), not an entry
   point.
 - **Authorisation.** Every inbound entry point is true, false or null. Null
   means *not assessed*: neither source nor config declares its authorisation.
@@ -229,7 +229,7 @@ service is not decidable without binding). `[FromServices]` and framework types
   code does not change the id. A genuine duplicate registration gets an ordinal.
 - **Tables.** `entry_points` gains an `unauthorised` column, so the count is a
   query. `entry_point_scans` — one row per repository, as `fingerprint_scans` is
-  for step 3 — holds the summaries the rows cannot: skipped projects, global
+  for `application-fingerprinting` — holds the summaries the rows cannot: skipped projects, global
   authorisation, conventional routes.
 
 **1.1.0 — `razor_page`.** A twelfth kind: a `.cshtml` whose first directive is `@page`
@@ -321,12 +321,12 @@ regex-based code was not used, and the rules are reimplemented on syntax trees:
 now told from MassTransit's by type-argument count.
 
 **2.0.0 — the capability manifest.** `schemas/entry-point-capabilities-1.0.0.json`
-publishes every kind step 4 detects — what it detects, what identifies it, how
+publishes every kind `entry-point-inventory` detects — what it detects, what identifies it, how
 `authDeclared` is decided, the version it arrived in — and the patterns it does not
 cover. It ships beside the exe, every artifact is stamped with its version and kinds,
 and the scan row stores the stamp. `GET /api/workflow/steps/entry-point-inventory/
 capabilities` serves it with how often each kind is found across the estate. Workflow
-Administration shows it under Detection capabilities, beside step 3's extractor
+Administration shows it under Detection capabilities, beside `application-fingerprinting`'s extractor
 readiness. This is the extractor-readiness principle applied to entry points: a listed
 kind with none found is a result; a pattern under not covered is a declared gap, not a
 silent miss. A test holds the manifest and the scanner's kinds together.
@@ -347,8 +347,8 @@ manifest 1.1.0 records each kind's class).
   Windows services, console and desktop mains. Everything else is request: HTTP
   actions, minimal APIs, Razor Pages, WCF, ASMX, gRPC, SignalR, WebForms, Blazor, Azure
   Functions, message consumers, scheduled jobs, HTTP handlers.
-- Downstream, only request entry points are surface. Risk scoring (step 8), contract
-  snapshots (step 14) and test generation (step 15) read request entry points only.
+- Downstream, only request entry points are surface. Risk scoring (`risk-scoring-tier-assignment`), contract
+  snapshots (`contract-snapshot`) and test generation (`characterization-test-generation`) read request entry points only.
   Lifecycle hooks carry no `authDeclared` — a database constraint enforces it — so
   "no declared authentication" counts request entry points only.
 - Totals are reported as `requestEntryPointCount` and `lifecycleHookCount`, with
@@ -358,12 +358,12 @@ manifest 1.1.0 records each kind's class).
 - *Origin is decided per repository.* A module registered in one repository's
   web.config whose source lives in another repository — a shared in-house library —
   is classified `framework`, because the scan only sees the repository it runs on.
-  Step 10 has the estate-wide view to reconcile this: a `framework` registration whose
+  `dependency-and-context-map` has the estate-wide view to reconcile this: a `framework` registration whose
   full type name some other repository declares is `application` code.
 - *A poll-loop service has no request entry point.* A `BackgroundService` (or Windows
   service) that loops with no timer and no recognised consumer yields one lifecycle
   hook and zero request entry points, although it does real work on every iteration.
-  Step 8 risk scoring must not read zero request entry points as low risk when a
+  `risk-scoring-tier-assignment` must not read zero request entry points as low risk when a
   `hosted_service` or `windows_service` is present: the work those services do is
   invisible to the request count.
 
@@ -379,15 +379,15 @@ behaviours, and web.config transforms.
 A service is often assembled across projects. In the WCF sample the contracts are in
 `Catalog.Contracts`, the implementations in `Catalog.Services`, the `ServiceHost` and
 `system.serviceModel` in `Catalog.Host`, and the `.svc` files in `Hosting.Iis`, which has
-no project file. A step-3 detection rule matches signals within one project, so it cannot
-see the service. Step 4 has already put it together, so step 4 is also a **signal
-producer**, in the same way as step 6.
+no project file. A detection rule over `application-fingerprinting` signals matches signals within one project, so it cannot
+see the service. `entry-point-inventory` has already put it together, so it is also a **signal
+producer**, in the same way as `dependency-assessment`.
 
-- **Registration.** Step 4 is registered as the producer `EntryPointInventory` in
+- **Registration.** `entry-point-inventory` is registered as the producer `EntryPointInventory` in
   `extractors.yaml` and in signal registry 1.8.0. The registration, the artifact and the
   scanner are 2.2.0, and the capability manifest is 1.2.0.
-- **Writing.** At the end of a run, step 4 deletes its own `fingerprint_signals` rows for
-  the repository (`extractor = 'EntryPointInventory'`) and writes the new set. Step 7
+- **Writing.** At the end of a run, `entry-point-inventory` deletes its own `fingerprint_signals` rows for
+  the repository (`extractor = 'EntryPointInventory'`) and writes the new set. `item-detection`
   reads them like any other signal.
 - **Scope.** Only application-origin entry points count. A framework-origin entry point
   (an external base class) does not make a project expose a service.
@@ -414,7 +414,7 @@ also has two hosting values: the IIS `.svc` files and the `ServiceHost`.
 
 ---
 
-## Part C — Step 5: outbound-invocation inventory
+## Part C — `outbound-invocation-inventory`
 
 ### C1. Mechanisms
 
@@ -428,7 +428,7 @@ also has two hosting values: the IIS `.svc` files and the `ServiceHost`.
 | `message_consumer` | Kafka consumers, MSMQ receives — the outbound connection to the broker |
 | `cache` | Redis connection configuration |
 | `secret_store` | Vault configuration |
-| `file_share` | UNC paths from step 3's `UNC_PATH_LITERAL` |
+| `file_share` | UNC paths from `application-fingerprinting`'s `UNC_PATH_LITERAL` |
 | `smtp` | `SmtpClient`, mail configuration |
 | `ldap` | `System.DirectoryServices` usage |
 
@@ -440,7 +440,7 @@ HTTP-based bindings port cleanly.
 
 Sources, in order of preference: `<client><endpoint binding=…>` in config; a binding
 constructed in client code (`new NetTcpBinding()`); the binding inside a generated
-`Reference.cs` — which, per step 3's precedent, is read for this purpose only.
+`Reference.cs` — which, per `application-fingerprinting`'s precedent, is read for this purpose only.
 
 Also record `securityMode` where declared — `Transport`, `Message`,
 `TransportWithMessageCredential`, `None` — and `clientCredentialType`. Windows-integrated
@@ -448,7 +448,7 @@ security modes are a second Linux blocker independent of the binding.
 
 ### C3. Endpoint normalisation
 
-The endpoint register at step 10 aggregates by endpoint, so endpoints must normalise to
+The endpoint register in `dependency-and-context-map` aggregates by endpoint, so endpoints must normalise to
 comparable values.
 
 ```
@@ -478,7 +478,7 @@ placeholders.
 - a URL built by string concatenation in code records the literal fragments and
   `resolution: partial`
 
-### C5. Secrets — stricter than step 3
+### C5. Secrets — stricter than `application-fingerprinting`
 
 - connection strings: name, provider, and **server host only**. Never database name,
   user, password or any other key. Host matters for the endpoint register; nothing else
@@ -519,7 +519,7 @@ a legacy Windows environment's Integrated Security is not.
 
 **Unused clients.** A client with no construction site and no configuration — a
 `ClientBase` subclass nothing builds or configures — is `usage: unused`. It stays in
-the inventory but is left out of every count, and step 10's endpoint register reads
+the inventory but is left out of every count, and `dependency-and-context-map`'s endpoint register reads
 `usage = 'used'` only, so no one asks a backend team about an endpoint nothing calls.
 
 `unknown` is an honest answer, not a failure. The client needs to know what could not
@@ -565,12 +565,12 @@ be assessed as much as what could.
 `step_execution_id`, `detected_at`.
 
 Indexes on `(repository_id, mechanism)`, `(endpoint_host)` and `(linux_verdict)` — the
-host index is what step 10's aggregation reads.
+host index is what `dependency-and-context-map`'s aggregation reads.
 
 Artifact `outbound-invocation-inventory@1.0.0`. Per-project summary: count by
 mechanism, count by verdict, and the incompatible invocations listed explicitly.
 
-### C9. As implemented (step 5, scanner 1.3.0)
+### C9. As implemented (`outbound-invocation-inventory`, scanner 1.3.0)
 
 **Where it lives.** `src/Fingerprinting.Outbound` (detection, configuration
 resolution, verdicts) and `src/Fingerprinting.Outbound.Cli` (envelope, database,
@@ -580,14 +580,14 @@ published to `publish/outbound-invocation-inventory/`). Registration:
 `phase0-repository-discovery` v8 wires both inputs, and both are required.
 There is no fallback source.
 
-**Shared with step 4 in `Fingerprinting.Analysis`:**
+**Shared with `entry-point-inventory` in `Fingerprinting.Analysis`:**
 - `ProjectSource`, `SyntaxHelpers`, `ConfigFiles`, `WcfSecurity`.
 - `CallSiteEvaluator`, the generic-helper binding that resolved
   `BuildTcpHost<TService, TContract>`.
 - `Secrets` and `JsonConfigWalker`.
 - The `AuthDeclared` vocabulary and `ProjectScanStatuses`.
 
-Step 3 and step 4 outputs were byte-identical before and after the move.
+`application-fingerprinting` and `entry-point-inventory` outputs were byte-identical before and after the move.
 
 **Configuration resolution (C4).**
 - `RepositoryConfig` reads every `appsettings*.json`, `web.config` and
@@ -621,7 +621,7 @@ Step 3 and step 4 outputs were byte-identical before and after the move.
 **Credentials.**
 - Recorded by kind (`certificate`, `password`, `api_key`, `token`,
   `client_secret`, `windows`) and key path or code location only.
-- `authDeclared` uses step 4's vocabulary:
+- `authDeclared` uses `entry-point-inventory`'s vocabulary:
   - `declared` when any credential is visible
   - `none_declared` only when declared as none (a WCF client credential type
     of `None`)
@@ -649,8 +649,8 @@ Step 3 and step 4 outputs were byte-identical before and after the move.
 
 **1.2.0 (additive): the operation each call site invokes.** Every invocation
 carries `operations`, one per call site, each `{operation, verb, path, member,
-resolution, reason, callSite}`. Step 11 matches them to step 4's entry points
-(31-STEP-011 Part I). `OperationTracer` (syntax only) produces them:
+resolution, reason, callSite}`. `dependency-and-context-map` matches them to `entry-point-inventory`'s entry points
+(31-DEPENDENCY-AND-CONTEXT-MAP Part I). `OperationTracer` (syntax only) produces them:
 - **SOAP.** It follows the client from where it is created to the variable or
   field holding it (through `await`, casts and `using`). For a
   `ChannelFactory<T>`, including one returned by a generic helper per call
@@ -661,7 +661,7 @@ resolution, reason, callSite}`. Step 11 matches them to step 4's entry points
     interface in the repository, then any interface of the name. A domain
     interface sharing the contract's name therefore does not filter the
     operations.
-  - `FooAsync` on a generated proxy is kept as written; step 11 matches it to
+  - `FooAsync` on a generated proxy is kept as written; `dependency-and-context-map` matches it to
     the `Foo` operation.
   - Where the proxy is passed on (a WinForms form handing it to a
     controller), every call on a receiver declared with the contract or client
@@ -695,7 +695,7 @@ resolution, reason, callSite}`. Step 11 matches them to step 4's entry points
 
 **1.3.0 (additive).** Schema `outbound-invocation-inventory-1.3.0.schema.json`,
 generated by `schemas/make_outbound_schema_1_3_0.py`. Migration `c4a7e1d93b26`.
-Job `phase0-repository-discovery` v10 wires step 4's `entry-point-inventory`
+Job `phase0-repository-discovery` v10 wires the `entry-point-inventory` artifact
 into this step as an optional input.
 
 - **Configuration through the host process.**
@@ -704,7 +704,7 @@ into this step as an optional input.
     of its own.
   - So a project that is not a host and has no configuration file is
     resolved through its hosts. A host is an `Exe`/`WinExe` output type, a
-    `.Web` SDK, or a project with a web.config. It is found through step 2's
+    `.Web` SDK, or a project with a web.config. It is found through `solution-discovery`'s
     project references, transitively through other libraries
     (`ResolveHosts`).
   - Key lookups (`Lookup`, `EnvironmentsFor`) and WCF client endpoints search
@@ -719,11 +719,11 @@ into this step as an optional input.
     configuration from the host.
   - With several hosts, each host's configuration is its own binding.
     `environmentBindings[].hostProject` names the host.
-  - Not covered: a host that step 2 does not know, such as a folder of `.svc`
+  - Not covered: a host that `solution-discovery` does not know, such as a folder of `.svc`
     files and a web.config with no project file (the WCF sample's
     `Hosting.Iis`).
 - **Web Deploy SetParameters.** `DeployParameterFiles` in Fingerprinting.Analysis
-  is shared with step 3.
+  is shared with `application-fingerprinting`.
   - **Discovery.** Files come from the engagement's `deploy_parameter_globs`,
     defaulting to `**/SetParam*.xml` and `**/SetParameters*.xml`.
   - **Environment.** A filename suffix names the environment
@@ -758,13 +758,13 @@ into this step as an optional input.
     - The secrets fixture now includes a SetParam file with a password and a
       connection string.
   - Which environment is production is the engagement's existing
-    `production_environment` setting; step 11 and the repository page use it.
+    `production_environment` setting; `dependency-and-context-map` and the repository page use it.
 - **Call sites are invocations.** `callSites` is now where the dependency is
   invoked: each followed operation's call site (`service.PlaceRealTimeFTOrder(req)`
   at line 56). Where the client is created (`using (… = new FundsTransferWSSoapClient())`
   at 51) is kept in `constructionSites` when it differs.
 - **Inbound operations → backend calls (`BackendReach`).**
-  - For each step 4 entry point, from its handler method: the outbound call
+  - For each `entry-point-inventory` entry point, from its handler method: the outbound call
     sites in the method itself (depth 0), then through methods of the same
     class it calls (`M()`, `this.M()`), breadth-first, up to depth 3.
   - Each call records its depth, the methods walked, and whether it is
@@ -849,14 +849,14 @@ to its handler's source location.
 Environment bindings expandable. Incompatible invocations sorted first — that is the
 list someone will act on.
 
-Step 10 builds the estate-wide endpoint register from these rows; this view is
+`dependency-and-context-map` builds the estate-wide endpoint register from these rows; this view is
 per-repository.
 
 ---
 
 ## Acceptance criteria
 
-**Step 4**
+**`entry-point-inventory`**
 - [ ] Controller routes compose `[Route]` with verb templates, resolving `[controller]`,
       `[action]` and `[area]`
 - [ ] An action template beginning with `/` replaces rather than appends
@@ -868,7 +868,7 @@ per-repository.
 - [ ] `entryPointId` is stable across rescans
 - [ ] Authorisation is recorded; unauthorised endpoints are counted
 
-**Step 5**
+**`outbound-invocation-inventory`**
 - [ ] SOAP clients record binding and security mode from config, code, or a generated
       `Reference.cs`
 - [ ] A NetTcp client is `incompatible`; a BasicHttp client is `compatible`
@@ -882,7 +882,7 @@ per-repository.
 - [ ] `invocationId` is stable across rescans
 
 **Both**
-- [ ] Extend the step 3 solution, sharing the analysis library
+- [ ] Extend the `application-fingerprinting` solution, sharing the analysis library
 - [ ] Registered as `process` steps; `phase0-repository-discovery` validates with no
       YAML change
 - [ ] Two runs produce identical artifact checksums

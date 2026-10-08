@@ -1,9 +1,9 @@
-# 31 — Step 11: Estate Dependency Graph, Context Map & Endpoint Register
+# 31 — `dependency-and-context-map`: Estate Dependency Graph, Context Map & Endpoint Register
 
-Lifecycle step 11. Owner: **P**. Job: `phase0-estate-consolidation`, engagement-scoped.
+Lifecycle step `dependency-and-context-map`. Owner: **P**. Job: `phase0-estate-consolidation`, engagement-scoped.
 Implemented in **Python**, in-process or `process` adapter.
 
-Steps 1–9 each see one repository. This step sees the whole engagement, and answers the
+The steps from `repository-ingest` to `risk-scoring-tier-assignment` each see one repository. This step sees the whole engagement, and answers the
 questions no single repository can.
 
 ---
@@ -81,7 +81,7 @@ are almost always the same team.
 **Group by the production host.** With one configuration file per environment, one
 service has a different host in each, and the raw host would split one service and one
 owning team across several rows. The engagement setting `production_environment` names
-the environment whose host keys the row (as step 5 names environments from file names:
+the environment whose host keys the row (as `outbound-invocation-inventory` names environments from file names:
 `appsettings.Production.json` → `Production`). A call with a binding for that environment
 is filed under that binding's host, and the other environments' hosts are listed beneath
 the row. A call with no production binding — or every call, when the setting is not
@@ -97,7 +97,7 @@ made — falls back to the host as found, and the row says so (`groupingNote`).
 | `mechanisms` | `soap_client`, `http_client`, `database` and so on |
 | `bindings` | For SOAP, every binding seen — `netTcpBinding` appearing here is the headline |
 | `worst_verdict` | Worst Linux verdict across every call |
-| `verdict_by_environment` | Per environment, carried from step 5 |
+| `verdict_by_environment` | Per environment, carried from `outbound-invocation-inventory` |
 | `requires_backend_change` | True when any call is `incompatible` for a reason only the endpoint's owner can fix — a NetTcp binding, Windows-integrated service security |
 
 `requires_backend_change` is the field the register exists for. It separates *"we can fix
@@ -138,7 +138,7 @@ not deleted — the conversation history still matters.
 
 ## Part D — Package estate view
 
-Aggregates step 6's `package_assessments` across repositories.
+Aggregates `dependency-assessment`'s `package_assessments` across repositories.
 
 | Field | Meaning |
 |---|---|
@@ -146,7 +146,7 @@ Aggregates step 6's `package_assessments` across repositories.
 | `repositories` / `projects` | Who uses it |
 | `versions_in_use` | Every version seen across the estate, with counts |
 | `estate_drift` | Used at more than one version across the estate |
-| `recommended_version` | From step 6 |
+| `recommended_version` | From `dependency-assessment` |
 | `outcomes` | Count by outcome across all uses |
 | `breaking_members` | Union of changed members hit anywhere |
 | `flags` | Deprecated, vulnerable, not-in-client-feed, anywhere |
@@ -155,7 +155,7 @@ The value is *research once, apply everywhere*. A breaking upgrade appearing in 
 repositories is one investigation, one conversion approach, and forty applications of it.
 Sort by repository count descending, so the widest-reaching upgrades lead.
 
-Estate drift is distinct from step 6's per-repository drift: Newtonsoft.Json at 12 in one
+Estate drift is distinct from `dependency-assessment`'s per-repository drift: Newtonsoft.Json at 12 in one
 repository and 13 in another is estate drift even where each repository is internally
 consistent.
 
@@ -171,7 +171,7 @@ consistent.
   assembly name in **another** repository in the engagement. Repository A builds
   `Rbc.Common`; repository B references package `Rbc.Common`; that is an edge from B to A
 
-Packages answered by a client feed (step 6 `feed_source: client_feed`) are the likeliest
+Packages answered by a client feed (`dependency-assessment` `feed_source: client_feed`) are the likeliest
 internal packages, so match those first, but match any package id.
 
 ### E2. Shared libraries
@@ -183,20 +183,20 @@ every consumer — so they carry elevated risk regardless of their own size.
 ### E3. Cycles
 
 Detect cycles. A cycle across repositories means neither side can migrate first, and wave
-planning (step 12) must treat the cycle as one unit. Report every cycle explicitly.
+planning (`migration-wave-planning`) must treat the cycle as one unit. Report every cycle explicitly.
 
-### E4. Reconciling step 4's origin
+### E4. Reconciling `entry-point-inventory`'s origin
 
-Step 4 decides origin per repository, so a module registered in one repository whose source
+`entry-point-inventory` decides origin per repository, so a module registered in one repository whose source
 lives in another was classified `framework`. With the estate view, that is now knowable.
 
-**Do not rewrite step 4's rows.** A step owns its rows, and step 4's next rescan would revert
+**Do not rewrite `entry-point-inventory`'s rows.** A step owns its rows, and its next rescan would revert
 any correction. Record reconciliations in this step's own table:
 
 `origin_reconciliations` — `entry_point_id`, `original_origin`, `reconciled_origin`,
 `declaring_repository_id`, `declaring_project_id`, `reason`.
 
-Consumers read step 4's origin with this overlay applied. The UI shows the reconciled value
+Consumers read `entry-point-inventory`'s origin with this overlay applied. The UI shows the reconciled value
 and notes it was corrected estate-wide.
 
 ---
@@ -238,7 +238,7 @@ Each edge carries:
 - the mechanism
 - the match method and its confidence
 
-Edges are built by matching step 5's invoked operations (29-STEPS Part C9, 1.2.0) to step 4's
+Edges are built by matching `outbound-invocation-inventory`'s invoked operations (29-ENTRY-POINT-AND-OUTBOUND-INVENTORIES Part C9, 1.2.0) to `entry-point-inventory`'s
 entry points:
 - **SOAP** — by contract and operation; the path as well, when the service's address says
 - **HTTP** — by verb and route template, on a loopback host or a host annotated
@@ -329,19 +329,19 @@ Coverage — *"12 of 50 repositories included"* — on every view.
 - [ ] Cross-repository edges are found by matching package ids to projects in other
       repositories
 - [ ] Shared libraries and cycles are identified and reported
-- [ ] Origin reconciliations are recorded in this step's table; step 4's rows are untouched
+- [ ] Origin reconciliations are recorded in this step's table; `entry-point-inventory`'s rows are untouched
 - [ ] The context map emits valid Structurizr DSL
 - [ ] Two runs over the same data produce identical artifacts
 
 ---
 
-## As implemented (step 11, version 1.2.0)
+## As implemented (`dependency-and-context-map`, version 1.2.0)
 
 Code: `backend/app/estate/analysis.py` (pure functions, tested in
 `backend/tests/test_estate_analysis.py`) and `backend/app/steps/estate_map.py` (the
 `python` adapter entry point: loads, writes tables and artifacts). Registered from
 `backend/app/steps/dependency-and-context-map.registration.json`; runs in
-`phase0-estate-consolidation` v5 between the step 10 and 12 stubs. API:
+`phase0-estate-consolidation` v5 between the `unclaimed-signal-report` and `migration-wave-planning` stubs. API:
 `GET /api/engagements/{eid}/estate` (the newest run's four artifacts plus live
 annotations) and `PUT /api/engagements/{eid}/estate/annotations/{host}`. UI: the
 **Estate** tab, which replaces the disabled "Dependencies" placeholder tab.
@@ -386,13 +386,13 @@ in the artifacts — they change independently of any scan — and are merged by
 
 **Package estate (D).** `estateDrift` is any package at more than one version across the
 estate, as specified. `crossRepositoryDrift` is added: repositories using different
-version sets from each other — the Newtonsoft.Json 12-here, 13-there case that step 6's
+version sets from each other — the Newtonsoft.Json 12-here, 13-there case that `dependency-assessment`'s
 per-repository drift cannot see. A package at several versions inside one repository has
 estate drift but not cross-repository drift.
 
 **Dependency graph (E).** Cross-repository edges match a package id to another
-repository's project by assembly name or project file name (step 2 records no
-`PackageId`); `client_feed` on the edge says whether step 6 found the package on a client
+repository's project by assembly name or project file name (`solution-discovery` records no
+`PackageId`); `client_feed` on the edge says whether `dependency-assessment` found the package on a client
 feed. Shared libraries count consumer repositories including the project's own. Cycles are
 strongly connected components (Tarjan). Origin reconciliation matches a framework-origin
 handler type to another repository's project by the longest root namespace or assembly name
@@ -413,7 +413,7 @@ the same picture without parsing DSL.
 - `engagements.production_environment` is set with
   `PUT /api/engagements/{eid}/estate/settings`, not the engagement PUT, which
   replaces every field and would clear it. It is returned on the engagement
-  and in `GET …/estate` `settings`, beside the environments step 5 found and
+  and in `GET …/estate` `settings`, beside the environments `outbound-invocation-inventory` found and
   the repository slugs.
 - The match is case-insensitive.
 - A call's production binding is its first binding for that environment
@@ -512,3 +512,7 @@ the same picture without parsing DSL.
 - **Migration.** `d82f5c3e19a4` adds `endpoint_register.annotation_carried_from`, which
   was previously added by an edit to `c4a7e1d93b26`. That edit was reverted (see
   CLAUDE.md rule 4).
+- **Impact (1.4.0, 1.5.0).** At the end of each run, after decisions are re-derived:
+  `impact-analysis`'s staleness is refreshed, its client impact is added from this run's
+  integration edges (1.4.0), and catalog rule conflicts are classified across the estate
+  into `impact_rule_conflicts` (1.5.0). See `33-IMPACT-ANALYSIS.md`, As implemented.

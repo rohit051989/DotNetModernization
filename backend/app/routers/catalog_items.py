@@ -252,6 +252,48 @@ def _check_default_unique(db: Session, item_id: str, resolution_id: str, is_defa
         )
 
 
+def _live_default(db: Session, item_id: str, excluding: str | None = None) -> models.ItemResolution | None:
+    query = db.query(models.ItemResolution).filter(
+        models.ItemResolution.item_id == item_id,
+        models.ItemResolution.is_default.is_(True),
+        models.ItemResolution.deleted_at.is_(None),
+    )
+    if excluding is not None:
+        query = query.filter(models.ItemResolution.id != excluding)
+    return query.first()
+
+
+def _other_live_active(db: Session, item_id: str, resolution_id: str) -> int:
+    return (
+        db.query(models.ItemResolution)
+        .filter(
+            models.ItemResolution.item_id == item_id,
+            models.ItemResolution.id != resolution_id,
+            models.ItemResolution.deleted_at.is_(None),
+            models.ItemResolution.status == "active",
+        )
+        .count()
+    )
+
+
+def _check_default_stays(db: Session, resolution: models.ItemResolution, *, unset: bool, deactivate: bool, remove: bool) -> None:
+    """Every active item has exactly one default (app/items/defaults.py). The
+    default cannot be unset, deprecated or deleted while the item has another
+    live resolution: move the default first (make-default), so the item is
+    never without one. The item's last resolution can go."""
+    if not resolution.is_default or not (unset or deactivate or remove):
+        return
+    if _other_live_active(db, resolution.item_id, resolution.id) == 0 and not (unset or deactivate):
+        return
+    what = "deleted" if remove else "deprecated" if deactivate else "unset as the default"
+    raise error(
+        409,
+        f"Resolution '{resolution.id}' is the default for item '{resolution.item_id}' and cannot be {what}: "
+        "every item has exactly one default. Make another resolution the default first.",
+        code="DEFAULT_REQUIRED",
+    )
+
+
 def _check_name_unique(db: Session, item_id: str, resolution_id: str, name: str) -> None:
     clash = (
         db.query(models.ItemResolution)
@@ -332,6 +374,9 @@ def create_resolution(item_id: str, payload: item_schemas.ResolutionCreate, db: 
     _check_default_unique(db, item_id, payload.id, payload.is_default)
     resolution = models.ItemResolution(id=payload.id, item_id=item_id)
     _apply_resolution_fields(resolution, payload)
+    # Exactly one default per item: an item's first resolution is its default.
+    if _live_default(db, item_id) is None and resolution.status == "active":
+        resolution.is_default = True
     db.add(resolution)
     db.commit()
     db.refresh(resolution)
@@ -355,6 +400,7 @@ def update_resolution(
         raise error(404, f"Resolution '{resolution_id}' not found on item '{item_id}'", code="NOT_FOUND")
     _check_name_unique(db, item_id, resolution_id, payload.name)
     _check_default_unique(db, item_id, resolution_id, payload.is_default)
+    _check_default_stays(db, resolution, unset=not payload.is_default, deactivate=payload.status != "active", remove=False)
     _apply_resolution_fields(resolution, payload)
     db.commit()
     db.refresh(resolution)
@@ -449,6 +495,7 @@ def delete_resolution(
             f"Resolution '{resolution_id}' is selected by {live} non-superseded engagement decision(s).",
             code="REFERENCED_BY_DECISIONS",
         )
+    _check_default_stays(db, resolution, unset=False, deactivate=False, remove=True)
     resolution.deleted_at = _now()
     resolution.deleted_by = deleted_by
     db.commit()
@@ -471,6 +518,8 @@ def restore_resolution(item_id: str, resolution_id: str, db: Session = Depends(g
     if resolution is None or resolution.item_id != item_id:
         raise error(404, f"Resolution '{resolution_id}' not found on item '{item_id}'", code="NOT_FOUND")
     _check_default_unique(db, item_id, resolution_id, resolution.is_default)
+    if not resolution.is_default and resolution.status == "active" and _live_default(db, item_id) is None:
+        resolution.is_default = True
     resolution.deleted_at = None
     resolution.deleted_by = None
     resolution.updated_at = _now()

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://modernization-platform.internal/schemas/application-fingerprint-1.2.0.schema.json",
   "title": "application-fingerprint@1.2.0",
-  "description": "See 21-STEP-003-FINGERPRINTING.md Part F. No schemaVersion, scanId, timestamp or applicationPattern field belongs here. 1.1.0 adds signal.evidenceKind (Part F addendum). 1.2.0 adds signal types API_INVOCATION and LITERAL and evidence.matchedValue, required on LITERAL evidence and forbidden elsewhere (Part D 'Signal types').",
+  "description": "See 21-APPLICATION-FINGERPRINTING.md Part F. No schemaVersion, scanId, timestamp or applicationPattern field belongs here. 1.1.0 adds signal.evidenceKind (Part F addendum). 1.2.0 adds signal types API_INVOCATION and LITERAL and evidence.matchedValue, required on LITERAL evidence and forbidden elsewhere (Part D 'Signal types').",
   "type": "object",
   "additionalProperties": false,
   "required": [

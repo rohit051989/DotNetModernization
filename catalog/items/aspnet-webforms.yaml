@@ -36,7 +36,47 @@ resolutions:
   description: Rewrite as a conventional server-rendered ASP.NET Core MVC application.
   effort: high
   id: aspnetcore-mvc-rewrite
-  is_default: false
+  impact_rules:
+  - action: rewrite
+    filter:
+      extension: .cs
+    from: seed
+    id: code-behind
+    reason: Page code-behind is rewritten as MVC controllers and Razor views — logic carried, the page lifecycle and ViewState are not
+    select: self
+  - action: delete
+    filter:
+      extension:
+      - .aspx
+      - .ascx
+      - .master
+    from: seed
+    id: markup-evidence
+    reason: Web Forms markup is replaced by MVC controllers and Razor views
+    select: self
+  - action: delete
+    from: code-behind
+    id: markup
+    kind: webforms_markup
+    reason: Web Forms markup (.aspx, .ascx, .master) does not run on ASP.NET Core; it is replaced by the new views
+    traverse: convention_files
+  - action: rewrite
+    from: seed
+    id: project
+    reason: The Web Application project becomes an SDK-style Microsoft.NET.Sdk.Web project
+    traverse: project_file
+  - action: update
+    from: seed
+    id: config
+    path: system.web
+    reason: system.web settings move to ASP.NET Core configuration and middleware
+    traverse: config_elements
+  - action: update
+    from: code-behind
+    id: tests
+    reason: Tests of page code target the rewritten classes
+    traverse: referencing_tests
+  is_default: true
   linux_compatible: true
   name: ASP.NET Core MVC rewrite
   notes: |-
@@ -52,6 +92,46 @@ resolutions:
   description: Rewrite as a Blazor Server application, the closest conceptual match to the Web Forms component and server-render model.
   effort: high
   id: blazor-server-net10
+  impact_rules:
+  - action: rewrite
+    filter:
+      extension: .cs
+    from: seed
+    id: code-behind
+    reason: Page code-behind is rewritten as Blazor Server components — logic carried, the page lifecycle and ViewState are not
+    select: self
+  - action: delete
+    filter:
+      extension:
+      - .aspx
+      - .ascx
+      - .master
+    from: seed
+    id: markup-evidence
+    reason: Web Forms markup is replaced by Blazor Server components
+    select: self
+  - action: delete
+    from: code-behind
+    id: markup
+    kind: webforms_markup
+    reason: Web Forms markup (.aspx, .ascx, .master) does not run on ASP.NET Core; it is replaced by the new views
+    traverse: convention_files
+  - action: rewrite
+    from: seed
+    id: project
+    reason: The Web Application project becomes an SDK-style Microsoft.NET.Sdk.Web project
+    traverse: project_file
+  - action: update
+    from: seed
+    id: config
+    path: system.web
+    reason: system.web settings move to ASP.NET Core configuration and middleware
+    traverse: config_elements
+  - action: update
+    from: code-behind
+    id: tests
+    reason: Tests of page code target the rewritten classes
+    traverse: referencing_tests
   is_default: false
   linux_compatible: true
   name: Blazor Server on .NET 10

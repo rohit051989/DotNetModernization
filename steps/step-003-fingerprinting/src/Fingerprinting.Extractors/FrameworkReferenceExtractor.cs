@@ -7,11 +7,11 @@ using Fingerprinting.Domain;
 namespace Fingerprinting.Extractors;
 
 /// <summary>
-/// Level 2/3 extraction — step-3-application-fingerprinting.md section 5:
+/// Level 2/3 extraction — application-fingerprinting-v1.md section 5:
 /// assembly references, namespace usings and package references, grouped
 /// into a stable signal vocabulary. Package references are read from step 2's
 /// already-recorded data (<see cref="ProjectContext.Packages"/>), never
-/// re-parsed from the project file (21-STEP-003-FINGERPRINTING.md Part A7).
+/// re-parsed from the project file (21-APPLICATION-FINGERPRINTING.md Part A7).
 /// Assembly references (classic non-SDK <c>&lt;Reference Include=""&gt;</c>
 /// elements) are new — step 2 never parses those at all.
 /// </summary>

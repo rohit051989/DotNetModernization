@@ -35,7 +35,7 @@ is *satisfiable* by some upstream `produces`, but not that the flow node actuall
 **wires** it through an `inputs` mapping. A definition with a required `consumes` and
 no corresponding `inputs` entry passes static validation and then fails at runtime
 with "input was not resolved" — exactly the failure static validation exists to
-prevent. This happened with step 3.
+prevent. This happened with `application-fingerprinting`.
 
 Add validation rule 9:
 
@@ -332,7 +332,7 @@ counter: `1 of 7 steps implemented`.
 - adapter type chip and implementation status chip (`IMPLEMENTED` / `STUB`)
 - **consumes** and **produces** as artifact chips (`solution-project-inventory@2.0.0`)
 - **inputs wiring** shown explicitly — logical name to source expression. This is the
-  thing that was silently missing for step 3; make it visible
+  thing that was silently missing for `application-fingerprinting`; make it visible
 - `when:` condition rendered as readable prose, e.g.
   *"Runs when test_coverage_percent < 60 and engagement_id ≠ reference-engagement-b"*
 - policy state: `Enabled` or `Disabled — <reason>`, with an edit affordance when an

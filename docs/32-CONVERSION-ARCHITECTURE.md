@@ -43,9 +43,9 @@ sample (`sampleapps\WCF`) analysed in `MODERNIZATION-NET10-REST.md`:
 | # | Gap | Evidence on the WCF sample |
 |---|---|---|
 | A1 | **A large conversion is one opaque invocation.** `wcf-service` is application scope, so its REST resolution is one approach, one invocation and one commit for the whole project | The REST move is ~15 distinct, mostly mechanical changes: 18 fault throw sites, 5 behaviour attributes, 1 identity read, 2 config reads, 3 client constructions, a host rewrite, per-environment config. Each can be small and checked on its own |
-| A2 | **Verification comes too late to attribute failure.** Steps 21–22 run after every conversion, and 28 Part N makes rollback on a failed approach verification optional | A red build at step 21 cannot name which of ~40 commits caused it |
+| A2 | **Verification comes too late to attribute failure.** `independent-verification` and `contract-parity-verification` run after every conversion, and 28 Part N makes rollback on a failed approach verification optional | A red build at `independent-verification` cannot name which of ~40 commits caused it |
 | A3 | **Checks prove the edit, not the behaviour.** Check types are `file_contains`, `json_parses`, `shell`, `signal_absent` | Nothing shows `PlaceOrder` still rejects a missing product with the same fault |
-| A4 | **Contract parity cannot diff across protocols.** Step 22 diffs OpenAPI or WSDL against step 15 | WSDL vs OpenAPI needs a declared mapping, and nobody designs or signs off the target contract |
+| A4 | **Contract parity cannot diff across protocols.** `contract-parity-verification` diffs OpenAPI or WSDL against `contract-snapshot` | WSDL vs OpenAPI needs a declared mapping, and nobody designs or signs off the target contract |
 | A5 | **No re-run against a moving legacy.** Side-by-side engagements keep legacy in production while the new stack is built | Fixes land in legacy after the baseline commit; nothing finds or re-applies them |
 | A6 | **Progress is per item; delivery is per slice.** The work list is item × file | Clients move per operation group; "Product is proven, Order is next" cannot be expressed |
 | A7 | **Approaches are trusted, not proven.** `draft → active` is a status flip | Nothing runs an approach on representative code before it touches a client repository |
@@ -122,7 +122,7 @@ example in 28 Part O needs no change beyond that wrapper.
 The targets of a recipe's steps are detected the same way as any item, as **supporting
 items**: `catalog_items.kind = 'supporting'` with a `parent_item_id`.
 
-- Detected by step 7 like any item. Occurrences, evidence and two-state readiness are
+- Detected by `item-detection` like any item. Occurrences, evidence and two-state readiness are
   unchanged.
 - **No decision of their own.** Their decision is derived from the parent's decision, using
   28 Part U's coupling machinery with a new rule `supporting-follows-parent`.
@@ -151,11 +151,11 @@ changed since. File and line are not enough. **New columns on `item_occurrences`
 - symbol found, hash differs → `stale`, re-planned (Part I);
 - symbol gone → `stale_missing`, reported.
 
-Anchors are computed by step 3's Roslyn pass and carried through by step 7 (Part L).
+Anchors are computed by `application-fingerprinting`'s Roslyn pass and carried through by `item-detection` (Part L).
 
 ### C4. Conversion plan and units
 
-Step 17 produces a **plan** instead of a flat work list. A plan expands each active recipe
+`work-list-assembly` produces a **plan** instead of a flat work list. A plan expands each active recipe
 over its targets into **units**.
 
 **`conversion_plans`**: id, application/repository, engagement, `legacy_commit` (the baseline),
@@ -187,7 +187,7 @@ A **slice** is a group of entry points delivered and proven together. Two kinds:
 | Slice | Holds | Runs |
 |---|---|---|
 | **Foundation** (one per plan) | Project-wide reshaping: target framework, packages, host, configuration, shared abstractions, dead-code removal | First. Every other slice builds on it |
-| **Operation slice** | One service contract or operation group, from step 4's entry points, with every unit anchored inside it | After the foundation, in an order set at plan time (risk, consumer count, dependencies) |
+| **Operation slice** | One service contract or operation group, from `entry-point-inventory`'s entry points, with every unit anchored inside it | After the foundation, in an order set at plan time (risk, consumer count, dependencies) |
 
 **Slice assignment.** A unit belongs to the slice owning its anchor's containing type. A unit
 whose anchor sits outside every slice's code (shared helpers, repositories) goes to the
@@ -204,7 +204,7 @@ A per-application choice, recorded on the plan.
 
 | | `in_place` | `side_by_side` |
 |---|---|---|
-| Output | A branch of the legacy repository (step 13 as today) | A new solution root next to the untouched legacy, in the same or a new repository |
+| Output | A branch of the legacy repository (`branch-baseline-record` as today) | A new solution root next to the untouched legacy, in the same or a new repository |
 | Legacy | Changed on the branch | **Read-only** (B7). `allowed_paths` may never include the legacy root |
 | First foundation step | — | `scaffold-side-by-side`: copy the legacy source at `legacy_commit` into the target root |
 | Drift reconciliation | Not needed | Required (Part I) |
@@ -216,7 +216,7 @@ The client scenario in `33` is side by side.
 
 ## Part E — The unit loop
 
-Steps 19 and 20 become executors of the plan's units (Part K). For each unit, in `sequence`:
+`application-scope-conversion` and `occurrence-scope-conversion` become executors of the plan's units (Part K). For each unit, in `sequence`:
 
 ```
  1. re-resolve anchors          stale?           → status stale, re-plan, stop the slice
@@ -241,9 +241,9 @@ Steps 19 and 20 become executors of the plan's units (Part K). For each unit, in
 (28 requirement); an assisted unit is never auto-retried (Part F).
 
 **Targeted replay cost.** Step 7 runs only the slice's cases, not the whole suite. The full
-suite runs at the slice boundary and again at step 21.
+suite runs at the slice boundary and again at `independent-verification`.
 
-**Before any unit runs.** The legacy baseline must build and pass its tests (step 14), and the
+**Before any unit runs.** The legacy baseline must build and pass its tests (`baseline-verification`), and the
 behaviour baseline must exist for every slice in the plan (Part H). Without these, a red unit
 cannot be told apart from a pre-existing failure.
 
@@ -251,7 +251,7 @@ cannot be told apart from a pre-existing failure.
 
 ## Part F — Automation classes
 
-Every recipe step declares a class, and every unit inherits it. Step 17 may downgrade a unit
+Every recipe step declares a class, and every unit inherits it. `work-list-assembly` may downgrade a unit
 when its anchor falls outside what the approach handles, for example a fault thrown through a
 helper method instead of inline.
 
@@ -262,7 +262,7 @@ helper method instead of inline.
 | `manual` | A person | The unit becomes a work item with instructions. The loop pauses that slice until the unit is marked done and passes the same checks |
 
 The plan reports the mix per slice, e.g. "S4 Order: 11 deterministic, 1 assisted, 0 manual".
-That makes the review effort visible before step 18 approves.
+That makes the review effort visible before `plan-approval-gate` approves.
 
 ---
 
@@ -271,7 +271,7 @@ That makes the review effort visible before step 18 approves.
 New step `target-contract-design`, for resolutions that change the protocol (Part K). It
 produces the consumer-facing contract **before** any conversion, for human sign-off.
 
-**Inputs:** step 15's source contract snapshot; step 4's entry points; the engagement's
+**Inputs:** `contract-snapshot`'s source contract snapshot; `entry-point-inventory`'s entry points; the engagement's
 **contract conventions**.
 
 **Contract conventions** (`engagement_contract_conventions`, data, not code):
@@ -292,10 +292,10 @@ produces the consumer-facing contract **before** any conversion, for human sign-
 3. **Exceptions list**: operations the conventions cannot map (message headers, `out`
    parameters, sessions, callbacks), each needing a human decision.
 
-**Sign-off:** gate 18 approves the mapping and the plan together. A change to the mapping
+**Sign-off:** `plan-approval-gate` approves the mapping and the plan together. A change to the mapping
 after approval re-opens the gate for the affected slices.
 
-**Step 22 uses the mapping.** When the protocol changes, contract parity checks each mapped
+**`contract-parity-verification` uses the mapping.** When the protocol changes, contract parity checks each mapped
 pair for equivalence (operations, fields, types, optionality, enum values, faults) instead of
 diffing two documents of the same format.
 
@@ -303,7 +303,7 @@ diffing two documents of the same format.
 
 ## Part H — Behaviour baseline and equivalence verification
 
-### H1. Baseline (step 16, upgraded — Part K)
+### H1. Baseline (`characterization-test-generation`, upgraded — Part K)
 
 Captured from legacy at `legacy_commit`, before conversion. **Mandatory** for any plan with a
 protocol-changing or application-scope recipe.
@@ -313,7 +313,7 @@ protocol-changing or application-scope recipe.
 | **Recorded traffic** | Real request/response pairs per operation, sanitised, including faults |
 | **Outbound recordings** | What the app sent to each downstream system and what came back, e.g. the `PlaceRealTimeFTOrder` request XML |
 | **Generated cases** | Boundary, validation and fault cases per operation from the schema (the `S` part of the step), filling gaps in recorded traffic |
-| **Existing tests** | Whatever the repository already has, indexed by entry point (step 8, Part L) |
+| **Existing tests** | Whatever the repository already has, indexed by entry point (`test-coverage-assessment`, Part L) |
 
 Every case is tagged with its operation, so it belongs to exactly one slice.
 
@@ -350,7 +350,7 @@ One per operation, rolled up per slice. An operation is **ready** when all hold 
 current legacy commit**:
 
 - [ ] Mapped and signed off (Part G)
-- [ ] Contract parity passes (step 22)
+- [ ] Contract parity passes (`contract-parity-verification`)
 - [ ] Every baseline case equivalent, or on an approved list of known differences
 - [ ] Every fault row passes
 - [ ] Side effects and outbound payloads equivalent
@@ -370,7 +370,7 @@ legacy repository moves.
 
 ```
 1. diff legacy_commit..new_legacy_commit
-2. recompute anchors at the new commit (step 3 Roslyn pass, scoped to changed files)
+2. recompute anchors at the new commit (`application-fingerprinting` Roslyn pass, scoped to changed files)
 3. classify each change:
      touches a unit's anchor          → unit stale
      touches a slice's code, no anchor → slice re-verify (copied logic changed)
@@ -410,7 +410,7 @@ client code.
   starting corpus.
 - `certified → active` is a deliberate promotion, by owner or tier.
 - **Field metrics** per approach version: units attempted, committed, failed, stale, and
-  review corrections (fed by step 26).
+  review corrections (fed by `feedback-capture`).
 - **Auto-demotion:** an `active` approach whose failure rate crosses a threshold drops to
   `certified`, so new plans stop using it until someone looks.
 - A fixture that a new approach version fails blocks that version. **Fixtures are regression
@@ -444,7 +444,7 @@ slug and the old one is soft-deleted. Numbers are assigned when 17 is revised (v
 | 23 | `evidence-bundle-assembly` | Includes scorecards, unit evidence and the automation-class mix | P + S | Extended |
 | 26 | `feedback-capture` | Feeds approach field metrics (Part J) | P | Extended |
 
-On 19 and 20: keeping the slugs keeps 28's principle, "reshape first, then targeted
+On `application-scope-conversion` and `occurrence-scope-conversion`: keeping the slugs keeps 28's principle, "reshape first, then targeted
 edits", and avoids re-binding job definitions. Only the display names change ("Foundation
 conversions", "Slice conversions"). See Part O, question 1.
 
@@ -456,11 +456,11 @@ What conversion accuracy depends on, added to Phase 0.
 
 | Addition | Why conversion needs it | Where |
 |---|---|---|
-| **Syntax anchors** (C3) | Precise, re-runnable codemods; staleness detection | Step 3 Roslyn pass emits anchors with signal evidence; step 7 carries them into occurrences |
-| **Reachability** | Do not convert code nothing reaches. The WCF sample has 12 dead items (`MODERNIZATION-NET10-REST.md` §5) | New step `reachability-analysis` after step 5: call graph from step 4's entry points; unreachable members, write-only fields, config keys read by nothing |
-| **Deploy-time configuration** | The real per-environment values live in `Parameters.xml`/`SetParam.xml`, transforms and settings stores. Step 5 cannot see them today | Extend step 5's configuration resolution |
-| **Per-operation consumer usage** | Slice order and readiness; skip operations nobody calls | Extend step 11 from per-endpoint to per-operation where traffic or logs exist |
-| **Coverage per entry point** | Shows which operations have no tests, so their baseline must be recorded or generated | Extend step 8 |
+| **Syntax anchors** (C3) | Precise, re-runnable codemods; staleness detection | `application-fingerprinting` Roslyn pass emits anchors with signal evidence; `item-detection` carries them into occurrences |
+| **Reachability** | Do not convert code nothing reaches. The WCF sample has 12 dead items (`MODERNIZATION-NET10-REST.md` §5) | New step `reachability-analysis` after `outbound-invocation-inventory`: call graph from `entry-point-inventory`'s entry points; unreachable members, write-only fields, config keys read by nothing |
+| **Deploy-time configuration** | The real per-environment values live in `Parameters.xml`/`SetParam.xml`, transforms and settings stores. `outbound-invocation-inventory` cannot see them today | Extend `outbound-invocation-inventory`'s configuration resolution |
+| **Per-operation consumer usage** | Slice order and readiness; skip operations nobody calls | Extend `dependency-and-context-map` from per-endpoint to per-operation where traffic or logs exist |
+| **Coverage per entry point** | Shows which operations have no tests, so their baseline must be recorded or generated | Extend `test-coverage-assessment` |
 | **Blocker items** | Route unconvertible shapes to humans before planning: duplex contracts, sessions, message contracts and headers, `KnownType` hierarchies, WS-Security message signing, transaction flow, MSMQ | New catalog items, referenced by `conversion_recipes.blockers` |
 
 ---
@@ -472,10 +472,10 @@ Small, and mostly already anticipated by 17's "two engine requirements".
 1. **Unit-level checkpointing.** Unit status is the resume point; a crashed step resumes at
    the first unit not `committed`.
 2. **Scratch worktrees.** One per unit for apply and dry run; one per slice for the chained
-   dry run at step 17. Created and destroyed by the platform, never by the approach.
+   dry run at `work-list-assembly`. Created and destroyed by the platform, never by the approach.
 3. **Child-process containment** (17's existing requirement). A step's processes die with it,
    so git never holds a commit the database does not know about.
-4. **Partitioning per slice** for step 20, using the existing partition construct
+4. **Partitioning per slice** for `occurrence-scope-conversion`, using the existing partition construct
    (`12-JOB-DEFINITION-FORMAT.md`) with `continue_on_error` across slices.
 
 No change to job definitions, adapters, gates or policy.
@@ -486,7 +486,7 @@ No change to job definitions, adapters, gates or policy.
 
 | Document | Change |
 |---|---|
-| `17-LIFECYCLE-STEPS.md` | v3.0: the new slugs, the replaced step 16, display names for 19 and 20, renumbering, updated ownership summary |
+| `17-LIFECYCLE-STEPS.md` | v3.0: the new slugs, the replaced `characterization-test-generation`, display names for `application-scope-conversion` and `occurrence-scope-conversion`, renumbering, updated ownership summary |
 | `28-ITEM-AND-CONVERSION-MODEL.md` Part J | Uniqueness moves to `conversion_recipes`. An approach's `scope` becomes the scope of its targets, not of the item |
 | 28 Part L `ConversionContext` | Adds `unit_id`, `slice`, `anchors[]` (C3 columns), `target_layout`, `legacy_root` (read-only) and `target_root` |
 | 28 Part M `ConversionResult` | Adds `anchors_resolved`, `automation_class`, and for assisted units `model`, `prompt_template`, `prompt_version` |
@@ -501,10 +501,10 @@ No change to job definitions, adapters, gates or policy.
 | # | Question | Proposal |
 |---|---|---|
 | 1 | Keep slugs 19/20 as foundation/slice executors, or register one new `conversion-execution` step? | Keep. Same ordering principle, no job re-binding |
-| 2 | Compute anchors in step 3 (all signals) or only for supporting items' signals? | Only for signals some supporting or occurrence-scope item references, to bound cost |
+| 2 | Compute anchors in `application-fingerprinting` (all signals) or only for supporting items' signals? | Only for signals some supporting or occurrence-scope item references, to bound cost |
 | 3 | Where do recorded production traffic and outbound recordings come from on a client estate? | An ingestion contract (file drop of sanitised pairs) rather than a capture agent. Decide per engagement |
 | 4 | Stop the whole plan or only the slice on an operation-slice failure? | Only the slice (Part E), unless the slice is a declared dependency of another |
-| 5 | Can an assisted unit's output become deterministic? | Yes: when the same correction recurs in step 26, promote it into the deterministic approach as a new version, certified on fixtures |
+| 5 | Can an assisted unit's output become deterministic? | Yes: when the same correction recurs in `feedback-capture`, promote it into the deterministic approach as a new version, certified on fixtures |
 
 ---
 
@@ -514,10 +514,10 @@ No change to job definitions, adapters, gates or policy.
 
 - [ ] A resolution's conversion is a recipe of ordered steps; one active recipe per (item, resolution)
 - [ ] A plain item converts as a one-step recipe with no other change
-- [ ] Supporting items are detected by step 7, take their decision from their parent, and are hidden from the decision UI
+- [ ] Supporting items are detected by `item-detection`, take their decision from their parent, and are hidden from the decision UI
 - [ ] Occurrences of anchored signals carry symbol, span, hash, ordinal and commit
 - [ ] A unit whose anchor hash no longer matches is `stale` and does not run
-- [ ] Step 17 produces a plan of slices and units with an automation class per unit
+- [ ] `work-list-assembly` produces a plan of slices and units with an automation class per unit
 - [ ] The foundation slice is first; every unit belongs to exactly one slice
 
 ### Execution
@@ -531,8 +531,8 @@ No change to job definitions, adapters, gates or policy.
 
 ### Evidence
 
-- [ ] A plan with a protocol-changing recipe cannot pass gate 18 without a signed-off mapping
-- [ ] Step 22 checks mapped pairs when the protocol changes
+- [ ] A plan with a protocol-changing recipe cannot pass `plan-approval-gate` without a signed-off mapping
+- [ ] `contract-parity-verification` checks mapped pairs when the protocol changes
 - [ ] Every baseline case belongs to exactly one operation and one slice
 - [ ] Equivalence compares response, fault, side effects and outbound payloads after declared normalisation
 - [ ] Write operations are never replayed against real downstream systems

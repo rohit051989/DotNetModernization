@@ -2,7 +2,7 @@
 
 Reads a StepContext JSON envelope from stdin, writes a StepResult JSON
 envelope to stdout — see 11-STEP-CONTRACT.md and
-19-STEP-002-SOLUTION-DISCOVERY.md.
+19-SOLUTION-DISCOVERY.md.
 
 Standalone by design (Part B): invoked via the platform's `process` adapter,
 but must not import from `backend.app`, and reads `local_path` from the

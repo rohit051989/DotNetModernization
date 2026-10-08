@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app import catalog_rules, models
 from app.db import SessionLocal
-from app.items import baseline, pattern_migration
+from app.items import baseline, impact_rules, pattern_migration
 from app.items import readiness as item_readiness
 from app.items import registry as item_registry
 from app.items.detection import validate_detection
@@ -240,8 +240,8 @@ def seed() -> dict:
 
 
 def seed_lifecycle_steps() -> dict:
-    """Registers all 35 lifecycle steps as stubs from lifecycle_steps.yaml —
-    see 17-LIFECYCLE-STEPS.md v2.0. Idempotent upsert by step_name: re-run any time
+    """Registers all 37 lifecycle steps as stubs from lifecycle_steps.yaml —
+    see 17-LIFECYCLE-STEPS.md v2.3. Idempotent upsert by step_name: re-run any time
     the file changes, no code changes needed.
 
     **Never downgrades an already-implemented step.** This used to rewrite
@@ -374,7 +374,10 @@ def authored_item_content(data: dict, registered: dict[str, str]) -> dict:
 
 
 def authored_resolution_content(item_id: str, res_data: dict) -> dict:
-    return {"item_id": item_id, "deleted": False,
+    """One authored resolution's factory default, its impact rules
+    (`impact:`, 33-IMPACT-ANALYSIS Part D) validated."""
+    rules = impact_rules.checked(res_data.get("impact"), f"resolution {res_data['id']}")
+    return {"item_id": item_id, "deleted": False, "impact_rules": rules,
             **{field: res_data.get(field, _RESOLUTION_DEFAULTS.get(field)) for field in _RESOLUTION_FIELDS}}
 
 

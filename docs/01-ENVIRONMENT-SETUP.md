@@ -199,10 +199,10 @@ Before moving on, confirm all of these:
 - [ ] Vite dev server serves the UI shell
 - [ ] The UI can reach the API without CORS errors
 
-## 8. .NET SDK (step 3 — application fingerprinting)
+## 8. .NET SDK (`application-fingerprinting`)
 
-Lifecycle step 3 (`steps/step-003-fingerprinting/`) is the first step written in
-C#/.NET rather than Python — see `21-STEP-003-FINGERPRINTING.md`. It is invoked via
+The lifecycle step `application-fingerprinting` (`steps/step-003-fingerprinting/`) is the first step written in
+C#/.NET rather than Python — see `21-APPLICATION-FINGERPRINTING.md`. It is invoked via
 the `process` adapter, so nothing in the backend depends on the .NET SDK; only
 building and running that step directly does.
 
@@ -274,7 +274,7 @@ catalog, and the committed export in `catalog/items/` is the catalog's record in
 export.** The factory defaults in `catalog_items.yaml` apply only when there is no export.
 
 1. **Build what the steps run.** Publish the .NET steps (section 8), and create the
-   backend and step 2 virtual environments (section 3).
+   backend and `solution-discovery` virtual environments (section 3).
 2. **Start an empty database** (section 2), then migrate it, from `backend/` with the venv
    active:
 

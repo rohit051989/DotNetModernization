@@ -7,7 +7,7 @@ using NpgsqlTypes;
 namespace Fingerprinting.TestCoverage.Cli;
 
 /// <summary>
-/// Npgsql persistence for 32-STEP-008 Part J, phase 1, in one transaction
+/// Npgsql persistence for 32-TEST-COVERAGE-ASSESSMENT Part J, phase 1, in one transaction
 /// per repository: <c>test_classes</c>, <c>test_mappings</c>,
 /// <c>source_file_coverage</c> and <c>ci_maturity</c> replaced wholesale, and
 /// a <c>coverage_scans</c> row recording the commit and cache state, with the

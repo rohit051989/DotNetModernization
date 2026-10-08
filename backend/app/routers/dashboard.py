@@ -189,7 +189,7 @@ class DashboardSummary(BaseModel):
     generated_at: str = Field(description="ISO-8601 UTC timestamp this snapshot was computed.")
     repositories: RepositoryCounts
     discovery: DiscoveryCounts
-    structure: StructureCounts = Field(description="Solution/project discovery rollup — see 19-STEP-002-SOLUTION-DISCOVERY.md.")
+    structure: StructureCounts = Field(description="Solution/project discovery rollup — see 19-SOLUTION-DISCOVERY.md.")
     applications: dict | None = Field(default=None, description="Null — no step producing application rollups is implemented yet.")
     items: ItemCounts | None = Field(default=None, description="Null until item-detection (step 6) is implemented and has run; real thereafter.")
     risk_tiers: dict | None = Field(default=None, description="Null — no step producing risk tiers is implemented yet.")

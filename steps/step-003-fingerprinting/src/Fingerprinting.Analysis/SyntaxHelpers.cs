@@ -6,7 +6,7 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 namespace Fingerprinting.Analysis;
 
 /// <summary>Syntax-only helpers shared by the detectors. Values are read as
-/// written; nothing is bound (29-STEPS-004-005-INVENTORIES.md Part A2).</summary>
+/// written; nothing is bound (29-ENTRY-POINT-AND-OUTBOUND-INVENTORIES.md Part A2).</summary>
 public static partial class SyntaxHelpers
 {
     [GeneratedRegex(@"\s+")]

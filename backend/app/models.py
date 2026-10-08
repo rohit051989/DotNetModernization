@@ -38,7 +38,7 @@ FORCING_PERSPECTIVE = (
     "DEVELOPMENT_RESOURCE",
 )
 
-# ---- Step 4 — pattern classification, catalog schema (24-STEP-004-CLASSIFICATION.md Part B1) ----
+# ---- Step 4 — pattern classification, catalog schema (24-PATTERN-CLASSIFICATION.md Part B1) ----
 CLASSIFICATION_ROLE = ("PRIMARY", "SECONDARY", "PROJECT_ROLE")
 PATTERN_SCOPE = ("PROJECT", "REPOSITORY")
 RULES_STATUS = ("active", "awaiting_signals", "draft")
@@ -102,7 +102,7 @@ SOURCE_STATUS = ("active", "archived", "disabled", "inaccessible")
 # meaning for those. See 15-REPOSITORY-INGEST-UI.md Part C.
 SOURCE_CONTROL_STATUS = ("GIT", "NONE")
 
-# ---- Step 2 — solution & project discovery (19-STEP-002-SOLUTION-DISCOVERY.md) ----
+# ---- Step 2 — solution & project discovery (19-SOLUTION-DISCOVERY.md) ----
 SCAN_STATUS = ("complete", "partial", "failed")
 PARSE_STATUS = ("success", "partial", "failed", "out_of_scope")
 PROJECT_FORMAT = ("legacy_msbuild", "sdk_style", "unknown")
@@ -122,10 +122,10 @@ REPOSITORY_ARTIFACT_CATEGORY = (
     "documentation",
 )
 
-# ---- Step 3 — application fingerprinting (21-STEP-003-FINGERPRINTING.md Part E) ----
+# ---- Step 3 — application fingerprinting (21-APPLICATION-FINGERPRINTING.md Part E) ----
 FINGERPRINT_STATUS = ("complete", "partial", "failed", "skipped", "not_supported")
-# The sixteen categories from step-3-application-fingerprinting.md section 19,
-# SCREAMING_SNAKE_CASE per 21-STEP-003-FINGERPRINTING.md Part D. Renaming any of
+# The sixteen categories from application-fingerprinting-v1.md section 19,
+# SCREAMING_SNAKE_CASE per 21-APPLICATION-FINGERPRINTING.md Part D. Renaming any of
 # these later means rewriting every signal registry entry and catalog detection
 # rule that references it — see that doc's note on step 4.
 SIGNAL_CATEGORY = (
@@ -157,7 +157,7 @@ SIGNAL_TYPE = (
     "NAMESPACE",
     "ROUTE",
     "ENTRY_POINT",
-    # 21-STEP-003-FINGERPRINTING.md Part D "Signal types" — added with
+    # 21-APPLICATION-FINGERPRINTING.md Part D "Signal types" — added with
     # application-fingerprint@1.2.0. API_INVOCATION: use of a specific member
     # (DateTime.Now). LITERAL: a source or config value matching a pattern (a
     # Windows path); its evidence carries matchedValue.
@@ -165,7 +165,7 @@ SIGNAL_TYPE = (
     "LITERAL",
 )
 
-# The nine source types from step-3-application-fingerprinting.md section 18.
+# The nine source types from application-fingerprinting-v1.md section 18.
 EVIDENCE_SOURCE_TYPE = (
     "PROJECT_FILE",
     "SOURCE_CODE",
@@ -201,7 +201,7 @@ class Pattern(Base):
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default="active")
     version: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
 
-    # ---- Step 4 classification schema (24-STEP-004-CLASSIFICATION.md Part B1) ----
+    # ---- Step 4 classification schema (24-PATTERN-CLASSIFICATION.md Part B1) ----
     # `detection_rules` holds the Part C signal-rules/1.0 structure. The
     # pre-step-4 tag-input rules this superseded lived in
     # `detection_rules_legacy` through J1-J4's transition; dropped once the
@@ -309,7 +309,7 @@ class CatalogRevision(Base):
     The current catalog revision is `MAX(id)` — a monotonic integer that never
     goes backwards, since nothing here is ever hard-deleted. Recorded on every
     classification (step 4) so a result can always be traced back to the exact
-    catalog state that produced it (24-STEP-004-CLASSIFICATION.md Part H)."""
+    catalog state that produced it (24-PATTERN-CLASSIFICATION.md Part H)."""
 
     __tablename__ = "catalog_revisions"
 
@@ -342,12 +342,12 @@ class Engagement(Base):
     default_posture: Mapped[str] = mapped_column(
         Text, nullable=False, server_default="lift-and-shift"
     )
-    # Step 6 (30-STEP-006 Part C1): the framework packages must support.
+    # Step 6 (30-DEPENDENCY-ASSESSMENT Part C1): the framework packages must support.
     target_framework: Mapped[str] = mapped_column(Text, nullable=False, server_default="net10.0")
-    # Step 11 (31-STEP-011 Part C1): the environment whose host names a
+    # Step 11 (31-DEPENDENCY-AND-CONTEXT-MAP Part C1): the environment whose host names a
     # service in the endpoint register. Null: group by the host as found.
     production_environment: Mapped[str | None] = mapped_column(Text)
-    # Step 5 (29-STEPS Part C9, 1.3.0): globs for Web Deploy SetParameters
+    # Step 5 (29-ENTRY-POINT-AND-OUTBOUND-INVENTORIES Part C9, 1.3.0): globs for Web Deploy SetParameters
     # files. Null means **/SetParam*.xml and **/SetParameters*.xml.
     deploy_parameter_globs: Mapped[list | None] = mapped_column(JSONB)
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default="active")
@@ -724,7 +724,7 @@ class WfArtifact(Base):
 class Repository(Base):
     """Registered local repository for phase 0 discovery — see
     15-REPOSITORY-INGEST-UI.md Part C. Replaces the definition in
-    13-STEP-001-REPOSITORY-INGEST.md."""
+    13-REPOSITORY-INGEST.md."""
 
     __tablename__ = "repositories"
 
@@ -843,7 +843,7 @@ class RepositoryStructure(Base):
     """1:1 summary written by step 2 (solution-discovery). Separate from
     `repositories` so step ownership is explicit and replacement — delete by
     repository_id, then insert — is trivial. See
-    19-STEP-002-SOLUTION-DISCOVERY.md Part C."""
+    19-SOLUTION-DISCOVERY.md Part C."""
 
     __tablename__ = "repository_structure"
 
@@ -874,7 +874,7 @@ class RepositoryStructure(Base):
 
 
 class Solution(Base):
-    """A `.sln` file found on disk. See 19-STEP-002-SOLUTION-DISCOVERY.md Part C."""
+    """A `.sln` file found on disk. See 19-SOLUTION-DISCOVERY.md Part C."""
 
     __tablename__ = "solutions"
 
@@ -906,7 +906,7 @@ class Solution(Base):
 
 class Project(Base):
     """A project file (`.csproj`, `.vbproj`, ...) found on disk. Raw metadata
-    only — no interpretation. See 19-STEP-002-SOLUTION-DISCOVERY.md Parts C/D/E."""
+    only — no interpretation. See 19-SOLUTION-DISCOVERY.md Parts C/D/E."""
 
     __tablename__ = "projects"
 
@@ -959,7 +959,7 @@ class Project(Base):
 
 class SolutionProject(Base):
     """Solution membership — one row per `.sln` project entry (excluding
-    solution-folder entries). See 19-STEP-002-SOLUTION-DISCOVERY.md Part C."""
+    solution-folder entries). See 19-SOLUTION-DISCOVERY.md Part C."""
 
     __tablename__ = "solution_projects"
 
@@ -991,7 +991,7 @@ class SolutionProject(Base):
 
 class ProjectReference(Base):
     """A `<ProjectReference>` declaration. See
-    19-STEP-002-SOLUTION-DISCOVERY.md Part C."""
+    19-SOLUTION-DISCOVERY.md Part C."""
 
     __tablename__ = "project_references"
 
@@ -1021,7 +1021,7 @@ class ProjectReference(Base):
 
 class ProjectPackage(Base):
     """A NuGet package declaration — `<PackageReference>` or a
-    `packages.config` entry. See 19-STEP-002-SOLUTION-DISCOVERY.md Part C."""
+    `packages.config` entry. See 19-SOLUTION-DISCOVERY.md Part C."""
 
     __tablename__ = "project_packages"
 
@@ -1051,7 +1051,7 @@ class ProjectPackage(Base):
 class RepositoryArtifact(Base):
     """Presence-only record of a supporting file (build config, pipeline
     definition, container file, ...). No content interpretation. See
-    19-STEP-002-SOLUTION-DISCOVERY.md Part C."""
+    19-SOLUTION-DISCOVERY.md Part C."""
 
     __tablename__ = "repository_artifacts"
 
@@ -1076,7 +1076,7 @@ class ProjectFingerprint(Base):
     """1:1 with `projects` — written by step 3 (application-fingerprinting).
     Replaced wholesale per repository on rescan, same pattern as
     `repository_structure` for step 2. See
-    21-STEP-003-FINGERPRINTING.md Part E."""
+    21-APPLICATION-FINGERPRINTING.md Part E."""
 
     __tablename__ = "project_fingerprints"
 
@@ -1111,7 +1111,7 @@ class FingerprintSignal(Base):
     """One row per `(project, signal_name, source_path)` — aggregated, not
     per-occurrence; `occurrence_count` carries the true total and `evidence`
     is capped at 20 entries. `project_id` is null for repository-level
-    signals. See 21-STEP-003-FINGERPRINTING.md Part E."""
+    signals. See 21-APPLICATION-FINGERPRINTING.md Part E."""
 
     __tablename__ = "fingerprint_signals"
 
@@ -1169,7 +1169,7 @@ class FingerprintSignal(Base):
 
 class FingerprintScan(Base):
     """1:1 with `repositories` — the repository-level summary written by
-    step 3 (application-fingerprinting). See 21-STEP-003-FINGERPRINTING.md
+    step 3 (application-fingerprinting). See 21-APPLICATION-FINGERPRINTING.md
     Part E."""
 
     __tablename__ = "fingerprint_scans"
@@ -1199,7 +1199,7 @@ class FingerprintScan(Base):
 
 
 class ValidationQueueItem(Base):
-    """One thing a human must decide — 27-STEP-006-PATTERN-VALIDATION.md
+    """One thing a human must decide — 27-PATTERN-VALIDATION.md
     Part B.
 
     **Generic across every gate step**, not step 6's own table. Step 6 is
@@ -1426,6 +1426,9 @@ class ItemResolution(Base):
     # Hash of the content the seed last wrote (app/items/baseline.py): a
     # reseed never overwrites a row edited since. Null: no baseline.
     seeded_hash: Mapped[str | None] = mapped_column(Text)
+    # What converting an item this way touches (33-IMPACT-ANALYSIS Part D): rules
+    # step 9 evaluates. Empty: the default rule (app/items/impact_rules.py).
+    impact_rules: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -1439,6 +1442,10 @@ class ItemResolution(Base):
         CheckConstraint(f"status IN {ITEM_STATUS}", name="ck_item_resolutions_status"),
         UniqueConstraint("item_id", "name", name="uq_item_resolutions_item_id_name"),
         # At most one default per item. A soft-deleted default doesn't count.
+        # Exactly one is enforced by trg_item_resolutions_one_default, a
+        # deferred constraint trigger (migration b3e1c7a2d9f4): an active item
+        # with any live, active resolution has exactly one live default, and
+        # it is active.
         Index(
             "uq_item_resolutions_one_default",
             "item_id",
@@ -1699,7 +1706,7 @@ class ItemOccurrence(Base):
     )
 
 
-# Step 4, entry-point-inventory — 29-STEPS-004-005-INVENTORIES.md Part B1.
+# Step 4, entry-point-inventory — 29-ENTRY-POINT-AND-OUTBOUND-INVENTORIES.md Part B1.
 ENTRY_POINT_KIND = (
     "http_controller_action",
     "http_minimal_api",
@@ -1733,7 +1740,7 @@ ENTRY_CLASS = ("request", "lifecycle")
 class EntryPoint(Base):
     """One row per entry point — what can call an application. Written by
     step 4 (entry-point-inventory), replaced per repository on rescan. See
-    29-STEPS-004-005-INVENTORIES.md Part B4.
+    29-ENTRY-POINT-AND-OUTBOUND-INVENTORIES.md Part B4.
 
     `id` is derived, not random (sha256 over repository, project, kind,
     handler, route and verb, truncated), so it is stable across rescans and
@@ -1819,7 +1826,7 @@ OUTBOUND_USAGE = ("used", "unused")
 class OutboundInvocation(Base):
     """One row per outbound dependency of a project — what an application
     calls. Written by step 5 (outbound-invocation-inventory), replaced per
-    repository on rescan. See 29-STEPS-004-005-INVENTORIES.md Part C8.
+    repository on rescan. See 29-ENTRY-POINT-AND-OUTBOUND-INVENTORIES.md Part C8.
 
     `id` is derived (sha256 over repository, project, mechanism, normalised
     endpoint and contract, truncated), so it is stable across rescans. The
@@ -1912,7 +1919,7 @@ class PackageAssessment(Base):
     """One row per project per direct package — whether it can move to the
     engagement's target framework, to what, and which call sites break.
     Written by step 6 (dependency-assessment), replaced per repository on
-    rescan. See 30-STEP-006-DEPENDENCY-ASSESSMENT.md Part F. `id` is derived
+    rescan. See 30-DEPENDENCY-ASSESSMENT.md Part F. `id` is derived
     (sha256 over repository, project and package id). `feed_url` is
     normalised: nothing derived from a feed credential is stored (Part B4)."""
 
@@ -1991,7 +1998,7 @@ class PackageLookupCache(Base):
     fetched_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
-# ---------- Lifecycle step 11: estate dependency map (31-STEP-011-ESTATE-DEPENDENCY-MAP.md) ----------
+# ---------- Lifecycle step 11: estate dependency map (31-DEPENDENCY-AND-CONTEXT-MAP.md) ----------
 #
 # Engagement-scoped. Every table but endpoint_annotations is replaced by each
 # run of step 11 for its engagement; endpoint_annotations is human data and a
@@ -2185,7 +2192,7 @@ class OriginReconciliation(Base):
 
 class IntegrationEdge(Base):
     """One invoked operation of a call site matched to the entry point that
-    serves it (31-STEP-011 Part I): SOAP by contract and operation, HTTP by
+    serves it (31-DEPENDENCY-AND-CONTEXT-MAP Part I): SOAP by contract and operation, HTTP by
     verb and route template, gRPC by service and method. Same-repository
     edges are kept, flagged. Replaced per run."""
 
@@ -2256,7 +2263,7 @@ class EntryPointBackend(Base):
     __table_args__ = (CheckConstraint("status IN ('yes', 'no', 'unresolved')", name="ck_entry_point_backend_status"),)
 
 
-# ---------- lifecycle step 8, test-coverage-assessment (32-STEP-008) ----------
+# ---------- lifecycle step 8, test-coverage-assessment (32-TEST-COVERAGE-ASSESSMENT) ----------
 #
 # Phase 1 (Part L): written by the step's own process
 # (steps/step-003-fingerprinting/src/Fingerprinting.TestCoverage.Cli), replaced
@@ -2416,5 +2423,165 @@ class CoverageScan(Base):
     __table_args__ = (
         CheckConstraint(f"cache_state IN {COVERAGE_CACHE_STATES}", name="ck_coverage_scans_cache_state"),
         Index("ix_coverage_scans_repository_commit", "repository_id", "commit_sha", "cache_key"),
+    )
+
+
+# ---------- lifecycle step 9, impact-analysis (33-IMPACT-ANALYSIS) ----------
+#
+# Written by the step's own process (Fingerprinting.Impact.Cli), replaced per
+# repository on every run; step 12 (dependency-and-context-map) adds the
+# `client` rows at the end of each estate run and recomputes the rollup.
+
+IMPACT_ACTIONS = ("update", "rewrite", "delete", "create", "review")
+IMPACT_CERTAINTIES = ("confirmed", "possible")
+IMPACT_SOURCES = ("structural", "client")
+
+
+class WorkItemImpact(Base):
+    """One file a work item's conversion touches under one resolution — or,
+    for `create`, a file it would add. One row per file per work item per
+    resolution per source: the strongest action, every reason, every
+    traversal path back to the seed (Part F)."""
+
+    __tablename__ = "work_item_impacts"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid())
+    repository_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("repositories.id", ondelete="CASCADE"), nullable=False
+    )
+    engagement_id: Mapped[str] = mapped_column(Text, ForeignKey("engagements.id", ondelete="CASCADE"), nullable=False)
+    item_id: Mapped[str] = mapped_column(Text, ForeignKey("catalog_items.id"), nullable=False)
+    project_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"))
+    project_path: Mapped[str] = mapped_column(Text, nullable=False)
+    resolution_id: Mapped[str] = mapped_column(Text, ForeignKey("item_resolutions.id"), nullable=False)
+    # The repository the file is in: the work item's own for structural rows;
+    # for a client row, the calling repository (possibly another one).
+    file_repository_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("repositories.id", ondelete="CASCADE"), nullable=False
+    )
+    file_path: Mapped[str | None] = mapped_column(Text)
+    proposed_path: Mapped[str | None] = mapped_column(Text)
+    description: Mapped[str | None] = mapped_column(Text)
+    action: Mapped[str] = mapped_column(Text, nullable=False)
+    certainty: Mapped[str] = mapped_column(Text, nullable=False)
+    reasons: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    rule_ids: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    traversal_paths: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    # What happens within the file: the config element an update edits, the
+    # types a file loses when it is not deleted whole. The action is always
+    # what happens to the file; delete means the whole file goes.
+    details: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    source: Mapped[str] = mapped_column(Text, nullable=False)
+    step_execution_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+
+    __table_args__ = (
+        CheckConstraint(f"action IN {IMPACT_ACTIONS}", name="ck_work_item_impacts_action"),
+        CheckConstraint(f"certainty IN {IMPACT_CERTAINTIES}", name="ck_work_item_impacts_certainty"),
+        CheckConstraint(f"source IN {IMPACT_SOURCES}", name="ck_work_item_impacts_source"),
+        # A file that exists has a path; a file to create has a description and a proposed path instead.
+        CheckConstraint("(action = 'create') = (file_path IS NULL)", name="ck_work_item_impacts_create_has_no_path"),
+        CheckConstraint("action <> 'create' OR (proposed_path IS NOT NULL AND description IS NOT NULL)",
+                        name="ck_work_item_impacts_create_described"),
+        Index("ix_work_item_impacts_repository_id", "repository_id"),
+        Index("ix_work_item_impacts_file", "file_repository_id", "file_path"),
+    )
+
+
+class ImpactSummary(Base):
+    """Per work item per computed resolution: counts by action, certainty,
+    and whether it is stale — computed for a decision that has since
+    changed (Part C)."""
+
+    __tablename__ = "impact_summaries"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid())
+    repository_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("repositories.id", ondelete="CASCADE"), nullable=False
+    )
+    engagement_id: Mapped[str] = mapped_column(Text, ForeignKey("engagements.id", ondelete="CASCADE"), nullable=False)
+    item_id: Mapped[str] = mapped_column(Text, ForeignKey("catalog_items.id"), nullable=False)
+    project_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"))
+    project_path: Mapped[str] = mapped_column(Text, nullable=False)
+    resolution_id: Mapped[str] = mapped_column(Text, ForeignKey("item_resolutions.id"), nullable=False)
+    # default, chosen, or both; "presumptive" stands in for default on an item with none.
+    roles: Mapped[list] = mapped_column(JSONB, nullable=False)
+    effective: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    counts: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    # Three figures, never added together: existing files changed (update,
+    # rewrite, delete), new files (create), files to review. Structural.
+    changed: Mapped[int] = mapped_column(Integer, nullable=False)
+    created: Mapped[int] = mapped_column(Integer, nullable=False)
+    to_review: Mapped[int] = mapped_column(Integer, nullable=False)
+    confirmed: Mapped[int] = mapped_column(Integer, nullable=False)
+    possible: Mapped[int] = mapped_column(Integer, nullable=False)
+    # Client files (dependency-and-context-map), changed and to review, apart.
+    client_changed: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    client_review: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    rules_source: Mapped[str] = mapped_column(Text, nullable=False)
+    known_limits: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    # The live decision's resolution when this was computed (null: none).
+    decision_resolution_id: Mapped[str | None] = mapped_column(Text)
+    stale: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    stale_reason: Mapped[str | None] = mapped_column(Text)
+    step_execution_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+
+    __table_args__ = (
+        CheckConstraint("rules_source IN ('explicit', 'default')", name="ck_impact_summaries_rules_source"),
+        CheckConstraint("NOT stale OR stale_reason IS NOT NULL", name="ck_impact_summaries_stale_reason"),
+        Index("ix_impact_summaries_repository_id", "repository_id"),
+        Index("ix_impact_summaries_engagement_item", "engagement_id", "item_id"),
+    )
+
+
+class FileImpactRollup(Base):
+    """Per file: every work item touching it under its effective resolution,
+    whether it is a hotspot (three or more), and its conflicts (Part G)."""
+
+    __tablename__ = "file_impact_rollup"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid())
+    repository_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("repositories.id", ondelete="CASCADE"), nullable=False
+    )
+    # The file's path, or for a planned new file "create:" + its proposed path.
+    file_key: Mapped[str] = mapped_column(Text, nullable=False)
+    work_items: Mapped[list] = mapped_column(JSONB, nullable=False)
+    hotspot: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    conflicts: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    includes_client: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+
+    __table_args__ = (
+        UniqueConstraint("repository_id", "file_key", name="uq_file_impact_rollup_file"),
+    )
+
+
+class ImpactRuleConflict(Base):
+    """A catalog rule conflict, estate-wide (app/impact/conflicts.py): one
+    rule-pair key — kind, and each side's item, resolution and rule ids —
+    producing conflicts on more than one pair of work items across the
+    engagement's repositories. Replaced per engagement at the end of each
+    dependency-and-context-map run. Engagement data: the key names catalog
+    rules, the instances name this client's files."""
+
+    __tablename__ = "impact_rule_conflicts"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid())
+    engagement_id: Mapped[str] = mapped_column(Text, ForeignKey("engagements.id", ondelete="CASCADE"), nullable=False)
+    # kind|item:resolution:rules|item:resolution:rules, sides in key order.
+    rule_key: Mapped[str] = mapped_column(Text, nullable=False)
+    kind: Mapped[str] = mapped_column(Text, nullable=False)
+    # {itemId, resolutionId, ruleIds, action}
+    first: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    second: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    work_items: Mapped[int] = mapped_column(Integer, nullable=False)
+    repositories: Mapped[int] = mapped_column(Integer, nullable=False)
+    # [{repository_id, file_key, kind, first, second}]
+    instances: Mapped[list] = mapped_column(JSONB, nullable=False)
+    computed_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    step_execution_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+
+    __table_args__ = (
+        CheckConstraint("kind IN ('delete_with_change', 'create_same_path')", name="ck_impact_rule_conflicts_kind"),
+        UniqueConstraint("engagement_id", "rule_key", name="uq_impact_rule_conflicts_key"),
     )
 

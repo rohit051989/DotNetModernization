@@ -6,7 +6,7 @@ namespace Fingerprinting.StepHost;
 /// <summary>
 /// Validates a serialized artifact against
 /// schemas/application-fingerprint-1.0.0.schema.json before it is written —
-/// 21-STEP-003-FINGERPRINTING.md Part F: "A schema validation failure is a
+/// 21-APPLICATION-FINGERPRINTING.md Part F: "A schema validation failure is a
 /// step failure, not a warning."
 /// </summary>
 public sealed class ArtifactSchemaValidator

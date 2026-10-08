@@ -135,7 +135,7 @@ class RegisterLocalPathRequest(BaseModel):
     description: str | None = Field(default=None, description="What this repository contains.")
     technical_owner: str | None = Field(default=None, description="Who to ask about this repository.")
     criticality: Criticality = Field(
-        default="medium", description="Business criticality. Feeds review tier assignment at lifecycle step 10."
+        default="medium", description="Business criticality. Feeds review tier assignment (risk-scoring-tier-assignment)."
     )
     retirement_status: RetirementStatus = Field(
         default="active",

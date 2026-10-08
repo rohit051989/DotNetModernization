@@ -7,7 +7,7 @@ namespace Fingerprinting.Cli;
 
 /// <summary>
 /// Npgsql persistence for the three tables from
-/// 21-STEP-003-FINGERPRINTING.md Part E. All rows owned by step 3 and
+/// 21-APPLICATION-FINGERPRINTING.md Part E. All rows owned by step 3 and
 /// replaced wholesale per repository on rescan — same pattern as step 2's
 /// <c>discovery/persistence.py</c>. The repository and project lookups it
 /// used to carry live in <see cref="PlatformDatabase"/>, shared with step 4.

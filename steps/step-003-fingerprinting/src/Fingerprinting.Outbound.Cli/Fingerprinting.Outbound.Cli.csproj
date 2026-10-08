@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- Step 5's own published binary (29-STEPS-004-005-INVENTORIES.md Part A1):
+  <!-- Step 5's own published binary (29-ENTRY-POINT-AND-OUTBOUND-INVENTORIES.md Part A1):
        its own registration, artifact and tables. Published to
        publish/outbound-invocation-inventory/ so it never overwrites steps 3 or 4. -->
 

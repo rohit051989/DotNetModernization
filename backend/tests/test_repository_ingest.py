@@ -1,4 +1,4 @@
-"""Unit tests for lifecycle step 1 — see 13-STEP-001-REPOSITORY-INGEST.md and
+"""Unit tests for lifecycle step 1 — see 13-REPOSITORY-INGEST.md and
 15-REPOSITORY-INGEST-UI.md Parts B/C.
 
 Uses stdlib unittest (no test framework is listed in requirements.txt; see

@@ -1,4 +1,4 @@
-"""Lifecycle step 11's analysis — 31-STEP-011-ESTATE-DEPENDENCY-MAP.md Parts C to F.
+"""Lifecycle step 11's analysis — 31-DEPENDENCY-AND-CONTEXT-MAP.md Parts C to F.
 
 Pure functions over plain dicts: no database, no I/O. app/steps/estate_map.py
 loads the per-repository rows, calls these, and writes tables and artifacts.

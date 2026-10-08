@@ -30,6 +30,37 @@ resolutions:
   description: Re-host the operations on CoreWCF with BasicHttpBinding, preserving the SOAP contract and WSDL for existing callers.
   effort: medium
   id: corewcf-basichttp
+  impact_rules:
+  - action: rewrite
+    filter:
+      extension: .cs
+    from: seed
+    id: code-behind
+    reason: '[WebMethod] operations become a CoreWCF service contract and implementation'
+    select: self
+  - action: delete
+    filter:
+      extension: .asmx
+    from: seed
+    id: asmx-evidence
+    reason: .asmx activation goes with ASP.NET Web Services
+    select: self
+  - action: delete
+    from: code-behind
+    id: asmx
+    kind: asmx
+    reason: .asmx activation goes with ASP.NET Web Services
+    traverse: convention_files
+  - action: update
+    from: seed
+    id: project
+    reason: CoreWCF packages added; retargeted
+    traverse: project_file
+  - action: update
+    from: code-behind
+    id: tests
+    reason: Tests of the web service target the CoreWCF service
+    traverse: referencing_tests
   is_default: true
   linux_compatible: true
   name: CoreWCF with BasicHttpBinding
@@ -43,6 +74,37 @@ resolutions:
   description: Replace the SOAP operations with ASP.NET Core HTTP endpoints; every caller changes.
   effort: medium
   id: rest-api-rewrite
+  impact_rules:
+  - action: rewrite
+    filter:
+      extension: .cs
+    from: seed
+    id: code-behind
+    reason: '[WebMethod] operations become REST controller actions'
+    select: self
+  - action: delete
+    filter:
+      extension: .asmx
+    from: seed
+    id: asmx-evidence
+    reason: .asmx activation goes with ASP.NET Web Services
+    select: self
+  - action: delete
+    from: code-behind
+    id: asmx
+    kind: asmx
+    reason: .asmx activation goes with ASP.NET Web Services
+    traverse: convention_files
+  - action: update
+    from: seed
+    id: project
+    reason: Becomes an ASP.NET Core project
+    traverse: project_file
+  - action: update
+    from: code-behind
+    id: tests
+    reason: Tests of the web service move to the controllers
+    traverse: referencing_tests
   is_default: false
   linux_compatible: true
   name: Rewrite as a REST API

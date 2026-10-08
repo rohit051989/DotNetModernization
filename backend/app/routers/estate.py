@@ -1,4 +1,4 @@
-"""The Estate tab's API — lifecycle step 11, 31-STEP-011-ESTATE-DEPENDENCY-MAP.md Part H.
+"""The Estate tab's API — lifecycle step 11, 31-DEPENDENCY-AND-CONTEXT-MAP.md Part H.
 
 The register, package estate, dependency graph, context map and integration
 map are read from the newest completed run's artifacts, so a view is always one

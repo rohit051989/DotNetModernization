@@ -5,7 +5,7 @@ namespace Fingerprinting.Extractors;
 
 /// <summary>
 /// Level 1 (file-system) extraction — the file and folder indicators from
-/// step-3-application-fingerprinting.md section 7. Never fails to load and
+/// application-fingerprinting-v1.md section 7. Never fails to load and
 /// works on code that does not compile; proves the pipeline end to end.
 /// Same directory exclusions as steps 1 and 2
 /// (backend/app/steps/repository_ingest.py SKIP_DIR_NAMES).

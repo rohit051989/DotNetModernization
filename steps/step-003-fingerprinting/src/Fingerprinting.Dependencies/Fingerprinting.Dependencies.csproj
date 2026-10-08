@@ -1,6 +1,6 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- Step 6, dependency-assessment (30-STEP-006-DEPENDENCY-ASSESSMENT.md).
+  <!-- Step 6, dependency-assessment (30-DEPENDENCY-ASSESSMENT.md).
        Feed resolution, version lookup, API diff and call-site search; the
        envelope and database live in Fingerprinting.Dependencies.Cli. Uses
        NuGet's own client libraries for feeds, credentials and packages

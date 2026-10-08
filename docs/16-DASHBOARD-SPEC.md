@@ -9,7 +9,7 @@ entire tab.
 
 ## Scope
 
-**Now:** repository-level status driven by real data from step 1 and the catalog,
+**Now:** repository-level status driven by real data from `repository-ingest` and the catalog,
 with everything downstream honestly marked unavailable.
 
 **Later:** application-level rollups, wave status, verification evidence, engine
@@ -158,10 +158,10 @@ unavailable state where applicable.
 |---|---|
 | **Repositories** | Total, with a breakdown of cloned / registered / failed |
 | **Discovery** | Completed / in progress / failed executions |
-| **Applications** | Unavailable — "Awaiting application fingerprinting (step 3)" |
-| **Patterns identified** | Unavailable — "Awaiting pattern classification (step 4)" |
+| **Applications** | Unavailable — "Awaiting application fingerprinting (`application-fingerprinting`)" |
+| **Patterns identified** | Unavailable — "Awaiting pattern classification (`pattern-classification`)" |
 | **Target state decisions** | Approved / in review / parked, from the catalog |
-| **Waves** | Unavailable — "Awaiting wave planning (step 12)" |
+| **Waves** | Unavailable — "Awaiting wave planning (`migration-wave-planning`)" |
 
 Unavailable cards keep their position and size, rendered muted with the step name
 that will populate them. That is the growth path made visible, and it reads as
@@ -189,7 +189,7 @@ platform's completeness better than any percentage.
 ### Band 3 — Two panels side by side
 
 **Left — Pattern distribution.** Horizontal bars of application count per pattern
-once step 4 exists. Until then, an empty state naming the awaited step and listing
+once `pattern-classification` exists. Until then, an empty state naming the awaited step and listing
 the patterns currently in scope for the engagement from the catalog, which is real
 data and worth showing.
 

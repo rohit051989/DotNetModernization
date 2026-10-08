@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://modernization-platform.internal/schemas/entry-point-inventory-1.0.0.schema.json",
   "title": "entry-point-inventory@1.0.0",
-  "description": "Lifecycle step 4. See 29-STEPS-004-005-INVENTORIES.md Part B. Per project, entry points sorted by kind then route or handler. No timestamp and no absolute path belong here: two runs over unchanged input are byte-identical.",
+  "description": "Lifecycle step 4. See 29-ENTRY-POINT-AND-OUTBOUND-INVENTORIES.md Part B. Per project, entry points sorted by kind then route or handler. No timestamp and no absolute path belong here: two runs over unchanged input are byte-identical.",
   "type": "object",
   "additionalProperties": false,
   "required": [

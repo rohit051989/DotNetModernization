@@ -7,7 +7,7 @@ using NpgsqlTypes;
 namespace Fingerprinting.Dependencies.Cli;
 
 /// <summary>
-/// Npgsql persistence for 30-STEP-006-DEPENDENCY-ASSESSMENT.md Part F, in
+/// Npgsql persistence for 30-DEPENDENCY-ASSESSMENT.md Part F, in
 /// one transaction per repository:
 /// <list type="bullet">
 /// <item><c>package_assessments</c>, one row per project per direct package,

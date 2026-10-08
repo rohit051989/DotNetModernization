@@ -31,7 +31,7 @@ installation checklist for a new machine.
 | PostgreSQL 16 | Docker container (Path A) or Windows service (Path B) | `localhost:5433` |
 | Backend API (FastAPI) | Your own terminal | http://127.0.0.1:8001 (API docs at `/docs`) |
 | Frontend (React + Vite) | Your own terminal | http://localhost:5174 |
-| Discovery steps 3–6 (.NET) | Published executables, launched by the backend | — |
+| Discovery steps `application-fingerprinting` to `dependency-assessment` (.NET) | Published executables, launched by the backend | — |
 
 Ports **5433**, **8001** and **5174** are deliberate (they avoid the usual defaults). Keep them.
 
@@ -254,7 +254,8 @@ cd frontend; Set-Content -Path .env -Value "VITE_API_BASE_URL=http://127.0.0.1:8
 
 ### 4.4 Discovery steps (.NET)
 
-Steps 3–6 run as **published** executables at fixed paths
+`application-fingerprinting`, `entry-point-inventory`, `outbound-invocation-inventory` and
+`dependency-assessment` run as **published** executables at fixed paths
 (`steps\step-003-fingerprinting\registration\*.json`). Build output is not in git, so publish
 all four on the VDI:
 
@@ -273,12 +274,12 @@ cd steps\step-003-fingerprinting; dotnet publish src\Fingerprinting.Dependencies
 
 | Step | Executable the platform launches |
 |---|---|
-| 3 Application fingerprinting | `publish\Fingerprinting.Cli.exe` |
-| 4 Entry point inventory | `publish\entry-point-inventory\EntryPointInventory.Cli.exe` |
-| 5 Outbound invocation inventory | `publish\outbound-invocation-inventory\OutboundInvocationInventory.Cli.exe` |
-| 6 Dependency assessment | `publish\dependency-assessment\DependencyAssessment.Cli.exe` |
+| `application-fingerprinting` | `publish\Fingerprinting.Cli.exe` |
+| `entry-point-inventory` | `publish\entry-point-inventory\EntryPointInventory.Cli.exe` |
+| `outbound-invocation-inventory` | `publish\outbound-invocation-inventory\OutboundInvocationInventory.Cli.exe` |
+| `dependency-assessment` | `publish\dependency-assessment\DependencyAssessment.Cli.exe` |
 
-Steps 1, 2, 7 and 11 are Python and run inside the backend; nothing to publish. Republish
+`repository-ingest`, `solution-discovery`, `item-detection` and `dependency-and-context-map` are Python and run inside the backend; nothing to publish. Republish
 after any change under `steps\step-003-fingerprinting\src\`, then restart the backend.
 
 ### 4.5 Start the platform
@@ -344,7 +345,7 @@ Setup and the platform itself download from these hosts:
 | `registry.npmjs.org` | `npm install` | Setup |
 | `api.nuget.org` | `dotnet publish` / restore | Setup |
 | `registry-1.docker.io` (Docker Hub) | `docker compose up` (Path A only) | Setup |
-| NuGet feeds (nuget.org, or the client's Artifactory) | Step 6, dependency assessment | **Every run** of step 6 |
+| NuGet feeds (nuget.org, or the client's Artifactory) | `dependency-assessment` | **Every run** of `dependency-assessment` |
 
 If the VDI only reaches the internet through a corporate proxy or an Artifactory mirror,
 configure each tool:

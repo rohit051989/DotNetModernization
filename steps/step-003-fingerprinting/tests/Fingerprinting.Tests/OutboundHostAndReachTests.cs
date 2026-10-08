@@ -4,7 +4,7 @@ using Xunit;
 
 namespace Fingerprinting.Tests;
 
-/// <summary>Step 5, 1.3.0 — 29-STEPS-004-005-INVENTORIES.md Part C9: a class
+/// <summary>Step 5, 1.3.0 — 29-ENTRY-POINT-AND-OUTBOUND-INVENTORIES.md Part C9: a class
 /// library's configuration through its hosts, Web Deploy SetParameters,
 /// invocation call sites, and which backend calls each entry point reaches.
 /// The fixture is the WCF sample's FundsTransfer slice.</summary>

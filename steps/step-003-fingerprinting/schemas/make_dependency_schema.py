@@ -1,4 +1,4 @@
-﻿"""Writes dependency-assessment-1.1.0.schema.json (30-STEP-006-DEPENDENCY-ASSESSMENT.md Part F).
+﻿"""Writes dependency-assessment-1.1.0.schema.json (30-DEPENDENCY-ASSESSMENT.md Part F).
 
 1.1.0 (additive): packageKind, breakingEvidence, contentBreakingPossible,
 versionDrift, callSites[].certainty, classificationMethod package_kind,
@@ -150,7 +150,7 @@ schema = {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "$id": "https://modernization-platform.local/schemas/dependency-assessment-1.1.0.schema.json",
     "title": "dependency-assessment 1.1.0",
-    "description": "Lifecycle step 6 (30-STEP-006-DEPENDENCY-ASSESSMENT.md). One assessment per project per direct package: the "
+    "description": "Lifecycle step 6 (30-DEPENDENCY-ASSESSMENT.md). One assessment per project per direct package: the "
                    "recommended version for the engagement's target framework from the authoritative feed, the outcome, the "
                    "deprecated / vulnerable / not-in-client-feed flags, and for a breaking upgrade the changed members the code calls. "
                    "Deterministic against the lookup cache; no fetch time and nothing derived from a feed credential appears here.",

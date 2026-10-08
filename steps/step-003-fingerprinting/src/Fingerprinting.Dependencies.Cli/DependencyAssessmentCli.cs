@@ -8,7 +8,7 @@ using Fingerprinting.StepHost;
 namespace Fingerprinting.Dependencies.Cli;
 
 /// <summary>
-/// Lifecycle step 6, dependency-assessment — 30-STEP-006-DEPENDENCY-ASSESSMENT.md.
+/// Lifecycle step 6, dependency-assessment — 30-DEPENDENCY-ASSESSMENT.md.
 /// Two modes, as steps 3 to 5: the process-adapter envelope (StepContext on
 /// stdin, StepResult on stdout), and a standalone mode for iterating without
 /// the engine.

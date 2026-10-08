@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Step 9, impact-analysis (33-IMPACT-ANALYSIS.md): per work item
+       and resolution, the files its conversion touches, from the catalog's
+       impact rules over a syntax index of the repository. Deterministic only;
+       the LLM residue (Part H) is not built. The envelope and database live
+       in Fingerprinting.Impact.Cli. -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Fingerprinting.Impact</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Fingerprinting.Domain\Fingerprinting.Domain.csproj" />
+    <ProjectReference Include="..\Fingerprinting.Analysis\Fingerprinting.Analysis.csproj" />
+  </ItemGroup>
+
+</Project>

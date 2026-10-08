@@ -1,4 +1,4 @@
-"""The human-gate queue — 27-STEP-006-PATTERN-VALIDATION.md Part E.
+"""The human-gate queue — 27-PATTERN-VALIDATION.md Part E.
 
 **Generic across gate types.** Nothing here knows what a pattern candidate
 is; step 6 is simply the first `item_type` to appear. Steps 22, 38 and 50

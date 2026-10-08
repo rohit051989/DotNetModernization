@@ -6,7 +6,7 @@ using Fingerprinting.Domain;
 namespace Fingerprinting.Extractors;
 
 /// <summary>
-/// Level 2 (structured-file) extraction — step-3-application-fingerprinting.md
+/// Level 2 (structured-file) extraction — application-fingerprinting-v1.md
 /// section 8: web.config, app.config and appsettings*.json. Merges what
 /// section 30 called WcfConfigurationExtractor and AspNetConfigurationExtractor
 /// (they parse the same files) plus the section 8.4 database indicators.

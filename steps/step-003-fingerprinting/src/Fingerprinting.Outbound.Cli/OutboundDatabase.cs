@@ -5,7 +5,7 @@ using NpgsqlTypes;
 namespace Fingerprinting.Outbound.Cli;
 
 /// <summary>
-/// Npgsql persistence for 29-STEPS-004-005-INVENTORIES.md Part C8:
+/// Npgsql persistence for 29-ENTRY-POINT-AND-OUTBOUND-INVENTORIES.md Part C8:
 /// <c>outbound_invocations</c>, one row per invocation, plus
 /// <c>outbound_scans</c>, one row per repository carrying the per-project
 /// summaries. Both owned by step 5 and replaced wholesale per repository

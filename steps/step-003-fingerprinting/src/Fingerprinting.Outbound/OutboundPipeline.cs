@@ -35,7 +35,7 @@ public sealed record OutboundInput(
 
 /// <summary>
 /// Builds the outbound-invocation-inventory@1.0.0 artifact for one
-/// repository — 29-STEPS-004-005-INVENTORIES.md Part C. Deterministic per
+/// repository — 29-ENTRY-POINT-AND-OUTBOUND-INVENTORIES.md Part C. Deterministic per
 /// step 3's rules: every collection sorted, ids derived, nothing time- or
 /// machine-dependent.
 /// </summary>

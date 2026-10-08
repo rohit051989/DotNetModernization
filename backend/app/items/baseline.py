@@ -39,8 +39,16 @@ CONTENT_FIELDS: dict[type, tuple[str, ...]] = {
     models.CatalogItem: ("name", "description", "scope", "category", "detection", "excluded_roles", "owner_team", "status",
                          "deleted"),
     models.ItemResolution: ("item_id", "name", "description", "target_description", "consumer_impact", "effort", "is_default",
-                            "linux_compatible", "container_ready", "notes", "status", "deleted"),
+                            "linux_compatible", "container_ready", "notes", "status", "deleted", "impact_rules"),
     models.ResolutionDerivation: ("item_id", "action", "dependent_resolution_id", "applies_to", "reason", "deleted"),
+}
+
+# Content fields added after baselines were first recorded. Absent and empty
+# are the same content: an empty one is left out of content() and of the hash,
+# so every row without it keeps its baseline and exports unchanged. A seed or
+# import may omit it; omitted means empty.
+OPTIONAL_FIELDS: dict[type, dict[str, object]] = {
+    models.ItemResolution: {"impact_rules": []},   # 33-IMPACT-ANALYSIS Part D
 }
 
 TABLES = {models.CatalogItem: "catalog_items", models.ItemResolution: "item_resolutions",
@@ -49,7 +57,13 @@ TABLES = {models.CatalogItem: "catalog_items", models.ItemResolution: "item_reso
 
 def content(row) -> dict:
     fields = CONTENT_FIELDS[type(row)]
-    return {f: (row.deleted_at is not None) if f == "deleted" else getattr(row, f) for f in fields}
+    values = {f: (row.deleted_at is not None) if f == "deleted" else getattr(row, f) for f in fields}
+    return _without_empty_optional(type(row), values)
+
+
+def _without_empty_optional(model: type, values: dict) -> dict:
+    optional = OPTIONAL_FIELDS.get(model, {})
+    return {k: v for k, v in values.items() if not (k in optional and (v is None or v == optional[k]))}
 
 
 def digest(values: dict) -> str:
@@ -77,7 +91,9 @@ def new_report() -> dict:
 
 
 def _diff(current: dict, desired: dict) -> dict:
-    return {f: {"database": current[f], "seed": desired[f]} for f in current if f in desired and current[f] != desired[f]}
+    """Field by field; a field on one side only (an optional one) shows as None on the other."""
+    fields = [f for f in current if not f.startswith("_")] + [f for f in desired if f not in current and not f.startswith("_")]
+    return {f: {"database": current.get(f), "seed": desired.get(f)} for f in fields if current.get(f) != desired.get(f)}
 
 
 def _apply(row, desired: dict, now: datetime.datetime) -> None:
@@ -101,16 +117,21 @@ def seed_row(db: Session, model: type, key: dict, desired: dict, report: dict) -
     starting with "_" (`_deleted_at`, `_deleted_by`) are applied on a write
     but not hashed. Returns (row, outcome): inserted, updated, unchanged,
     adopted, kept_edit or conflict. Flushes nothing; the caller does."""
-    missing = set(CONTENT_FIELDS[model]) - set(desired)
+    optional = OPTIONAL_FIELDS.get(model, {})
+    missing = set(CONTENT_FIELDS[model]) - set(desired) - set(optional)
     if missing:
         raise ValueError(f"{TABLES[model]} {key}: desired content lacks {sorted(missing)}")
+    # An omitted optional field is its empty value, applied as such, and left
+    # out of the comparison and the hash like any empty one.
+    desired = _without_empty_optional(model, {**optional, **desired})
+    applied = {**optional, **desired}
     now = datetime.datetime.now(datetime.timezone.utc)
     row = db.get(model, tuple(key.values()) if len(key) > 1 else next(iter(key.values())))
     if row is None:
         row = model(**key)
         if model is models.CatalogItem:
             row.version = 1
-        _apply(row, desired, now)
+        _apply(row, applied, now)
         row.seeded_hash = digest(desired)
         db.add(row)
         report["inserted"].append(f"{TABLES[model]} {row_label(row)}")
@@ -128,7 +149,7 @@ def seed_row(db: Session, model: type, key: dict, desired: dict, report: dict) -
                 return row, "adopted"
         return row, "unchanged"
     if state == "unedited":
-        _apply(row, desired, now)
+        _apply(row, applied, now)
         row.seeded_hash = digest(desired)
         report["updated"].append(label)
         return row, "updated"

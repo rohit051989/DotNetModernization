@@ -3,7 +3,7 @@ using Fingerprinting.Domain;
 
 namespace Fingerprinting.EntryPoints;
 
-// The entry-point-inventory@1.0.0 artifact â€” 29-STEPS-004-005-INVENTORIES.md
+// The entry-point-inventory@1.0.0 artifact â€” 29-ENTRY-POINT-AND-OUTBOUND-INVENTORIES.md
 // Parts B3 and B4. Serialised through DeterministicJson: camelCase keys,
 // alphabetical at every level. Nulls are written explicitly (a conventional
 // route's null template is information), except the kind-specific blocks on

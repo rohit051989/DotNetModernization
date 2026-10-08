@@ -1,9 +1,9 @@
-# 19 — Step 2: Solution & Project Discovery
+# 19 — `solution-discovery`: Solution & Project Discovery
 
-Lifecycle step 2. Owner: **P**. Job: `phase0-repository-discovery`, immediately
-after step 1.
+Lifecycle step `solution-discovery`. Owner: **P**. Job: `phase0-repository-discovery`, immediately
+after `repository-ingest`.
 
-Built from the step 2 requirements document. Read that alongside this — it is the
+Built from the `solution-discovery` requirements document. Read that alongside this — it is the
 authority on *what* to capture; this spec is the authority on *how* it is modelled,
 executed and stored.
 
@@ -11,23 +11,23 @@ executed and stored.
 
 ## Scope discipline
 
-Step 2 is **structural discovery only**. It records what exists and how it relates.
+`solution-discovery` is **structural discovery only**. It records what exists and how it relates.
 It interprets nothing.
 
 Record `OutputType=Library` as a fact. Do **not** conclude the project is a library
-rather than an application — that is step 3. Record a `System.ServiceModel` package
-reference. Do **not** conclude the project is a WCF service — that is step 4.
+rather than an application — that is `application-fingerprinting`. Record a `System.ServiceModel` package
+reference. Do **not** conclude the project is a WCF service — that is `item-detection`.
 
-Practical consequence: after step 2 the dashboard can show solutions, projects,
+Practical consequence: after `solution-discovery` the dashboard can show solutions, projects,
 standalone projects, framework families and scan quality. The **Applications** and
-**Patterns** cards remain unavailable, because deployable application count is a
-step 3 output. Do not populate them from project counts.
+**Patterns** cards remain unavailable, because deployable application count is an
+`application-fingerprinting` output. Do not populate them from project counts.
 
 ---
 
-## Part A — Step 1 amendments
+## Part A — `repository-ingest` amendments
 
-Four fields the requirements document needs that step 1 does not currently capture.
+Four fields the requirements document needs that `repository-ingest` does not currently capture.
 All are cheap additions to the scan it already performs.
 
 ### New `repositories` columns
@@ -43,7 +43,7 @@ All are cheap additions to the scan it already performs.
 
 | Field | Meaning | Set by |
 |---|---|---|
-| `ingest_status` | Did our scan work? | Step 1 |
+| `ingest_status` | Did our scan work? | `repository-ingest` |
 | `retirement_status` | Is this in modernization scope? | Human, at registration |
 | `source_status` | What does the source-control platform say? | Provider API, later |
 
@@ -60,7 +60,7 @@ Same exclusions as the size walk: `.git`, `node_modules`, `bin`, `obj`, `package
 Percentages are of counted files only, rounded to one decimal.
 
 Bump the `repository-inventory` artifact to **1.1.0** to carry the new fields. Minor
-version — additive only, so step 2's `^1.0.0` range still matches. This is a
+version — additive only, so `solution-discovery`'s `^1.0.0` range still matches. This is a
 deliberate, low-risk exercise of the versioning scheme.
 
 ---
@@ -69,10 +69,10 @@ deliberate, low-risk exercise of the versioning scheme.
 
 ### Process adapter, standalone script
 
-Step 2 is delivered as a **standalone script invoked via the `process` adapter**,
-not in-process like step 1.
+`solution-discovery` is delivered as a **standalone script invoked via the `process` adapter**,
+not in-process like `repository-ingest`.
 
-This is intentional. Steps 3 onward will be written by different people, and the
+This is intentional. Steps from `application-fingerprinting` onward will be written by different people, and the
 `process` adapter is the integration path they will use. Proving it end to end with
 a step we control — before handing a spec to someone else — is worth the small
 runtime cost.
@@ -137,7 +137,7 @@ from the database, so it can be run standalone against a hand-written artifact f
 
 ## Part C — Data model
 
-Seven new tables. All rows are owned by step 2 and **replaced wholesale on rescan** —
+Seven new tables. All rows are owned by `solution-discovery` and **replaced wholesale on rescan** —
 delete by `repository_id`, then insert. Simpler than reconciling, and correct given
 the artifact is a point-in-time snapshot.
 
@@ -152,7 +152,7 @@ replaced wholesale.
 
 ### `repository_structure` — 1:1 with repository
 
-Summary written by step 2. Separate from `repositories` so step ownership is
+Summary written by `solution-discovery`. Separate from `repositories` so step ownership is
 explicit and replacement is trivial.
 
 | Column | Type | Notes |
@@ -246,7 +246,7 @@ and `(repository_id, project_format)`.
 | `project_id` | `UUID` FK | Null when unresolved |
 | `raw_path` | `TEXT` NOT NULL | As written in the `.sln`, backslashes preserved |
 | `project_guid` | `TEXT` | |
-| `project_type_guid` | `TEXT` | Recorded raw. Do not interpret in step 2 |
+| `project_type_guid` | `TEXT` | Recorded raw. Do not interpret in `solution-discovery` |
 | `solution_folder` | `TEXT` | Logical folder path, when nested |
 | `resolution_status` | `TEXT` NOT NULL | CHECK IN (`resolved`, `unresolved`) |
 
@@ -266,7 +266,7 @@ Unique on `(solution_id, raw_path)`.
 Unique on `(source_project_id, raw_path)`.
 
 `external_repository` means the resolved path escapes the repository root — a genuine
-cross-repository dependency, and a signal step 7 will need.
+cross-repository dependency, and a signal `dependency-and-context-map` will need.
 
 ### `project_packages`
 
@@ -311,7 +311,7 @@ Direct mapping, no inference:
 | `.vcxproj` | `cpp_project` | `cpp` |
 
 `.dtproj` is notable: it signals SSIS, which is a catalog pattern with no market
-tooling. Step 2 records it structurally; step 4 does the matching.
+tooling. `solution-discovery` records it structurally; `item-detection` does the matching.
 
 ### Known non-.NET project types — out of scope, not failures
 
@@ -352,7 +352,7 @@ A file with a known .NET extension (`.csproj`, `.vbproj`, `.fsproj`, `.sqlproj`,
 `.dtproj`, `.shproj`, `.vcxproj`) that cannot be parsed — malformed XML, unreadable
 encoding — is `parse_status: failed`, counted in `failed_parse_count`, with a
 `parse_warnings` entry prefixed `"parse failed: <reason>"`. This is the only
-category that represents step 2 falling short of what it should have been able to
+category that represents `solution-discovery` falling short of what it should have been able to
 do, and the only one that degrades `scan_status`. See Part H.
 
 ---
@@ -401,11 +401,11 @@ are read — unconditional, literal properties only, `$(Name)` expanded from the
 import overriding the earlier — and the project file's own value always wins.
 `target_framework_source` records where the framework came from: `project`, or the
 repository-relative props file. Explicit `<Import>`s are still not followed. This is the one
-place every later step reads the framework from: step 6's dependency assessment and step 7's
+place every later step reads the framework from: `dependency-assessment` and `item-detection`'s
 role computation and `frameworkFamily` conditions see the same answer.
 
 **Known, not null (2.1.0).** Item detection treats a null metadata field as unknown and
-reports the item `not_checked` for that project, so step 2 records what MSBuild itself
+reports the item `not_checked` for that project, so `solution-discovery` records what MSBuild itself
 defines rather than leaving it null:
 
 - `project_sdk`: the declared SDK (`<Project Sdk="...">` or `<Sdk Name="..."/>`), version
@@ -424,7 +424,7 @@ repository root. A resolved path escaping the repository root is
 **Encoding.** Legacy files are frequently UTF-8 with BOM, occasionally UTF-16. Detect
 BOM, fall back to UTF-8 with replacement, and warn rather than fail.
 
-**Read-only.** Step 2 writes nothing into the repository folder, same as step 1.
+**Read-only.** `solution-discovery` writes nothing into the repository folder, same as `repository-ingest`.
 
 ---
 
@@ -438,7 +438,7 @@ affected-consumer fallout.
 
 Deterministic: sorted keys, solutions sorted by `relative_path`, projects sorted by
 `relative_path`, 2-space indent, trailing newline. `generated_at` goes in
-`StepOutput.metadata`, **not** in the file — the pattern established in step 1, so
+`StepOutput.metadata`, **not** in the file — the pattern established in `repository-ingest`, so
 unchanged input yields an identical checksum.
 
 ```json
@@ -518,7 +518,7 @@ GET /api/engagements/{eid}/structure-summary   portfolio rollup for the dashboar
 ### Repository detail — new Structure section
 
 Rendered only when `repository_structure` exists; otherwise an empty state naming
-step 2.
+`solution-discovery`.
 
 - **Summary strip** — solutions, projects, standalone, shared, unresolved, legacy vs
   SDK, out-of-scope, unknown-type, and failed-parse counts shown separately, scan
@@ -541,19 +541,19 @@ status columns.
 
 The **Applications** and **Patterns** cards stay unavailable. Do not populate them
 from project counts — a project is not an application, and conflating them would
-produce a number that quietly becomes wrong at step 3.
+produce a number that quietly becomes wrong at `application-fingerprinting`.
 
 ---
 
 ## Acceptance criteria
 
-- [ ] Step 1 populates `organization`, `last_commit_date` and `primary_languages`;
+- [ ] `repository-ingest` populates `organization`, `last_commit_date` and `primary_languages`;
       `source_status` is null for `local_path`
-- [ ] `repository-inventory` is version 1.1.0 and step 2's `^1.0.0` still matches
-- [ ] Step 2 registers with `adapter_type: process` and
+- [ ] `repository-inventory` is version 1.1.0 and `solution-discovery`'s `^1.0.0` still matches
+- [ ] `solution-discovery` registers with `adapter_type: process` and
       `phase0-repository-discovery` validates **without any YAML change**
 - [ ] Engine resolves the `repository-inventory` input, and the pre-invoke version
-      re-check fires — verify by temporarily setting step 2's range to `^2.0.0` and
+      re-check fires — verify by temporarily setting `solution-discovery`'s range to `^2.0.0` and
       confirming the run fails with a version mismatch, then reverting
 - [ ] The script runs standalone: `Get-Content sample-context.json | python steps/step-002-solution-discovery/main.py`
 - [ ] Multi-project solution parses, with membership recorded
@@ -578,7 +578,7 @@ produce a number that quietly becomes wrong at step 3.
 - [ ] Multi-targeting project records all frameworks, with a warning explaining the
       chosen family
 - [ ] A UTF-16 or BOM-prefixed project file parses
-- [ ] Rescan replaces all step 2 rows without duplicates
+- [ ] Rescan replaces all `solution-discovery` rows without duplicates
 - [ ] Two runs over unchanged input produce identical artifact checksums
 - [ ] `git status` in the scanned repository is clean afterwards
 - [ ] A repository with no .NET projects completes cleanly rather than failing

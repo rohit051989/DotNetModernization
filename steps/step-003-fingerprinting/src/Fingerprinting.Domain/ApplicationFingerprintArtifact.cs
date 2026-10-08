@@ -2,7 +2,7 @@ namespace Fingerprinting.Domain;
 
 /// <summary>
 /// The <c>application-fingerprint@1.2.0</c> artifact — see
-/// 21-STEP-003-FINGERPRINTING.md Part F. The artifact version is the schema
+/// 21-APPLICATION-FINGERPRINTING.md Part F. The artifact version is the schema
 /// version (Part A2); no <c>schemaVersion</c>, <c>scanId</c> or timestamp
 /// field belongs here (Part A3) — those are volatile and go in
 /// <c>StepOutput.metadata</c> instead. Bumped to 1.1.0 for

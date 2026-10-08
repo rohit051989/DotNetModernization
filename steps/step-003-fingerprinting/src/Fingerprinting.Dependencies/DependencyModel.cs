@@ -3,7 +3,7 @@ using Fingerprinting.Domain;
 
 namespace Fingerprinting.Dependencies;
 
-// The dependency-assessment@1.1.0 artifact — 30-STEP-006-DEPENDENCY-ASSESSMENT.md
+// The dependency-assessment@1.1.0 artifact — 30-DEPENDENCY-ASSESSMENT.md
 // Parts C, D and F. Serialised through DeterministicJson. Deterministic
 // against the lookup cache (Part B6): nothing time-dependent is in here —
 // the cache snapshot time travels in StepOutput.metadata instead. Nothing

@@ -1,9 +1,9 @@
-# 21 — Step 3: Application Fingerprinting
+# 21 — `application-fingerprinting`: Application Fingerprinting
 
-Lifecycle step 3. Owner: **P**. Job: `phase0-repository-discovery`, after step 2.
+Lifecycle step `application-fingerprinting`. Owner: **P**. Job: `phase0-repository-discovery`, after `solution-discovery`.
 Implemented in **C# / .NET**, invoked via the `process` adapter.
 
-Read `step-3-application-fingerprinting.md` alongside this. That document is the
+Read `application-fingerprinting-v1.md` alongside this. That document is the
 authority on **what** to extract; this spec is the authority on **how** it integrates,
 executes and persists, and it overrides that document where the two disagree.
 
@@ -21,7 +21,7 @@ applies.
 - **Raw output** goes to the existing artifact mechanism: a file under `output_dir`,
   registered in `wf_artifacts` with a checksum. That already provides immutable,
   auditable, reprocessable raw output — §38.9 satisfied without new infrastructure.
-- **Step 3 exposes no API.** Its entire interface is StepContext on stdin, StepResult
+- **`application-fingerprinting` exposes no API.** Its entire interface is StepContext on stdin, StepResult
   on stdout. Read endpoints for fingerprint data belong in the existing FastAPI
   backend, per `18-API-CONVENTIONS.md`.
 
@@ -41,7 +41,7 @@ registry follows).
 ### A3. Volatile fields go in metadata, not the artifact
 
 §32's `scanId` and any timestamp break checksum determinism, which §38.10 requires.
-They go in `StepOutput.metadata`. Same rule already applied in steps 1 and 2.
+They go in `StepOutput.metadata`. Same rule already applied in `repository-ingest` and `solution-discovery`.
 
 `scannerVersion` **stays in the artifact** — it is a genuine input to reproducibility
 and only changes when the scanner changes.
@@ -69,7 +69,7 @@ The document already treats it as optional (§27, §38.3). v1 goes further:
 
 The main thing semantics buys is disambiguating a user-defined `Controller` from
 `System.Web.Mvc.Controller` (§26.2). Real, but rare, and syntax plus the package and
-assembly reference context from step 2 resolves most of it. Take the precision hit
+assembly reference context from `solution-discovery` resolves most of it. Take the precision hit
 in exchange for a scanner that runs on a broken estate.
 
 ### A5. One Windows worker
@@ -102,13 +102,13 @@ steps/step-003-fingerprinting/
 
 Four source projects. Split further only when a boundary is genuinely load-bearing.
 
-### A7. Do not re-extract what step 2 already captured
+### A7. Do not re-extract what `solution-discovery` already captured
 
-§4 and §5 substantially duplicate step 2's `projects` and `project_packages` tables.
+§4 and §5 substantially duplicate `solution-discovery`'s `projects` and `project_packages` tables.
 Re-extracting invites divergence between two sources of the same fact.
 
-Step 3 **reads** project metadata and package declarations from step 2's artifact.
-It re-derives a value only where MSBuild evaluation produces something step 2's raw
+`application-fingerprinting` **reads** project metadata and package declarations from `solution-discovery`'s artifact.
+It re-derives a value only where MSBuild evaluation produces something `solution-discovery`'s raw
 XML parse could not — resolved conditional properties, expanded properties, imported
 `Directory.Build.props` values. Where it does, keep both per §26.1:
 
@@ -116,7 +116,7 @@ XML parse could not — resolved conditional properties, expanded properties, im
 "targetFramework": { "raw": "$(DefaultTargetFramework)", "evaluated": "net472", "source": "MSBUILD_EVALUATED" }
 ```
 
-New in step 3 and not in step 2: SDK identity, nullable, implicit usings, and
+New in `application-fingerprinting` and not in `solution-discovery`: SDK identity, nullable, implicit usings, and
 anything requiring evaluation.
 
 ---
@@ -160,7 +160,7 @@ Owner code is `P + S` per `17-LIFECYCLE-STEPS.md`. The `S` share is reserved for
 future LLM-assisted summarisation pass; **v1 is entirely deterministic** and calls no
 model. Record that in the README so nobody assumes an LLM is involved.
 
-Note the `^2.0.0` range — step 2's artifact is at 2.0.0. This is the first consumer
+Note the `^2.0.0` range — `solution-discovery`'s artifact is at 2.0.0. This is the first consumer
 of it, so verify resolution works.
 
 ### Three hard rules for a .NET step
@@ -210,7 +210,7 @@ reads `net472` projects while itself running on modern .NET.
 ### Database access
 
 The step receives `database_url` in StepContext and writes its own rows, consistent
-with steps 1 and 2. Use `Npgsql`. It must not call the FastAPI backend.
+with `repository-ingest` and `solution-discovery`. Use `Npgsql`. It must not call the FastAPI backend.
 
 ### Standalone execution
 
@@ -228,14 +228,14 @@ extractors without the engine.
 
 ## Part C — Unit of work
 
-**One fingerprint per project row from step 2.** No aggregation, no judgement about
+**One fingerprint per project row from `solution-discovery`.** No aggregation, no judgement about
 which projects are applications.
 
 The requirements document uses "project or application candidate" (§3). To be
-unambiguous: step 3 fingerprints **projects**. Deciding which projects constitute
-deployable applications is interpretation and belongs to step 4.
+unambiguous: `application-fingerprinting` fingerprints **projects**. Deciding which projects constitute
+deployable applications is interpretation and belongs to `item-detection`.
 
-Out-of-scope projects are skipped with `fingerprintStatus: SKIPPED`. Step 2 signals
+Out-of-scope projects are skipped with `fingerprintStatus: SKIPPED`. `solution-discovery` signals
 this two different ways, both of which must be checked — `parse_status: out_of_scope`
 alone is not sufficient:
 
@@ -267,7 +267,7 @@ duplicated onto every project.
 ## Part D — Signal vocabulary
 
 The requirements document shows signal names (§31: `SVC_FILE`,
-`SERVICE_CONTRACT_ATTRIBUTE`) but no controlled vocabulary. Without one, step 4's
+`SERVICE_CONTRACT_ATTRIBUTE`) but no controlled vocabulary. Without one, `item-detection`'s
 rules cannot bind reliably and every extractor invents its own naming.
 
 **Maintain a versioned signal registry**, committed as
@@ -338,7 +338,7 @@ what its evidence entries carry. Twelve types:
 RBC-style findings: API usages and literals whose behaviour changes on Linux. Since
 signal registry 1.4.0 they are emitted by `ApiUsageExtractor` and `PathLiteralExtractor`
 (see "Extractor batch 2" below). An artifact containing either declares
-`artifactVersion: 1.2.0`, which step 3 now always emits.
+`artifactVersion: 1.2.0`, which `application-fingerprinting` now always emits.
 
 **`API_INVOCATION`** — one use of one specific member: a property access, method call
 or constructor. Distinct from `ENTRY_POINT`, which also matches named invocations but
@@ -439,10 +439,10 @@ Decisions taken with it:
   (EntryPointExtractor) have been in the registry since 1.1.0. None of the four sample
   repositories contains a worker, which is why they never fire there.
 
-**Extractor backlog is driven by step 4, not by this document.** Signals the
+**Extractor backlog is driven by `pattern-classification`, not by this document.** Signals the
 catalog needs but no extractor emits yet are recorded on the pattern that wants
 them, as `required_signals_pending[].expected_extractor`
-(`24-STEP-004-CLASSIFICATION.md` Part B2), and surface grouped by extractor in
+(`24-PATTERN-CLASSIFICATION.md` Part B2), and surface grouped by extractor in
 each scan's coverage report. Two extractors are named there and not yet built:
 
 | Extractor | Signals wanted | Wanted by |
@@ -450,9 +450,9 @@ each scan's coverage report. Two extractors are named there and not yet built:
 | `SsisExtractor` | package-internals signals (connection managers, data flow components) | `ssis-package` |
 | `DesktopUiExtractor` | `SYSTEM_WINDOWS_FORMS_NAMESPACE`, `SYSTEM_WINDOWS_FORMS_ASSEMBLY`, `FORM_BASE_CLASS`, `SYSTEM_WINDOWS_NAMESPACE`, `PRESENTATION_FRAMEWORK_ASSEMBLY`, `WINDOW_BASE_CLASS`, `STA_THREAD_ATTRIBUTE` | `winforms-desktop`, `wpf-desktop` |
 
-### gRPC is invisible to step 3
+### gRPC is invisible to `application-fingerprinting`
 
-Found by step 5: cluster `b582b6fa716a` is two gRPC services in
+Found by `pattern-discovery-clustering`: cluster `b582b6fa716a` is two gRPC services in
 `legacy-grpc-suite`, and its whole signature is `PROGRAM_CS_FILE`,
 `SERVICES_FOLDER`, `TOP_LEVEL_STATEMENTS_ENTRY_POINT`,
 `WEB_APPLICATION_CREATE_BUILDER_ENTRY_POINT` — four signals that describe *any*
@@ -488,14 +488,14 @@ Adding these is a minor registry bump — they are additions, not renames.
 the registry has no desktop UI framework evidence at all — `XAML_FILE` is the
 one desktop signal it emits, and it separates WPF from WinForms without
 identifying either. Both desktop patterns are `active` regardless, detecting on
-step 2's `outputType: WinExe` plus XAML presence, and both carry a
+`solution-discovery`'s `outputType: WinExe` plus XAML presence, and both carry a
 `matchWarnings` entry saying so. Adding these signals is a minor registry bump
 (they are additions, not renames) and lets both patterns move from
 metadata-shaped detection to real positive evidence.
 
-**Note for step 4:** the catalog's `detection_rules` JSONB is currently shaped around
-namespaces, globs and packages. Step 4 will most likely need it reshaped to reference
-signal names instead. That is step 4's problem, but choose signal names now with that
+**Note for `pattern-classification`:** the catalog's `detection_rules` JSONB is currently shaped around
+namespaces, globs and packages. `pattern-classification` will most likely need it reshaped to reference
+signal names instead. That is `pattern-classification`'s problem, but choose signal names now with that
 in mind — they will become the vocabulary the catalog's detection rules are written
 in, and renaming them later means rewriting every pattern.
 
@@ -503,7 +503,7 @@ in, and renaming them later means rewriting every pattern.
 
 ## Part E — Data model
 
-Three tables. All rows owned by step 3 and replaced wholesale per repository on
+Three tables. All rows owned by `application-fingerprinting` and replaced wholesale per repository on
 rescan.
 
 ### `project_fingerprints` — 1:1 with `projects`
@@ -515,10 +515,10 @@ rescan.
 | `fingerprint_status` | `TEXT` NOT NULL | CHECK IN (`complete`, `partial`, `failed`, `skipped`, `not_supported`) |
 | `scanner_version` | `TEXT` NOT NULL | |
 | `analysis_capabilities` | `JSONB` NOT NULL | The §20 capability flags |
-| `project_sdk` | `TEXT` | e.g. `Microsoft.NET.Sdk.Web`. New in step 3 |
+| `project_sdk` | `TEXT` | e.g. `Microsoft.NET.Sdk.Web`. New in `application-fingerprinting` |
 | `nullable_enabled` | `BOOLEAN` | |
 | `implicit_usings` | `BOOLEAN` | |
-| `evaluated_properties` | `JSONB` | MSBuild-evaluated values that differ from step 2's raw parse, each with `{raw, evaluated, source}` |
+| `evaluated_properties` | `JSONB` | MSBuild-evaluated values that differ from `solution-discovery`'s raw parse, each with `{raw, evaluated, source}` |
 | `signal_count` | `INTEGER` NOT NULL DEFAULT 0 | |
 | `evidence_count` | `INTEGER` NOT NULL DEFAULT 0 | |
 | `category_summary` | `JSONB` | Signal count per §19 category, for fast dashboard rollups |
@@ -547,7 +547,7 @@ would reach millions.
 | `source_path` | `TEXT` | Repository-relative |
 | `evidence_kind` | `TEXT` | CHECK IN (`FILE`, `FOLDER`, `NONE`), nullable. What `source_path` names — from the signal registry's `evidence_kind` field. Never treat a `FOLDER` (or `NONE`) row's `source_path` as an openable file location — see Part F's `evidenceKind` note |
 | `occurrence_count` | `INTEGER` NOT NULL DEFAULT 1 | |
-| `evidence` | `JSONB` | Capped array of `{lineStart, lineEnd, declaringType, member, snippetHash}` (camelCase, as serialized by step 3), plus `matchedValue` on `LITERAL` rows only. **Max 20 entries**; `occurrence_count` carries the true total |
+| `evidence` | `JSONB` | Capped array of `{lineStart, lineEnd, declaringType, member, snippetHash}` (camelCase, as serialized by `application-fingerprinting`), plus `matchedValue` on `LITERAL` rows only. **Max 20 entries**; `occurrence_count` carries the true total |
 | `extractor` | `TEXT` NOT NULL | |
 | `extraction_confidence` | `NUMERIC(3,2)` NOT NULL | 0.00–1.00 |
 
@@ -591,14 +591,14 @@ Part D). It says what `sourcePath` names, so no consumer — the SARIF builder, 
 has to guess. A `FOLDER` signal (e.g. `SERVICES_FOLDER`, whose `sourcePath` is a
 directory like `src/ApplicationCore/Services`) must never be treated as something a
 viewer can open and jump to a line in; that assumption is exactly what broke the VS
-Code SARIF viewer for step 3's SARIF export (25-STANDARDS-AND-VIEWPOINTS.md Part A3
+Code SARIF viewer for `application-fingerprinting`'s SARIF export (25-STANDARDS-AND-VIEWPOINTS.md Part A3
 addendum). 1.1.0 added this field; 1.0.0 lacked it and predates the fix.
 
 **1.2.0** (`schemas/application-fingerprint-1.2.0.schema.json`) adds the `API_INVOCATION` and
 `LITERAL` signal types and `evidence[].matchedValue` (Part D "Signal types"). The schema
 requires `matchedValue` on every `LITERAL` evidence entry and rejects it on any other type,
 and requires a non-null `value` on both new types. Every valid 1.1.0 artifact is valid under
-1.2.0 apart from the version string. Step 3 emits 1.2.0 from scanner 1.1.0 (registry
+1.2.0 apart from the version string. `application-fingerprinting` emits 1.2.0 from scanner 1.1.0 (registry
 1.4.0), and validates against it before writing. 1.2.0 is also the first version whose
 `repositorySignals` is populated.
 
@@ -708,7 +708,7 @@ is a step failure, not a warning.
 - SetParameters files mix properties, configuration and secrets, and usually sit
   outside the project directory (`CustomFiles\Catalog.Host\SetParamFiles\PROD\SetParam.xml`).
 - They are found by the engagement's `deploy_parameter_globs`, with the same
-  discovery and project association as step 5 (`DeployParameterFiles`, 29-STEPS
+  discovery and project association as `outbound-invocation-inventory` (`DeployParameterFiles`, 29-ENTRY-POINT-AND-OUTBOUND-INVENTORIES
   Part C9), and given to the project they belong to.
 - **PathLiteralExtractor** reads each value whose name is not secret and which is
   not a connection string. `LogDirectory = G:\Logs\…` becomes a
@@ -723,7 +723,7 @@ is a step failure, not a warning.
   never the URL's path, query or credentials. localhost, IP addresses and
   placeholders are not matched.
 - The catalog item `unqualified-hostname` (occurrence scope, one per host per
-  file) is detected on it. Step 5 gives the same environments `requires_change`.
+  file) is detected on it. `outbound-invocation-inventory` gives the same environments `requires_change`.
 
 **Console input (scanner 1.4.0, signal registry 1.9.0, 137 signals).** ApiUsageExtractor
 emits two `EXECUTION_INDICATOR` signals. They tell a console application that needs a
@@ -746,15 +746,15 @@ person at the keyboard from one that only pauses.
   - **A real migration risk.** A host that waits on it to stay alive exits immediately in
     a container. The WCF sample's Catalog.Host does exactly that.
 
-Step 3's registration is now in the repository,
+`application-fingerprinting`'s registration is now in the repository,
 `steps/step-003-fingerprinting/registration/application-fingerprinting.json` (1.4.0).
 Generated by `schemas/make_signal_registry_1_9_0.py`.
 
-**Signal registry 1.8.0 (135 signals).** Adds step 4's seven architecture signals:
+**Signal registry 1.8.0 (135 signals).** Adds `entry-point-inventory`'s seven architecture signals:
 `EXPOSES_WCF_SERVICE`, `HOSTS_WCF_SERVICE`, `WCF_SERVICE_HOSTING`, `EXPOSES_HTTP_API`,
 `EXPOSES_ASMX_SERVICE`, `EXPOSES_GRPC_SERVICE` and `EXPOSES_WEBFORMS_UI`. Their extractor
-is `EntryPointInventory`. Step 3 does not emit them. Step 4 writes them into
-`fingerprint_signals` (29-STEPS Part B6), so the registry is still the one list of every
+is `EntryPointInventory`. `application-fingerprinting` does not emit them. `entry-point-inventory` writes them into
+`fingerprint_signals` (29-ENTRY-POINT-AND-OUTBOUND-INVENTORIES Part B6), so the registry is still the one list of every
 signal an item can reference. Generated by `schemas/make_signal_registry_1_8_0.py`.
 
 ### Scale and timeouts
@@ -767,7 +767,7 @@ signal an item can reference. Generated by `schemas/make_signal_registry_1_8_0.p
   anything under `obj/`, and files carrying an auto-generated header. Set
   `generatedCodeExcluded`.
 - Cap per-project source files analysed, default 5000, with a warning when exceeded.
-- Same directory exclusions as steps 1 and 2.
+- Same directory exclusions as `repository-ingest` and `solution-discovery`.
 
 ### Read-only
 
@@ -809,13 +809,13 @@ Per §22.2, a **Technical signal distribution** panel. Labelling is mandatory:
 > Projects containing WCF-related signals: 145
 
 Never "WCF applications: 145". The **Applications** and **Patterns** cards still show
-`—` — step 3 does not produce an application count, and step 4 has not run.
+`—` — `application-fingerprinting` does not produce an application count, and `pattern-classification` has not run.
 
 ---
 
 ## Acceptance criteria
 
-- [ ] Step 3 registers with `adapter_type: process` and `phase0-repository-discovery`
+- [ ] `application-fingerprinting` registers with `adapter_type: process` and `phase0-repository-discovery`
       validates **without any YAML change**
 - [ ] Consumes `solution-project-inventory ^2.0.0`; `inputs_resolved` in the Workflow
       tab shows `2.0.0`
@@ -842,7 +842,7 @@ Never "WCF applications: 145". The **Applications** and **Patterns** cards still
 - [ ] A project exceeding the per-project timeout yields `PARTIAL`, not a failed
       repository
 - [ ] `git status` is clean in the scanned repository, and no `obj/` was created
-- [ ] Signals from step 2's data are not re-extracted; `evaluated_properties` contains
+- [ ] Signals from `solution-discovery`'s data are not re-extracted; `evaluated_properties` contains
       only values MSBuild resolved differently
 - [ ] Dashboard labels signal counts as signals, and Applications and Patterns still
       show `—`

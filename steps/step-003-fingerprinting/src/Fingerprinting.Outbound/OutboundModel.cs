@@ -3,7 +3,7 @@ using Fingerprinting.Domain;
 
 namespace Fingerprinting.Outbound;
 
-// The outbound-invocation-inventory@1.0.0 artifact — 29-STEPS-004-005-
+// The outbound-invocation-inventory@1.0.0 artifact — 29-ENTRY-POINT-AND-OUTBOUND-INVENTORIES-
 // INVENTORIES.md Parts C7 and C8. Serialised through DeterministicJson.
 // Secrets never enter these records (Part C5): endpoints are normalised
 // before they are built, connection strings contribute host, port, provider

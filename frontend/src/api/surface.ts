@@ -1,5 +1,6 @@
 import { api } from './client'
 import type { EntryPointBackend, EntryPointCapabilities, EntryPointInventory, OutboundInventory } from '../types/surface'
+import type { EngagementRuleConflicts, MasterRuleConflict, RepositoryImpact, WorkItemImpact } from '../types/impact'
 import type { RepositoryTests } from '../types/tests'
 
 /** 409 until step 4 (entry-point-inventory) has run for the repository. */
@@ -26,4 +27,25 @@ export function getRepositoryEntryPointBackend(repositoryId: string) {
 /** Step 8 (test-coverage-assessment): tests, mapping, buckets, coverage, CI maturity. 409 until it has run. */
 export function getRepositoryTests(repositoryId: string) {
   return api.get<RepositoryTests>(`/api/repositories/${encodeURIComponent(repositoryId)}/tests`)
+}
+
+/** Step 9 (impact-analysis): totals, hotspots, conflicts, work items and files. 409 until it has run. */
+export function getRepositoryImpact(repositoryId: string) {
+  return api.get<RepositoryImpact>(`/api/repositories/${encodeURIComponent(repositoryId)}/impact`)
+}
+
+/** Step 9: one work item's default and chosen resolutions side by side, with their files. */
+export function getWorkItemImpact(repositoryId: string, itemId: string, projectPath: string) {
+  const query = new URLSearchParams({ item_id: itemId, project_path: projectPath })
+  return api.get<WorkItemImpact>(`/api/repositories/${encodeURIComponent(repositoryId)}/impact/work-item?${query}`)
+}
+
+/** Catalog rule conflicts across one engagement's estate, as of its last estate run. */
+export function getEngagementRuleConflicts(engagementId: string) {
+  return api.get<EngagementRuleConflicts>(`/api/engagements/${encodeURIComponent(engagementId)}/impact/rule-conflicts`)
+}
+
+/** Catalog rule conflicts across every engagement, for catalog authors (master view). */
+export function listCatalogRuleConflicts() {
+  return api.get<MasterRuleConflict[]>('/api/catalog/impact-rule-conflicts')
 }

@@ -4,7 +4,7 @@ namespace Fingerprinting.Domain;
 /// One emitted signal — a fact an extractor observed, not an interpretation.
 /// <c>name</c> must exist in the signal registry; an unregistered name is a
 /// validation failure, not a warning. See
-/// 21-STEP-003-FINGERPRINTING.md Parts D and F.
+/// 21-APPLICATION-FINGERPRINTING.md Parts D and F.
 /// </summary>
 public sealed record Signal
 {

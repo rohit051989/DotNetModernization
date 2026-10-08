@@ -53,7 +53,7 @@ KEPT_TABLES = (
     "catalog_items", "item_resolutions", "resolution_derivations", "signal_registry_entries", "extractors", "wf_step_registrations",
     "wf_job_definitions", "catalog_revisions", "patterns", "target_state_options",
     # What feeds said about packages: not client data, and reusing it is what
-    # makes a rescan deterministic (30-STEP-006 Part B6).
+    # makes a rescan deterministic (30-DEPENDENCY-ASSESSMENT Part B6).
     "package_lookup_cache",
 )
 

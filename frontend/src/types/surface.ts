@@ -1,4 +1,4 @@
-// The repository Surface section — 29-STEPS-004-005-INVENTORIES.md Part D.
+// The repository Surface section — 29-ENTRY-POINT-AND-OUTBOUND-INVENTORIES.md Part D.
 // Inbound: step 4's entry points (GET /api/repositories/{id}/entry-points).
 
 export type EntryPointKind =
@@ -150,7 +150,7 @@ export interface EntryPointCapabilities {
   repositories_on_this_manifest: number
 }
 
-// ---------- outbound: step 5 (29-STEPS-004-005-INVENTORIES.md Part C) ----------
+// ---------- outbound: step 5 (29-ENTRY-POINT-AND-OUTBOUND-INVENTORIES.md Part C) ----------
 
 export type OutboundMechanism =
   | 'http_client'

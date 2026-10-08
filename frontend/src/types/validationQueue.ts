@@ -1,4 +1,4 @@
-/** The human-gate queue — docs/27-STEP-006-PATTERN-VALIDATION.md Part B.
+/** The human-gate queue — docs/27-PATTERN-VALIDATION.md Part B.
  *
  * Generic across gate types. Step 6 (`pattern_candidate`) is the first
  * consumer; steps 22, 38 and 50 add item types here without schema change,

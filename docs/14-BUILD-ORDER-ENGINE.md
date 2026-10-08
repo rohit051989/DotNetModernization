@@ -1,4 +1,4 @@
-# 14 — Build Order: Engine Core and Step 1
+# 14 — Build Order: Engine Core and `repository-ingest`
 
 Continues from the catalog build. One prompt per step, verify at each gate, commit
 before moving on.
@@ -15,7 +15,7 @@ file or of `15`, replace both.
 ## Step E0 — Add the engine specs to the repo
 
 Copy `10-ENGINE-CONCEPTS.md`, `11-STEP-CONTRACT.md`, `12-JOB-DEFINITION-FORMAT.md`,
-`13-STEP-001-REPOSITORY-INGEST.md`, `15-REPOSITORY-INGEST-UI.md`,
+`13-REPOSITORY-INGEST.md`, `15-REPOSITORY-INGEST-UI.md`,
 `16-DASHBOARD-SPEC.md` and this file into `docs/`.
 
 ```powershell
@@ -130,19 +130,23 @@ Implement the job definition loader and validator in app/workflow/definition/:
 
 Then write backend/app/jobs/phase0-repository-discovery.yaml exactly as specified in
 docs/15 Part A — per-repository scope with parameters engagement_id, repository_id
-and ingest_token, steps 1, 2, 3, 4, 8, 9, 10, and stub_policy: continue.
+and ingest_token, steps repository-ingest, solution-discovery,
+application-fingerprinting, pattern-classification, the v1 impact map step,
+test-coverage-assessment and risk-scoring-tier-assignment, and stub_policy: continue.
 
-phase0-estate-consolidation is now defined too (engagement_id + run_token, steps 5,
-6, 7, 11, 12, stub_policy: continue). It was deferred here on the grounds that all
+phase0-estate-consolidation is now defined too (engagement_id + run_token, steps
+pattern-discovery-clustering, pattern-validation, dependency-graph-construction, the v1
+inventory dashboard population step and migration-wave-planning, stub_policy: continue).
+It was deferred here on the grounds that all
 five of its steps are stubs; defining it ahead of them turned out to be the right
 order, because removing the estate-completeness precondition is a job-definition
-change that step 5 would otherwise have inherited as a blocker.
+change that pattern-discovery-clustering would otherwise have inherited as a blocker.
 
 Update docs/12-JOB-DEFINITION-FORMAT.md to reflect the two-job split, replacing any
 reference to phase0-estate-discovery.
 
 Validate the definition and show me the result. Then deliberately break it: change
-step 1's registered produces to repository-inventory@2.0.0 while a downstream step
+repository-ingest's registered produces to repository-inventory@2.0.0 while a downstream step
 consumes ^1.0.0, and re-validate to prove UNSATISFIED_INPUT fires and names both
 steps. Revert afterwards.
 ```
@@ -197,12 +201,12 @@ out-of-order construction property proven.
 
 ---
 
-## Step E6 — Step 1 implementation
+## Step E6 — `repository-ingest` implementation
 
 **Prompt:**
 
 ```
-Read docs/13-STEP-001-REPOSITORY-INGEST.md and docs/15-REPOSITORY-INGEST-UI.md
+Read docs/13-REPOSITORY-INGEST.md and docs/15-REPOSITORY-INGEST-UI.md
 Parts B and C.
 
 First update docs/13: replace its four source types with the two in docs/15 Part B —
@@ -306,7 +310,7 @@ and a partitioned step over the repositories registered in E7.
 ```
 
 **Gate:** all three constructs work. Partitioning over real repository rows is what
-step 3 will need, so verify `continue_on_error` with a threshold behaves correctly.
+`application-fingerprinting` will need, so verify `continue_on_error` with a threshold behaves correctly.
 
 ---
 
@@ -347,10 +351,12 @@ artifact and drill from a dashboard row into an execution.
   `11-STEP-CONTRACT.md`, you register it with `adapter_type: process` or `http`, and
   the job definition does not change. If registering their step requires editing a
   job definition, something has drifted from the spec.
-- Steps 2, 3, 4, 8, 9 and 10 are now independent parallel work — each already has a
+- `solution-discovery`, `application-fingerprinting`, `pattern-classification`, the v1
+  impact map step, `test-coverage-assessment` and `risk-scoring-tier-assignment` are now independent parallel work — each already has a
   slot in `phase0-repository-discovery`. Each needs only its own spec file following
-  the shape of `13-STEP-001-REPOSITORY-INGEST.md`, and replacing its stub requires no
+  the shape of `13-REPOSITORY-INGEST.md`, and replacing its stub requires no
   job definition change.
-- Steps 5, 6, 7, 11 and 12 need `phase0-estate-consolidation`, which is now defined
+- `pattern-discovery-clustering`, `pattern-validation`, `dependency-graph-construction`,
+  the v1 inventory dashboard population step and `migration-wave-planning` need `phase0-estate-consolidation`, which is now defined
   (`backend/app/jobs/phase0-estate-consolidation.yaml`). Replacing any of their stubs
   requires no job definition change.

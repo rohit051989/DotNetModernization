@@ -7,7 +7,7 @@ namespace Fingerprinting.Cli;
 /// Builds the <see cref="ApplicationFingerprintArtifact"/> for one repository
 /// from step 2's inventory. One fingerprint per project row, no aggregation,
 /// no judgement about which projects are applications
-/// (21-STEP-003-FINGERPRINTING.md Part C).
+/// (21-APPLICATION-FINGERPRINTING.md Part C).
 /// </summary>
 public sealed class FingerprintPipeline(SignalRegistry registry, IReadOnlyList<IFingerprintExtractor> extractors)
 {

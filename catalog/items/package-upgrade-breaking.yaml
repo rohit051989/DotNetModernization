@@ -28,6 +28,17 @@ resolutions:
   description: Bump to the recommended version, then change each listed call site to the new API, in the same change.
   effort: medium
   id: package-upgrade-breaking-bump-and-adapt
+  impact_rules:
+  - action: update
+    from: seed
+    id: call-sites
+    reason: Call sites of the changed members are adapted to the new version
+    select: self
+  - action: update
+    from: seed
+    id: project
+    reason: The PackageReference version is bumped
+    traverse: project_file
   is_default: true
   linux_compatible: true
   name: Bump and adapt the call sites
@@ -41,6 +52,17 @@ resolutions:
   description: Where the new major version is a rewrite rather than an evolution, adopt a different library instead.
   effort: high
   id: package-upgrade-breaking-replace
+  impact_rules:
+  - action: rewrite
+    from: seed
+    id: call-sites
+    reason: Call sites move to the replacement package's API
+    select: self
+  - action: update
+    from: seed
+    id: project
+    reason: The PackageReference is replaced by the replacement package
+    traverse: project_file
   is_default: false
   linux_compatible: true
   name: Replace the package

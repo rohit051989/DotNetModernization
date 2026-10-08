@@ -1,12 +1,12 @@
-# 26 — Step 5: Pattern Discovery Clustering
+# 26 — `pattern-discovery-clustering`: Pattern Discovery Clustering
 
-> **Superseded by [28-ITEM-AND-CONVERSION-MODEL.md](28-ITEM-AND-CONVERSION-MODEL.md).** Kept as history; do not build from it. Clustering was merged into lifecycle step 9, `unclaimed-signal-report` (not yet built); the step 5 code and its tables were removed.
+> **Superseded by [28-ITEM-AND-CONVERSION-MODEL.md](28-ITEM-AND-CONVERSION-MODEL.md).** Kept as history; do not build from it. Clustering was merged into the lifecycle step `unclaimed-signal-report` (not yet built); the `pattern-discovery-clustering` code and its tables were removed.
 
-Lifecycle step 5. Owner: **P + S**. Job: `phase0-estate-consolidation`.
+Lifecycle step `pattern-discovery-clustering`. Owner: **P + S**. Job: `phase0-estate-consolidation`.
 Implemented in **Python**, invoked via the `process` adapter.
 
 Groups projects the catalog could not classify into candidate patterns, so a human at
-step 6 can decide whether each is a new catalog pattern, an extension of an existing
+`pattern-validation` can decide whether each is a new catalog pattern, an extension of an existing
 one, or out of scope.
 
 ---
@@ -41,7 +41,7 @@ Clustering is deterministic. Naming is not. They must not share a checksum.
   cluster id. LLM-produced, **not** checksum-asserted.
 
 This keeps the verification-path principle intact and matches the split already used
-for step 7's graph versus context map: different reliability profiles, different
+for `dependency-graph-construction`'s graph versus context map: different reliability profiles, different
 artifacts, different status.
 
 #### "Not checksum-asserted" does not mean "no checksum"
@@ -63,7 +63,7 @@ outputs, so the deterministic clusters artifact is lost along with it — over a
 costs nothing to populate.
 
 Weakening the contract to make `checksum` optional would be the wrong repair. It is
-required for good reason on every other artifact in the platform, and a step-5 detail is
+required for good reason on every other artifact in the platform, and a `pattern-discovery-clustering` detail is
 no justification for making a platform-wide guarantee optional.
 
 The distinction the split actually protects is **what a verifier does with the checksum**,
@@ -81,16 +81,16 @@ then a reworded suggestion would invalidate the deterministic artifact — and t
 whole reason these are two artifacts rather than one. `metadata.deterministic: false` is
 the flag a verifier reads to tell the two apart.
 
-Narration is optional. With it disabled, clusters carry no names and step 6 shows
+Narration is optional. With it disabled, clusters carry no names and `pattern-validation` shows
 signatures instead. Nothing downstream depends on a name.
 
 ### A3. Reads from the database, declares no `consumes`
 
-Step 5 is engagement-scoped but its inputs are per-repository artifacts produced by a
+`pattern-discovery-clustering` is engagement-scoped but its inputs are per-repository artifacts produced by a
 *different job*. The `${artifacts.x}` mechanism resolves within one job, so it cannot
 reach them.
 
-Step 5 therefore declares no `consumes` and reads `project_classifications`,
+`pattern-discovery-clustering` therefore declares no `consumes` and reads `project_classifications`,
 `fingerprint_signals` and `projects` directly, which spec 11 already permits. It reads
 whatever classification data exists at the moment it runs, and reports what that was
 (A5).
@@ -109,7 +109,7 @@ resolution does not apply.
 | `MULTIPLE_MATCHES` | **No** | Working as designed — the project genuinely holds two patterns |
 | `MATCHED`, `NOT_ELIGIBLE`, `SKIPPED`, `CLASSIFICATION_FAILED` | **No** | |
 
-The `INSUFFICIENT_FINGERPRINT` exclusion is the one that matters. It is why step 4
+The `INSUFFICIENT_FINGERPRINT` exclusion is the one that matters. It is why `pattern-classification`
 separates that status from `NO_PATTERN_MATCHED` at all.
 
 ### A5. Clustering runs on a partial estate; it does not wait for a complete one
@@ -118,7 +118,7 @@ separates that status from `NO_PATTERN_MATCHED` at all.
 An earlier draft required one. At fleet scale it is not a condition that can be met:
 repositories are registered over weeks, rescans run continuously, and at any instant
 some repository is mid-discovery or failed. A precondition of estate completeness makes
-step 5 unlaunchable in exactly the estates it exists for, and the one estate where it
+`pattern-discovery-clustering` unlaunchable in exactly the estates it exists for, and the one estate where it
 *would* be satisfiable — three repositories, all scanned this morning — is the estate
 with nothing to discover.
 
@@ -126,7 +126,7 @@ Clustering degrades gracefully instead. A pattern is a recurring shape; seeing i
 of fifty repositories still tells you it recurs. More repositories sharpen the evidence,
 they do not change its kind.
 
-So step 5 runs whenever it is launched, over whatever has classification results, and is
+So `pattern-discovery-clustering` runs whenever it is launched, over whatever has classification results, and is
 **honest in the artifact about what it saw**. Every clusters artifact carries a coverage
 block in its summary:
 
@@ -139,7 +139,7 @@ block in its summary:
 | `partialEstate` | `true` when `repositoriesPending > 0` |
 
 `partialEstate: true` is not a warning state. It is the expected state, and it is
-recorded so that a human at step 6 — and the re-review trigger below — can tell how much
+recorded so that a human at `pattern-validation` — and the re-review trigger below — can tell how much
 of the estate a cluster was measured against. A cluster of three members at coverage 0.10
 and one at coverage 1.00 are different pieces of evidence, and the artifact must not
 flatten that distinction.
@@ -166,10 +166,10 @@ Recorded alongside, and used as grouping constraints:
 
 | Facet | Source |
 |---|---|
-| `project_role` | Step 4 |
-| `framework_family` | Step 2 |
-| `output_type` | Step 2 |
-| `structural_type` | Step 2 |
+| `project_role` | `pattern-classification` |
+| `framework_family` | `solution-discovery` |
+| `output_type` | `solution-discovery` |
+| `structural_type` | `solution-discovery` |
 
 Framework **version** is deliberately excluded, per the established principle: family
 discriminates, version parameterises. Two projects differing only in patch version are
@@ -187,7 +187,7 @@ canonical_signature = json({facets, signals}, sorted keys, sorted arrays)
 
 Derived from the **shape**, not from membership. So the same shape in a later scan
 yields the same id, and a cluster can be tracked across runs as repositories are added.
-This is what lets step 6's decisions persist rather than being re-asked every scan.
+This is what lets `pattern-validation`'s decisions persist rather than being re-asked every scan.
 
 For similarity clusters, canonical signature is the **intersection** of member signal
 sets — the shape they share.
@@ -223,7 +223,7 @@ Algorithm: build a graph over eligible projects, edge where `J >= similarity_thr
 Connected components is fully deterministic and order-independent. Its weakness is
 chaining — A similar to B, B to C, A not to C, all in one cluster. Rather than adopt a
 more restrictive linkage, **record it**: each cluster carries `cohesion`, the minimum
-pairwise Jaccard among its members. Low cohesion is visible to the human at step 6
+pairwise Jaccard among its members. Low cohesion is visible to the human at `pattern-validation`
 rather than hidden by the algorithm.
 
 Exact groups are collapsed into similarity clusters where they qualify; a cluster
@@ -242,7 +242,7 @@ For every cluster, compute Jaccard between its signature and the signal set refe
 by each **active** catalog pattern. Report the top three above
 `proximity_threshold` (default 0.40) as `similar_patterns`.
 
-This directly feeds step 6's "merge into existing pattern" action — the human sees
+This directly feeds `pattern-validation`'s "merge into existing pattern" action — the human sees
 *"this cluster is 0.62 similar to `console-batch-job`"* rather than deciding blind. It
 also surfaces the case where a cluster exists only because an existing pattern is
 slightly too narrow, which is the most common real cause.
@@ -252,7 +252,7 @@ slightly too narrow, which is the most common real cause.
 ## Part D — Data model
 
 **Not replaced wholesale per run.** Clusters accumulate — see "Cluster accumulation
-across runs" below. Membership and counts are refreshed; identity, history and step 6's
+across runs" below. Membership and counts are refreshed; identity, history and `pattern-validation`'s
 decisions survive.
 
 ### `pattern_candidate_clusters`
@@ -270,18 +270,18 @@ decisions survive.
 | `cohesion` | `NUMERIC(4,3)` | Minimum pairwise Jaccard. 1.0 for exact |
 | `is_singleton` | `BOOLEAN` NOT NULL DEFAULT false | |
 | `similar_patterns` | `JSONB` | Top proximity matches with scores |
-| `status` | `TEXT` NOT NULL DEFAULT `'candidate'` | CHECK IN (`candidate`, `validated_new`, `merged`, `rejected`) — set by step 6 |
+| `status` | `TEXT` NOT NULL DEFAULT `'candidate'` | CHECK IN (`candidate`, `validated_new`, `merged`, `rejected`) — set by `pattern-validation` |
 | `resolved_pattern_id` | `TEXT` FK → `patterns.id` | Set when validated or merged |
 | `resolution_note` | `TEXT` | |
-| `decided_at_coverage` | `NUMERIC(4,3)` | `coverageRatio` at the moment step 6 resolved this cluster |
+| `decided_at_coverage` | `NUMERIC(4,3)` | `coverageRatio` at the moment `pattern-validation` resolved this cluster |
 | `decided_at_member_count` | `INTEGER` | `member_count` at that same moment |
-| `needs_rereview` | `BOOLEAN` NOT NULL DEFAULT false | Set by step 5 when the evidence has materially grown |
+| `needs_rereview` | `BOOLEAN` NOT NULL DEFAULT false | Set by `pattern-discovery-clustering` when the evidence has materially grown |
 | `rereview_reason` | `TEXT` | Why, in words, naming both counts |
 | `is_stale` | `BOOLEAN` NOT NULL DEFAULT false | Every member has disappeared; `member_count` is 0 |
 | `first_seen_at` / `last_seen_at` | `TIMESTAMPTZ` | Preserve `first_seen_at` across runs |
 | `step_execution_id` | `UUID` | The run that last refreshed this row |
 
-**Step 6 decisions persist across runs.** A cluster whose `status` is `rejected` stays
+**`pattern-validation` decisions persist across runs.** A cluster whose `status` is `rejected` stays
 rejected when the same shape reappears — otherwise every rescan re-asks questions a
 human already answered. Membership and counts refresh; status and resolution do not.
 
@@ -312,8 +312,8 @@ replaced per cluster per run, since membership is a snapshot; the cluster row is
 **A cluster whose members all disappear is retained, not deleted.** Set `member_count` to
 0, clear the distribution, and set `is_stale: true`. Members disappear for ordinary
 reasons — a repository was deregistered, or the projects finally classified because
-someone added the pattern step 6 asked for — and in the second case the disappearance is
-the *success*. Deleting the row would discard the step 6 decision that caused it, and a
+someone added the pattern `pattern-validation` asked for — and in the second case the disappearance is
+the *success*. Deleting the row would discard the `pattern-validation` decision that caused it, and a
 `rejected` shape that reappears next quarter would be re-asked as if new. A stale cluster
 is history, and history is the point of persisting decisions at all.
 
@@ -322,9 +322,9 @@ keeps its original `first_seen_at`.
 
 ### Decision context and re-review
 
-Decisions at step 6 are made on partial evidence — that is A5's whole premise, so it has
+Decisions at `pattern-validation` are made on partial evidence — that is A5's whole premise, so it has
 to be handled rather than regretted. Record what the human could see at the time:
-`decided_at_coverage` and `decided_at_member_count`, both written by step 6 when it sets
+`decided_at_coverage` and `decided_at_member_count`, both written by `pattern-validation` when it sets
 `status`.
 
 Every subsequent run re-checks resolved clusters:
@@ -345,7 +345,7 @@ members across 6 repositories at coverage 0.68."*
 decided correctly on the information available; nothing about that decision has become
 wrong. What has changed is the information. The system's only job here is to say so, and
 to say it once per material change rather than nagging every run — clearing
-`needs_rereview` is step 6's action, and re-deciding rewrites `decided_at_*` so the next
+`needs_rereview` is `pattern-validation`'s action, and re-deciding rewrites `decided_at_*` so the next
 trigger is measured from the new baseline.
 
 A cluster still at `status: candidate` is not re-reviewed; it was never decided, so there
@@ -376,10 +376,10 @@ returns:
 Constraints:
 
 - **Never sees, and never proposes, a classification.** It names a shape. Deciding
-  whether that shape is a catalog pattern is step 6's job.
-- Output is advisory. Step 6's UI must show it as a suggestion with an edit control,
+  whether that shape is a catalog pattern is `pattern-validation`'s job.
+- Output is advisory. `pattern-validation`'s UI must show it as a suggestion with an edit control,
   never pre-committed.
-- `suggested_pattern_id` is a slug proposal only; step 6 validates it.
+- `suggested_pattern_id` is a slug proposal only; `pattern-validation` validates it.
 - Failure to narrate is **not** a step failure — emit the clusters artifact, warn, and
   set `naming_source: "none"`.
 - Sends signal names, facets and paths. **No source code.**
@@ -421,7 +421,7 @@ and is still not sufficient on its own, which is what the next section is about.
 ### `narration_status` — the run-level outcome
 
 A step diagnostic alone is not enough. At fleet scale it is easy to miss, and a human
-arriving at step 6 sees unnamed clusters with no indication why — which reads as *"the
+arriving at `pattern-validation` sees unnamed clusters with no indication why — which reads as *"the
 platform has nothing to say about this shape"* when the truth may be *"the narrator could
 not be reached"*. Those call for completely different actions, so the outcome is recorded
 on the run and rendered beside the clusters.
@@ -431,7 +431,7 @@ on the run and rendered beside the clusters.
 | `succeeded` | Every cluster named. The quiet case; the UI shows no banner. |
 | `partial` | Some named, some not. The narrator was reachable, so the reason is about the response rather than the connection. |
 | `failed` | Narration ran and named nothing. |
-| `disabled` | Switched off in config. Not a failure — the step is fully deterministic and step 6 shows signatures. |
+| `disabled` | Switched off in config. Not a failure — the step is fully deterministic and `pattern-validation` shows signatures. |
 
 `narration_reason` is null only when the status is `succeeded`; every other status owes
 the human an explanation, enforced by a CHECK constraint on `pattern_discovery_runs`. It
@@ -469,16 +469,16 @@ Retry deliberately ignores `enable_narration`. Asking for narration and being to
 disabled in a config file you cannot see from the UI is not a useful answer.
 
 A cluster whose `naming_source` is `human` is never overwritten by a later machine run,
-whether from retry or from a fresh step 5. Once a person has named a shape, their words
+whether from retry or from a fresh `pattern-discovery-clustering` run. Once a person has named a shape, their words
 stand.
 
-### Where step 6 picks this up
+### Where `pattern-validation` picks this up
 
 `GET /api/engagements/{id}/pattern-candidates` returns every non-stale cluster with its
 members, its advisory name and the run-level narration status. The **Pattern Candidates**
 tab renders it: a banner carrying the status and reason whenever narration did not fully
 succeed, with the retry action beside it, and each name badged `suggested` with its
-confidence so it never reads as settled. Step 6 adds the decision actions to that same
+confidence so it never reads as settled. `pattern-validation` adds the decision actions to that same
 surface; the review context is already there.
 
 ---
@@ -602,7 +602,7 @@ Registered and running. It is the first implemented step of
 
 ## Part H — Testing
 
-With current samples step 5 will find almost nothing — eShopModernizing has zero
+With current samples `pattern-discovery-clustering` will find almost nothing — eShopModernizing has zero
 unmatched projects and eShopOnWeb has two single-project shapes. **Synthetic fixtures
 are the only real test until a client estate exists**, so they carry more weight here
 than in previous steps.
@@ -649,7 +649,7 @@ therefore part of the checksum — unchanged data means unchanged coverage.
 - [x] The clusters artifact summary carries the coverage block, and `partialEstate` is
       `true` whenever any in-scope repository has no classification results
 - [x] No repository with classification results yields `NOOP` naming the pending ones
-- [x] Step 5 registers with `consumes: []` and two declared outputs
+- [x] `pattern-discovery-clustering` registers with `consumes: []` and two declared outputs
 - [x] Reads classification and signal data from the database; each member records its
       source classification `step_execution_id`
 - [x] Only `NO_PATTERN_MATCHED` and `AMBIGUOUS` projects are eligible;
@@ -659,7 +659,7 @@ therefore part of the checksum — unchanged data means unchanged coverage.
 - [x] Chaining produces one cluster with low cohesion, not a hidden merge
 - [x] Facet disagreement separates clusters under `strict`
 - [x] `cluster_id` is derived from shape and is stable across runs
-- [x] Step 6 decisions persist: a `rejected` cluster stays rejected when the same shape
+- [x] `pattern-validation` decisions persist: a `rejected` cluster stays rejected when the same shape
       reappears with refreshed membership
 - [x] Clusters are upserted, never delete-then-inserted; `first_seen_at` survives
 - [x] `needs_rereview` fires at `member_count > max(decided_at_member_count * 3,
@@ -675,16 +675,16 @@ therefore part of the checksum — unchanged data means unchanged coverage.
 - [x] Retry re-runs narration against existing clusters without re-clustering, and
       leaves the clusters artifact checksum untouched
 - [x] A `human` naming_source survives a later machine narration run
-- [ ] Step 6 records `decided_at_coverage` and `decided_at_member_count` when it resolves
-      a cluster — *pending step 6; the columns, the constraint requiring them on any
-      resolved cluster, and step 5's use of them are in place*
+- [ ] `pattern-validation` records `decided_at_coverage` and `decided_at_member_count` when it resolves
+      a cluster — *pending `pattern-validation`; the columns, the constraint requiring them on any
+      resolved cluster, and `pattern-discovery-clustering`'s use of them are in place*
 - [ ] A cluster losing every member is retained with `member_count` 0 and
       `is_stale: true`, not deleted; regaining members clears the flag — *implemented in
       `db.upsert_clusters`, not yet exercised against a real estate*
 - [x] `repositoryDistribution` is populated and a cross-repository cluster is visible
       as such
 - [x] `similarPatterns` populated where a cluster resembles an active pattern
-- [x] Narration is advisory, editable at step 6, and its failure warns rather than
+- [x] Narration is advisory, editable at `pattern-validation`, and its failure warns rather than
       fails the step
 - [x] With `enable_narration: false` the step is fully deterministic
 - [x] No source code is sent to the model — signal names, facets and paths only

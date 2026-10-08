@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://modernization-platform.internal/schemas/outbound-invocation-inventory-1.0.0.schema.json",
   "title": "outbound-invocation-inventory@1.0.0",
-  "description": "Lifecycle step 5. See 29-STEPS-004-005-INVENTORIES.md Part C. One record per outbound dependency per project: mechanism, normalised endpoint (scheme, host, port, path — userinfo, query and fragment never stored), one binding per environment file, credentials by kind and key path only, and a Linux-compatibility verdict. No timestamp and no absolute path belong here: two runs over unchanged input are byte-identical.",
+  "description": "Lifecycle step 5. See 29-ENTRY-POINT-AND-OUTBOUND-INVENTORIES.md Part C. One record per outbound dependency per project: mechanism, normalised endpoint (scheme, host, port, path — userinfo, query and fragment never stored), one binding per environment file, credentials by kind and key path only, and a Linux-compatibility verdict. No timestamp and no absolute path belong here: two runs over unchanged input are byte-identical.",
   "type": "object",
   "additionalProperties": false,
   "required": [

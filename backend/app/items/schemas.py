@@ -140,7 +140,7 @@ class SignalRegistration(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     name: str = Field(description="SCREAMING_SNAKE_CASE signal name.")
-    category: str = Field(description="One of the sixteen step 3 categories (21-STEP-003-FINGERPRINTING.md Part D).")
+    category: str = Field(description="One of the sixteen step 3 categories (21-APPLICATION-FINGERPRINTING.md Part D).")
     type: str = Field(
         description="One of the step 3 signal types, including API_INVOCATION and LITERAL (Part D 'Signal types')."
     )

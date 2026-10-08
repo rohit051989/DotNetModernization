@@ -1,4 +1,4 @@
-"""The repository Surface section — 29-STEPS-004-005-INVENTORIES.md Part D.
+"""The repository Surface section — 29-ENTRY-POINT-AND-OUTBOUND-INVENTORIES.md Part D.
 Inbound: step 4's entry points. Outbound: step 5's invocations."""
 
 import datetime
@@ -43,7 +43,7 @@ class EntryPointOut(BaseModel):
     )
     origin_reconciled_from: Origin | None = Field(
         None,
-        description="Set when step 11 corrected the origin estate-wide (31-STEP-011 Part E4): step 4's own value, "
+        description="Set when step 11 corrected the origin estate-wide (31-DEPENDENCY-AND-CONTEXT-MAP Part E4): step 4's own value, "
         "which `origin` replaces. Step 4's rows are never rewritten; this overlay is applied when read.",
     )
     origin_reconciliation_reason: str | None = Field(None, description="Why step 11 reconciled the origin, when it did.")

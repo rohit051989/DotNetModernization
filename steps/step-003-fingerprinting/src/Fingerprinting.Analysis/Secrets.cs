@@ -4,7 +4,7 @@ using System.Text.RegularExpressions;
 namespace Fingerprinting.Analysis;
 
 /// <summary>
-/// 21-STEP-003-FINGERPRINTING.md Part G and 29-STEPS-004-005-INVENTORIES.md
+/// 21-APPLICATION-FINGERPRINTING.md Part G and 29-ENTRY-POINT-AND-OUTBOUND-INVENTORIES.md
 /// Part C5, in one place so steps 3 and 5 cannot drift apart on them.
 ///
 /// The invariant is <b>nothing derived from a connection string is ever

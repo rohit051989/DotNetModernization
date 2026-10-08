@@ -24,7 +24,7 @@ public sealed record DeployParameterTarget(string Kind, string Name);
 
 public static partial class DeployParameterFiles
 {
-    /// <summary>The engagement setting's default (29-STEPS Part C9, 1.3.0).</summary>
+    /// <summary>The engagement setting's default (29-ENTRY-POINT-AND-OUTBOUND-INVENTORIES Part C9, 1.3.0).</summary>
     public static readonly IReadOnlyList<string> DefaultGlobs = ["**/SetParam*.xml", "**/SetParameters*.xml"];
 
     // SetParam.PROD.xml, SetParameters.UAT.xml: the environment as a suffix.

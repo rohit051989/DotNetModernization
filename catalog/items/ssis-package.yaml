@@ -28,7 +28,7 @@ resolutions:
   description: Push set-based transformation logic into SQL and keep a thin C# orchestrator for control flow.
   effort: medium
   id: csharp-sql-pushdown
-  is_default: false
+  is_default: true
   linux_compatible: true
   name: C# orchestrator with SQL pushdown
   notes: |-

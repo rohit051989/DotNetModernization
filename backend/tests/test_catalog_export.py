@@ -73,6 +73,8 @@ class ExportTests(ExportTestCase):
         self.assertIn("description: |-\n    First line.\n    Second line.", text)
 
     def test_soft_deleted_rows_are_exported_marked_deleted(self):
+        # t-export-b, created first, is the item's default: move it before deleting.
+        catalog_items.make_default("t-export", "t-export-a", db=self.db)
         catalog_items.delete_resolution("t-export", "t-export-b", deleted_by="team", db=self.db)
         self.assertTrue(self.document()["resolutions"][1]["deleted"])
         self.assertEqual(self.document()["resolutions"][1]["deleted_by"], "team")   # why, too

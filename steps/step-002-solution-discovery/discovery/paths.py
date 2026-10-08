@@ -2,7 +2,7 @@
 
 Same exclusions as lifecycle step 1's size walk (backend/app/steps/repository_ingest.py)
 — duplicated here rather than imported, since this package must not import
-from backend.app (see 19-STEP-002-SOLUTION-DISCOVERY.md Part B).
+from backend.app (see 19-SOLUTION-DISCOVERY.md Part B).
 """
 
 import os

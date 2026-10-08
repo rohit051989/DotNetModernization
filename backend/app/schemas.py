@@ -38,7 +38,7 @@ def _validate_slug(value: str) -> str:
     return value
 
 
-# ---------- Step 4 classification schema (24-STEP-004-CLASSIFICATION.md Part C) ----------
+# ---------- Step 4 classification schema (24-PATTERN-CLASSIFICATION.md Part C) ----------
 # Stored in `patterns.detection_rules` (legacy pattern tables, kept until the
 # reset). The engine that evaluated it was removed with step 4; the grammar
 # lives on in catalog item detection (app/items/detection.py, evaluation.py).
@@ -350,7 +350,7 @@ class PatternBase(BaseModel):
         default=None, description="Risks or gotchas worth knowing before migrating this pattern."
     )
 
-    # ---- Step 4 classification schema (24-STEP-004-CLASSIFICATION.md Part B1) ----
+    # ---- Step 4 classification schema (24-PATTERN-CLASSIFICATION.md Part B1) ----
     # Every field below is optional here: on create, omitting one applies the
     # same default the J1 migration gave existing patterns; on update,
     # omitting one leaves the current value untouched. None is never a valid

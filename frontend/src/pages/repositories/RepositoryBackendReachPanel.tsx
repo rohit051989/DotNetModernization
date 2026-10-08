@@ -4,7 +4,7 @@ import { getRepositoryEntryPointBackend } from '../../api/surface'
 import { SourceLink } from './SourceLink'
 import type { BackendCall, BackendHost, BackendStatus, EntryPointBackend, EntryPointBackendRow } from '../../types/surface'
 
-// Inbound operations → backend calls — step 5 1.3.0 (29-STEPS Part C9).
+// Inbound operations → backend calls — step 5 1.3.0 (29-ENTRY-POINT-AND-OUTBOUND-INVENTORIES Part C9).
 // Per application, every request entry point and the outbound call sites it
 // reaches: directly in its method, or through methods of the same class.
 // The No rows are listed on purpose — an operation that calls nothing is a

@@ -1,6 +1,6 @@
 job_name: phase0-estate-consolidation
-version: 5
-description: "Engagement-wide consolidation across every registered repository. Lifecycle steps 10-12 (17-LIFECYCLE-STEPS.md v2.1)."
+version: 7
+description: "Engagement-wide consolidation across every registered repository: unclaimed-signal-report, dependency-and-context-map, migration-wave-planning (17-LIFECYCLE-STEPS.md)."
 
 # Scope is derived from the declared parameters: engagement_id without
 # repository_id is what makes this job per_engagement. Do not add
@@ -8,7 +8,7 @@ description: "Engagement-wide consolidation across every registered repository. 
 # no catalog item claims, seen once in each of fifty repositories, is one
 # recurring shape across the estate and fifty invisible ones per
 # repository; likewise eight repositories calling one NetTcp endpoint is
-# one backend conversation (17-LIFECYCLE-STEPS.md, step 11).
+# one backend conversation (17-LIFECYCLE-STEPS.md, dependency-and-context-map).
 parameters:
   - name: engagement_id
     type: string
@@ -35,20 +35,23 @@ parameters:
 # should say how much of the estate it covered, rather than wait for all
 # of it. Honest about a partial estate beats blocked on a complete one.
 
-# Step 11 (dependency-and-context-map) is implemented; steps 10 and 12 are
-# still stubs returning NOT_IMPLEMENTED. `continue` is what lets the job run
-# step 11 between them, and lets each remaining step land without the others
-# blocking it. Revisit when the last of the three is implemented: by then
+# dependency-and-context-map is implemented; unclaimed-signal-report and
+# migration-wave-planning are still stubs returning NOT_IMPLEMENTED.
+# `continue` is what lets the job run dependency-and-context-map between
+# them, and lets each remaining step land without the others blocking it. Revisit when the last of the three is implemented: by then
 # `halt` is the safer default, since a genuine failure should stop the run.
 stub_policy: continue
 
 flow:
   # v4: renumbered only (17-LIFECYCLE-STEPS.md v2.1); steps unchanged.
-  # v5: step 11 implemented (31-STEP-011-ESTATE-DEPENDENCY-MAP.md). It reads
-  # per-repository rows from the database, so it declares no inputs.
-  # Step 10 replaces pattern-discovery-clustering + pattern-validation. It is
-  # a report for catalog authors, not a gate, so there is no gate: block and
-  # no human wait. Like step 11 it reads per-repository results from the
+  # v5: dependency-and-context-map implemented (31-DEPENDENCY-AND-CONTEXT-MAP.md).
+  # It reads per-repository rows from the database, so it declares no inputs.
+  # v6: renumbered only (17-LIFECYCLE-STEPS.md v2.3); steps unchanged.
+  # v7: no change to the flow. Comments name steps by slug (CLAUDE.md rule 12).
+  # unclaimed-signal-report replaces pattern-discovery-clustering +
+  # pattern-validation. It is a report for catalog authors, not a gate, so
+  # there is no gate: block and no human wait. Like
+  # dependency-and-context-map it reads per-repository results from the
   # database: ${artifacts.x} resolves only within one job, and those
   # results come from phase0-repository-discovery.
   - step: unclaimed-signal-report

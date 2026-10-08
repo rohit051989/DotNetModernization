@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Step 9's own published binary: its own registration, artifact and
+       tables. Published to publish/impact-analysis/. -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Fingerprinting.Impact.Cli</RootNamespace>
+    <AssemblyName>ImpactAnalysis.Cli</AssemblyName>
+    <InvariantGlobalization>false</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Fingerprinting.Domain\Fingerprinting.Domain.csproj" />
+    <ProjectReference Include="..\Fingerprinting.Impact\Fingerprinting.Impact.csproj" />
+    <ProjectReference Include="..\Fingerprinting.StepHost\Fingerprinting.StepHost.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="..\..\schemas\impact-analysis-2.1.0.schema.json">
+      <Link>schemas\impact-analysis-2.1.0.schema.json</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+</Project>

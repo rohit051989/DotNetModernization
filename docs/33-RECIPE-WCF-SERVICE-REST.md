@@ -61,13 +61,13 @@ is built **alongside** it, and clients move to REST over time. So:
 
 | From | Used for |
 |---|---|
-| Step 2 projects | Retarget targets, project roles |
-| Step 4 entry points | Slices: one per service contract; the operations each slice owns |
-| Step 5 outbound invocations, **with deploy-time configuration** (32 Part L) | The outbound SOAP client to keep, and its per-environment addresses from `SetParam.xml` |
-| Step 7 occurrences of the supporting items (Part C), **with anchors** | Unit targets |
+| `solution-discovery` projects | Retarget targets, project roles |
+| `entry-point-inventory` entry points | Slices: one per service contract; the operations each slice owns |
+| `outbound-invocation-inventory` invocations, **with deploy-time configuration** (32 Part L) | The outbound SOAP client to keep, and its per-environment addresses from `SetParam.xml` |
+| `item-detection` occurrences of the supporting items (Part C), **with anchors** | Unit targets |
 | `reachability-analysis` (32 Part L) | Dead code excluded from the scaffold or removed by F10 |
-| Step 15 contract snapshot | Source contract for the mapping |
-| `target-contract-design`, signed off at gate 18 | Routes, verbs, fault → status rows (Part D) |
+| `contract-snapshot` | Source contract for the mapping |
+| `target-contract-design`, signed off at `plan-approval-gate` | Routes, verbs, fault → status rows (Part D) |
 | `behaviour-baseline-capture` | Replay cases per operation (Part H) |
 
 ### B2. Blockers
@@ -90,7 +90,7 @@ shape.
 
 ### B3. Preconditions (32 Part E)
 
-- Step 14: legacy builds and its tests pass at `legacy_commit`.
+- `baseline-verification`: legacy builds and its tests pass at `legacy_commit`.
 - Every slice has baseline cases (Part H).
 - Every supporting item is `ready` (two-state readiness, 28 Part C). **Today none are**: their
   signals do not exist yet (Part C). The recipe stays `draft` until they do.
@@ -100,7 +100,7 @@ shape.
 ## Part C — Supporting items
 
 Each is a catalog item with `kind: supporting`, `parent_item: wcf-service`. They are detected
-by step 7 and take their decision from the parent (32 C2).
+by `item-detection` and take their decision from the parent (32 C2).
 
 | Supporting item | Scope | Detects | Signal (proposed) | Fixture count |
 |---|---|---|---|---|
@@ -116,7 +116,7 @@ by step 7 and take their decision from the parent (32 C2).
 
 **Readiness today: all `not_ready`.** None of these signals exists in the registry. Only
 `EXPOSES_WCF_SERVICE` and `WCF_SERVICE_HOSTING`, used by `wcf-service` itself, do.
-`WCF_SERVICE_CONTRACT_DECL` may duplicate an existing step 3/4 signal under another name;
+`WCF_SERVICE_CONTRACT_DECL` may duplicate an existing `application-fingerprinting`/`entry-point-inventory` signal under another name;
 confirm before adding. Each signal needs an extractor claim and **anchors** (32 C3).
 
 ---
@@ -140,7 +140,7 @@ Client choices, passed to every approach as data (28 Part L).
 | `fault_status_map` | engagement conventions (32 Part G) | |
 | `outbound_soap` | `keep` | Regenerate the proxy with `--sync`; address from config |
 
-### D2. Target contract (output of `target-contract-design`, signed off at gate 18)
+### D2. Target contract (output of `target-contract-design`, signed off at `plan-approval-gate`)
 
 | # | Operation | Verb | Route | Port | Faults → status |
 |---|---|---|---|---|---|
@@ -209,7 +209,7 @@ each is reusable on other WCF services.
 
 ## Part F — Coupled recipe: the internal client
 
-`Catalog.TestClient` carries `wcf-nettcp-client`. Step 11's integration edges show it calling
+`Catalog.TestClient` carries `wcf-nettcp-client`. `dependency-and-context-map`'s integration edges show it calling
 `Catalog.Services`, so its decision is derived as `migrate-to-service-protocol`
 (rule `internal-client-follows-service`). Recipe `wcf-client-to-rest` runs **in the same plan
 and the same slices**, so each slice is proven from both sides.
@@ -358,7 +358,7 @@ the S03 downgrade path.
 | Item | Owner |
 |---|---|
 | The security model change (message credentials → mTLS) | Engagement decision, recorded with rationale (D1 `secure_group_auth`) |
-| The target contract | Generated, then signed off by humans at gate 18 |
+| The target contract | Generated, then signed off by humans at `plan-approval-gate` |
 | Production traffic and backend recordings | Supplied by the client under the ingestion contract (32 Part O, question 3) |
 | Linux-specific changes (`G:\Logs\…` paths, file logging, Windows certificate stores) | Separate catalog items (`hardcoded-windows-path`, logging items), decided on their own |
 | Consumer migration and legacy retirement | Out of scope: the client retires legacy once all callers have moved |
@@ -369,7 +369,7 @@ the S03 downgrade path.
 
 | # | Point | Proposal |
 |---|---|---|
-| 1 | `WCF_SERVICE_CONTRACT_DECL` may duplicate an existing signal | Check step 3/4's signal vocabulary first; reuse if equivalent |
+| 1 | `WCF_SERVICE_CONTRACT_DECL` may duplicate an existing signal | Check `application-fingerprinting`'s and `entry-point-inventory`'s signal vocabulary first; reuse if equivalent |
 | 2 | S05 depends on the signed-off mapping being machine-readable | `target-contract-design` emits the mapping as an artifact (`contract-mapping` 1.0.0), not only a document |
 | 3 | F08's template encodes hosting choices (two ports, mTLS) | Template parameters come only from D1, so other engagements reuse the approach with different choices |
 | 4 | The fixture's in-memory state makes side-effect comparison easy; real services use databases | Database side-effect comparison (snapshot and diff per case) is specified with the equivalence step, not per recipe |

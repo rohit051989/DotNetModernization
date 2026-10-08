@@ -1,5 +1,5 @@
 """Read-only endpoints over step 2's (solution-discovery) results. See
-19-STEP-002-SOLUTION-DISCOVERY.md Part I and 18-API-CONVENTIONS.md.
+19-SOLUTION-DISCOVERY.md Part I and 18-API-CONVENTIONS.md.
 
 Nothing here mutates — solution-discovery (the standalone script under
 steps/step-002-solution-discovery/) owns every row these routes read.
