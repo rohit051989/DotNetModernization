@@ -1,5 +1,5 @@
 job_name: phase0-repository-discovery
-version: 10
+version: 11
 description: "Per-repository discovery and analysis. Lifecycle steps 1-9 (17-LIFECYCLE-STEPS.md v2.1)."
 
 parameters:
@@ -66,5 +66,16 @@ flow:
   - step: item-detection
     inputs:
       application-fingerprint: "${artifacts.application-fingerprint}"
+  # v11: step 8, test-coverage-assessment, phase 1 (32-STEP-008 Part L):
+  # test discovery and classification, mapping, buckets, existing coverage
+  # reports, CI maturity. Both inputs required from the start: step 2's
+  # projects and packages, step 3's test signals. coverage_report_locations
+  # adds CI output directories to search beside the repository (none here).
+  # No LLM and no test execution in this phase.
   - step: test-coverage-assessment
+    inputs:
+      solution-project-inventory: "${artifacts.solution-project-inventory}"
+      application-fingerprint: "${artifacts.application-fingerprint}"
+    config:
+      coverage_report_locations: []
   - step: risk-scoring-tier-assignment

@@ -1,5 +1,6 @@
 import { api } from './client'
 import type { EntryPointBackend, EntryPointCapabilities, EntryPointInventory, OutboundInventory } from '../types/surface'
+import type { RepositoryTests } from '../types/tests'
 
 /** 409 until step 4 (entry-point-inventory) has run for the repository. */
 export function getRepositoryEntryPoints(repositoryId: string) {
@@ -20,4 +21,9 @@ export function getRepositoryOutboundInvocations(repositoryId: string) {
 /** Step 5 1.3.0: per application, every inbound operation and the backend calls it reaches. 409 until step 5 has run. */
 export function getRepositoryEntryPointBackend(repositoryId: string) {
   return api.get<EntryPointBackend>(`/api/repositories/${encodeURIComponent(repositoryId)}/entry-point-backend`)
+}
+
+/** Step 8 (test-coverage-assessment): tests, mapping, buckets, coverage, CI maturity. 409 until it has run. */
+export function getRepositoryTests(repositoryId: string) {
+  return api.get<RepositoryTests>(`/api/repositories/${encodeURIComponent(repositoryId)}/tests`)
 }

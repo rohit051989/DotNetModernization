@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Step 8, test-coverage-assessment (32-STEP-008-TEST-COVERAGE.md),
+       phase 1: test discovery and classification, source-to-test mapping,
+       buckets, existing coverage reports, CI maturity. Syntax only, like
+       steps 3 to 5. No LLM and no test execution (Part L). The envelope,
+       database and cache live in Fingerprinting.TestCoverage.Cli. -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Fingerprinting.TestCoverage</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Fingerprinting.Domain\Fingerprinting.Domain.csproj" />
+    <ProjectReference Include="..\Fingerprinting.Analysis\Fingerprinting.Analysis.csproj" />
+  </ItemGroup>
+
+</Project>

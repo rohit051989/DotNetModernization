@@ -25,6 +25,7 @@ import { DependenciesView, FingerprintView, ItemOccurrencesView, formatBytes } f
 import { num, obj } from '../workflow/artifacts/adapters'
 import { RepositoryStructureSection } from './RepositoryStructureSection'
 import { RepositorySurfaceSection } from './RepositorySurfaceSection'
+import { RepositoryTestsSection } from './RepositoryTestsSection'
 import { useLatestArtifacts, type LatestArtifact } from './useLatestArtifacts'
 
 interface RepositoryDetailPageProps {
@@ -42,6 +43,7 @@ const SECTIONS = [
   { id: 'repo-structure', label: 'Structure & fingerprint' },
   { id: 'repo-dependencies', label: 'Dependencies' },
   { id: 'repo-worklist', label: 'Work list' },
+  { id: 'repo-tests', label: 'Tests' },
   { id: 'repo-executions', label: 'Executions' },
   { id: 'repo-details', label: 'Details' },
 ]
@@ -440,6 +442,14 @@ export function RepositoryDetailPage({
             ) : (
               <p className="text-sm text-neutral-400">Item detection (lifecycle step 7) hasn't run for this repository yet.</p>
             )}
+          </div>
+        </CollapsibleSection>
+      )}
+
+      {!editing && (
+        <CollapsibleSection id="repo:tests" anchorId="repo-tests" title="Tests">
+          <div className="p-4">
+            <RepositoryTestsSection repositoryId={repo.id} localPath={repo.local_path} refreshToken={localRefresh} />
           </div>
         </CollapsibleSection>
       )}

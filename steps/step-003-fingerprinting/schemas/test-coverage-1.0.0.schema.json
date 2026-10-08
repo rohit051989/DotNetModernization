@@ -1,0 +1,846 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://modernization-platform.local/schemas/test-coverage-1.0.0.schema.json",
+  "title": "test-coverage 1.0.0",
+  "description": "Lifecycle step 8, phase 1 (32-STEP-008-TEST-COVERAGE.md): test classes and their type, source-to-test mappings with confidence, every non-generated source file in exactly one bucket, coverage from existing Cobertura / OpenCover / lcov reports, and CI maturity. No LLM, no test execution. A figure that is not measured carries a reason and no percentage \u2014 never 0%. Deterministic for a given commit.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "artifactVersion",
+    "repositoryId",
+    "repositorySlug",
+    "commitSha",
+    "summary",
+    "testProjects",
+    "testClasses",
+    "mappings",
+    "projects",
+    "sourceFiles",
+    "coverageReports",
+    "ciMaturity",
+    "warnings"
+  ],
+  "properties": {
+    "artifactVersion": {
+      "const": "1.0.0"
+    },
+    "repositoryId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "repositorySlug": {
+      "type": "string"
+    },
+    "commitSha": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "testProjects",
+        "testClasses",
+        "testMethods",
+        "testClassesByType",
+        "sourceFiles",
+        "sourceFilesByBucket",
+        "mappings",
+        "coverageReports",
+        "sourceFilesMeasured"
+      ],
+      "properties": {
+        "testProjects": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "testClasses": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "testMethods": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "testClassesByType": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "unit",
+            "integration",
+            "functional",
+            "smoke",
+            "unclassified"
+          ],
+          "properties": {
+            "unit": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "integration": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "functional": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "smoke": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "unclassified": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "sourceFiles": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sourceFilesByBucket": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "has_tests",
+            "missing_tests",
+            "no_testable_logic"
+          ],
+          "properties": {
+            "has_tests": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "missing_tests": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "no_testable_logic": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "mappings": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "coverageReports": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sourceFilesMeasured": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "testProjects": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "projectPath",
+          "reason",
+          "testClasses",
+          "testClassesByType"
+        ],
+        "properties": {
+          "projectPath": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "testClasses": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "testClassesByType": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "unit",
+              "integration",
+              "functional",
+              "smoke",
+              "unclassified"
+            ],
+            "properties": {
+              "unit": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "integration": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "functional": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "smoke": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "unclassified": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          }
+        }
+      }
+    },
+    "testClasses": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "projectPath",
+          "filePath",
+          "className",
+          "namespace",
+          "lineStart",
+          "testType",
+          "classificationReason",
+          "evidence",
+          "testCount"
+        ],
+        "properties": {
+          "projectPath": {
+            "type": "string"
+          },
+          "filePath": {
+            "type": "string"
+          },
+          "className": {
+            "type": "string"
+          },
+          "namespace": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lineStart": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "testType": {
+            "enum": [
+              "unit",
+              "integration",
+              "functional",
+              "smoke",
+              "unclassified"
+            ]
+          },
+          "classificationReason": {
+            "type": "string",
+            "minLength": 1
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "kind",
+                "value",
+                "indicates",
+                "strength"
+              ],
+              "properties": {
+                "kind": {
+                  "enum": [
+                    "project_name",
+                    "category",
+                    "infrastructure",
+                    "connection_string",
+                    "service_url",
+                    "mocking"
+                  ]
+                },
+                "value": {
+                  "type": "string"
+                },
+                "indicates": {
+                  "enum": [
+                    "unit",
+                    "integration",
+                    "functional",
+                    "smoke"
+                  ]
+                },
+                "strength": {
+                  "enum": [
+                    "strong",
+                    "indicative",
+                    "supporting"
+                  ]
+                }
+              }
+            }
+          },
+          "testCount": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      }
+    },
+    "mappings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "sourceFile",
+          "productionType",
+          "testFile",
+          "testClass",
+          "testType",
+          "testMethods",
+          "method",
+          "confidence",
+          "evidence"
+        ],
+        "properties": {
+          "sourceFile": {
+            "type": "string"
+          },
+          "productionType": {
+            "type": "string"
+          },
+          "testFile": {
+            "type": "string"
+          },
+          "testClass": {
+            "type": "string"
+          },
+          "testType": {
+            "enum": [
+              "unit",
+              "integration",
+              "functional",
+              "smoke",
+              "unclassified"
+            ]
+          },
+          "testMethods": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "method": {
+            "enum": [
+              "type_reference",
+              "type_reference+naming",
+              "naming_only"
+            ]
+          },
+          "confidence": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "exclusiveMaximum": 1
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "projects": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "projectPath",
+          "files",
+          "hasTests",
+          "missingTests",
+          "noTestableLogic",
+          "unitLinePct",
+          "unitNotMeasuredReason",
+          "integrationLinePct",
+          "integrationNotMeasuredReason"
+        ],
+        "properties": {
+          "projectPath": {
+            "type": "string"
+          },
+          "files": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "hasTests": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "missingTests": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "noTestableLogic": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "unitLinePct": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 100
+          },
+          "unitNotMeasuredReason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "integrationLinePct": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 100
+          },
+          "integrationNotMeasuredReason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "unitLinePct": {
+                  "type": "null"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "unitNotMeasuredReason": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "else": {
+              "properties": {
+                "unitNotMeasuredReason": {
+                  "type": "null"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "integrationLinePct": {
+                  "type": "null"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "integrationNotMeasuredReason": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "else": {
+              "properties": {
+                "integrationNotMeasuredReason": {
+                  "type": "null"
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    "sourceFiles": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "projectPath",
+          "filePath",
+          "bucket",
+          "testableMembers",
+          "testFiles",
+          "testTypes",
+          "coverageSource",
+          "linePct",
+          "branchPct",
+          "notMeasuredReason",
+          "unitLinePct",
+          "unitNotMeasuredReason",
+          "integrationLinePct",
+          "integrationNotMeasuredReason"
+        ],
+        "properties": {
+          "projectPath": {
+            "type": "string"
+          },
+          "filePath": {
+            "type": "string"
+          },
+          "bucket": {
+            "enum": [
+              "has_tests",
+              "missing_tests",
+              "no_testable_logic"
+            ]
+          },
+          "testableMembers": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "testFiles": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "testTypes": {
+            "type": "array",
+            "items": {
+              "enum": [
+                "unit",
+                "integration",
+                "functional",
+                "smoke",
+                "unclassified"
+              ]
+            }
+          },
+          "coverageSource": {
+            "enum": [
+              "existing_report",
+              "not_measured"
+            ]
+          },
+          "linePct": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 100
+          },
+          "branchPct": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 100
+          },
+          "notMeasuredReason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "unitLinePct": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 100
+          },
+          "unitNotMeasuredReason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "integrationLinePct": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 100
+          },
+          "integrationNotMeasuredReason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "coverageSource": {
+                  "const": "not_measured"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "linePct": {
+                  "type": "null"
+                },
+                "branchPct": {
+                  "type": "null"
+                },
+                "notMeasuredReason": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "else": {
+              "properties": {
+                "linePct": {
+                  "type": "number"
+                },
+                "notMeasuredReason": {
+                  "type": "null"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "unitLinePct": {
+                  "type": "null"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "unitNotMeasuredReason": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "else": {
+              "properties": {
+                "unitNotMeasuredReason": {
+                  "type": "null"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "integrationLinePct": {
+                  "type": "null"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "integrationNotMeasuredReason": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "else": {
+              "properties": {
+                "integrationNotMeasuredReason": {
+                  "type": "null"
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    "coverageReports": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "path",
+          "format",
+          "attribution",
+          "attributionReason",
+          "filesInReport",
+          "filesMatched",
+          "unmatchedPaths"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "format": {
+            "enum": [
+              "cobertura",
+              "opencover",
+              "lcov"
+            ]
+          },
+          "attribution": {
+            "enum": [
+              "unit",
+              "integration",
+              "unattributed"
+            ]
+          },
+          "attributionReason": {
+            "type": "string"
+          },
+          "filesInReport": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "filesMatched": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "unmatchedPaths": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "ciMaturity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "hasPipeline",
+        "runsTests",
+        "collectsCoverage",
+        "publishesCoverage",
+        "enforcesCoverageGate",
+        "pipelines",
+        "evidence"
+      ],
+      "properties": {
+        "hasPipeline": {
+          "type": "boolean"
+        },
+        "runsTests": {
+          "type": "boolean"
+        },
+        "collectsCoverage": {
+          "type": "boolean"
+        },
+        "publishesCoverage": {
+          "type": "boolean"
+        },
+        "enforcesCoverageGate": {
+          "type": "boolean"
+        },
+        "pipelines": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "path",
+              "system"
+            ],
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "system": {
+                "enum": [
+                  "azure_pipelines",
+                  "github_actions",
+                  "jenkins",
+                  "teamcity"
+                ]
+              }
+            }
+          }
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "fact",
+              "path",
+              "line",
+              "text"
+            ],
+            "properties": {
+              "fact": {
+                "enum": [
+                  "runs_tests",
+                  "collects_coverage",
+                  "publishes_coverage",
+                  "enforces_coverage_gate"
+                ]
+              },
+              "path": {
+                "type": "string"
+              },
+              "line": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "text": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "message",
+          "severity"
+        ],
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "severity": {
+            "enum": [
+              "info",
+              "warning",
+              "error"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

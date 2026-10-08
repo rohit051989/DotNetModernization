@@ -25,6 +25,7 @@ from app.routers import (
     structure,
     surface,
     target_states,
+    test_coverage,
     workflow_artifacts,
     workflow_capabilities,
     workflow_executions,
@@ -318,3 +319,4 @@ app.include_router(structure.router)
 app.include_router(surface.router)
 app.include_router(dashboard.router)
 app.include_router(estate.router)
+app.include_router(test_coverage.router)

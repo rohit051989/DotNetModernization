@@ -2254,3 +2254,167 @@ class EntryPointBackend(Base):
     step_execution_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
 
     __table_args__ = (CheckConstraint("status IN ('yes', 'no', 'unresolved')", name="ck_entry_point_backend_status"),)
+
+
+# ---------- lifecycle step 8, test-coverage-assessment (32-STEP-008) ----------
+#
+# Phase 1 (Part L): written by the step's own process
+# (steps/step-003-fingerprinting/src/Fingerprinting.TestCoverage.Cli), replaced
+# per repository on every run. test_execution_decisions and llm_calls (Part J)
+# belong to phases 3 and 2 and are created with them.
+
+TEST_TYPES = ("unit", "integration", "functional", "smoke", "unclassified")
+TEST_BUCKETS = ("has_tests", "missing_tests", "no_testable_logic")
+COVERAGE_SOURCES = ("existing_report", "executed", "not_measured")
+MAPPING_METHODS = ("type_reference", "type_reference+naming", "naming_only")
+COVERAGE_CACHE_STATES = ("computed", "reused", "no_commit", "uncommitted_changes")
+
+
+class TestClass(Base):
+    """A test class and its type (Part B). One project can mix types."""
+
+    __tablename__ = "test_classes"
+    __test__ = False   # not a test, whatever its name says to pytest-style collectors
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid())
+    repository_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("repositories.id", ondelete="CASCADE"), nullable=False
+    )
+    project_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"))
+    project_path: Mapped[str] = mapped_column(Text, nullable=False)
+    file_path: Mapped[str] = mapped_column(Text, nullable=False)
+    class_name: Mapped[str] = mapped_column(Text, nullable=False)
+    namespace: Mapped[str | None] = mapped_column(Text)
+    line_start: Mapped[int] = mapped_column(Integer, nullable=False)
+    test_type: Mapped[str] = mapped_column(Text, nullable=False)
+    classification_reason: Mapped[str] = mapped_column(Text, nullable=False)
+    evidence: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    test_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    step_execution_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    scanned_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    __table_args__ = (
+        CheckConstraint(f"test_type IN {TEST_TYPES}", name="ck_test_classes_test_type"),
+        Index("ix_test_classes_repository_id", "repository_id"),
+    )
+
+
+class TestMappingRow(Base):
+    """A test class exercising a production type in a source file (Part C)."""
+
+    __tablename__ = "test_mappings"
+    __test__ = False
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid())
+    repository_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("repositories.id", ondelete="CASCADE"), nullable=False
+    )
+    source_file: Mapped[str] = mapped_column(Text, nullable=False)
+    production_type: Mapped[str] = mapped_column(Text, nullable=False)
+    test_file: Mapped[str] = mapped_column(Text, nullable=False)
+    test_class: Mapped[str] = mapped_column(Text, nullable=False)
+    test_type: Mapped[str] = mapped_column(Text, nullable=False)
+    test_methods: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    mapping_method: Mapped[str] = mapped_column(Text, nullable=False)
+    confidence: Mapped[float] = mapped_column(Numeric(3, 2), nullable=False)
+    evidence: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    step_execution_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+
+    __table_args__ = (
+        CheckConstraint(f"mapping_method IN {MAPPING_METHODS}", name="ck_test_mappings_mapping_method"),
+        CheckConstraint(f"test_type IN {TEST_TYPES}", name="ck_test_mappings_test_type"),
+        CheckConstraint("confidence > 0 AND confidence < 1", name="ck_test_mappings_confidence"),
+        Index("ix_test_mappings_repository_id", "repository_id"),
+    )
+
+
+class SourceFileCoverage(Base):
+    """One non-generated source file in a non-test project: its bucket
+    (Part D) and coverage (Part E). Unknown is never stored as 0: a figure
+    that is not measured has no percentage and always a reason."""
+
+    __tablename__ = "source_file_coverage"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid())
+    repository_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("repositories.id", ondelete="CASCADE"), nullable=False
+    )
+    project_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"))
+    project_path: Mapped[str] = mapped_column(Text, nullable=False)
+    file_path: Mapped[str] = mapped_column(Text, nullable=False)
+    bucket: Mapped[str] = mapped_column(Text, nullable=False)
+    testable_members: Mapped[int] = mapped_column(Integer, nullable=False)
+    test_files: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    test_types: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    coverage_source: Mapped[str] = mapped_column(Text, nullable=False)
+    line_pct: Mapped[float | None] = mapped_column(Numeric(4, 1))
+    branch_pct: Mapped[float | None] = mapped_column(Numeric(4, 1))
+    not_measured_reason: Mapped[str | None] = mapped_column(Text)
+    unit_line_pct: Mapped[float | None] = mapped_column(Numeric(4, 1))
+    unit_not_measured_reason: Mapped[str | None] = mapped_column(Text)
+    integration_line_pct: Mapped[float | None] = mapped_column(Numeric(4, 1))
+    integration_not_measured_reason: Mapped[str | None] = mapped_column(Text)
+    step_execution_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+
+    __table_args__ = (
+        CheckConstraint(f"bucket IN {TEST_BUCKETS}", name="ck_source_file_coverage_bucket"),
+        CheckConstraint(f"coverage_source IN {COVERAGE_SOURCES}", name="ck_source_file_coverage_coverage_source"),
+        # Part E1: not measured never shows as a percentage, and always says why.
+        CheckConstraint("(coverage_source = 'not_measured') = (line_pct IS NULL)", name="ck_source_file_coverage_measured_has_pct"),
+        CheckConstraint("coverage_source <> 'not_measured' OR not_measured_reason IS NOT NULL", name="ck_source_file_coverage_not_measured_reason"),
+        CheckConstraint("(unit_line_pct IS NULL) = (unit_not_measured_reason IS NOT NULL)", name="ck_source_file_coverage_unit_reason"),
+        CheckConstraint("(integration_line_pct IS NULL) = (integration_not_measured_reason IS NOT NULL)", name="ck_source_file_coverage_integration_reason"),
+        Index("ix_source_file_coverage_repository_id", "repository_id"),
+    )
+
+
+class CiMaturity(Base):
+    """Part H, per repository."""
+
+    __tablename__ = "ci_maturity"
+
+    repository_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("repositories.id", ondelete="CASCADE"), primary_key=True
+    )
+    has_pipeline: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    runs_tests: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    collects_coverage: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    publishes_coverage: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    enforces_coverage_gate: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    pipelines: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    evidence: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    step_execution_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    scanned_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class CoverageScan(Base):
+    """One run of step 8 for a repository, and its cache (Part I): a run at
+    a commit already computed, with no uncommitted changes to the files that
+    matter, reuses that result. `result` is the artifact, kept on every row
+    that computed it (null on a reused row, which points at its source); only
+    a 'computed' row is ever reused."""
+
+    __tablename__ = "coverage_scans"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid())
+    repository_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("repositories.id", ondelete="CASCADE"), nullable=False
+    )
+    commit_sha: Mapped[str | None] = mapped_column(Text)
+    cache_key: Mapped[str] = mapped_column(Text, nullable=False)
+    cache_state: Mapped[str] = mapped_column(Text, nullable=False)
+    cache_note: Mapped[str | None] = mapped_column(Text)
+    reused_from_scan_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("coverage_scans.id", ondelete="SET NULL")
+    )
+    report_sources: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    result: Mapped[dict | None] = mapped_column(JSONB)
+    result_checksum: Mapped[str] = mapped_column(Text, nullable=False)
+    step_execution_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    scanned_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    __table_args__ = (
+        CheckConstraint(f"cache_state IN {COVERAGE_CACHE_STATES}", name="ck_coverage_scans_cache_state"),
+        Index("ix_coverage_scans_repository_commit", "repository_id", "commit_sha", "cache_key"),
+    )
+

@@ -1,0 +1,22 @@
+{
+  "step_name": "test-coverage-assessment",
+  "lifecycle_step_no": 8,
+  "display_name": "Test coverage & CI maturity",
+  "owner_code": "P",
+  "version": "1.0.0",
+  "owner_team": "platform",
+  "viewpoint": "DEVELOPMENT",
+  "implementation_status": "implemented",
+  "consumes": [
+    { "artifact_type": "solution-project-inventory", "version_range": "^2.0.0", "optional": false },
+    { "artifact_type": "application-fingerprint", "version_range": "^1.2.0", "optional": false }
+  ],
+  "produces": [
+    { "artifact_type": "test-coverage", "artifact_version": "1.0.0" }
+  ],
+  "adapter_type": "process",
+  "adapter_config": {
+    "command": ["steps/step-003-fingerprinting/publish/test-coverage-assessment/TestCoverageAssessment.Cli.exe"],
+    "timeout_seconds": 3600
+  }
+}
