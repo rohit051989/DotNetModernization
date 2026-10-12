@@ -28,7 +28,7 @@ from sqlalchemy.orm import Session
 from app import models
 from app.db import get_db
 from app.errors import ErrorResponse, error
-from app.estate import soap_compatibility, wcf_matrix
+from app.estate import engagement_matrix, soap_compatibility, wcf_matrix
 from app.workflow.adapters.base import local_path_from_uri
 
 router = APIRouter(prefix="/api/engagements", tags=["Estate"])
@@ -179,23 +179,30 @@ def _latest_run(db: Session, engagement_id: str) -> tuple[Any, dict[str, Any]]:
     return row, artifacts
 
 
-def _soap_report(report: dict, annotations: list, engagement: models.Engagement) -> dict:
+def _soap_report(report: dict, annotations: list, engagement: models.Engagement, applied: dict | None = None) -> dict:
     """The run's SOAP report with what is live, read from the matrix versions
     the run used: each matrix entry's confirmation, probe results and what its
     evidence covers — runtime and platform alike — the matrices' provenance,
-    and each host's owning team as a person annotated it.
+    and each host's owning team as a person annotated it. `applied` is the
+    engagement's own probes and confirmations (engagement_matrix.overlay),
+    applied on top of the shipped matrices; an engagement confirmation or probe
+    whose evidence is gone or changed shows as evidence missing.
 
     An entry a probe contradicts is shown as under review, never as its
     unrevised verdict, and every total counts it apart
     (soap_compatibility.review). An entry whose evidence covers an older WCF
     client than the engagement targets is flagged. readyForClient only when
     every entry the report rests on is confirmed, none is contradicted, none
-    has evidence older than the targeted WCF client, and the run used the
-    newest matrices."""
+    has evidence older than the targeted WCF client or missing, and the run
+    used the newest matrices."""
     matrix = soap_compatibility.load_matrix(report.get("matrixVersion")) or soap_compatibility.load_matrix()
     platform = wcf_matrix.load("platform", report.get("platformMatrixVersion")) or wcf_matrix.load("platform")
     newest = {kind: (wcf_matrix.load(kind) or {}).get("matrixVersion") for kind in wcf_matrix.KINDS}
-    entries = {e["id"]: e for m in (matrix, platform) for e in (m or {}).get("entries", [])}
+    # The shipped matrices, with this engagement's own probes and confirmations (client data, in the
+    # database) applied on top: 29 C10, the probe evidence boundary.
+    entries = {}
+    for kind, m in (("support", matrix), ("platform", platform)):
+        entries.update(engagement_matrix.apply(kind, {e["id"]: e for e in (m or {}).get("entries", [])}, applied))
     kinds = {e["id"]: kind for kind, m in (("support", matrix), ("platform", platform)) for e in (m or {}).get("entries", [])}
     owners = {a.host: a.owning_team for a in annotations}
     target_wcf = engagement.target_wcf_client_version or wcf_matrix.target_wcf_client(matrix, engagement.target_framework)
@@ -215,6 +222,8 @@ def _soap_report(report: dict, annotations: list, engagement: models.Engagement)
                 "confirmedBy": confirmation.get("by"), "confirmedOn": confirmation.get("on"),
                 "sources": (entry or {}).get("sources", []), "probes": (entry or {}).get("probes", []),
                 "probeContradictions": contradictions(entry["id"]) if entry else [],
+                "confirmationSource": "engagement" if isinstance(confirmation.get("source"), dict) else "shipped" if entry else None,
+                "evidenceMissing": engagement_matrix.evidence_missing(entry) if entry else False,
                 "evidenceCovers": wcf_matrix.evidence_covers(entry) if entry else None,
                 "evidencePredatesTarget": wcf_matrix.evidence_predates(entry, target_wcf) if entry else False}
 
@@ -225,6 +234,7 @@ def _soap_report(report: dict, annotations: list, engagement: models.Engagement)
                    for caller in host["callers"]]
         hosts.append({**host, "owningTeam": owners.get(host["host"]), "callers": callers})
     contradicted = {i: contradictions(i) for i in sorted(used) if contradictions(i)}
+    missing_evidence = sorted(i for i in used if engagement_matrix.evidence_missing(entries[i]))
     hosts = soap_compatibility.review(hosts, contradicted)
     predating = sorted(i for i in used if wcf_matrix.evidence_predates(entries[i], target_wcf))
     unprobed = sorted(i for i in used if wcf_matrix.evidence_covers(entries[i]) is None)
@@ -251,6 +261,7 @@ def _soap_report(report: dict, annotations: list, engagement: models.Engagement)
             "contradictedEntries": sorted(contradicted),
             "evidencePredatesTarget": predating,
             "unprobedEntries": unprobed,
+            "evidenceMissingEntries": missing_evidence,
             "entries": {i: {"kind": kinds[i], "verdict": entries[i]["verdict"], "basis": entries[i]["basis"],
                             "probes": entries[i].get("probes", []), "probeContradictions": contradicted.get(i, []),
                             "evidenceCovers": wcf_matrix.evidence_covers(entries[i]),
@@ -258,7 +269,7 @@ def _soap_report(report: dict, annotations: list, engagement: models.Engagement)
                             "confirmation": entries[i].get("confirmation")}
                         for i in sorted(used)},
             "readyForClient": (bool(matrix) and bool(platform) and not unconfirmed and not contradicted and not predating
-                               and not stale),
+                               and not stale and not missing_evidence),
         },
     }
 
@@ -287,7 +298,8 @@ def get_estate(engagement_id: str, db: Session = Depends(get_db)):
     )
     slugs = _repository_slugs(db, engagement_id)
     if "soap-backend-compatibility" in artifacts:
-        artifacts["soap-backend-compatibility"] = _soap_report(artifacts["soap-backend-compatibility"], annotations, engagement)
+        artifacts["soap-backend-compatibility"] = _soap_report(artifacts["soap-backend-compatibility"], annotations, engagement,
+                                                              engagement_matrix.overlay(db, engagement_id))
     return EstateOut(engagement_id=engagement_id, run=run, artifacts=artifacts,
                      annotations=[_annotation_out(a, slugs) for a in annotations], settings=_settings_out(db, engagement, slugs))
 
@@ -367,6 +379,13 @@ SOAP_CSV_COLUMNS = (
 WHO = {"we": "this migration (calling application)", "backend_owner": "backend owner",
        "we_or_backend_owner": "this migration or the backend owner (not yet known which)"}
 CONFIRMED = {True: "yes", False: "NO - awaiting confirmation", None: ""}
+
+
+def _confirmed_text(verdict: dict) -> str:
+    if verdict.get("evidenceMissing"):
+        return "NO - evidence missing"
+    text = CONFIRMED[verdict.get("matrixConfirmed")]
+    return f"{text} (this engagement)" if verdict.get("matrixConfirmed") and verdict.get("confirmationSource") == "engagement" else text
 UNDER_REVIEW_TEXT = "contradicted by probe - under review"
 
 
@@ -383,12 +402,20 @@ def _covers_text(env: dict) -> str:
     return " | ".join(parts)
 
 
+def _probe_key(probe: dict) -> str | None:
+    """A probe's identity: its evidence path (platform samples), its evidence
+    reference (a client engagement's, kept with that engagement), or its reason."""
+    ref = probe.get("evidenceRef")
+    return probe.get("evidence") or (f"{ref['engagement']}/{ref['id']}" if ref else None) or probe.get("reason")
+
+
 def _probe_results(env: dict) -> str:
     """The probes behind both of an environment's entries, once each: a probe
-    is recorded on its runtime and its platform entry alike."""
+    is recorded on its runtime and its platform entry alike. A client
+    engagement's probe carries no message: its exception type and a reference."""
     seen, results = set(), []
     for probe in env["runtime"].get("probes", []) + env["platform"].get("probes", []):
-        key = probe.get("evidence") or probe.get("reason")
+        key = _probe_key(probe)
         if key in seen:
             continue
         seen.add(key)
@@ -396,7 +423,10 @@ def _probe_results(env: dict) -> str:
             results.append(f"not probed: {probe.get('reason')}")
         else:
             attribution = f", attributed to the {probe['attribution']}" if probe.get("attribution") else ""
-            results.append(f"{probe.get('scenario')} on {probe.get('probedOn')}: {probe.get('outcome')}{attribution} - {probe.get('summary')}")
+            detail = probe.get("summary") or probe.get("errorType") or ""
+            if probe.get("evidenceRef"):
+                detail = f"{detail} (evidence {_probe_key(probe)}, kept with the engagement)".strip()
+            results.append(f"{probe.get('scenario')} on {probe.get('probedOn')}: {probe.get('outcome')}{attribution} - {detail}")
     return " | ".join(results)
 
 
@@ -418,9 +448,9 @@ def soap_csv(report: dict, target_framework: str | None) -> str:
                     caller["projectPath"], caller.get("contract") or "", env["environment"], env.get("address") or "",
                     env.get("binding") or "", env.get("securityMode") or "", env.get("credentialType") or "",
                     env.get("securitySource") or "", _verdict_text(env["runtime"]["verdict"]), " | ".join(env["runtime"]["reasons"]),
-                    env["runtime"].get("matrixEntry") or "", CONFIRMED[env["runtime"].get("matrixConfirmed")],
+                    env["runtime"].get("matrixEntry") or "", _confirmed_text(env["runtime"]),
                     _verdict_text(env["platform"]["verdict"]), " | ".join(env["platform"]["reasons"]),
-                    env["platform"].get("matrixEntry") or "", CONFIRMED[env["platform"].get("matrixConfirmed")],
+                    env["platform"].get("matrixEntry") or "", _confirmed_text(env["platform"]),
                     _probe_results(env),
                     " | ".join(env["runtime"].get("probeContradictions", []) + env["platform"].get("probeContradictions", [])),
                     _covers_text(env),
@@ -448,7 +478,83 @@ def export_soap_compatibility(engagement_id: str, db: Session = Depends(get_db))
     if "soap-backend-compatibility" not in artifacts:
         raise error(409, "No SOAP backend compatibility report yet: run the estate consolidation.", code="NOT_RUN")
     annotations = db.query(models.EndpointAnnotation).filter(models.EndpointAnnotation.engagement_id == engagement_id).all()
-    report = _soap_report(artifacts["soap-backend-compatibility"], annotations, engagement)
+    report = _soap_report(artifacts["soap-backend-compatibility"], annotations, engagement, engagement_matrix.overlay(db, engagement_id))
     draft = "" if report["matrix"]["readyForClient"] else "-DRAFT"
     return Response(content=soap_csv(report, engagement.target_framework).encode("utf-8-sig"), media_type="text/csv",
                     headers={"Content-Disposition": f'attachment; filename="soap-backend-compatibility-{engagement_id}{draft}.csv"'})
+
+
+class MatrixDecisionIn(BaseModel):
+    """A person's decision, in this engagement, to confirm shipped WCF client
+    matrix entries on this engagement's probe evidence (29 C10)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(min_length=1, description="The decision's own id, e.g. 'CLIENT-2026-11-02-a'.")
+    by: str = Field(min_length=1, description="The person who decided.")
+    on: datetime.date
+    instruction: str = Field(min_length=1, description="The decision as the person gave it, verbatim.")
+    entries: list[str] = Field(min_length=1, description="The shipped matrix entry ids it confirms, each named.")
+    evidence: dict[str, list[str]] = Field(description="Per named entry, the ids of this engagement's probe evidence it rests on.")
+    notes: dict[str, str] | None = None
+
+
+class MatrixRevertIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    entry_id: str = Field(min_length=1)
+    by: str = Field(min_length=1)
+    reason: str = Field(min_length=1)
+
+
+@router.get(
+    "/{engagement_id}/estate/matrix-confirmations",
+    summary="List this engagement's own WCF client matrix confirmations and probe evidence",
+    response_description="The confirmations and probes the SOAP report applies on top of the shipped matrices.",
+    operation_id="get_engagement_matrix_confirmations",
+    responses={404: _NOT_FOUND},
+)
+def get_matrix_confirmations(engagement_id: str, db: Session = Depends(get_db)):
+    """Client data: kept with the engagement in this deployment's database,
+    never written to a shipped matrix file."""
+    _engagement(db, engagement_id)
+    return engagement_matrix.overlay(db, engagement_id)
+
+
+@router.post(
+    "/{engagement_id}/estate/matrix-confirmations",
+    status_code=201,
+    summary="Record a decision confirming shipped matrix entries on this engagement's evidence",
+    response_description="The entries confirmed, for this engagement only.",
+    operation_id="post_engagement_matrix_decision",
+    responses={404: _NOT_FOUND, 422: {"model": ErrorResponse, "description": "An entry is not named, unknown, or has no intact evidence."}},
+)
+def post_matrix_decision(engagement_id: str, payload: MatrixDecisionIn, db: Session = Depends(get_db)):
+    """Confirms exactly the named entries, each on intact evidence of this
+    engagement that bears on it. The shipped matrices are not changed."""
+    _engagement(db, engagement_id)
+    try:
+        confirmed = engagement_matrix.record_decision(db, engagement_id, payload.model_dump())
+    except ValueError as exc:
+        db.rollback()
+        raise error(422, str(exc), code="INVALID_DECISION") from exc
+    db.commit()
+    return {"confirmed": confirmed}
+
+
+@router.post(
+    "/{engagement_id}/estate/matrix-confirmations/revert",
+    summary="Revert this engagement's confirmation of a matrix entry",
+    response_description="The entry is unconfirmed for this engagement; the confirmation is kept, with who reverted it and why.",
+    operation_id="revert_engagement_matrix_confirmation",
+    responses={404: _NOT_FOUND, 422: {"model": ErrorResponse, "description": "The entry has no confirmation in this engagement."}},
+)
+def revert_matrix_confirmation(engagement_id: str, payload: MatrixRevertIn, db: Session = Depends(get_db)):
+    _engagement(db, engagement_id)
+    try:
+        engagement_matrix.revert(db, engagement_id, payload.entry_id, payload.by, payload.reason)
+    except ValueError as exc:
+        db.rollback()
+        raise error(422, str(exc), code="NOT_CONFIRMED") from exc
+    db.commit()
+    return {"reverted": payload.entry_id}

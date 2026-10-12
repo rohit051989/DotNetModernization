@@ -1008,6 +1008,46 @@ IAccountService over wsHttp TransportWithMessageCredential/Certificate, platform
 → `incompatible`. Its host, `localhost@wcf`, is the one host needing a backend change: a
 service inside this migration (wcf), whose owner is this programme.
 
+**The probe evidence boundary: one client per deployment.** The platform ships to each client
+as code, the matrices with it, and each client's data lives only in that client's database. The
+boundary is set before any probe runs in a client's environment. The Kerberos onboarding task
+(C11) will be the first such run.
+
+- **Shipped matrices hold platform knowledge only:** entries confirmed on platform-sample
+  evidence, which ships with them under `probes/evidence/` (today the WCF sample and
+  wcf-backend, `"source": "platform-sample"`). No client confirmation, client probe record or
+  client evidence is ever written into a matrix file, even as a reference.
+- **A client's probe evidence is client data, stored with the engagement in the database**
+  (`engagement_probe_evidence`). Each row holds the evidence document exactly as written and
+  its sha256, the scenario, outcome, exception type, what it covers, and the shipped entries it
+  bears on. A probe plan declares its owner: `"platformSample": true`, or
+  `"engagement": "<id>"`, in which case the driver writes the evidence to that engagement's rows
+  and changes no matrix file. A plan that declares neither, or both, is refused.
+- **A confirmation made in a client deployment, on that client's evidence, is client data
+  too** (`engagement_matrix_confirmations`). It records who and when, the instruction verbatim,
+  the entries the decision names, and the evidence ids each rests on. The database refuses a
+  confirmation of an entry its decision does not name, or one with no evidence. It is recorded
+  by `engagement_matrix.record_decision`, also
+  `POST /api/engagements/{id}/estate/matrix-confirmations`, which also requires the evidence
+  to be intact and to bear on the entry. It is never deleted: `…/matrix-confirmations/revert`
+  keeps who reverted it and why.
+- **The report reads the shipped matrix with the engagement's confirmations and probes applied
+  on top** (`engagement_matrix.overlay`, `apply`), the way engagement decisions overlay the
+  shipped catalog. A shipped confirmation is platform knowledge and stays. The engagement's
+  confirmation applies where the shipped entry is unconfirmed, and is shown as "confirmed … in
+  this engagement on its own evidence". The repository page's SOAP section applies the same
+  overlay.
+- **Evidence missing.** When a confirmation's or probe's evidence row is gone, emptied, or no
+  longer matches its sha256, the entry shows "evidence missing" (`evidenceMissingEntries`, the
+  CSV's confirmation column), and that engagement's report is not ready for the client.
+- **Enforced** by `wcf_probe.evidence_boundary_violations`. `tests/test_wcf_probe_evidence_boundary.py`
+  fails if any shipped matrix holds a client's probe, reference or confirmation, or a
+  confirmation resting on evidence that does not ship, or if the platform's evidence folder holds
+  anything attributed to an engagement or any file no entry references. It plants each kind of
+  violation to prove the check catches it. It also exercises the database side: a client
+  confirmation applied on top, altered or emptied evidence showing as missing, the decision
+  rules, and reverts kept. It checks that no matrix file changes while it runs.
+
 ### C11. Probes: evidence on the matrix entries
 
 A matrix entry is a reading of documents. A probe adds evidence: a minimal .NET 10 WCF client
@@ -1087,7 +1127,10 @@ python -m app.estate.wcf_probe --plan runs\probes\probe-plan.json --make-certifi
   > non-production NetTcp service that uses Windows credentials. The identity team provides a
   > service principal name for the service, a keytab for the caller, and the domain's
   > `krb5.conf`. Until then, the fix stays "Kerberos configuration on our side, or a
-  > credential change by the backend's owner".
+  > credential change by the backend's owner". This probe runs in the client's
+  > environment: its plan names the engagement, and its evidence and any confirmation on it
+  > follow the probe evidence boundary (C10). They are stored with the engagement in that
+  > client's database, and no matrix file changes.
 
   If no Linux container runtime is available, the probe stops and says so, and records nothing.
 

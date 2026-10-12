@@ -319,7 +319,9 @@ export.** The factory defaults in `catalog_items.yaml` apply only when there is 
    ```
 
 6. **Engagements are client data.** Create them in the UI or API; the seed creates none.
-   `scripts/reset-demo.ps1` creates the two demo engagements.
+   `scripts/reset-demo.ps1` creates the two demo engagements, and only on a deployment whose
+   `.env` sets `DEPLOYMENT=demo`. The default, `client`, refuses: a client's database is the
+   only copy of that client's data.
 
 **Reseeding an existing machine** (`python -m app.seed` again) never touches a catalog
 that is not empty when an export exists: the database is authoritative. Two explicit

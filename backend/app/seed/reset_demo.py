@@ -4,7 +4,9 @@
     python -m app.seed.reset_demo --verify-only  verify only
     python -m app.seed.reset_demo --preflight-only  check it is safe to reset; change nothing
 
-Run through scripts/reset-demo.ps1. Clears every engagement and everything
+Refuses unless the deployment is explicitly a demo (DEPLOYMENT=demo in .env):
+the default deployment is a client's, whose database is its only copy of its
+data. Run through scripts/reset-demo.ps1. Clears every engagement and everything
 scoped to one, every repository and everything derived from it, all
 workflow history, the validation queue and backend/runs/; then creates the
 demo engagements below. Keeps the catalog: catalog_items,
@@ -26,6 +28,7 @@ from pathlib import Path
 from sqlalchemy import text
 
 from app import models
+from app.config import settings
 from app.db import SessionLocal
 
 RUNS_DIR = Path(__file__).resolve().parents[2] / "runs"
@@ -47,6 +50,8 @@ CLEARED_TABLES = (
     "repositories",
     # engagement-scoped
     "engagement_decisions", "engagement_item_scope", "engagement_patterns", "decision_records",
+    # a client's WCF client matrix probe evidence and confirmations (29 C10)
+    "engagement_matrix_confirmations", "engagement_probe_evidence",
 )
 
 KEPT_TABLES = (
@@ -201,6 +206,19 @@ def verify(db) -> bool:
     return ok
 
 
+DEMO = "demo"
+
+
+def demo_refusal(deployment: str) -> str | None:
+    """Why this deployment may not be reset, or None for an explicitly marked demo.
+    A client deployment's database is that client's only copy of its data."""
+    if deployment == DEMO:
+        return None
+    return (f"this deployment is marked {deployment!r}, not 'demo'. The demo reset clears every engagement and "
+            f"repository; on a client deployment that is the client's data. Only a deployment whose .env sets "
+            f"DEPLOYMENT=demo can be reset.")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Reset client and repository data, keeping the catalog")
     parser.add_argument("--yes", action="store_true", help="Required to reset: this deletes data")
@@ -208,6 +226,13 @@ def main() -> int:
     parser.add_argument("--verify-only", action="store_true", help="Only print and check the current state")
     parser.add_argument("--preflight-only", action="store_true", help="Only check that a reset is safe now (exit 3 if not)")
     args = parser.parse_args()
+
+    # Before anything else, every mode but --verify-only (which changes nothing).
+    if not args.verify_only:
+        refusal = demo_refusal(settings.deployment)
+        if refusal:
+            print(f"REFUSED: {refusal}")
+            return 4
 
     db = SessionLocal()
     try:

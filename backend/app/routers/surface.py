@@ -15,7 +15,7 @@ from app.db import get_db
 from app.errors import ErrorResponse, error
 from app.surface import capabilities
 from app.estate.analysis import production_binding
-from app.estate import soap_compatibility, wcf_matrix
+from app.estate import engagement_matrix, soap_compatibility, wcf_matrix
 from app.routers import estate as estate_router
 from app.surface.schemas import RepositorySoapOut
 from app.surface.schemas import (
@@ -429,6 +429,8 @@ def get_repository_soap_compatibility(repository_id: uuid.UUID, db: Session = De
 
     target_wcf = engagement.target_wcf_client_version or wcf_matrix.target_wcf_client(
         wcf_matrix.load("support"), engagement.target_framework)
+    applied = engagement_matrix.overlay(db, engagement.id)
+    live = {kind: engagement_matrix.apply(kind, wcf_matrix.entries(kind), applied) for kind in wcf_matrix.KINDS}
     soap = db.query(models.OutboundInvocation).filter(models.OutboundInvocation.repository_id == repository_id,
                                                       models.OutboundInvocation.mechanism == "soap_client")
     projects = {p["projectId"]: p["projectPath"] for p in scan.project_summaries}
@@ -451,8 +453,10 @@ def get_repository_soap_compatibility(repository_id: uuid.UUID, db: Session = De
                 "securityMode": security.get("securityMode"),
                 "credentialType": "None" if security.get("securityMode") == "None" else security.get("clientCredentialType"),
                 "securitySource": security.get("securitySource"),
-                "runtime": wcf_matrix.live_verdict("support", b.get("runtimeVerdict") or "not_assessed", b.get("runtimeMatrixEntry"), target_wcf),
-                "platform": wcf_matrix.live_verdict("platform", b.get("linuxVerdict") or row.linux_verdict, b.get("platformMatrixEntry"), target_wcf),
+                "runtime": wcf_matrix.live_verdict("support", b.get("runtimeVerdict") or "not_assessed", b.get("runtimeMatrixEntry"),
+                                                   target_wcf, live["support"]),
+                "platform": wcf_matrix.live_verdict("platform", b.get("linuxVerdict") or row.linux_verdict, b.get("platformMatrixEntry"),
+                                                    target_wcf, live["platform"]),
             })
         calls.append({
             "invocationId": row.id, "projectPath": projects.get(str(row.project_id), ""),

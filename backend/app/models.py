@@ -453,6 +453,78 @@ class EngagementPattern(Base):
     )
 
 
+PROBE_OUTCOMES = ("passed", "failed", "error")
+MATRIX_KINDS = ("support", "platform")
+
+
+class EngagementProbeEvidence(Base):
+    """A WCF client matrix probe run in this engagement's (the client's)
+    environment — 29-ENTRY-POINT-AND-OUTBOUND-INVENTORIES.md C10, the probe
+    evidence boundary. Client data: it lives here, with the engagement, never in
+    a shipped matrix file. `content` is the evidence document exactly as written;
+    `sha256` is its hash then, so a changed or emptied document shows as
+    evidence missing."""
+
+    __tablename__ = "engagement_probe_evidence"
+
+    engagement_id: Mapped[str] = mapped_column(Text, ForeignKey("engagements.id"), primary_key=True)
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    scenario: Mapped[str] = mapped_column(Text, nullable=False)
+    where: Mapped[str] = mapped_column(Text, nullable=False)
+    outcome: Mapped[str] = mapped_column(Text, nullable=False)
+    error_type: Mapped[str | None] = mapped_column(Text)
+    attribution: Mapped[str | None] = mapped_column(Text)
+    # A control run (the same scenario on the Windows host, or with WCF's own Cryptography.Xml): its main probe's id.
+    control_of: Mapped[str | None] = mapped_column(Text)
+    covers: Mapped[dict | None] = mapped_column(JSONB)
+    # The shipped matrix entries (runtime and platform) it bears on.
+    matrix_entries: Mapped[list] = mapped_column(JSONB, nullable=False)
+    content: Mapped[str | None] = mapped_column(Text)
+    sha256: Mapped[str] = mapped_column(Text, nullable=False)
+    probed_on: Mapped[datetime.date] = mapped_column(Date, nullable=False)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    __table_args__ = (
+        CheckConstraint(f"outcome IN {PROBE_OUTCOMES}", name="ck_engagement_probe_evidence_outcome"),
+        Index("ix_engagement_probe_evidence_engagement_id", "engagement_id"),
+    )
+
+
+class EngagementMatrixConfirmation(Base):
+    """A person's confirmation of a shipped WCF client matrix entry, made in this
+    engagement on this engagement's probe evidence: client data, applied on top
+    of the shipped matrix the way engagement decisions overlay the catalog
+    (29 C10). One row per entry the decision names; the decision itself is
+    carried on each row (who, when, the instruction verbatim, every entry it
+    named). Never deleted: a revert sets reverted_at."""
+
+    __tablename__ = "engagement_matrix_confirmations"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    engagement_id: Mapped[str] = mapped_column(Text, ForeignKey("engagements.id"), nullable=False)
+    matrix_kind: Mapped[str] = mapped_column(Text, nullable=False)
+    entry_id: Mapped[str] = mapped_column(Text, nullable=False)
+    decision_id: Mapped[str] = mapped_column(Text, nullable=False)
+    decided_by: Mapped[str] = mapped_column(Text, nullable=False)
+    decided_on: Mapped[datetime.date] = mapped_column(Date, nullable=False)
+    instruction: Mapped[str] = mapped_column(Text, nullable=False)
+    named_entries: Mapped[list] = mapped_column(JSONB, nullable=False)
+    evidence_ids: Mapped[list] = mapped_column(JSONB, nullable=False)
+    note: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    reverted_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
+    reverted_by: Mapped[str | None] = mapped_column(Text)
+    reverted_reason: Mapped[str | None] = mapped_column(Text)
+
+    __table_args__ = (
+        CheckConstraint(f"matrix_kind IN {MATRIX_KINDS}", name="ck_engagement_matrix_confirmations_kind"),
+        CheckConstraint("named_entries ? entry_id", name="ck_engagement_matrix_confirmations_named"),
+        CheckConstraint("jsonb_array_length(evidence_ids) > 0", name="ck_engagement_matrix_confirmations_evidence"),
+        Index("uq_engagement_matrix_confirmations_active", "engagement_id", "matrix_kind", "entry_id", unique=True,
+              postgresql_where=text("reverted_at IS NULL")),
+    )
+
+
 class StepPolicy(Base):
     """One policy row, at either the global or engagement layer — see
     23-WORKFLOW-ADMINISTRATION.md Part A. `engagement_id IS NULL` means

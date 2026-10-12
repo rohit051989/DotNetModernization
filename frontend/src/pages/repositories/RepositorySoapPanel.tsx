@@ -33,16 +33,17 @@ const STYLE: Record<string, string> = {
 function Verdict({ live }: { live: SoapVerdictLive }) {
   const verdict = live.verdict ?? 'unknown'
   const label = verdict === UNDER_REVIEW ? UNDER_REVIEW_LABEL : verdict.replaceAll('_', ' ')
-  const confirmation =
-    live.matrixConfirmed === null
+  const confirmation = live.evidenceMissing
+    ? 'evidence missing'
+    : live.matrixConfirmed === null
       ? 'no matrix entry'
       : live.matrixConfirmed
-        ? `confirmed by ${live.confirmedBy ?? '?'} (${live.decision ?? 'no decision'})`
+        ? `confirmed by ${live.confirmedBy ?? '?'} (${live.decision ?? 'no decision'}${live.confirmationSource === 'engagement' ? ', this engagement' : ''})`
         : 'unconfirmed'
   return (
     <div title={live.matrixEntry ?? undefined}>
       <span className={`whitespace-nowrap rounded border px-1.5 py-0.5 text-[11px] ${STYLE[verdict] ?? STYLE.unknown}`}>{label}</span>
-      <span className={`mt-0.5 block text-[10px] ${live.matrixConfirmed ? 'text-neutral-500' : 'font-medium text-amber-700'}`}>{confirmation}</span>
+      <span className={`mt-0.5 block text-[10px] ${live.evidenceMissing ? 'font-semibold text-red-700' : live.matrixConfirmed ? 'text-neutral-500' : 'font-medium text-amber-700'}`}>{confirmation}</span>
       {live.unrevisedVerdict && <span className="block text-[10px] text-violet-800">entry says {live.unrevisedVerdict.replaceAll('_', ' ')}</span>}
       {live.evidencePredatesTarget && <span className="block text-[10px] font-medium text-amber-700">evidence older than the targeted WCF client</span>}
     </div>

@@ -17,6 +17,10 @@ class Settings(BaseSettings):
     api_port: int = 8000
     cors_origins: str = "http://localhost:5173"
     runs_dir: str = "./runs"
+    # What this deployment is. The platform ships to each client as code and that client's data
+    # lives only in its database, so the default is a client deployment. Only an explicit
+    # DEPLOYMENT=demo lets the demo reset (app.seed.reset_demo) clear engagements and repositories.
+    deployment: str = "client"
     artifact_inline_max_bytes: int = 5 * 1024 * 1024
 
     # The single machine this platform runs on (CLAUDE.md's operating model).

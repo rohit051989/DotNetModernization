@@ -28,6 +28,21 @@ What cannot be probed here is recorded as such, never guessed: Windows
 credentials on NetTcp negotiate Kerberos, and no Kerberos environment is
 available to the probe. It is an open item for onboarding (OPEN_ITEM).
 
+**Where evidence lives** (C10, the probe evidence boundary). The platform ships
+to each client as code, the matrices with it; each client's data lives only in
+that client's database. A plan declares its owner: ``"platformSample": true``
+for the platform's own sample services, or ``"engagement": "<id>"`` for a
+client's environment, and a plan that declares neither is refused.
+
+- platform samples: evidence files under probes/evidence/, shipped with the
+  matrices, and probe records appended to the matrix entries — platform
+  knowledge;
+- a client engagement: the evidence goes to the database with the engagement
+  (engagement_matrix.record_evidence), and nothing is written to a matrix file.
+  The SOAP report applies the engagement's probes, and any confirmation a
+  person makes on them (engagement_matrix.record_decision), on top of the
+  shipped matrix.
+
 Services are not started here — Start-ProbeServices.ps1 and the plan's notes.
 If no Linux container runtime is available, the probe stops and says so; it
 never simulates one.
@@ -43,16 +58,19 @@ import re
 import shutil
 import subprocess
 import sys
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 from urllib.parse import urlparse
 
-from app.estate import wcf_matrix
+from app import models
+from app.estate import engagement_matrix, wcf_matrix
 
 REPO = Path(__file__).resolve().parents[3]
 PROBE_PROJECT = REPO / "steps" / "step-003-fingerprinting" / "probes" / "WcfClientProbe"
 EVIDENCE_DIR = REPO / "steps" / "step-003-fingerprinting" / "probes" / "evidence"
 WORK_DIR = REPO / "backend" / "runs" / "probes"
+
+PLATFORM_SAMPLE = "platform-sample"
 
 # Each scenario, and the entries it bears on: the specific entries of matrices 1.1.0.
 SCENARIOS = [
@@ -203,15 +221,66 @@ def _summary(result: dict) -> str:
     return result.get("error") or "no result"
 
 
+def evidence_owner(plan: dict) -> str | None:
+    """The engagement a plan's evidence belongs to, or None for the platform's
+    own samples. A plan must say which: evidence never lands in the platform's
+    source by default."""
+    engagement, sample = plan.get("engagement"), plan.get("platformSample") is True
+    if bool(engagement) == sample:
+        raise SystemExit("the probe plan must declare its evidence owner: \"platformSample\": true for the platform's own "
+                         "sample services, or \"engagement\": \"<id>\" for a client's environment — not both, not neither")
+    return engagement or None
+
+
 def write_evidence(stamp: str, scenario: str, where: str, record: dict) -> tuple[str, str]:
-    """The evidence file is committed: this machine's repository path becomes
-    <repo>, as no committed file carries a machine path."""
+    """A platform sample's evidence file, shipped under probes/evidence/ with this
+    machine's repository path as <repo>; returns its repository path and sha256.
+    A client's evidence never comes here: it goes to the database
+    (engagement_matrix.record_evidence)."""
     EVIDENCE_DIR.mkdir(parents=True, exist_ok=True)
     path = EVIDENCE_DIR / f"{stamp}-{scenario}-{where}.json"
-    text = json.dumps(record, indent=2, sort_keys=True, ensure_ascii=False) + "\n"
+    text = json.dumps({**record, "source": PLATFORM_SAMPLE}, indent=2, sort_keys=True, ensure_ascii=False) + "\n"
     text = text.replace(json.dumps(str(REPO))[1:-1], "<repo>")
     path.write_text(text, encoding="utf-8", newline="\n")
     return path.relative_to(REPO).as_posix(), hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+class Evidence:
+    """Where one run's evidence goes: the platform's evidence folder, or the engagement's rows in the database."""
+
+    def __init__(self, engagement: str | None, stamp: str, probed_on: str):
+        self.engagement, self.stamp, self.probed_on = engagement, stamp, probed_on
+        self.db = None
+        if engagement:
+            from app.db import SessionLocal
+            self.db = SessionLocal()
+            if self.db.get(models.Engagement, engagement) is None:
+                raise SystemExit(f"no engagement {engagement!r} in this deployment's database")
+
+    def write(self, scenario: str, where: str, document: dict, result: dict, entries: list[str], package: str,
+              attribution: str | None = None, control_of: str | None = None) -> tuple[str, str]:
+        if not self.engagement:
+            return write_evidence(self.stamp, scenario, where, document)
+        evidence_id = f"{self.stamp}-{scenario}-{where}"
+        sha = engagement_matrix.record_evidence(
+            self.db, self.engagement, evidence_id, document, scenario=scenario, where=where,
+            outcome=result.get("outcome") or "error", matrix_entries=entries,
+            probed_on=date.fromisoformat(self.probed_on), error_type=_error_type(result), attribution=attribution,
+            covers=covers(result, package, "windows" if where == "windows-host" else "linux"), control_of=control_of)
+        return evidence_id, sha
+
+    def close(self, commit: bool) -> None:
+        if self.db is not None:
+            if commit:
+                self.db.commit()
+            self.db.close()
+
+
+def _error_type(result: dict) -> str | None:
+    """The exception's type alone: its message may name the client's hosts."""
+    if result.get("outcome") == "passed":
+        return None
+    return (result.get("error") or "").split(":", 1)[0].strip() or None
 
 
 def append_probes(kind: str, additions: dict[str, list[dict]]) -> None:
@@ -243,6 +312,7 @@ def main() -> None:
 
     plan_path = Path(options.plan).resolve()
     plan = json.loads(plan_path.read_text(encoding="utf-8"))
+    engagement = evidence_owner(plan)
     why_not = linux_container_runtime()
     if why_not:
         print(f"No Linux container runtime is available on this machine ({why_not}). Nothing was probed or recorded.")
@@ -261,46 +331,66 @@ def main() -> None:
     additions: dict[str, dict[str, list]] = {"support": {}, "platform": {}}
     unpinned = None
 
-    for scenario in SCENARIOS:
-        name = scenario["scenario"]
-        target = plan.get("scenarios", {}).get(name)
-        if not target or (options.only and name not in options.only):
-            continue
-        command, result = run_linux(build, image, name, target, certs)
-        evidence, sha = write_evidence(stamp, name, "linux", {
-            "scenario": name, "where": "linux-container", "image": image, "service": target.get("service"),
-            "serverThumbprint": certs["serverThumbprint"] if target.get("serverCertificate") else None,
-            "command": command, "result": result})
-        print(f"{name}: {result.get('outcome')} — {_summary(result)}")
-        record = {
-            "probedOn": probed_on, "scenario": name, "where": "linux-container", "outcome": result.get("outcome"),
-            "summary": _summary(result), "service": target.get("service"), "address": target["address"],
-            "covers": covers(result, package, "linux"),
-            "client": {"image": image, "os": result.get("os"), "framework": result.get("framework"),
-                       "wcfClient": result.get("wcfClient"), "cryptographyXml": result.get("cryptographyXml")},
-            "certificates": "files (make-certificates); no certificate store",
-            "evidence": evidence, "sha256": sha,
-        }
-        if result.get("outcome") != "passed" and not options.no_controls:
-            unpinned = unpinned or publish(WORK_DIR / "WcfClientProbe-unpinned", pin_cryptography_xml=False)
-            controls = []
-            for where, (control_command, control) in (
-                    ("linux-container-unpinned-cryptography-xml", run_linux(unpinned, image, name, target, certs)),
-                    ("windows-host", run_windows(build, name, target, certs))):
-                control_evidence, control_sha = write_evidence(stamp, name, where, {
-                    "scenario": name, "where": where, "image": image if where.startswith("linux") else None,
-                    "service": target.get("service"), "command": control_command, "result": control})
-                print(f"  control {where}: {control.get('outcome')} — {_summary(control)}")
-                controls.append({"where": where, "outcome": control.get("outcome"), "summary": _summary(control),
-                                 "os": control.get("os"), "cryptographyXml": control.get("cryptographyXml"),
-                                 "covers": covers(control, package, "windows" if where == "windows-host" else "linux"),
-                                 "evidence": control_evidence, "sha256": control_sha})
-            record["controls"] = controls
-            # Linux fails, Windows passes with the same binary: the platform's failure, not the runtime's.
-            windows = next(c for c in controls if c["where"] == "windows-host")
-            record["attribution"] = "platform" if windows["outcome"] == "passed" else "undetermined"
-        additions["support"].setdefault(scenario["support"], []).append(record)
-        additions["platform"].setdefault(scenario["platform"], []).append(record)
+    evidence = Evidence(engagement, stamp, probed_on)
+    done = False
+    try:
+        for scenario in SCENARIOS:
+            name = scenario["scenario"]
+            target = plan.get("scenarios", {}).get(name)
+            if not target or (options.only and name not in options.only):
+                continue
+            entries = [scenario["support"], scenario["platform"]]
+            command, result = run_linux(build, image, name, target, certs)
+            document = {"scenario": name, "where": "linux-container", "image": image, "service": target.get("service"),
+                        "serverThumbprint": certs["serverThumbprint"] if target.get("serverCertificate") else None,
+                        "command": command, "result": result}
+            print(f"{name}: {result.get('outcome')} — {_summary(result)}")
+            controls, attribution = [], None
+            if result.get("outcome") != "passed" and not options.no_controls:
+                unpinned = unpinned or publish(WORK_DIR / "WcfClientProbe-unpinned", pin_cryptography_xml=False)
+                for where, (control_command, control) in (
+                        ("linux-container-unpinned-cryptography-xml", run_linux(unpinned, image, name, target, certs)),
+                        ("windows-host", run_windows(build, name, target, certs))):
+                    print(f"  control {where}: {control.get('outcome')} — {_summary(control)}")
+                    controls.append((where, control_command, control))
+                # Linux fails, Windows passes with the same binary: the platform's failure, not the runtime's.
+                windows = next(c for w, _, c in controls if w == "windows-host")
+                attribution = "platform" if windows.get("outcome") == "passed" else "undetermined"
+            ref, sha = evidence.write(name, "linux", document, result, entries, package, attribution)
+            control_records = []
+            for where, control_command, control in controls:
+                control_ref, control_sha = evidence.write(
+                    name, where, {"scenario": name, "where": where, "image": image if where.startswith("linux") else None,
+                                  "service": target.get("service"), "command": control_command, "result": control},
+                    control, entries, package, control_of=f"{stamp}-{name}-linux")
+                control_records.append({"where": where, "outcome": control.get("outcome"), "summary": _summary(control),
+                                        "errorType": _error_type(control), "os": control.get("os"),
+                                        "cryptographyXml": control.get("cryptographyXml"),
+                                        "covers": covers(control, package, "windows" if where == "windows-host" else "linux"),
+                                        "evidence": control_ref, "sha256": control_sha})
+            if engagement:
+                continue  # the engagement's rows are the record: nothing goes into a matrix file
+            record = {
+                "probedOn": probed_on, "scenario": name, "where": "linux-container", "outcome": result.get("outcome"),
+                "summary": _summary(result), "errorType": _error_type(result), "service": target.get("service"),
+                "address": target["address"], "covers": covers(result, package, "linux"),
+                "client": {"image": image, "os": result.get("os"), "framework": result.get("framework"),
+                           "wcfClient": result.get("wcfClient"), "cryptographyXml": result.get("cryptographyXml")},
+                "certificates": "files (make-certificates); no certificate store",
+                "source": PLATFORM_SAMPLE, "evidence": ref, "sha256": sha,
+            }
+            if control_records:
+                record["controls"], record["attribution"] = control_records, attribution
+            additions["support"].setdefault(scenario["support"], []).append(record)
+            additions["platform"].setdefault(scenario["platform"], []).append(record)
+        done = True
+    finally:
+        evidence.close(commit=done)
+
+    if engagement:
+        print(f"Evidence stored with engagement {engagement} in this deployment's database. No matrix file was changed: "
+              f"a person confirms entries for this engagement on it (engagement_matrix.record_decision).")
+        return
 
     for item in NOT_PROBED:
         record = {"probedOn": probed_on, "outcome": "not_probed", "reason": item["reason"], "openItem": item["openItem"]}
@@ -315,3 +405,75 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+
+# ---------- the probe evidence boundary (C10) ----------
+
+ENGAGEMENT_KEYS = {"engagement", "engagement_id", "engagementId"}
+
+
+def _engagement_mentions(value, path: str = "") -> list[str]:
+    """Every place a document attributes something to an engagement."""
+    found = []
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if key in ENGAGEMENT_KEYS and item:
+                found.append(f"{path}.{key}={item}")
+            found += _engagement_mentions(item, f"{path}.{key}")
+    elif isinstance(value, list):
+        for i, item in enumerate(value):
+            found += _engagement_mentions(item, f"{path}[{i}]")
+    return found
+
+
+def evidence_boundary_violations(matrices: dict[str, dict], evidence_files: dict[str, dict]) -> list[str]:
+    """Where a client's data has crossed into what the platform ships.
+
+    - matrices (file name -> matrix) hold platform knowledge only: no probe
+      attributed to an engagement or referencing an engagement's evidence, every
+      probe a platform sample's with its evidence in the platform's folder, and
+      every confirmation resting on that evidence alone;
+    - evidence_files (repository path -> content), the platform's evidence
+      folder: nothing attributed to an engagement, and every file a platform
+      sample's that some matrix entry references."""
+    platform_folder = EVIDENCE_DIR.relative_to(REPO).as_posix() + "/"
+    problems, referenced = [], set()
+    for name, matrix in matrices.items():
+        for entry in matrix.get("entries", []):
+            for probe in entry.get("probes", []):
+                where = f"{name} {entry['id']} {probe.get('scenario') or probe.get('outcome')}"
+                if probe.get("source") not in (None, PLATFORM_SAMPLE) or "evidenceRef" in probe:
+                    problems.append(f"{where}: a client engagement's probe in a shipped matrix")
+                for mention in _engagement_mentions(probe):
+                    problems.append(f"{where}: attributed to an engagement ({mention})")
+                for record in [probe, *probe.get("controls", [])]:
+                    if record.get("evidence"):
+                        referenced.add(record["evidence"])
+                        if not record["evidence"].startswith(platform_folder):
+                            problems.append(f"{where}: evidence {record['evidence']} is outside {platform_folder}")
+            confirmation = entry.get("confirmation") or {}
+            if confirmation.get("status") == "confirmed":
+                for mention in _engagement_mentions(confirmation):
+                    problems.append(f"{name} {entry['id']}: a client's confirmation in a shipped matrix ({mention})")
+                for path in confirmation.get("evidence") or []:
+                    if not path.startswith(platform_folder):
+                        problems.append(f"{name} {entry['id']}: confirmed on evidence outside {platform_folder}: {path}")
+        for decision in matrix.get("decisions", []):
+            for mention in _engagement_mentions(decision):
+                problems.append(f"{name} decision {decision.get('id')}: attributed to an engagement ({mention})")
+    for path, content in evidence_files.items():
+        for mention in _engagement_mentions(content):
+            problems.append(f"{path}: platform evidence attributed to an engagement ({mention})")
+        if content.get("source") not in (None, PLATFORM_SAMPLE):
+            problems.append(f"{path}: source {content.get('source')!r} is not the platform's samples")
+        if path not in referenced:
+            problems.append(f"{path}: no matrix entry references it as a platform sample's evidence")
+    return problems
+
+
+def platform_files() -> tuple[dict[str, dict], dict[str, dict]]:
+    """Every matrix file, and every file in the platform's evidence folder."""
+    matrices = {p.name: json.loads(p.read_text(encoding="utf-8")) for p in sorted(wcf_matrix.MATRIX_DIR.glob("wcf-client-*-*.json"))}
+    evidence = {p.relative_to(REPO).as_posix(): json.loads(p.read_text(encoding="utf-8"))
+                for p in sorted(EVIDENCE_DIR.glob("*"))}
+    return matrices, evidence

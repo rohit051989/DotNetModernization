@@ -28,7 +28,7 @@ class ContainerRuntimeTests(unittest.TestCase):
     def test_main_stops_and_records_nothing_without_a_runtime(self):
         with tempfile.TemporaryDirectory() as tmp:
             plan = Path(tmp) / "plan.json"
-            plan.write_text(json.dumps({"scenarios": {}}), encoding="utf-8")
+            plan.write_text(json.dumps({"platformSample": True, "scenarios": {}}), encoding="utf-8")
             with mock.patch.object(wcf_probe, "linux_container_runtime", lambda: "docker is not installed"), \
                     mock.patch.object(wcf_probe, "append_probes") as append, \
                     mock.patch("sys.argv", ["wcf_probe", "--plan", str(plan)]):

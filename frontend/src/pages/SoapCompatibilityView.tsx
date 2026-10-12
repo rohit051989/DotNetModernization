@@ -41,6 +41,7 @@ function EntryFlags({ live, target }: { live: SoapEnvironment['runtime'] | SoapE
       {live.matrixConfirmed === false && live.verdict !== UNDER_REVIEW && (
         <span className="mt-0.5 block text-[10px] font-medium text-amber-700">matrix entry unconfirmed</span>
       )}
+      {live.evidenceMissing && <span className="mt-0.5 block text-[10px] font-semibold text-red-700">evidence missing</span>}
       {live.evidencePredatesTarget && (
         <span className="mt-0.5 block text-[10px] font-medium text-amber-700">
           evidence covers WCF {live.evidenceCovers?.wcfClient}, older than {target}: re-probe
@@ -65,8 +66,9 @@ function MatrixEntry({ label, live }: { label: string; live: SoapEnvironment['ru
     <p>
       <span className="text-neutral-400">{label} matrix entry: </span><span className="font-mono">{live.matrixEntry}</span>
       {live.matrixConfirmed
-        ? ` — confirmed by ${live.confirmedBy ?? '?'} on ${live.confirmedOn ?? '?'}`
+        ? ` — confirmed by ${live.confirmedBy ?? '?'} on ${live.confirmedOn ?? '?'}${live.confirmationSource === 'engagement' ? ', in this engagement on its own evidence' : ''}`
         : ' — not yet confirmed by a person'}
+      {live.evidenceMissing && <span className="block font-semibold text-red-700">evidence missing: this engagement's evidence is gone or no longer matches its hash</span>}
       {live.sources.length > 0 && <> · sources: {live.sources.join(', ')}</>}
       {live.evidenceCovers
         ? ` · evidence covers WCF client ${live.evidenceCovers.wcfClient} on .NET ${live.evidenceCovers.runtimes.join(', ')}`
@@ -80,12 +82,17 @@ function MatrixEntry({ label, live }: { label: string; live: SoapEnvironment['ru
   )
 }
 
+/** A probe's identity: its evidence path, its reference to a client engagement's evidence, or its reason. */
+function probeKey(probe: MatrixProbe): string {
+  return probe.evidence ?? (probe.evidenceRef ? `${probe.evidenceRef.engagement}/${probe.evidenceRef.id}` : probe.reason ?? '')
+}
+
 /** The probes behind an environment's two entries, once each: one probe is recorded on both. */
 function Probes({ env }: { env: SoapEnvironment }) {
   const seen = new Set<string>()
   const probes: MatrixProbe[] = []
   for (const probe of [...env.runtime.probes, ...env.platform.probes]) {
-    const key = probe.evidence ?? probe.reason ?? ''
+    const key = probeKey(probe)
     if (seen.has(key)) continue
     seen.add(key)
     probes.push(probe)
@@ -97,7 +104,7 @@ function Probes({ env }: { env: SoapEnvironment }) {
       <span className="text-neutral-400">Probes (.NET 10 client in a Linux container, against a real service):</span>
       <ul className="ml-3 list-disc">
         {probes.map((probe) => (
-          <li key={probe.evidence ?? probe.reason}>
+          <li key={probeKey(probe)}>
             {probe.outcome === 'not_probed' ? (
               <span className={PROBE_STYLE.not_probed}>
                 not probed: {probe.reason}
@@ -109,7 +116,9 @@ function Probes({ env }: { env: SoapEnvironment }) {
                 <span className={`font-medium ${PROBE_STYLE[probe.outcome] ?? ''}`}>{probe.outcome}</span>
                 {probe.attribution === 'platform' && ' (passed on Windows with the same client: a Linux failure)'} — {probe.summary}
                 <span className="block font-mono text-[10px] text-neutral-400">
-                  {probe.service} · {probe.client?.os} · {probe.client?.framework} · WCF {probe.client?.wcfClient?.split('+')[0]} · {probe.evidence}
+                  {probe.evidenceRef
+                    ? `${probe.errorType ?? ''} · WCF ${probe.covers?.wcfClient ?? '?'} on .NET ${probe.covers?.runtime ?? '?'} · evidence ${probe.evidenceRef.id}, kept with engagement ${probe.evidenceRef.engagement}`
+                    : `${probe.service} · ${probe.client?.os} · ${probe.client?.framework} · WCF ${probe.client?.wcfClient?.split('+')[0]} · ${probe.evidence}`}
                 </span>
               </>
             )}
@@ -274,6 +283,7 @@ export function SoapCompatibilityView({
           {data.matrix.evidencePredatesTarget.length > 0 && (
             <>, {data.matrix.evidencePredatesTarget.length} rest on evidence older than WCF client {data.matrix.targetWcfClientVersion}</>
           )}
+          {data.matrix.evidenceMissingEntries.length > 0 && <>, {data.matrix.evidenceMissingEntries.length} rest on evidence that is missing</>}
           {Object.keys(data.matrix.newerMatrices).length > 0 && <>, and this run used an older matrix than the newest: rescan</>}.
           Review each with its probe results, then confirm or revise it in{' '}
           <span className="font-mono">steps/step-003-fingerprinting/schemas/wcf-client-support-{data.matrix.version}.json</span> or{' '}
@@ -281,6 +291,9 @@ export function SoapCompatibilityView({
           <span className="mt-1 block font-mono text-[10px] text-amber-800">{data.matrix.unconfirmedEntries.join(' · ')}</span>
           {data.matrix.contradictedEntries.length > 0 && (
             <span className="mt-1 block font-mono text-[10px] text-violet-800">{UNDER_REVIEW_LABEL}: {data.matrix.contradictedEntries.join(' · ')}</span>
+          )}
+          {data.matrix.evidenceMissingEntries.length > 0 && (
+            <span className="mt-1 block font-mono text-[10px] text-red-700">evidence missing: {data.matrix.evidenceMissingEntries.join(' · ')}</span>
           )}
           {data.matrix.evidencePredatesTarget.length > 0 && (
             <span className="mt-1 block font-mono text-[10px] text-amber-800">re-probe: {data.matrix.evidencePredatesTarget.join(' · ')}</span>

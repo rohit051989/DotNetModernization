@@ -363,6 +363,9 @@ export interface SoapVerdictLive {
   confirmedOn: string | null
   /** The recorded decision that authorised the confirmation. */
   decision: string | null
+  confirmationSource: 'shipped' | 'engagement' | null
+  /** This engagement's evidence for the confirmation or a probe is gone or changed. */
+  evidenceMissing: boolean
   probeContradictions: string[]
   evidenceCovers: { wcfClient: string; runtimes: string[]; probes: number } | null
   evidencePredatesTarget: boolean

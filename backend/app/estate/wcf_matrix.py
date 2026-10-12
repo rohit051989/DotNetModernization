@@ -200,12 +200,15 @@ def confirmation_violations(matrix: dict) -> list[str]:
 UNDER_REVIEW = "under_review"
 
 
-def live_verdict(kind: str, verdict: str | None, entry_id: str | None, target_wcf_client: str | None) -> dict:
+def live_verdict(kind: str, verdict: str | None, entry_id: str | None, target_wcf_client: str | None,
+                 entries_of_kind: dict[str, dict] | None = None) -> dict:
     """One verdict as a scan recorded it, with what is live in the newest
     matrix: the entry's confirmation and the decision behind it, the probe
     evidence and what it covers, and — when a probe contradicts the entry —
-    UNDER_REVIEW in place of the verdict, the unrevised one kept apart."""
-    entry = entries(kind).get(entry_id or "")
+    UNDER_REVIEW in place of the verdict, the unrevised one kept apart.
+    entries_of_kind: the shipped entries with an engagement's overlay applied
+    (engagement_matrix.apply); the shipped entries alone when not given."""
+    entry = (entries_of_kind if entries_of_kind is not None else entries(kind)).get(entry_id or "")
     confirmation = (entry or {}).get("confirmation") or {}
     contradictions = probe_contradictions(kind, entry) if entry else []
     return {
@@ -216,6 +219,9 @@ def live_verdict(kind: str, verdict: str | None, entry_id: str | None, target_wc
         "confirmedBy": confirmation.get("by"),
         "confirmedOn": confirmation.get("on"),
         "decision": confirmation.get("decision"),
+        "confirmationSource": ("engagement" if isinstance(confirmation.get("source"), dict) else "shipped") if entry else None,
+        "evidenceMissing": bool(confirmation.get("evidenceMissing"))
+                           or any(p.get("evidenceMissing") for p in (entry or {}).get("probes", [])),
         "probeContradictions": contradictions,
         "evidenceCovers": evidence_covers(entry) if entry else None,
         "evidencePredatesTarget": evidence_predates(entry, target_wcf_client) if entry else False,

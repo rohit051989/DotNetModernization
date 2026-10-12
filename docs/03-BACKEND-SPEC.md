@@ -472,7 +472,11 @@ Export shape:
 `python -m app.seed` must be idempotent — safe to run repeatedly. Upsert by id.
 It never deletes. There is one reset path, `scripts/reset-demo.ps1`
 (`app/seed/reset_demo.py`): it clears engagements, repositories, scan output and
-workflow history and keeps the catalog. The seed's former `--reset` flag, which
+workflow history and keeps the catalog. **It runs only on a deployment explicitly
+marked as a demo** (`DEPLOYMENT=demo` in `.env`). The platform ships to each client as
+code, and a client's data lives only in that client's database, so the default
+deployment is `client`, and the reset refuses there (exit 4) before it opens the
+database. That covers `-Yes`, `-Force` and the preflight alike. The seed's former `--reset` flag, which
 truncated with CASCADE and so also wiped repositories and global step policies,
 was removed so the two cannot be confused. The seed creates no engagements or
 decision records: those are client data (CLAUDE.md rule 6). The seed

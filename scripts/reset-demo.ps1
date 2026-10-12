@@ -14,6 +14,11 @@
     policies, catalog_revisions, and the legacy patterns and
     target_state_options.
 
+    Refuses to run unless the deployment is explicitly a demo: DEPLOYMENT=demo
+    in backend\.env. The default deployment is a client's, whose database is the
+    only copy of that client's data; there the reset refuses before it touches
+    anything (exit 4).
+
     Refuses to run while a workflow job is in flight or another database
     session holds an open transaction (uvicorn mid-request, for instance).
     Warns if uvicorn is listening. Stopping uvicorn first is the safe default.

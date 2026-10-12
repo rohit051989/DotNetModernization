@@ -322,6 +322,12 @@ export interface MatrixProbe {
   address?: string
   client?: { image: string; os: string; framework: string; wcfClient: string; cryptographyXml: string | null }
   covers?: ProbeCovers
+  /** 'platform-sample', or the client engagement whose environment it ran in (29 C10, the evidence boundary). */
+  source?: 'platform-sample' | { engagement: string }
+  /** A client engagement's evidence, kept with that engagement: the entry holds only this reference. */
+  evidenceRef?: { engagement: string; id: string }
+  /** The exception's type alone: what a client engagement's probe keeps of a failure. */
+  errorType?: string
   /** not_probed: what it would take, and who. */
   openItem?: string
   evidence?: string
@@ -348,6 +354,10 @@ interface MatrixEntryLive {
   evidencePredatesTarget: boolean
   /** Set when the verdict reads under_review: the entry's own verdict, for the reviewer. */
   unrevisedVerdict?: string
+  /** 'shipped': the platform's matrix; 'engagement': this client's own confirmation on its own evidence (29 C10). */
+  confirmationSource: 'shipped' | 'engagement' | null
+  /** This engagement's evidence for the confirmation or a probe is gone or no longer matches its hash. */
+  evidenceMissing: boolean
 }
 
 export interface SoapEnvironment {
@@ -426,6 +436,8 @@ export interface SoapCompatibilityArtifact {
     evidencePredatesTarget: string[]
     /** Entries no probe has run against (not probed counts). */
     unprobedEntries: string[]
+    /** Entries whose engagement evidence is gone or changed: the report is not ready. */
+    evidenceMissingEntries: string[]
     entries: Record<string, {
       kind: 'support' | 'platform'
       verdict: string

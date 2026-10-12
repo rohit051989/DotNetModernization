@@ -286,6 +286,9 @@ class SoapVerdictLiveOut(BaseModel):
     confirmedBy: str | None
     confirmedOn: str | None
     decision: str | None = Field(description="The recorded decision that authorised the confirmation.")
+    confirmationSource: str | None = Field(description="'shipped': the platform's matrix; 'engagement': this client's own "
+                                                       "confirmation on its own evidence (29 C10).")
+    evidenceMissing: bool = Field(description="This engagement's evidence for the confirmation or a probe is gone or changed.")
     probeContradictions: list[str]
     evidenceCovers: dict[str, Any] | None
     evidencePredatesTarget: bool

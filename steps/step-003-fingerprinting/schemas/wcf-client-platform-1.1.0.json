@@ -164,7 +164,8 @@
             "wcfClient": "8.1.2",
             "runtime": "10.0.12",
             "os": "linux"
-          }
+          },
+          "source": "platform-sample"
         },
         {
           "probedOn": "2026-10-12",
@@ -188,7 +189,8 @@
           },
           "certificates": "files (make-certificates); no certificate store",
           "evidence": "steps/step-003-fingerprinting/probes/evidence/20261012T151625Z-basicHttp-None-None-linux.json",
-          "sha256": "63b9c30603bde0e846318140c7f2340f904076f32f74740f2a79718d214fd07c"
+          "sha256": "63b9c30603bde0e846318140c7f2340f904076f32f74740f2a79718d214fd07c",
+          "source": "platform-sample"
         }
       ],
       "confirmation": {
@@ -239,7 +241,8 @@
             "wcfClient": "8.1.2",
             "runtime": "10.0.12",
             "os": "linux"
-          }
+          },
+          "source": "platform-sample"
         },
         {
           "probedOn": "2026-10-12",
@@ -263,7 +266,8 @@
           },
           "certificates": "files (make-certificates); no certificate store",
           "evidence": "steps/step-003-fingerprinting/probes/evidence/20261012T151732Z-basicHttp-Transport-None-linux.json",
-          "sha256": "948b493ade3016d0460fa6053595d1ea7b5c6bd90ec6ba488d4fee2595c3de61"
+          "sha256": "948b493ade3016d0460fa6053595d1ea7b5c6bd90ec6ba488d4fee2595c3de61",
+          "source": "platform-sample"
         }
       ],
       "confirmation": {
@@ -703,7 +707,8 @@
             "wcfClient": "8.1.2",
             "runtime": "10.0.12",
             "os": "linux"
-          }
+          },
+          "source": "platform-sample"
         },
         {
           "probedOn": "2026-10-12",
@@ -727,7 +732,8 @@
           },
           "certificates": "files (make-certificates); no certificate store",
           "evidence": "steps/step-003-fingerprinting/probes/evidence/20261012T151625Z-netTcp-Transport-Certificate-linux.json",
-          "sha256": "2e75f2c32610d4c9d5615a6c404ea53e05ca480a2f8b383fc6ee4122c3f43745"
+          "sha256": "2e75f2c32610d4c9d5615a6c404ea53e05ca480a2f8b383fc6ee4122c3f43745",
+          "source": "platform-sample"
         }
       ],
       "confirmation": {
@@ -778,7 +784,8 @@
             "wcfClient": "8.1.2",
             "runtime": "10.0.12",
             "os": "linux"
-          }
+          },
+          "source": "platform-sample"
         },
         {
           "probedOn": "2026-10-12",
@@ -802,7 +809,8 @@
           },
           "certificates": "files (make-certificates); no certificate store",
           "evidence": "steps/step-003-fingerprinting/probes/evidence/20261012T151625Z-netTcp-Transport-None-linux.json",
-          "sha256": "9606f7be457d3a7f6ab3888b360cf4f0087d25305589b2f382fc75302ff87552"
+          "sha256": "9606f7be457d3a7f6ab3888b360cf4f0087d25305589b2f382fc75302ff87552",
+          "source": "platform-sample"
         }
       ],
       "confirmation": {
@@ -1272,7 +1280,8 @@
             "wcfClient": "8.1.2",
             "runtime": "10.0.12",
             "os": "linux"
-          }
+          },
+          "source": "platform-sample"
         },
         {
           "probedOn": "2026-10-12",
@@ -1327,7 +1336,8 @@
               "sha256": "35aa2c4aebfb6c6b53a03cf04905549cdbc50258c2ccbf032b323c4bb1bd31d3"
             }
           ],
-          "attribution": "platform"
+          "attribution": "platform",
+          "source": "platform-sample"
         }
       ],
       "confirmation": {
