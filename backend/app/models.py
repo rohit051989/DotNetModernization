@@ -347,6 +347,10 @@ class Engagement(Base):
     # Step 11 (31-DEPENDENCY-AND-CONTEXT-MAP Part C1): the environment whose host names a
     # service in the endpoint register. Null: group by the host as found.
     production_environment: Mapped[str | None] = mapped_column(Text)
+    # 29-ENTRY-POINT-AND-OUTBOUND-INVENTORIES C11: the WCF client package version (System.ServiceModel.*) the
+    # engagement targets; the SOAP report flags probe evidence older than it. Null: the version the WCF client
+    # matrices record for target_framework.
+    target_wcf_client_version: Mapped[str | None] = mapped_column(Text)
     # Step 5 (29-ENTRY-POINT-AND-OUTBOUND-INVENTORIES Part C9, 1.3.0): globs for Web Deploy SetParameters
     # files. Null means **/SetParam*.xml and **/SetParameters*.xml.
     deploy_parameter_globs: Mapped[list | None] = mapped_column(JSONB)
@@ -1819,6 +1823,8 @@ OUTBOUND_MECHANISM = (
     "cache", "secret_store", "file_share", "smtp", "ldap",
 )
 LINUX_VERDICT = ("incompatible", "requires_change", "unknown", "compatible")
+# 1.4.0: the WCF client runtime verdict of a SOAP client, worst first.
+RUNTIME_VERDICT = ("unsupported", "unknown", "supported_with_caveat", "supported")
 ENDPOINT_RESOLUTION = ("resolved", "partial", "unresolved")
 OUTBOUND_USAGE = ("used", "unused")
 
@@ -1872,6 +1878,12 @@ class OutboundInvocation(Base):
     auth_declared: Mapped[str | None] = mapped_column(Text)
     linux_verdict: Mapped[str] = mapped_column(Text, nullable=False)
     linux_reasons: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    # 1.4.0, SOAP clients only: does the target .NET's WCF client support the
+    # binding, security mode and credential type — the worst environment's
+    # verdict (each binding in environment_bindings has its own), from the
+    # WCF client support matrix (29-ENTRY-POINT-AND-OUTBOUND-INVENTORIES C10).
+    runtime_verdict: Mapped[str | None] = mapped_column(Text)
+    runtime_reasons: Mapped[list | None] = mapped_column(JSONB)
     confidence: Mapped[float] = mapped_column(Numeric(3, 2), nullable=False)
     confidence_reasons: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
     step_execution_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
@@ -1880,6 +1892,7 @@ class OutboundInvocation(Base):
     __table_args__ = (
         CheckConstraint(f"mechanism IN {OUTBOUND_MECHANISM}", name="ck_outbound_invocations_mechanism"),
         CheckConstraint(f"linux_verdict IN {LINUX_VERDICT}", name="ck_outbound_invocations_linux_verdict"),
+        CheckConstraint(f"runtime_verdict IS NULL OR runtime_verdict IN {RUNTIME_VERDICT}", name="ck_outbound_invocations_runtime_verdict"),
         CheckConstraint(f"resolution IN {ENDPOINT_RESOLUTION}", name="ck_outbound_invocations_resolution"),
         CheckConstraint(f"auth_declared IS NULL OR auth_declared IN {AUTH_DECLARED}", name="ck_outbound_invocations_auth_declared"),
         CheckConstraint("confidence >= 0 AND confidence <= 1", name="ck_outbound_invocations_confidence"),
@@ -2585,3 +2598,150 @@ class ImpactRuleConflict(Base):
         UniqueConstraint("engagement_id", "rule_key", name="uq_impact_rule_conflicts_key"),
     )
 
+
+# ---------- Conversion: recipes, plans and units (34-CONVERSION-ARCHITECTURE.md C1, C4, E, F) ----------
+#
+# The minimum of document 34's model, proven on a version bump. Recipes are
+# client-agnostic: which approaches carry out a resolution. Plans and units
+# are engagement data: one repository's conversion, unit by unit, each with
+# its commit and its evidence.
+
+RECIPE_STATUS = ("draft", "certified", "active", "deprecated")
+TARGET_LAYOUT = ("in_place", "side_by_side")
+AUTOMATION_CLASS = ("deterministic", "assisted", "manual")
+# `partial`: every unit was tried or stood down, and some failed, are blocked,
+# or wait for assisted work. `stopped`: what invalidates every unit — a failed
+# baseline, or a change to the checked-out working tree (Part E).
+PLAN_STATUS = ("planned", "running", "completed", "partial", "stopped")
+# Part C4's statuses, plus `blocked`: a unit that depends, transitively, on one
+# that failed or has not been done, so it was not applied (Part E, "Failure
+# policy"). `excluded` is history: the first proof's plan, before the policy
+# that nobody excludes a unit; nothing sets it now.
+UNIT_STATUS = ("planned", "applied", "verified", "committed", "not_applicable", "failed", "blocked", "stale",
+               "awaiting_review", "awaiting_human", "excluded")
+
+
+class ConversionRecipe(Base):
+    """C1: the ordered approaches that carry out one resolution. A plain item
+    converts as a one-step recipe wrapping its approach."""
+
+    __tablename__ = "conversion_recipes"
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    version: Mapped[str] = mapped_column(Text, nullable=False)
+    item_id: Mapped[str] = mapped_column(Text, ForeignKey("catalog_items.id"), nullable=False)
+    resolution_id: Mapped[str] = mapped_column(Text, ForeignKey("item_resolutions.id"), nullable=False)
+    supported_layouts: Mapped[list] = mapped_column(JSONB, nullable=False)
+    blockers: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default="draft")
+    owner_team: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    __table_args__ = (
+        CheckConstraint(f"status IN {RECIPE_STATUS}", name="ck_conversion_recipes_status"),
+        Index("uq_conversion_recipes_active", "item_id", "resolution_id", unique=True, postgresql_where=text("status = 'active'")),
+    )
+
+
+class ConversionRecipeStep(Base):
+    """C1: one step of a recipe — the approach that does the work, what it
+    iterates over, and its automation class (Part F), which every unit
+    inherits. Approaches are code (app/conversion/approaches.py), named by id
+    and version; the approach registry of 28 Part J is not built."""
+
+    __tablename__ = "conversion_recipe_steps"
+
+    recipe_id: Mapped[str] = mapped_column(Text, ForeignKey("conversion_recipes.id", ondelete="CASCADE"), primary_key=True)
+    step_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    phase: Mapped[str] = mapped_column(Text, nullable=False)
+    approach_id: Mapped[str] = mapped_column(Text, nullable=False)
+    approach_version: Mapped[str] = mapped_column(Text, nullable=False)
+    automation_class: Mapped[str] = mapped_column(Text, nullable=False)
+    targets: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    depends_on: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    optional_when: Mapped[str | None] = mapped_column(Text)
+
+    __table_args__ = (
+        CheckConstraint("phase IN ('foundation', 'slice')", name="ck_conversion_recipe_steps_phase"),
+        CheckConstraint(f"automation_class IN {AUTOMATION_CLASS}", name="ck_conversion_recipe_steps_automation_class"),
+    )
+
+
+class ConversionPlan(Base):
+    """C4: one repository's conversion — the recipes expanded into units, the
+    legacy commit they start from, the layout, and the baseline that is the
+    precondition for every unit (Part E)."""
+
+    __tablename__ = "conversion_plans"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid())
+    repository_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("repositories.id", ondelete="CASCADE"), nullable=False)
+    engagement_id: Mapped[str] = mapped_column(Text, ForeignKey("engagements.id", ondelete="CASCADE"), nullable=False)
+    legacy_commit: Mapped[str] = mapped_column(Text, nullable=False)
+    target_layout: Mapped[str] = mapped_column(Text, nullable=False)
+    target_framework: Mapped[str] = mapped_column(Text, nullable=False)
+    # [{id, version}]
+    recipes: Mapped[list] = mapped_column(JSONB, nullable=False)
+    # What the plan leaves out and why: [{package_id, reason}].
+    exclusions: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    # The ordering decision, recorded with the plan: why units sit where they do.
+    ordering: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    branch: Mapped[str] = mapped_column(Text, nullable=False)
+    worktree_path: Mapped[str] = mapped_column(Text, nullable=False)
+    # The baseline result record (Part E): build and tests at the legacy
+    # commit, each with its evidence path and sha256. Null until it has run.
+    baseline: Mapped[dict | None] = mapped_column(JSONB)
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default="planned")
+    status_reason: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    approved_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        CheckConstraint(f"target_layout IN {TARGET_LAYOUT}", name="ck_conversion_plans_target_layout"),
+        CheckConstraint(f"status IN {PLAN_STATUS}", name="ck_conversion_plans_status"),
+        Index("ix_conversion_plans_repository_id", "repository_id"),
+    )
+
+
+class ConversionUnit(Base):
+    """C4: one unit of a plan — a recipe step applied to one target, in a
+    total order. Committed only after its checks, build and tests pass in a
+    scratch worktree (Part E); `evidence` holds result records, each naming
+    its evidence file and that file's sha256, so a claim is never evidence."""
+
+    __tablename__ = "conversion_units"
+
+    unit_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    plan_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("conversion_plans.id", ondelete="CASCADE"), nullable=False)
+    slice_id: Mapped[str] = mapped_column(Text, nullable=False, server_default="foundation")
+    recipe_id: Mapped[str] = mapped_column(Text, ForeignKey("conversion_recipes.id"), nullable=False)
+    step_id: Mapped[str] = mapped_column(Text, nullable=False)
+    approach_id: Mapped[str] = mapped_column(Text, nullable=False)
+    approach_version: Mapped[str] = mapped_column(Text, nullable=False)
+    occurrence_ids: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    # What the approach edits: for a package, its id, versions, project and
+    # declaration; for a retarget, the framework declarations.
+    target: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    sequence: Mapped[int] = mapped_column(Integer, nullable=False)
+    order_reason: Mapped[str] = mapped_column(Text, nullable=False)
+    # The units this one needs committed first, each with why:
+    # [{sequence, reason}]. Always earlier in `sequence`. A failure blocks
+    # exactly the units that depend on it, transitively (Part E).
+    depends_on: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    automation_class: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default="planned")
+    status_reason: Mapped[str | None] = mapped_column(Text)
+    commit_sha: Mapped[str | None] = mapped_column(Text)
+    execution_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    evidence: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    started_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        CheckConstraint(f"automation_class IN {AUTOMATION_CLASS}", name="ck_conversion_units_automation_class"),
+        CheckConstraint(f"status IN {UNIT_STATUS}", name="ck_conversion_units_status"),
+        CheckConstraint("status <> 'committed' OR commit_sha IS NOT NULL", name="ck_conversion_units_committed_has_commit"),
+        UniqueConstraint("plan_id", "sequence", name="uq_conversion_units_sequence"),
+    )

@@ -479,4 +479,66 @@ entries grouped by action, and the pending note. The repository page's Impact se
 the summary, hotspots and conflicts naming their work items, the work item list with the
 side-by-side and expandable file lists, and a filterable per-file view.
 
+**Calibration against a hand analysis** (`backend/app/impact/calibration.py`). The rules are
+measured against an oracle: `sampleapps/WCF/MODERNIZATION-NET10-REST.md` (sections 6–8),
+encoded file by file in `backend/tests/fixtures/impact_oracle/wcf-net10-rest.yaml` with the
+scenario's decisions. `impact-analysis` runs in its standalone mode on frozen inputs (the
+WCF repository's upstream artifacts and integration edges, beside the oracle) with the
+rules from the catalog export; client impact is added from the frozen edges as
+`dependency-and-context-map` adds it. Actions fold to the oracle's words (delete, change,
+new).
+
+- **Review is an abstention**: never found, never claimed, never agreement. Recall counts
+  the oracle's files impact-analysis claims; precision, of the files it claims, those the
+  oracle lists; the review rate, the files it only reviews among all it lists, is held under
+  a ceiling so a rule cannot gain by reviewing.
+- **Every disagreement is classified** in the oracle — `rule_missing`, `rule_wrong`,
+  `oracle_wrong`, `scope`, `vocabulary` — and **tagged with the work expected to resolve
+  it**: `reachability-analysis`, a supporting item or recipe of
+  `35-RECIPE-WCF-SERVICE-REST.md` (`supporting-item:<id>`, `recipe:<id>`), or `out-of-scope`.
+  The report projects recall per tag, so each discovery pick's effect is measured as it
+  lands. Recall in scope leaves out the files tagged `out-of-scope`.
+- `tests/test_impact_calibration.py` holds recall, recall in scope and precision to the
+  floors and the review rate to the ceiling recorded in the oracle, and fails on an
+  unclassified or untagged disagreement.
+
+| | Recall | Precision | Review |
+|---|---|---|---|
+| Before calibration | 27/68 = 39.7% | 27/45 = 60.0% | — |
+| First calibration (rules) | 32/68 = 47.1% | 32/37 = 86.5% | 13 = 26.0% |
+| `deploy_parameter_files`, `hosting_project` | **43/70 = 61.4%** (in scope 43/67 = 64.2%) | **43/44 = 97.7%** | 13 = 22.8% |
+
+The oracle grew from 68 to 70 files when the hand analysis was corrected (Reference.cs settled
+as deleted, its regenerated proxy listed as new). Remaining disagreements by the work
+expected to resolve them, with recall if each landed: `supporting-item:wcf-service-reference`
+9 (74.3%), `supporting-item:dead-code` 5, `recipe:wcf-client-to-rest` 3,
+`reachability-analysis` 2, `supporting-item:configmanager-appsettings-read` 2,
+`supporting-item:wcf-security-context-read` 2, `supporting-item:webdeploy-parameters` 1,
+`out-of-scope` 3.
+
+Calibration corrected `wcf-service` → REST rewrite (service classes and contract interfaces
+are updated and kept; data contracts are review; the contracts project and a fault exception
+type beside the contracts are added; controllers and the fault filter are created in the
+project hosting each contract) and `wcf-service-host` → ASP.NET Core web host (`App.config`,
+`Parameters.xml` and the Web Deploy SetParam files deleted; `appsettings.json`, one
+`appsettings.{Environment}.json` per SetParam environment and a launch profile created).
+
+Engine additions it brought:
+
+- `project_files` — files in the work item's project matching a name;
+- `hosting_project` — the project hosting a contract, from entry-point-inventory's
+  `HOSTS_WCF_SERVICE` link, nearest copy where copies of a codebase host one contract name;
+- `deploy_parameter_files` — the SetParam / SetParameters files outbound-invocation-inventory
+  found for a project, with their environment (LOCAL becomes ASP.NET Core's Development).
+  `outbound-invocation-inventory` ^1.3.0 is a fifth required input (step 2.2.0,
+  `phase0-repository-discovery` v15);
+- placeholders `{node.project.dir}`, `{node.environment}` and `{type.resource}` (IOrderService
+  → Orders);
+- action `none`, for a traversal later rules build on and that touches nothing itself.
+
+The host's deletion of the SetParam files collides with `hardcoded-windows-path` and
+`unqualified-hostname`, which edit them: a conversion ordering constraint
+(`28-ITEM-AND-CONVERSION-MODEL.md`, conversion ordering). On one application the pair is a
+work-item conflict; recurring across the estate it is one catalog rule conflict.
+
 **Not built.** The LLM residue (Part H).

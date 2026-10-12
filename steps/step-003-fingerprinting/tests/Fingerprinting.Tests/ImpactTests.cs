@@ -431,6 +431,94 @@ public sealed class ImpactTests : IDisposable
     }
 
     [Fact]
+    public async Task ProjectFiles_MatchByNameWithinTheProject_AndCreatesCanFollowTheNodesProject()
+    {
+        Write("src/Services/App.config", "<configuration />");
+        Write("src/Services/Sub/App.config", "<configuration />");
+        Write("src/Web/App.config", "<configuration />");   // another project: not reached
+        var rules = Rules("""
+            [
+              {"id": "impl", "from": "seed", "select": "self", "action": "update"},
+              {"id": "app-config", "from": "seed", "traverse": "project_files", "pattern": "App.config", "action": "delete"},
+              {"id": "contracts", "from": "impl", "traverse": "implemented_interfaces", "action": "update"},
+              {"id": "fault", "create": "Fault type", "for_each": "contracts", "proposed_path": "{node.project.dir}/Faults/ServiceFault.cs", "action": "create"}
+            ]
+            """);
+        var input = Input(new Dictionary<string, string>(), [new ResolutionInfo("only", "Only", true, "none", rules)]) with
+        {
+            Projects = new ProjectMap(new Dictionary<string, string>
+            {
+                ["src/Services/Services.csproj"] = "src/Services", ["src/Contracts/Contracts.csproj"] = "src/Contracts",
+                ["src/Web/Web.csproj"] = "src/Web",
+            }),
+        };
+        var only = Resolution(await Run(input), "only");
+        Assert.Equal(Actions.Delete, Entry(only, "src/Services/App.config").Action);
+        Assert.DoesNotContain(only.Entries, e => e.FilePath is "src/Services/Sub/App.config" or "src/Web/App.config");
+        Assert.Equal(Actions.Create, Entry(only, "src/Contracts/Faults/ServiceFault.cs").Action);
+    }
+
+    [Fact]
+    public async Task HostingProject_PlacesCreatesInTheHost_AndNoneRecordsNothing()
+    {
+        Write("src/Host/Host.csproj", "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+        var rules = Rules("""
+            [
+              {"id": "impl", "from": "seed", "select": "self", "action": "update"},
+              {"id": "contracts", "from": "impl", "traverse": "implemented_interfaces", "filter": {"has_attribute": "ServiceContract"}, "action": "update"},
+              {"id": "hosts", "from": "contracts", "traverse": "hosting_project", "action": "none"},
+              {"id": "controllers", "create": "Controller", "for_each": "hosts", "proposed_path": "{node.project.dir}/Controllers/{type.resource}Controller.cs", "action": "create"},
+              {"id": "filter", "create": "Fault filter", "for_each": "hosts", "proposed_path": "{node.project.dir}/Errors/ServiceFaultExceptionFilter.cs", "action": "create"}
+            ]
+            """);
+        var input = Input(new Dictionary<string, string>(), [new ResolutionInfo("only", "Only", true, "none", rules)]) with
+        {
+            Projects = new ProjectMap(new Dictionary<string, string>
+            {
+                ["src/Services/Services.csproj"] = "src/Services", ["src/Contracts/Contracts.csproj"] = "src/Contracts",
+                ["src/Host/Host.csproj"] = "src/Host",
+            }),
+            HostLinks =
+            [
+                new HostLink("src/Host/Host.csproj", "IOrderService"), new HostLink("src/Other/Other.csproj", "IUnrelated"),
+                // Another copy of the codebase hosting a contract of the same name: not this contract's host.
+                new HostLink("copy/src/Host/Host.csproj", "IOrderService"),
+            ],
+        };
+        var only = Resolution(await Run(input), "only");
+        Assert.Equal(Actions.Create, Entry(only, "src/Host/Controllers/OrdersController.cs").Action);
+        Assert.Equal(Actions.Create, Entry(only, "src/Host/Errors/ServiceFaultExceptionFilter.cs").Action);
+        Assert.DoesNotContain(only.Entries, e => e.FilePath == "src/Host/Host.csproj");   // none: the host project itself is not touched
+        Assert.DoesNotContain(only.Entries, e => (e.ProposedPath ?? "").StartsWith("copy/", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task DeployParameterFiles_AreReachedPerProject_WithTheirEnvironment()
+    {
+        Write("deploy/DEV/SetParam.xml", "<parameters />");
+        Write("deploy/LOCAL/SetParam.xml", "<parameters />");
+        var rules = Rules("""
+            [
+              {"id": "params", "from": "seed", "traverse": "deploy_parameter_files", "action": "delete"},
+              {"id": "settings", "create": "Settings", "for_each": "params", "proposed_path": "{project.dir}/appsettings.{node.environment}.json", "action": "create"}
+            ]
+            """);
+        var input = Input(new Dictionary<string, string>(), [new ResolutionInfo("only", "Only", true, "none", rules)]) with
+        {
+            DeployFiles =
+            [
+                new DeployFile("src/Services/Services.csproj", "deploy/DEV/SetParam.xml", "DEV"),
+                new DeployFile("src/Services/Services.csproj", "deploy/LOCAL/SetParam.xml", "LOCAL"),
+                new DeployFile("src/Elsewhere/Elsewhere.csproj", "elsewhere/SetParam.xml", "PROD"),
+            ],
+        };
+        var only = Resolution(await Run(input), "only");
+        Assert.Equal(
+            ["deploy/DEV/SetParam.xml", "deploy/LOCAL/SetParam.xml", "src/Services/appsettings.DEV.json", "src/Services/appsettings.Development.json"],
+            only.Entries.Select(e => e.FilePath ?? e.ProposedPath));
+    }
+
+    [Fact]
     public async Task Review_IsCountedApart_NeverAsAChange()
     {
         var core = Resolution(await Run(Input(new Dictionary<string, string>())), "corewcf");

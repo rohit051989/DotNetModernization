@@ -11,6 +11,7 @@ from app.config import settings
 from app.routers import (
     catalog,
     catalog_items,
+    conversion,
     dashboard,
     decisions,
     estate,
@@ -322,3 +323,4 @@ app.include_router(dashboard.router)
 app.include_router(estate.router)
 app.include_router(test_coverage.router)
 app.include_router(impact.router)
+app.include_router(conversion.router)

@@ -1,0 +1,43 @@
+{
+  "command": [
+    "docker",
+    "run",
+    "--rm",
+    "-v",
+    "<repo>\\backend\\runs\\probes\\WcfClientProbe:/probe:ro",
+    "-v",
+    "<repo>\\backend\\runs\\probes\\certs:/certs:ro",
+    "-e",
+    "PROBE_PFX_PASSWORD",
+    "mcr.microsoft.com/dotnet/runtime@sha256:b89586dc17781f25531909993658aa8161205ae38b8cec8847df4a8221a403d5",
+    "dotnet",
+    "/probe/WcfClientProbe.dll",
+    "netTcp-Transport-Certificate",
+    "net.tcp://localhost:8202/Account",
+    "--server-thumbprint",
+    "3625CD93B87C30D2D7F780B528C016569F220299",
+    "--client-pfx",
+    "/certs/client.pfx",
+    "--client-pfx-password-env",
+    "PROBE_PFX_PASSWORD",
+    "--relay",
+    "8202"
+  ],
+  "image": "mcr.microsoft.com/dotnet/runtime@sha256:b89586dc17781f25531909993658aa8161205ae38b8cec8847df4a8221a403d5",
+  "result": {
+    "address": "net.tcp://localhost:8202/Account",
+    "cryptographyXml": "10.0.12+95017c711e6afc1085133d440e42b4bd78155701",
+    "durationMs": 587,
+    "framework": ".NET 10.0.12",
+    "operation": "IAccountService.GetAccount(CUST-001)",
+    "os": "Ubuntu 24.04.5 LTS",
+    "outcome": "passed",
+    "response": "CUST-001 Ada Lovelace",
+    "scenario": "netTcp-Transport-Certificate",
+    "wcfClient": "8.1.2+a47960f931a813617a061adc2ba9cabe1816a551"
+  },
+  "scenario": "netTcp-Transport-Certificate",
+  "serverThumbprint": "3625CD93B87C30D2D7F780B528C016569F220299",
+  "service": "WCF sample AccountService, Catalog.Host binding, mutual TLS (ProbeServices)",
+  "where": "linux-container"
+}

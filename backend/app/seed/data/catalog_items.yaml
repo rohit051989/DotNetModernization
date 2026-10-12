@@ -76,7 +76,10 @@ items:
 
       Conversion ordering (docs/28 Part E): runs AFTER serilog-file-sink, whose
       removal takes the sink's path with it; its occurrences here are then gone
-      rather than externalised. Becomes a depends_on entry.
+      rather than externalised. Becomes a depends_on entry. Also runs AFTER
+      wcf-service-host's move to an ASP.NET Core web host where that applies:
+      a path in a Web Deploy SetParam file is fixed in the
+      appsettings.{Environment}.json the host conversion moved it to.
     detection:
       match:
         all:
@@ -841,19 +844,25 @@ items:
             action: subsume
             reason: "The rewrite targets .NET 10 by definition: a separate framework retarget is no further work."
         impact:
-        - {id: impl, from: seed, select: self, action: rewrite, reason: Service implementation becomes REST controller logic}
+        - {id: impl, from: seed, select: self, action: update, reason: 'The service class stays, called by thin controllers: WCF-only APIs (ServiceBehavior, FaultException<T>, ServiceSecurityContext) are swapped; business logic is unchanged'}
         - id: contracts
           from: impl
           traverse: implemented_interfaces
           filter: {has_attribute: ServiceContract}
-          action: delete
-          reason: WCF service contract is replaced by controller routes
+          action: update
+          reason: '[ServiceContract], [OperationContract] and [FaultContract] are removed: the interface stays as the service interface the controllers call'
+        - {id: contracts-project, from: contracts, traverse: project_file, action: update, reason: 'The contracts project drops its System.ServiceModel references and is retargeted to .NET 10'}
         - id: data-contracts
           from: contracts
           traverse: signature_types
           filter: {has_attribute: DataContract}
-          action: update
-          reason: Remove DataContract attributes; keep as request and response models
+          action: review
+          reason: 'DataContract types serialize to JSON as they are; check member names against the JSON naming policy (PropertyNamingPolicy = null keeps them)'
+        - id: fault-exception
+          create: 'Exception type replacing FaultException<T>, mapped to an HTTP status by the host'
+          for_each: contracts
+          proposed_path: '{node.project.dir}/Faults/ServiceFaultException.cs'
+          action: create
         - {id: svc, from: impl, traverse: convention_files, kind: svc, action: delete, reason: .svc activation goes with WCF}
         - {id: service-config, from: impl, traverse: config_elements, path: system.serviceModel/services, action: update, reason: 'Remove the <service> registration: it goes with WCF'}
         - id: tests
@@ -861,7 +870,17 @@ items:
           traverse: referencing_tests
           action: update
           reason: Tests call the service through its WCF contract; they move to the controllers
-        - {id: controllers, create: REST controller per service contract, for_each: contracts, proposed_path: '{project.dir}/Controllers/{type.base_name}Controller.cs', action: create}
+        - {id: hosts, from: contracts, traverse: hosting_project, action: none, reason: 'The project hosting each contract (HOSTS_WCF_SERVICE): where its controller and the fault filter go'}
+        - id: controllers
+          create: 'REST controller per service contract: thin, one action per operation, calling the service interface'
+          for_each: hosts
+          proposed_path: '{node.project.dir}/Controllers/{type.resource}Controller.cs'
+          action: create
+        - id: fault-filter
+          create: 'Filter mapping ServiceFaultException<T> to its HTTP status, with the fault as the body'
+          for_each: hosts
+          proposed_path: '{node.project.dir}/Errors/ServiceFaultExceptionFilter.cs'
+          action: create
         - {id: clients, from: contracts, traverse: client_call_sites, action: rewrite, reason: Callers move from the WCF client to the REST API}
       - id: wcf-service-grpc-rewrite
         name: "gRPC rewrite on .NET 10"
@@ -939,6 +958,13 @@ items:
       where it settles the question: CoreWCF, REST and gRPC all run in ASP.NET
       Core, so each derives "ASP.NET Core web host"; a service that remains
       Windows-hosted leaves the host to be decided on its own.
+
+      Conversion ordering (docs/28 Part E): the ASP.NET Core web host's
+      configuration migration runs FIRST: each environment's values move from
+      the Web Deploy SetParam files into appsettings.{Environment}.json and the
+      SetParam files are deleted. Fixes to those values (hardcoded-windows-path,
+      unqualified-hostname) then apply where the values now live. Becomes a
+      depends_on entry on theirs.
     excluded_roles: [TEST]
     detection:
       match:
@@ -964,6 +990,24 @@ items:
           action: create
         - {id: project, from: seed, traverse: project_file, action: update, reason: Becomes an SDK-style Microsoft.NET.Sdk.Web project on .NET 10}
         - {id: host-config, from: seed, traverse: config_elements, path: system.serviceModel, action: update, reason: system.serviceModel hosting configuration moves into the ASP.NET Core host}
+        - {id: app-config, from: seed, traverse: project_files, pattern: App.config, action: delete, reason: 'ASP.NET Core does not read App.config: its settings move to appsettings.json'}
+        - {id: web-deploy-parameters, from: seed, traverse: project_files, pattern: Parameters.xml, action: delete, reason: 'Web Deploy parameters are replaced by appsettings.{Environment}.json'}
+        - {id: deploy-parameters, from: seed, traverse: deploy_parameter_files, action: delete, reason: 'Web Deploy SetParam files are replaced by appsettings.{Environment}.json, which ASPNETCORE_ENVIRONMENT selects'}
+        - id: environment-settings
+          create: 'Per-environment settings: the values the SetParam file held'
+          for_each: deploy-parameters
+          proposed_path: '{project.dir}/appsettings.{node.environment}.json'
+          action: create
+        - id: appsettings
+          create: 'ASP.NET Core configuration: Kestrel endpoints and the settings App.config held'
+          for_each: project
+          proposed_path: '{project.dir}/appsettings.json'
+          action: create
+        - id: launch-settings
+          create: Local launch profile (ASPNETCORE_ENVIRONMENT)
+          for_each: project
+          proposed_path: '{project.dir}/Properties/launchSettings.json'
+          action: create
       - id: wcf-host-retire
         name: "Retire the host"
         description: "The re-platformed services each get their own ASP.NET Core project; this host is removed."
@@ -1242,10 +1286,15 @@ items:
       configuration value or a Web Deploy SetParameters value. On Windows the
       name resolves through NetBIOS or the DNS suffix search list; in an
       OpenShift container it resolves only if the cluster's DNS search domains
-      cover it. Linux verdict: requires_change (lifecycle step 5 marks the
-      environment binding the same way). One occurrence per host per file, so
-      each environment's SetParam file that names the host is its own
+      cover it. Linux verdict: requires_change (outbound-invocation-inventory
+      marks the environment binding the same way). One occurrence per host per
+      file, so each environment's SetParam file that names the host is its own
       occurrence. localhost and IP addresses are not matched.
+
+      Conversion ordering (docs/28 Part E): runs AFTER wcf-service-host's move
+      to an ASP.NET Core web host where that applies: a hostname in a Web Deploy
+      SetParam file is fixed in the appsettings.{Environment}.json the host
+      conversion moved it to. Becomes a depends_on entry.
     excluded_roles: [TEST]
     detection:
       match:
@@ -1279,6 +1328,54 @@ items:
   # group_by source_path_and_value makes two packages in one project file
   # two occurrences. The signals come from step 6, not step 3, and reach
   # item-detection through fingerprint_signals like any other signal.
+
+  - id: target-framework-retarget
+    name: "Modern .NET below the engagement's target framework"
+    scope: application
+    category: framework
+    description: >-
+      The project targets a modern .NET (net5.0 or later) below the engagement's
+      target framework. Converted by editing the target framework where it is
+      declared — the project file or an imported Directory.*.props
+      (solution-discovery's target_framework_source) — not by assuming the
+      project file.
+
+      Not ready: detection needs TARGET_FRAMEWORK_BELOW_ENGAGEMENT_TARGET, which
+      dependency-assessment is declared to emit but does not yet. The conversion
+      recipe framework-retarget binds here (34-CONVERSION-ARCHITECTURE.md C1), and
+      a plan takes the framework declarations from solution-discovery directly.
+
+      Conversion ordering: package bumps are ordered around it by framework
+      support — a version that drops the current framework after it, a current
+      version that does not support the target before it.
+
+      Framework deltas: it carries the known breaking changes between source
+      and target frameworks (backend/app/conversion/framework_deltas.yaml,
+      34-CONVERSION-ARCHITECTURE.md C6), each detected in discovery as a signal
+      and fixed by a unit before the retarget that builds on both frameworks.
+      First entry, from net10.0: a project referencing two web projects with
+      top-level statements and naming Program no longer compiles (CS0433,
+      AMBIGUOUS_TOP_LEVEL_PROGRAM_ON_NET10).
+    detection:
+      match:
+        all:
+          - id: below-target
+            signal:
+              name: TARGET_FRAMEWORK_BELOW_ENGAGEMENT_TARGET
+    resolutions:
+      - id: retarget-to-engagement-target
+        name: "Retarget to the engagement's target framework"
+        description: "Edit the target framework where it is declared, and the SDK pin in global.json to match."
+        target_description: "The engagement's target framework, e.g. net10.0"
+        consumer_impact: none
+        effort: low
+        is_default: true
+      - id: stay-on-current-framework
+        name: "Stay on the current framework"
+        description: "Leave the target framework as it is, for now: the current framework is still supported, and something holds the application back (a package with no target-framework version, a platform constraint). Record the reason and the current framework's support end date."
+        target_description: "The current target framework, unchanged"
+        consumer_impact: none
+        effort: low
 
   - id: package-upgrade-safe
     name: "Package upgrade, no code change"

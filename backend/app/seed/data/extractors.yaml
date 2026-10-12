@@ -103,10 +103,15 @@ extractors:
       - PACKAGE_UPGRADE_BREAKING
       - PACKAGE_UPGRADE_SAFE
       - PACKAGE_VULNERABLE
+    # Declared ahead of the code (34-CONVERSION-ARCHITECTURE.md, the first
+    # conversion proof): dependency-assessment already knows the engagement's
+    # target framework and each project's, so it is where the comparison lands.
+    planned_emits:
+      - TARGET_FRAMEWORK_BELOW_ENGAGEMENT_TARGET
   - name: EntryPointInventory
     status: implemented
     owner_team: platform
-    description: "Lifecycle step 4, not a step 3 extractor: what each project exposes or hosts, resolved across projects from the entry-point inventory (registry 1.8.0)."
+    description: "Lifecycle step 4, not a step 3 extractor: what each project exposes or hosts, resolved across projects from the entry-point inventory (registry 1.8.0), and framework deltas from project references and entry points (registry 1.10.0)."
     emits:
       - EXPOSES_ASMX_SERVICE
       - EXPOSES_GRPC_SERVICE
@@ -115,6 +120,9 @@ extractors:
       - EXPOSES_WEBFORMS_UI
       - HOSTS_WCF_SERVICE
       - WCF_SERVICE_HOSTING
+      # Framework deltas (registry 1.10.0, scanner 2.3.0): known breaking
+      # changes of a later framework, fixed before the retarget.
+      - AMBIGUOUS_TOP_LEVEL_PROGRAM_ON_NET10
   - name: EntryPointExtractor
     status: implemented
     owner_team: platform

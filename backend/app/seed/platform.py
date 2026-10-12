@@ -8,7 +8,10 @@ jobs. These are the repository's copies, seeded after the lifecycle stubs:
 
 - step registrations: `steps/*/registration/*.json` and
   `backend/app/steps/*.registration.json` (a StepDeclaration each);
-- job definitions: `backend/app/jobs/*.yaml`.
+- job definitions: `backend/app/jobs/*.yaml`;
+- conversion recipes: `backend/app/conversion/recipes.yaml`
+  (34-CONVERSION-ARCHITECTURE.md C1; app/conversion/recipes.py), seeded last
+  by `seed_recipes`, since a recipe names a catalog item and resolution.
 
 Like every reseed (CLAUDE.md rule 10), this never undoes work and never
 overwrites something newer:
@@ -32,6 +35,7 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 
 from app import models
+from app.conversion import recipes
 from app.db import SessionLocal
 from app.workflow import registration
 from app.workflow.definition import service as definitions
@@ -146,3 +150,26 @@ def print_platform_summary(result: dict) -> None:
             print(f"  {key}: {line}")
     for line in jobs["invalid"]:
         print(f"  invalid: {line}")
+
+
+def seed_recipes() -> dict:
+    """After the catalog: a recipe names its item and resolution."""
+    db = SessionLocal()
+    try:
+        result = recipes.sync(db)
+        db.commit()
+        return result
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
+def print_recipes_summary(result: dict) -> None:
+    print(f"Conversion recipes from the repository: {len(result['inserted'])} inserted, {len(result['upgraded'])} upgraded, "
+          f"{len(result['unchanged'])} unchanged, {len(result['repository_behind'])} behind this machine, "
+          f"{len(result['conflicts'])} conflict(s)")
+    for key in ("repository_behind", "conflicts"):
+        for line in result[key]:
+            print(f"  {key}: {line}")

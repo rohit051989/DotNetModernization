@@ -121,7 +121,7 @@ public static class CallSiteCertainty
 public sealed record DependencyAssessmentArtifact
 {
     public string ArtifactType { get; init; } = "dependency-assessment";
-    public string ArtifactVersion { get; init; } = "1.1.0";
+    public string ArtifactVersion { get; init; } = "1.2.0";
     public required string ScannerVersion { get; init; }
     public required Guid RepositoryId { get; init; }
     public required string RepositorySlug { get; init; }

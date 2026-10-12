@@ -1,0 +1,245 @@
+[
+  {
+    "callSiteFile": "src/Catalog.TestClient/Program.cs",
+    "callSiteLine": 85,
+    "operation": "IUtilityService.Ping",
+    "mechanism": "soap_client",
+    "confidence": 0.95,
+    "handlerFile": "src/Catalog.Services/UtilityService.cs",
+    "handlerType": "UtilityService"
+  },
+  {
+    "callSiteFile": "src/Catalog.TestClient/Program.cs",
+    "callSiteLine": 86,
+    "operation": "IUtilityService.GetServerTimeUtc",
+    "mechanism": "soap_client",
+    "confidence": 0.95,
+    "handlerFile": "src/Catalog.Services/UtilityService.cs",
+    "handlerType": "UtilityService"
+  },
+  {
+    "callSiteFile": "src/Catalog.TestClient/Program.cs",
+    "callSiteLine": 94,
+    "operation": "IProductService.CreateProduct",
+    "mechanism": "soap_client",
+    "confidence": 0.95,
+    "handlerFile": "src/Catalog.Services/ProductService.cs",
+    "handlerType": "ProductService"
+  },
+  {
+    "callSiteFile": "src/Catalog.TestClient/Program.cs",
+    "callSiteLine": 105,
+    "operation": "IProductService.GetProduct",
+    "mechanism": "soap_client",
+    "confidence": 0.95,
+    "handlerFile": "src/Catalog.Services/ProductService.cs",
+    "handlerType": "ProductService"
+  },
+  {
+    "callSiteFile": "src/Catalog.TestClient/Program.cs",
+    "callSiteLine": 108,
+    "operation": "IProductService.SearchProducts",
+    "mechanism": "soap_client",
+    "confidence": 0.95,
+    "handlerFile": "src/Catalog.Services/ProductService.cs",
+    "handlerType": "ProductService"
+  },
+  {
+    "callSiteFile": "src/Catalog.TestClient/Program.cs",
+    "callSiteLine": 117,
+    "operation": "IProductService.AdjustStock",
+    "mechanism": "soap_client",
+    "confidence": 0.95,
+    "handlerFile": "src/Catalog.Services/ProductService.cs",
+    "handlerType": "ProductService"
+  },
+  {
+    "callSiteFile": "src/Catalog.TestClient/Program.cs",
+    "callSiteLine": 122,
+    "operation": "IProductService.AdjustStock",
+    "mechanism": "soap_client",
+    "confidence": 0.95,
+    "handlerFile": "src/Catalog.Services/ProductService.cs",
+    "handlerType": "ProductService"
+  },
+  {
+    "callSiteFile": "src/Catalog.TestClient/Program.cs",
+    "callSiteLine": 132,
+    "operation": "IProductService.GetProduct",
+    "mechanism": "soap_client",
+    "confidence": 0.95,
+    "handlerFile": "src/Catalog.Services/ProductService.cs",
+    "handlerType": "ProductService"
+  },
+  {
+    "callSiteFile": "src/Catalog.TestClient/Program.cs",
+    "callSiteLine": 152,
+    "operation": "IOrderService.PlaceOrder",
+    "mechanism": "soap_client",
+    "confidence": 0.95,
+    "handlerFile": "src/Catalog.Services/OrderService.cs",
+    "handlerType": "OrderService"
+  },
+  {
+    "callSiteFile": "src/Catalog.TestClient/Program.cs",
+    "callSiteLine": 164,
+    "operation": "IOrderService.GetOrder",
+    "mechanism": "soap_client",
+    "confidence": 0.95,
+    "handlerFile": "src/Catalog.Services/OrderService.cs",
+    "handlerType": "OrderService"
+  },
+  {
+    "callSiteFile": "src/Catalog.TestClient/Program.cs",
+    "callSiteLine": 167,
+    "operation": "IOrderService.GetOrdersByCustomer",
+    "mechanism": "soap_client",
+    "confidence": 0.95,
+    "handlerFile": "src/Catalog.Services/OrderService.cs",
+    "handlerType": "OrderService"
+  },
+  {
+    "callSiteFile": "src/Catalog.TestClient/Program.cs",
+    "callSiteLine": 170,
+    "operation": "IOrderService.CancelOrder",
+    "mechanism": "soap_client",
+    "confidence": 0.95,
+    "handlerFile": "src/Catalog.Services/OrderService.cs",
+    "handlerType": "OrderService"
+  },
+  {
+    "callSiteFile": "src/Catalog.TestClient/Program.cs",
+    "callSiteLine": 175,
+    "operation": "IOrderService.CancelOrder",
+    "mechanism": "soap_client",
+    "confidence": 0.95,
+    "handlerFile": "src/Catalog.Services/OrderService.cs",
+    "handlerType": "OrderService"
+  },
+  {
+    "callSiteFile": "src/Catalog.TestClient/Program.cs",
+    "callSiteLine": 185,
+    "operation": "IOrderService.GetOrder",
+    "mechanism": "soap_client",
+    "confidence": 0.95,
+    "handlerFile": "src/Catalog.Services/OrderService.cs",
+    "handlerType": "OrderService"
+  },
+  {
+    "callSiteFile": "src/Catalog.TestClient/Program.cs",
+    "callSiteLine": 200,
+    "operation": "IAccountService.GetAccount",
+    "mechanism": "soap_client",
+    "confidence": 0.95,
+    "handlerFile": "src/Catalog.Services/AccountService.cs",
+    "handlerType": "AccountService"
+  },
+  {
+    "callSiteFile": "src/Catalog.TestClient/Program.cs",
+    "callSiteLine": 203,
+    "operation": "IAccountService.UpdateContactInfo",
+    "mechanism": "soap_client",
+    "confidence": 0.95,
+    "handlerFile": "src/Catalog.Services/AccountService.cs",
+    "handlerType": "AccountService"
+  },
+  {
+    "callSiteFile": "src/Catalog.TestClient/Program.cs",
+    "callSiteLine": 213,
+    "operation": "IAccountService.GetAccount",
+    "mechanism": "soap_client",
+    "confidence": 0.95,
+    "handlerFile": "src/Catalog.Services/AccountService.cs",
+    "handlerType": "AccountService"
+  },
+  {
+    "callSiteFile": "src/Catalog.TestClient/Program.cs",
+    "callSiteLine": 239,
+    "operation": "IFundsTransferService.PlaceFundsTransfer",
+    "mechanism": "soap_client",
+    "confidence": 0.95,
+    "handlerFile": "src/Catalog.Services/FundsTransferService.cs",
+    "handlerType": "FundsTransferService"
+  },
+  {
+    "callSiteFile": "src/Catalog.TestClient/Program.cs",
+    "callSiteLine": 251,
+    "operation": "IFundsTransferService.PlaceFundsTransfer",
+    "mechanism": "soap_client",
+    "confidence": 0.95,
+    "handlerFile": "src/Catalog.Services/FundsTransferService.cs",
+    "handlerType": "FundsTransferService"
+  },
+  {
+    "callSiteFile": "src/Catalog.TestClient/Program.cs",
+    "callSiteLine": 268,
+    "operation": "IFundsTransferService.PlaceFundsTransfer",
+    "mechanism": "soap_client",
+    "confidence": 0.95,
+    "handlerFile": "src/Catalog.Services/FundsTransferService.cs",
+    "handlerType": "FundsTransferService"
+  },
+  {
+    "callSiteFile": "src/Catalog.TestClient/Program.cs",
+    "callSiteLine": 278,
+    "operation": "IFundsTransferService.GetFundsTransferStatus",
+    "mechanism": "soap_client",
+    "confidence": 0.95,
+    "handlerFile": "src/Catalog.Services/FundsTransferService.cs",
+    "handlerType": "FundsTransferService"
+  },
+  {
+    "callSiteFile": "src/Catalog.TestClient/Program.cs",
+    "callSiteLine": 285,
+    "operation": "IFundsTransferService.QueueFundsTransfer",
+    "mechanism": "soap_client",
+    "confidence": 0.95,
+    "handlerFile": "src/Catalog.Services/FundsTransferService.cs",
+    "handlerType": "FundsTransferService"
+  },
+  {
+    "callSiteFile": "src/Catalog.TestClient/Program.cs",
+    "callSiteLine": 289,
+    "operation": "IFundsTransferService.QueueFundsTransfer",
+    "mechanism": "soap_client",
+    "confidence": 0.95,
+    "handlerFile": "src/Catalog.Services/FundsTransferService.cs",
+    "handlerType": "FundsTransferService"
+  },
+  {
+    "callSiteFile": "src/Catalog.TestClient/Program.cs",
+    "callSiteLine": 295,
+    "operation": "IFundsTransferService.ProcessTransferQueue",
+    "mechanism": "soap_client",
+    "confidence": 0.95,
+    "handlerFile": "src/Catalog.Services/FundsTransferService.cs",
+    "handlerType": "FundsTransferService"
+  },
+  {
+    "callSiteFile": "src/Catalog.TestClient/Program.cs",
+    "callSiteLine": 304,
+    "operation": "IFundsTransferService.GetTransferHistory",
+    "mechanism": "soap_client",
+    "confidence": 0.95,
+    "handlerFile": "src/Catalog.Services/FundsTransferService.cs",
+    "handlerType": "FundsTransferService"
+  },
+  {
+    "callSiteFile": "src/Catalog.TestClient/Program.cs",
+    "callSiteLine": 323,
+    "operation": "IUtilityService.Ping",
+    "mechanism": "soap_client",
+    "confidence": 0.95,
+    "handlerFile": "src/Catalog.Services/UtilityService.cs",
+    "handlerType": "UtilityService"
+  },
+  {
+    "callSiteFile": "src/Catalog.TestClient/Program.cs",
+    "callSiteLine": 330,
+    "operation": "IAccountService.GetAccount",
+    "mechanism": "soap_client",
+    "confidence": 0.95,
+    "handlerFile": "src/Catalog.Services/AccountService.cs",
+    "handlerType": "AccountService"
+  }
+]

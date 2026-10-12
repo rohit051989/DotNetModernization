@@ -30,16 +30,22 @@ public static class WcfSecurity
     };
 
     /// <summary>Defaults this step is certain of (mode, transport credential,
-    /// message credential). A null is "not certain", not "none".</summary>
-    private static readonly IReadOnlyDictionary<string, (string Mode, string? Transport, string? Message)> Defaults =
+    /// message credential). A null is "not certain", not "none". The same
+    /// table, with its sources (Microsoft Learn: System-provided bindings, and
+    /// each binding's &lt;security&gt; element), is in
+    /// schemas/wcf-client-support-*.json; a test holds the two together.</summary>
+    public static readonly IReadOnlyDictionary<string, (string Mode, string? Transport, string? Message)> Defaults =
         new Dictionary<string, (string, string?, string?)>(StringComparer.Ordinal)
         {
             ["basicHttpBinding"] = ("None", "None", "UserName"),
             ["basicHttpsBinding"] = ("Transport", "None", "UserName"),
+            ["netHttpBinding"] = ("None", "None", "UserName"),
+            ["netHttpsBinding"] = ("Transport", "None", "UserName"),
             ["netTcpBinding"] = ("Transport", "Windows", "Windows"),
             ["netNamedPipeBinding"] = ("Transport", "Windows", null),
             ["wsHttpBinding"] = ("Message", null, "Windows"),
             ["ws2007HttpBinding"] = ("Message", null, "Windows"),
+            ["wsDualHttpBinding"] = ("Message", null, "Windows"),
             ["webHttpBinding"] = ("None", "None", null),
         };
 

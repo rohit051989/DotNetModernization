@@ -1,0 +1,2044 @@
+{
+  "matrix": "wcf-client-support",
+  "matrixVersion": "1.0.0",
+  "description": "Does the target .NET's WCF client support a client endpoint's binding, security mode and credential type? Keyed by target framework, binding (config element name), effective security mode and the credential type that mode uses ('None' when the mode is None; '*' matches any). Verdicts: supported, supported_with_caveat, unsupported. Every entry names its sources and must be confirmed by a person before a report built on it goes to a client: set confirmation.status to 'confirmed' with who and when, by pull request. Read by outbound-invocation-inventory (runtime verdict) and the estate's SOAP backend compatibility report.",
+  "targets": {
+    "net10.0": {
+      "wcfClient": "System.ServiceModel.* 8.x (8.1.2 at retrieval)"
+    }
+  },
+  "sources": [
+    {
+      "id": "chart-v2.1.0",
+      "title": "WCF Features in .Net Core 2.1 - the dotnet/wcf supported-features chart",
+      "version": "v2.1.0",
+      "url": "https://github.com/dotnet/wcf/blob/4429ddf7939696571ea6eb1439dc45684ab97829/release-notes/SupportedFeatures-v2.1.0.md",
+      "commit": "4429ddf7939696571ea6eb1439dc45684ab97829",
+      "committedOn": "2021-02-11",
+      "retrievedOn": "2026-10-12",
+      "retrievedAt": "dotnet/wcf main 15c68c3570b7fb868fb904dd4738f90872343245",
+      "sha256": "a0b56884e718ca0a2dd7c94608b838f9c5d4c1684304176b0962881d88c639de",
+      "note": "The newest chart dotnet/wcf publishes. It was written for .NET Core 2.1 and has not been updated since; later capability comes from release notes, listed separately. Its Windows column is read for the runtime verdict; the platform verdict (Linux) is the outbound inventory's own."
+    },
+    {
+      "id": "release-v1.0.0-rc2",
+      "title": "dotnet/wcf release v1.0.0-rc2",
+      "version": "v1.0.0-rc2",
+      "url": "https://github.com/dotnet/wcf/releases/tag/v1.0.0-rc2",
+      "note": "Added the bindings BasicHttpsBinding and NetHttpsBinding."
+    },
+    {
+      "id": "release-v3.0.0",
+      "title": "dotnet/wcf release v3.0.0",
+      "version": "v3.0.0",
+      "url": "https://github.com/dotnet/wcf/releases/tag/v3.0.0",
+      "note": "Added support for security mode TransportWithMessageCredential on HTTP (issue #8)."
+    },
+    {
+      "id": "release-v3.1.0",
+      "title": "dotnet/wcf release v3.1.0",
+      "version": "v3.1.0",
+      "url": "https://github.com/dotnet/wcf/releases/tag/v3.1.0",
+      "note": "New APIs from the full framework added to the WCF client contracts for WS-Federation support, which brought WSHttpBinding."
+    },
+    {
+      "id": "release-v3.2.0-preview3",
+      "title": "dotnet/wcf release v3.2.0-preview3",
+      "version": "v3.2.0-preview3",
+      "url": "https://github.com/dotnet/wcf/releases/tag/v3.2.0-preview3",
+      "note": "Added support for WS2007HttpBinding (#4169) and the System.ServiceModel.Federation package (#4297)."
+    },
+    {
+      "id": "release-v6.0.0-preview1",
+      "title": "dotnet/wcf release v6.0.0-preview1",
+      "version": "v6.0.0-preview1",
+      "url": "https://github.com/dotnet/wcf/releases/tag/v6.0.0-preview1",
+      "note": "Added NetNamedPipe (initial implementation, #4955)."
+    },
+    {
+      "id": "packages-v8.1.2",
+      "title": "dotnet/wcf release-notes package list",
+      "version": "8.1.2",
+      "url": "https://github.com/dotnet/wcf/tree/15c68c3570b7fb868fb904dd4738f90872343245/release-notes",
+      "note": "The WCF client ships System.ServiceModel.Primitives, Http, NetTcp, NetNamedPipe, NetFramingBase, Duplex, Security, Federation and UnixDomainSocket. No package provides MSMQ, peer, web (REST) or dual-HTTP bindings."
+    },
+    {
+      "id": "docs-system-provided-bindings",
+      "title": "System-provided bindings (WCF), Microsoft Learn",
+      "version": "dotnet/docs 3b4b01bea338433159fc935549153b0439090a1d",
+      "url": "https://github.com/dotnet/docs/blob/3b4b01bea338433159fc935549153b0439090a1d/docs/framework/wcf/system-provided-bindings.md",
+      "note": "Each binding's default security mode, in parentheses in the Security column."
+    },
+    {
+      "id": "docs-binding-security",
+      "title": "<security> of <basicHttpBinding>, <wsHttpBinding>, <netTcpBinding> (WCF config schema), Microsoft Learn",
+      "version": "dotnet/docs 156931bb4ec1e81b028c76ea983553f2e9778bdd",
+      "url": "https://github.com/dotnet/docs/tree/156931bb4ec1e81b028c76ea983553f2e9778bdd/docs/framework/configure-apps/file-schema/wcf",
+      "note": "Default modes: basicHttpBinding None, wsHttpBinding Message, netTcpBinding Transport. basicHttpBinding Message accepts only Certificate."
+    }
+  ],
+  "defaults": {
+    "basicHttpBinding": {
+      "securityMode": "None",
+      "transportCredential": "None",
+      "messageCredential": "UserName",
+      "sources": [
+        "docs-system-provided-bindings",
+        "docs-binding-security"
+      ]
+    },
+    "basicHttpsBinding": {
+      "securityMode": "Transport",
+      "transportCredential": "None",
+      "messageCredential": "UserName",
+      "sources": [
+        "docs-system-provided-bindings",
+        "docs-binding-security"
+      ]
+    },
+    "netHttpBinding": {
+      "securityMode": "None",
+      "transportCredential": "None",
+      "messageCredential": "UserName",
+      "sources": [
+        "docs-system-provided-bindings",
+        "docs-binding-security"
+      ]
+    },
+    "netHttpsBinding": {
+      "securityMode": "Transport",
+      "transportCredential": "None",
+      "messageCredential": "UserName",
+      "sources": [
+        "docs-system-provided-bindings",
+        "docs-binding-security"
+      ]
+    },
+    "netNamedPipeBinding": {
+      "securityMode": "Transport",
+      "transportCredential": "Windows",
+      "messageCredential": null,
+      "sources": [
+        "docs-system-provided-bindings",
+        "docs-binding-security"
+      ]
+    },
+    "netTcpBinding": {
+      "securityMode": "Transport",
+      "transportCredential": "Windows",
+      "messageCredential": "Windows",
+      "sources": [
+        "docs-system-provided-bindings",
+        "docs-binding-security"
+      ]
+    },
+    "webHttpBinding": {
+      "securityMode": "None",
+      "transportCredential": "None",
+      "messageCredential": null,
+      "sources": [
+        "docs-system-provided-bindings",
+        "docs-binding-security"
+      ]
+    },
+    "ws2007HttpBinding": {
+      "securityMode": "Message",
+      "transportCredential": null,
+      "messageCredential": "Windows",
+      "sources": [
+        "docs-system-provided-bindings",
+        "docs-binding-security"
+      ]
+    },
+    "wsDualHttpBinding": {
+      "securityMode": "Message",
+      "transportCredential": null,
+      "messageCredential": "Windows",
+      "sources": [
+        "docs-system-provided-bindings",
+        "docs-binding-security"
+      ]
+    },
+    "wsHttpBinding": {
+      "securityMode": "Message",
+      "transportCredential": null,
+      "messageCredential": "Windows",
+      "sources": [
+        "docs-system-provided-bindings",
+        "docs-binding-security"
+      ]
+    }
+  },
+  "entries": [
+    {
+      "id": "net10.0/basicHttpBinding/Message/*",
+      "target": "net10.0",
+      "binding": "basicHttpBinding",
+      "securityMode": "Message",
+      "credentialType": "*",
+      "verdict": "unsupported",
+      "sources": [
+        "chart-v2.1.0",
+        "docs-binding-security"
+      ],
+      "basis": "chart: Security Message: not supported",
+      "caveat": null,
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/basicHttpBinding/None/None",
+      "target": "net10.0",
+      "binding": "basicHttpBinding",
+      "securityMode": "None",
+      "credentialType": "None",
+      "verdict": "supported",
+      "sources": [
+        "chart-v2.1.0"
+      ],
+      "basis": "chart: Bindings BasicHttpBinding: supported; Security None: supported",
+      "caveat": null,
+      "probes": [
+        {
+          "probedOn": "2026-10-12",
+          "scenario": "basicHttp-None-None",
+          "where": "linux-container",
+          "outcome": "passed",
+          "summary": "FundsTransferWS.Ping returned 'FundsTransferWS OK 2026-10-12T14:47:24.1342061Z'",
+          "service": "wcf-backend FundsTransferWS (ASMX) under IIS Express",
+          "address": "http://localhost:8090/FundsTransferWS.asmx",
+          "client": {
+            "image": "mcr.microsoft.com/dotnet/runtime@sha256:b89586dc17781f25531909993658aa8161205ae38b8cec8847df4a8221a403d5",
+            "os": "Ubuntu 24.04.5 LTS",
+            "framework": ".NET 10.0.12",
+            "wcfClient": "8.1.2+a47960f931a813617a061adc2ba9cabe1816a551",
+            "cryptographyXml": "10.0.12+95017c711e6afc1085133d440e42b4bd78155701"
+          },
+          "evidence": "steps/step-003-fingerprinting/probes/evidence/20261012T144723Z-basicHttp-None-None-linux.json",
+          "sha256": "2c55553874be6b644ee2d6e0fe4e66773efbc822c97c2c806e46161534ce2d56"
+        }
+      ],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/basicHttpBinding/Transport/Basic",
+      "target": "net10.0",
+      "binding": "basicHttpBinding",
+      "securityMode": "Transport",
+      "credentialType": "Basic",
+      "verdict": "supported",
+      "sources": [
+        "chart-v2.1.0"
+      ],
+      "basis": "chart: Bindings BasicHttpBinding: supported; Client Authentication Basic: supported",
+      "caveat": null,
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/basicHttpBinding/Transport/Certificate",
+      "target": "net10.0",
+      "binding": "basicHttpBinding",
+      "securityMode": "Transport",
+      "credentialType": "Certificate",
+      "verdict": "supported",
+      "sources": [
+        "chart-v2.1.0"
+      ],
+      "basis": "chart: Bindings BasicHttpBinding: supported; Client Authentication Certificate/HTTP: supported",
+      "caveat": null,
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/basicHttpBinding/Transport/Digest",
+      "target": "net10.0",
+      "binding": "basicHttpBinding",
+      "securityMode": "Transport",
+      "credentialType": "Digest",
+      "verdict": "supported",
+      "sources": [
+        "chart-v2.1.0"
+      ],
+      "basis": "chart: Bindings BasicHttpBinding: supported; Client Authentication Digest: supported",
+      "caveat": null,
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/basicHttpBinding/Transport/None",
+      "target": "net10.0",
+      "binding": "basicHttpBinding",
+      "securityMode": "Transport",
+      "credentialType": "None",
+      "verdict": "supported",
+      "sources": [
+        "chart-v2.1.0"
+      ],
+      "basis": "chart: Bindings BasicHttpBinding: supported; Security Transport and Transport Https: supported",
+      "caveat": null,
+      "probes": [
+        {
+          "probedOn": "2026-10-12",
+          "scenario": "basicHttp-Transport-None",
+          "where": "linux-container",
+          "outcome": "passed",
+          "summary": "IUtilityService.Ping returned 'pong'",
+          "service": "WCF sample UtilityService, Hosting.Iis binding, self-hosted (Start-ProbeHttpsServices.ps1)",
+          "address": "https://localhost:44301/Utility.svc",
+          "client": {
+            "image": "mcr.microsoft.com/dotnet/runtime@sha256:b89586dc17781f25531909993658aa8161205ae38b8cec8847df4a8221a403d5",
+            "os": "Ubuntu 24.04.5 LTS",
+            "framework": ".NET 10.0.12",
+            "wcfClient": "8.1.2+a47960f931a813617a061adc2ba9cabe1816a551",
+            "cryptographyXml": "10.0.12+95017c711e6afc1085133d440e42b4bd78155701"
+          },
+          "evidence": "steps/step-003-fingerprinting/probes/evidence/20261012T144723Z-basicHttp-Transport-None-linux.json",
+          "sha256": "8104a760df52799f2657b9164c03f2b9004d1057a750072e90ee5799a862fa72"
+        }
+      ],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/basicHttpBinding/Transport/Ntlm",
+      "target": "net10.0",
+      "binding": "basicHttpBinding",
+      "securityMode": "Transport",
+      "credentialType": "Ntlm",
+      "verdict": "supported",
+      "sources": [
+        "chart-v2.1.0"
+      ],
+      "basis": "chart: Bindings BasicHttpBinding: supported; Client Authentication NTLM: supported (Windows column; Linux is the platform verdict's)",
+      "caveat": null,
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/basicHttpBinding/Transport/Windows",
+      "target": "net10.0",
+      "binding": "basicHttpBinding",
+      "securityMode": "Transport",
+      "credentialType": "Windows",
+      "verdict": "supported",
+      "sources": [
+        "chart-v2.1.0"
+      ],
+      "basis": "chart: Bindings BasicHttpBinding: supported; Client Authentication Kerberos/HTTP: supported",
+      "caveat": null,
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/basicHttpBinding/TransportCredentialOnly/Basic",
+      "target": "net10.0",
+      "binding": "basicHttpBinding",
+      "securityMode": "TransportCredentialOnly",
+      "credentialType": "Basic",
+      "verdict": "supported_with_caveat",
+      "sources": [
+        "chart-v2.1.0"
+      ],
+      "basis": "chart: Bindings BasicHttpBinding: supported; Client Authentication Basic: supported",
+      "caveat": "TransportCredentialOnly is not a row of the chart: inferred from its HTTP client-authentication rows. Credentials travel over plain HTTP.",
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/basicHttpBinding/TransportCredentialOnly/Digest",
+      "target": "net10.0",
+      "binding": "basicHttpBinding",
+      "securityMode": "TransportCredentialOnly",
+      "credentialType": "Digest",
+      "verdict": "supported_with_caveat",
+      "sources": [
+        "chart-v2.1.0"
+      ],
+      "basis": "chart: Bindings BasicHttpBinding: supported; Client Authentication Digest: supported",
+      "caveat": "TransportCredentialOnly is not a row of the chart: inferred from its HTTP client-authentication rows. Credentials travel over plain HTTP.",
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/basicHttpBinding/TransportCredentialOnly/Ntlm",
+      "target": "net10.0",
+      "binding": "basicHttpBinding",
+      "securityMode": "TransportCredentialOnly",
+      "credentialType": "Ntlm",
+      "verdict": "supported_with_caveat",
+      "sources": [
+        "chart-v2.1.0"
+      ],
+      "basis": "chart: Bindings BasicHttpBinding: supported; Client Authentication NTLM: supported (Windows column; Linux is the platform verdict's)",
+      "caveat": "TransportCredentialOnly is not a row of the chart: inferred from its HTTP client-authentication rows. Credentials travel over plain HTTP.",
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/basicHttpBinding/TransportCredentialOnly/Windows",
+      "target": "net10.0",
+      "binding": "basicHttpBinding",
+      "securityMode": "TransportCredentialOnly",
+      "credentialType": "Windows",
+      "verdict": "supported_with_caveat",
+      "sources": [
+        "chart-v2.1.0"
+      ],
+      "basis": "chart: Bindings BasicHttpBinding: supported; Client Authentication Kerberos/HTTP: supported",
+      "caveat": "TransportCredentialOnly is not a row of the chart: inferred from its HTTP client-authentication rows. Credentials travel over plain HTTP.",
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/basicHttpBinding/TransportWithMessageCredential/Certificate",
+      "target": "net10.0",
+      "binding": "basicHttpBinding",
+      "securityMode": "TransportWithMessageCredential",
+      "credentialType": "Certificate",
+      "verdict": "supported",
+      "sources": [
+        "chart-v2.1.0",
+        "release-v3.0.0"
+      ],
+      "basis": "release v3.0.0: TransportWithMessageCredential on HTTP added; chart: Bindings BasicHttpBinding: supported",
+      "caveat": null,
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/basicHttpBinding/TransportWithMessageCredential/UserName",
+      "target": "net10.0",
+      "binding": "basicHttpBinding",
+      "securityMode": "TransportWithMessageCredential",
+      "credentialType": "UserName",
+      "verdict": "supported",
+      "sources": [
+        "chart-v2.1.0",
+        "release-v3.0.0"
+      ],
+      "basis": "release v3.0.0: TransportWithMessageCredential on HTTP added; chart: Bindings BasicHttpBinding: supported",
+      "caveat": null,
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/basicHttpsBinding/Message/*",
+      "target": "net10.0",
+      "binding": "basicHttpsBinding",
+      "securityMode": "Message",
+      "credentialType": "*",
+      "verdict": "unsupported",
+      "sources": [
+        "chart-v2.1.0"
+      ],
+      "basis": "chart: Security Message: not supported",
+      "caveat": null,
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/basicHttpsBinding/Transport/Basic",
+      "target": "net10.0",
+      "binding": "basicHttpsBinding",
+      "securityMode": "Transport",
+      "credentialType": "Basic",
+      "verdict": "supported",
+      "sources": [
+        "chart-v2.1.0",
+        "release-v1.0.0-rc2"
+      ],
+      "basis": "release v1.0.0-rc2: BasicHttpsBinding added; chart: Client Authentication Basic: supported",
+      "caveat": null,
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/basicHttpsBinding/Transport/Certificate",
+      "target": "net10.0",
+      "binding": "basicHttpsBinding",
+      "securityMode": "Transport",
+      "credentialType": "Certificate",
+      "verdict": "supported",
+      "sources": [
+        "chart-v2.1.0",
+        "release-v1.0.0-rc2"
+      ],
+      "basis": "release v1.0.0-rc2: BasicHttpsBinding added; chart: Client Authentication Certificate/HTTP: supported",
+      "caveat": null,
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/basicHttpsBinding/Transport/Digest",
+      "target": "net10.0",
+      "binding": "basicHttpsBinding",
+      "securityMode": "Transport",
+      "credentialType": "Digest",
+      "verdict": "supported",
+      "sources": [
+        "chart-v2.1.0",
+        "release-v1.0.0-rc2"
+      ],
+      "basis": "release v1.0.0-rc2: BasicHttpsBinding added; chart: Client Authentication Digest: supported",
+      "caveat": null,
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/basicHttpsBinding/Transport/None",
+      "target": "net10.0",
+      "binding": "basicHttpsBinding",
+      "securityMode": "Transport",
+      "credentialType": "None",
+      "verdict": "supported",
+      "sources": [
+        "chart-v2.1.0",
+        "release-v1.0.0-rc2"
+      ],
+      "basis": "release v1.0.0-rc2: BasicHttpsBinding added; chart: Security Transport and Transport Https: supported",
+      "caveat": null,
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/basicHttpsBinding/Transport/Ntlm",
+      "target": "net10.0",
+      "binding": "basicHttpsBinding",
+      "securityMode": "Transport",
+      "credentialType": "Ntlm",
+      "verdict": "supported",
+      "sources": [
+        "chart-v2.1.0",
+        "release-v1.0.0-rc2"
+      ],
+      "basis": "release v1.0.0-rc2: BasicHttpsBinding added; chart: Client Authentication NTLM: supported (Windows column; Linux is the platform verdict's)",
+      "caveat": null,
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/basicHttpsBinding/Transport/Windows",
+      "target": "net10.0",
+      "binding": "basicHttpsBinding",
+      "securityMode": "Transport",
+      "credentialType": "Windows",
+      "verdict": "supported",
+      "sources": [
+        "chart-v2.1.0",
+        "release-v1.0.0-rc2"
+      ],
+      "basis": "release v1.0.0-rc2: BasicHttpsBinding added; chart: Client Authentication Kerberos/HTTP: supported",
+      "caveat": null,
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/basicHttpsBinding/TransportWithMessageCredential/Certificate",
+      "target": "net10.0",
+      "binding": "basicHttpsBinding",
+      "securityMode": "TransportWithMessageCredential",
+      "credentialType": "Certificate",
+      "verdict": "supported",
+      "sources": [
+        "chart-v2.1.0",
+        "release-v1.0.0-rc2",
+        "release-v3.0.0"
+      ],
+      "basis": "release v3.0.0: TransportWithMessageCredential on HTTP added",
+      "caveat": null,
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/basicHttpsBinding/TransportWithMessageCredential/UserName",
+      "target": "net10.0",
+      "binding": "basicHttpsBinding",
+      "securityMode": "TransportWithMessageCredential",
+      "credentialType": "UserName",
+      "verdict": "supported",
+      "sources": [
+        "chart-v2.1.0",
+        "release-v1.0.0-rc2",
+        "release-v3.0.0"
+      ],
+      "basis": "release v3.0.0: TransportWithMessageCredential on HTTP added",
+      "caveat": null,
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/customBinding/*/*",
+      "target": "net10.0",
+      "binding": "customBinding",
+      "securityMode": "*",
+      "credentialType": "*",
+      "verdict": "supported_with_caveat",
+      "sources": [
+        "chart-v2.1.0"
+      ],
+      "basis": "chart: Bindings CustomBinding: supported",
+      "caveat": "Supported as a binding; whether its own elements are (message security, MSMQ transport) is not evaluated element by element.",
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/msmqIntegrationBinding/*/*",
+      "target": "net10.0",
+      "binding": "msmqIntegrationBinding",
+      "securityMode": "*",
+      "credentialType": "*",
+      "verdict": "unsupported",
+      "sources": [
+        "packages-v8.1.2"
+      ],
+      "basis": "no WCF client package provides it",
+      "caveat": null,
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/netHttpBinding/Message/*",
+      "target": "net10.0",
+      "binding": "netHttpBinding",
+      "securityMode": "Message",
+      "credentialType": "*",
+      "verdict": "unsupported",
+      "sources": [
+        "chart-v2.1.0",
+        "docs-binding-security"
+      ],
+      "basis": "chart: Security Message: not supported",
+      "caveat": null,
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/netHttpBinding/None/None",
+      "target": "net10.0",
+      "binding": "netHttpBinding",
+      "securityMode": "None",
+      "credentialType": "None",
+      "verdict": "supported",
+      "sources": [
+        "chart-v2.1.0"
+      ],
+      "basis": "chart: Bindings NetHttpBinding: supported; Security None: supported",
+      "caveat": null,
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/netHttpBinding/Transport/Basic",
+      "target": "net10.0",
+      "binding": "netHttpBinding",
+      "securityMode": "Transport",
+      "credentialType": "Basic",
+      "verdict": "supported",
+      "sources": [
+        "chart-v2.1.0"
+      ],
+      "basis": "chart: Bindings NetHttpBinding: supported; Client Authentication Basic: supported",
+      "caveat": null,
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/netHttpBinding/Transport/Certificate",
+      "target": "net10.0",
+      "binding": "netHttpBinding",
+      "securityMode": "Transport",
+      "credentialType": "Certificate",
+      "verdict": "supported",
+      "sources": [
+        "chart-v2.1.0"
+      ],
+      "basis": "chart: Bindings NetHttpBinding: supported; Client Authentication Certificate/HTTP: supported",
+      "caveat": null,
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/netHttpBinding/Transport/Digest",
+      "target": "net10.0",
+      "binding": "netHttpBinding",
+      "securityMode": "Transport",
+      "credentialType": "Digest",
+      "verdict": "supported",
+      "sources": [
+        "chart-v2.1.0"
+      ],
+      "basis": "chart: Bindings NetHttpBinding: supported; Client Authentication Digest: supported",
+      "caveat": null,
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/netHttpBinding/Transport/None",
+      "target": "net10.0",
+      "binding": "netHttpBinding",
+      "securityMode": "Transport",
+      "credentialType": "None",
+      "verdict": "supported",
+      "sources": [
+        "chart-v2.1.0"
+      ],
+      "basis": "chart: Bindings NetHttpBinding: supported; Security Transport and Transport Https: supported",
+      "caveat": null,
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/netHttpBinding/Transport/Ntlm",
+      "target": "net10.0",
+      "binding": "netHttpBinding",
+      "securityMode": "Transport",
+      "credentialType": "Ntlm",
+      "verdict": "supported",
+      "sources": [
+        "chart-v2.1.0"
+      ],
+      "basis": "chart: Bindings NetHttpBinding: supported; Client Authentication NTLM: supported (Windows column; Linux is the platform verdict's)",
+      "caveat": null,
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/netHttpBinding/Transport/Windows",
+      "target": "net10.0",
+      "binding": "netHttpBinding",
+      "securityMode": "Transport",
+      "credentialType": "Windows",
+      "verdict": "supported",
+      "sources": [
+        "chart-v2.1.0"
+      ],
+      "basis": "chart: Bindings NetHttpBinding: supported; Client Authentication Kerberos/HTTP: supported",
+      "caveat": null,
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/netHttpBinding/TransportCredentialOnly/Basic",
+      "target": "net10.0",
+      "binding": "netHttpBinding",
+      "securityMode": "TransportCredentialOnly",
+      "credentialType": "Basic",
+      "verdict": "supported_with_caveat",
+      "sources": [
+        "chart-v2.1.0"
+      ],
+      "basis": "chart: Bindings NetHttpBinding: supported; Client Authentication Basic: supported",
+      "caveat": "TransportCredentialOnly is not a row of the chart: inferred from its HTTP client-authentication rows. Credentials travel over plain HTTP.",
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/netHttpBinding/TransportCredentialOnly/Digest",
+      "target": "net10.0",
+      "binding": "netHttpBinding",
+      "securityMode": "TransportCredentialOnly",
+      "credentialType": "Digest",
+      "verdict": "supported_with_caveat",
+      "sources": [
+        "chart-v2.1.0"
+      ],
+      "basis": "chart: Bindings NetHttpBinding: supported; Client Authentication Digest: supported",
+      "caveat": "TransportCredentialOnly is not a row of the chart: inferred from its HTTP client-authentication rows. Credentials travel over plain HTTP.",
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/netHttpBinding/TransportCredentialOnly/Ntlm",
+      "target": "net10.0",
+      "binding": "netHttpBinding",
+      "securityMode": "TransportCredentialOnly",
+      "credentialType": "Ntlm",
+      "verdict": "supported_with_caveat",
+      "sources": [
+        "chart-v2.1.0"
+      ],
+      "basis": "chart: Bindings NetHttpBinding: supported; Client Authentication NTLM: supported (Windows column; Linux is the platform verdict's)",
+      "caveat": "TransportCredentialOnly is not a row of the chart: inferred from its HTTP client-authentication rows. Credentials travel over plain HTTP.",
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/netHttpBinding/TransportCredentialOnly/Windows",
+      "target": "net10.0",
+      "binding": "netHttpBinding",
+      "securityMode": "TransportCredentialOnly",
+      "credentialType": "Windows",
+      "verdict": "supported_with_caveat",
+      "sources": [
+        "chart-v2.1.0"
+      ],
+      "basis": "chart: Bindings NetHttpBinding: supported; Client Authentication Kerberos/HTTP: supported",
+      "caveat": "TransportCredentialOnly is not a row of the chart: inferred from its HTTP client-authentication rows. Credentials travel over plain HTTP.",
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/netHttpBinding/TransportWithMessageCredential/Certificate",
+      "target": "net10.0",
+      "binding": "netHttpBinding",
+      "securityMode": "TransportWithMessageCredential",
+      "credentialType": "Certificate",
+      "verdict": "supported",
+      "sources": [
+        "chart-v2.1.0",
+        "release-v3.0.0"
+      ],
+      "basis": "release v3.0.0: TransportWithMessageCredential on HTTP added; chart: Bindings NetHttpBinding: supported",
+      "caveat": null,
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/netHttpBinding/TransportWithMessageCredential/UserName",
+      "target": "net10.0",
+      "binding": "netHttpBinding",
+      "securityMode": "TransportWithMessageCredential",
+      "credentialType": "UserName",
+      "verdict": "supported",
+      "sources": [
+        "chart-v2.1.0",
+        "release-v3.0.0"
+      ],
+      "basis": "release v3.0.0: TransportWithMessageCredential on HTTP added; chart: Bindings NetHttpBinding: supported",
+      "caveat": null,
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/netHttpsBinding/Message/*",
+      "target": "net10.0",
+      "binding": "netHttpsBinding",
+      "securityMode": "Message",
+      "credentialType": "*",
+      "verdict": "unsupported",
+      "sources": [
+        "chart-v2.1.0"
+      ],
+      "basis": "chart: Security Message: not supported",
+      "caveat": null,
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/netHttpsBinding/Transport/Basic",
+      "target": "net10.0",
+      "binding": "netHttpsBinding",
+      "securityMode": "Transport",
+      "credentialType": "Basic",
+      "verdict": "supported",
+      "sources": [
+        "chart-v2.1.0",
+        "release-v1.0.0-rc2"
+      ],
+      "basis": "release v1.0.0-rc2: NetHttpsBinding added; chart: Client Authentication Basic: supported",
+      "caveat": null,
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/netHttpsBinding/Transport/Certificate",
+      "target": "net10.0",
+      "binding": "netHttpsBinding",
+      "securityMode": "Transport",
+      "credentialType": "Certificate",
+      "verdict": "supported",
+      "sources": [
+        "chart-v2.1.0",
+        "release-v1.0.0-rc2"
+      ],
+      "basis": "release v1.0.0-rc2: NetHttpsBinding added; chart: Client Authentication Certificate/HTTP: supported",
+      "caveat": null,
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/netHttpsBinding/Transport/Digest",
+      "target": "net10.0",
+      "binding": "netHttpsBinding",
+      "securityMode": "Transport",
+      "credentialType": "Digest",
+      "verdict": "supported",
+      "sources": [
+        "chart-v2.1.0",
+        "release-v1.0.0-rc2"
+      ],
+      "basis": "release v1.0.0-rc2: NetHttpsBinding added; chart: Client Authentication Digest: supported",
+      "caveat": null,
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/netHttpsBinding/Transport/None",
+      "target": "net10.0",
+      "binding": "netHttpsBinding",
+      "securityMode": "Transport",
+      "credentialType": "None",
+      "verdict": "supported",
+      "sources": [
+        "chart-v2.1.0",
+        "release-v1.0.0-rc2"
+      ],
+      "basis": "release v1.0.0-rc2: NetHttpsBinding added; chart: Security Transport and Transport Https: supported",
+      "caveat": null,
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/netHttpsBinding/Transport/Ntlm",
+      "target": "net10.0",
+      "binding": "netHttpsBinding",
+      "securityMode": "Transport",
+      "credentialType": "Ntlm",
+      "verdict": "supported",
+      "sources": [
+        "chart-v2.1.0",
+        "release-v1.0.0-rc2"
+      ],
+      "basis": "release v1.0.0-rc2: NetHttpsBinding added; chart: Client Authentication NTLM: supported (Windows column; Linux is the platform verdict's)",
+      "caveat": null,
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/netHttpsBinding/Transport/Windows",
+      "target": "net10.0",
+      "binding": "netHttpsBinding",
+      "securityMode": "Transport",
+      "credentialType": "Windows",
+      "verdict": "supported",
+      "sources": [
+        "chart-v2.1.0",
+        "release-v1.0.0-rc2"
+      ],
+      "basis": "release v1.0.0-rc2: NetHttpsBinding added; chart: Client Authentication Kerberos/HTTP: supported",
+      "caveat": null,
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/netHttpsBinding/TransportWithMessageCredential/Certificate",
+      "target": "net10.0",
+      "binding": "netHttpsBinding",
+      "securityMode": "TransportWithMessageCredential",
+      "credentialType": "Certificate",
+      "verdict": "supported",
+      "sources": [
+        "chart-v2.1.0",
+        "release-v1.0.0-rc2",
+        "release-v3.0.0"
+      ],
+      "basis": "release v3.0.0: TransportWithMessageCredential on HTTP added",
+      "caveat": null,
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/netHttpsBinding/TransportWithMessageCredential/UserName",
+      "target": "net10.0",
+      "binding": "netHttpsBinding",
+      "securityMode": "TransportWithMessageCredential",
+      "credentialType": "UserName",
+      "verdict": "supported",
+      "sources": [
+        "chart-v2.1.0",
+        "release-v1.0.0-rc2",
+        "release-v3.0.0"
+      ],
+      "basis": "release v3.0.0: TransportWithMessageCredential on HTTP added",
+      "caveat": null,
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/netMsmqBinding/*/*",
+      "target": "net10.0",
+      "binding": "netMsmqBinding",
+      "securityMode": "*",
+      "credentialType": "*",
+      "verdict": "unsupported",
+      "sources": [
+        "packages-v8.1.2"
+      ],
+      "basis": "no WCF client package provides it",
+      "caveat": null,
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/netNamedPipeBinding/None/None",
+      "target": "net10.0",
+      "binding": "netNamedPipeBinding",
+      "securityMode": "None",
+      "credentialType": "None",
+      "verdict": "supported_with_caveat",
+      "sources": [
+        "release-v6.0.0-preview1"
+      ],
+      "basis": "release v6.0.0-preview1: NetNamedPipe added",
+      "caveat": "Same machine only; named pipes need the client and the service on one host.",
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/netNamedPipeBinding/Transport/Windows",
+      "target": "net10.0",
+      "binding": "netNamedPipeBinding",
+      "securityMode": "Transport",
+      "credentialType": "Windows",
+      "verdict": "supported_with_caveat",
+      "sources": [
+        "release-v6.0.0-preview1"
+      ],
+      "basis": "release v6.0.0-preview1: NetNamedPipe added",
+      "caveat": "Same machine only; named pipes need the client and the service on one host.",
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/netPeerTcpBinding/*/*",
+      "target": "net10.0",
+      "binding": "netPeerTcpBinding",
+      "securityMode": "*",
+      "credentialType": "*",
+      "verdict": "unsupported",
+      "sources": [
+        "packages-v8.1.2"
+      ],
+      "basis": "no WCF client package provides it",
+      "caveat": null,
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/netTcpBinding/Message/*",
+      "target": "net10.0",
+      "binding": "netTcpBinding",
+      "securityMode": "Message",
+      "credentialType": "*",
+      "verdict": "unsupported",
+      "sources": [
+        "chart-v2.1.0"
+      ],
+      "basis": "chart: Security Message: not supported",
+      "caveat": null,
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/netTcpBinding/None/None",
+      "target": "net10.0",
+      "binding": "netTcpBinding",
+      "securityMode": "None",
+      "credentialType": "None",
+      "verdict": "supported",
+      "sources": [
+        "chart-v2.1.0"
+      ],
+      "basis": "chart: Bindings NetTcpBinding: supported; Security None: supported",
+      "caveat": null,
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/netTcpBinding/Transport/Certificate",
+      "target": "net10.0",
+      "binding": "netTcpBinding",
+      "securityMode": "Transport",
+      "credentialType": "Certificate",
+      "verdict": "supported",
+      "sources": [
+        "chart-v2.1.0"
+      ],
+      "basis": "chart: Bindings NetTcpBinding: supported; Client Authentication Certificate/TCP: supported",
+      "caveat": null,
+      "probes": [
+        {
+          "probedOn": "2026-10-12",
+          "scenario": "netTcp-Transport-Certificate",
+          "where": "linux-container",
+          "outcome": "passed",
+          "summary": "IAccountService.GetAccount(CUST-001) returned 'CUST-001 Ada Lovelace'",
+          "service": "WCF sample AccountService, Catalog.Host (mutual TLS)",
+          "address": "net.tcp://localhost:8202/Account",
+          "client": {
+            "image": "mcr.microsoft.com/dotnet/runtime@sha256:b89586dc17781f25531909993658aa8161205ae38b8cec8847df4a8221a403d5",
+            "os": "Ubuntu 24.04.5 LTS",
+            "framework": ".NET 10.0.12",
+            "wcfClient": "8.1.2+a47960f931a813617a061adc2ba9cabe1816a551",
+            "cryptographyXml": "10.0.12+95017c711e6afc1085133d440e42b4bd78155701"
+          },
+          "evidence": "steps/step-003-fingerprinting/probes/evidence/20261012T144723Z-netTcp-Transport-Certificate-linux.json",
+          "sha256": "61aa9099aa4e0ac055692b38f92b0b9121a4ff21b3d9d7b21e7028dedbca2829"
+        }
+      ],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/netTcpBinding/Transport/None",
+      "target": "net10.0",
+      "binding": "netTcpBinding",
+      "securityMode": "Transport",
+      "credentialType": "None",
+      "verdict": "supported",
+      "sources": [
+        "chart-v2.1.0"
+      ],
+      "basis": "chart: Bindings NetTcpBinding: supported; Security Transport: supported",
+      "caveat": null,
+      "probes": [
+        {
+          "probedOn": "2026-10-12",
+          "scenario": "netTcp-Transport-None",
+          "where": "linux-container",
+          "outcome": "passed",
+          "summary": "IUtilityService.Ping returned 'pong'",
+          "service": "WCF sample UtilityService, Catalog.Host",
+          "address": "net.tcp://localhost:8101/Utility",
+          "client": {
+            "image": "mcr.microsoft.com/dotnet/runtime@sha256:b89586dc17781f25531909993658aa8161205ae38b8cec8847df4a8221a403d5",
+            "os": "Ubuntu 24.04.5 LTS",
+            "framework": ".NET 10.0.12",
+            "wcfClient": "8.1.2+a47960f931a813617a061adc2ba9cabe1816a551",
+            "cryptographyXml": "10.0.12+95017c711e6afc1085133d440e42b4bd78155701"
+          },
+          "evidence": "steps/step-003-fingerprinting/probes/evidence/20261012T144723Z-netTcp-Transport-None-linux.json",
+          "sha256": "f57e3a27e0581b9f24f1f0184f10e3c0d9f38ba2e063ab079d01927cf914314a"
+        }
+      ],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/netTcpBinding/Transport/Windows",
+      "target": "net10.0",
+      "binding": "netTcpBinding",
+      "securityMode": "Transport",
+      "credentialType": "Windows",
+      "verdict": "supported",
+      "sources": [
+        "chart-v2.1.0"
+      ],
+      "basis": "chart: Bindings NetTcpBinding: supported; Client Authentication Kerberos/TCP: supported",
+      "caveat": null,
+      "probes": [
+        {
+          "probedOn": "2026-10-12",
+          "outcome": "not_probed",
+          "reason": "needs Kerberos: a Windows credential on NetTcp negotiates Kerberos on Linux, which needs a KDC, a service principal name and a keytab or ticket for the caller; no Kerberos environment is available to the probe, so the outcome is not guessed"
+        }
+      ],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/netTcpBinding/TransportWithMessageCredential/Certificate",
+      "target": "net10.0",
+      "binding": "netTcpBinding",
+      "securityMode": "TransportWithMessageCredential",
+      "credentialType": "Certificate",
+      "verdict": "unsupported",
+      "sources": [
+        "release-v3.0.0",
+        "chart-v2.1.0"
+      ],
+      "basis": "release v3.0.0 adds TransportWithMessageCredential on HTTP only; the chart lists no message credential over TCP",
+      "caveat": "Not stated as unsupported anywhere: absent from every source. Confirm before relying on it.",
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/netTcpBinding/TransportWithMessageCredential/UserName",
+      "target": "net10.0",
+      "binding": "netTcpBinding",
+      "securityMode": "TransportWithMessageCredential",
+      "credentialType": "UserName",
+      "verdict": "unsupported",
+      "sources": [
+        "release-v3.0.0",
+        "chart-v2.1.0"
+      ],
+      "basis": "release v3.0.0 adds TransportWithMessageCredential on HTTP only; the chart lists no message credential over TCP",
+      "caveat": "Not stated as unsupported anywhere: absent from every source. Confirm before relying on it.",
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/webHttpBinding/*/*",
+      "target": "net10.0",
+      "binding": "webHttpBinding",
+      "securityMode": "*",
+      "credentialType": "*",
+      "verdict": "unsupported",
+      "sources": [
+        "chart-v2.1.0"
+      ],
+      "basis": "chart: Bindings WebHttpBinding: not supported",
+      "caveat": null,
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/ws2007FederationHttpBinding/Message/*",
+      "target": "net10.0",
+      "binding": "ws2007FederationHttpBinding",
+      "securityMode": "Message",
+      "credentialType": "*",
+      "verdict": "unsupported",
+      "sources": [
+        "chart-v2.1.0"
+      ],
+      "basis": "chart: Security Message: not supported",
+      "caveat": null,
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/ws2007FederationHttpBinding/TransportWithMessageCredential/IssuedToken",
+      "target": "net10.0",
+      "binding": "ws2007FederationHttpBinding",
+      "securityMode": "TransportWithMessageCredential",
+      "credentialType": "IssuedToken",
+      "verdict": "supported_with_caveat",
+      "sources": [
+        "release-v3.2.0-preview3"
+      ],
+      "basis": "release v3.2.0-preview3: System.ServiceModel.Federation package (WS2007 federation)",
+      "caveat": "Needs the System.ServiceModel.Federation package and a token service reachable from the new host.",
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/ws2007HttpBinding/Message/*",
+      "target": "net10.0",
+      "binding": "ws2007HttpBinding",
+      "securityMode": "Message",
+      "credentialType": "*",
+      "verdict": "unsupported",
+      "sources": [
+        "chart-v2.1.0",
+        "docs-system-provided-bindings"
+      ],
+      "basis": "chart: Security Message: not supported. Message is this binding's default mode (docs: System-provided bindings)",
+      "caveat": null,
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/ws2007HttpBinding/None/None",
+      "target": "net10.0",
+      "binding": "ws2007HttpBinding",
+      "securityMode": "None",
+      "credentialType": "None",
+      "verdict": "supported_with_caveat",
+      "sources": [
+        "release-v3.2.0-preview3",
+        "chart-v2.1.0"
+      ],
+      "basis": "release v3.2.0-preview3: ws2007HttpBinding in the WCF client; chart: Security None: supported",
+      "caveat": "The chart has no WS-binding row; established by release notes only.",
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/ws2007HttpBinding/Transport/Basic",
+      "target": "net10.0",
+      "binding": "ws2007HttpBinding",
+      "securityMode": "Transport",
+      "credentialType": "Basic",
+      "verdict": "supported_with_caveat",
+      "sources": [
+        "release-v3.2.0-preview3",
+        "chart-v2.1.0"
+      ],
+      "basis": "release v3.2.0-preview3: ws2007HttpBinding in the WCF client; chart: Client Authentication Basic: supported",
+      "caveat": "The chart has no WS-binding row; established by release notes only.",
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/ws2007HttpBinding/Transport/Certificate",
+      "target": "net10.0",
+      "binding": "ws2007HttpBinding",
+      "securityMode": "Transport",
+      "credentialType": "Certificate",
+      "verdict": "supported_with_caveat",
+      "sources": [
+        "release-v3.2.0-preview3",
+        "chart-v2.1.0"
+      ],
+      "basis": "release v3.2.0-preview3: ws2007HttpBinding in the WCF client; chart: Client Authentication Certificate/HTTP: supported",
+      "caveat": "The chart has no WS-binding row; established by release notes only.",
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/ws2007HttpBinding/Transport/Digest",
+      "target": "net10.0",
+      "binding": "ws2007HttpBinding",
+      "securityMode": "Transport",
+      "credentialType": "Digest",
+      "verdict": "supported_with_caveat",
+      "sources": [
+        "release-v3.2.0-preview3",
+        "chart-v2.1.0"
+      ],
+      "basis": "release v3.2.0-preview3: ws2007HttpBinding in the WCF client; chart: Client Authentication Digest: supported",
+      "caveat": "The chart has no WS-binding row; established by release notes only.",
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/ws2007HttpBinding/Transport/None",
+      "target": "net10.0",
+      "binding": "ws2007HttpBinding",
+      "securityMode": "Transport",
+      "credentialType": "None",
+      "verdict": "supported_with_caveat",
+      "sources": [
+        "release-v3.2.0-preview3",
+        "chart-v2.1.0"
+      ],
+      "basis": "release v3.2.0-preview3: ws2007HttpBinding in the WCF client; chart: Security Transport and Transport Https: supported",
+      "caveat": "The chart has no WS-binding row; established by release notes only.",
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/ws2007HttpBinding/Transport/Ntlm",
+      "target": "net10.0",
+      "binding": "ws2007HttpBinding",
+      "securityMode": "Transport",
+      "credentialType": "Ntlm",
+      "verdict": "supported_with_caveat",
+      "sources": [
+        "release-v3.2.0-preview3",
+        "chart-v2.1.0"
+      ],
+      "basis": "release v3.2.0-preview3: ws2007HttpBinding in the WCF client; chart: Client Authentication NTLM: supported (Windows column; Linux is the platform verdict's)",
+      "caveat": "The chart has no WS-binding row; established by release notes only.",
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/ws2007HttpBinding/Transport/Windows",
+      "target": "net10.0",
+      "binding": "ws2007HttpBinding",
+      "securityMode": "Transport",
+      "credentialType": "Windows",
+      "verdict": "supported_with_caveat",
+      "sources": [
+        "release-v3.2.0-preview3",
+        "chart-v2.1.0"
+      ],
+      "basis": "release v3.2.0-preview3: ws2007HttpBinding in the WCF client; chart: Client Authentication Kerberos/HTTP: supported",
+      "caveat": "The chart has no WS-binding row; established by release notes only.",
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/ws2007HttpBinding/TransportWithMessageCredential/Certificate",
+      "target": "net10.0",
+      "binding": "ws2007HttpBinding",
+      "securityMode": "TransportWithMessageCredential",
+      "credentialType": "Certificate",
+      "verdict": "supported_with_caveat",
+      "sources": [
+        "release-v3.2.0-preview3",
+        "release-v3.0.0"
+      ],
+      "basis": "release v3.2.0-preview3: ws2007HttpBinding in the WCF client; release v3.0.0: TransportWithMessageCredential on HTTP",
+      "caveat": "The chart has no WS-binding row; established by release notes only.",
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/ws2007HttpBinding/TransportWithMessageCredential/UserName",
+      "target": "net10.0",
+      "binding": "ws2007HttpBinding",
+      "securityMode": "TransportWithMessageCredential",
+      "credentialType": "UserName",
+      "verdict": "supported_with_caveat",
+      "sources": [
+        "release-v3.2.0-preview3",
+        "release-v3.0.0"
+      ],
+      "basis": "release v3.2.0-preview3: ws2007HttpBinding in the WCF client; release v3.0.0: TransportWithMessageCredential on HTTP",
+      "caveat": "The chart has no WS-binding row; established by release notes only.",
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/wsDualHttpBinding/*/*",
+      "target": "net10.0",
+      "binding": "wsDualHttpBinding",
+      "securityMode": "*",
+      "credentialType": "*",
+      "verdict": "unsupported",
+      "sources": [
+        "packages-v8.1.2"
+      ],
+      "basis": "no WCF client package provides it",
+      "caveat": null,
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/wsFederationHttpBinding/Message/*",
+      "target": "net10.0",
+      "binding": "wsFederationHttpBinding",
+      "securityMode": "Message",
+      "credentialType": "*",
+      "verdict": "unsupported",
+      "sources": [
+        "chart-v2.1.0"
+      ],
+      "basis": "chart: Security Message: not supported",
+      "caveat": null,
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/wsFederationHttpBinding/TransportWithMessageCredential/IssuedToken",
+      "target": "net10.0",
+      "binding": "wsFederationHttpBinding",
+      "securityMode": "TransportWithMessageCredential",
+      "credentialType": "IssuedToken",
+      "verdict": "supported_with_caveat",
+      "sources": [
+        "release-v3.2.0-preview3"
+      ],
+      "basis": "release v3.2.0-preview3: System.ServiceModel.Federation package",
+      "caveat": "Needs the System.ServiceModel.Federation package (WSFederationHttpBinding) and a token service reachable from the new host.",
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/wsHttpBinding/Message/*",
+      "target": "net10.0",
+      "binding": "wsHttpBinding",
+      "securityMode": "Message",
+      "credentialType": "*",
+      "verdict": "unsupported",
+      "sources": [
+        "chart-v2.1.0",
+        "docs-system-provided-bindings"
+      ],
+      "basis": "chart: Security Message: not supported. Message is this binding's default mode (docs: System-provided bindings)",
+      "caveat": null,
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/wsHttpBinding/None/None",
+      "target": "net10.0",
+      "binding": "wsHttpBinding",
+      "securityMode": "None",
+      "credentialType": "None",
+      "verdict": "supported_with_caveat",
+      "sources": [
+        "release-v3.1.0",
+        "chart-v2.1.0"
+      ],
+      "basis": "release v3.1.0: wsHttpBinding in the WCF client; chart: Security None: supported",
+      "caveat": "The chart has no WS-binding row; established by release notes only.",
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/wsHttpBinding/Transport/Basic",
+      "target": "net10.0",
+      "binding": "wsHttpBinding",
+      "securityMode": "Transport",
+      "credentialType": "Basic",
+      "verdict": "supported_with_caveat",
+      "sources": [
+        "release-v3.1.0",
+        "chart-v2.1.0"
+      ],
+      "basis": "release v3.1.0: wsHttpBinding in the WCF client; chart: Client Authentication Basic: supported",
+      "caveat": "The chart has no WS-binding row; established by release notes only.",
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/wsHttpBinding/Transport/Certificate",
+      "target": "net10.0",
+      "binding": "wsHttpBinding",
+      "securityMode": "Transport",
+      "credentialType": "Certificate",
+      "verdict": "supported_with_caveat",
+      "sources": [
+        "release-v3.1.0",
+        "chart-v2.1.0"
+      ],
+      "basis": "release v3.1.0: wsHttpBinding in the WCF client; chart: Client Authentication Certificate/HTTP: supported",
+      "caveat": "The chart has no WS-binding row; established by release notes only.",
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/wsHttpBinding/Transport/Digest",
+      "target": "net10.0",
+      "binding": "wsHttpBinding",
+      "securityMode": "Transport",
+      "credentialType": "Digest",
+      "verdict": "supported_with_caveat",
+      "sources": [
+        "release-v3.1.0",
+        "chart-v2.1.0"
+      ],
+      "basis": "release v3.1.0: wsHttpBinding in the WCF client; chart: Client Authentication Digest: supported",
+      "caveat": "The chart has no WS-binding row; established by release notes only.",
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/wsHttpBinding/Transport/None",
+      "target": "net10.0",
+      "binding": "wsHttpBinding",
+      "securityMode": "Transport",
+      "credentialType": "None",
+      "verdict": "supported_with_caveat",
+      "sources": [
+        "release-v3.1.0",
+        "chart-v2.1.0"
+      ],
+      "basis": "release v3.1.0: wsHttpBinding in the WCF client; chart: Security Transport and Transport Https: supported",
+      "caveat": "The chart has no WS-binding row; established by release notes only.",
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/wsHttpBinding/Transport/Ntlm",
+      "target": "net10.0",
+      "binding": "wsHttpBinding",
+      "securityMode": "Transport",
+      "credentialType": "Ntlm",
+      "verdict": "supported_with_caveat",
+      "sources": [
+        "release-v3.1.0",
+        "chart-v2.1.0"
+      ],
+      "basis": "release v3.1.0: wsHttpBinding in the WCF client; chart: Client Authentication NTLM: supported (Windows column; Linux is the platform verdict's)",
+      "caveat": "The chart has no WS-binding row; established by release notes only.",
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/wsHttpBinding/Transport/Windows",
+      "target": "net10.0",
+      "binding": "wsHttpBinding",
+      "securityMode": "Transport",
+      "credentialType": "Windows",
+      "verdict": "supported_with_caveat",
+      "sources": [
+        "release-v3.1.0",
+        "chart-v2.1.0"
+      ],
+      "basis": "release v3.1.0: wsHttpBinding in the WCF client; chart: Client Authentication Kerberos/HTTP: supported",
+      "caveat": "The chart has no WS-binding row; established by release notes only.",
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/wsHttpBinding/TransportWithMessageCredential/Certificate",
+      "target": "net10.0",
+      "binding": "wsHttpBinding",
+      "securityMode": "TransportWithMessageCredential",
+      "credentialType": "Certificate",
+      "verdict": "supported_with_caveat",
+      "sources": [
+        "release-v3.1.0",
+        "release-v3.0.0"
+      ],
+      "basis": "release v3.1.0: wsHttpBinding in the WCF client; release v3.0.0: TransportWithMessageCredential on HTTP",
+      "caveat": "The chart has no WS-binding row; established by release notes only.",
+      "probes": [
+        {
+          "probedOn": "2026-10-12",
+          "scenario": "wsHttp-TransportWithMessageCredential-Certificate",
+          "where": "linux-container",
+          "outcome": "failed",
+          "summary": "System.UriFormatException: Invalid URI: The format of the URI could not be determined.",
+          "service": "WCF sample AccountService, Hosting.Iis binding, self-hosted (Start-ProbeHttpsServices.ps1)",
+          "address": "https://localhost:44301/Account.svc",
+          "client": {
+            "image": "mcr.microsoft.com/dotnet/runtime@sha256:b89586dc17781f25531909993658aa8161205ae38b8cec8847df4a8221a403d5",
+            "os": "Ubuntu 24.04.5 LTS",
+            "framework": ".NET 10.0.12",
+            "wcfClient": "8.1.2+a47960f931a813617a061adc2ba9cabe1816a551",
+            "cryptographyXml": "10.0.12+95017c711e6afc1085133d440e42b4bd78155701"
+          },
+          "evidence": "steps/step-003-fingerprinting/probes/evidence/20261012T144723Z-wsHttp-TransportWithMessageCredential-Certificate-linux.json",
+          "sha256": "a9761a1bc3b879624168c7ab271c5d553004a17c22d531c766e8228e0d6d5cd4",
+          "controls": [
+            {
+              "where": "linux-container-unpinned-cryptography-xml",
+              "outcome": "failed",
+              "summary": "System.UriFormatException: Invalid URI: The format of the URI could not be determined.",
+              "os": "Ubuntu 24.04.5 LTS",
+              "cryptographyXml": "8.0.10+81cabf2857a01351e5ab578947c7403a5b128ad1",
+              "evidence": "steps/step-003-fingerprinting/probes/evidence/20261012T144723Z-wsHttp-TransportWithMessageCredential-Certificate-linux-container-unpinned-cryptography-xml.json",
+              "sha256": "6be5c8e17831faef0d631dc0cfb5b1498198e22fed4c937076399ebb725fd5df"
+            },
+            {
+              "where": "windows-host",
+              "outcome": "passed",
+              "summary": "IAccountService.GetAccount(CUST-001) returned 'CUST-001 Ada Lovelace'",
+              "os": "Microsoft Windows 10.0.26200",
+              "cryptographyXml": "10.0.12+95017c711e6afc1085133d440e42b4bd78155701",
+              "evidence": "steps/step-003-fingerprinting/probes/evidence/20261012T144723Z-wsHttp-TransportWithMessageCredential-Certificate-windows-host.json",
+              "sha256": "1c5f3bab8b9c7e86bb1dc4885331b3c5367f2a2acc75a138ebed554a7b8eb0ce"
+            }
+          ],
+          "attribution": "platform"
+        }
+      ],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/wsHttpBinding/TransportWithMessageCredential/UserName",
+      "target": "net10.0",
+      "binding": "wsHttpBinding",
+      "securityMode": "TransportWithMessageCredential",
+      "credentialType": "UserName",
+      "verdict": "supported_with_caveat",
+      "sources": [
+        "release-v3.1.0",
+        "release-v3.0.0"
+      ],
+      "basis": "release v3.1.0: wsHttpBinding in the WCF client; release v3.0.0: TransportWithMessageCredential on HTTP",
+      "caveat": "The chart has no WS-binding row; established by release notes only.",
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    }
+  ]
+}

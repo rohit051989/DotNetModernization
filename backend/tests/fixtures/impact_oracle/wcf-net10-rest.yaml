@@ -1,0 +1,229 @@
+# The oracle for calibrating impact-analysis (app/impact/calibration.py):
+# sampleapps/WCF/MODERNIZATION-NET10-REST.md, a hand analysis of moving the WCF
+# Catalog to REST on .NET 10. Sections 6 (files to change), 7 (new files) and
+# 8 (files to delete), file by file, relative to the repository root.
+#
+# The hand analysis is the reference, not the truth: where it is wrong or
+# inconsistent the classification below says so.
+
+repository: sampleapps/WCF
+inputs: wcf                  # the frozen upstream artifacts and integration edges, beside this file
+source: sampleapps/WCF/MODERNIZATION-NET10-REST.md
+
+# The scenario the hand analysis describes, as engagement decisions. Every other
+# found item takes its default resolution.
+decisions:
+  wcf-service: wcf-service-rest-rewrite
+  wcf-service-host: wcf-host-aspnetcore-web-host
+  wcf-nettcp-client: migrate-to-service-protocol
+
+# Regression floors, and a ceiling on review. A rule edit that drops recall or precision
+# below its floor, or moves files to review past the ceiling, fails
+# tests/test_impact_calibration.py. Raise the floors when the rules improve.
+# Review is an abstention: it is neither found nor claimed (app/impact/calibration.py).
+floors:                      # measured 2026-10-09: 43/70, 43/67 in scope, 43/44; review 13 of 57 listed
+  recall: 0.61
+  recall_in_scope: 0.64
+  precision: 0.97
+ceilings:
+  review_rate: 0.25
+
+change:                      # section 6, rows not marked delete
+  - src/Catalog.Contracts/Catalog.Contracts.csproj
+  - src/Catalog.Contracts/IUtilityService.cs
+  - src/Catalog.Contracts/IProductService.cs
+  - src/Catalog.Contracts/IOrderService.cs
+  - src/Catalog.Contracts/IAccountService.cs
+  - src/Catalog.Contracts/IFundsTransferService.cs
+  - src/Catalog.Services/Catalog.Services.csproj
+  - src/Catalog.Services/AccountService.cs
+  - src/Catalog.Services/ProductService.cs
+  - src/Catalog.Services/OrderService.cs
+  - src/Catalog.Services/UtilityService.cs
+  - src/Catalog.Services/FundsTransferService.cs
+  - src/Catalog.Services/FundsTransfer/TransferLogger.cs
+  - src/Catalog.Services/FundsTransfer/TransferQueueItem.cs
+  - src/Catalog.Services/Repositories/TransferQueueRepository.cs
+  - src/Catalog.Host/Catalog.Host.csproj
+  - src/Catalog.Host/Program.cs
+  - src/Catalog.TestClient/Catalog.TestClient.csproj
+  - src/Catalog.TestClient/Program.cs
+  - src/Catalog.TestClient/ClientSettings.cs
+  - src/Catalog.TestClient/App.config
+  - scripts/New-DevCertificates.ps1
+  - README.md
+
+new:                         # section 7
+  - src/Catalog.Contracts/Faults/ServiceFaultException.cs
+  - src/Catalog.Host/Errors/ServiceFaultExceptionFilter.cs
+  - src/Catalog.Host/Controllers/UtilityController.cs
+  - src/Catalog.Host/Controllers/ProductsController.cs
+  - src/Catalog.Host/Controllers/OrdersController.cs
+  - src/Catalog.Host/Controllers/AccountsController.cs
+  - src/Catalog.Host/Controllers/FundsTransfersController.cs
+  - src/Catalog.Services/ICallerIdentity.cs
+  - src/Catalog.Host/HttpCallerIdentity.cs
+  - src/Catalog.Host/appsettings.json
+  - src/Catalog.Host/appsettings.Development.json
+  - src/Catalog.Host/appsettings.DEV.json
+  - src/Catalog.Host/appsettings.SITP.json
+  - src/Catalog.Host/appsettings.STE.json
+  - src/Catalog.Host/appsettings.PROD.json
+  - src/Catalog.TestClient/CatalogRestClient.cs
+  - src/Catalog.Services/FundsTransfer/FundsTransferOptions.cs
+  - src/Catalog.Host/Properties/launchSettings.json
+  - src/Catalog.Services/Connected Services/FundsTransferWS/Reference.cs          # N11: the regenerated proxy
+  - src/Catalog.Services/Connected Services/FundsTransferWS/dotnet-svcutil.params.json
+
+delete:                      # section 8, and the rows of section 6 marked delete
+  - src/Hosting.Iis/Account.svc
+  - src/Hosting.Iis/FundsTransfer.svc
+  - src/Hosting.Iis/Order.svc
+  - src/Hosting.Iis/Product.svc
+  - src/Hosting.Iis/Utility.svc
+  - src/Hosting.Iis/Web.config
+  - src/Hosting.Iis/README.md
+  - scripts/Setup-AdminHttpBindings.ps1
+  - scripts/Remove-AdminHttpBindings.ps1
+  - scripts/Apply-SetParam.ps1
+  - CustomFiles/Catalog.Host/SetParamFiles/DEV/SetParam.xml
+  - CustomFiles/Catalog.Host/SetParamFiles/DEV/LOCAL/SetParam.xml
+  - CustomFiles/Catalog.Host/SetParamFiles/SITP/SetParam.xml
+  - CustomFiles/Catalog.Host/SetParamFiles/STE/SetParam.xml
+  - CustomFiles/Catalog.Host/SetParamFiles/PROD/SetParam.xml
+  - src/Catalog.Host/HostSettings.cs
+  - src/Catalog.Host/CertificateLocator.cs
+  - src/Catalog.Host/App.config
+  - src/Catalog.Host/Parameters.xml
+  - src/Catalog.Services/Service References/FundsTransferWS/Reference.cs
+  - src/Catalog.Services/Service References/FundsTransferWS/FundsTransferWS.wsdl
+  - src/Catalog.Services/Service References/FundsTransferWS/FundsTransferWS.disco
+  - src/Catalog.Services/Service References/FundsTransferWS/Reference.svcmap
+  - src/Catalog.Services/Service References/FundsTransferWS/configuration.svcinfo
+  - src/Catalog.Services/Service References/FundsTransferWS/configuration91.svcinfo
+  - src/Catalog.Services/Service References/FundsTransferWS/WcfCatalog.Services.FundsTransferWS.RTFTInquiryResponse.datasource
+  - .host.pid
+
+# Every disagreement, classified: what is wrong (class: rule_missing, rule_wrong,
+# oracle_wrong, scope, vocabulary), the work expected to resolve it (resolved_by:
+# reachability-analysis; supporting-item:<id> or recipe:<id> from
+# 35-RECIPE-WCF-SERVICE-REST.md; or out-of-scope) and why. The calibration projects recall
+# per resolved_by, so each discovery pick's effect is measured as it lands. A disagreement
+# with no entry, or no valid resolved_by, fails the test.
+classifications:
+  '.host.pid':
+    class: scope
+    resolved_by: supporting-item:dead-code
+    reason: 'A leftover runtime file (X11) — 35 Part C''s dead-code item lists it.'
+  'README.md':
+    class: scope
+    resolved_by: out-of-scope
+    reason: 'Repository documentation. No catalog item covers a README.'
+  'scripts/Apply-SetParam.ps1':
+    class: scope
+    resolved_by: supporting-item:webdeploy-parameters
+    reason: 'The script that applies SetParam files; obsolete once ASPNETCORE_ENVIRONMENT selects the settings file. 35 Part C''s webdeploy-parameters item covers Web Deploy''s files and script.'
+  'scripts/New-DevCertificates.ps1':
+    class: scope
+    resolved_by: out-of-scope
+    reason: 'A developer script. No catalog item covers developer scripts.'
+  'scripts/Remove-AdminHttpBindings.ps1':
+    class: scope
+    resolved_by: supporting-item:dead-code
+    reason: 'http.sys reservation script, dead once Kestrel hosts (X10); 35 Part C''s dead-code item lists it.'
+  'scripts/Setup-AdminHttpBindings.ps1':
+    class: scope
+    resolved_by: supporting-item:dead-code
+    reason: 'http.sys reservation script, dead once Kestrel hosts (X10); 35 Part C''s dead-code item lists it.'
+  'src/Catalog.Host/CertificateLocator.cs':
+    class: scope
+    resolved_by: supporting-item:dead-code
+    reason: 'The host''s copy of a duplicated helper (X12), replaced by Kestrel''s certificate configuration; 35 Part C''s dead-code item lists X12.'
+  'src/Catalog.Host/Controllers/UtilitiesController.cs':
+    class: vocabulary
+    resolved_by: out-of-scope
+    reason: 'Resource naming: {type.resource} pluralises (Products, Orders, Accounts, FundsTransfers all match), but the hand analysis keeps Utility singular — it is not a collection. A naming choice, not a rule.'
+  'src/Catalog.Host/Controllers/UtilityController.cs':
+    class: vocabulary
+    resolved_by: out-of-scope
+    reason: 'The same controller, proposed as UtilitiesController.'
+  'src/Catalog.Host/HostSettings.cs':
+    class: scope
+    resolved_by: supporting-item:configmanager-appsettings-read
+    reason: 'Reads App.config through ConfigurationManager.AppSettings; replaced by appsettings.json and an options class. 35 Part C''s configmanager-appsettings-read item detects the read.'
+  'src/Catalog.Host/HttpCallerIdentity.cs':
+    class: scope
+    resolved_by: supporting-item:wcf-security-context-read
+    reason: 'Exists because OrderService reads ServiceSecurityContext. 35 Part C''s wcf-security-context-read item drives it, not an item''s impact rules.'
+  'src/Catalog.Services/Connected Services/FundsTransferWS/Reference.cs':
+    class: scope
+    resolved_by: supporting-item:wcf-service-reference
+    reason: 'The outbound SOAP proxy to FundsTransferWS stays SOAP but is regenerated with dotnet-svcutil on .NET 10: the Service References folder is deleted and the proxy regenerated into Connected Services (N11). No catalog item detects a service reference today; 35-RECIPE-WCF-SERVICE-REST.md Part C''s wcf-service-reference would.'
+  'src/Catalog.Services/Connected Services/FundsTransferWS/dotnet-svcutil.params.json':
+    class: scope
+    resolved_by: supporting-item:wcf-service-reference
+    reason: 'The outbound SOAP proxy to FundsTransferWS stays SOAP but is regenerated with dotnet-svcutil on .NET 10: the Service References folder is deleted and the proxy regenerated into Connected Services (N11). No catalog item detects a service reference today; 35-RECIPE-WCF-SERVICE-REST.md Part C''s wcf-service-reference would.'
+  'src/Catalog.Services/FundsTransfer/FundsTransferOptions.cs':
+    class: scope
+    resolved_by: supporting-item:configmanager-appsettings-read
+    reason: 'Replaces ConfigurationManager.AppSettings reads in library code — 35 Part C''s configmanager-appsettings-read item.'
+  'src/Catalog.Services/FundsTransfer/TransferQueueItem.cs':
+    class: scope
+    resolved_by: reachability-analysis
+    reason: 'Dead-code removal the hand analysis bundles with the migration (X3, QueuedUtc: written, never read). Not migration work; reachability-analysis (34 Part L) finds write-only members.'
+  'src/Catalog.Services/ICallerIdentity.cs':
+    class: scope
+    resolved_by: supporting-item:wcf-security-context-read
+    reason: 'The interface side of the ServiceSecurityContext replacement.'
+  'src/Catalog.Services/Repositories/TransferQueueRepository.cs':
+    class: scope
+    resolved_by: reachability-analysis
+    reason: 'Dead-code removal the hand analysis bundles with the migration (X3, QueuedUtc: written, never read). Not migration work; reachability-analysis (34 Part L) finds write-only members.'
+  'src/Catalog.Services/Service References/FundsTransferWS/FundsTransferWS.disco':
+    class: scope
+    resolved_by: supporting-item:wcf-service-reference
+    reason: 'The outbound SOAP proxy to FundsTransferWS stays SOAP but is regenerated with dotnet-svcutil on .NET 10: the Service References folder is deleted and the proxy regenerated into Connected Services (N11). No catalog item detects a service reference today; 35-RECIPE-WCF-SERVICE-REST.md Part C''s wcf-service-reference would.'
+  'src/Catalog.Services/Service References/FundsTransferWS/FundsTransferWS.wsdl':
+    class: scope
+    resolved_by: supporting-item:wcf-service-reference
+    reason: 'The outbound SOAP proxy to FundsTransferWS stays SOAP but is regenerated with dotnet-svcutil on .NET 10: the Service References folder is deleted and the proxy regenerated into Connected Services (N11). No catalog item detects a service reference today; 35-RECIPE-WCF-SERVICE-REST.md Part C''s wcf-service-reference would.'
+  'src/Catalog.Services/Service References/FundsTransferWS/Reference.cs':
+    class: scope
+    resolved_by: supporting-item:wcf-service-reference
+    reason: 'The outbound SOAP proxy to FundsTransferWS stays SOAP but is regenerated with dotnet-svcutil on .NET 10: the Service References folder is deleted and the proxy regenerated into Connected Services (N11). No catalog item detects a service reference today; 35-RECIPE-WCF-SERVICE-REST.md Part C''s wcf-service-reference would.'
+  'src/Catalog.Services/Service References/FundsTransferWS/Reference.svcmap':
+    class: scope
+    resolved_by: supporting-item:wcf-service-reference
+    reason: 'The outbound SOAP proxy to FundsTransferWS stays SOAP but is regenerated with dotnet-svcutil on .NET 10: the Service References folder is deleted and the proxy regenerated into Connected Services (N11). No catalog item detects a service reference today; 35-RECIPE-WCF-SERVICE-REST.md Part C''s wcf-service-reference would.'
+  'src/Catalog.Services/Service References/FundsTransferWS/WcfCatalog.Services.FundsTransferWS.RTFTInquiryResponse.datasource':
+    class: scope
+    resolved_by: supporting-item:wcf-service-reference
+    reason: 'The outbound SOAP proxy to FundsTransferWS stays SOAP but is regenerated with dotnet-svcutil on .NET 10: the Service References folder is deleted and the proxy regenerated into Connected Services (N11). No catalog item detects a service reference today; 35-RECIPE-WCF-SERVICE-REST.md Part C''s wcf-service-reference would.'
+  'src/Catalog.Services/Service References/FundsTransferWS/configuration.svcinfo':
+    class: scope
+    resolved_by: supporting-item:wcf-service-reference
+    reason: 'The outbound SOAP proxy to FundsTransferWS stays SOAP but is regenerated with dotnet-svcutil on .NET 10: the Service References folder is deleted and the proxy regenerated into Connected Services (N11). No catalog item detects a service reference today; 35-RECIPE-WCF-SERVICE-REST.md Part C''s wcf-service-reference would.'
+  'src/Catalog.Services/Service References/FundsTransferWS/configuration91.svcinfo':
+    class: scope
+    resolved_by: supporting-item:wcf-service-reference
+    reason: 'The outbound SOAP proxy to FundsTransferWS stays SOAP but is regenerated with dotnet-svcutil on .NET 10: the Service References folder is deleted and the proxy regenerated into Connected Services (N11). No catalog item detects a service reference today; 35-RECIPE-WCF-SERVICE-REST.md Part C''s wcf-service-reference would.'
+  'src/Catalog.TestClient/App.config':
+    class: rule_missing
+    resolved_by: recipe:wcf-client-to-rest
+    reason: 'The test client''s endpoint ports are appSettings keys read through ClientSettings, not system.serviceModel/client. 35 Part F''s coupled recipe changes them (C02 client-settings-to-base-urls).'
+  'src/Catalog.TestClient/CatalogRestClient.cs':
+    class: rule_missing
+    resolved_by: recipe:wcf-client-to-rest
+    reason: 'The typed REST client replacing ChannelFactory — 35 Part F, C01 rest-client-base.'
+  'src/Catalog.TestClient/ClientSettings.cs':
+    class: rule_missing
+    resolved_by: recipe:wcf-client-to-rest
+    reason: 'The settings class those keys are read through — 35 Part F, C02.'
+  'src/Hosting.Iis/README.md':
+    class: scope
+    resolved_by: supporting-item:dead-code
+    reason: 'Dead or leftover: src/Hosting.Iis is not in the solution and never built (X9). impact-analysis cannot tell dead from live; 35 Part C''s dead-code item (UNBUILT_SOURCE_FOLDER) would.'
+  'src/Hosting.Iis/Web.config':
+    class: scope
+    resolved_by: supporting-item:dead-code
+    reason: 'Dead or leftover: src/Hosting.Iis is not in the solution and never built (X9). impact-analysis cannot tell dead from live; 35 Part C''s dead-code item (UNBUILT_SOURCE_FOLDER) would. impact-analysis updates it (the <service> elements go), which is right for a live IIS host.'

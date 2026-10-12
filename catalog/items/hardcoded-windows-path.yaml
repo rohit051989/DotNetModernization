@@ -2,7 +2,7 @@ category: configuration
 deleted: false
 description: |-
   A C:\, G:\ or UNC path literal in C# source or a configuration value. None of these exist in a Linux container. Overlaps serilog-file-sink by design: a Serilog sink path is also a path literal. Conversion ordering (depends_on) resolves the overlap, detection does not.
-  Conversion ordering (docs/28 Part E): runs AFTER serilog-file-sink, whose removal takes the sink's path with it; its occurrences here are then gone rather than externalised. Becomes a depends_on entry.
+  Conversion ordering (docs/28 Part E): runs AFTER serilog-file-sink, whose removal takes the sink's path with it; its occurrences here are then gone rather than externalised. Becomes a depends_on entry. Also runs AFTER wcf-service-host's move to an ASP.NET Core web host where that applies: a path in a Web Deploy SetParam file is fixed in the appsettings.{Environment}.json the host conversion moved it to.
 detection:
   match:
     all:

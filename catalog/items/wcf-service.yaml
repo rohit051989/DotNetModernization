@@ -241,25 +241,35 @@ resolutions:
   effort: high
   id: wcf-service-rest-rewrite
   impact_rules:
-  - action: rewrite
+  - action: update
     from: seed
     id: impl
-    reason: Service implementation becomes REST controller logic
+    reason: 'The service class stays, called by thin controllers: WCF-only APIs (ServiceBehavior, FaultException<T>, ServiceSecurityContext) are swapped; business logic is unchanged'
     select: self
-  - action: delete
+  - action: update
     filter:
       has_attribute: ServiceContract
     from: impl
     id: contracts
-    reason: WCF service contract is replaced by controller routes
+    reason: '[ServiceContract], [OperationContract] and [FaultContract] are removed: the interface stays as the service interface the controllers call'
     traverse: implemented_interfaces
   - action: update
+    from: contracts
+    id: contracts-project
+    reason: The contracts project drops its System.ServiceModel references and is retargeted to .NET 10
+    traverse: project_file
+  - action: review
     filter:
       has_attribute: DataContract
     from: contracts
     id: data-contracts
-    reason: Remove DataContract attributes; keep as request and response models
+    reason: DataContract types serialize to JSON as they are; check member names against the JSON naming policy (PropertyNamingPolicy = null keeps them)
     traverse: signature_types
+  - action: create
+    create: Exception type replacing FaultException<T>, mapped to an HTTP status by the host
+    for_each: contracts
+    id: fault-exception
+    proposed_path: '{node.project.dir}/Faults/ServiceFaultException.cs'
   - action: delete
     from: impl
     id: svc
@@ -279,11 +289,21 @@ resolutions:
     id: tests
     reason: Tests call the service through its WCF contract; they move to the controllers
     traverse: referencing_tests
+  - action: none
+    from: contracts
+    id: hosts
+    reason: 'The project hosting each contract (HOSTS_WCF_SERVICE): where its controller and the fault filter go'
+    traverse: hosting_project
   - action: create
-    create: REST controller per service contract
-    for_each: contracts
+    create: 'REST controller per service contract: thin, one action per operation, calling the service interface'
+    for_each: hosts
     id: controllers
-    proposed_path: '{project.dir}/Controllers/{type.base_name}Controller.cs'
+    proposed_path: '{node.project.dir}/Controllers/{type.resource}Controller.cs'
+  - action: create
+    create: Filter mapping ServiceFaultException<T> to its HTTP status, with the fault as the body
+    for_each: hosts
+    id: fault-filter
+    proposed_path: '{node.project.dir}/Errors/ServiceFaultExceptionFilter.cs'
   - action: rewrite
     from: contracts
     id: clients

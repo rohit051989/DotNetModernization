@@ -350,3 +350,56 @@ export interface EntryPointBackend {
   production_environment: string | null
   applications: { project_id: string; project_path: string; rows: EntryPointBackendRow[] }[]
 }
+
+/** One verdict as the last scan recorded it, with what is live in the WCF client matrix. */
+export interface SoapVerdictLive {
+  /** 'under_review' when a probe contradicts the entry: never its unrevised verdict. */
+  verdict: string | null
+  unrevisedVerdict: string | null
+  matrixEntry: string | null
+  /** Null when no matrix entry matched. */
+  matrixConfirmed: boolean | null
+  confirmedBy: string | null
+  confirmedOn: string | null
+  /** The recorded decision that authorised the confirmation. */
+  decision: string | null
+  probeContradictions: string[]
+  evidenceCovers: { wcfClient: string; runtimes: string[]; probes: number } | null
+  evidencePredatesTarget: boolean
+}
+
+export interface RepositorySoapEnvironment {
+  environment: string
+  address: string | null
+  sourceFile: string | null
+  binding: string | null
+  securityMode: string | null
+  credentialType: string | null
+  securitySource: string | null
+  runtime: SoapVerdictLive
+  platform: SoapVerdictLive
+}
+
+export interface RepositorySoapCall {
+  invocationId: string
+  projectPath: string
+  contract: string | null
+  clientType: string | null
+  endpoint: string
+  environments: RepositorySoapEnvironment[]
+  /** The estate report's row for this call; null when the newest estate run does not have it. */
+  estateHost: string | null
+}
+
+export interface RepositorySoap {
+  repository_id: string
+  engagement_id: string
+  scanned_at: string | null
+  estate_run_at: string | null
+  /** The estate report has not been rerun since this repository's last scan. */
+  estate_stale: boolean
+  estate_note: string | null
+  target_wcf_client_version: string | null
+  unused_count: number
+  calls: RepositorySoapCall[]
+}

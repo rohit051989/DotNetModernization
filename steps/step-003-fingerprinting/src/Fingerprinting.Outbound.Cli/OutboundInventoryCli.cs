@@ -15,7 +15,7 @@ namespace Fingerprinting.Outbound.Cli;
 public static class OutboundInventoryCli
 {
     public const string ArtifactType = "outbound-invocation-inventory";
-    public const string ArtifactVersion = "1.3.0";
+    public const string ArtifactVersion = "1.5.0";
     public const string OutputFileName = "outbound-invocation-inventory.json";
 
     private const string InventoryType = "solution-project-inventory";
@@ -62,6 +62,8 @@ public static class OutboundInventoryCli
                 case "--out" when index + 1 < args.Length: o = args[++index]; break;
                 // 1.3.0, both optional: step 4's artifact, and SetParameters globs (comma-separated).
                 case "--entry-points" when index + 1 < args.Length: entryPoints = Path.GetFullPath(args[++index]); break;
+                // 1.4.0, optional: the target framework the SOAP runtime verdicts are for.
+                case "--target" when index + 1 < args.Length: Target = args[++index]; break;
                 case "--deploy-globs" when index + 1 < args.Length:
                     globs = args[++index].Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
                     break;
@@ -89,6 +91,21 @@ public static class OutboundInventoryCli
         return true;
     }
 
+    /// <summary>Standalone mode's --target (1.4.0).</summary>
+    private static string? Target;
+
+    /// <summary>The WCF client support matrix (1.4.0), published beside the schemas.</summary>
+    public const string WcfClientSupportFile = "wcf-client-support-1.1.0.json";
+
+    /// <summary>The WCF client platform matrix (1.5.0), published beside it.</summary>
+    public const string WcfClientPlatformFile = "wcf-client-platform-1.1.0.json";
+
+    private static WcfClientSupport LoadWcfClientSupport() =>
+        WcfClientSupport.Load(Path.Combine(AppContext.BaseDirectory, "schemas", WcfClientSupportFile));
+
+    private static WcfClientSupport LoadWcfClientPlatform() =>
+        WcfClientSupport.Load(Path.Combine(AppContext.BaseDirectory, "schemas", WcfClientPlatformFile));
+
     private static async Task<int> RunStandaloneAsync(
         string repoPath, string inventoryPath, string fingerprintPath, string outDir, string? entryPointsPath, IReadOnlyList<string> globs, TextWriter error)
     {
@@ -104,6 +121,9 @@ public static class OutboundInventoryCli
             {
                 DeployParameterGlobs = globs,
                 EntryPoints = entryPointsPath is null ? [] : await ReadEntryPointsAsync(entryPointsPath),
+                TargetFramework = Target,
+                WcfClientSupport = LoadWcfClientSupport(),
+                WcfClientPlatform = LoadWcfClientPlatform(),
             };
 
             var artifact = await new OutboundPipeline().RunAsync(input, repoPath, CancellationToken.None);
@@ -183,6 +203,10 @@ public static class OutboundInventoryCli
         {
             DeployParameterGlobs = await platform.GetDeployParameterGlobsAsync(inventory.RepositoryId, CancellationToken.None),
             EntryPoints = entryPoints,
+            // 1.4.0: the SOAP runtime verdicts are for the engagement's target.
+            TargetFramework = await platform.GetTargetFrameworkAsync(inventory.RepositoryId, CancellationToken.None),
+            WcfClientSupport = LoadWcfClientSupport(),
+            WcfClientPlatform = LoadWcfClientPlatform(),
         };
         if (entryPointsRef is null)
         {
@@ -331,7 +355,7 @@ public static class OutboundInventoryCli
         ?? throw new InvalidOperationException("application-fingerprint deserialized to null");
 
     private static readonly Lazy<ArtifactSchemaValidator> SchemaValidator = new(() =>
-        ArtifactSchemaValidator.Load(Path.Combine(AppContext.BaseDirectory, "schemas", "outbound-invocation-inventory-1.3.0.schema.json")));
+        ArtifactSchemaValidator.Load(Path.Combine(AppContext.BaseDirectory, "schemas", "outbound-invocation-inventory-1.5.0.schema.json")));
 
     /// <summary>Serialises deterministically, validates against the schema —
     /// a failure is a step failure — and writes.</summary>

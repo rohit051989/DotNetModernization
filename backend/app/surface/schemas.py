@@ -274,3 +274,52 @@ class EntryPointBackendOut(BaseModel):
     repository_id: uuid.UUID
     production_environment: str | None = Field(description="The engagement's setting the endpoint column is shown for.")
     applications: list[ApplicationBackendOut] = Field(description="One per project with request entry points, every operation listed.")
+
+
+class SoapVerdictLiveOut(BaseModel):
+    """One verdict as the last scan recorded it, with what is live in the WCF client matrix."""
+
+    verdict: str | None = Field(description="'under_review' when a probe contradicts the entry: never its unrevised verdict.")
+    unrevisedVerdict: str | None = Field(description="The entry's own verdict while it is under review, for the reviewer.")
+    matrixEntry: str | None
+    matrixConfirmed: bool | None = Field(description="Has a person confirmed the entry? Null when no entry matched.")
+    confirmedBy: str | None
+    confirmedOn: str | None
+    decision: str | None = Field(description="The recorded decision that authorised the confirmation.")
+    probeContradictions: list[str]
+    evidenceCovers: dict[str, Any] | None
+    evidencePredatesTarget: bool
+
+
+class SoapEnvironmentLiveOut(BaseModel):
+    environment: str
+    address: str | None
+    sourceFile: str | None
+    binding: str | None
+    securityMode: str | None
+    credentialType: str | None
+    securitySource: str | None
+    runtime: SoapVerdictLiveOut
+    platform: SoapVerdictLiveOut
+
+
+class RepositorySoapCallOut(BaseModel):
+    invocationId: str
+    projectPath: str
+    contract: str | None
+    clientType: str | None
+    endpoint: str
+    environments: list[SoapEnvironmentLiveOut]
+    estateHost: str | None = Field(description="The estate report's row for this call; null when the newest estate run does not have it.")
+
+
+class RepositorySoapOut(BaseModel):
+    repository_id: uuid.UUID
+    engagement_id: str
+    scanned_at: datetime.datetime | None = Field(description="When outbound-invocation-inventory last scanned this repository.")
+    estate_run_at: datetime.datetime | None = Field(description="When the newest estate consolidation completed; null if never.")
+    estate_stale: bool = Field(description="The estate report has not been rerun since this repository's last scan.")
+    estate_note: str | None
+    target_wcf_client_version: str | None
+    unused_count: int = Field(description="SOAP clients nothing constructs or configures: not dependencies, not listed.")
+    calls: list[RepositorySoapCallOut]

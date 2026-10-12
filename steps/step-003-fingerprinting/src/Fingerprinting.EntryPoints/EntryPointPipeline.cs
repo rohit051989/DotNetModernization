@@ -6,14 +6,22 @@ namespace Fingerprinting.EntryPoints;
 
 /// <summary>One project as the pipeline receives it: step 2's path and
 /// packages, the database id, and step 3's verdict on whether to scan it.</summary>
-public sealed record InputProject(string RelativePath, Guid ProjectId, string? SkipReason, IReadOnlyList<string> Packages);
+public sealed record InputProject(string RelativePath, Guid ProjectId, string? SkipReason, IReadOnlyList<string> Packages)
+{
+    /// <summary>Step 2's project SDK (Microsoft.NET.Sdk.Web, ...), for the framework delta signals.</summary>
+    public string? ProjectSdk { get; init; }
+}
 
 public sealed record InventoryInput(
     Guid RepositoryId,
     string RepositorySlug,
     string SkipSource,
     IReadOnlyList<InputProject> Projects,
-    IReadOnlyList<Warning> Warnings);
+    IReadOnlyList<Warning> Warnings)
+{
+    /// <summary>Step 2's resolved project references: (source, referenced).</summary>
+    public IReadOnlyList<(string Source, string Referenced)> ProjectReferences { get; init; } = [];
+}
 
 /// <summary>
 /// Builds the entry-point-inventory@1.0.0 artifact for one repository —
@@ -23,7 +31,7 @@ public sealed record InventoryInput(
 public sealed class EntryPointPipeline
 {
     /// <summary>Matches the entry-point-inventory step registration version.</summary>
-    public const string ScannerVersion = "2.2.0";
+    public const string ScannerVersion = "2.3.0";
 
     private static readonly IReadOnlyList<IEntryPointDetector> Detectors =
     [
@@ -103,8 +111,16 @@ public sealed class EntryPointPipeline
 
         // 2.2.0: what each project exposes or hosts, across projects.
         var signals = ArchitectureSignals.Build(results, input.Projects.Select(p => p.RelativePath).ToList());
+        // 2.3.0: known breaking changes of a later framework (the framework delta catalog).
+        var deltas = FrameworkDeltaSignals.Build(
+            loaded.Select(l => (l.Input.RelativePath, l.Input.ProjectSdk, l.Source)).ToList(), input.ProjectReferences);
         results = results
-            .Select(r => r with { Signals = signals.GetValueOrDefault(r.ProjectPath) ?? [] })
+            .Select(r => r with
+            {
+                Signals = (signals.GetValueOrDefault(r.ProjectPath) ?? []).Concat(deltas.GetValueOrDefault(r.ProjectPath) ?? [])
+                    .OrderBy(s => s.Name, StringComparer.Ordinal).ThenBy(s => s.SourcePath ?? "", StringComparer.Ordinal)
+                    .ThenBy(s => s.Value ?? "", StringComparer.Ordinal).ToList(),
+            })
             .OrderBy(r => r.ProjectPath, StringComparer.Ordinal).ToList();
         return new EntryPointInventoryArtifact
         {

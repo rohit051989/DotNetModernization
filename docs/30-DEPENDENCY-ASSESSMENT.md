@@ -317,7 +317,7 @@ from the client's Artifactory or the nuget.org fallback.
 
 ---
 
-## As implemented (`dependency-assessment`, scanner 1.1.0, artifact `dependency-assessment@1.1.0`)
+## As implemented (`dependency-assessment`, scanner 1.2.0, artifact `dependency-assessment@1.2.0`)
 
 Code: `steps/step-003-fingerprinting/src/Fingerprinting.Dependencies` (pipeline) and
 `Fingerprinting.Dependencies.Cli` (`DependencyAssessment.Cli.exe`), sharing
@@ -356,13 +356,34 @@ own files: real `.dll`s under `lib/` or `ref/` (not `_._` placeholders) make it 
 otherwise analyzers, then build (`build/`, `buildTransitive/`, `buildMultiTargeting/`), then
 tools, then content (`content/`, `contentFiles/`, `staticwebassets/`). A package with no
 assets is runtime if it has dependencies, build if not. **Only a runtime package can be
-`upgrade_breaking`.** A build, tools or analyzer package with a newer compatible version is
-`upgrade_safe` with `classification_method: package_kind`, whatever the version jump. A
-content package (bootstrap, jQuery) is also `upgrade_safe`, but a major jump sets
-`content_breaking_possible`: markup and CSS may break, which the call-site model cannot see.
-Known limit: a meta-package with only a props file and dependencies (Swashbuckle.AspNetCore)
-classifies as build; its API lives in its dependencies, which are not direct references and
-are not diffed. Its reason says so.
+`upgrade_breaking` by its own assemblies.** A build, tools or analyzer package with a newer
+compatible version is `upgrade_safe` with `classification_method: package_kind`, whatever the
+version jump — unless the API it carries breaks (1.2.0, below). A content package (bootstrap,
+jQuery) is also `upgrade_safe`, but a major jump sets `content_breaking_possible`: markup and
+CSS may break, which the call-site model cannot see.
+
+**Transitive API (1.2.0).** An upgrade can break the code through a package it pulls in: the
+code calls into that package directly, and the upgrade moves it. The two versions' nuspec
+dependency groups (nearest the current and the target framework) are compared, and a
+dependency on both sides whose minimum moves **across a major version** is diffed too — the
+lowest version each side resolves to, exactly as the package itself is diffed — and its
+changes join the package's own in the call-site search. A **meta-package** (no assemblies of
+its own: a props file and dependencies, Swashbuckle.AspNetCore) is diffed through what carries
+its API: every dependency whose version moves at all, and one level further where that
+dependency is itself without assemblies. The walk goes three levels deep at most. So
+Swashbuckle 10, which pulls Microsoft.OpenApi from 1.x to 2.x and changes `ISchemaFilter`,
+classifies `upgrade_breaking` with the call sites in `PublicApi`, for the meta-package and for
+`Swashbuckle.AspNetCore.Annotations` alike; the reasons name every dependency diffed. A
+package of a kind other than runtime can now be `upgrade_breaking`, but only through an API
+diff with a call site, never by semver — artifact 1.2.0 relaxes 1.1.0's rule to exactly that,
+and is otherwise the same shape.
+
+**Dependencies recorded (1.2.0).** Each version's nuspec dependency groups — framework, and
+each dependency's id and version range — go into the lookup cache entry
+(`package_lookup_cache.metadata[version].dependencies`), from the feed metadata NuGet.Protocol
+already fetches; an entry cached earlier is filled from the package's own nuspec. Both ends of
+every assessed upgrade are recorded whatever the cache's age. The conversion planner orders
+and groups package units by them (34-CONVERSION-ARCHITECTURE.md, As built).
 
 **Safe versus breaking (C4).** For a runtime package: semver presumes, the API diff
 overrides. The diff reads the current version's lib (or ref) group nearest the project's

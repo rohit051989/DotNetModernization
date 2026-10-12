@@ -32,7 +32,7 @@ public sealed record DependencyInput(
 public sealed class DependencyPipeline(PackageLookup lookup, DependencyOptions options, TransitiveResolver? transitive = null)
 {
     /// <summary>Matches the dependency-assessment step registration version.</summary>
-    public const string ScannerVersion = "1.1.0";
+    public const string ScannerVersion = "1.2.0";
 
     /// <summary>The producer name its signals are registered under (Part D1).</summary>
     public const string Extractor = "DependencyAssessment";
@@ -280,6 +280,14 @@ public sealed class DependencyPipeline(PackageLookup lookup, DependencyOptions o
         var kindSource = currentCandidate ?? recommended ?? latest!;
         var kind = await lookup.KindAsync(kindSource.Feed, kindSource.Entry, kindSource.Cached, ct);
 
+        // The nuspec dependencies of both ends of the upgrade, recorded in the
+        // lookup cache whatever its age: the conversion planner orders package
+        // units by them, dependencies before dependents.
+        foreach (var end in new[] { currentCandidate, recommended }.OfType<Candidate>())
+        {
+            await lookup.DependenciesAsync(end.Feed, end.Entry, end.Cached, ct);
+        }
+
         PackageAssessment Finish(PackageAssessment a) => a with
         {
             PackageKind = kind,
@@ -321,20 +329,29 @@ public sealed class DependencyPipeline(PackageLookup lookup, DependencyOptions o
         var heuristic = semver == "major" ? Outcomes.UpgradeBreaking : Outcomes.UpgradeSafe;
 
         // Build, tools, analyzer and content packages put no compile-time
-        // assembly into the project, so no C# call site can break: whatever
-        // the version jump, they are safe for this step's purposes. A content
-        // package's major version can still break markup or CSS, which the
-        // call-site model cannot see — flagged, but kept out of breaking.
+        // assembly into the project, so no C# call site into the package itself
+        // can break. A content package's major version can still break markup
+        // or CSS, which the call-site model cannot see — flagged, but kept out
+        // of breaking.
         if (kind is not null && kind != PackageKinds.Runtime)
         {
             var contentRisk = kind == PackageKinds.Content && semver == "major";
-            reasons.Add($"{kind} package: no lib/ or ref/ assemblies, so no C# call site to break");
+            reasons.Add($"{kind} package: no lib/ or ref/ assemblies of its own");
             if (contentRisk) reasons.Add("content package, major version: markup and CSS may break; not analysed by this step");
+
             // A meta-package (Swashbuckle.AspNetCore: a props file and
-            // dependencies) carries its API in packages it pulls in. Those are
-            // transitive, not direct references, and are not diffed here.
-            if (kindSource.Cached.DependencyFrameworks.Count > 0)
-                reasons.Add("declares package dependencies; any API it brings lives in those, which are not direct references and are not diffed");
+            // dependencies) carries its API in the packages it pulls in. Every
+            // dependency whose version moves is diffed, and a call into a
+            // changed member of one breaks this upgrade as surely as a call
+            // into the package's own.
+            var carried = currentCandidate is null ? [] : await TransitiveDiffsAsync(feeds, currentCandidate, recommended, currentFramework, everyChange: true, ct);
+            if (carried.Count > 0)
+            {
+                var classified = await ClassifyAsync(carried.SelectMany(t => t.Changes).ToList(), "(none of its own)", "(none of its own)", carried);
+                if (classified is not null) return classified.Value;
+                reasons.Add($"the API it carries ({string.Join(", ", carried.Select(Describe))}) changes nothing the code calls");
+            }
+
             var assessment = Finish(Result(Outcomes.UpgradeSafe,
                 contentRisk
                     ? $"{semver} version change of a content package; may break markup or CSS (not analysed)"
@@ -345,7 +362,12 @@ public sealed class DependencyPipeline(PackageLookup lookup, DependencyOptions o
         }
 
         var diff = await DiffAsync(currentCandidate, recommended, currentFramework, ct);
-        if (diff is null)
+        // Transitive API: a dependency whose major version moves with this
+        // upgrade (Swashbuckle 10 pulls Microsoft.OpenApi from 1.x to 2.x) is
+        // diffed too; the code may call into it directly. When the package has
+        // no comparable assemblies of its own, every dependency that moves is.
+        var transitive = currentCandidate is null ? [] : await TransitiveDiffsAsync(feeds, currentCandidate, recommended, currentFramework, everyChange: diff is null, ct);
+        if (diff is null && transitive.Count == 0)
         {
             reasons.Add(currentCandidate is null
                 ? $"{currentVersion} is not on the feed, so its assemblies could not be compared; semver decides"
@@ -360,55 +382,68 @@ public sealed class DependencyPipeline(PackageLookup lookup, DependencyOptions o
             return (assessment, Signals(declaration, assessment, null));
         }
 
-        var hits = CallSiteFinder.Find(await loadSource(), diff.Value.Changes);
-        var summary = new ApiDiffSummary
+        var changes = (diff?.Changes ?? []).Concat(transitive.SelectMany(t => t.Changes)).ToList();
+        var classifiedUpgrade = await ClassifyAsync(changes, diff?.CurrentGroup ?? "(none comparable)", diff?.RecommendedGroup ?? "(none comparable)", transitive);
+        if (classifiedUpgrade is not null) return classifiedUpgrade.Value;
+
+        reasons.Add(semver == "major"
+            ? "major version, but the API diff shows nothing the code calls changed: the diff overrides the heuristic"
+            : "no call to a changed member found");
+        if (transitive.Count > 0) reasons.Add($"dependencies diffed with it: {string.Join(", ", transitive.Select(Describe))}");
+        var safe = Finish(Result(Outcomes.UpgradeSafe, $"{semver} version change; nothing the code calls changed", 0.85))
+            with { ClassificationMethod = ClassificationMethods.ApiDiff, SemverChange = semver, ApiDiff = Summary(changes, diff?.CurrentGroup, diff?.RecommendedGroup) };
+        return (safe, Signals(declaration, safe, null));
+
+        static string Describe(TransitiveDiff t) => $"{t.PackageId} {t.From} -> {t.To}";
+
+        static ApiDiffSummary Summary(IReadOnlyList<ApiChange> all, string? currentGroup, string? recommendedGroup) => new()
         {
-            RemovedTypes = diff.Value.Changes.Count(c => c.Change == "type_removed"),
-            RemovedMembers = diff.Value.Changes.Count(c => c.Change == "member_removed"),
-            ChangedSignatures = diff.Value.Changes.Count(c => c.Change == "signature_changed"),
-            CurrentAssemblies = diff.Value.CurrentGroup,
-            RecommendedAssemblies = diff.Value.RecommendedGroup,
+            RemovedTypes = all.Count(c => c.Change == "type_removed"),
+            RemovedMembers = all.Count(c => c.Change == "member_removed"),
+            ChangedSignatures = all.Count(c => c.Change == "signature_changed"),
+            CurrentAssemblies = currentGroup ?? "(none comparable)",
+            RecommendedAssemblies = recommendedGroup ?? "(none comparable)",
         };
 
-        if (hits.Count == 0)
+        // Breaking when the code calls a changed member of the package or of
+        // a dependency diffed with it; null when it calls none.
+        async Task<(PackageAssessment, IReadOnlyList<Signal>)?> ClassifyAsync(
+            IReadOnlyList<ApiChange> all, string currentGroup, string recommendedGroup, IReadOnlyList<TransitiveDiff> carriedBy)
         {
-            reasons.Add(semver == "major"
-                ? "major version, but the API diff shows nothing the code calls changed: the diff overrides the heuristic"
-                : "no call to a changed member found");
-            var assessment = Finish(Result(Outcomes.UpgradeSafe, $"{semver} version change; nothing the code calls changed", 0.85))
-                with { ClassificationMethod = ClassificationMethods.ApiDiff, SemverChange = semver, ApiDiff = summary };
-            return (assessment, Signals(declaration, assessment, null));
-        }
+            var hits = CallSiteFinder.Find(await loadSource(), all);
+            if (hits.Count == 0) return null;
 
-        reasons.Add("call sites found by syntax search guarded by the package's namespaces");
-        if (semver != "major") reasons.Add($"{semver} version, but the API diff hits a call site: the diff overrides the heuristic");
-        var allSites = hits.SelectMany(h => h.Sites).ToList();
-        var confirmed = allSites.Count(s => s.Certainty == CallSiteCertainty.Confirmed);
-        var ambiguousOnly = confirmed == 0;
-        if (ambiguousOnly) reasons.Add("every call site could bind to an unchanged overload; syntax cannot tell which");
-        var breaking = Finish(Result(Outcomes.UpgradeBreaking,
-            ambiguousOnly
-                ? $"possibly breaking: {allSites.Count} call site(s) may bind to a changed overload of {hits.Count} member(s), but an unchanged overload accepts the same arguments; no confirmed call site ({currentVersion} -> {recommended.Version})"
-                : $"{hits.Count} changed member(s) the code calls, {confirmed} confirmed call site(s) ({currentVersion} -> {recommended.Version})",
-            ambiguousOnly ? CallSiteFinder.AmbiguousConfidence : CallSiteFinder.Confidence))
-            with
-            {
-                ClassificationMethod = ClassificationMethods.ApiDiff,
-                SemverChange = semver,
-                ApiDiff = summary,
-                BreakingEvidence = ambiguousOnly ? BreakingEvidence.AmbiguousCallSitesOnly : BreakingEvidence.ConfirmedCallSites,
-                BreakingMembers = hits.Select(h => new BreakingMember
+            reasons.Add("call sites found by syntax search guarded by the package's namespaces");
+            if (carriedBy.Count > 0) reasons.Add($"dependencies diffed with it: {string.Join(", ", carriedBy.Select(Describe))}");
+            if (semver != "major") reasons.Add($"{semver} version, but the API diff hits a call site: the diff overrides the heuristic");
+            var allSites = hits.SelectMany(h => h.Sites).ToList();
+            var confirmed = allSites.Count(s => s.Certainty == CallSiteCertainty.Confirmed);
+            var ambiguousOnly = confirmed == 0;
+            if (ambiguousOnly) reasons.Add("every call site could bind to an unchanged overload; syntax cannot tell which");
+            var breaking = Finish(Result(Outcomes.UpgradeBreaking,
+                ambiguousOnly
+                    ? $"possibly breaking: {allSites.Count} call site(s) may bind to a changed overload of {hits.Count} member(s), but an unchanged overload accepts the same arguments; no confirmed call site ({currentVersion} -> {recommended.Version})"
+                    : $"{hits.Count} changed member(s) the code calls, {confirmed} confirmed call site(s) ({currentVersion} -> {recommended.Version})",
+                ambiguousOnly ? CallSiteFinder.AmbiguousConfidence : CallSiteFinder.Confidence))
+                with
                 {
-                    Change = h.Change.Change,
-                    Type = h.Change.Type.FullName,
-                    Member = h.Change.Member,
-                    OldSignature = h.Change.OldSignature,
-                    NewSignatures = h.Change.NewSignatures,
-                }).OrderBy(m => m.Type, StringComparer.Ordinal).ThenBy(m => m.Member ?? "", StringComparer.Ordinal).ThenBy(m => m.OldSignature ?? "", StringComparer.Ordinal).ToList(),
-                CallSites = allSites.OrderBy(s => s.Certainty == CallSiteCertainty.Confirmed ? 0 : 1).DistinctBy(s => (s.FilePath, s.LineStart, s.Member))
-                    .OrderBy(s => s.FilePath, StringComparer.Ordinal).ThenBy(s => s.LineStart).ThenBy(s => s.Member, StringComparer.Ordinal).ToList(),
-            };
-        return (breaking, Signals(declaration, breaking, breaking.CallSites));
+                    ClassificationMethod = ClassificationMethods.ApiDiff,
+                    SemverChange = semver,
+                    ApiDiff = Summary(all, currentGroup, recommendedGroup),
+                    BreakingEvidence = ambiguousOnly ? BreakingEvidence.AmbiguousCallSitesOnly : BreakingEvidence.ConfirmedCallSites,
+                    BreakingMembers = hits.Select(h => new BreakingMember
+                    {
+                        Change = h.Change.Change,
+                        Type = h.Change.Type.FullName,
+                        Member = h.Change.Member,
+                        OldSignature = h.Change.OldSignature,
+                        NewSignatures = h.Change.NewSignatures,
+                    }).OrderBy(m => m.Type, StringComparer.Ordinal).ThenBy(m => m.Member ?? "", StringComparer.Ordinal).ThenBy(m => m.OldSignature ?? "", StringComparer.Ordinal).ToList(),
+                    CallSites = allSites.OrderBy(s => s.Certainty == CallSiteCertainty.Confirmed ? 0 : 1).DistinctBy(s => (s.FilePath, s.LineStart, s.Member))
+                        .OrderBy(s => s.FilePath, StringComparer.Ordinal).ThenBy(s => s.LineStart).ThenBy(s => s.Member, StringComparer.Ordinal).ToList(),
+                };
+            return (breaking, Signals(declaration, breaking, breaking.CallSites));
+        }
     }
 
     private static string SourceOf(FeedSet feeds) => feeds.UsingClientFeeds ? FeedSources.ClientFeed : FeedSources.NuGetOrgFallback;
@@ -479,6 +514,91 @@ public sealed class DependencyPipeline(PackageLookup lookup, DependencyOptions o
             if (cached is not null)
             {
                 return Vulnerability(new Candidate(NuGetVersion.Parse(cached.Version), feed, result.Entry!, cached), null);
+            }
+        }
+
+        return null;
+    }
+
+    // ---------- transitive API ----------
+
+    /// <summary>A dependency diffed with an upgrade: its lowest version each
+    /// side resolves to (NuGet picks a range's minimum), and what changed.</summary>
+    private sealed record TransitiveDiff(string PackageId, string From, string To, IReadOnlyList<ApiChange> Changes);
+
+    /// <summary>Levels of dependencies walked below the package itself.</summary>
+    private const int MaxTransitiveDepth = 3;
+
+    /// <summary>
+    /// The dependencies an upgrade moves that carry API the code may call.
+    /// The two versions' nuspec dependency groups (nearest to the current and
+    /// the target framework) are compared: a dependency on both sides whose
+    /// minimum moves across a major version — or, with
+    /// <paramref name="everyChange"/>, moves at all — is diffed. A dependency
+    /// with no assemblies of its own is itself a meta-package, so the walk
+    /// goes one level further into what it carries, every change counted.
+    /// </summary>
+    private async Task<IReadOnlyList<TransitiveDiff>> TransitiveDiffsAsync(
+        FeedSet feeds, Candidate current, Candidate recommended, NuGetFramework? currentFramework, bool everyChange, CancellationToken ct)
+    {
+        var found = new List<TransitiveDiff>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { current.Entry.PackageId };
+        await WalkAsync(current, recommended, everyChange, 0);
+        return found.OrderBy(t => t.PackageId, StringComparer.OrdinalIgnoreCase).ToList();
+
+        async Task WalkAsync(Candidate from, Candidate to, bool all, int depth)
+        {
+            var before = await MinimumsAsync(from, currentFramework ?? _target, ct);
+            var after = await MinimumsAsync(to, _target, ct);
+            foreach (var (id, toMin) in after.OrderBy(kv => kv.Key, StringComparer.OrdinalIgnoreCase))
+            {
+                if (!before.TryGetValue(id, out var fromMin) || toMin <= fromMin) continue;
+                if (!all && toMin.Major == fromMin.Major) continue;
+                if (!seen.Add(id)) continue;
+                var fromCandidate = await ResolveAsync(feeds, id, fromMin, ct);
+                var toCandidate = await ResolveAsync(feeds, id, toMin, ct);
+                if (fromCandidate is null || toCandidate is null) continue;
+                var diff = await DiffAsync(fromCandidate, toCandidate, currentFramework, ct);
+                if (diff is not null)
+                    found.Add(new TransitiveDiff(id, fromCandidate.Version.ToNormalizedString(), toCandidate.Version.ToNormalizedString(), diff.Value.Changes));
+                if (depth + 1 < MaxTransitiveDepth)
+                    await WalkAsync(fromCandidate, toCandidate, diff is null, depth + 1);
+            }
+        }
+    }
+
+    /// <summary>Each dependency's minimum version, from the dependency group
+    /// nearest to <paramref name="framework"/>. Empty when there is none.</summary>
+    private async Task<Dictionary<string, NuGetVersion>> MinimumsAsync(Candidate candidate, NuGetFramework framework, CancellationToken ct)
+    {
+        var minimums = new Dictionary<string, NuGetVersion>(StringComparer.OrdinalIgnoreCase);
+        var groups = await lookup.DependenciesAsync(candidate.Feed, candidate.Entry, candidate.Cached, ct);
+        if (groups is null || groups.Count == 0) return minimums;
+        var nearest = NuGetFrameworkUtility.GetNearest(groups, framework, g => NuGetFramework.Parse(g.Framework));
+        foreach (var dependency in nearest?.Packages ?? [])
+        {
+            if (VersionRange.TryParse(dependency.Range, out var range) && range.MinVersion is { } min) minimums[dependency.Id] = min;
+        }
+
+        return minimums;
+    }
+
+    /// <summary>What NuGet resolves a dependency's minimum to: that version, or
+    /// the lowest listed one above it, on the first authoritative feed that has it.</summary>
+    private async Task<Candidate?> ResolveAsync(FeedSet feeds, string id, NuGetVersion minimum, CancellationToken ct)
+    {
+        foreach (var feed in feeds.Authorities)
+        {
+            var result = await lookup.GetAsync(feed, id, ct);
+            var cached = result.Entry?.Versions
+                .Where(v => v.Listed)
+                .Select(v => (Version: NuGetVersion.Parse(v.Version), Cached: v))
+                .Where(v => v.Version >= minimum)
+                .OrderBy(v => v.Version)
+                .FirstOrDefault();
+            if (cached?.Cached is not null)
+            {
+                return new Candidate(cached.Value.Version, feed, result.Entry!, cached.Value.Cached);
             }
         }
 

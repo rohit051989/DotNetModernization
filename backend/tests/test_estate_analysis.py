@@ -1,4 +1,4 @@
-"""Lifecycle step 11's analysis — 31-DEPENDENCY-AND-CONTEXT-MAP.md. Pure
+"""dependency-and-context-map's analysis — 31-DEPENDENCY-AND-CONTEXT-MAP.md. Pure
 functions over plain rows, so no database: each test builds the rows it needs."""
 
 import json
@@ -32,6 +32,23 @@ def wcf_operation(eid, repo, project, contract, addresses):
     }
 
 
+def asmx_method(eid, repo, project, service_path, method):
+    return {
+        "id": eid, "repository_id": repo, "repository_slug": SLUG[repo], "project_id": f"{SLUG[repo]}-{project}",
+        "project_path": f"src/{project}/{project}.csproj", "kind": "asmx_web_method", "origin": "application",
+        "handler_type": "FundsTransferWS", "handler_member": method, "detail": {"servicePath": service_path, "method": method},
+    }
+
+
+# Platform matrix entries, as outbound-invocation-inventory records them on an environment binding.
+PIPE, TCP, TCP_WINDOWS = ("net10.0/linux/netNamedPipeBinding/*/*", "net10.0/linux/netTcpBinding/*/*",
+                          "net10.0/linux/netTcpBinding/*/Windows")
+
+
+def platform_env(entry, environment="PROD"):
+    return {"environment": environment, "platformMatrixEntry": entry}
+
+
 def http_route(eid, repo, project, route):
     return {
         "id": eid, "repository_id": repo, "repository_slug": SLUG[repo], "project_id": f"{SLUG[repo]}-{project}",
@@ -51,7 +68,8 @@ class RegisterTests(unittest.TestCase):
                wcf_operation("ep-a", R_WCF, "Services", "IUtilityService", ["net.tcp://localhost:{port}/Utility"])]
         register = analysis.build_register(calls, eps)
         host = register["hosts"][0]
-        self.assertEqual((host["host"], host["classification"], host["requiresBackendChange"]), ("localhost@wcf", "internal", True))
+        # NetTcp itself works from Linux: nothing in the platform matrix asks its owner to change.
+        self.assertEqual((host["host"], host["classification"], host["requiresBackendChange"]), ("localhost@wcf", "internal", False))
         service = host["services"][0]
         self.assertEqual(service["ports"], [8101, 8443])
         target = service["internalTargets"][0]
@@ -70,25 +88,51 @@ class RegisterTests(unittest.TestCase):
                          ("wsse0.bank.example", "external", 2, [443, 8443]))
         self.assertEqual([s["path"] for s in host["services"]], ["/accountservice.svc", "/paymentservice.svc"])
 
-    def test_netTcp_and_windows_service_security_need_the_owner_to_change(self):
-        tcp = call("c1", R_SHOP, "Web", host="svc.example", binding="netTcpBinding", verdict="incompatible")
-        windows = call("c2", R_SHOP, "Web", host="svc.example", binding="wsHttpBinding", credential="Windows")
-        plain = call("c3", R_SHOP, "Web", host="other.example", binding="basicHttpBinding")
-        self.assertTrue(analysis.backend_change_reasons(tcp))
-        self.assertTrue(analysis.backend_change_reasons(windows))
-        self.assertEqual(analysis.backend_change_reasons(plain), [])
-        register = analysis.build_register([tcp, windows, plain], [])
+    def test_what_the_owner_must_change_comes_from_the_platform_matrix_entry(self):
+        """Who changes what is the platform matrix entry's fix, keyed by
+        credential: named pipes need the owner; NetTcp with a Windows
+        credential is Kerberos on our side or another credential on theirs,
+        not yet known which; NetTcp with a certificate needs nobody."""
+        pipe = call("c1", R_SHOP, "Web", host="svc.example", binding="netNamedPipeBinding", envs=[platform_env(PIPE)])
+        kerberos = call("c2", R_SHOP, "Web", host="tcp.example", binding="netTcpBinding", credential="Windows",
+                        envs=[platform_env(TCP_WINDOWS)])
+        tcp = call("c3", R_SHOP, "Web", host="other.example", binding="netTcpBinding", credential="Certificate", envs=[platform_env(TCP)])
+        self.assertTrue(analysis.backend_change_reasons(pipe))
+        self.assertEqual(analysis.backend_change_reasons(kerberos), [])
+        self.assertIn("Kerberos configuration on our side", analysis.possible_backend_change_reasons(kerberos)[0])
+        self.assertEqual((analysis.backend_change_reasons(tcp), analysis.possible_backend_change_reasons(tcp)), ([], []))
+        register = analysis.build_register([pipe, kerberos, tcp], [])
         by_host = {h["host"]: h for h in register["hosts"]}
         self.assertTrue(by_host["svc.example"]["requiresBackendChange"])
+        self.assertEqual((by_host["tcp.example"]["requiresBackendChange"], len(by_host["tcp.example"]["possibleBackendChangeReasons"])),
+                         (False, 1))
         self.assertFalse(by_host["other.example"]["requiresBackendChange"])
         # Backend change sorts first.
         self.assertEqual(register["hosts"][0]["host"], "svc.example")
 
+    def test_a_platform_entry_a_probe_contradicts_is_under_review_not_a_backend_change(self):
+        """Until a reviewer revises it, a contradicted entry's verdict is not a
+        verdict and its fix is not a change anyone is asked to make: the host
+        lists it under review, counted apart."""
+        from unittest import mock
+        from app.estate import wcf_matrix
+        pipe_entry = {"id": PIPE, "verdict": "incompatible", "fix": {"who": "backend_owner", "change": "offer another binding"},
+                      "probes": [{"probedOn": "2026-10-12", "scenario": "pipe", "outcome": "passed"}]}
+        envs = [{**platform_env(PIPE), "linuxVerdict": "incompatible"}]
+        pipe = call("c1", R_SHOP, "Web", host="svc.example", binding="netNamedPipeBinding", verdict="incompatible", envs=envs)
+        with mock.patch.object(wcf_matrix, "entries", lambda kind, version=None: {PIPE: pipe_entry}):
+            self.assertEqual([], analysis.backend_change_reasons(pipe))
+            host = analysis.build_register([pipe], [])["hosts"][0]
+        self.assertEqual((False, [PIPE], None, {"PROD": "under_review"}),
+                         (host["requiresBackendChange"], host["underReview"], host["worstVerdict"], host["verdictByEnvironment"]))
+
     def test_backend_change_is_split_by_who_owns_the_service(self):
         """C2: an internal host's change is a service inside this migration;
         an external host's is another team's — worded differently."""
-        internal = call("c1", R_WCF, "TestClient", port=8101, path="/Utility", contract="IUtilityService", binding="netTcpBinding")
-        external = call("c2", R_SHOP, "Web", host="svc.bank.example", path="/Pay.svc", contract="IPay", binding="netTcpBinding")
+        internal = call("c1", R_WCF, "TestClient", port=8101, path="/Utility", contract="IUtilityService", binding="netNamedPipeBinding",
+                        envs=[platform_env(PIPE)])
+        external = call("c2", R_SHOP, "Web", host="svc.bank.example", path="/Pay.svc", contract="IPay", binding="netNamedPipeBinding",
+                        envs=[platform_env(PIPE)])
         eps = [wcf_operation("ep", R_WCF, "Services", "IUtilityService", ["net.tcp://localhost:{port}/Utility"])]
         rows = {h["host"]: h for h in analysis.build_register([internal, external], eps)["hosts"]}
 
@@ -98,6 +142,39 @@ class RegisterTests(unittest.TestCase):
         self.assertIn("inside this migration", ours["backendChangeReasons"][0])
         self.assertIn("another team owns the service", theirs["backendChangeReasons"][0])
         self.assertEqual(ours["services"][0]["backendChangeOwner"], analysis.THIS_MIGRATION)
+
+    def test_a_soap_caller_matches_an_asmx_service_by_path_and_web_methods(self):
+        """wcf calls FundsTransferWS through a generated proxy; wcf-backend
+        serves it as an .asmx. No WCF contract to match: the .asmx path (the
+        application may sit in a virtual directory) and every web method the
+        call invokes, Async suffix and all, must be the service's."""
+        eps = [asmx_method("ep-2", R_PAY, "FundsTransferWS", "/FundsTransferWS.asmx", "Ping"),
+               asmx_method("ep-1", R_PAY, "FundsTransferWS", "/FundsTransferWS.asmx", "Transfer")]
+        funds = {**call("c1", R_WCF, "Services", host="ftmt.corp.example.com", path="/FundsTransferWS/FundsTransferWS.asmx",
+                        contract="FundsTransferWSSoap", binding="basicHttpBinding"),
+                 "operations": [{"operation": "TransferAsync"}, {"operation": "Ping"}]}
+        servers, how = analysis.match_servers(funds, analysis.build_servers(eps))
+        self.assertEqual(([s["repository_slug"] for s in servers], how), (["pay"], "ASMX service path and web methods"))
+        self.assertEqual(servers[0]["entry_point_id"], "ep-1")
+
+        # A real host name, yet a service in the estate: internal, linked to the ASMX entry point.
+        host = analysis.build_register([funds], eps)["hosts"][0]
+        target = host["services"][0]["internalTargets"][0]
+        self.assertEqual((host["host"], host["classification"]), ("ftmt.corp.example.com", "internal"))
+        self.assertEqual((target["repositorySlug"], target["entryPointId"], target["served"]), ("pay", "ep-1", "/fundstransferws.asmx"))
+
+        # A method the service does not have: not this service.
+        unknown = {**funds, "operations": [{"operation": "Refund"}]}
+        self.assertEqual(analysis.match_servers(unknown, analysis.build_servers(eps)), ([], None))
+        # Another .asmx whose name merely ends the same way: not this service.
+        other = {**funds, "path": "/OtherFundsTransferWS.asmx"}
+        self.assertEqual(analysis.match_servers(other, analysis.build_servers(eps)), ([], None))
+
+    def test_asmx_paths_allow_a_virtual_directory(self):
+        self.assertTrue(analysis.asmx_path_matches("/fundstransferws/fundstransferws.asmx", "/FundsTransferWS.asmx"))
+        self.assertTrue(analysis.asmx_path_matches("/FundsTransferWS.asmx/", "FundsTransferWS.asmx"))
+        self.assertFalse(analysis.asmx_path_matches("/otherfundstransferws.asmx", "/fundstransferws.asmx"))
+        self.assertFalse(analysis.asmx_path_matches(None, "/fundstransferws.asmx"))
 
     def test_unused_clients_are_excluded_and_unresolved_endpoints_listed_apart(self):
         calls = [

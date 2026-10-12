@@ -29,10 +29,45 @@ public sealed record CachedVersion
     /// package itself — filled when dependency groups do not answer.</summary>
     public IReadOnlyList<string>? LibFrameworks { get; init; }
 
+    /// <summary>The nuspec's dependency groups — each group's framework and
+    /// the packages it depends on with their version ranges — from feed
+    /// metadata. Null when this entry was cached before dependencies were
+    /// recorded; <see cref="PackageLookup.DependenciesAsync"/> fills it then.
+    /// The conversion planner orders and groups package units by these.</summary>
+    public IReadOnlyList<CachedDependencyGroup>? Dependencies { get; init; }
+
     /// <summary>The package kind, from the nupkg's contents; null until read (<see cref="PackageKinds"/>).</summary>
     public string? Kind { get; init; }
     public CachedDeprecation? Deprecation { get; init; }
     public IReadOnlyList<CachedVulnerability> Vulnerabilities { get; init; } = [];
+}
+
+/// <summary>One nuspec dependency group: its framework (short folder name)
+/// and what it depends on, ordered by id.</summary>
+public sealed record CachedDependencyGroup
+{
+    public required string Framework { get; init; }
+    public IReadOnlyList<CachedDependency> Packages { get; init; } = [];
+
+    public static IReadOnlyList<CachedDependencyGroup> From(IEnumerable<NuGet.Packaging.PackageDependencyGroup>? groups) =>
+        (groups ?? [])
+            .Select(g => new CachedDependencyGroup
+            {
+                Framework = g.TargetFramework.GetShortFolderName(),
+                Packages = g.Packages
+                    .Select(p => new CachedDependency { Id = p.Id, Range = p.VersionRange.ToNormalizedString() })
+                    .OrderBy(p => p.Id, StringComparer.OrdinalIgnoreCase)
+                    .ToList(),
+            })
+            .OrderBy(g => g.Framework, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+}
+
+public sealed record CachedDependency
+{
+    public required string Id { get; init; }
+    /// <summary>NuGet's normalized range: "[1.0.0, )" is 1.0.0 or higher.</summary>
+    public required string Range { get; init; }
 }
 
 public sealed record CachedDeprecation

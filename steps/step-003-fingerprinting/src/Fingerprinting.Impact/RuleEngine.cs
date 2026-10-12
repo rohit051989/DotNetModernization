@@ -13,6 +13,16 @@ public sealed record TestLink(string SourceFile, string ProductionType, string T
 /// <summary>An entry point from entry-point-inventory (Part E, entry_points).</summary>
 public sealed record EntryPointRef(string Kind, string HandlerType, string? HandlerNamespace, string? Member, string FilePath);
 
+/// <summary>A project hosting a WCF contract — entry-point-inventory's
+/// HOSTS_WCF_SERVICE signal on the project constructing the ServiceHost or
+/// holding the .svc (Part E, hosting_project).</summary>
+public sealed record HostLink(string ProjectPath, string Contract);
+
+/// <summary>A Web Deploy SetParam / SetParameters file
+/// outbound-invocation-inventory found for a project, and its environment
+/// (Part E, deploy_parameter_files).</summary>
+public sealed record DeployFile(string ProjectPath, string File, string Environment);
+
 /// <summary>The repository's projects: path → directory.</summary>
 public sealed record ProjectMap(IReadOnlyDictionary<string, string> Directories)
 {
@@ -37,15 +47,20 @@ public sealed record ProjectMap(IReadOnlyDictionary<string, string> Directories)
 /// other types the same rule does not delete is removed from the file, which
 /// is an update, not a delete. Delete is kept for a file that goes entirely.
 /// </summary>
-public sealed class RuleEngine(CodeIndex index, ProjectMap projects, IReadOnlyList<TestLink> tests, IReadOnlyList<EntryPointRef> entryPoints)
+public sealed class RuleEngine(
+    CodeIndex index, ProjectMap projects, IReadOnlyList<TestLink> tests, IReadOnlyList<EntryPointRef> entryPoints,
+    IReadOnlyList<HostLink>? hostLinks = null, IReadOnlyList<DeployFile>? deployFiles = null)
 {
     /// <summary>A file reached by a rule, with the type that brought it there.</summary>
     /// <param name="Element">Set when the rule reached part of a file (a config
     /// element), not the file: "&lt;services&gt; at system.serviceModel/services, line 30".</param>
-    private sealed record Node(string File, CodeIndex.TypeInfo? Type, bool Confirmed, IReadOnlyList<string> Trace, string? Element = null)
+    /// <param name="Environment">Set by deploy_parameter_files: the ASP.NET Core
+    /// environment the file's values belong to ({node.environment}).</param>
+    private sealed record Node(string File, CodeIndex.TypeInfo? Type, bool Confirmed, IReadOnlyList<string> Trace, string? Element = null,
+        string? Environment = null)
     {
-        public Node Then(string file, CodeIndex.TypeInfo? type, bool confirmed, string hop, string? element = null) =>
-            new(file, type, Confirmed && confirmed, [.. Trace, hop], element);
+        public Node Then(string file, CodeIndex.TypeInfo? type, bool confirmed, string hop, string? element = null, string? environment = null) =>
+            new(file, type, Confirmed && confirmed, [.. Trace, hop], element, environment);
     }
 
     public sealed record Result(IReadOnlyList<ImpactEntry> Entries, IReadOnlyList<string> KnownLimits, IReadOnlyList<string> DeferredRules);
@@ -68,8 +83,19 @@ public sealed class RuleEngine(CodeIndex index, ProjectMap projects, IReadOnlyLi
                 foreach (var node in outputs.GetValueOrDefault(rule.ForEach ?? "") ?? [])
                 {
                     if (perType && node.Type is null) continue;
-                    var path = (rule.ProposedPath ?? "").Replace("{project.dir}", projectDir.Length == 0 ? "." : projectDir);
-                    if (node.Type is not null) path = path.Replace("{type.base_name}", node.Type.BaseName).Replace("{type.name}", node.Type.Name);
+                    var path = (rule.ProposedPath ?? "").Replace("{project.dir}", projectDir.Length == 0 ? "." : projectDir)
+                        .Replace("{node.project.dir}", NodeProjectDir(node, projectDir));
+                    if (node.Type is not null)
+                    {
+                        path = path.Replace("{type.base_name}", node.Type.BaseName).Replace("{type.name}", node.Type.Name)
+                            .Replace("{type.resource}", Resource(node.Type));
+                    }
+
+                    if (path.Contains("{node.environment}", StringComparison.Ordinal))
+                    {
+                        if (node.Environment is null) continue;
+                        path = path.Replace("{node.environment}", node.Environment);
+                    }
                     var reason = new ImpactReason { RuleId = rule.Id, Action = Actions.Create, Reason = rule.Create };
                     var certainty = node.Confirmed ? Certainties.Confirmed : Certainties.Possible;
                     var trace = Render(node.Then(path, node.Type, true, perType ? $"new file for {node.Type!.Name}" : "new file"));
@@ -108,6 +134,7 @@ public sealed class RuleEngine(CodeIndex index, ProjectMap projects, IReadOnlyLi
             var produced = rule.Select == "self" ? input : Traverse(rule, input, projectPath);
             produced = Filter(rule, produced);
             outputs[rule.Id] = produced;
+            if (rule.Action == Actions.None) continue;   // a stepping stone for later rules: nothing happens to these files
             foreach (var node in produced)
             {
                 var (action, details) = FileAction(rule.Action, node, produced);
@@ -195,6 +222,9 @@ public sealed class RuleEngine(CodeIndex index, ProjectMap projects, IReadOnlyLi
         "convention_files" => ConventionFiles(input, rule.Kind ?? ""),
         "referencing_tests" => ReferencingTests(input),
         "project_file" => ProjectFiles(input, projectPath),
+        "project_files" => ProjectFilesMatching(input, projectPath, rule.Pattern ?? ""),
+        "hosting_project" => HostingProjects(input),
+        "deploy_parameter_files" => DeployParameterFiles(input, projectPath),
         "entry_points" => EntryPoints(input),
         _ => [],
     };
@@ -327,6 +357,126 @@ public sealed class RuleEngine(CodeIndex index, ProjectMap projects, IReadOnlyLi
                 var confirmed = link.Method.StartsWith("type_reference", StringComparison.Ordinal) && link.Confidence >= 0.8m;
                 result.Add(node.Then(link.TestFile, null, confirmed,
                     $"test {link.TestClass} ({link.Method}, confidence {link.Confidence:0.00})"));
+            }
+        }
+
+        return result;
+    }
+
+    /// <summary>The projects hosting the input contracts (an implementation
+    /// counts through the contracts it implements), from entry-point-inventory's
+    /// HOSTS_WCF_SERVICE link: one node per (host project, contract), on the
+    /// host's project file, carrying the contract as its type. Only a project
+    /// the link names is reached — never an arbitrary one.</summary>
+    private List<Node> HostingProjects(List<Node> input)
+    {
+        var result = new List<Node>();
+        foreach (var node in input.Where(n => n.Type is not null))
+        {
+            var contracts = node.Type!.Kind == "interface"
+                ? [node.Type]
+                : node.Type.BaseNames.SelectMany(b => index.Resolve(b, node.Type).Types).Where(t => t.Kind == "interface").ToList();
+            foreach (var contract in contracts)
+            {
+                // The link names the contract by simple name. Where copies of one
+                // codebase each host a contract of that name, this contract's host
+                // is the one nearest its own file — the same rule as a .svc
+                // directive (CodeIndex.IsNearestCopy).
+                var links = (hostLinks ?? []).Where(l => l.Contract == contract.Name).ToList();
+                var nearest = links.Count == 0 ? 0 : links.Max(l => SharedDirectories(l.ProjectPath, contract.File));
+                foreach (var link in links.Where(l => SharedDirectories(l.ProjectPath, contract.File) == nearest)
+                             .OrderBy(l => l.ProjectPath, StringComparer.Ordinal))
+                {
+                    result.Add(node.Then(link.ProjectPath, contract, links.Count == 1 || nearest > 0, $"{link.ProjectPath} hosts {contract.Name}"));
+                }
+            }
+        }
+
+        return result.DistinctBy(n => (n.File, n.Type!.FullName)).ToList();
+    }
+
+    /// <summary>The SetParam / SetParameters files outbound-invocation-inventory
+    /// found for the input nodes' projects (the work item's own where there is
+    /// none), each with its environment. A developer-machine environment
+    /// (LOCAL) maps to ASP.NET Core's Development, so its appsettings
+    /// counterpart is appsettings.Development.json.</summary>
+    private List<Node> DeployParameterFiles(List<Node> input, string projectPath)
+    {
+        var owners = input.Select(n => projects.Owner(n.File)).Where(p => p is not null).Select(p => p!).ToHashSet(StringComparer.Ordinal);
+        if (owners.Count == 0) owners.Add(projectPath);
+        var origin = input.FirstOrDefault();
+        return (deployFiles ?? []).Where(d => owners.Contains(d.ProjectPath))
+            .DistinctBy(d => d.File).OrderBy(d => d.File, StringComparer.Ordinal)
+            .Select(d =>
+            {
+                var environment = AspNetCoreEnvironment(d.Environment);
+                var hop = $"{d.File}: deploy parameters of {d.ProjectPath} for {d.Environment}";
+                return origin is null
+                    ? new Node(d.File, null, true, [hop], null, environment)
+                    : origin.Then(d.File, null, true, hop, null, environment);
+            })
+            .ToList();
+    }
+
+    private static int SharedDirectories(string a, string b)
+    {
+        var x = a.Split('/');
+        var y = b.Split('/');
+        var n = 0;
+        while (n < x.Length - 1 && n < y.Length - 1 && string.Equals(x[n], y[n], StringComparison.OrdinalIgnoreCase)) n++;
+        return n;
+    }
+
+    private static string AspNetCoreEnvironment(string environment) =>
+        environment.Equals("LOCAL", StringComparison.OrdinalIgnoreCase) ? "Development" : environment;
+
+    /// <summary>IOrderService → Orders: the contract's resource name, for a REST
+    /// controller. The leading I and a trailing "Service" are dropped and the
+    /// rest pluralised by simple English rules.</summary>
+    private static string Resource(CodeIndex.TypeInfo type)
+    {
+        var stem = type.BaseName;
+        if (stem.EndsWith("Service", StringComparison.Ordinal) && stem.Length > "Service".Length) stem = stem[..^"Service".Length];
+        if (stem.EndsWith('y') && stem.Length > 1 && !"aeiou".Contains(char.ToLowerInvariant(stem[^2]))) return stem[..^1] + "ies";
+        if (stem.EndsWith('s') || stem.EndsWith('x') || stem.EndsWith("ch", StringComparison.Ordinal) || stem.EndsWith("sh", StringComparison.Ordinal)) return stem + "es";
+        return stem + "s";
+    }
+
+    /// <summary>The directory of the project owning the node's file — where a
+    /// create belongs when it follows the node (a fault type beside the
+    /// contracts it serves), not the work item's own project.</summary>
+    private string NodeProjectDir(Node node, string fallback)
+    {
+        var owner = projects.Owner(node.File);
+        var dir = owner is null ? fallback : projects.Directories.GetValueOrDefault(owner) ?? fallback;
+        return dir.Length == 0 ? "." : dir;
+    }
+
+    /// <summary>Files in the projects of the input nodes (the work item's own
+    /// project where there is none) whose path below the project directory
+    /// matches <paramref name="pattern"/>: <c>*</c> within a name, <c>/</c>
+    /// between directories, matched without regard to case. The files a
+    /// conversion makes obsolete or edits by convention — a host's
+    /// <c>App.config</c>, Web Deploy's <c>Parameters.xml</c>.</summary>
+    private List<Node> ProjectFilesMatching(List<Node> input, string projectPath, string pattern)
+    {
+        var owners = input.Select(n => projects.Owner(n.File)).Where(p => p is not null).Select(p => p!).ToHashSet(StringComparer.Ordinal);
+        if (owners.Count == 0) owners.Add(projectPath);
+        var regex = new System.Text.RegularExpressions.Regex(
+            "^" + System.Text.RegularExpressions.Regex.Escape(pattern).Replace("\\*", "[^/]*") + "$",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        var origin = input.FirstOrDefault();
+        var result = new List<Node>();
+        foreach (var project in owners.Order(StringComparer.Ordinal))
+        {
+            var dir = projects.Directories.GetValueOrDefault(project) ?? "";
+            var prefix = dir.Length == 0 ? "" : dir + "/";
+            foreach (var file in index.Files.Where(f => f.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+                                                        && projects.Owner(f) == project
+                                                        && regex.IsMatch(f[prefix.Length..])).Order(StringComparer.Ordinal))
+            {
+                var hop = $"{file} in project {project}";
+                result.Add(origin is null ? new Node(file, null, true, [hop]) : origin.Then(file, null, true, hop));
             }
         }
 

@@ -548,6 +548,9 @@ class AuthoredItemTests(unittest.TestCase):
         "package-upgrade-safe", "package-upgrade-breaking", "package-replacement-required",
         "package-vulnerable", "package-not-approved",
     }
+    # The engagement's target framework, from dependency-assessment; converted by
+    # the retarget-tfm approach (34-CONVERSION-ARCHITECTURE "As built").
+    FRAMEWORK = {"target-framework-retarget"}
     # Hard Linux blockers: "stay on Windows" is a legitimate answer and must
     # be on the menu, Linux-incompatible, so the decision warning fires.
     LINUX_BLOCKERS = {"registry-access", "directory-services-usage", "msmq-usage"}
@@ -570,7 +573,7 @@ class AuthoredItemTests(unittest.TestCase):
 
     def test_every_authored_item_has_a_menu_and_no_computed_state(self):
         items = self._items()
-        self.assertEqual(set(items), self.OCCURRENCE | self.ABSENCE | self.HOSTING | self.APPLICATION_WORK | self.PACKAGE)
+        self.assertEqual(set(items), self.OCCURRENCE | self.ABSENCE | self.HOSTING | self.APPLICATION_WORK | self.PACKAGE | self.FRAMEWORK)
         for item_id, data in items.items():
             with self.subTest(item=item_id):
                 self.assertNotIn("state", data)

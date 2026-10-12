@@ -88,10 +88,11 @@ public static class EntryClasses
 /// <summary>The capability manifest this scanner implements —
 /// schemas/entry-point-capabilities-{Version}.json lists the same kinds with
 /// how each is detected, plus what is not covered. A test holds the two
-/// together; bump both when a kind is added.</summary>
+/// together; bump both when a kind is added, and when the scanner version
+/// moves (1.3.0: scanner 2.3.0, the framework delta signals; same kinds).</summary>
 public static class CapabilityManifest
 {
-    public const string Version = "1.2.0";
+    public const string Version = "1.3.0";
 
     public static CapabilitiesStamp Stamp() => new()
     {

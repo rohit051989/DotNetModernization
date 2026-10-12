@@ -1,5 +1,5 @@
 job_name: phase0-repository-discovery
-version: 14
+version: 15
 description: "Per-repository discovery and analysis, repository-ingest through risk-scoring-tier-assignment (17-LIFECYCLE-STEPS.md)."
 
 parameters:
@@ -89,6 +89,9 @@ flow:
   # items and their seed files) and test-coverage-assessment's test mappings
   # (referencing_tests). Decisions and the catalog's impact rules are read
   # from the database at run time.
+  # v15: impact-analysis 2.2.0 also requires outbound-invocation-inventory,
+  # for the Web Deploy SetParam files it found per project
+  # (deploy_parameter_files: a host's move to ASP.NET Core deletes them).
   # v14: no change to the flow. Comments and doc references name steps by
   # slug, and step specs by their renamed files (CLAUDE.md rule 12).
   - step: impact-analysis
@@ -97,4 +100,5 @@ flow:
       entry-point-inventory: "${artifacts.entry-point-inventory}"
       item-occurrences: "${artifacts.item-occurrences}"
       test-coverage: "${artifacts.test-coverage}"
+      outbound-invocation-inventory: "${artifacts.outbound-invocation-inventory}"
   - step: risk-scoring-tier-assignment

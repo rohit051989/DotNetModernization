@@ -171,7 +171,7 @@ public class OutboundHostAndReachTests
             .WithDeployParameters(DeployParameterFiles.FromText(SetParamFiles, paths),
                 withDeclarations ? new Dictionary<string, string> { ["src/Catalog.Host"] = Declarations } : new Dictionary<string, string>());
         config = config.WithHosts(OutboundPipeline.ResolveHosts(projects.Select(p => p.Item1).ToList(), references, config));
-        return OutboundPipeline.Detect(RepositoryId, projects, config, EntryPoints);
+        return OutboundPipeline.Detect(RepositoryId, projects, config, EntryPoints, TestMatrices.Soap);
     }
 
     // ---------- 1. configuration through the host ----------

@@ -1,0 +1,988 @@
+{
+  "matrix": "wcf-client-platform",
+  "matrixVersion": "1.0.0",
+  "description": "Does a WCF client call work on Linux? Keyed by target framework, platform, binding (config element name), effective security mode and the credential type that mode uses ('None' when the mode is None; '*' matches any; the most specific entry wins). Verdicts: compatible, requires_change, incompatible; each that is not compatible says what must change and who changes it (we, backend_owner, or we_or_backend_owner). Same sourcing and confirmation flow as wcf-client-support: every entry names its sources, may carry probe results, and must be confirmed by a person before a report built on it goes to a client.",
+  "targets": {
+    "net10.0": {
+      "wcfClient": "System.ServiceModel.* 8.x (8.1.2 at retrieval)"
+    }
+  },
+  "sources": [
+    {
+      "id": "chart-v2.1.0",
+      "title": "WCF Features in .Net Core 2.1 - the dotnet/wcf supported-features chart",
+      "version": "v2.1.0",
+      "url": "https://github.com/dotnet/wcf/blob/4429ddf7939696571ea6eb1439dc45684ab97829/release-notes/SupportedFeatures-v2.1.0.md",
+      "commit": "4429ddf7939696571ea6eb1439dc45684ab97829",
+      "committedOn": "2021-02-11",
+      "retrievedOn": "2026-10-12",
+      "retrievedAt": "dotnet/wcf main 15c68c3570b7fb868fb904dd4738f90872343245",
+      "sha256": "a0b56884e718ca0a2dd7c94608b838f9c5d4c1684304176b0962881d88c639de",
+      "note": "The newest chart dotnet/wcf publishes, written for .NET Core 2.1. Its Linux column is read for the platform verdict: NetTcpBinding, Http, Https, Tcp, Kerberos/TCP, Kerberos/HTTP and Certificate supported; NTLM not supported."
+    },
+    {
+      "id": "release-v1.0.0-rc2",
+      "title": "dotnet/wcf release v1.0.0-rc2",
+      "version": "v1.0.0-rc2",
+      "url": "https://github.com/dotnet/wcf/releases/tag/v1.0.0-rc2",
+      "note": "Windows stream security (NegotiateStream): seamless on Windows; on other OSes, available with Kerberos authentication, dependent on the OS's Kerberos implementation (MIT GSSAPI on Ubuntu and Debian), whose components must be installed."
+    },
+    {
+      "id": "release-v2.0.0",
+      "title": "dotnet/wcf release v2.0.0",
+      "version": "v2.0.0",
+      "url": "https://github.com/dotnet/wcf/releases/tag/v2.0.0",
+      "note": "Windows authentication is now supported by Http transport on Linux and OS X (#946)."
+    },
+    {
+      "id": "release-v6.2.0",
+      "title": "dotnet/wcf release v6.2.0",
+      "version": "v6.2.0",
+      "url": "https://github.com/dotnet/wcf/releases/tag/v6.2.0-rtm",
+      "note": "System.ServiceModel.UnixDomainSocket added as an alternative to NetNamedPipe that works on all supported platforms."
+    },
+    {
+      "id": "packages-v8.1.2",
+      "title": "dotnet/wcf release-notes package list",
+      "version": "8.1.2",
+      "url": "https://github.com/dotnet/wcf/tree/15c68c3570b7fb868fb904dd4738f90872343245/release-notes",
+      "note": "The WCF client ships System.ServiceModel.Primitives, Http, NetTcp, NetNamedPipe, NetFramingBase, Duplex, Security, Federation and UnixDomainSocket. No package provides MSMQ, peer, web (REST) or dual-HTTP bindings."
+    }
+  ],
+  "entries": [
+    {
+      "id": "net10.0/linux/basicHttpBinding/*/*",
+      "target": "net10.0",
+      "platform": "linux",
+      "binding": "basicHttpBinding",
+      "securityMode": "*",
+      "credentialType": "*",
+      "verdict": "compatible",
+      "sources": [
+        "chart-v2.1.0"
+      ],
+      "basis": "chart Linux: BasicHttpBinding supported; Basic, Digest and Certificate client authentication supported on Linux",
+      "caveat": null,
+      "fix": null,
+      "probes": [
+        {
+          "probedOn": "2026-10-12",
+          "scenario": "basicHttp-None-None",
+          "where": "linux-container",
+          "outcome": "passed",
+          "summary": "FundsTransferWS.Ping returned 'FundsTransferWS OK 2026-10-12T14:47:24.1342061Z'",
+          "service": "wcf-backend FundsTransferWS (ASMX) under IIS Express",
+          "address": "http://localhost:8090/FundsTransferWS.asmx",
+          "client": {
+            "image": "mcr.microsoft.com/dotnet/runtime@sha256:b89586dc17781f25531909993658aa8161205ae38b8cec8847df4a8221a403d5",
+            "os": "Ubuntu 24.04.5 LTS",
+            "framework": ".NET 10.0.12",
+            "wcfClient": "8.1.2+a47960f931a813617a061adc2ba9cabe1816a551",
+            "cryptographyXml": "10.0.12+95017c711e6afc1085133d440e42b4bd78155701"
+          },
+          "evidence": "steps/step-003-fingerprinting/probes/evidence/20261012T144723Z-basicHttp-None-None-linux.json",
+          "sha256": "2c55553874be6b644ee2d6e0fe4e66773efbc822c97c2c806e46161534ce2d56"
+        },
+        {
+          "probedOn": "2026-10-12",
+          "scenario": "basicHttp-Transport-None",
+          "where": "linux-container",
+          "outcome": "passed",
+          "summary": "IUtilityService.Ping returned 'pong'",
+          "service": "WCF sample UtilityService, Hosting.Iis binding, self-hosted (Start-ProbeHttpsServices.ps1)",
+          "address": "https://localhost:44301/Utility.svc",
+          "client": {
+            "image": "mcr.microsoft.com/dotnet/runtime@sha256:b89586dc17781f25531909993658aa8161205ae38b8cec8847df4a8221a403d5",
+            "os": "Ubuntu 24.04.5 LTS",
+            "framework": ".NET 10.0.12",
+            "wcfClient": "8.1.2+a47960f931a813617a061adc2ba9cabe1816a551",
+            "cryptographyXml": "10.0.12+95017c711e6afc1085133d440e42b4bd78155701"
+          },
+          "evidence": "steps/step-003-fingerprinting/probes/evidence/20261012T144723Z-basicHttp-Transport-None-linux.json",
+          "sha256": "8104a760df52799f2657b9164c03f2b9004d1057a750072e90ee5799a862fa72"
+        }
+      ],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/linux/basicHttpBinding/*/Ntlm",
+      "target": "net10.0",
+      "platform": "linux",
+      "binding": "basicHttpBinding",
+      "securityMode": "*",
+      "credentialType": "Ntlm",
+      "verdict": "incompatible",
+      "sources": [
+        "chart-v2.1.0"
+      ],
+      "basis": "chart Linux: NTLM not supported",
+      "caveat": null,
+      "fix": {
+        "who": "backend_owner",
+        "change": "the backend's owner must accept a credential a Linux caller can present: Kerberos (Negotiate), a certificate, a username or a token"
+      },
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/linux/basicHttpBinding/*/Windows",
+      "target": "net10.0",
+      "platform": "linux",
+      "binding": "basicHttpBinding",
+      "securityMode": "*",
+      "credentialType": "Windows",
+      "verdict": "requires_change",
+      "sources": [
+        "chart-v2.1.0",
+        "release-v2.0.0",
+        "release-v1.0.0-rc2"
+      ],
+      "basis": "chart Linux: Kerberos/HTTP supported; release v2.0.0: Windows authentication on Http transport on Linux; release v1.0.0-rc2: Kerberos on Linux needs the OS's GSSAPI components",
+      "caveat": "Windows credentials negotiate Kerberos on Linux. On our side: a Kerberos client in the image (krb5 and GSSAPI), a krb5.conf for the domain, and credentials or a keytab for the calling identity. Otherwise the backend's owner offers a credential a Linux caller can present without the domain: a certificate, a username or a token. Which applies is decided by a probe in a Kerberos environment.",
+      "fix": {
+        "who": "we_or_backend_owner",
+        "change": "Kerberos configuration on our side, or a credential change by the backend's owner"
+      },
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/linux/basicHttpsBinding/*/*",
+      "target": "net10.0",
+      "platform": "linux",
+      "binding": "basicHttpsBinding",
+      "securityMode": "*",
+      "credentialType": "*",
+      "verdict": "compatible",
+      "sources": [
+        "chart-v2.1.0"
+      ],
+      "basis": "chart Linux: Https supported; Basic, Digest and Certificate client authentication supported on Linux",
+      "caveat": null,
+      "fix": null,
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/linux/basicHttpsBinding/*/Ntlm",
+      "target": "net10.0",
+      "platform": "linux",
+      "binding": "basicHttpsBinding",
+      "securityMode": "*",
+      "credentialType": "Ntlm",
+      "verdict": "incompatible",
+      "sources": [
+        "chart-v2.1.0"
+      ],
+      "basis": "chart Linux: NTLM not supported",
+      "caveat": null,
+      "fix": {
+        "who": "backend_owner",
+        "change": "the backend's owner must accept a credential a Linux caller can present: Kerberos (Negotiate), a certificate, a username or a token"
+      },
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/linux/basicHttpsBinding/*/Windows",
+      "target": "net10.0",
+      "platform": "linux",
+      "binding": "basicHttpsBinding",
+      "securityMode": "*",
+      "credentialType": "Windows",
+      "verdict": "requires_change",
+      "sources": [
+        "chart-v2.1.0",
+        "release-v2.0.0",
+        "release-v1.0.0-rc2"
+      ],
+      "basis": "chart Linux: Kerberos/HTTP supported; release v2.0.0: Windows authentication on Http transport on Linux; release v1.0.0-rc2: Kerberos on Linux needs the OS's GSSAPI components",
+      "caveat": "Windows credentials negotiate Kerberos on Linux. On our side: a Kerberos client in the image (krb5 and GSSAPI), a krb5.conf for the domain, and credentials or a keytab for the calling identity. Otherwise the backend's owner offers a credential a Linux caller can present without the domain: a certificate, a username or a token. Which applies is decided by a probe in a Kerberos environment.",
+      "fix": {
+        "who": "we_or_backend_owner",
+        "change": "Kerberos configuration on our side, or a credential change by the backend's owner"
+      },
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/linux/msmqIntegrationBinding/*/*",
+      "target": "net10.0",
+      "platform": "linux",
+      "binding": "msmqIntegrationBinding",
+      "securityMode": "*",
+      "credentialType": "*",
+      "verdict": "incompatible",
+      "sources": [
+        "packages-v8.1.2"
+      ],
+      "basis": "no WCF client package provides it; MSMQ and peer channels are Windows",
+      "caveat": null,
+      "fix": {
+        "who": "backend_owner",
+        "change": "the service must offer a binding a Linux caller can reach"
+      },
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/linux/netHttpBinding/*/*",
+      "target": "net10.0",
+      "platform": "linux",
+      "binding": "netHttpBinding",
+      "securityMode": "*",
+      "credentialType": "*",
+      "verdict": "compatible",
+      "sources": [
+        "chart-v2.1.0"
+      ],
+      "basis": "chart Linux: NetHttpBinding supported; Basic, Digest and Certificate client authentication supported on Linux",
+      "caveat": null,
+      "fix": null,
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/linux/netHttpBinding/*/Ntlm",
+      "target": "net10.0",
+      "platform": "linux",
+      "binding": "netHttpBinding",
+      "securityMode": "*",
+      "credentialType": "Ntlm",
+      "verdict": "incompatible",
+      "sources": [
+        "chart-v2.1.0"
+      ],
+      "basis": "chart Linux: NTLM not supported",
+      "caveat": null,
+      "fix": {
+        "who": "backend_owner",
+        "change": "the backend's owner must accept a credential a Linux caller can present: Kerberos (Negotiate), a certificate, a username or a token"
+      },
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/linux/netHttpBinding/*/Windows",
+      "target": "net10.0",
+      "platform": "linux",
+      "binding": "netHttpBinding",
+      "securityMode": "*",
+      "credentialType": "Windows",
+      "verdict": "requires_change",
+      "sources": [
+        "chart-v2.1.0",
+        "release-v2.0.0",
+        "release-v1.0.0-rc2"
+      ],
+      "basis": "chart Linux: Kerberos/HTTP supported; release v2.0.0: Windows authentication on Http transport on Linux; release v1.0.0-rc2: Kerberos on Linux needs the OS's GSSAPI components",
+      "caveat": "Windows credentials negotiate Kerberos on Linux. On our side: a Kerberos client in the image (krb5 and GSSAPI), a krb5.conf for the domain, and credentials or a keytab for the calling identity. Otherwise the backend's owner offers a credential a Linux caller can present without the domain: a certificate, a username or a token. Which applies is decided by a probe in a Kerberos environment.",
+      "fix": {
+        "who": "we_or_backend_owner",
+        "change": "Kerberos configuration on our side, or a credential change by the backend's owner"
+      },
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/linux/netHttpsBinding/*/*",
+      "target": "net10.0",
+      "platform": "linux",
+      "binding": "netHttpsBinding",
+      "securityMode": "*",
+      "credentialType": "*",
+      "verdict": "compatible",
+      "sources": [
+        "chart-v2.1.0"
+      ],
+      "basis": "chart Linux: Https supported; Basic, Digest and Certificate client authentication supported on Linux",
+      "caveat": null,
+      "fix": null,
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/linux/netHttpsBinding/*/Ntlm",
+      "target": "net10.0",
+      "platform": "linux",
+      "binding": "netHttpsBinding",
+      "securityMode": "*",
+      "credentialType": "Ntlm",
+      "verdict": "incompatible",
+      "sources": [
+        "chart-v2.1.0"
+      ],
+      "basis": "chart Linux: NTLM not supported",
+      "caveat": null,
+      "fix": {
+        "who": "backend_owner",
+        "change": "the backend's owner must accept a credential a Linux caller can present: Kerberos (Negotiate), a certificate, a username or a token"
+      },
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/linux/netHttpsBinding/*/Windows",
+      "target": "net10.0",
+      "platform": "linux",
+      "binding": "netHttpsBinding",
+      "securityMode": "*",
+      "credentialType": "Windows",
+      "verdict": "requires_change",
+      "sources": [
+        "chart-v2.1.0",
+        "release-v2.0.0",
+        "release-v1.0.0-rc2"
+      ],
+      "basis": "chart Linux: Kerberos/HTTP supported; release v2.0.0: Windows authentication on Http transport on Linux; release v1.0.0-rc2: Kerberos on Linux needs the OS's GSSAPI components",
+      "caveat": "Windows credentials negotiate Kerberos on Linux. On our side: a Kerberos client in the image (krb5 and GSSAPI), a krb5.conf for the domain, and credentials or a keytab for the calling identity. Otherwise the backend's owner offers a credential a Linux caller can present without the domain: a certificate, a username or a token. Which applies is decided by a probe in a Kerberos environment.",
+      "fix": {
+        "who": "we_or_backend_owner",
+        "change": "Kerberos configuration on our side, or a credential change by the backend's owner"
+      },
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/linux/netMsmqBinding/*/*",
+      "target": "net10.0",
+      "platform": "linux",
+      "binding": "netMsmqBinding",
+      "securityMode": "*",
+      "credentialType": "*",
+      "verdict": "incompatible",
+      "sources": [
+        "packages-v8.1.2"
+      ],
+      "basis": "no WCF client package provides it; MSMQ and peer channels are Windows",
+      "caveat": null,
+      "fix": {
+        "who": "backend_owner",
+        "change": "the service must offer a binding a Linux caller can reach"
+      },
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/linux/netNamedPipeBinding/*/*",
+      "target": "net10.0",
+      "platform": "linux",
+      "binding": "netNamedPipeBinding",
+      "securityMode": "*",
+      "credentialType": "*",
+      "verdict": "incompatible",
+      "sources": [
+        "release-v6.2.0"
+      ],
+      "basis": "release v6.2.0: UnixDomainSocket added as the alternative to NetNamedPipe that works on all platforms",
+      "caveat": null,
+      "fix": {
+        "who": "backend_owner",
+        "change": "the service must offer a binding a Linux caller can reach: named pipes are same-machine and Windows"
+      },
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/linux/netPeerTcpBinding/*/*",
+      "target": "net10.0",
+      "platform": "linux",
+      "binding": "netPeerTcpBinding",
+      "securityMode": "*",
+      "credentialType": "*",
+      "verdict": "incompatible",
+      "sources": [
+        "packages-v8.1.2"
+      ],
+      "basis": "no WCF client package provides it; MSMQ and peer channels are Windows",
+      "caveat": null,
+      "fix": {
+        "who": "backend_owner",
+        "change": "the service must offer a binding a Linux caller can reach"
+      },
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/linux/netTcpBinding/*/*",
+      "target": "net10.0",
+      "platform": "linux",
+      "binding": "netTcpBinding",
+      "securityMode": "*",
+      "credentialType": "*",
+      "verdict": "compatible",
+      "sources": [
+        "chart-v2.1.0"
+      ],
+      "basis": "chart Linux: NetTcpBinding, Tcp and Certificate/TCP supported",
+      "caveat": null,
+      "fix": null,
+      "probes": [
+        {
+          "probedOn": "2026-10-12",
+          "scenario": "netTcp-Transport-None",
+          "where": "linux-container",
+          "outcome": "passed",
+          "summary": "IUtilityService.Ping returned 'pong'",
+          "service": "WCF sample UtilityService, Catalog.Host",
+          "address": "net.tcp://localhost:8101/Utility",
+          "client": {
+            "image": "mcr.microsoft.com/dotnet/runtime@sha256:b89586dc17781f25531909993658aa8161205ae38b8cec8847df4a8221a403d5",
+            "os": "Ubuntu 24.04.5 LTS",
+            "framework": ".NET 10.0.12",
+            "wcfClient": "8.1.2+a47960f931a813617a061adc2ba9cabe1816a551",
+            "cryptographyXml": "10.0.12+95017c711e6afc1085133d440e42b4bd78155701"
+          },
+          "evidence": "steps/step-003-fingerprinting/probes/evidence/20261012T144723Z-netTcp-Transport-None-linux.json",
+          "sha256": "f57e3a27e0581b9f24f1f0184f10e3c0d9f38ba2e063ab079d01927cf914314a"
+        },
+        {
+          "probedOn": "2026-10-12",
+          "scenario": "netTcp-Transport-Certificate",
+          "where": "linux-container",
+          "outcome": "passed",
+          "summary": "IAccountService.GetAccount(CUST-001) returned 'CUST-001 Ada Lovelace'",
+          "service": "WCF sample AccountService, Catalog.Host (mutual TLS)",
+          "address": "net.tcp://localhost:8202/Account",
+          "client": {
+            "image": "mcr.microsoft.com/dotnet/runtime@sha256:b89586dc17781f25531909993658aa8161205ae38b8cec8847df4a8221a403d5",
+            "os": "Ubuntu 24.04.5 LTS",
+            "framework": ".NET 10.0.12",
+            "wcfClient": "8.1.2+a47960f931a813617a061adc2ba9cabe1816a551",
+            "cryptographyXml": "10.0.12+95017c711e6afc1085133d440e42b4bd78155701"
+          },
+          "evidence": "steps/step-003-fingerprinting/probes/evidence/20261012T144723Z-netTcp-Transport-Certificate-linux.json",
+          "sha256": "61aa9099aa4e0ac055692b38f92b0b9121a4ff21b3d9d7b21e7028dedbca2829"
+        }
+      ],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/linux/netTcpBinding/*/Windows",
+      "target": "net10.0",
+      "platform": "linux",
+      "binding": "netTcpBinding",
+      "securityMode": "*",
+      "credentialType": "Windows",
+      "verdict": "requires_change",
+      "sources": [
+        "chart-v2.1.0",
+        "release-v1.0.0-rc2"
+      ],
+      "basis": "chart Linux: Kerberos/TCP supported; release v1.0.0-rc2: Windows stream security on other OSes works with Kerberos, given the OS's GSSAPI components",
+      "caveat": "Windows credentials negotiate Kerberos on Linux. On our side: a Kerberos client in the image (krb5 and GSSAPI), a krb5.conf for the domain, and credentials or a keytab for the calling identity. Otherwise the backend's owner offers a credential a Linux caller can present without the domain: a certificate, a username or a token. Which applies is decided by a probe in a Kerberos environment.",
+      "fix": {
+        "who": "we_or_backend_owner",
+        "change": "Kerberos configuration on our side, or a credential change by the backend's owner"
+      },
+      "probes": [
+        {
+          "probedOn": "2026-10-12",
+          "outcome": "not_probed",
+          "reason": "needs Kerberos: a Windows credential on NetTcp negotiates Kerberos on Linux, which needs a KDC, a service principal name and a keytab or ticket for the caller; no Kerberos environment is available to the probe, so the outcome is not guessed"
+        }
+      ],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/linux/webHttpBinding/*/*",
+      "target": "net10.0",
+      "platform": "linux",
+      "binding": "webHttpBinding",
+      "securityMode": "*",
+      "credentialType": "*",
+      "verdict": "compatible",
+      "sources": [
+        "chart-v2.1.0"
+      ],
+      "basis": "chart Linux: Http supported (the binding itself has no WCF client: the runtime verdict says so); Basic, Digest and Certificate client authentication supported on Linux",
+      "caveat": null,
+      "fix": null,
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/linux/webHttpBinding/*/Ntlm",
+      "target": "net10.0",
+      "platform": "linux",
+      "binding": "webHttpBinding",
+      "securityMode": "*",
+      "credentialType": "Ntlm",
+      "verdict": "incompatible",
+      "sources": [
+        "chart-v2.1.0"
+      ],
+      "basis": "chart Linux: NTLM not supported",
+      "caveat": null,
+      "fix": {
+        "who": "backend_owner",
+        "change": "the backend's owner must accept a credential a Linux caller can present: Kerberos (Negotiate), a certificate, a username or a token"
+      },
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/linux/webHttpBinding/*/Windows",
+      "target": "net10.0",
+      "platform": "linux",
+      "binding": "webHttpBinding",
+      "securityMode": "*",
+      "credentialType": "Windows",
+      "verdict": "requires_change",
+      "sources": [
+        "chart-v2.1.0",
+        "release-v2.0.0",
+        "release-v1.0.0-rc2"
+      ],
+      "basis": "chart Linux: Kerberos/HTTP supported; release v2.0.0: Windows authentication on Http transport on Linux; release v1.0.0-rc2: Kerberos on Linux needs the OS's GSSAPI components",
+      "caveat": "Windows credentials negotiate Kerberos on Linux. On our side: a Kerberos client in the image (krb5 and GSSAPI), a krb5.conf for the domain, and credentials or a keytab for the calling identity. Otherwise the backend's owner offers a credential a Linux caller can present without the domain: a certificate, a username or a token. Which applies is decided by a probe in a Kerberos environment.",
+      "fix": {
+        "who": "we_or_backend_owner",
+        "change": "Kerberos configuration on our side, or a credential change by the backend's owner"
+      },
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/linux/ws2007FederationHttpBinding/*/*",
+      "target": "net10.0",
+      "platform": "linux",
+      "binding": "ws2007FederationHttpBinding",
+      "securityMode": "*",
+      "credentialType": "*",
+      "verdict": "compatible",
+      "sources": [
+        "chart-v2.1.0"
+      ],
+      "basis": "chart Linux: Https supported (no federation row); Basic, Digest and Certificate client authentication supported on Linux",
+      "caveat": null,
+      "fix": null,
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/linux/ws2007FederationHttpBinding/*/Ntlm",
+      "target": "net10.0",
+      "platform": "linux",
+      "binding": "ws2007FederationHttpBinding",
+      "securityMode": "*",
+      "credentialType": "Ntlm",
+      "verdict": "incompatible",
+      "sources": [
+        "chart-v2.1.0"
+      ],
+      "basis": "chart Linux: NTLM not supported",
+      "caveat": null,
+      "fix": {
+        "who": "backend_owner",
+        "change": "the backend's owner must accept a credential a Linux caller can present: Kerberos (Negotiate), a certificate, a username or a token"
+      },
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/linux/ws2007FederationHttpBinding/*/Windows",
+      "target": "net10.0",
+      "platform": "linux",
+      "binding": "ws2007FederationHttpBinding",
+      "securityMode": "*",
+      "credentialType": "Windows",
+      "verdict": "requires_change",
+      "sources": [
+        "chart-v2.1.0",
+        "release-v2.0.0",
+        "release-v1.0.0-rc2"
+      ],
+      "basis": "chart Linux: Kerberos/HTTP supported; release v2.0.0: Windows authentication on Http transport on Linux; release v1.0.0-rc2: Kerberos on Linux needs the OS's GSSAPI components",
+      "caveat": "Windows credentials negotiate Kerberos on Linux. On our side: a Kerberos client in the image (krb5 and GSSAPI), a krb5.conf for the domain, and credentials or a keytab for the calling identity. Otherwise the backend's owner offers a credential a Linux caller can present without the domain: a certificate, a username or a token. Which applies is decided by a probe in a Kerberos environment.",
+      "fix": {
+        "who": "we_or_backend_owner",
+        "change": "Kerberos configuration on our side, or a credential change by the backend's owner"
+      },
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/linux/ws2007HttpBinding/*/*",
+      "target": "net10.0",
+      "platform": "linux",
+      "binding": "ws2007HttpBinding",
+      "securityMode": "*",
+      "credentialType": "*",
+      "verdict": "compatible",
+      "sources": [
+        "chart-v2.1.0"
+      ],
+      "basis": "chart Linux: Http and Https supported (no WS-binding row); Basic, Digest and Certificate client authentication supported on Linux",
+      "caveat": null,
+      "fix": null,
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/linux/ws2007HttpBinding/*/Ntlm",
+      "target": "net10.0",
+      "platform": "linux",
+      "binding": "ws2007HttpBinding",
+      "securityMode": "*",
+      "credentialType": "Ntlm",
+      "verdict": "incompatible",
+      "sources": [
+        "chart-v2.1.0"
+      ],
+      "basis": "chart Linux: NTLM not supported",
+      "caveat": null,
+      "fix": {
+        "who": "backend_owner",
+        "change": "the backend's owner must accept a credential a Linux caller can present: Kerberos (Negotiate), a certificate, a username or a token"
+      },
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/linux/ws2007HttpBinding/*/Windows",
+      "target": "net10.0",
+      "platform": "linux",
+      "binding": "ws2007HttpBinding",
+      "securityMode": "*",
+      "credentialType": "Windows",
+      "verdict": "requires_change",
+      "sources": [
+        "chart-v2.1.0",
+        "release-v2.0.0",
+        "release-v1.0.0-rc2"
+      ],
+      "basis": "chart Linux: Kerberos/HTTP supported; release v2.0.0: Windows authentication on Http transport on Linux; release v1.0.0-rc2: Kerberos on Linux needs the OS's GSSAPI components",
+      "caveat": "Windows credentials negotiate Kerberos on Linux. On our side: a Kerberos client in the image (krb5 and GSSAPI), a krb5.conf for the domain, and credentials or a keytab for the calling identity. Otherwise the backend's owner offers a credential a Linux caller can present without the domain: a certificate, a username or a token. Which applies is decided by a probe in a Kerberos environment.",
+      "fix": {
+        "who": "we_or_backend_owner",
+        "change": "Kerberos configuration on our side, or a credential change by the backend's owner"
+      },
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/linux/wsFederationHttpBinding/*/*",
+      "target": "net10.0",
+      "platform": "linux",
+      "binding": "wsFederationHttpBinding",
+      "securityMode": "*",
+      "credentialType": "*",
+      "verdict": "compatible",
+      "sources": [
+        "chart-v2.1.0"
+      ],
+      "basis": "chart Linux: Https supported (no federation row); Basic, Digest and Certificate client authentication supported on Linux",
+      "caveat": null,
+      "fix": null,
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/linux/wsFederationHttpBinding/*/Ntlm",
+      "target": "net10.0",
+      "platform": "linux",
+      "binding": "wsFederationHttpBinding",
+      "securityMode": "*",
+      "credentialType": "Ntlm",
+      "verdict": "incompatible",
+      "sources": [
+        "chart-v2.1.0"
+      ],
+      "basis": "chart Linux: NTLM not supported",
+      "caveat": null,
+      "fix": {
+        "who": "backend_owner",
+        "change": "the backend's owner must accept a credential a Linux caller can present: Kerberos (Negotiate), a certificate, a username or a token"
+      },
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/linux/wsFederationHttpBinding/*/Windows",
+      "target": "net10.0",
+      "platform": "linux",
+      "binding": "wsFederationHttpBinding",
+      "securityMode": "*",
+      "credentialType": "Windows",
+      "verdict": "requires_change",
+      "sources": [
+        "chart-v2.1.0",
+        "release-v2.0.0",
+        "release-v1.0.0-rc2"
+      ],
+      "basis": "chart Linux: Kerberos/HTTP supported; release v2.0.0: Windows authentication on Http transport on Linux; release v1.0.0-rc2: Kerberos on Linux needs the OS's GSSAPI components",
+      "caveat": "Windows credentials negotiate Kerberos on Linux. On our side: a Kerberos client in the image (krb5 and GSSAPI), a krb5.conf for the domain, and credentials or a keytab for the calling identity. Otherwise the backend's owner offers a credential a Linux caller can present without the domain: a certificate, a username or a token. Which applies is decided by a probe in a Kerberos environment.",
+      "fix": {
+        "who": "we_or_backend_owner",
+        "change": "Kerberos configuration on our side, or a credential change by the backend's owner"
+      },
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/linux/wsHttpBinding/*/*",
+      "target": "net10.0",
+      "platform": "linux",
+      "binding": "wsHttpBinding",
+      "securityMode": "*",
+      "credentialType": "*",
+      "verdict": "compatible",
+      "sources": [
+        "chart-v2.1.0"
+      ],
+      "basis": "chart Linux: Http and Https supported (no WS-binding row); Basic, Digest and Certificate client authentication supported on Linux",
+      "caveat": null,
+      "fix": null,
+      "probes": [
+        {
+          "probedOn": "2026-10-12",
+          "scenario": "wsHttp-TransportWithMessageCredential-Certificate",
+          "where": "linux-container",
+          "outcome": "failed",
+          "summary": "System.UriFormatException: Invalid URI: The format of the URI could not be determined.",
+          "service": "WCF sample AccountService, Hosting.Iis binding, self-hosted (Start-ProbeHttpsServices.ps1)",
+          "address": "https://localhost:44301/Account.svc",
+          "client": {
+            "image": "mcr.microsoft.com/dotnet/runtime@sha256:b89586dc17781f25531909993658aa8161205ae38b8cec8847df4a8221a403d5",
+            "os": "Ubuntu 24.04.5 LTS",
+            "framework": ".NET 10.0.12",
+            "wcfClient": "8.1.2+a47960f931a813617a061adc2ba9cabe1816a551",
+            "cryptographyXml": "10.0.12+95017c711e6afc1085133d440e42b4bd78155701"
+          },
+          "evidence": "steps/step-003-fingerprinting/probes/evidence/20261012T144723Z-wsHttp-TransportWithMessageCredential-Certificate-linux.json",
+          "sha256": "a9761a1bc3b879624168c7ab271c5d553004a17c22d531c766e8228e0d6d5cd4",
+          "controls": [
+            {
+              "where": "linux-container-unpinned-cryptography-xml",
+              "outcome": "failed",
+              "summary": "System.UriFormatException: Invalid URI: The format of the URI could not be determined.",
+              "os": "Ubuntu 24.04.5 LTS",
+              "cryptographyXml": "8.0.10+81cabf2857a01351e5ab578947c7403a5b128ad1",
+              "evidence": "steps/step-003-fingerprinting/probes/evidence/20261012T144723Z-wsHttp-TransportWithMessageCredential-Certificate-linux-container-unpinned-cryptography-xml.json",
+              "sha256": "6be5c8e17831faef0d631dc0cfb5b1498198e22fed4c937076399ebb725fd5df"
+            },
+            {
+              "where": "windows-host",
+              "outcome": "passed",
+              "summary": "IAccountService.GetAccount(CUST-001) returned 'CUST-001 Ada Lovelace'",
+              "os": "Microsoft Windows 10.0.26200",
+              "cryptographyXml": "10.0.12+95017c711e6afc1085133d440e42b4bd78155701",
+              "evidence": "steps/step-003-fingerprinting/probes/evidence/20261012T144723Z-wsHttp-TransportWithMessageCredential-Certificate-windows-host.json",
+              "sha256": "1c5f3bab8b9c7e86bb1dc4885331b3c5367f2a2acc75a138ebed554a7b8eb0ce"
+            }
+          ],
+          "attribution": "platform"
+        }
+      ],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/linux/wsHttpBinding/*/Ntlm",
+      "target": "net10.0",
+      "platform": "linux",
+      "binding": "wsHttpBinding",
+      "securityMode": "*",
+      "credentialType": "Ntlm",
+      "verdict": "incompatible",
+      "sources": [
+        "chart-v2.1.0"
+      ],
+      "basis": "chart Linux: NTLM not supported",
+      "caveat": null,
+      "fix": {
+        "who": "backend_owner",
+        "change": "the backend's owner must accept a credential a Linux caller can present: Kerberos (Negotiate), a certificate, a username or a token"
+      },
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    },
+    {
+      "id": "net10.0/linux/wsHttpBinding/*/Windows",
+      "target": "net10.0",
+      "platform": "linux",
+      "binding": "wsHttpBinding",
+      "securityMode": "*",
+      "credentialType": "Windows",
+      "verdict": "requires_change",
+      "sources": [
+        "chart-v2.1.0",
+        "release-v2.0.0",
+        "release-v1.0.0-rc2"
+      ],
+      "basis": "chart Linux: Kerberos/HTTP supported; release v2.0.0: Windows authentication on Http transport on Linux; release v1.0.0-rc2: Kerberos on Linux needs the OS's GSSAPI components",
+      "caveat": "Windows credentials negotiate Kerberos on Linux. On our side: a Kerberos client in the image (krb5 and GSSAPI), a krb5.conf for the domain, and credentials or a keytab for the calling identity. Otherwise the backend's owner offers a credential a Linux caller can present without the domain: a certificate, a username or a token. Which applies is decided by a probe in a Kerberos environment.",
+      "fix": {
+        "who": "we_or_backend_owner",
+        "change": "Kerberos configuration on our side, or a credential change by the backend's owner"
+      },
+      "probes": [],
+      "confirmation": {
+        "status": "unconfirmed",
+        "by": null,
+        "on": null,
+        "note": null
+      }
+    }
+  ]
+}

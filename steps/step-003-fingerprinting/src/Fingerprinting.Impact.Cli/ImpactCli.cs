@@ -28,11 +28,73 @@ public static class ImpactCli
         ("entry-point-inventory", "^2.0.0"),
         ("item-occurrences", "^1.0.0"),
         ("test-coverage", "^1.0.0"),
+        ("outbound-invocation-inventory", "^1.3.0"),
     ];
 
 
-    public static Task<int> RunAsync(TextReader input, TextWriter output, TextWriter error) =>
-        StepEnvelopeRunner.RunAsync(input, output, error, ExecuteAsync);
+    public static async Task<int> RunAsync(string[] args, TextReader input, TextWriter output, TextWriter error)
+    {
+        if (args.Length > 0) return await RunStandaloneAsync(args, error);
+        return await StepEnvelopeRunner.RunAsync(input, output, error, ExecuteAsync);
+    }
+
+    // ---------- standalone ----------
+
+    /// <summary>
+    /// Runs the pipeline without the engine or the database, from files: the
+    /// four upstream artifacts, the catalog's impact rules and the decisions.
+    /// Used to calibrate the rules against a hand analysis
+    /// (backend/app/impact/calibration.py). Writes the artifact only.
+    ///
+    /// --catalog is {"items": [{"itemId", "name", "resolutions": [{"id", "name",
+    /// "isDefault", "consumerImpact", "rules": [...]}]}]}; --decisions is
+    /// {"item-id": "resolution-id"}.
+    /// </summary>
+    private static async Task<int> RunStandaloneAsync(string[] args, TextWriter error)
+    {
+        var options = new Dictionary<string, string>(StringComparer.Ordinal);
+        for (var i = 0; i + 1 < args.Length; i += 2) options[args[i]] = args[i + 1];
+        string[] required = ["--repo", "--inventory", "--occurrences", "--entry-points", "--test-coverage", "--outbound", "--catalog", "--decisions", "--out"];
+        var missing = required.Where(r => !options.ContainsKey(r)).ToList();
+        if (missing.Count > 0)
+        {
+            error.WriteLine($"Standalone mode requires {string.Join(" ", required.Select(r => r + " <path>"))}; missing {string.Join(", ", missing)}.");
+            return 2;
+        }
+
+        try
+        {
+            var inventory = JsonSerializer.Deserialize<SolutionProjectInventory>(await File.ReadAllTextAsync(options["--inventory"]), EnvelopeJson.Options)!;
+            var workItems = WorkItems(JsonDocument.Parse(await File.ReadAllTextAsync(options["--occurrences"])).RootElement);
+            var catalog = JsonDocument.Parse(await File.ReadAllTextAsync(options["--catalog"])).RootElement;
+            var items = catalog.GetProperty("items").EnumerateArray().Select(item => new CatalogItemInfo(
+                    Str(item, "itemId")!, Str(item, "name")!,
+                    item.GetProperty("resolutions").EnumerateArray().Select(r => new ResolutionInfo(
+                        Str(r, "id")!, Str(r, "name")!, r.GetProperty("isDefault").GetBoolean(), Str(r, "consumerImpact")!,
+                        JsonSerializer.Deserialize<List<ImpactRule>>(r.GetProperty("rules").GetRawText()) ?? [])).ToList()))
+                .ToDictionary(i => i.ItemId, StringComparer.Ordinal);
+            var decisions = JsonSerializer.Deserialize<Dictionary<string, string>>(await File.ReadAllTextAsync(options["--decisions"])) ?? [];
+            var input = new ImpactInput(
+                inventory.RepositoryId, inventory.RepositorySlug, "standalone",
+                new ProjectMap(inventory.Projects.ToDictionary(p => p.RelativePath, p => DirectoryOf(p.RelativePath), StringComparer.Ordinal)),
+                workItems, items, decisions,
+                TestLinks(JsonDocument.Parse(await File.ReadAllTextAsync(options["--test-coverage"])).RootElement),
+                EntryPoints(JsonDocument.Parse(await File.ReadAllTextAsync(options["--entry-points"])).RootElement),
+                HostLinks(JsonDocument.Parse(await File.ReadAllTextAsync(options["--entry-points"])).RootElement),
+                DeployFiles(JsonDocument.Parse(await File.ReadAllTextAsync(options["--outbound"])).RootElement));
+            var artifact = await ImpactPipeline.RunAsync(input, Path.GetFullPath(options["--repo"]), CancellationToken.None);
+            var path = await WriteArtifactAsync(artifact, Path.GetFullPath(options["--out"]));
+            error.WriteLine($"Wrote {path}");
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            error.WriteLine($"Fatal: {ex}");
+            return 1;
+        }
+    }
+
+    // ---------- envelope ----------
 
     private static async Task<StepResult> ExecuteAsync(StepContextEnvelope context)
     {
@@ -77,7 +139,9 @@ public static class ImpactCli
             new ProjectMap(inventory.Projects.ToDictionary(p => p.RelativePath, p => DirectoryOf(p.RelativePath), StringComparer.Ordinal)),
             workItems, items, decisions,
             TestLinks(JsonDocument.Parse(await ReadAsync(refs["test-coverage"])).RootElement),
-            EntryPoints(JsonDocument.Parse(await ReadAsync(refs["entry-point-inventory"])).RootElement));
+            EntryPoints(JsonDocument.Parse(await ReadAsync(refs["entry-point-inventory"])).RootElement),
+            HostLinks(JsonDocument.Parse(await ReadAsync(refs["entry-point-inventory"])).RootElement),
+            DeployFiles(JsonDocument.Parse(await ReadAsync(refs["outbound-invocation-inventory"])).RootElement));
 
         var artifact = await ImpactPipeline.RunAsync(input, repositoryRoot, CancellationToken.None);
         var outputPath = await WriteArtifactAsync(artifact, context.OutputDir);
@@ -171,6 +235,26 @@ public static class ImpactCli
                 var handler = e.GetProperty("handler");
                 return new EntryPointRef(Str(e, "kind")!, Str(handler, "type")!, Str(handler, "namespace"), Str(handler, "member"), Str(handler, "filePath")!);
             })
+            .ToList();
+
+    /// <summary>entry-point-inventory's HOSTS_WCF_SERVICE signals: the project
+    /// constructing the ServiceHost or holding the .svc, and the contract.</summary>
+    public static IReadOnlyList<HostLink> HostLinks(JsonElement inventory) =>
+        inventory.GetProperty("projects").EnumerateArray()
+            .SelectMany(p => (p.TryGetProperty("signals", out var s) ? s.EnumerateArray() : Enumerable.Empty<JsonElement>())
+                .Where(signal => Str(signal, "name") == "HOSTS_WCF_SERVICE" && Str(signal, "value") is not null)
+                .Select(signal => new HostLink(Str(p, "projectPath")!, Str(signal, "value")!)))
+            .Distinct()
+            .ToList();
+
+    /// <summary>outbound-invocation-inventory's deploy parameters (1.3.0): each
+    /// SetParam / SetParameters file found for a project, with its environment.</summary>
+    public static IReadOnlyList<DeployFile> DeployFiles(JsonElement outbound) =>
+        outbound.GetProperty("projects").EnumerateArray()
+            .SelectMany(p => (p.TryGetProperty("deployParameters", out var d) ? d.EnumerateArray() : Enumerable.Empty<JsonElement>())
+                .Select(parameter => new DeployFile(Str(parameter, "projectPath") ?? Str(p, "projectPath")!, Str(parameter, "sourceFile")!,
+                    Str(parameter, "environment")!)))
+            .Distinct()
             .ToList();
 
     private static string? Str(JsonElement element, string name) =>

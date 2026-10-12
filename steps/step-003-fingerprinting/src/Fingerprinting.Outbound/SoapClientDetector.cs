@@ -496,6 +496,8 @@ public static class SoapClientDetector
 
         var bindings = siblings.Select(e => new EnvironmentBinding
         {
+            // 1.4.0: each environment file's own security for this endpoint.
+            Soap = EnvironmentSecurity(e),
             Environment = e.Environment,
             SourceFile = e.File,
             KeyPath = e.Endpoint.Source?.KeyPath ?? "system.serviceModel/client/endpoint",
@@ -519,6 +521,19 @@ public static class SoapClientDetector
 
         return new Found(contract, clientType, clientSource, "config", entry.Binding, entry.SecurityMode, entry.TransportCredential, entry.MessageCredential,
             entry.Endpoint, bindings, endpointName ?? entry.Name, condition, via, credentials, callSites, confidence, reasons);
+    }
+
+    /// <summary>One configuration entry's effective security: declared, or else the binding's default.</summary>
+    private static EnvironmentSoapSecurity EnvironmentSecurity(ClientEndpointEntry entry)
+    {
+        var security = WcfSecurity.Resolve(entry.Binding, entry.SecurityMode, entry.TransportCredential, entry.MessageCredential);
+        return new EnvironmentSoapSecurity
+        {
+            Binding = entry.Binding,
+            SecurityMode = security.SecurityMode,
+            ClientCredentialType = security.ClientCredentialType,
+            SecuritySource = security.SecuritySource,
+        };
     }
 
     private static IEnumerable<Found> ConfigOnly(DetectionContext context, HashSet<string> claimed)
@@ -586,7 +601,16 @@ public static class SoapClientDetector
             ProjectPath = "",
             Endpoint = found.Endpoint,
             Usage = found.Usage,
-            EnvironmentBindings = found.Bindings,
+            // A binding built in code applies in every environment; a
+            // configured one already carries its environment's own security.
+            EnvironmentBindings = found.Bindings.Select(b => b.Soap is not null ? b : b with
+            {
+                Soap = new EnvironmentSoapSecurity
+                {
+                    Binding = found.Binding, SecurityMode = security.SecurityMode,
+                    ClientCredentialType = credentialType, SecuritySource = security.SecuritySource,
+                },
+            }).ToList(),
             AuthDeclared = authDeclared,
             Credentials = credentials.OrderBy(c => c.Kind, StringComparer.Ordinal).ToList(),
             Soap = new SoapDetail

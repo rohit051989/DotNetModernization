@@ -31,6 +31,14 @@ public sealed record OutboundInput(
 
     /// <summary>Step 4's entry points (1.3.0), for <see cref="BackendReach"/>.</summary>
     public IReadOnlyList<InboundEntryPoint> EntryPoints { get; init; } = [];
+
+    /// <summary>1.4.0: the engagement's target framework, and the WCF client
+    /// support matrix the SOAP runtime verdicts come from (<see cref="RuntimeVerdicts"/>).</summary>
+    public string? TargetFramework { get; init; }
+    public WcfClientSupport? WcfClientSupport { get; init; }
+
+    /// <summary>1.5.0: the WCF client platform matrix the SOAP platform verdicts come from.</summary>
+    public WcfClientSupport? WcfClientPlatform { get; init; }
 }
 
 /// <summary>
@@ -41,8 +49,9 @@ public sealed record OutboundInput(
 /// </summary>
 public sealed class OutboundPipeline
 {
-    /// <summary>Matches the outbound-invocation-inventory step registration version.</summary>
-    public const string ScannerVersion = "1.3.0";
+    /// <summary>Matches the outbound-invocation-inventory step registration version. 1.5.1: the WCF client
+    /// matrices 1.1.0 (the wildcard rule; reviewer decisions); artifact 1.5.0 unchanged.</summary>
+    public const string ScannerVersion = "1.5.1";
 
     public async Task<OutboundInventoryArtifact> RunAsync(OutboundInput input, string repositoryRoot, CancellationToken cancellationToken)
     {
@@ -83,7 +92,8 @@ public sealed class OutboundPipeline
         var config = RepositoryConfig.Build(repositoryRoot, cancellationToken)
             .WithDeployParameters(deployFiles, ReadDeclarations(repositoryRoot, deployFiles));
         config = config.WithHosts(ResolveHosts(input.Projects, input.ProjectReferences, config));
-        results.AddRange(Detect(input.RepositoryId, loaded, config, input.EntryPoints));
+        results.AddRange(Detect(input.RepositoryId, loaded, config, input.EntryPoints,
+            new SoapMatrices(input.TargetFramework, input.WcfClientSupport, input.WcfClientPlatform)));
         results = results.OrderBy(r => r.ProjectPath, StringComparer.Ordinal).ToList();
 
         var warnings = input.Warnings.ToList();
@@ -101,6 +111,13 @@ public sealed class OutboundPipeline
             RepositorySlug = input.RepositorySlug,
             SemanticAnalysisEnabled = false,
             SkipSource = input.SkipSource,
+            WcfClientSupport = input.WcfClientSupport is { } matrix && input.TargetFramework is { } target
+                ? new WcfClientSupportStamp
+                {
+                    MatrixVersion = matrix.MatrixVersion, Target = target, Sha256 = matrix.Sha256, UnconfirmedEntries = matrix.UnconfirmedCount,
+                    PlatformMatrixVersion = input.WcfClientPlatform?.MatrixVersion, PlatformSha256 = input.WcfClientPlatform?.Sha256,
+                }
+                : null,
             Summary = Summarise(results),
             Projects = results,
             Warnings = warnings.OrderBy(w => w.Message, StringComparer.Ordinal).ToList(),
@@ -196,7 +213,7 @@ public sealed class OutboundPipeline
     /// <summary>Detection over already-loaded projects — the entry point tests use.</summary>
     public static IReadOnlyList<ProjectInvocations> Detect(
         Guid repositoryId, IReadOnlyList<(OutboundInputProject Input, ProjectSource Source)> loaded, RepositoryConfig config,
-        IReadOnlyList<InboundEntryPoint>? entryPoints = null)
+        IReadOnlyList<InboundEntryPoint>? entryPoints = null, SoapMatrices? soapMatrices = null)
     {
         var sources = loaded.Select(l => l.Source).ToList();
         var symbols = SymbolIndex.Build(sources);
@@ -234,7 +251,7 @@ public sealed class OutboundPipeline
             detected.AddRange(SmtpDetector.Detect(context));
             detected.AddRange(LdapDetector.Detect(context));
 
-            var invocations = Finish(repositoryId, project.RelativePath, detected);
+            var invocations = Finish(repositoryId, project.RelativePath, detected, soapMatrices);
             var used = invocations.Where(i => i.Usage == Usages.Used).ToList();
             var warnings = new List<Warning>();
             if (context.Project.Truncated)
@@ -307,12 +324,12 @@ public sealed class OutboundPipeline
     /// dependency reached from several call sites is one invocation with
     /// every call site.
     /// </summary>
-    public static IReadOnlyList<Invocation> Finish(Guid repositoryId, string projectPath, IReadOnlyList<Detected> detected)
+    public static IReadOnlyList<Invocation> Finish(Guid repositoryId, string projectPath, IReadOnlyList<Detected> detected, SoapMatrices? soap = null)
     {
         var merged = detected
             .Select(d => (Key: $"{repositoryId:D}\n{projectPath}\n{d.Record.Mechanism}\n{Endpoints.Key(d.Record.Endpoint)}\n{d.Identity}", d.Record))
             .GroupBy(x => x.Key, StringComparer.Ordinal)
-            .Select(g => Merge(Hash(g.Key), projectPath, g.Select(x => x.Record).ToList()))
+            .Select(g => Merge(Hash(g.Key), projectPath, g.Select(x => x.Record).ToList(), soap))
             .ToList();
 
         return merged
@@ -324,7 +341,7 @@ public sealed class OutboundPipeline
             .ToList();
     }
 
-    private static Invocation Merge(string id, string projectPath, IReadOnlyList<Invocation> records)
+    private static Invocation Merge(string id, string projectPath, IReadOnlyList<Invocation> records, SoapMatrices? soap)
     {
         var ordered = records
             .OrderBy(r => r.CallSites.FirstOrDefault()?.FilePath ?? "", StringComparer.Ordinal)
@@ -382,7 +399,8 @@ public sealed class OutboundPipeline
             merged = merged with { ConstructionSites = merged.CallSites, CallSites = invokedAt };
         }
 
-        return LinuxVerdicts.Apply(merged);
+        // Both SOAP verdicts, from the two matrices: platform (Linux) and runtime (the target's WCF client).
+        return RuntimeVerdicts.Apply(LinuxVerdicts.Apply(merged, soap), soap?.Runtime, soap?.Target);
     }
 
     public static string Hash(string key) =>
@@ -411,6 +429,7 @@ public sealed class OutboundPipeline
             UnusedCount = invocations.Count - used.Count,
             CountByMechanism = Count(used.Select(i => i.Mechanism)),
             CountByVerdict = Count(used.Select(i => i.LinuxCompatibility.Verdict)),
+            CountByRuntimeVerdict = Count(used.Select(i => i.RuntimeCompatibility?.Verdict).OfType<string>()),
         };
     }
 

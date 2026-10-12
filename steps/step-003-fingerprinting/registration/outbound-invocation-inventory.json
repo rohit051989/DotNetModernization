@@ -3,7 +3,7 @@
   "lifecycle_step_no": 5,
   "display_name": "Outbound invocation inventory",
   "owner_code": "P",
-  "version": "1.3.0",
+  "version": "1.5.1",
   "owner_team": "platform",
   "viewpoint": "CONTEXT",
   "implementation_status": "implemented",
@@ -13,7 +13,7 @@
     { "artifact_type": "entry-point-inventory", "version_range": "^2.0.0", "optional": true }
   ],
   "produces": [
-    { "artifact_type": "outbound-invocation-inventory", "artifact_version": "1.3.0" }
+    { "artifact_type": "outbound-invocation-inventory", "artifact_version": "1.5.0" }
   ],
   "adapter_type": "process",
   "adapter_config": {

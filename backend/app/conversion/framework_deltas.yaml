@@ -1,0 +1,45 @@
+# The framework delta catalog — the known breaking changes between a source and
+# a target framework that a version bump alone does not fix. It belongs to the
+# retarget: item target-framework-retarget, recipe framework-retarget, step D01
+# (34-CONVERSION-ARCHITECTURE.md, "Framework deltas"). Client-agnostic.
+#
+# Each delta is detected in discovery as a signal, so a plan knows about it
+# before anything runs, and is fixed by a unit placed BEFORE the retarget that
+# builds on both frameworks: the retarget depends on it, and every commit stays
+# green. A delta applies when the retarget crosses `breaks_from`:
+# from < breaks_from <= to.
+#
+# The fix is deterministic only when a rewrite is known to be reliable — proven
+# to build on both frameworks and to change nothing on the current one.
+# Otherwise it is `assisted`: planned, never applied by the deterministic
+# runner, left for T1b (the assisted conversion work), and the retarget waits
+# on it.
+
+deltas:
+  - id: net10-public-top-level-program
+    breaks_from: net10.0
+    signal: AMBIGUOUS_TOP_LEVEL_PROGRAM_ON_NET10
+    symptom: "CS0433: The type 'Program' exists in both '<one project>' and '<another>'"
+    description: >-
+      From .NET 10, ASP.NET Core generates `public partial class Program` for a
+      web project whose entry point is top-level statements, so that
+      WebApplicationFactory<Program> can reach it. A project that references
+      two such projects and names Program — a test project testing one of them
+      — then sees two public Program types in the global namespace and no
+      longer compiles. On earlier frameworks the implicit Program is internal,
+      so only a project that declared `public partial class Program` was
+      visible.
+    fix:
+      approach_id: pin-program-internal
+      approach_version: 0.1.0
+      automation_class: deterministic
+      # Why a rewrite is reliable here.
+      basis: >-
+        Declaring `internal partial class Program { }` beside the top-level
+        statements gives Program the accessibility it already has on every
+        framework before net10.0, so nothing changes on the current framework,
+        and the .NET 10 generator respects an explicit declaration and leaves
+        it internal. Proven by building a two-web-project fixture on net8.0 and
+        net10.0 (SDK 10.0.302): CS0433 on net10.0 without it, green on both
+        with it. The one project that declared `public partial class Program`
+        keeps it, and the test project's Program still means that one.

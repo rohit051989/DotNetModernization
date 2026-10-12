@@ -28,7 +28,7 @@ CONFIRMED_AT = 0.8
 _STRENGTH = {"delete": 4, "rewrite": 3, "update": 2, "review": 1}
 
 
-def _client_rule(rules: list[dict]) -> dict | None:
+def client_rule(rules: list[dict]) -> dict | None:
     return next((r for r in rules if r.get("traverse") == "client_call_sites"), None)
 
 
@@ -65,7 +65,7 @@ def apply(db: Session, engagement_id: str, step_execution_id=None) -> dict:
         if summary.resolution_id not in resolutions:
             resolution = db.get(models.ItemResolution, summary.resolution_id)
             resolutions[summary.resolution_id] = (resolution.impact_rules if resolution else None) or []
-        rule = _client_rule(resolutions[summary.resolution_id])
+        rule = client_rule(resolutions[summary.resolution_id])
         key = (summary.repository_id, summary.item_id, summary.project_path, summary.resolution_id)
         own = structural.get(key, set())
         calls = defaultdict(list)   # (caller repo, call-site file) -> [(edge, handler file, handler type)]
@@ -108,6 +108,14 @@ def apply(db: Session, engagement_id: str, step_execution_id=None) -> dict:
         if repository_id in repositories:
             rollup.recompute(db, repository_id)
     return {"client_rows": rows}
+
+
+def callers(own_files: set[str], edges: list[dict]) -> list[str]:
+    """Within one repository: the call-site files of edges whose entry point is
+    handled in a file the work item impacts, less those it already impacts —
+    the matching `apply` does across the estate, for edges given as
+    {callSiteFile, handlerFile} (app/impact/calibration.py)."""
+    return sorted({e["callSiteFile"] for e in edges if e["handlerFile"] in own_files} - set(own_files))
 
 
 def _slug(repositories: dict, repository_id) -> str:

@@ -76,6 +76,11 @@ public static class Actions
     public const string Create = "create";
     public const string Review = "review";
 
+    /// <summary>A traversal rule that only leads to later rules (the project
+    /// hosting a contract, where its controller goes): nothing happens to the
+    /// files it reaches, so they are not entries.</summary>
+    public const string None = "none";
+
     /// <summary>The actions that change an existing file.</summary>
     public static bool IsChange(string action) => action is Update or Rewrite or Delete;
 
@@ -201,6 +206,8 @@ public sealed record ImpactRule
     [JsonPropertyName("filter")] public Dictionary<string, JsonElement>? Filter { get; init; }
     [JsonPropertyName("kind")] public string? Kind { get; init; }
     [JsonPropertyName("path")] public string? Path { get; init; }
+    /// <summary>project_files: a name or path below the project directory, <c>*</c> within a name.</summary>
+    [JsonPropertyName("pattern")] public string? Pattern { get; init; }
     [JsonPropertyName("action")] public required string Action { get; init; }
     [JsonPropertyName("reason")] public string? Reason { get; init; }
     [JsonPropertyName("create")] public string? Create { get; init; }

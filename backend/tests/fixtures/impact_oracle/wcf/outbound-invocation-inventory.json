@@ -1,0 +1,2324 @@
+{
+  "artifactType": "outbound-invocation-inventory",
+  "artifactVersion": "1.3.0",
+  "authDeclaredScope": "authDeclared on an outbound invocation reports whether the client presents credentials, as declared in source and config: a WCF client credential type, a connection string\u0027s authentication, an API key, token or certificate. Credentials added outside the code (a sidecar, a gateway, a delegating handler registered elsewhere) are not visible to static analysis, so none_declared and not_assessed are prompts to review, not findings.",
+  "projects": [
+    {
+      "deployParameters": [],
+      "entryPointBackend": [],
+      "invocations": [],
+      "projectId": "67572dde-e6e2-54be-9649-dc502e26584d",
+      "projectPath": "src/Catalog.Contracts/Catalog.Contracts.csproj",
+      "skipReason": null,
+      "status": "SCANNED",
+      "summary": {
+        "countByMechanism": {},
+        "countByVerdict": {},
+        "incompatible": [],
+        "unusedCount": 0
+      },
+      "warnings": []
+    },
+    {
+      "deployParameters": [
+        {
+          "environment": "LOCAL",
+          "kind": "url",
+          "line": 2,
+          "linkConfidence": 1,
+          "linkMethod": "parameters_xml",
+          "linkNote": null,
+          "linkedKind": "client_endpoint",
+          "linkedName": "FundsTransferWSSoap",
+          "name": "FundsTransferWSURL",
+          "projectPath": "src/Catalog.Host/Catalog.Host.csproj",
+          "sourceFile": "CustomFiles/Catalog.Host/SetParamFiles/DEV/LOCAL/SetParam.xml",
+          "value": "http://localhost:8090/FundsTransferWS.asmx"
+        },
+        {
+          "environment": "LOCAL",
+          "kind": "path",
+          "line": 3,
+          "linkConfidence": 1,
+          "linkMethod": "parameters_xml",
+          "linkNote": null,
+          "linkedKind": "app_setting",
+          "linkedName": "LogDirectory",
+          "name": "LogDirectory",
+          "projectPath": "src/Catalog.Host/Catalog.Host.csproj",
+          "sourceFile": "CustomFiles/Catalog.Host/SetParamFiles/DEV/LOCAL/SetParam.xml",
+          "value": "Logs\\FundsTransfer\\"
+        },
+        {
+          "environment": "LOCAL",
+          "kind": "other",
+          "line": 4,
+          "linkConfidence": 1,
+          "linkMethod": "parameters_xml",
+          "linkNote": null,
+          "linkedKind": "app_setting",
+          "linkedName": "FundsTransferUserId",
+          "name": "FundsTransferUserId",
+          "projectPath": "src/Catalog.Host/Catalog.Host.csproj",
+          "sourceFile": "CustomFiles/Catalog.Host/SetParamFiles/DEV/LOCAL/SetParam.xml",
+          "value": null
+        },
+        {
+          "environment": "DEV",
+          "kind": "url",
+          "line": 2,
+          "linkConfidence": 1,
+          "linkMethod": "parameters_xml",
+          "linkNote": null,
+          "linkedKind": "client_endpoint",
+          "linkedName": "FundsTransferWSSoap",
+          "name": "FundsTransferWSURL",
+          "projectPath": "src/Catalog.Host/Catalog.Host.csproj",
+          "sourceFile": "CustomFiles/Catalog.Host/SetParamFiles/DEV/SetParam.xml",
+          "value": "http://appsrv0341:80/FundsTransferWS/FundsTransferWS.asmx"
+        },
+        {
+          "environment": "DEV",
+          "kind": "path",
+          "line": 3,
+          "linkConfidence": 1,
+          "linkMethod": "parameters_xml",
+          "linkNote": null,
+          "linkedKind": "app_setting",
+          "linkedName": "LogDirectory",
+          "name": "LogDirectory",
+          "projectPath": "src/Catalog.Host/Catalog.Host.csproj",
+          "sourceFile": "CustomFiles/Catalog.Host/SetParamFiles/DEV/SetParam.xml",
+          "value": "G:\\Logs\\WcfCatalog\\FundsTransfer\\"
+        },
+        {
+          "environment": "DEV",
+          "kind": "other",
+          "line": 4,
+          "linkConfidence": 1,
+          "linkMethod": "parameters_xml",
+          "linkNote": null,
+          "linkedKind": "app_setting",
+          "linkedName": "FundsTransferUserId",
+          "name": "FundsTransferUserId",
+          "projectPath": "src/Catalog.Host/Catalog.Host.csproj",
+          "sourceFile": "CustomFiles/Catalog.Host/SetParamFiles/DEV/SetParam.xml",
+          "value": null
+        },
+        {
+          "environment": "PROD",
+          "kind": "url",
+          "line": 2,
+          "linkConfidence": 1,
+          "linkMethod": "parameters_xml",
+          "linkNote": null,
+          "linkedKind": "client_endpoint",
+          "linkedName": "FundsTransferWSSoap",
+          "name": "FundsTransferWSURL",
+          "projectPath": "src/Catalog.Host/Catalog.Host.csproj",
+          "sourceFile": "CustomFiles/Catalog.Host/SetParamFiles/PROD/SetParam.xml",
+          "value": "http://ftmt.corp.example.com:80/FundsTransferWS/FundsTransferWS.asmx"
+        },
+        {
+          "environment": "PROD",
+          "kind": "path",
+          "line": 3,
+          "linkConfidence": 1,
+          "linkMethod": "parameters_xml",
+          "linkNote": null,
+          "linkedKind": "app_setting",
+          "linkedName": "LogDirectory",
+          "name": "LogDirectory",
+          "projectPath": "src/Catalog.Host/Catalog.Host.csproj",
+          "sourceFile": "CustomFiles/Catalog.Host/SetParamFiles/PROD/SetParam.xml",
+          "value": "G:\\Logs\\WcfCatalog\\FundsTransfer\\"
+        },
+        {
+          "environment": "PROD",
+          "kind": "other",
+          "line": 4,
+          "linkConfidence": 1,
+          "linkMethod": "parameters_xml",
+          "linkNote": null,
+          "linkedKind": "app_setting",
+          "linkedName": "FundsTransferUserId",
+          "name": "FundsTransferUserId",
+          "projectPath": "src/Catalog.Host/Catalog.Host.csproj",
+          "sourceFile": "CustomFiles/Catalog.Host/SetParamFiles/PROD/SetParam.xml",
+          "value": null
+        },
+        {
+          "environment": "SITP",
+          "kind": "url",
+          "line": 2,
+          "linkConfidence": 1,
+          "linkMethod": "parameters_xml",
+          "linkNote": null,
+          "linkedKind": "client_endpoint",
+          "linkedName": "FundsTransferWSSoap",
+          "name": "FundsTransferWSURL",
+          "projectPath": "src/Catalog.Host/Catalog.Host.csproj",
+          "sourceFile": "CustomFiles/Catalog.Host/SetParamFiles/SITP/SetParam.xml",
+          "value": "http://sitpmidvip-env2.corp.example.com:80/FundsTransferWS/FundsTransferWS.asmx"
+        },
+        {
+          "environment": "SITP",
+          "kind": "path",
+          "line": 3,
+          "linkConfidence": 1,
+          "linkMethod": "parameters_xml",
+          "linkNote": null,
+          "linkedKind": "app_setting",
+          "linkedName": "LogDirectory",
+          "name": "LogDirectory",
+          "projectPath": "src/Catalog.Host/Catalog.Host.csproj",
+          "sourceFile": "CustomFiles/Catalog.Host/SetParamFiles/SITP/SetParam.xml",
+          "value": "G:\\Logs\\WcfCatalog\\FundsTransfer\\"
+        },
+        {
+          "environment": "SITP",
+          "kind": "other",
+          "line": 4,
+          "linkConfidence": 1,
+          "linkMethod": "parameters_xml",
+          "linkNote": null,
+          "linkedKind": "app_setting",
+          "linkedName": "FundsTransferUserId",
+          "name": "FundsTransferUserId",
+          "projectPath": "src/Catalog.Host/Catalog.Host.csproj",
+          "sourceFile": "CustomFiles/Catalog.Host/SetParamFiles/SITP/SetParam.xml",
+          "value": null
+        },
+        {
+          "environment": "STE",
+          "kind": "url",
+          "line": 2,
+          "linkConfidence": 1,
+          "linkMethod": "parameters_xml",
+          "linkNote": null,
+          "linkedKind": "client_endpoint",
+          "linkedName": "FundsTransferWSSoap",
+          "name": "FundsTransferWSURL",
+          "projectPath": "src/Catalog.Host/Catalog.Host.csproj",
+          "sourceFile": "CustomFiles/Catalog.Host/SetParamFiles/STE/SetParam.xml",
+          "value": "http://ftmt-ste.corp.example.com:80/FundsTransferWS/FundsTransferWS.asmx"
+        },
+        {
+          "environment": "STE",
+          "kind": "path",
+          "line": 3,
+          "linkConfidence": 1,
+          "linkMethod": "parameters_xml",
+          "linkNote": null,
+          "linkedKind": "app_setting",
+          "linkedName": "LogDirectory",
+          "name": "LogDirectory",
+          "projectPath": "src/Catalog.Host/Catalog.Host.csproj",
+          "sourceFile": "CustomFiles/Catalog.Host/SetParamFiles/STE/SetParam.xml",
+          "value": "G:\\Logs\\WcfCatalog\\FundsTransfer\\"
+        },
+        {
+          "environment": "STE",
+          "kind": "other",
+          "line": 4,
+          "linkConfidence": 1,
+          "linkMethod": "parameters_xml",
+          "linkNote": null,
+          "linkedKind": "app_setting",
+          "linkedName": "FundsTransferUserId",
+          "name": "FundsTransferUserId",
+          "projectPath": "src/Catalog.Host/Catalog.Host.csproj",
+          "sourceFile": "CustomFiles/Catalog.Host/SetParamFiles/STE/SetParam.xml",
+          "value": null
+        }
+      ],
+      "entryPointBackend": [
+        {
+          "calls": [],
+          "entryPointId": "f0ab3220b6317514efc01eb018b7622e",
+          "status": "no",
+          "unresolved": []
+        }
+      ],
+      "invocations": [],
+      "projectId": "48bf6029-a310-5772-8b84-d7a305dc92f4",
+      "projectPath": "src/Catalog.Host/Catalog.Host.csproj",
+      "skipReason": null,
+      "status": "SCANNED",
+      "summary": {
+        "countByMechanism": {},
+        "countByVerdict": {},
+        "incompatible": [],
+        "unusedCount": 0
+      },
+      "warnings": []
+    },
+    {
+      "deployParameters": [],
+      "entryPointBackend": [
+        {
+          "calls": [],
+          "entryPointId": "2b531682c774c90bd0cc8fe23faaffee",
+          "status": "no",
+          "unresolved": []
+        },
+        {
+          "calls": [],
+          "entryPointId": "45f1bc1ba1c385c40b3b3d1736d492a7",
+          "status": "no",
+          "unresolved": []
+        },
+        {
+          "calls": [],
+          "entryPointId": "467b789f15c48ec7cabecb6dc7796a25",
+          "status": "no",
+          "unresolved": []
+        },
+        {
+          "calls": [
+            {
+              "callSite": {
+                "filePath": "src/Catalog.Services/FundsTransferService.cs",
+                "lineEnd": 181,
+                "lineStart": 181
+              },
+              "conditional": true,
+              "context": [
+                "after early return: if (practice != null)"
+              ],
+              "depth": 0,
+              "inLoop": false,
+              "invocationId": "986288386e3eb5fd68eaeedb249c4736",
+              "mechanism": "soap_client",
+              "operation": "RealTimeFTInquiry",
+              "via": [
+                "GetFundsTransferStatus"
+              ]
+            }
+          ],
+          "entryPointId": "52f545169e7b39880b41e89131f8c557",
+          "status": "yes",
+          "unresolved": []
+        },
+        {
+          "calls": [],
+          "entryPointId": "7805bc18a8a8a61c286cd2e415ca8d96",
+          "status": "no",
+          "unresolved": []
+        },
+        {
+          "calls": [],
+          "entryPointId": "79e6708bdb48dcd2e173d8d907a7bf66",
+          "status": "no",
+          "unresolved": []
+        },
+        {
+          "calls": [],
+          "entryPointId": "7a3e14b03d0b8c5381de1416a5115e1f",
+          "status": "no",
+          "unresolved": []
+        },
+        {
+          "calls": [],
+          "entryPointId": "7fc076e5298eeaabd3db292a7be4c624",
+          "status": "no",
+          "unresolved": []
+        },
+        {
+          "calls": [],
+          "entryPointId": "8558e0ebe5d38664f0f419b552724b3c",
+          "status": "no",
+          "unresolved": []
+        },
+        {
+          "calls": [],
+          "entryPointId": "8933b3c8d0b9356f899d2bf37a07e267",
+          "status": "no",
+          "unresolved": []
+        },
+        {
+          "calls": [
+            {
+              "callSite": {
+                "filePath": "src/Catalog.Services/FundsTransferService.cs",
+                "lineEnd": 122,
+                "lineStart": 122
+              },
+              "conditional": true,
+              "context": [
+                "for (i \u003C transferQ.Count)",
+                "else of if (transferQ[i].IsPracticeAccount)"
+              ],
+              "depth": 0,
+              "inLoop": true,
+              "invocationId": "986288386e3eb5fd68eaeedb249c4736",
+              "mechanism": "soap_client",
+              "operation": "PlaceRealTimeFTOrder",
+              "via": [
+                "ProcessTransferQueue"
+              ]
+            }
+          ],
+          "entryPointId": "97a0480ab9ddc6dbe97140d77c298958",
+          "status": "yes",
+          "unresolved": []
+        },
+        {
+          "calls": [],
+          "entryPointId": "9b7e5543be85002abfd2c2c312ea9be1",
+          "status": "no",
+          "unresolved": []
+        },
+        {
+          "calls": [
+            {
+              "callSite": {
+                "filePath": "src/Catalog.Services/FundsTransferService.cs",
+                "lineEnd": 56,
+                "lineStart": 56
+              },
+              "conditional": true,
+              "context": [
+                "else of if (item.IsPracticeAccount)"
+              ],
+              "depth": 0,
+              "inLoop": false,
+              "invocationId": "986288386e3eb5fd68eaeedb249c4736",
+              "mechanism": "soap_client",
+              "operation": "PlaceRealTimeFTOrder",
+              "via": [
+                "PlaceFundsTransfer"
+              ]
+            }
+          ],
+          "entryPointId": "9e23256b4195df3df3916dd8f0525a4c",
+          "status": "yes",
+          "unresolved": []
+        },
+        {
+          "calls": [],
+          "entryPointId": "aa7e4ebf590d8497e440faf193196f85",
+          "status": "no",
+          "unresolved": []
+        },
+        {
+          "calls": [],
+          "entryPointId": "cb7d9f6c9fad73c667e44dba7aea6164",
+          "status": "no",
+          "unresolved": []
+        },
+        {
+          "calls": [],
+          "entryPointId": "e66e80c51040504a1839e600fd614246",
+          "status": "no",
+          "unresolved": []
+        },
+        {
+          "calls": [],
+          "entryPointId": "e73832abdcec66033b1d5d03613b849d",
+          "status": "no",
+          "unresolved": []
+        }
+      ],
+      "invocations": [
+        {
+          "authDeclared": "none_declared",
+          "callSites": [
+            {
+              "filePath": "src/Catalog.Services/FundsTransferService.cs",
+              "lineEnd": 56,
+              "lineStart": 56
+            },
+            {
+              "filePath": "src/Catalog.Services/FundsTransferService.cs",
+              "lineEnd": 122,
+              "lineStart": 122
+            },
+            {
+              "filePath": "src/Catalog.Services/FundsTransferService.cs",
+              "lineEnd": 181,
+              "lineStart": 181
+            }
+          ],
+          "confidence": 1,
+          "confidenceReasons": [
+            "configuration from the host project(s) src/Catalog.Host/Catalog.Host.csproj: the class library has none of its own",
+            "security from basicHttpBinding\u0027s documented defaults"
+          ],
+          "constructionSites": [
+            {
+              "filePath": "src/Catalog.Services/FundsTransferService.cs",
+              "lineEnd": 51,
+              "lineStart": 51
+            },
+            {
+              "filePath": "src/Catalog.Services/FundsTransferService.cs",
+              "lineEnd": 115,
+              "lineStart": 115
+            },
+            {
+              "filePath": "src/Catalog.Services/FundsTransferService.cs",
+              "lineEnd": 179,
+              "lineStart": 179
+            }
+          ],
+          "credentials": [],
+          "endpoint": {
+            "fragments": [],
+            "host": "localhost",
+            "path": "/FundsTransferWS.asmx",
+            "placeholder": null,
+            "port": 8090,
+            "resolution": "resolved",
+            "scheme": "http",
+            "source": {
+              "keyPath": "system.serviceModel/client/endpoint[FundsTransferWSSoap]",
+              "sourceFile": "src/Catalog.Host/App.config"
+            }
+          },
+          "environmentBindings": [
+            {
+              "authentication": null,
+              "deployParameter": null,
+              "environment": "default",
+              "host": "localhost",
+              "hostProject": "src/Catalog.Host/Catalog.Host.csproj",
+              "keyPath": "system.serviceModel/client/endpoint[FundsTransferWSSoap]",
+              "linkConfidence": null,
+              "linkMethod": null,
+              "linuxReasons": [
+                "basicHttpBinding: HTTP-based, ports cleanly"
+              ],
+              "linuxVerdict": "compatible",
+              "path": "/FundsTransferWS.asmx",
+              "placeholder": null,
+              "port": 8090,
+              "resolution": "resolved",
+              "scheme": "http",
+              "sourceFile": "src/Catalog.Host/App.config"
+            },
+            {
+              "authentication": null,
+              "deployParameter": "FundsTransferWSURL",
+              "environment": "DEV",
+              "host": "appsrv0341",
+              "hostProject": "src/Catalog.Host/Catalog.Host.csproj",
+              "keyPath": "setParameter[FundsTransferWSURL]",
+              "linkConfidence": 1,
+              "linkMethod": "parameters_xml",
+              "linuxReasons": [
+                "basicHttpBinding: HTTP-based, ports cleanly",
+                "unqualified hostname \u0027appsrv0341\u0027: resolves on Windows through NetBIOS or the DNS suffix search, but in an OpenShift pod only if the cluster\u0027s DNS search domains cover it \u2014 use the fully qualified name"
+              ],
+              "linuxVerdict": "requires_change",
+              "path": "/FundsTransferWS/FundsTransferWS.asmx",
+              "placeholder": null,
+              "port": 80,
+              "resolution": "resolved",
+              "scheme": "http",
+              "sourceFile": "CustomFiles/Catalog.Host/SetParamFiles/DEV/SetParam.xml"
+            },
+            {
+              "authentication": null,
+              "deployParameter": "FundsTransferWSURL",
+              "environment": "LOCAL",
+              "host": "localhost",
+              "hostProject": "src/Catalog.Host/Catalog.Host.csproj",
+              "keyPath": "setParameter[FundsTransferWSURL]",
+              "linkConfidence": 1,
+              "linkMethod": "parameters_xml",
+              "linuxReasons": [
+                "basicHttpBinding: HTTP-based, ports cleanly"
+              ],
+              "linuxVerdict": "compatible",
+              "path": "/FundsTransferWS.asmx",
+              "placeholder": null,
+              "port": 8090,
+              "resolution": "resolved",
+              "scheme": "http",
+              "sourceFile": "CustomFiles/Catalog.Host/SetParamFiles/DEV/LOCAL/SetParam.xml"
+            },
+            {
+              "authentication": null,
+              "deployParameter": "FundsTransferWSURL",
+              "environment": "PROD",
+              "host": "ftmt.corp.example.com",
+              "hostProject": "src/Catalog.Host/Catalog.Host.csproj",
+              "keyPath": "setParameter[FundsTransferWSURL]",
+              "linkConfidence": 1,
+              "linkMethod": "parameters_xml",
+              "linuxReasons": [
+                "basicHttpBinding: HTTP-based, ports cleanly"
+              ],
+              "linuxVerdict": "compatible",
+              "path": "/FundsTransferWS/FundsTransferWS.asmx",
+              "placeholder": null,
+              "port": 80,
+              "resolution": "resolved",
+              "scheme": "http",
+              "sourceFile": "CustomFiles/Catalog.Host/SetParamFiles/PROD/SetParam.xml"
+            },
+            {
+              "authentication": null,
+              "deployParameter": "FundsTransferWSURL",
+              "environment": "SITP",
+              "host": "sitpmidvip-env2.corp.example.com",
+              "hostProject": "src/Catalog.Host/Catalog.Host.csproj",
+              "keyPath": "setParameter[FundsTransferWSURL]",
+              "linkConfidence": 1,
+              "linkMethod": "parameters_xml",
+              "linuxReasons": [
+                "basicHttpBinding: HTTP-based, ports cleanly"
+              ],
+              "linuxVerdict": "compatible",
+              "path": "/FundsTransferWS/FundsTransferWS.asmx",
+              "placeholder": null,
+              "port": 80,
+              "resolution": "resolved",
+              "scheme": "http",
+              "sourceFile": "CustomFiles/Catalog.Host/SetParamFiles/SITP/SetParam.xml"
+            },
+            {
+              "authentication": null,
+              "deployParameter": "FundsTransferWSURL",
+              "environment": "STE",
+              "host": "ftmt-ste.corp.example.com",
+              "hostProject": "src/Catalog.Host/Catalog.Host.csproj",
+              "keyPath": "setParameter[FundsTransferWSURL]",
+              "linkConfidence": 1,
+              "linkMethod": "parameters_xml",
+              "linuxReasons": [
+                "basicHttpBinding: HTTP-based, ports cleanly"
+              ],
+              "linuxVerdict": "compatible",
+              "path": "/FundsTransferWS/FundsTransferWS.asmx",
+              "placeholder": null,
+              "port": 80,
+              "resolution": "resolved",
+              "scheme": "http",
+              "sourceFile": "CustomFiles/Catalog.Host/SetParamFiles/STE/SetParam.xml"
+            }
+          ],
+          "invocationId": "986288386e3eb5fd68eaeedb249c4736",
+          "linuxCompatibility": {
+            "reasons": [
+              "basicHttpBinding: HTTP-based, ports cleanly",
+              "DEV: unqualified hostname \u0027appsrv0341\u0027: resolves on Windows through NetBIOS or the DNS suffix search, but in an OpenShift pod only if the cluster\u0027s DNS search domains cover it \u2014 use the fully qualified name"
+            ],
+            "verdict": "requires_change"
+          },
+          "mechanism": "soap_client",
+          "operations": [
+            {
+              "callSite": {
+                "filePath": "src/Catalog.Services/FundsTransferService.cs",
+                "lineEnd": 56,
+                "lineStart": 56
+              },
+              "member": "PlaceRealTimeFTOrder",
+              "operation": "PlaceRealTimeFTOrder",
+              "path": null,
+              "reason": null,
+              "resolution": "resolved",
+              "verb": null
+            },
+            {
+              "callSite": {
+                "filePath": "src/Catalog.Services/FundsTransferService.cs",
+                "lineEnd": 122,
+                "lineStart": 122
+              },
+              "member": "PlaceRealTimeFTOrder",
+              "operation": "PlaceRealTimeFTOrder",
+              "path": null,
+              "reason": null,
+              "resolution": "resolved",
+              "verb": null
+            },
+            {
+              "callSite": {
+                "filePath": "src/Catalog.Services/FundsTransferService.cs",
+                "lineEnd": 181,
+                "lineStart": 181
+              },
+              "member": "RealTimeFTInquiry",
+              "operation": "RealTimeFTInquiry",
+              "path": null,
+              "reason": null,
+              "resolution": "resolved",
+              "verb": null
+            }
+          ],
+          "projectPath": "src/Catalog.Services/Catalog.Services.csproj",
+          "soap": {
+            "binding": "basicHttpBinding",
+            "bindingSource": "config",
+            "clientCredentialType": "None",
+            "clientSource": "generated",
+            "clientType": "FundsTransferWSSoapClient",
+            "condition": null,
+            "contract": "FundsTransferWSSoap",
+            "endpointName": "FundsTransferWSSoap",
+            "securityMode": "None",
+            "securitySource": "binding_default",
+            "via": null
+          },
+          "usage": "used"
+        }
+      ],
+      "projectId": "6832d8f9-7c64-546b-a19e-8979b49c63ee",
+      "projectPath": "src/Catalog.Services/Catalog.Services.csproj",
+      "skipReason": null,
+      "status": "SCANNED",
+      "summary": {
+        "countByMechanism": {
+          "soap_client": 1
+        },
+        "countByVerdict": {
+          "requires_change": 1
+        },
+        "incompatible": [],
+        "unusedCount": 0
+      },
+      "warnings": []
+    },
+    {
+      "deployParameters": [],
+      "entryPointBackend": [
+        {
+          "calls": [
+            {
+              "callSite": {
+                "filePath": "src/Catalog.TestClient/Program.cs",
+                "lineEnd": 85,
+                "lineStart": 85
+              },
+              "conditional": false,
+              "context": [],
+              "depth": 1,
+              "inLoop": false,
+              "invocationId": "e3b0fca78a3a993cfcd578d5bf09bea5",
+              "mechanism": "soap_client",
+              "operation": "Ping",
+              "via": [
+                "Main",
+                "RunUtilityAndProduct"
+              ]
+            },
+            {
+              "callSite": {
+                "filePath": "src/Catalog.TestClient/Program.cs",
+                "lineEnd": 86,
+                "lineStart": 86
+              },
+              "conditional": false,
+              "context": [],
+              "depth": 1,
+              "inLoop": false,
+              "invocationId": "e3b0fca78a3a993cfcd578d5bf09bea5",
+              "mechanism": "soap_client",
+              "operation": "GetServerTimeUtc",
+              "via": [
+                "Main",
+                "RunUtilityAndProduct"
+              ]
+            },
+            {
+              "callSite": {
+                "filePath": "src/Catalog.TestClient/Program.cs",
+                "lineEnd": 102,
+                "lineStart": 94
+              },
+              "conditional": false,
+              "context": [],
+              "depth": 1,
+              "inLoop": false,
+              "invocationId": "5c5c52f3a9f9642edf89cb78680c35aa",
+              "mechanism": "soap_client",
+              "operation": "CreateProduct",
+              "via": [
+                "Main",
+                "RunUtilityAndProduct"
+              ]
+            },
+            {
+              "callSite": {
+                "filePath": "src/Catalog.TestClient/Program.cs",
+                "lineEnd": 105,
+                "lineStart": 105
+              },
+              "conditional": false,
+              "context": [],
+              "depth": 1,
+              "inLoop": false,
+              "invocationId": "5c5c52f3a9f9642edf89cb78680c35aa",
+              "mechanism": "soap_client",
+              "operation": "GetProduct",
+              "via": [
+                "Main",
+                "RunUtilityAndProduct"
+              ]
+            },
+            {
+              "callSite": {
+                "filePath": "src/Catalog.TestClient/Program.cs",
+                "lineEnd": 114,
+                "lineStart": 108
+              },
+              "conditional": false,
+              "context": [],
+              "depth": 1,
+              "inLoop": false,
+              "invocationId": "5c5c52f3a9f9642edf89cb78680c35aa",
+              "mechanism": "soap_client",
+              "operation": "SearchProducts",
+              "via": [
+                "Main",
+                "RunUtilityAndProduct"
+              ]
+            },
+            {
+              "callSite": {
+                "filePath": "src/Catalog.TestClient/Program.cs",
+                "lineEnd": 117,
+                "lineStart": 117
+              },
+              "conditional": false,
+              "context": [],
+              "depth": 1,
+              "inLoop": false,
+              "invocationId": "5c5c52f3a9f9642edf89cb78680c35aa",
+              "mechanism": "soap_client",
+              "operation": "AdjustStock",
+              "via": [
+                "Main",
+                "RunUtilityAndProduct"
+              ]
+            },
+            {
+              "callSite": {
+                "filePath": "src/Catalog.TestClient/Program.cs",
+                "lineEnd": 122,
+                "lineStart": 122
+              },
+              "conditional": false,
+              "context": [],
+              "depth": 1,
+              "inLoop": false,
+              "invocationId": "5c5c52f3a9f9642edf89cb78680c35aa",
+              "mechanism": "soap_client",
+              "operation": "AdjustStock",
+              "via": [
+                "Main",
+                "RunUtilityAndProduct"
+              ]
+            },
+            {
+              "callSite": {
+                "filePath": "src/Catalog.TestClient/Program.cs",
+                "lineEnd": 132,
+                "lineStart": 132
+              },
+              "conditional": false,
+              "context": [],
+              "depth": 1,
+              "inLoop": false,
+              "invocationId": "5c5c52f3a9f9642edf89cb78680c35aa",
+              "mechanism": "soap_client",
+              "operation": "GetProduct",
+              "via": [
+                "Main",
+                "RunUtilityAndProduct"
+              ]
+            },
+            {
+              "callSite": {
+                "filePath": "src/Catalog.TestClient/Program.cs",
+                "lineEnd": 160,
+                "lineStart": 152
+              },
+              "conditional": false,
+              "context": [],
+              "depth": 1,
+              "inLoop": false,
+              "invocationId": "85400b59baf1c72f59228f76865e3f4b",
+              "mechanism": "soap_client",
+              "operation": "PlaceOrder",
+              "via": [
+                "Main",
+                "RunOrderAndAccount"
+              ]
+            },
+            {
+              "callSite": {
+                "filePath": "src/Catalog.TestClient/Program.cs",
+                "lineEnd": 164,
+                "lineStart": 164
+              },
+              "conditional": false,
+              "context": [],
+              "depth": 1,
+              "inLoop": false,
+              "invocationId": "85400b59baf1c72f59228f76865e3f4b",
+              "mechanism": "soap_client",
+              "operation": "GetOrder",
+              "via": [
+                "Main",
+                "RunOrderAndAccount"
+              ]
+            },
+            {
+              "callSite": {
+                "filePath": "src/Catalog.TestClient/Program.cs",
+                "lineEnd": 167,
+                "lineStart": 167
+              },
+              "conditional": false,
+              "context": [],
+              "depth": 1,
+              "inLoop": false,
+              "invocationId": "85400b59baf1c72f59228f76865e3f4b",
+              "mechanism": "soap_client",
+              "operation": "GetOrdersByCustomer",
+              "via": [
+                "Main",
+                "RunOrderAndAccount"
+              ]
+            },
+            {
+              "callSite": {
+                "filePath": "src/Catalog.TestClient/Program.cs",
+                "lineEnd": 170,
+                "lineStart": 170
+              },
+              "conditional": false,
+              "context": [],
+              "depth": 1,
+              "inLoop": false,
+              "invocationId": "85400b59baf1c72f59228f76865e3f4b",
+              "mechanism": "soap_client",
+              "operation": "CancelOrder",
+              "via": [
+                "Main",
+                "RunOrderAndAccount"
+              ]
+            },
+            {
+              "callSite": {
+                "filePath": "src/Catalog.TestClient/Program.cs",
+                "lineEnd": 175,
+                "lineStart": 175
+              },
+              "conditional": false,
+              "context": [],
+              "depth": 1,
+              "inLoop": false,
+              "invocationId": "85400b59baf1c72f59228f76865e3f4b",
+              "mechanism": "soap_client",
+              "operation": "CancelOrder",
+              "via": [
+                "Main",
+                "RunOrderAndAccount"
+              ]
+            },
+            {
+              "callSite": {
+                "filePath": "src/Catalog.TestClient/Program.cs",
+                "lineEnd": 185,
+                "lineStart": 185
+              },
+              "conditional": false,
+              "context": [],
+              "depth": 1,
+              "inLoop": false,
+              "invocationId": "85400b59baf1c72f59228f76865e3f4b",
+              "mechanism": "soap_client",
+              "operation": "GetOrder",
+              "via": [
+                "Main",
+                "RunOrderAndAccount"
+              ]
+            },
+            {
+              "callSite": {
+                "filePath": "src/Catalog.TestClient/Program.cs",
+                "lineEnd": 200,
+                "lineStart": 200
+              },
+              "conditional": false,
+              "context": [],
+              "depth": 1,
+              "inLoop": false,
+              "invocationId": "cf82352c0013113d77a8c0e5fc04c40c",
+              "mechanism": "soap_client",
+              "operation": "GetAccount",
+              "via": [
+                "Main",
+                "RunOrderAndAccount"
+              ]
+            },
+            {
+              "callSite": {
+                "filePath": "src/Catalog.TestClient/Program.cs",
+                "lineEnd": 208,
+                "lineStart": 203
+              },
+              "conditional": false,
+              "context": [],
+              "depth": 1,
+              "inLoop": false,
+              "invocationId": "cf82352c0013113d77a8c0e5fc04c40c",
+              "mechanism": "soap_client",
+              "operation": "UpdateContactInfo",
+              "via": [
+                "Main",
+                "RunOrderAndAccount"
+              ]
+            },
+            {
+              "callSite": {
+                "filePath": "src/Catalog.TestClient/Program.cs",
+                "lineEnd": 213,
+                "lineStart": 213
+              },
+              "conditional": false,
+              "context": [],
+              "depth": 1,
+              "inLoop": false,
+              "invocationId": "cf82352c0013113d77a8c0e5fc04c40c",
+              "mechanism": "soap_client",
+              "operation": "GetAccount",
+              "via": [
+                "Main",
+                "RunOrderAndAccount"
+              ]
+            },
+            {
+              "callSite": {
+                "filePath": "src/Catalog.TestClient/Program.cs",
+                "lineEnd": 247,
+                "lineStart": 239
+              },
+              "conditional": false,
+              "context": [],
+              "depth": 1,
+              "inLoop": false,
+              "invocationId": "775a931b5f7ace5b4d9a58f2e352ac9e",
+              "mechanism": "soap_client",
+              "operation": "PlaceFundsTransfer",
+              "via": [
+                "Main",
+                "RunFundsTransfer"
+              ]
+            },
+            {
+              "callSite": {
+                "filePath": "src/Catalog.TestClient/Program.cs",
+                "lineEnd": 258,
+                "lineStart": 251
+              },
+              "conditional": false,
+              "context": [],
+              "depth": 1,
+              "inLoop": false,
+              "invocationId": "775a931b5f7ace5b4d9a58f2e352ac9e",
+              "mechanism": "soap_client",
+              "operation": "PlaceFundsTransfer",
+              "via": [
+                "Main",
+                "RunFundsTransfer"
+              ]
+            },
+            {
+              "callSite": {
+                "filePath": "src/Catalog.TestClient/Program.cs",
+                "lineEnd": 268,
+                "lineStart": 268
+              },
+              "conditional": false,
+              "context": [],
+              "depth": 1,
+              "inLoop": false,
+              "invocationId": "775a931b5f7ace5b4d9a58f2e352ac9e",
+              "mechanism": "soap_client",
+              "operation": "PlaceFundsTransfer",
+              "via": [
+                "Main",
+                "RunFundsTransfer"
+              ]
+            },
+            {
+              "callSite": {
+                "filePath": "src/Catalog.TestClient/Program.cs",
+                "lineEnd": 278,
+                "lineStart": 278
+              },
+              "conditional": true,
+              "context": [
+                "if (!string.IsNullOrEmpty(placedOrderId))"
+              ],
+              "depth": 1,
+              "inLoop": false,
+              "invocationId": "775a931b5f7ace5b4d9a58f2e352ac9e",
+              "mechanism": "soap_client",
+              "operation": "GetFundsTransferStatus",
+              "via": [
+                "Main",
+                "RunFundsTransfer"
+              ]
+            },
+            {
+              "callSite": {
+                "filePath": "src/Catalog.TestClient/Program.cs",
+                "lineEnd": 288,
+                "lineStart": 285
+              },
+              "conditional": false,
+              "context": [],
+              "depth": 1,
+              "inLoop": false,
+              "invocationId": "775a931b5f7ace5b4d9a58f2e352ac9e",
+              "mechanism": "soap_client",
+              "operation": "QueueFundsTransfer",
+              "via": [
+                "Main",
+                "RunFundsTransfer"
+              ]
+            },
+            {
+              "callSite": {
+                "filePath": "src/Catalog.TestClient/Program.cs",
+                "lineEnd": 292,
+                "lineStart": 289
+              },
+              "conditional": false,
+              "context": [],
+              "depth": 1,
+              "inLoop": false,
+              "invocationId": "775a931b5f7ace5b4d9a58f2e352ac9e",
+              "mechanism": "soap_client",
+              "operation": "QueueFundsTransfer",
+              "via": [
+                "Main",
+                "RunFundsTransfer"
+              ]
+            },
+            {
+              "callSite": {
+                "filePath": "src/Catalog.TestClient/Program.cs",
+                "lineEnd": 295,
+                "lineStart": 295
+              },
+              "conditional": false,
+              "context": [],
+              "depth": 1,
+              "inLoop": false,
+              "invocationId": "775a931b5f7ace5b4d9a58f2e352ac9e",
+              "mechanism": "soap_client",
+              "operation": "ProcessTransferQueue",
+              "via": [
+                "Main",
+                "RunFundsTransfer"
+              ]
+            },
+            {
+              "callSite": {
+                "filePath": "src/Catalog.TestClient/Program.cs",
+                "lineEnd": 304,
+                "lineStart": 304
+              },
+              "conditional": false,
+              "context": [],
+              "depth": 1,
+              "inLoop": false,
+              "invocationId": "775a931b5f7ace5b4d9a58f2e352ac9e",
+              "mechanism": "soap_client",
+              "operation": "GetTransferHistory",
+              "via": [
+                "Main",
+                "RunFundsTransfer"
+              ]
+            },
+            {
+              "callSite": {
+                "filePath": "src/Catalog.TestClient/Program.cs",
+                "lineEnd": 323,
+                "lineStart": 323
+              },
+              "conditional": true,
+              "context": [
+                "if (settings.EnableHttpEndpoints)"
+              ],
+              "depth": 1,
+              "inLoop": false,
+              "invocationId": "25edd8bc9ec2b47c9876dc6f7d8a39f1",
+              "mechanism": "soap_client",
+              "operation": "Ping",
+              "via": [
+                "Main",
+                "RunHttpSmokeTest"
+              ]
+            },
+            {
+              "callSite": {
+                "filePath": "src/Catalog.TestClient/Program.cs",
+                "lineEnd": 330,
+                "lineStart": 330
+              },
+              "conditional": true,
+              "context": [
+                "if (settings.EnableHttpEndpoints)"
+              ],
+              "depth": 1,
+              "inLoop": false,
+              "invocationId": "91a27397aeddb8768629d9c613e75236",
+              "mechanism": "soap_client",
+              "operation": "GetAccount",
+              "via": [
+                "Main",
+                "RunHttpSmokeTest"
+              ]
+            }
+          ],
+          "entryPointId": "097b071e2bafbef6f6c13b426c3301b5",
+          "status": "yes",
+          "unresolved": []
+        }
+      ],
+      "invocations": [
+        {
+          "authDeclared": "none_declared",
+          "callSites": [
+            {
+              "filePath": "src/Catalog.TestClient/Program.cs",
+              "lineEnd": 85,
+              "lineStart": 85
+            },
+            {
+              "filePath": "src/Catalog.TestClient/Program.cs",
+              "lineEnd": 86,
+              "lineStart": 86
+            }
+          ],
+          "confidence": 0.95,
+          "confidenceReasons": [
+            "binding and address evaluated at the helper\u0027s call site, syntactically"
+          ],
+          "constructionSites": [
+            {
+              "filePath": "src/Catalog.TestClient/Program.cs",
+              "lineEnd": 82,
+              "lineStart": 82
+            }
+          ],
+          "credentials": [],
+          "endpoint": {
+            "fragments": [],
+            "host": "localhost",
+            "path": "/Utility",
+            "placeholder": null,
+            "port": 8101,
+            "resolution": "resolved",
+            "scheme": "net.tcp",
+            "source": {
+              "keyPath": "Ports.UtilityTcp",
+              "sourceFile": "src/Catalog.TestClient/App.config"
+            }
+          },
+          "environmentBindings": [
+            {
+              "authentication": null,
+              "deployParameter": null,
+              "environment": "default",
+              "host": "localhost",
+              "hostProject": null,
+              "keyPath": "Ports.UtilityTcp",
+              "linkConfidence": null,
+              "linkMethod": null,
+              "linuxReasons": [
+                "netTcpBinding: Windows binary framing, no reliable Linux support"
+              ],
+              "linuxVerdict": "incompatible",
+              "path": "/Utility",
+              "placeholder": null,
+              "port": 8101,
+              "resolution": "resolved",
+              "scheme": "net.tcp",
+              "sourceFile": "src/Catalog.TestClient/App.config"
+            }
+          ],
+          "invocationId": "e3b0fca78a3a993cfcd578d5bf09bea5",
+          "linuxCompatibility": {
+            "reasons": [
+              "netTcpBinding: Windows binary framing, no reliable Linux support"
+            ],
+            "verdict": "incompatible"
+          },
+          "mechanism": "soap_client",
+          "operations": [
+            {
+              "callSite": {
+                "filePath": "src/Catalog.TestClient/Program.cs",
+                "lineEnd": 85,
+                "lineStart": 85
+              },
+              "member": "Ping",
+              "operation": "Ping",
+              "path": null,
+              "reason": null,
+              "resolution": "resolved",
+              "verb": null
+            },
+            {
+              "callSite": {
+                "filePath": "src/Catalog.TestClient/Program.cs",
+                "lineEnd": 86,
+                "lineStart": 86
+              },
+              "member": "GetServerTimeUtc",
+              "operation": "GetServerTimeUtc",
+              "path": null,
+              "reason": null,
+              "resolution": "resolved",
+              "verb": null
+            }
+          ],
+          "projectPath": "src/Catalog.TestClient/Catalog.TestClient.csproj",
+          "soap": {
+            "binding": "netTcpBinding",
+            "bindingSource": "code",
+            "clientCredentialType": "None",
+            "clientSource": "hand_written",
+            "clientType": "ChannelFactory",
+            "condition": null,
+            "contract": "IUtilityService",
+            "endpointName": null,
+            "securityMode": "Transport",
+            "securitySource": "declared",
+            "via": "CreateTcpFactory (src/Catalog.TestClient/Program.cs:356)"
+          },
+          "usage": "used"
+        },
+        {
+          "authDeclared": "none_declared",
+          "callSites": [
+            {
+              "filePath": "src/Catalog.TestClient/Program.cs",
+              "lineEnd": 102,
+              "lineStart": 94
+            },
+            {
+              "filePath": "src/Catalog.TestClient/Program.cs",
+              "lineEnd": 105,
+              "lineStart": 105
+            },
+            {
+              "filePath": "src/Catalog.TestClient/Program.cs",
+              "lineEnd": 114,
+              "lineStart": 108
+            },
+            {
+              "filePath": "src/Catalog.TestClient/Program.cs",
+              "lineEnd": 117,
+              "lineStart": 117
+            },
+            {
+              "filePath": "src/Catalog.TestClient/Program.cs",
+              "lineEnd": 122,
+              "lineStart": 122
+            },
+            {
+              "filePath": "src/Catalog.TestClient/Program.cs",
+              "lineEnd": 132,
+              "lineStart": 132
+            }
+          ],
+          "confidence": 0.95,
+          "confidenceReasons": [
+            "binding and address evaluated at the helper\u0027s call site, syntactically"
+          ],
+          "constructionSites": [
+            {
+              "filePath": "src/Catalog.TestClient/Program.cs",
+              "lineEnd": 90,
+              "lineStart": 90
+            }
+          ],
+          "credentials": [],
+          "endpoint": {
+            "fragments": [],
+            "host": "localhost",
+            "path": "/Product",
+            "placeholder": null,
+            "port": 8102,
+            "resolution": "resolved",
+            "scheme": "net.tcp",
+            "source": {
+              "keyPath": "Ports.ProductTcp",
+              "sourceFile": "src/Catalog.TestClient/App.config"
+            }
+          },
+          "environmentBindings": [
+            {
+              "authentication": null,
+              "deployParameter": null,
+              "environment": "default",
+              "host": "localhost",
+              "hostProject": null,
+              "keyPath": "Ports.ProductTcp",
+              "linkConfidence": null,
+              "linkMethod": null,
+              "linuxReasons": [
+                "netTcpBinding: Windows binary framing, no reliable Linux support"
+              ],
+              "linuxVerdict": "incompatible",
+              "path": "/Product",
+              "placeholder": null,
+              "port": 8102,
+              "resolution": "resolved",
+              "scheme": "net.tcp",
+              "sourceFile": "src/Catalog.TestClient/App.config"
+            }
+          ],
+          "invocationId": "5c5c52f3a9f9642edf89cb78680c35aa",
+          "linuxCompatibility": {
+            "reasons": [
+              "netTcpBinding: Windows binary framing, no reliable Linux support"
+            ],
+            "verdict": "incompatible"
+          },
+          "mechanism": "soap_client",
+          "operations": [
+            {
+              "callSite": {
+                "filePath": "src/Catalog.TestClient/Program.cs",
+                "lineEnd": 102,
+                "lineStart": 94
+              },
+              "member": "CreateProduct",
+              "operation": "CreateProduct",
+              "path": null,
+              "reason": null,
+              "resolution": "resolved",
+              "verb": null
+            },
+            {
+              "callSite": {
+                "filePath": "src/Catalog.TestClient/Program.cs",
+                "lineEnd": 105,
+                "lineStart": 105
+              },
+              "member": "GetProduct",
+              "operation": "GetProduct",
+              "path": null,
+              "reason": null,
+              "resolution": "resolved",
+              "verb": null
+            },
+            {
+              "callSite": {
+                "filePath": "src/Catalog.TestClient/Program.cs",
+                "lineEnd": 114,
+                "lineStart": 108
+              },
+              "member": "SearchProducts",
+              "operation": "SearchProducts",
+              "path": null,
+              "reason": null,
+              "resolution": "resolved",
+              "verb": null
+            },
+            {
+              "callSite": {
+                "filePath": "src/Catalog.TestClient/Program.cs",
+                "lineEnd": 117,
+                "lineStart": 117
+              },
+              "member": "AdjustStock",
+              "operation": "AdjustStock",
+              "path": null,
+              "reason": null,
+              "resolution": "resolved",
+              "verb": null
+            },
+            {
+              "callSite": {
+                "filePath": "src/Catalog.TestClient/Program.cs",
+                "lineEnd": 122,
+                "lineStart": 122
+              },
+              "member": "AdjustStock",
+              "operation": "AdjustStock",
+              "path": null,
+              "reason": null,
+              "resolution": "resolved",
+              "verb": null
+            },
+            {
+              "callSite": {
+                "filePath": "src/Catalog.TestClient/Program.cs",
+                "lineEnd": 132,
+                "lineStart": 132
+              },
+              "member": "GetProduct",
+              "operation": "GetProduct",
+              "path": null,
+              "reason": null,
+              "resolution": "resolved",
+              "verb": null
+            }
+          ],
+          "projectPath": "src/Catalog.TestClient/Catalog.TestClient.csproj",
+          "soap": {
+            "binding": "netTcpBinding",
+            "bindingSource": "code",
+            "clientCredentialType": "None",
+            "clientSource": "hand_written",
+            "clientType": "ChannelFactory",
+            "condition": null,
+            "contract": "IProductService",
+            "endpointName": null,
+            "securityMode": "Transport",
+            "securitySource": "declared",
+            "via": "CreateTcpFactory (src/Catalog.TestClient/Program.cs:356)"
+          },
+          "usage": "used"
+        },
+        {
+          "authDeclared": "declared",
+          "callSites": [
+            {
+              "filePath": "src/Catalog.TestClient/Program.cs",
+              "lineEnd": 160,
+              "lineStart": 152
+            },
+            {
+              "filePath": "src/Catalog.TestClient/Program.cs",
+              "lineEnd": 164,
+              "lineStart": 164
+            },
+            {
+              "filePath": "src/Catalog.TestClient/Program.cs",
+              "lineEnd": 167,
+              "lineStart": 167
+            },
+            {
+              "filePath": "src/Catalog.TestClient/Program.cs",
+              "lineEnd": 170,
+              "lineStart": 170
+            },
+            {
+              "filePath": "src/Catalog.TestClient/Program.cs",
+              "lineEnd": 175,
+              "lineStart": 175
+            },
+            {
+              "filePath": "src/Catalog.TestClient/Program.cs",
+              "lineEnd": 185,
+              "lineStart": 185
+            }
+          ],
+          "confidence": 0.95,
+          "confidenceReasons": [
+            "binding and address evaluated at the helper\u0027s call site, syntactically"
+          ],
+          "constructionSites": [
+            {
+              "filePath": "src/Catalog.TestClient/Program.cs",
+              "lineEnd": 148,
+              "lineStart": 148
+            }
+          ],
+          "credentials": [
+            {
+              "declaredAt": "src/Catalog.TestClient/Program.cs:364 (in CreateTcpFactory)",
+              "keyPath": null,
+              "kind": "certificate",
+              "sourceFile": null
+            }
+          ],
+          "endpoint": {
+            "fragments": [],
+            "host": "localhost",
+            "path": "/Order",
+            "placeholder": null,
+            "port": 8201,
+            "resolution": "resolved",
+            "scheme": "net.tcp",
+            "source": {
+              "keyPath": "Ports.OrderTcp",
+              "sourceFile": "src/Catalog.TestClient/App.config"
+            }
+          },
+          "environmentBindings": [
+            {
+              "authentication": null,
+              "deployParameter": null,
+              "environment": "default",
+              "host": "localhost",
+              "hostProject": null,
+              "keyPath": "Ports.OrderTcp",
+              "linkConfidence": null,
+              "linkMethod": null,
+              "linuxReasons": [
+                "netTcpBinding: Windows binary framing, no reliable Linux support"
+              ],
+              "linuxVerdict": "incompatible",
+              "path": "/Order",
+              "placeholder": null,
+              "port": 8201,
+              "resolution": "resolved",
+              "scheme": "net.tcp",
+              "sourceFile": "src/Catalog.TestClient/App.config"
+            }
+          ],
+          "invocationId": "85400b59baf1c72f59228f76865e3f4b",
+          "linuxCompatibility": {
+            "reasons": [
+              "netTcpBinding: Windows binary framing, no reliable Linux support"
+            ],
+            "verdict": "incompatible"
+          },
+          "mechanism": "soap_client",
+          "operations": [
+            {
+              "callSite": {
+                "filePath": "src/Catalog.TestClient/Program.cs",
+                "lineEnd": 160,
+                "lineStart": 152
+              },
+              "member": "PlaceOrder",
+              "operation": "PlaceOrder",
+              "path": null,
+              "reason": null,
+              "resolution": "resolved",
+              "verb": null
+            },
+            {
+              "callSite": {
+                "filePath": "src/Catalog.TestClient/Program.cs",
+                "lineEnd": 164,
+                "lineStart": 164
+              },
+              "member": "GetOrder",
+              "operation": "GetOrder",
+              "path": null,
+              "reason": null,
+              "resolution": "resolved",
+              "verb": null
+            },
+            {
+              "callSite": {
+                "filePath": "src/Catalog.TestClient/Program.cs",
+                "lineEnd": 167,
+                "lineStart": 167
+              },
+              "member": "GetOrdersByCustomer",
+              "operation": "GetOrdersByCustomer",
+              "path": null,
+              "reason": null,
+              "resolution": "resolved",
+              "verb": null
+            },
+            {
+              "callSite": {
+                "filePath": "src/Catalog.TestClient/Program.cs",
+                "lineEnd": 170,
+                "lineStart": 170
+              },
+              "member": "CancelOrder",
+              "operation": "CancelOrder",
+              "path": null,
+              "reason": null,
+              "resolution": "resolved",
+              "verb": null
+            },
+            {
+              "callSite": {
+                "filePath": "src/Catalog.TestClient/Program.cs",
+                "lineEnd": 175,
+                "lineStart": 175
+              },
+              "member": "CancelOrder",
+              "operation": "CancelOrder",
+              "path": null,
+              "reason": null,
+              "resolution": "resolved",
+              "verb": null
+            },
+            {
+              "callSite": {
+                "filePath": "src/Catalog.TestClient/Program.cs",
+                "lineEnd": 185,
+                "lineStart": 185
+              },
+              "member": "GetOrder",
+              "operation": "GetOrder",
+              "path": null,
+              "reason": null,
+              "resolution": "resolved",
+              "verb": null
+            }
+          ],
+          "projectPath": "src/Catalog.TestClient/Catalog.TestClient.csproj",
+          "soap": {
+            "binding": "netTcpBinding",
+            "bindingSource": "code",
+            "clientCredentialType": "Certificate",
+            "clientSource": "hand_written",
+            "clientType": "ChannelFactory",
+            "condition": null,
+            "contract": "IOrderService",
+            "endpointName": null,
+            "securityMode": "Transport",
+            "securitySource": "declared",
+            "via": "CreateTcpFactory (src/Catalog.TestClient/Program.cs:356)"
+          },
+          "usage": "used"
+        },
+        {
+          "authDeclared": "declared",
+          "callSites": [
+            {
+              "filePath": "src/Catalog.TestClient/Program.cs",
+              "lineEnd": 200,
+              "lineStart": 200
+            },
+            {
+              "filePath": "src/Catalog.TestClient/Program.cs",
+              "lineEnd": 208,
+              "lineStart": 203
+            },
+            {
+              "filePath": "src/Catalog.TestClient/Program.cs",
+              "lineEnd": 213,
+              "lineStart": 213
+            }
+          ],
+          "confidence": 0.95,
+          "confidenceReasons": [
+            "binding and address evaluated at the helper\u0027s call site, syntactically"
+          ],
+          "constructionSites": [
+            {
+              "filePath": "src/Catalog.TestClient/Program.cs",
+              "lineEnd": 196,
+              "lineStart": 196
+            }
+          ],
+          "credentials": [
+            {
+              "declaredAt": "src/Catalog.TestClient/Program.cs:364 (in CreateTcpFactory)",
+              "keyPath": null,
+              "kind": "certificate",
+              "sourceFile": null
+            }
+          ],
+          "endpoint": {
+            "fragments": [],
+            "host": "localhost",
+            "path": "/Account",
+            "placeholder": null,
+            "port": 8202,
+            "resolution": "resolved",
+            "scheme": "net.tcp",
+            "source": {
+              "keyPath": "Ports.AccountTcp",
+              "sourceFile": "src/Catalog.TestClient/App.config"
+            }
+          },
+          "environmentBindings": [
+            {
+              "authentication": null,
+              "deployParameter": null,
+              "environment": "default",
+              "host": "localhost",
+              "hostProject": null,
+              "keyPath": "Ports.AccountTcp",
+              "linkConfidence": null,
+              "linkMethod": null,
+              "linuxReasons": [
+                "netTcpBinding: Windows binary framing, no reliable Linux support"
+              ],
+              "linuxVerdict": "incompatible",
+              "path": "/Account",
+              "placeholder": null,
+              "port": 8202,
+              "resolution": "resolved",
+              "scheme": "net.tcp",
+              "sourceFile": "src/Catalog.TestClient/App.config"
+            }
+          ],
+          "invocationId": "cf82352c0013113d77a8c0e5fc04c40c",
+          "linuxCompatibility": {
+            "reasons": [
+              "netTcpBinding: Windows binary framing, no reliable Linux support"
+            ],
+            "verdict": "incompatible"
+          },
+          "mechanism": "soap_client",
+          "operations": [
+            {
+              "callSite": {
+                "filePath": "src/Catalog.TestClient/Program.cs",
+                "lineEnd": 200,
+                "lineStart": 200
+              },
+              "member": "GetAccount",
+              "operation": "GetAccount",
+              "path": null,
+              "reason": null,
+              "resolution": "resolved",
+              "verb": null
+            },
+            {
+              "callSite": {
+                "filePath": "src/Catalog.TestClient/Program.cs",
+                "lineEnd": 208,
+                "lineStart": 203
+              },
+              "member": "UpdateContactInfo",
+              "operation": "UpdateContactInfo",
+              "path": null,
+              "reason": null,
+              "resolution": "resolved",
+              "verb": null
+            },
+            {
+              "callSite": {
+                "filePath": "src/Catalog.TestClient/Program.cs",
+                "lineEnd": 213,
+                "lineStart": 213
+              },
+              "member": "GetAccount",
+              "operation": "GetAccount",
+              "path": null,
+              "reason": null,
+              "resolution": "resolved",
+              "verb": null
+            }
+          ],
+          "projectPath": "src/Catalog.TestClient/Catalog.TestClient.csproj",
+          "soap": {
+            "binding": "netTcpBinding",
+            "bindingSource": "code",
+            "clientCredentialType": "Certificate",
+            "clientSource": "hand_written",
+            "clientType": "ChannelFactory",
+            "condition": null,
+            "contract": "IAccountService",
+            "endpointName": null,
+            "securityMode": "Transport",
+            "securitySource": "declared",
+            "via": "CreateTcpFactory (src/Catalog.TestClient/Program.cs:356)"
+          },
+          "usage": "used"
+        },
+        {
+          "authDeclared": "declared",
+          "callSites": [
+            {
+              "filePath": "src/Catalog.TestClient/Program.cs",
+              "lineEnd": 247,
+              "lineStart": 239
+            },
+            {
+              "filePath": "src/Catalog.TestClient/Program.cs",
+              "lineEnd": 258,
+              "lineStart": 251
+            },
+            {
+              "filePath": "src/Catalog.TestClient/Program.cs",
+              "lineEnd": 268,
+              "lineStart": 268
+            },
+            {
+              "filePath": "src/Catalog.TestClient/Program.cs",
+              "lineEnd": 278,
+              "lineStart": 278
+            },
+            {
+              "filePath": "src/Catalog.TestClient/Program.cs",
+              "lineEnd": 288,
+              "lineStart": 285
+            },
+            {
+              "filePath": "src/Catalog.TestClient/Program.cs",
+              "lineEnd": 292,
+              "lineStart": 289
+            },
+            {
+              "filePath": "src/Catalog.TestClient/Program.cs",
+              "lineEnd": 295,
+              "lineStart": 295
+            },
+            {
+              "filePath": "src/Catalog.TestClient/Program.cs",
+              "lineEnd": 304,
+              "lineStart": 304
+            }
+          ],
+          "confidence": 0.95,
+          "confidenceReasons": [
+            "binding and address evaluated at the helper\u0027s call site, syntactically"
+          ],
+          "constructionSites": [
+            {
+              "filePath": "src/Catalog.TestClient/Program.cs",
+              "lineEnd": 232,
+              "lineStart": 232
+            }
+          ],
+          "credentials": [
+            {
+              "declaredAt": "src/Catalog.TestClient/Program.cs:364 (in CreateTcpFactory)",
+              "keyPath": null,
+              "kind": "certificate",
+              "sourceFile": null
+            }
+          ],
+          "endpoint": {
+            "fragments": [],
+            "host": "localhost",
+            "path": "/FundsTransfer",
+            "placeholder": null,
+            "port": 8203,
+            "resolution": "resolved",
+            "scheme": "net.tcp",
+            "source": {
+              "keyPath": "Ports.FundsTransferTcp",
+              "sourceFile": "src/Catalog.TestClient/App.config"
+            }
+          },
+          "environmentBindings": [
+            {
+              "authentication": null,
+              "deployParameter": null,
+              "environment": "default",
+              "host": "localhost",
+              "hostProject": null,
+              "keyPath": "Ports.FundsTransferTcp",
+              "linkConfidence": null,
+              "linkMethod": null,
+              "linuxReasons": [
+                "netTcpBinding: Windows binary framing, no reliable Linux support"
+              ],
+              "linuxVerdict": "incompatible",
+              "path": "/FundsTransfer",
+              "placeholder": null,
+              "port": 8203,
+              "resolution": "resolved",
+              "scheme": "net.tcp",
+              "sourceFile": "src/Catalog.TestClient/App.config"
+            }
+          ],
+          "invocationId": "775a931b5f7ace5b4d9a58f2e352ac9e",
+          "linuxCompatibility": {
+            "reasons": [
+              "netTcpBinding: Windows binary framing, no reliable Linux support"
+            ],
+            "verdict": "incompatible"
+          },
+          "mechanism": "soap_client",
+          "operations": [
+            {
+              "callSite": {
+                "filePath": "src/Catalog.TestClient/Program.cs",
+                "lineEnd": 247,
+                "lineStart": 239
+              },
+              "member": "PlaceFundsTransfer",
+              "operation": "PlaceFundsTransfer",
+              "path": null,
+              "reason": null,
+              "resolution": "resolved",
+              "verb": null
+            },
+            {
+              "callSite": {
+                "filePath": "src/Catalog.TestClient/Program.cs",
+                "lineEnd": 258,
+                "lineStart": 251
+              },
+              "member": "PlaceFundsTransfer",
+              "operation": "PlaceFundsTransfer",
+              "path": null,
+              "reason": null,
+              "resolution": "resolved",
+              "verb": null
+            },
+            {
+              "callSite": {
+                "filePath": "src/Catalog.TestClient/Program.cs",
+                "lineEnd": 268,
+                "lineStart": 268
+              },
+              "member": "PlaceFundsTransfer",
+              "operation": "PlaceFundsTransfer",
+              "path": null,
+              "reason": null,
+              "resolution": "resolved",
+              "verb": null
+            },
+            {
+              "callSite": {
+                "filePath": "src/Catalog.TestClient/Program.cs",
+                "lineEnd": 278,
+                "lineStart": 278
+              },
+              "member": "GetFundsTransferStatus",
+              "operation": "GetFundsTransferStatus",
+              "path": null,
+              "reason": null,
+              "resolution": "resolved",
+              "verb": null
+            },
+            {
+              "callSite": {
+                "filePath": "src/Catalog.TestClient/Program.cs",
+                "lineEnd": 288,
+                "lineStart": 285
+              },
+              "member": "QueueFundsTransfer",
+              "operation": "QueueFundsTransfer",
+              "path": null,
+              "reason": null,
+              "resolution": "resolved",
+              "verb": null
+            },
+            {
+              "callSite": {
+                "filePath": "src/Catalog.TestClient/Program.cs",
+                "lineEnd": 292,
+                "lineStart": 289
+              },
+              "member": "QueueFundsTransfer",
+              "operation": "QueueFundsTransfer",
+              "path": null,
+              "reason": null,
+              "resolution": "resolved",
+              "verb": null
+            },
+            {
+              "callSite": {
+                "filePath": "src/Catalog.TestClient/Program.cs",
+                "lineEnd": 295,
+                "lineStart": 295
+              },
+              "member": "ProcessTransferQueue",
+              "operation": "ProcessTransferQueue",
+              "path": null,
+              "reason": null,
+              "resolution": "resolved",
+              "verb": null
+            },
+            {
+              "callSite": {
+                "filePath": "src/Catalog.TestClient/Program.cs",
+                "lineEnd": 304,
+                "lineStart": 304
+              },
+              "member": "GetTransferHistory",
+              "operation": "GetTransferHistory",
+              "path": null,
+              "reason": null,
+              "resolution": "resolved",
+              "verb": null
+            }
+          ],
+          "projectPath": "src/Catalog.TestClient/Catalog.TestClient.csproj",
+          "soap": {
+            "binding": "netTcpBinding",
+            "bindingSource": "code",
+            "clientCredentialType": "Certificate",
+            "clientSource": "hand_written",
+            "clientType": "ChannelFactory",
+            "condition": null,
+            "contract": "IFundsTransferService",
+            "endpointName": null,
+            "securityMode": "Transport",
+            "securitySource": "declared",
+            "via": "CreateTcpFactory (src/Catalog.TestClient/Program.cs:356)"
+          },
+          "usage": "used"
+        },
+        {
+          "authDeclared": "none_declared",
+          "callSites": [
+            {
+              "filePath": "src/Catalog.TestClient/Program.cs",
+              "lineEnd": 323,
+              "lineStart": 323
+            }
+          ],
+          "confidence": 0.95,
+          "confidenceReasons": [
+            "binding and address evaluated at the helper\u0027s call site, syntactically",
+            "security from basicHttpBinding\u0027s documented defaults"
+          ],
+          "constructionSites": [
+            {
+              "filePath": "src/Catalog.TestClient/Program.cs",
+              "lineEnd": 320,
+              "lineStart": 320
+            }
+          ],
+          "credentials": [],
+          "endpoint": {
+            "fragments": [],
+            "host": "localhost",
+            "path": "/Utility",
+            "placeholder": null,
+            "port": 8443,
+            "resolution": "resolved",
+            "scheme": "https",
+            "source": {
+              "keyPath": "Ports.ProductHttps",
+              "sourceFile": "src/Catalog.TestClient/App.config"
+            }
+          },
+          "environmentBindings": [
+            {
+              "authentication": null,
+              "deployParameter": null,
+              "environment": "default",
+              "host": "localhost",
+              "hostProject": null,
+              "keyPath": "Ports.ProductHttps",
+              "linkConfidence": null,
+              "linkMethod": null,
+              "linuxReasons": [
+                "basicHttpBinding: HTTP-based, ports cleanly"
+              ],
+              "linuxVerdict": "compatible",
+              "path": "/Utility",
+              "placeholder": null,
+              "port": 8443,
+              "resolution": "resolved",
+              "scheme": "https",
+              "sourceFile": "src/Catalog.TestClient/App.config"
+            }
+          ],
+          "invocationId": "25edd8bc9ec2b47c9876dc6f7d8a39f1",
+          "linuxCompatibility": {
+            "reasons": [
+              "basicHttpBinding: HTTP-based, ports cleanly"
+            ],
+            "verdict": "compatible"
+          },
+          "mechanism": "soap_client",
+          "operations": [
+            {
+              "callSite": {
+                "filePath": "src/Catalog.TestClient/Program.cs",
+                "lineEnd": 323,
+                "lineStart": 323
+              },
+              "member": "Ping",
+              "operation": "Ping",
+              "path": null,
+              "reason": null,
+              "resolution": "resolved",
+              "verb": null
+            }
+          ],
+          "projectPath": "src/Catalog.TestClient/Catalog.TestClient.csproj",
+          "soap": {
+            "binding": "basicHttpBinding",
+            "bindingSource": "code",
+            "clientCredentialType": "None",
+            "clientSource": "hand_written",
+            "clientType": "ChannelFactory",
+            "condition": "settings.EnableHttpEndpoints [EnableHttpEndpoints = false in src/Catalog.TestClient/App.config]",
+            "contract": "IUtilityService",
+            "endpointName": null,
+            "securityMode": "Transport",
+            "securitySource": "binding_default",
+            "via": "CreateBasicHttpsFactory (src/Catalog.TestClient/Program.cs:373)"
+          },
+          "usage": "used"
+        },
+        {
+          "authDeclared": "declared",
+          "callSites": [
+            {
+              "filePath": "src/Catalog.TestClient/Program.cs",
+              "lineEnd": 330,
+              "lineStart": 330
+            }
+          ],
+          "confidence": 0.95,
+          "confidenceReasons": [
+            "binding and address evaluated at the helper\u0027s call site, syntactically"
+          ],
+          "constructionSites": [
+            {
+              "filePath": "src/Catalog.TestClient/Program.cs",
+              "lineEnd": 327,
+              "lineStart": 327
+            }
+          ],
+          "credentials": [
+            {
+              "declaredAt": "src/Catalog.TestClient/Program.cs:385 (in CreateWsHttpsFactory)",
+              "keyPath": null,
+              "kind": "certificate",
+              "sourceFile": null
+            }
+          ],
+          "endpoint": {
+            "fragments": [],
+            "host": "localhost",
+            "path": "/Account",
+            "placeholder": null,
+            "port": 8543,
+            "resolution": "resolved",
+            "scheme": "https",
+            "source": {
+              "keyPath": "Ports.OrderWsHttps",
+              "sourceFile": "src/Catalog.TestClient/App.config"
+            }
+          },
+          "environmentBindings": [
+            {
+              "authentication": null,
+              "deployParameter": null,
+              "environment": "default",
+              "host": "localhost",
+              "hostProject": null,
+              "keyPath": "Ports.OrderWsHttps",
+              "linkConfidence": null,
+              "linkMethod": null,
+              "linuxReasons": [
+                "wsHttpBinding: HTTP-based, ports cleanly"
+              ],
+              "linuxVerdict": "compatible",
+              "path": "/Account",
+              "placeholder": null,
+              "port": 8543,
+              "resolution": "resolved",
+              "scheme": "https",
+              "sourceFile": "src/Catalog.TestClient/App.config"
+            }
+          ],
+          "invocationId": "91a27397aeddb8768629d9c613e75236",
+          "linuxCompatibility": {
+            "reasons": [
+              "wsHttpBinding: HTTP-based, ports cleanly"
+            ],
+            "verdict": "compatible"
+          },
+          "mechanism": "soap_client",
+          "operations": [
+            {
+              "callSite": {
+                "filePath": "src/Catalog.TestClient/Program.cs",
+                "lineEnd": 330,
+                "lineStart": 330
+              },
+              "member": "GetAccount",
+              "operation": "GetAccount",
+              "path": null,
+              "reason": null,
+              "resolution": "resolved",
+              "verb": null
+            }
+          ],
+          "projectPath": "src/Catalog.TestClient/Catalog.TestClient.csproj",
+          "soap": {
+            "binding": "wsHttpBinding",
+            "bindingSource": "code",
+            "clientCredentialType": "Certificate",
+            "clientSource": "hand_written",
+            "clientType": "ChannelFactory",
+            "condition": "settings.EnableHttpEndpoints [EnableHttpEndpoints = false in src/Catalog.TestClient/App.config]",
+            "contract": "IAccountService",
+            "endpointName": null,
+            "securityMode": "TransportWithMessageCredential",
+            "securitySource": "declared",
+            "via": "CreateWsHttpsFactory (src/Catalog.TestClient/Program.cs:384)"
+          },
+          "usage": "used"
+        }
+      ],
+      "projectId": "6232c582-8701-5e2f-bccf-4636fef9dcff",
+      "projectPath": "src/Catalog.TestClient/Catalog.TestClient.csproj",
+      "skipReason": null,
+      "status": "SCANNED",
+      "summary": {
+        "countByMechanism": {
+          "soap_client": 7
+        },
+        "countByVerdict": {
+          "compatible": 2,
+          "incompatible": 5
+        },
+        "incompatible": [
+          {
+            "endpoint": "net.tcp://localhost:8101/Utility",
+            "invocationId": "e3b0fca78a3a993cfcd578d5bf09bea5",
+            "mechanism": "soap_client",
+            "reasons": [
+              "netTcpBinding: Windows binary framing, no reliable Linux support"
+            ]
+          },
+          {
+            "endpoint": "net.tcp://localhost:8102/Product",
+            "invocationId": "5c5c52f3a9f9642edf89cb78680c35aa",
+            "mechanism": "soap_client",
+            "reasons": [
+              "netTcpBinding: Windows binary framing, no reliable Linux support"
+            ]
+          },
+          {
+            "endpoint": "net.tcp://localhost:8201/Order",
+            "invocationId": "85400b59baf1c72f59228f76865e3f4b",
+            "mechanism": "soap_client",
+            "reasons": [
+              "netTcpBinding: Windows binary framing, no reliable Linux support"
+            ]
+          },
+          {
+            "endpoint": "net.tcp://localhost:8202/Account",
+            "invocationId": "cf82352c0013113d77a8c0e5fc04c40c",
+            "mechanism": "soap_client",
+            "reasons": [
+              "netTcpBinding: Windows binary framing, no reliable Linux support"
+            ]
+          },
+          {
+            "endpoint": "net.tcp://localhost:8203/FundsTransfer",
+            "invocationId": "775a931b5f7ace5b4d9a58f2e352ac9e",
+            "mechanism": "soap_client",
+            "reasons": [
+              "netTcpBinding: Windows binary framing, no reliable Linux support"
+            ]
+          }
+        ],
+        "unusedCount": 0
+      },
+      "warnings": []
+    }
+  ],
+  "repositoryId": "5e96731f-5bff-4077-adbf-417636507c21",
+  "repositorySlug": "wcf",
+  "scannerVersion": "1.3.0",
+  "semanticAnalysisEnabled": false,
+  "skipSource": "application-fingerprint",
+  "summary": {
+    "countByMechanism": {
+      "soap_client": 8
+    },
+    "countByVerdict": {
+      "compatible": 2,
+      "incompatible": 5,
+      "requires_change": 1
+    },
+    "invocationCount": 8,
+    "projectsFailed": 0,
+    "projectsScanned": 4,
+    "projectsSkipped": 0,
+    "unusedCount": 0
+  },
+  "warnings": []
+}

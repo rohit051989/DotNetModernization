@@ -56,12 +56,13 @@ import re
 
 PRIMITIVES = (
     "implemented_interfaces", "implementations_of", "signature_types", "declaring_files", "referencing_files",
-    "config_elements", "convention_files", "referencing_tests", "project_file", "entry_points", "client_call_sites",
+    "config_elements", "convention_files", "referencing_tests", "project_file", "project_files", "entry_points",
+    "hosting_project", "deploy_parameter_files", "client_call_sites",
 )
 ACTIONS = ("update", "rewrite", "delete", "create", "review")
 FILTERS = ("has_attribute", "in_project", "namespace_prefix", "excludes_generated", "extension")
 CONVENTION_KINDS = ("svc", "asmx", "reference", "wsdl", "webforms_markup")
-PATH_PLACEHOLDERS = ("{project.dir}", "{type.name}", "{type.base_name}")
+PATH_PLACEHOLDERS = ("{project.dir}", "{node.project.dir}", "{node.environment}", "{type.name}", "{type.base_name}", "{type.resource}")
 SLUG = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 
 DEFAULT_RULES = [
@@ -93,7 +94,11 @@ def validate(rules: list) -> list[str]:
             problems.append(f"{where}: id '{rule_id}' is not unique")
         where = f"rule '{rule_id}'"
         action = rule.get("action")
-        if action not in ACTIONS:
+        # none: a traversal that only leads to later rules (hosting_project, to
+        # place controllers in the host) — nothing happens to the files it reaches.
+        if action == "none" and "traverse" not in rule:
+            problems.append(f"{where}: action none is for a traversal that later rules build on")
+        elif action not in ACTIONS and action != "none":
             problems.append(f"{where}: action {action!r} is not one of {', '.join(ACTIONS)}")
         modes = [m for m in ("select", "traverse", "create") if m in rule]
         if len(modes) != 1:
@@ -126,6 +131,8 @@ def validate(rules: list) -> list[str]:
                     problems.append(f"{where}: traverse '{primitive}' is not a primitive ({', '.join(PRIMITIVES)})")
                 if primitive == "convention_files" and rule.get("kind") not in CONVENTION_KINDS:
                     problems.append(f"{where}: convention_files needs kind: {' | '.join(CONVENTION_KINDS)}")
+                if primitive == "project_files" and not str(rule.get("pattern") or "").strip():
+                    problems.append(f"{where}: project_files needs a pattern, e.g. App.config or Properties/*.json")
                 if primitive == "config_elements" and not str(rule.get("path") or "").strip():
                     problems.append(f"{where}: config_elements needs a path, e.g. system.serviceModel/services")
                 # An action describes what happens to the file. An element is

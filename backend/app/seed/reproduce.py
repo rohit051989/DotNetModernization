@@ -58,6 +58,8 @@ TABLES: dict[str, tuple[tuple[str, ...], str | None, tuple[str, ...]]] = {
     "catalog_items": (("id",), None, ("seeded_hash", "version")),
     "item_resolutions": (("id",), None, ("seeded_hash",)),
     "resolution_derivations": (("resolution_id", "dependent_item_id"), None, ("seeded_hash",)),
+    "conversion_recipes": (("id",), None, ()),
+    "conversion_recipe_steps": (("recipe_id", "step_id"), None, ()),
 }
 
 

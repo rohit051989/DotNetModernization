@@ -1,0 +1,34 @@
+{
+  "command": [
+    "docker",
+    "run",
+    "--rm",
+    "-v",
+    "<repo>\\backend\\runs\\probes\\WcfClientProbe:/probe:ro",
+    "mcr.microsoft.com/dotnet/runtime@sha256:b89586dc17781f25531909993658aa8161205ae38b8cec8847df4a8221a403d5",
+    "dotnet",
+    "/probe/WcfClientProbe.dll",
+    "basicHttp-Transport-None",
+    "https://localhost:44301/Utility.svc",
+    "--server-thumbprint",
+    "9B73528EAD979866908051E7646A85424B4974E4",
+    "--relay",
+    "44301"
+  ],
+  "image": "mcr.microsoft.com/dotnet/runtime@sha256:b89586dc17781f25531909993658aa8161205ae38b8cec8847df4a8221a403d5",
+  "result": {
+    "address": "https://localhost:44301/Utility.svc",
+    "cryptographyXml": "10.0.12+95017c711e6afc1085133d440e42b4bd78155701",
+    "durationMs": 296,
+    "framework": ".NET 10.0.12",
+    "operation": "IUtilityService.Ping",
+    "os": "Ubuntu 24.04.5 LTS",
+    "outcome": "passed",
+    "response": "pong",
+    "scenario": "basicHttp-Transport-None",
+    "wcfClient": "8.1.2+a47960f931a813617a061adc2ba9cabe1816a551"
+  },
+  "scenario": "basicHttp-Transport-None",
+  "service": "WCF sample UtilityService, Hosting.Iis binding, self-hosted (Start-ProbeHttpsServices.ps1)",
+  "where": "linux-container"
+}

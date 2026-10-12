@@ -239,7 +239,10 @@ public static class EntryPointInventoryCli
                     : null;
             }
 
-            projects.Add(new InputProject(project.RelativePath, projectId.Value, skipReason, project.Packages.Select(p => p.PackageName).ToList()));
+            projects.Add(new InputProject(project.RelativePath, projectId.Value, skipReason, project.Packages.Select(p => p.PackageName).ToList())
+            {
+                ProjectSdk = project.ProjectSdk,
+            });
         }
 
         return new InventoryInput(
@@ -247,7 +250,13 @@ public static class EntryPointInventoryCli
             inventory.RepositorySlug,
             fingerprint is null ? InventoryType : FingerprintType,
             projects,
-            warnings);
+            warnings)
+        {
+            ProjectReferences = inventory.ProjectReferences
+                .Where(r => r.ReferencedRelativePath is not null && r.ResolutionStatus is null or "resolved")
+                .Select(r => (r.SourceRelativePath, r.ReferencedRelativePath!))
+                .ToList(),
+        };
     }
 
     private static async Task<SolutionProjectInventory> ReadInventoryAsync(string path) =>

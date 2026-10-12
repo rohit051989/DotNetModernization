@@ -3,7 +3,7 @@ import argparse
 from app.items import baseline
 from app.seed.catalog_source import print_report as print_catalog_report
 from app.seed.catalog_source import seed_from_export_or_database
-from app.seed.platform import print_platform_summary, seed_platform
+from app.seed.platform import print_platform_summary, print_recipes_summary, seed_platform, seed_recipes
 from app.seed.seed_data import (
     print_conflicts,
     print_catalog_items_summary,
@@ -54,7 +54,13 @@ def main() -> None:
     catalog = seed_from_export_or_database()
     if catalog is not None:
         print_catalog_report(catalog)
-        return
+    else:
+        _seed_catalog_from_factory_defaults()
+    # After the catalog, whichever way it came: a recipe names an item and resolution.
+    print_recipes_summary(seed_recipes())
+
+
+def _seed_catalog_from_factory_defaults() -> None:
     print("Catalog from the factory defaults (no export in the repository):")
     print_pattern_migration_summary(seed_pattern_migration())
     print_catalog_items_summary(seed_catalog_items())

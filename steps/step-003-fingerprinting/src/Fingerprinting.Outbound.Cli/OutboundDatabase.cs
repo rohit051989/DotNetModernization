@@ -37,12 +37,12 @@ public sealed class OutboundDatabase(string connectionString)
                         (id, repository_id, project_id, mechanism, usage, endpoint_scheme, endpoint_host, endpoint_port, endpoint_path,
                          resolution, placeholder, detail, environment_bindings, call_sites, credentials, auth_declared,
                          linux_verdict, linux_reasons, confidence, confidence_reasons, step_execution_id, detected_at, operations,
-                         construction_sites)
+                         construction_sites, runtime_verdict, runtime_reasons)
                     VALUES
                         (@id, @rid, @pid, @mechanism, @usage, @scheme, @host, @port, @path,
                          @resolution, @placeholder, @detail, @bindings, @sites, @credentials, @auth,
                          @verdict, @reasons, @confidence, @confidence_reasons, @sid, @at, @operations,
-                         @construction_sites)
+                         @construction_sites, @runtime_verdict, @runtime_reasons)
                     """,
                     connection, transaction);
                 var endpoint = invocation.Endpoint;
@@ -70,6 +70,12 @@ public sealed class OutboundDatabase(string connectionString)
                 insert.Parameters.Add(new NpgsqlParameter("confidence_reasons", NpgsqlDbType.Jsonb) { Value = Json(invocation.ConfidenceReasons) });
                 insert.Parameters.AddWithValue("sid", (object?)stepExecutionId ?? DBNull.Value);
                 insert.Parameters.AddWithValue("at", detectedAt);
+                // 1.4.0, SOAP only: the runtime verdict, per binding in environment_bindings.
+                insert.Parameters.AddWithValue("runtime_verdict", (object?)invocation.RuntimeCompatibility?.Verdict ?? DBNull.Value);
+                insert.Parameters.Add(new NpgsqlParameter("runtime_reasons", NpgsqlDbType.Jsonb)
+                {
+                    Value = invocation.RuntimeCompatibility is { } runtime ? (object)Json(runtime.Reasons) : DBNull.Value,
+                });
                 await insert.ExecuteNonQueryAsync(cancellationToken);
             }
         }

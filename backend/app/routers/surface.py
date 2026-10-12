@@ -15,6 +15,9 @@ from app.db import get_db
 from app.errors import ErrorResponse, error
 from app.surface import capabilities
 from app.estate.analysis import production_binding
+from app.estate import soap_compatibility, wcf_matrix
+from app.routers import estate as estate_router
+from app.surface.schemas import RepositorySoapOut
 from app.surface.schemas import (
     ApplicationBackendOut,
     BackendCallOut,
@@ -384,3 +387,78 @@ def get_repository_entry_point_backend(repository_id: uuid.UUID, db: Session = D
         applications.append(ApplicationBackendOut(project_id=project_id, project_path=projects.get(project_id, ""), rows=out))
 
     return EntryPointBackendOut(repository_id=repository_id, production_environment=production_environment, applications=applications)
+
+
+@router.get(
+    "/repositories/{repository_id}/soap-compatibility",
+    response_model=RepositorySoapOut,
+    summary="Get a repository's SOAP calls with both verdicts per environment",
+    response_description="Each used SOAP client, per environment: runtime and platform verdicts with their matrix entries' "
+                         "live confirmation, and the call's row in the estate report.",
+    operation_id="get_repository_soap_compatibility",
+    responses={404: _REPOSITORY_NOT_FOUND, 409: _OUTBOUND_NOT_SCANNED},
+)
+def get_repository_soap_compatibility(repository_id: uuid.UUID, db: Session = Depends(get_db)):
+    """The repository's own view of the SOAP backend compatibility report
+    (31-DEPENDENCY-AND-CONTEXT-MAP.md Part J). Read from this repository's
+    outbound invocations, so a rescan updates it at once; the matrix entries'
+    confirmation, probes and contradictions are read live, as the report reads
+    them. The estate report is built by the estate consolidation: when it has
+    not run since this repository's last scan, estate_stale says so, and a
+    call's link to its row there may point at what the scan replaced."""
+    repo = db.get(models.Repository, repository_id)
+    if repo is None or repo.deleted_at is not None:
+        raise error(404, f"Repository '{repository_id}' not found", code="NOT_FOUND")
+    scan = db.get(models.OutboundScan, repository_id)
+    if scan is None:
+        raise error(409, "The outbound-invocation inventory has not run yet for this repository.", code="NOT_SCANNED")
+    engagement = db.get(models.Engagement, repo.engagement_id)
+
+    run, artifacts = estate_router._latest_run(db, engagement.id)
+    report = artifacts.get("soap-backend-compatibility") or {}
+    rows_in_report = {caller["invocationId"]: host["host"] for host in report.get("hosts", []) for caller in host["callers"]}
+    estate_run_at = run.ended_at if run is not None else None
+    stale = estate_run_at is None or (scan.scanned_at is not None and scan.scanned_at > estate_run_at)
+    note = None
+    if estate_run_at is None:
+        note = "The estate consolidation has never run for this engagement: there is no estate report to link to."
+    elif stale:
+        note = (f"The estate report was built {estate_run_at:%Y-%m-%d %H:%M} UTC, before this repository's last scan "
+                f"({scan.scanned_at:%Y-%m-%d %H:%M} UTC). The verdicts here are the scan's; the estate report has not been "
+                f"rerun since, so its totals and rows do not include this scan yet. Rerun the estate consolidation.")
+
+    target_wcf = engagement.target_wcf_client_version or wcf_matrix.target_wcf_client(
+        wcf_matrix.load("support"), engagement.target_framework)
+    soap = db.query(models.OutboundInvocation).filter(models.OutboundInvocation.repository_id == repository_id,
+                                                      models.OutboundInvocation.mechanism == "soap_client")
+    projects = {p["projectId"]: p["projectPath"] for p in scan.project_summaries}
+    calls, unused = [], 0
+    for row in sorted(soap, key=lambda r: (projects.get(str(r.project_id), ""), r.id)):
+        if row.usage != "used":
+            unused += 1
+            continue
+        block = (row.detail or {}).get("block") or {}
+        environments = []
+        for b in sorted(row.environment_bindings or [], key=lambda b: (b.get("environment") or "", b.get("sourceFile") or "")):
+            security = b.get("soap") or {"binding": block.get("binding"), "securityMode": block.get("securityMode"),
+                                         "clientCredentialType": block.get("clientCredentialType"),
+                                         "securitySource": block.get("securitySource")}
+            environments.append({
+                "environment": b.get("environment") or "default",
+                "address": soap_compatibility._address(b),
+                "sourceFile": b.get("sourceFile"),
+                "binding": security.get("binding"),
+                "securityMode": security.get("securityMode"),
+                "credentialType": "None" if security.get("securityMode") == "None" else security.get("clientCredentialType"),
+                "securitySource": security.get("securitySource"),
+                "runtime": wcf_matrix.live_verdict("support", b.get("runtimeVerdict") or "not_assessed", b.get("runtimeMatrixEntry"), target_wcf),
+                "platform": wcf_matrix.live_verdict("platform", b.get("linuxVerdict") or row.linux_verdict, b.get("platformMatrixEntry"), target_wcf),
+            })
+        calls.append({
+            "invocationId": row.id, "projectPath": projects.get(str(row.project_id), ""),
+            "contract": block.get("contract"), "clientType": block.get("clientType"), "endpoint": _endpoint_display(row),
+            "environments": environments, "estateHost": rows_in_report.get(row.id),
+        })
+    return RepositorySoapOut(repository_id=repository_id, engagement_id=engagement.id, scanned_at=scan.scanned_at,
+                             estate_run_at=estate_run_at, estate_stale=stale, estate_note=note,
+                             target_wcf_client_version=target_wcf, unused_count=unused, calls=calls)

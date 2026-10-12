@@ -1,7 +1,7 @@
-# 33 — Worked Recipe: `wcf-service` → REST on .NET 10
+# 35 — Worked Recipe: `wcf-service` → REST on .NET 10
 
 **Status: Draft, document only.** No approach in this recipe is built, and nothing has been
-converted. This document is the first worked example of `32-CONVERSION-ARCHITECTURE.md`,
+converted. This document is the first worked example of `34-CONVERSION-ARCHITECTURE.md`,
 and the specification its approaches will be built and certified against.
 
 | | |
@@ -38,7 +38,7 @@ and the specification its approaches will be built and certified against.
 The client keeps the legacy SOAP service in production unchanged. A new .NET 10 REST service
 is built **alongside** it, and clients move to REST over time. So:
 
-- **Layout:** `side_by_side`. Legacy is read-only (32 B7). The target is a new solution root.
+- **Layout:** `side_by_side`. Legacy is read-only (34 B7). The target is a new solution root.
 - **Converted:** the inbound protocol (SOAP → REST) and the runtime (.NET Framework 4.7.2 →
   .NET 10).
 - **Not converted:** business logic, request and response schemas, and **outbound SOAP
@@ -63,9 +63,9 @@ is built **alongside** it, and clients move to REST over time. So:
 |---|---|
 | `solution-discovery` projects | Retarget targets, project roles |
 | `entry-point-inventory` entry points | Slices: one per service contract; the operations each slice owns |
-| `outbound-invocation-inventory` invocations, **with deploy-time configuration** (32 Part L) | The outbound SOAP client to keep, and its per-environment addresses from `SetParam.xml` |
+| `outbound-invocation-inventory` invocations, **with deploy-time configuration** (34 Part L) | The outbound SOAP client to keep, and its per-environment addresses from `SetParam.xml` |
 | `item-detection` occurrences of the supporting items (Part C), **with anchors** | Unit targets |
-| `reachability-analysis` (32 Part L) | Dead code excluded from the scaffold or removed by F10 |
+| `reachability-analysis` (34 Part L) | Dead code excluded from the scaffold or removed by F10 |
 | `contract-snapshot` | Source contract for the mapping |
 | `target-contract-design`, signed off at `plan-approval-gate` | Routes, verbs, fault → status rows (Part D) |
 | `behaviour-baseline-capture` | Replay cases per operation (Part H) |
@@ -88,7 +88,7 @@ The recipe stops at planning if any of these items is found on the service proje
 blocker: replacing it with transport mTLS is an engagement decision (Part D), not a code
 shape.
 
-### B3. Preconditions (32 Part E)
+### B3. Preconditions (34 Part E)
 
 - `baseline-verification`: legacy builds and its tests pass at `legacy_commit`.
 - Every slice has baseline cases (Part H).
@@ -100,7 +100,7 @@ shape.
 ## Part C — Supporting items
 
 Each is a catalog item with `kind: supporting`, `parent_item: wcf-service`. They are detected
-by `item-detection` and take their decision from the parent (32 C2).
+by `item-detection` and take their decision from the parent (34 C2).
 
 | Supporting item | Scope | Detects | Signal (proposed) | Fixture count |
 |---|---|---|---|---|
@@ -117,7 +117,7 @@ by `item-detection` and take their decision from the parent (32 C2).
 **Readiness today: all `not_ready`.** None of these signals exists in the registry. Only
 `EXPOSES_WCF_SERVICE` and `WCF_SERVICE_HOSTING`, used by `wcf-service` itself, do.
 `WCF_SERVICE_CONTRACT_DECL` may duplicate an existing `application-fingerprinting`/`entry-point-inventory` signal under another name;
-confirm before adding. Each signal needs an extractor claim and **anchors** (32 C3).
+confirm before adding. Each signal needs an extractor claim and **anchors** (34 C3).
 
 ---
 
@@ -137,7 +137,7 @@ Client choices, passed to every approach as data (28 Part L).
 | `server_cert_subject` | `CN=WcfCatalogDev-Server` | Loaded by Kestrel from `CurrentUser\My` |
 | `caller_identity_format` | `"{Subject}; {Thumbprint}"` | Keeps `PlacedByCertificateSubject` values as WCF produced them |
 | `json_naming` | `as_declared` | `PropertyNamingPolicy = null` |
-| `fault_status_map` | engagement conventions (32 Part G) | |
+| `fault_status_map` | engagement conventions (34 Part G) | |
 | `outbound_soap` | `keep` | Regenerate the proxy with `--sync`; address from config |
 
 ### D2. Target contract (output of `target-contract-design`, signed off at `plan-approval-gate`)
@@ -171,8 +171,8 @@ the conventions require; the hand analysis omitted it.
 ## Part E — Recipe steps
 
 Paths in `allowed_paths` are relative to the **target root**. Every step also carries the
-side-by-side guard `no_writes_under: {legacy_root}` (32 B7). Unless noted, verification is
-`dotnet build` of the step's project, then targeted replay (32 Part E).
+side-by-side guard `no_writes_under: {legacy_root}` (34 B7). Unless noted, verification is
+`dotnet build` of the step's project, then targeted replay (34 Part E).
 
 ### E1. Foundation steps
 
@@ -316,7 +316,7 @@ The fixture has no production traffic, so cases are generated, plus the scenario
 ## Part I — Certification on the fixture
 
 `wcf-service-rest` and `wcf-client-to-rest` move from `draft` to `certified` only when a run on
-`sampleapps\WCF` meets every property assertion below (32 Part J). Property assertions, not a
+`sampleapps\WCF` meets every property assertion below (34 Part J). Property assertions, not a
 golden diff.
 
 ### Plan
@@ -359,7 +359,7 @@ the S03 downgrade path.
 |---|---|
 | The security model change (message credentials → mTLS) | Engagement decision, recorded with rationale (D1 `secure_group_auth`) |
 | The target contract | Generated, then signed off by humans at `plan-approval-gate` |
-| Production traffic and backend recordings | Supplied by the client under the ingestion contract (32 Part O, question 3) |
+| Production traffic and backend recordings | Supplied by the client under the ingestion contract (34 Part O, question 3) |
 | Linux-specific changes (`G:\Logs\…` paths, file logging, Windows certificate stores) | Separate catalog items (`hardcoded-windows-path`, logging items), decided on their own |
 | Consumer migration and legacy retirement | Out of scope: the client retires legacy once all callers have moved |
 

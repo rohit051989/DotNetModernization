@@ -11,6 +11,10 @@
     <Nullable>enable</Nullable>
     <RootNamespace>Fingerprinting.Tests</RootNamespace>
     <IsPackable>false</IsPackable>
+    <!-- As in the step 6 CLI: StepHost (for the schema validator) brings
+         MSBuildLocator, which refuses NuGet's libraries beside it. These
+         tests never load MSBuild, so the copies here are the only ones. -->
+    <DisableMSBuildAssemblyCopyCheck>true</DisableMSBuildAssemblyCopyCheck>
   </PropertyGroup>
 
   <ItemGroup>
@@ -21,6 +25,15 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Fingerprinting.Dependencies\Fingerprinting.Dependencies.csproj" />
+    <!-- ArtifactSchemaValidator: artifacts are checked against the schema the step publishes. -->
+    <ProjectReference Include="..\..\src\Fingerprinting.StepHost\Fingerprinting.StepHost.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="..\..\schemas\dependency-assessment-1.2.0.schema.json">
+      <Link>schemas\dependency-assessment-1.2.0.schema.json</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 
 </Project>

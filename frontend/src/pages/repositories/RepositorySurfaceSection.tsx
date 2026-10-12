@@ -3,6 +3,7 @@ import { ApiError } from '../../api/client'
 import { getRepositoryEntryPoints } from '../../api/surface'
 import { RepositoryBackendReachPanel } from './RepositoryBackendReachPanel'
 import { RepositoryOutboundPanel } from './RepositoryOutboundPanel'
+import { RepositorySoapPanel } from './RepositorySoapPanel'
 import { SourceLink } from './SourceLink'
 import type { EntryPoint, EntryPointInventory, EntryPointKind, HttpDetail, HttpParameter, ProjectEntryPoints, WcfEndpoint } from '../../types/surface'
 
@@ -13,6 +14,8 @@ interface RepositorySurfaceSectionProps {
    * (the single-operator model; CLAUDE.md "Operating model"). */
   localPath: string
   refreshToken: number
+  /** Opens a SOAP call's row in the Estate tab's SOAP compatibility report. */
+  onOpenEstateSoap?: (invocationId: string) => void
 }
 
 const KIND_LABEL: Record<EntryPointKind, string> = {
@@ -432,11 +435,14 @@ function Stat({ label, value, tone }: { label: string; value: number; tone?: 'am
 /** Surface — 29-ENTRY-POINT-AND-OUTBOUND-INVENTORIES.md Part D: inbound (step 4's
  * entry points) and outbound (step 5's invocations), side by side where
  * the page is wide enough. */
-export function RepositorySurfaceSection({ repositoryId, localPath, refreshToken }: RepositorySurfaceSectionProps) {
+export function RepositorySurfaceSection({ repositoryId, localPath, refreshToken, onOpenEstateSoap }: RepositorySurfaceSectionProps) {
   return (
     <div className="grid gap-6 p-4 xl:grid-cols-2">
       <RepositoryInboundPanel repositoryId={repositoryId} localPath={localPath} refreshToken={refreshToken} />
       <RepositoryOutboundPanel repositoryId={repositoryId} localPath={localPath} refreshToken={refreshToken} />
+      <div className="min-w-0 xl:col-span-2">
+        <RepositorySoapPanel repositoryId={repositoryId} refreshToken={refreshToken} onOpenEstateSoap={onOpenEstateSoap} />
+      </div>
       <div className="min-w-0 xl:col-span-2">
         <RepositoryBackendReachPanel repositoryId={repositoryId} localPath={localPath} refreshToken={refreshToken} />
       </div>

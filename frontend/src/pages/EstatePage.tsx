@@ -2,6 +2,7 @@ import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import { getEstate, putEndpointAnnotation, putEstateSettings } from '../api/estate'
 import { launchJob } from '../api/workflow'
 import { useToast } from '../components/Toast'
+import { SoapCompatibilityView } from './SoapCompatibilityView'
 import { EstateRuleConflictsView } from './RuleConflictsViews'
 import type {
   ContextMapArtifact,
@@ -17,15 +18,17 @@ import type {
   PackageEstateArtifact,
   RegisterHost,
 } from '../types/estate'
+import { UNDER_REVIEW, UNDER_REVIEW_LABEL } from '../types/estate'
 
 // The Estate tab — lifecycle step 11, 31-DEPENDENCY-AND-CONTEXT-MAP.md
 // Part H. Five views over the newest run's artifacts; coverage on each, since
 // a register built from part of the estate is provisional.
 
-type View = 'register' | 'integration' | 'packages' | 'dependencies' | 'context' | 'rule-conflicts'
+type View = 'register' | 'soap' | 'integration' | 'packages' | 'dependencies' | 'context' | 'rule-conflicts'
 
 const VIEWS: { key: View; label: string }[] = [
   { key: 'register', label: 'Endpoint register' },
+  { key: 'soap', label: 'SOAP compatibility' },
   { key: 'integration', label: 'Integration' },
   { key: 'packages', label: 'Packages' },
   { key: 'dependencies', label: 'Dependencies' },
@@ -46,6 +49,12 @@ const VERDICT_STYLE: Record<string, string> = {
   requires_change: 'border-amber-200 bg-amber-50 text-amber-800',
   unknown: 'border-neutral-300 bg-neutral-100 text-neutral-600',
   compatible: 'border-teal-200 bg-teal-50 text-teal-700',
+  under_review: 'border-violet-300 bg-violet-50 text-violet-800',
+}
+
+/** A verdict as shown: one resting on a matrix entry a probe contradicts is never shown as that verdict. */
+function verdictLabel(verdict: string): string {
+  return verdict === UNDER_REVIEW ? UNDER_REVIEW_LABEL : verdict.replace('_', ' ')
 }
 
 function Pill({ children, className = '', title }: { children: React.ReactNode; className?: string; title?: string }) {
@@ -72,12 +81,23 @@ function CoverageBanner({ coverage }: { coverage: Coverage | undefined }) {
   )
 }
 
-export function EstatePage({ engagementId, onOpenRepository }: { engagementId: string; onOpenRepository: (repositoryId: string) => void }) {
+export function EstatePage({
+  engagementId,
+  onOpenRepository,
+  focusSoapInvocation = null,
+  onFocusShown,
+}: {
+  engagementId: string
+  onOpenRepository: (repositoryId: string) => void
+  /** Open the SOAP report at this call's row (from a repository page's Surface section). */
+  focusSoapInvocation?: string | null
+  onFocusShown?: () => void
+}) {
   const { showToast } = useToast()
   const [estate, setEstate] = useState<EstateView | null>(null)
   const [loading, setLoading] = useState(true)
   const [running, setRunning] = useState(false)
-  const [view, setView] = useState<View>('register')
+  const [view, setView] = useState<View>(focusSoapInvocation ? 'soap' : 'register')
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -179,6 +199,14 @@ export function EstatePage({ engagementId, onOpenRepository }: { engagementId: s
           {view === 'dependencies' && estate.artifacts['dependency-graph'] && <DependenciesView data={estate.artifacts['dependency-graph']} />}
           {view === 'context' && estate.artifacts['context-map'] && <ContextView data={estate.artifacts['context-map']} />}
           {view === 'rule-conflicts' && <EstateRuleConflictsView engagementId={engagementId} onOpenRepository={onOpenRepository} />}
+          {view === 'soap' && (
+            <SoapCompatibilityView
+              data={estate?.artifacts['soap-backend-compatibility']}
+              engagementId={engagementId}
+              focusInvocationId={focusSoapInvocation}
+              onFocusShown={onFocusShown}
+            />
+          )}
         </>
       )}
     </div>
@@ -224,6 +252,17 @@ function RegisterView({
       onSaved()
     } catch {
       showToast('error', 'Could not save the production environment.')
+    }
+  }
+
+  async function setTargetWcfClient(text: string) {
+    const value = text.trim()
+    if (value === (settings.target_wcf_client_version ?? '')) return
+    try {
+      await putEstateSettings(engagementId, { target_wcf_client_version: value || null })
+      onSaved()
+    } catch {
+      showToast('error', 'Could not save the target WCF client version: use a version such as 8.1.2.')
     }
   }
 
@@ -273,6 +312,19 @@ function RegisterView({
           className="w-full min-w-0 rounded border border-neutral-200 px-1.5 py-1 font-mono text-[11px] focus:border-violet-400 focus:outline-none sm:w-72"
         />
         {settings.deploy_parameter_globs_default && <span className="text-neutral-400">(defaults)</span>}
+        <label htmlFor="target-wcf-client" className="font-medium text-neutral-700 sm:ml-4">
+          Target WCF client
+        </label>
+        <input
+          id="target-wcf-client"
+          key={settings.target_wcf_client_version ?? ''}
+          defaultValue={settings.target_wcf_client_version ?? ''}
+          placeholder={settings.target_wcf_client_version_effective ?? ''}
+          onBlur={(e) => setTargetWcfClient(e.currentTarget.value)}
+          title="The System.ServiceModel.* package version this engagement targets. The SOAP report flags matrix entries whose probe evidence covers an older one. Empty: the version the WCF client matrices record for the target framework. Takes effect at once."
+          className="w-20 rounded border border-neutral-200 px-1.5 py-1 font-mono text-[11px] focus:border-violet-400 focus:outline-none"
+        />
+        {!settings.target_wcf_client_version && <span className="text-neutral-400">(the matrices')</span>}
         {(productionPending || servedByPending) && (
           <span className="rounded border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-amber-800">
             {productionPending ? 'Production environment' : 'A served-by annotation'} changed since this register was built — rerun estate consolidation to apply.
@@ -517,7 +569,12 @@ function HostRow({
           </div>
         </td>
         <td className="px-2 py-1.5">
-          {host?.worstVerdict && <Pill className={VERDICT_STYLE[host.worstVerdict]}>{host.worstVerdict.replace('_', ' ')}</Pill>}
+          {host?.worstVerdict && <Pill className={VERDICT_STYLE[host.worstVerdict]}>{verdictLabel(host.worstVerdict)}</Pill>}
+          {host?.underReview && host.underReview.length > 0 && (
+            <Pill className={VERDICT_STYLE.under_review} title={`Matrix entries a probe contradicts, until a reviewer revises them: ${host.underReview.join(', ')}`}>
+              {UNDER_REVIEW_LABEL}
+            </Pill>
+          )}
         </td>
         <AnnotationCells
           engagementId={engagementId}
@@ -560,7 +617,7 @@ function HostRow({
                         </span>
                       ))}
                     </td>
-                    <td className="py-1 pr-3">{s.worstVerdict && <Pill className={VERDICT_STYLE[s.worstVerdict]}>{s.worstVerdict.replace('_', ' ')}</Pill>}</td>
+                    <td className="py-1 pr-3">{s.worstVerdict && <Pill className={VERDICT_STYLE[s.worstVerdict]}>{verdictLabel(s.worstVerdict)}</Pill>}</td>
                     <td className="py-1 pr-3 text-[11px]">
                       {s.internalTargets.length === 0
                         ? '—'
@@ -584,7 +641,7 @@ function HostRow({
               <span className="font-medium text-neutral-600">Verdict by environment: </span>
               {Object.entries(host.verdictByEnvironment).map(([env, v]) => (
                 <span key={env} className="mr-2">
-                  {env} <Pill className={VERDICT_STYLE[v]}>{v.replace('_', ' ')}</Pill>
+                  {env} <Pill className={VERDICT_STYLE[v]}>{verdictLabel(v)}</Pill>
                 </span>
               ))}
             </p>

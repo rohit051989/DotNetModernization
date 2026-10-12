@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The services the WCF client matrix probe calls (29-ENTRY-POINT-AND-OUTBOUND-INVENTORIES.md C11):
+       the WCF sample's own service types on .NET Framework, loaded by path from a copy of the sample, with
+       certificates read from files in a scratch folder. Never a certificate store. Not part of a step. -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net472</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="System.ServiceModel" />
+    <Reference Include="System.IdentityModel" />
+  </ItemGroup>
+
+</Project>

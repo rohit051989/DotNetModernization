@@ -1,5 +1,6 @@
 using Fingerprinting.Dependencies;
 using Fingerprinting.Domain;
+using Fingerprinting.StepHost;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using NuGet.Packaging;
@@ -49,8 +50,16 @@ public sealed class DependencyAssessmentTests : IDisposable
         return stream.ToArray();
     }
 
-    /// <summary>A package with one assembly under lib/{tfm}/.</summary>
-    private void Package(string feed, string id, string version, string tfm, string code)
+    /// <summary>A nuspec dependency group for <paramref name="tfm"/>: "Id@[1.0.0, )" each.</summary>
+    private static void Depend(PackageBuilder builder, string tfm, string[] dependencies)
+    {
+        if (dependencies.Length == 0) return;
+        builder.DependencyGroups.Add(new PackageDependencyGroup(NuGet.Frameworks.NuGetFramework.Parse(tfm),
+            dependencies.Select(d => d.Split('@')).Select(d => new PackageDependency(d[0], VersionRange.Parse(d[1])))));
+    }
+
+    /// <summary>A package with one assembly under lib/{tfm}/, and any nuspec dependencies ("Id@range").</summary>
+    private void Package(string feed, string id, string version, string tfm, string code, params string[] dependencies)
     {
         var dll = Path.Combine(_root, "build", id, version, tfm, id + ".dll");
         Directory.CreateDirectory(Path.GetDirectoryName(dll)!);
@@ -63,6 +72,7 @@ public sealed class DependencyAssessmentTests : IDisposable
         };
         builder.Authors.Add("tests");
         builder.Files.Add(new PhysicalPackageFile { SourcePath = dll, TargetPath = $"lib/{tfm}/{id}.dll" });
+        Depend(builder, tfm, dependencies);
         using var output = File.Create(Path.Combine(feed, $"{id}.{version}.nupkg"));
         builder.Save(output);
     }
@@ -70,9 +80,15 @@ public sealed class DependencyAssessmentTests : IDisposable
     /// <summary>A package with no lib/ assembly: only the given files
     /// (build/x.props, tools/x.exe, content/x.css, analyzers/...), so its kind
     /// comes from its contents.</summary>
-    private void AssetPackage(string feed, string id, string version, params string[] targetPaths)
+    private void AssetPackage(string feed, string id, string version, params string[] targetPaths) =>
+        MetaPackage(feed, id, version, targetPaths, []);
+
+    /// <summary>A package with only the given files and nuspec dependencies
+    /// ("Id@range", net8.0 group): a meta-package when the files are build/ props.</summary>
+    private void MetaPackage(string feed, string id, string version, string[] targetPaths, string[] dependencies)
     {
         var builder = new PackageBuilder { Id = id, Version = NuGetVersion.Parse(version), Description = id };
+        Depend(builder, "net8.0", dependencies);
         builder.Authors.Add("tests");
         foreach (var target in targetPaths)
         {
@@ -313,6 +329,107 @@ public sealed class DependencyAssessmentTests : IDisposable
     [InlineData("runtime.json|lib/netstandard1.0/_._", false, PackageKinds.Build)]
     public void Package_kind_comes_from_the_package_contents(string files, bool hasDependencies, string expected) =>
         Assert.Equal(expected, PackageKinds.Classify(files.Split('|'), hasDependencies));
+
+    // ---------- package dependencies and transitive API ----------
+
+    private const string CoreV1 = "namespace Acme.Core.Models { public class Schema { } public class Info { } }";
+    private const string CoreV2 = "namespace Acme.Core.Models { public class JsonSchema { } public class Info { } }";
+    private const string GenApi = "namespace Acme.Gen { public static class Options { public static void Add() { } } }";
+
+    /// <summary>Acme.Meta (build props only) -> Acme.Gen (assemblies, API
+    /// unchanged) -> Acme.Core, which drops Models.Schema at 2.0.0.</summary>
+    private void SwaggerLikeFamily()
+    {
+        Package(_clientFeed, "Acme.Core", "1.0.0", "net8.0", CoreV1);
+        Package(_clientFeed, "Acme.Core", "2.0.0", "net8.0", CoreV2);
+        Package(_clientFeed, "Acme.Gen", "1.0.0", "net8.0", GenApi, "Acme.Core@[1.0.0, )");
+        Package(_clientFeed, "Acme.Gen", "2.0.0", "net8.0", GenApi, "Acme.Core@[2.0.0, )");
+        MetaPackage(_clientFeed, "Acme.Meta", "1.0.0", ["build/Acme.Meta.props"], ["Acme.Gen@[1.0.0, )"]);
+        MetaPackage(_clientFeed, "Acme.Meta", "2.0.0", ["build/Acme.Meta.props"], ["Acme.Gen@[2.0.0, )"]);
+    }
+
+    [Fact]
+    public async Task Each_versions_nuspec_dependencies_are_recorded_in_the_lookup_cache()
+    {
+        ClientFeedConfig();
+        SwaggerLikeFamily();
+        Project("""    <PackageReference Include="Acme.Gen" Version="1.0.0" />""", "class P { }");
+        var cache = new MemoryLookupCache();
+
+        var gen = Package(await Run([new InputPackage("Acme.Gen", "1.0.0", "packagereference")], cache), "Acme.Gen");
+
+        var entry = cache.Get(gen.FeedUrl!, "Acme.Gen")!;
+        var group = Assert.Single(entry.Versions.Single(v => v.Version == "2.0.0").Dependencies!);
+        Assert.Equal("net8.0", group.Framework);
+        var dependency = Assert.Single(group.Packages);
+        Assert.Equal(("Acme.Core", "[2.0.0, )"), (dependency.Id, dependency.Range));
+    }
+
+    [Fact]
+    public async Task A_dependency_whose_major_version_moves_is_diffed_and_a_meta_package_is_diffed_through_what_it_carries()
+    {
+        ClientFeedConfig();
+        SwaggerLikeFamily();
+        Project("""
+                <PackageReference Include="Acme.Meta" Version="1.0.0" />
+                <PackageReference Include="Acme.Gen" Version="1.0.0" />
+            """, """
+            using Acme.Core.Models;
+            class P
+            {
+                static void Main() { var s = new Schema(); }
+            }
+            """);
+
+        var artifact = await Run([new InputPackage("Acme.Meta", "1.0.0", "packagereference"), new InputPackage("Acme.Gen", "1.0.0", "packagereference")]);
+
+        // Acme.Gen's own API is unchanged; Acme.Core, which it moves 1 -> 2, drops the Schema the code uses.
+        var gen = Package(artifact, "Acme.Gen");
+        Assert.Equal((Outcomes.UpgradeBreaking, ClassificationMethods.ApiDiff), (gen.Outcome, gen.ClassificationMethod));
+        Assert.Contains(gen.BreakingMembers, m => (m.Change, m.Type) == ("type_removed", "Acme.Core.Models.Schema"));
+        Assert.Contains(gen.ConfidenceReasons, r => r.Contains("Acme.Core 1.0.0 -> 2.0.0"));
+
+        // Acme.Meta has no assemblies: its API is Acme.Gen's, and through it Acme.Core's.
+        var meta = Package(artifact, "Acme.Meta");
+        Assert.Equal((Outcomes.UpgradeBreaking, PackageKinds.Build), (meta.Outcome, meta.PackageKind));
+        Assert.Contains(meta.BreakingMembers, m => m.Type == "Acme.Core.Models.Schema");
+        Assert.Contains(meta.ConfidenceReasons, r => r.Contains("Acme.Gen 1.0.0 -> 2.0.0") && r.Contains("Acme.Core 1.0.0 -> 2.0.0"));
+
+        // 1.2.0: a build-kind package may be breaking, through an API diff.
+        PackageSchema().Validate(DeterministicJson.Serialize(artifact.Projects.Single().Packages));
+    }
+
+    /// <summary>dependency-assessment-1.2.0's package definition, as a schema
+    /// for an array of packages. The whole artifact is not validated here: the
+    /// fixture's "public" feed is a local folder, which the feed enum rightly refuses.</summary>
+    private static ArtifactSchemaValidator PackageSchema()
+    {
+        var schema = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "schemas", "dependency-assessment-1.2.0.schema.json")))!;
+        var wrapper = new System.Text.Json.Nodes.JsonObject
+        {
+            ["$schema"] = schema["$schema"]!.DeepClone(),
+            ["type"] = "array",
+            ["items"] = new System.Text.Json.Nodes.JsonObject { ["$ref"] = "#/$defs/package" },
+            ["$defs"] = schema["$defs"]!.DeepClone(),
+        };
+        var path = Path.Combine(Path.GetTempPath(), $"package-schema-{Guid.NewGuid():N}.json");
+        File.WriteAllText(path, wrapper.ToJsonString());
+        try { return ArtifactSchemaValidator.Load(path); }
+        finally { File.Delete(path); }
+    }
+
+    [Fact]
+    public async Task A_moved_dependency_the_code_does_not_call_into_leaves_the_upgrade_safe()
+    {
+        ClientFeedConfig();
+        SwaggerLikeFamily();
+        Project("""    <PackageReference Include="Acme.Meta" Version="1.0.0" />""",
+            "using Acme.Core.Models; class P { static void Main() { var i = new Info(); } }");
+
+        var meta = Package(await Run([new InputPackage("Acme.Meta", "1.0.0", "packagereference")]), "Acme.Meta");
+        Assert.Equal((Outcomes.UpgradeSafe, ClassificationMethods.PackageKind), (meta.Outcome, meta.ClassificationMethod));
+        Assert.Contains(meta.ConfidenceReasons, r => r.Contains("changes nothing the code calls"));
+    }
 
     [Fact]
     public async Task Build_tools_and_content_packages_are_never_breaking_but_content_majors_are_flagged()

@@ -412,6 +412,29 @@ On the WCF sample, `Catalog.Services` carries `EXPOSES_WCF_SERVICE` five times (
 contract) and `Catalog.Host` carries `HOSTS_WCF_SERVICE` five times. `Catalog.Services`
 also has two hosting values: the IIS `.svc` files and the `ServiceHost`.
 
+### B7. Framework delta signals (scanner 2.3.0, signal registry 1.10.0)
+
+The discovery side of the framework delta catalog (34-CONVERSION-ARCHITECTURE.md C6): known
+breaking changes between a project's framework and a later one, emitted as signals so a
+conversion plan fixes them before the retarget. They are structural facts, emitted whatever
+the engagement's target; the delta catalog says from which framework each one breaks. The
+step reads `solution-discovery`'s project references (resolved, transitive) and project SDKs
+alongside each project's syntax. Scanner and registration 2.3.0, capability manifest 1.3.0
+(the same kinds); the artifact stays 2.2.0, unchanged in shape.
+
+| Signal | Project | Value |
+|---|---|---|
+| `AMBIGUOUS_TOP_LEVEL_PROGRAM_ON_NET10` | a project that names `Program` and references two or more projects whose `Program` is public on net10.0, at least one of them only from net10.0 | the file with the top-level statements of each project whose `Program` becomes public only on net10.0 — where the fix goes |
+
+From .NET 10, ASP.NET Core generates `public partial class Program` for a `Microsoft.NET.Sdk.Web`
+project with top-level statements, unless the project declares Program's accessibility itself.
+On net8.0 that Program is internal. A project referencing two web projects and naming
+`Program` (`WebApplicationFactory<Program>`) therefore compiles on net8.0 and fails with CS0433
+on net10.0. Not emitted when the project has a Program of its own (the name binds to it), when
+it never names `Program`, or when it is already ambiguous on its own framework. On eShopOnWeb:
+`tests/PublicApiIntegrationTests` references `Web` (implicit Program) and `PublicApi` (`public
+partial class Program`); the value is `src/Web/Program.cs`.
+
 ---
 
 ## Part C — `outbound-invocation-inventory`
@@ -434,17 +457,19 @@ also has two hosting values: the IIS `.svc` files and the `ServiceHost`.
 
 ### C2. The binding type is the point
 
-For `soap_client`, **record the binding**. This is the client's primary Linux blocker:
-NetTcp uses a Windows binary framing protocol with no reliable Linux support, while
-HTTP-based bindings port cleanly.
+For `soap_client`, **record the binding**, and with it the security mode and credential type:
+the three together decide whether the call works on Linux (C6, C10). The binding alone does
+not. NetTcp works cross-platform, while its *default* transport credential, `Windows`,
+negotiates Kerberos and needs configuring on Linux. Named pipes and MSMQ have no Linux
+client at all.
 
 Sources, in order of preference: `<client><endpoint binding=…>` in config; a binding
 constructed in client code (`new NetTcpBinding()`); the binding inside a generated
 `Reference.cs` — which, per `application-fingerprinting`'s precedent, is read for this purpose only.
 
 Also record `securityMode` where declared — `Transport`, `Message`,
-`TransportWithMessageCredential`, `None` — and `clientCredentialType`. Windows-integrated
-security modes are a second Linux blocker independent of the binding.
+`TransportWithMessageCredential`, `None` — and `clientCredentialType`. Where nothing is
+declared, the binding's default applies, and that default is what gets judged (C10).
 
 ### C3. Endpoint normalisation
 
@@ -497,9 +522,14 @@ Each invocation carries a verdict with a reason:
 
 | Condition | Verdict |
 |---|---|
-| SOAP over `netTcpBinding` | `incompatible` |
-| SOAP with Windows-integrated security | `incompatible` |
-| SOAP over `basicHttpBinding` or `wsHttpBinding` | `compatible` |
+| SOAP | From the **WCF client platform matrix** (C10), keyed by binding, effective security mode and credential type — never a rule in code. In 1.1.0: |
+| — `basicHttpBinding` None/None and Transport/None; `netTcpBinding` Transport/None and Transport/Certificate | `compatible` — specific entries, each with a passing probe (C11) |
+| — `wsHttpBinding` TransportWithMessageCredential/Certificate | `incompatible` on probe evidence — the backend's owner must offer another security mode or credential (C11) |
+| — any HTTP binding or `netTcpBinding` with a `Windows` credential (declared, or the binding's default) | `requires_change` — Kerberos configuration on our side, or a credential change by the backend's owner (C10) |
+| — HTTP bindings with an `Ntlm` credential | `incompatible` — the backend's owner must accept another credential |
+| — `netNamedPipeBinding`, `netMsmqBinding`, `msmqIntegrationBinding`, `netPeerTcpBinding` | `incompatible` — the backend's owner must offer another binding |
+| — every other mode and credential of the HTTP bindings and `netTcpBinding` | `unknown` — unprobed: a wildcard may not assert compatible (the wildcard rule, C10) |
+| — `customBinding`, `wsDualHttpBinding`, or binding or security unresolved | `unknown` — no entry |
 | SQL with Integrated Security or SSPI | `requires_change` — needs SQL auth or a Kerberos keytab |
 | SQL with SQL authentication | `compatible` |
 | MSMQ | `incompatible` |
@@ -550,8 +580,9 @@ be assessed as much as what could.
       "callSite": { "filePath": "src/AccountOpenAPI/Services/AccountClient.cs",
                     "lineStart": 44, "lineEnd": 44 } }
   ],
-  "linuxCompatibility": { "verdict": "incompatible",
-                          "reasons": ["netTcpBinding", "Windows client credentials"] },
+  "linuxCompatibility": { "verdict": "requires_change",
+                          "reasons": ["netTcpBinding Transport/Windows: requires change on Linux — …",
+                                      "change: Kerberos configuration on our side, or a credential change by the backend's owner"] },
   "confidence": 0.9
 }
 ```
@@ -834,6 +865,252 @@ into this step as an optional input.
   incompatible list.
 - Migration: `a5d1e7c9b203`. API: `GET /api/repositories/{id}/outbound-invocations`.
 
+### C10. Will the SOAP call still work on the target .NET? (scanner 1.4.0, artifact 1.4.0)
+
+Every SOAP client invocation gets **two verdicts on every environment binding**:
+
+| Verdict | Question | From |
+|---|---|---|
+| `linuxVerdict` (**platform**) | Does it work on Linux? | The WCF client platform matrix (scanner 1.5.0), applied to each environment's own security |
+| `runtimeVerdict` (**runtime**) | Does the target .NET's WCF client support this binding, security mode and credential type? | The WCF client support matrix |
+
+**Each environment's own security.** One endpoint can be configured differently in two
+environment files (`Web.config` and `Web.Release.config`). Each environment binding now
+carries `soap`: its binding, effective security mode, the credential type that mode uses, and
+`securitySource`. A SetParameters value keeps its base entry's security; a binding built in
+code applies in every environment. **Effective** means declared, or else the binding's
+default: a `wsHttpBinding` with nothing declared is evaluated as `Message` security with
+`Windows` credentials, which is what it uses. The defaults are `WcfSecurity.Defaults` in code;
+a test holds them equal to the matrix file's `defaults`, which cite Microsoft Learn's
+*System-provided bindings* and the bindings' `<security>` element pages (pinned to dotnet/docs
+commits).
+
+**The runtime rules are data.** `schemas/wcf-client-support-<version>.json` (1.0.0),
+published beside the step's schemas, never in code. Keyed by target framework, binding,
+security mode and credential type (`None` when the mode is `None`; `*` matches any — an exact
+entry wins), with verdicts `supported`, `supported_with_caveat` or `unsupported`. Each entry
+names its sources and a basis line, and carries a `confirmation` (`unconfirmed` or
+`confirmed`, by whom, when). The sources:
+
+- **The dotnet/wcf supported-features chart**, `release-notes/SupportedFeatures-v2.1.0.md`
+  at commit `4429ddf` (2021-02-11), sha256 recorded. It is the newest chart dotnet/wcf
+  publishes, written for .NET Core 2.1 and not updated since; its Windows column is read
+  for the runtime verdict; its Linux column feeds the platform matrix (below).
+- **dotnet/wcf release notes** for what came later: BasicHttpsBinding and NetHttpsBinding
+  (v1.0.0-rc2), TransportWithMessageCredential on HTTP (v3.0.0), WSHttpBinding with the
+  WS-Federation work (v3.1.0), WS2007HttpBinding and the Federation package (v3.2.0-preview3),
+  NetNamedPipe (v6.0.0-preview1), and the package list (8.1.2) for bindings no client has.
+
+Every entry starts `unconfirmed`. **A person confirms each one before a report built on it
+goes to a client**, by editing the file in a pull request; a new matrix version is a new file,
+and the artifact records which version (and its sha256) its verdicts came from
+(`wcfClientSupport`, with the count of unconfirmed entries).
+
+`runtimeVerdict` is `unknown` — never a guess — when the binding or security could not be
+read, or the matrix has no entry (or no entries at all for the engagement's target). Its
+reasons name the entry, its basis and caveat, and say when the entry is not yet confirmed.
+The invocation's `runtimeCompatibility` is the worst environment's, with the target and matrix
+version; `outbound_invocations.runtime_verdict` / `runtime_reasons` hold it (migration
+`f3a9c6e1b245`). The target is the engagement's `target_framework`.
+
+**The platform rules are data too** (scanner, registration and artifact 1.5.0).
+`schemas/wcf-client-platform-<version>.json` (1.0.0) has the same shape, sourcing and
+confirmation flow as the runtime matrix. Entries are keyed by target framework, `linux`,
+binding, effective security mode and credential type, and the most specific match wins.
+Verdicts are `compatible`, `requires_change` or `incompatible`. Every entry that is not
+`compatible` carries a `fix`: what must change, and who changes it:
+
+- `we`: the calling application, inside this migration;
+- `backend_owner`: the service's owner;
+- `we_or_backend_owner`: either, not yet known which.
+
+The effective credential is the declared one, or else the binding's default, as for the
+runtime matrix. Sources: the chart's Linux column, the v1.0.0-rc2 release notes (Windows
+stream security on other operating systems works with Kerberos, given GSSAPI), v2.0.0
+(Windows authentication on HTTP on Linux), v6.2.0, and the 8.1.2 package list for bindings no
+client has. Each environment binding records the entry it was judged by
+(`platformMatrixEntry`), and the artifact stamps the matrix version and sha256
+(`wcfClientSupport.platformMatrixVersion`, `platformSha256`).
+
+**NetTcp.** C6's flat rule, "netTcpBinding is incompatible on Linux", was wrong. The chart
+lists NetTcpBinding, TCP transport and certificate client credentials as supported on Linux.
+What needs configuring is NetTcp's *default* transport credential: `Windows` negotiates
+Kerberos. `net10.0/linux/netTcpBinding/*/*` is `compatible`.
+`net10.0/linux/netTcpBinding/*/Windows` (and the HTTP bindings' `*/Windows`) is
+`requires_change`, with the fix `we_or_backend_owner`, "Kerberos configuration on our side,
+or a credential change by the backend's owner". Kerberos is configured on the calling side:
+a Kerberos client and GSSAPI in the image, a `krb5.conf` for the domain, and credentials or a
+keytab for the calling identity. So it may need nothing from the backend's owner. It is not
+counted as a required backend change until a probe in a Kerberos environment says which
+(C11). `dependency-and-context-map` lists it apart, as a possible backend change.
+
+On the WCF sample, all 13 SOAP invocations were rescanned with 1.5.0:
+
+- `FundsTransferWSSoap` (basicHttpBinding, nothing declared, so `None`) is runtime
+  `supported` in all six environments, and platform `compatible` except in DEV, whose host
+  `appsrv0341` is unqualified (`requires_change`).
+- The test client's five netTcp calls (Transport, with Certificate or None) **changed from
+  platform `incompatible` to `compatible`**: IAccountService, IFundsTransferService and
+  IOrderService (Transport/Certificate), and IProductService and IUtilityService
+  (Transport/None). All five now rest on `net10.0/linux/netTcpBinding/*/*`.
+- Every other verdict is unchanged, in both repositories.
+
+**Matrices 1.1.0** (scanner 1.5.1, artifact 1.5.0 unchanged). A new version is a new file; 1.0.0
+stays, since earlier runs cite it, and each file carries its `versionHistory`. Two changes:
+
+- **The wildcard rule** (each file's `rules`). A wildcard entry, with `*` for security mode or
+  credential type, may not assert that a call works (platform `compatible`, runtime `supported`
+  or `supported_with_caveat`) for a binding whose behaviour depends on its security mode or
+  credential. Every binding in the matrices has one, so only a specific entry can say a call
+  works. A wildcard may still say a call does not work, needs a change, or is unprobed
+  (`unknown`, whose fix is ours: probe it). A test over both files enforces it
+  (`No_wildcard_entry_asserts_that_a_call_works`). Applying it changed eleven entries:
+  - the platform matrix's ten compatible wildcards (basicHttp, basicHttps, netHttp, netHttps,
+    netTcp, webHttp, ws2007FederationHttp, ws2007Http, wsFederationHttp, wsHttp `*/*`) became
+    `unknown`, unprobed;
+  - the runtime matrix's `customBinding/*/*` (`supported_with_caveat`) became `unknown`.
+
+  Four specific platform entries carry the passing probes the wildcards held:
+  `basicHttpBinding/None/None`, `basicHttpBinding/Transport/None`,
+  `netTcpBinding/Transport/None` and `netTcpBinding/Transport/Certificate`.
+- **Reviewer decisions, Rohit Khanna, 2026-10-12.**
+  - `net10.0/linux/wsHttpBinding/*/*` (compatible) is replaced:
+    `…/wsHttpBinding/TransportWithMessageCredential/Certificate` is `incompatible` on the
+    probe's evidence (C11), and records the exception, the same binary passing on Windows, and
+    `revision` (who, when, what it replaces). Every other wsHttp mode and credential is
+    unprobed (`unknown`), not assumed compatible.
+  - Confirmations, each recorded against a decision that names its entries (below):
+    - `RK-2026-10-12-a`: the four specific platform entries whose probes passed, and the
+      revised wsHttp `incompatible` entry;
+    - `RK-2026-10-12-b`: the five runtime entries basicHttpBinding None/None and
+      Transport/None, netTcpBinding Transport/None and Transport/Certificate (each
+      `supported`), and wsHttpBinding TransportWithMessageCredential/Certificate
+      (`supported_with_caveat`: the same binary passes on Windows, and the Linux failure is
+      recorded on the platform entry).
+
+    That is all ten entries the WCF sample's report rests on, so it is `readyForClient`.
+
+**A confirmation records a person's decision; the tool never extends it.** Each matrix file
+keeps the `decisions` its confirmations rest on: `id`, `by`, `on`, the `instruction` verbatim,
+and the `entries` it names by id. `wcf_matrix.record_decision` is the only writer of a
+confirmation. It confirms exactly the named entries, refuses a decision that names none or
+lacks a person, date or instruction, and refuses ids no matrix has. A confirmed entry records
+its `decision`. `wcf_matrix.confirmation_violations` lists any confirmed entry no recorded
+decision names, and a test holds every matrix file to zero (`tests/test_wcf_confirmations.py`).
+A confirmation that loses its basis is reverted with `revert_confirmation`, which keeps what
+was reverted and why. On 2026-10-12, the five runtime confirmations were reverted for this
+reason: four had rested on "confirm the four entries whose probes passed", which named no
+entry, so the tool had chosen which four, and Rohit's decision did not name the fifth. They
+were then confirmed again under `RK-2026-10-12-b`, which names all five.
+
+On the WCF sample, the rescan with 1.5.1 changed one verdict of 13 invocations:
+IAccountService over wsHttp TransportWithMessageCredential/Certificate, platform `compatible`
+→ `incompatible`. Its host, `localhost@wcf`, is the one host needing a backend change: a
+service inside this migration (wcf), whose owner is this programme.
+
+### C11. Probes: evidence on the matrix entries
+
+A matrix entry is a reading of documents. A probe adds evidence: a minimal .NET 10 WCF client
+(`probes/WcfClientProbe`: System.ServiceModel.* 8.1.2) runs in a Linux container
+(`mcr.microsoft.com/dotnet/runtime:10.0`, pinned by digest). It calls a real service using one
+binding, security mode and credential type, and the outcome is recorded on every entry it bears
+on, in both matrices. A probe never changes a verdict or a confirmation: **a person still
+confirms each entry**, now with the probe result in front of them.
+
+```powershell
+cd backend
+.venv\Scripts\Activate.ps1
+python -m app.estate.wcf_probe --plan runs\probes\probe-plan.json --make-certificates
+```
+
+- **Certificates are files, never a certificate store.** `--make-certificates` has
+  `WcfClientProbe make-certificates` write `server.pfx`/`server.cer` (CN=localhost),
+  `client.pfx`/`client.cer` and `pfx.password` to the plan's scratch folder
+  (`backend/runs/probes/certs`, gitignored). The client pins the server by the thumbprint of
+  `server.cer`, and the services pin the client by `client.cer`. Nothing is imported into, or
+  read from, CurrentUser or LocalMachine. Keys loaded from a `.pfx` live in a temporary key
+  container that goes away with the process. No trust setting, http.sys binding or URL
+  reservation is made, and no admin rights are needed.
+- **The plan** (`probes/probe-plan.example.json`, copied to `backend/runs/probes/`) names each
+  scenario's service address, whether it pins the server certificate, and whether it presents
+  the client certificate.
+- **The services** are the WCF sample's and wcf-backend's, run from copies under
+  `backend/runs/probes/wcf-sample`, never the registered repositories:
+  - FundsTransferWS under IIS Express (`Start-FundsTransferWS.ps1`): plain HTTP, no
+    certificate;
+  - `probes/Start-ProbeServices.ps1` builds and runs `probes/ProbeServices`. On .NET Framework,
+    it hosts the sample's own `UtilityService` and `AccountService` (loaded by path) on the
+    sample's bindings: Catalog.Host's netTcp (8101 Transport/None, 8202 Transport/Certificate)
+    and Hosting.Iis's HTTPS (basicHttp Transport/None, wsHttp
+    TransportWithMessageCredential/Certificate).
+  - **HTTPS without a store.** .NET Framework WCF serves HTTP only through http.sys, which
+    takes its certificate from LocalMachine, and WCF's hosted activation under IIS Express
+    needs full IIS. So the HTTP services listen on plain `http://localhost:8601`, behind a
+    TLS terminator on 44301 that uses the certificate file. wsHttp's security element sets
+    `AllowInsecureTransport`, the standard SSL-offload arrangement. The client sees HTTPS
+    to `https://localhost:44301`, and its messages are unchanged.
+- **A service on the host** is addressed as `localhost`, the name its certificate carries.
+  The probe's TCP relay forwards it to `host.docker.internal` byte for byte.
+- **Evidence, bound to versions.** Each run writes `probes/evidence/<utc>-<scenario>-<where>.json`
+  (the command without secrets, the image digest, the pinned server thumbprint, the full
+  result) and records its sha256 in the probe record: `probedOn`, `scenario`, `where`,
+  `outcome`, `summary`, `service`, `address`, `client`, `evidence` and `sha256`. It also records
+  **`covers`**, the WCF client package version (read from the probe's project, and checked
+  against the assembly that ran) and the .NET runtime it ran against. An entry shows what its
+  evidence covers: the newest WCF client among its probes, and the runtimes. The SOAP report
+  flags an entry whose evidence covers an older WCF client than the engagement targets: the
+  engagement's `target_wcf_client_version` (estate settings), or else the version the matrices
+  record for its target framework (`targets.<framework>.wcfClientVersion`). The report stays a
+  draft until it is re-probed.
+- **Controls.** When a Linux probe fails, two controls attribute it:
+  - the same scenario with the System.Security.Cryptography.Xml that WCF brings by itself
+    (the probe pins 10.0.12; WCF 8.1.2 brings 8.0.x, which has high-severity advisories);
+  - the same client binary on the Windows host.
+
+  A Linux failure that passes on Windows is `attribution: platform`. It contradicts the
+  platform entry, not the runtime one.
+- **Contradictions are under review.** Where an entry's latest probe for a scenario disagrees
+  with its verdict (a failure where it says the call works, a pass where it says it does not),
+  the entry is under review until a reviewer revises it. Every verdict resting on it reads
+  "contradicted by probe — under review", never its unrevised verdict, which is kept as
+  `unrevisedVerdict` for the reviewer. The changes it implied are withdrawn, and every total
+  counts it apart: the SOAP report's summary and host chips, the CSV, and the endpoint
+  register (`underReview`, which stops its fix from counting as a backend change). The register
+  reads contradictions when it runs, and the report reads them live.
+- **Not probed, and an open item.** Windows-credential NetTcp needs a Kerberos environment: a
+  KDC, an SPN, and a keytab or ticket for the caller. None is available, so its entries
+  (`net10.0/netTcpBinding/Transport/Windows`, `net10.0/linux/netTcpBinding/*/Windows`) record
+  `outcome: not_probed`, "needs Kerberos", rather than a guess. Each carries an `openItem`:
+
+  > **Onboarding task — needs the client's identity team.** Probe it in the client's
+  > environment: from a Linux container holding a keytab for a test identity, call a
+  > non-production NetTcp service that uses Windows credentials. The identity team provides a
+  > service principal name for the service, a keytab for the caller, and the domain's
+  > `krb5.conf`. Until then, the fix stays "Kerberos configuration on our side, or a
+  > credential change by the backend's owner".
+
+  If no Linux container runtime is available, the probe stops and says so, and records nothing.
+
+The probes of 2026-10-12, rerun from file-based certificates, used Ubuntu 24.04.5, .NET 10.0.12
+and WCF client 8.1.2, with the image digest `sha256:b89586dc…`:
+
+| Entry the report relies on (runtime / platform) | Scenario and service | Result |
+|---|---|---|
+| `net10.0/basicHttpBinding/None/None` / `…/linux/basicHttpBinding/None/None` | `basicHttp-None-None`, wcf-backend FundsTransferWS (ASMX) | passed |
+| `net10.0/basicHttpBinding/Transport/None` / `…/linux/basicHttpBinding/Transport/None` | `basicHttp-Transport-None`, UtilityService over HTTPS | passed |
+| `net10.0/netTcpBinding/Transport/None` / `…/linux/netTcpBinding/Transport/None` | `netTcp-Transport-None`, UtilityService | passed |
+| `net10.0/netTcpBinding/Transport/Certificate` / `…/linux/netTcpBinding/Transport/Certificate` | `netTcp-Transport-Certificate`, AccountService (mutual TLS) | passed |
+| `net10.0/wsHttpBinding/TransportWithMessageCredential/Certificate` / `…/linux/wsHttpBinding/TransportWithMessageCredential/Certificate` | `wsHttp-TransportWithMessageCredential-Certificate`, AccountService over HTTPS | **failed on Linux**; passed on Windows with the same binary |
+| `net10.0/netTcpBinding/Transport/Windows` / `…/linux/netTcpBinding/*/Windows` | — | not probed: needs Kerberos (open item) |
+
+The wsHttp failure is the client's, on Linux, before anything is sent. Signing the message
+with the client certificate throws `UriFormatException` inside XML canonicalization
+(`XmlTextReaderImpl.ConvertAbsoluteUnixPathToAbsoluteUri`, called from
+`ExcCanonicalXml` / `SignedXml.ComputeSignature`). It fails the same way with
+System.Security.Cryptography.Xml 10.0.12 and 8.0.10. The first run contradicted 1.0.0's
+`net10.0/linux/wsHttpBinding/*/*` (compatible); the reviewer's revision is matrices 1.1.0's
+specific `incompatible` entry (C10).
+
 ---
 
 ## Part D — UI
@@ -871,7 +1148,12 @@ per-repository.
 **`outbound-invocation-inventory`**
 - [ ] SOAP clients record binding and security mode from config, code, or a generated
       `Reference.cs`
-- [ ] A NetTcp client is `incompatible`; a BasicHttp client is `compatible`
+- [ ] A SOAP client's platform verdict comes from the platform matrix by binding, effective
+      security mode and credential: NetTcp Transport with a certificate is `compatible`, NetTcp
+      on its default Windows credential `requires_change`, a named pipe `incompatible`
+- [ ] No wildcard matrix entry asserts that a call works; only a specific entry can
+- [ ] Probes use certificates from files only, and record the WCF client and runtime they ran
+      against; a contradicted entry is shown and counted as under review
 - [ ] Endpoints normalise: host lowercased, userinfo, query and fragment stripped
 - [ ] One logical endpoint across environment files is one invocation with several
       environment bindings

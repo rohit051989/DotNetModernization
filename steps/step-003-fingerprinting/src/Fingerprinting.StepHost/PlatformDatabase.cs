@@ -23,6 +23,18 @@ public sealed class PlatformDatabase(string connectionString)
         return (string?)await command.ExecuteScalarAsync(cancellationToken);
     }
 
+    /// <summary>The repository's engagement's target framework
+    /// (engagements.target_framework); null when it has none.</summary>
+    public async Task<string?> GetTargetFrameworkAsync(Guid repositoryId, CancellationToken cancellationToken)
+    {
+        await using var connection = new NpgsqlConnection(ConnectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var command = new NpgsqlCommand(
+            "SELECT e.target_framework FROM repositories r JOIN engagements e ON e.id = r.engagement_id WHERE r.id = @rid", connection);
+        command.Parameters.AddWithValue("rid", repositoryId);
+        return await command.ExecuteScalarAsync(cancellationToken) as string;
+    }
+
     /// <summary>The repository's engagement's SetParameters globs
     /// (engagements.deploy_parameter_globs) — steps 3 and 5. Empty when none
     /// are set, which means <c>DeployParameterFiles.DefaultGlobs</c>.</summary>

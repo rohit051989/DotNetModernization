@@ -1,0 +1,299 @@
+{
+  "artifact_type": "solution-project-inventory",
+  "artifact_version": "2.1.0",
+  "parse_warnings": [],
+  "project_references": [
+    {
+      "is_cross_solution": false,
+      "raw_path": "..\\Catalog.Contracts\\Catalog.Contracts.csproj",
+      "referenced_relative_path": "src/Catalog.Contracts/Catalog.Contracts.csproj",
+      "resolution_status": "resolved",
+      "source_relative_path": "src/Catalog.Host/Catalog.Host.csproj"
+    },
+    {
+      "is_cross_solution": false,
+      "raw_path": "..\\Catalog.Services\\Catalog.Services.csproj",
+      "referenced_relative_path": "src/Catalog.Services/Catalog.Services.csproj",
+      "resolution_status": "resolved",
+      "source_relative_path": "src/Catalog.Host/Catalog.Host.csproj"
+    },
+    {
+      "is_cross_solution": false,
+      "raw_path": "..\\Catalog.Contracts\\Catalog.Contracts.csproj",
+      "referenced_relative_path": "src/Catalog.Contracts/Catalog.Contracts.csproj",
+      "resolution_status": "resolved",
+      "source_relative_path": "src/Catalog.Services/Catalog.Services.csproj"
+    },
+    {
+      "is_cross_solution": false,
+      "raw_path": "..\\Catalog.Contracts\\Catalog.Contracts.csproj",
+      "referenced_relative_path": "src/Catalog.Contracts/Catalog.Contracts.csproj",
+      "resolution_status": "resolved",
+      "source_relative_path": "src/Catalog.TestClient/Catalog.TestClient.csproj"
+    }
+  ],
+  "projects": [
+    {
+      "assembly_name": "WcfCatalog.Contracts",
+      "extension": ".csproj",
+      "framework_family": "net-framework",
+      "framework_version": "4.7.2",
+      "has_packages_config": false,
+      "is_multi_targeting": false,
+      "is_standalone": false,
+      "language": "csharp",
+      "name": "Catalog.Contracts",
+      "output_type": "Library",
+      "output_type_source": "sdk_default",
+      "package_management_style": "none",
+      "package_reference_count": 0,
+      "packages": [],
+      "parse_status": "success",
+      "parse_warnings": [],
+      "project_format": "sdk_style",
+      "project_reference_count": 0,
+      "project_sdk": "Microsoft.NET.Sdk",
+      "relative_path": "src/Catalog.Contracts/Catalog.Contracts.csproj",
+      "root_namespace": "WcfCatalog.Contracts",
+      "solution_membership_count": 1,
+      "structural_type": "csharp_project",
+      "target_framework_raw": "net472",
+      "target_framework_source": "project",
+      "target_frameworks_raw": [
+        "net472"
+      ]
+    },
+    {
+      "assembly_name": "WcfCatalog.Host",
+      "extension": ".csproj",
+      "framework_family": "net-framework",
+      "framework_version": "4.7.2",
+      "has_packages_config": false,
+      "is_multi_targeting": false,
+      "is_standalone": false,
+      "language": "csharp",
+      "name": "Catalog.Host",
+      "output_type": "Exe",
+      "output_type_source": "project",
+      "package_management_style": "none",
+      "package_reference_count": 0,
+      "packages": [],
+      "parse_status": "success",
+      "parse_warnings": [],
+      "project_format": "sdk_style",
+      "project_reference_count": 2,
+      "project_sdk": "Microsoft.NET.Sdk",
+      "relative_path": "src/Catalog.Host/Catalog.Host.csproj",
+      "root_namespace": "WcfCatalog.Host",
+      "solution_membership_count": 1,
+      "structural_type": "csharp_project",
+      "target_framework_raw": "net472",
+      "target_framework_source": "project",
+      "target_frameworks_raw": [
+        "net472"
+      ]
+    },
+    {
+      "assembly_name": "WcfCatalog.Services",
+      "extension": ".csproj",
+      "framework_family": "net-framework",
+      "framework_version": "4.7.2",
+      "has_packages_config": false,
+      "is_multi_targeting": false,
+      "is_standalone": false,
+      "language": "csharp",
+      "name": "Catalog.Services",
+      "output_type": "Library",
+      "output_type_source": "sdk_default",
+      "package_management_style": "none",
+      "package_reference_count": 0,
+      "packages": [],
+      "parse_status": "success",
+      "parse_warnings": [],
+      "project_format": "sdk_style",
+      "project_reference_count": 1,
+      "project_sdk": "Microsoft.NET.Sdk",
+      "relative_path": "src/Catalog.Services/Catalog.Services.csproj",
+      "root_namespace": "WcfCatalog.Services",
+      "solution_membership_count": 1,
+      "structural_type": "csharp_project",
+      "target_framework_raw": "net472",
+      "target_framework_source": "project",
+      "target_frameworks_raw": [
+        "net472"
+      ]
+    },
+    {
+      "assembly_name": "WcfCatalog.TestClient",
+      "extension": ".csproj",
+      "framework_family": "net-framework",
+      "framework_version": "4.7.2",
+      "has_packages_config": false,
+      "is_multi_targeting": false,
+      "is_standalone": false,
+      "language": "csharp",
+      "name": "Catalog.TestClient",
+      "output_type": "Exe",
+      "output_type_source": "project",
+      "package_management_style": "none",
+      "package_reference_count": 0,
+      "packages": [],
+      "parse_status": "success",
+      "parse_warnings": [],
+      "project_format": "sdk_style",
+      "project_reference_count": 1,
+      "project_sdk": "Microsoft.NET.Sdk",
+      "relative_path": "src/Catalog.TestClient/Catalog.TestClient.csproj",
+      "root_namespace": "WcfCatalog.TestClient",
+      "solution_membership_count": 1,
+      "structural_type": "csharp_project",
+      "target_framework_raw": "net472",
+      "target_framework_source": "project",
+      "target_frameworks_raw": [
+        "net472"
+      ]
+    }
+  ],
+  "repository_artifacts": [
+    {
+      "category": "documentation",
+      "file_name": "copilot-instructions.md",
+      "relative_path": ".github/copilot-instructions.md"
+    },
+    {
+      "category": "documentation",
+      "file_name": "MODERNIZATION-NET10-REST.md",
+      "relative_path": "MODERNIZATION-NET10-REST.md"
+    },
+    {
+      "category": "documentation",
+      "file_name": "README.md",
+      "relative_path": "README.md"
+    },
+    {
+      "category": "build",
+      "file_name": "WcfCatalog.sln",
+      "relative_path": "WcfCatalog.sln"
+    },
+    {
+      "category": "configuration",
+      "file_name": "nuget_hv2.config",
+      "relative_path": "config/nuget_hv2.config"
+    },
+    {
+      "category": "script",
+      "file_name": "Apply-SetParam.ps1",
+      "relative_path": "scripts/Apply-SetParam.ps1"
+    },
+    {
+      "category": "script",
+      "file_name": "New-DevCertificates.ps1",
+      "relative_path": "scripts/New-DevCertificates.ps1"
+    },
+    {
+      "category": "script",
+      "file_name": "Remove-AdminHttpBindings.ps1",
+      "relative_path": "scripts/Remove-AdminHttpBindings.ps1"
+    },
+    {
+      "category": "script",
+      "file_name": "Setup-AdminHttpBindings.ps1",
+      "relative_path": "scripts/Setup-AdminHttpBindings.ps1"
+    },
+    {
+      "category": "configuration",
+      "file_name": "App.config",
+      "relative_path": "src/Catalog.Host/App.config"
+    },
+    {
+      "category": "configuration",
+      "file_name": "App.config",
+      "relative_path": "src/Catalog.TestClient/App.config"
+    },
+    {
+      "category": "documentation",
+      "file_name": "README.md",
+      "relative_path": "src/Hosting.Iis/README.md"
+    },
+    {
+      "category": "configuration",
+      "file_name": "Web.config",
+      "relative_path": "src/Hosting.Iis/Web.config"
+    }
+  ],
+  "repository_id": "5e96731f-5bff-4077-adbf-417636507c21",
+  "repository_slug": "wcf",
+  "scan_status": "complete",
+  "solutions": [
+    {
+      "format_version": "12.00",
+      "minimum_vs_version": "10.0.40219.1",
+      "missing_project_count": 0,
+      "name": "WcfCatalog",
+      "parse_error": null,
+      "parse_status": "success",
+      "project_count": 4,
+      "projects": [
+        {
+          "project_guid": "7B5F5660-34A2-414C-9E24-CDD2BF19B660",
+          "project_type_guid": "FAE04EC0-301F-11D3-BF4B-00C04F79EFBC",
+          "raw_path": "src\\Catalog.Contracts\\Catalog.Contracts.csproj",
+          "relative_path": "src/Catalog.Contracts/Catalog.Contracts.csproj",
+          "resolution_status": "resolved",
+          "solution_folder": "src"
+        },
+        {
+          "project_guid": "8337C8B2-6F1D-43FB-889E-FD342661F7D4",
+          "project_type_guid": "FAE04EC0-301F-11D3-BF4B-00C04F79EFBC",
+          "raw_path": "src\\Catalog.Host\\Catalog.Host.csproj",
+          "relative_path": "src/Catalog.Host/Catalog.Host.csproj",
+          "resolution_status": "resolved",
+          "solution_folder": "src"
+        },
+        {
+          "project_guid": "3E22787B-F78F-4910-B68F-953A6248487A",
+          "project_type_guid": "FAE04EC0-301F-11D3-BF4B-00C04F79EFBC",
+          "raw_path": "src\\Catalog.Services\\Catalog.Services.csproj",
+          "relative_path": "src/Catalog.Services/Catalog.Services.csproj",
+          "resolution_status": "resolved",
+          "solution_folder": "src"
+        },
+        {
+          "project_guid": "F2071968-4950-4306-BBEC-2ECA4970BFC2",
+          "project_type_guid": "FAE04EC0-301F-11D3-BF4B-00C04F79EFBC",
+          "raw_path": "src\\Catalog.TestClient\\Catalog.TestClient.csproj",
+          "relative_path": "src/Catalog.TestClient/Catalog.TestClient.csproj",
+          "resolution_status": "resolved",
+          "solution_folder": "src"
+        }
+      ],
+      "relative_path": "WcfCatalog.sln",
+      "resolved_project_count": 4,
+      "shared_project_count": 0,
+      "solution_folder_count": 1,
+      "visual_studio_version": "17.0.31903.59"
+    }
+  ],
+  "summary": {
+    "artifact_counts": {
+      "build": 1,
+      "configuration": 4,
+      "documentation": 4,
+      "script": 4
+    },
+    "failed_parse_count": 0,
+    "framework_families": {
+      "net-framework": 4
+    },
+    "legacy_project_count": 0,
+    "out_of_scope_project_count": 0,
+    "project_file_count": 4,
+    "projects_referenced_count": 4,
+    "sdk_project_count": 4,
+    "shared_project_count": 0,
+    "solution_count": 1,
+    "standalone_project_count": 0,
+    "unknown_project_count": 0,
+    "unresolved_reference_count": 0
+  }
+}

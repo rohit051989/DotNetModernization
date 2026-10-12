@@ -85,6 +85,7 @@ public sealed partial class PackageLookup(ILookupCache cache, string packageCach
                         .Distinct(StringComparer.OrdinalIgnoreCase)
                         .Order(StringComparer.OrdinalIgnoreCase)
                         .ToList(),
+                    Dependencies = CachedDependencyGroup.From(item.DependencySets),
                     Deprecation = deprecation is null
                         ? null
                         : new CachedDeprecation
@@ -180,6 +181,29 @@ public sealed partial class PackageLookup(ILookupCache cache, string packageCach
         entry = cache.Get(entry.FeedUrl, entry.PackageId) ?? entry;
         cache.Put(entry with { Versions = entry.Versions.Select(v => v.Version == version.Version ? v with { Kind = kind } : v).ToList() });
         return kind;
+    }
+
+    /// <summary>
+    /// One version's nuspec dependency groups. Read from feed metadata when
+    /// the entry was fetched; for an entry cached before dependencies were
+    /// recorded, from the nupkg's nuspec, once, and remembered in the cache.
+    /// Null when the package cannot be downloaded.
+    /// </summary>
+    public async Task<IReadOnlyList<CachedDependencyGroup>?> DependenciesAsync(Feed feed, CacheEntry entry, CachedVersion version, CancellationToken ct)
+    {
+        if (version.Dependencies is not null) return version.Dependencies;
+        var path = await DownloadAsync(feed, entry.PackageId, version.Version, ct);
+        if (path is null) return null;
+
+        IReadOnlyList<CachedDependencyGroup> groups;
+        using (var reader = new PackageArchiveReader(path))
+        {
+            groups = CachedDependencyGroup.From(reader.GetPackageDependencies());
+        }
+
+        entry = cache.Get(entry.FeedUrl, entry.PackageId) ?? entry;
+        cache.Put(entry with { Versions = entry.Versions.Select(v => v.Version == version.Version ? v with { Dependencies = groups } : v).ToList() });
+        return groups;
     }
 
     /// <summary>The package file, downloaded once into the cache folder —

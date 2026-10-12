@@ -1,17 +1,26 @@
-"""The Estate tab's API — lifecycle step 11, 31-DEPENDENCY-AND-CONTEXT-MAP.md Part H.
+"""The Estate tab's API — lifecycle step dependency-and-context-map, 31-DEPENDENCY-AND-CONTEXT-MAP.md Part H.
 
-The register, package estate, dependency graph, context map and integration
-map are read from the newest completed run's artifacts, so a view is always one
-consistent snapshot with its coverage. Endpoint annotations and the estate
-settings (the production environment) are human data, read and written here
-live; they take effect on the next run.
+The register, package estate, dependency graph, context map, integration
+map and SOAP backend compatibility report are read from the newest completed
+run's artifacts, so a view is always one consistent snapshot with its
+coverage. Endpoint annotations and the estate settings (the production
+environment) are human data, read and written here live; they take effect on
+the next run. The SOAP report's matrix confirmations are read live too, from
+the WCF client runtime and platform matrix files (Part J), with the probe
+results recorded on their entries: a person confirms an entry there, by pull
+request, and the report stops being a draft once every entry it rests on is
+confirmed and no probe contradicts one.
 """
+
+import csv
+import io
 
 import datetime
 import json
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends
+from fastapi.responses import Response
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -19,12 +28,14 @@ from sqlalchemy.orm import Session
 from app import models
 from app.db import get_db
 from app.errors import ErrorResponse, error
+from app.estate import soap_compatibility, wcf_matrix
 from app.workflow.adapters.base import local_path_from_uri
 
 router = APIRouter(prefix="/api/engagements", tags=["Estate"])
 
 STEP_NAME = "dependency-and-context-map"
-ARTIFACT_TYPES = ("endpoint-register", "package-estate", "dependency-graph", "context-map", "integration-map")
+ARTIFACT_TYPES = ("endpoint-register", "package-estate", "dependency-graph", "context-map", "integration-map",
+                  "soap-backend-compatibility")
 ConversationStatus = Literal["not_started", "in_progress", "agreed", "resolved", "not_required"]
 
 _NOT_FOUND = {"model": ErrorResponse, "description": "No engagement exists with this id."}
@@ -70,10 +81,19 @@ class EstateSettingsIn(BaseModel):
         description="Where Web Deploy SetParameters files are, as repository-relative globs (steps 3 and 5). "
         "Null or empty: the defaults, **/SetParam*.xml and **/SetParameters*.xml. Takes effect on the next scan.",
     )
+    target_wcf_client_version: str | None = Field(
+        default=None,
+        pattern=r"^[0-9]+(\.[0-9]+){1,3}(-[0-9A-Za-z.-]+)?$",
+        description="The WCF client package version (System.ServiceModel.*) the engagement targets, e.g. 8.1.2. The SOAP "
+        "report flags matrix entries whose probe evidence covers an older one. Null: the version the WCF client matrices "
+        "record for the target framework. Takes effect at once.",
+    )
 
 
 class EstateSettingsOut(BaseModel):
     production_environment: str | None
+    target_wcf_client_version: str | None = Field(description="As set; null means the matrices' version for the target framework.")
+    target_wcf_client_version_effective: str | None = Field(description="The version in force: as set, else the matrices'.")
     deploy_parameter_globs: list[str] = Field(description="The globs in force — the defaults when none are set.")
     deploy_parameter_globs_default: bool = Field(description="True when no globs are set and the defaults apply.")
     environments: list[str] = Field(description="Every environment step 5 found in the estate's configuration, for choosing.")
@@ -127,10 +147,120 @@ def _settings_out(db: Session, engagement: models.Engagement, slugs: dict) -> Es
         cross join lateral jsonb_array_elements(o.environment_bindings) b
         where r.engagement_id = :e and r.deleted_at is null and b->>'environment' is not null
     """), {"e": engagement.id}).scalars().all()
+    effective = engagement.target_wcf_client_version or wcf_matrix.target_wcf_client(
+        soap_compatibility.load_matrix(), engagement.target_framework)
     return EstateSettingsOut(production_environment=engagement.production_environment,
+                             target_wcf_client_version=engagement.target_wcf_client_version,
+                             target_wcf_client_version_effective=effective,
                              deploy_parameter_globs=engagement.deploy_parameter_globs or DEFAULT_DEPLOY_PARAMETER_GLOBS,
                              deploy_parameter_globs_default=not engagement.deploy_parameter_globs,
                              environments=sorted(environments, key=str.lower), repositories=sorted(slugs.values()))
+
+
+def _latest_run(db: Session, engagement_id: str) -> tuple[Any, dict[str, Any]]:
+    """The newest completed step 11 run of the engagement, and its artifacts."""
+    row = db.execute(text("""
+        select s.id, s.job_execution_id, s.ended_at, s.exit_message
+        from wf_step_executions s
+        join wf_job_executions j on j.id = s.job_execution_id
+        join wf_job_instances i on i.id = j.job_instance_id
+        where s.step_name = :step and i.parameters->>'engagement_id' = :e
+          and s.batch_status = 'COMPLETED' and s.exit_status = 'COMPLETED' and not s.carried_forward
+        order by s.ended_at desc limit 1
+    """), {"step": STEP_NAME, "e": engagement_id}).first()
+    artifacts: dict[str, Any] = {}
+    if row is not None:
+        for artifact in db.query(models.WfArtifact).filter(models.WfArtifact.step_execution_id == row.id):
+            if artifact.artifact_type in ARTIFACT_TYPES:
+                try:
+                    artifacts[artifact.artifact_type] = json.loads(local_path_from_uri(artifact.uri).read_text(encoding="utf-8"))
+                except OSError:
+                    continue
+    return row, artifacts
+
+
+def _soap_report(report: dict, annotations: list, engagement: models.Engagement) -> dict:
+    """The run's SOAP report with what is live, read from the matrix versions
+    the run used: each matrix entry's confirmation, probe results and what its
+    evidence covers — runtime and platform alike — the matrices' provenance,
+    and each host's owning team as a person annotated it.
+
+    An entry a probe contradicts is shown as under review, never as its
+    unrevised verdict, and every total counts it apart
+    (soap_compatibility.review). An entry whose evidence covers an older WCF
+    client than the engagement targets is flagged. readyForClient only when
+    every entry the report rests on is confirmed, none is contradicted, none
+    has evidence older than the targeted WCF client, and the run used the
+    newest matrices."""
+    matrix = soap_compatibility.load_matrix(report.get("matrixVersion")) or soap_compatibility.load_matrix()
+    platform = wcf_matrix.load("platform", report.get("platformMatrixVersion")) or wcf_matrix.load("platform")
+    newest = {kind: (wcf_matrix.load(kind) or {}).get("matrixVersion") for kind in wcf_matrix.KINDS}
+    entries = {e["id"]: e for m in (matrix, platform) for e in (m or {}).get("entries", [])}
+    kinds = {e["id"]: kind for kind, m in (("support", matrix), ("platform", platform)) for e in (m or {}).get("entries", [])}
+    owners = {a.host: a.owning_team for a in annotations}
+    target_wcf = engagement.target_wcf_client_version or wcf_matrix.target_wcf_client(matrix, engagement.target_framework)
+    used, unconfirmed = set(), set()
+
+    def contradictions(entry_id: str) -> list[str]:
+        return wcf_matrix.probe_contradictions(kinds[entry_id], entries[entry_id])
+
+    def overlay(verdict: dict) -> dict:
+        entry = entries.get(verdict.get("matrixEntry") or "")
+        confirmation = (entry or {}).get("confirmation") or {}
+        if entry:
+            used.add(entry["id"])
+            if confirmation.get("status") != "confirmed":
+                unconfirmed.add(entry["id"])
+        return {**verdict, "matrixConfirmed": confirmation.get("status") == "confirmed" if entry else None,
+                "confirmedBy": confirmation.get("by"), "confirmedOn": confirmation.get("on"),
+                "sources": (entry or {}).get("sources", []), "probes": (entry or {}).get("probes", []),
+                "probeContradictions": contradictions(entry["id"]) if entry else [],
+                "evidenceCovers": wcf_matrix.evidence_covers(entry) if entry else None,
+                "evidencePredatesTarget": wcf_matrix.evidence_predates(entry, target_wcf) if entry else False}
+
+    hosts = []
+    for host in report.get("hosts", []):
+        callers = [{**caller, "environments": [{**env, "runtime": overlay(env["runtime"]), "platform": overlay(env["platform"])}
+                                               for env in caller["environments"]]}
+                   for caller in host["callers"]]
+        hosts.append({**host, "owningTeam": owners.get(host["host"]), "callers": callers})
+    contradicted = {i: contradictions(i) for i in sorted(used) if contradictions(i)}
+    hosts = soap_compatibility.review(hosts, contradicted)
+    predating = sorted(i for i in used if wcf_matrix.evidence_predates(entries[i], target_wcf))
+    unprobed = sorted(i for i in used if wcf_matrix.evidence_covers(entries[i]) is None)
+    # The versions the run recorded, not the files loaded: a run before soap-backend-compatibility 1.1.0 recorded
+    # no platform version, and is older than any.
+    stale = {kind: {"run": run, "newest": newest[kind]}
+             for kind, run in (("support", report.get("matrixVersion")), ("platform", report.get("platformMatrixVersion")))
+             if newest[kind] and (run is None or wcf_matrix.version_key(run) < wcf_matrix.version_key(newest[kind]))}
+    return {
+        **report,
+        "summary": soap_compatibility.summarize(hosts),
+        "hosts": hosts,
+        "matrix": {
+            "version": (matrix or {}).get("matrixVersion"),
+            "runVersion": report.get("matrixVersion"),
+            "platformVersion": (platform or {}).get("matrixVersion"),
+            "newerMatrices": stale,
+            "sources": (matrix or {}).get("sources", []),
+            "platformSources": (platform or {}).get("sources", []),
+            "targetWcfClientVersion": target_wcf,
+            "targetWcfClientVersionSource": "engagement" if engagement.target_wcf_client_version else "matrix",
+            "entriesUsed": sorted(used),
+            "unconfirmedEntries": sorted(unconfirmed),
+            "contradictedEntries": sorted(contradicted),
+            "evidencePredatesTarget": predating,
+            "unprobedEntries": unprobed,
+            "entries": {i: {"kind": kinds[i], "verdict": entries[i]["verdict"], "basis": entries[i]["basis"],
+                            "probes": entries[i].get("probes", []), "probeContradictions": contradicted.get(i, []),
+                            "evidenceCovers": wcf_matrix.evidence_covers(entries[i]),
+                            "evidencePredatesTarget": i in predating, "revision": entries[i].get("revision"),
+                            "confirmation": entries[i].get("confirmation")}
+                        for i in sorted(used)},
+            "readyForClient": (bool(matrix) and bool(platform) and not unconfirmed and not contradicted and not predating
+                               and not stale),
+        },
+    }
 
 
 @router.get(
@@ -143,27 +273,11 @@ def _settings_out(db: Session, engagement: models.Engagement, slugs: dict) -> Es
 )
 def get_estate(engagement_id: str, db: Session = Depends(get_db)):
     engagement = _engagement(db, engagement_id)
-    row = db.execute(text("""
-        select s.id, s.job_execution_id, s.ended_at, s.exit_message
-        from wf_step_executions s
-        join wf_job_executions j on j.id = s.job_execution_id
-        join wf_job_instances i on i.id = j.job_instance_id
-        where s.step_name = :step and i.parameters->>'engagement_id' = :e
-          and s.batch_status = 'COMPLETED' and s.exit_status = 'COMPLETED' and not s.carried_forward
-        order by s.ended_at desc limit 1
-    """), {"step": STEP_NAME, "e": engagement_id}).first()
-
-    artifacts: dict[str, Any] = {}
+    row, artifacts = _latest_run(db, engagement_id)
     run = None
     if row is not None:
         run = EstateRunOut(step_execution_id=str(row.id), job_execution_id=str(row.job_execution_id),
                            completed_at=row.ended_at, exit_message=row.exit_message)
-        for artifact in db.query(models.WfArtifact).filter(models.WfArtifact.step_execution_id == row.id):
-            if artifact.artifact_type in ARTIFACT_TYPES:
-                try:
-                    artifacts[artifact.artifact_type] = json.loads(local_path_from_uri(artifact.uri).read_text(encoding="utf-8"))
-                except OSError:
-                    continue
 
     annotations = (
         db.query(models.EndpointAnnotation)
@@ -172,6 +286,8 @@ def get_estate(engagement_id: str, db: Session = Depends(get_db)):
         .all()
     )
     slugs = _repository_slugs(db, engagement_id)
+    if "soap-backend-compatibility" in artifacts:
+        artifacts["soap-backend-compatibility"] = _soap_report(artifacts["soap-backend-compatibility"], annotations, engagement)
     return EstateOut(engagement_id=engagement_id, run=run, artifacts=artifacts,
                      annotations=[_annotation_out(a, slugs) for a in annotations], settings=_settings_out(db, engagement, slugs))
 
@@ -196,6 +312,8 @@ def put_settings(engagement_id: str, payload: EstateSettingsIn, db: Session = De
     if "deploy_parameter_globs" in payload.model_fields_set:
         globs = [g.strip() for g in payload.deploy_parameter_globs or [] if g.strip()]
         engagement.deploy_parameter_globs = globs or None
+    if "target_wcf_client_version" in payload.model_fields_set:
+        engagement.target_wcf_client_version = (payload.target_wcf_client_version or "").strip() or None
     engagement.updated_at = datetime.datetime.now(datetime.timezone.utc)
     db.commit()
     db.refresh(engagement)
@@ -236,3 +354,101 @@ def put_annotation(engagement_id: str, host: str, payload: AnnotationIn, db: Ses
     db.commit()
     db.refresh(annotation)
     return _annotation_out(annotation, slugs)
+
+
+SOAP_CSV_COLUMNS = (
+    "backend_host", "backend_owner", "owning_team", "served_by", "calling_application", "project", "contract", "environment",
+    "address", "binding", "security_mode", "credential_type", "security_source", "runtime_verdict", "runtime_reasons",
+    "matrix_entry", "matrix_entry_confirmed", "platform_verdict", "platform_reasons", "platform_matrix_entry",
+    "platform_matrix_entry_confirmed", "probe_results", "probe_contradictions", "evidence_covers", "evidence_predates_target",
+    "what_must_change", "who_changes_it",
+    "target_framework", "matrix_version", "matrix_source",
+)
+WHO = {"we": "this migration (calling application)", "backend_owner": "backend owner",
+       "we_or_backend_owner": "this migration or the backend owner (not yet known which)"}
+CONFIRMED = {True: "yes", False: "NO - awaiting confirmation", None: ""}
+UNDER_REVIEW_TEXT = "contradicted by probe - under review"
+
+
+def _verdict_text(verdict: str | None) -> str:
+    return UNDER_REVIEW_TEXT if verdict == soap_compatibility.UNDER_REVIEW else verdict or ""
+
+
+def _covers_text(env: dict) -> str:
+    parts = []
+    for side in ("runtime", "platform"):
+        covers = env[side].get("evidenceCovers")
+        if covers:
+            parts.append(f"{side}: WCF client {covers['wcfClient']} on .NET {', '.join(covers['runtimes'])}")
+    return " | ".join(parts)
+
+
+def _probe_results(env: dict) -> str:
+    """The probes behind both of an environment's entries, once each: a probe
+    is recorded on its runtime and its platform entry alike."""
+    seen, results = set(), []
+    for probe in env["runtime"].get("probes", []) + env["platform"].get("probes", []):
+        key = probe.get("evidence") or probe.get("reason")
+        if key in seen:
+            continue
+        seen.add(key)
+        if probe.get("outcome") == "not_probed":
+            results.append(f"not probed: {probe.get('reason')}")
+        else:
+            attribution = f", attributed to the {probe['attribution']}" if probe.get("attribution") else ""
+            results.append(f"{probe.get('scenario')} on {probe.get('probedOn')}: {probe.get('outcome')}{attribution} - {probe.get('summary')}")
+    return " | ".join(results)
+
+
+def soap_csv(report: dict, target_framework: str | None) -> str:
+    """The client-facing export: one row per backend host, calling application
+    and environment, each carrying its provenance."""
+    chart = next((src for src in report["matrix"]["sources"] if src["id"].startswith("chart-")), {})
+    source = f"{chart.get('title', '')} {chart.get('version', '')} ({chart.get('url', '')})".strip()
+    buffer = io.StringIO()
+    writer = csv.writer(buffer, lineterminator="\r\n")
+    writer.writerow(SOAP_CSV_COLUMNS)
+    for host in report["hosts"]:
+        owner = f"this migration ({', '.join(host['servedBy'])})" if host["backendOwner"] == "this_migration" else "another team"
+        for caller in host["callers"]:
+            for env in caller["environments"]:
+                changes = env["changes"] or [{"who": "", "change": UNDER_REVIEW_TEXT if env.get("underReview") else "no change"}]
+                writer.writerow([
+                    host["host"], owner, host.get("owningTeam") or "", ", ".join(host["servedBy"]), caller["application"],
+                    caller["projectPath"], caller.get("contract") or "", env["environment"], env.get("address") or "",
+                    env.get("binding") or "", env.get("securityMode") or "", env.get("credentialType") or "",
+                    env.get("securitySource") or "", _verdict_text(env["runtime"]["verdict"]), " | ".join(env["runtime"]["reasons"]),
+                    env["runtime"].get("matrixEntry") or "", CONFIRMED[env["runtime"].get("matrixConfirmed")],
+                    _verdict_text(env["platform"]["verdict"]), " | ".join(env["platform"]["reasons"]),
+                    env["platform"].get("matrixEntry") or "", CONFIRMED[env["platform"].get("matrixConfirmed")],
+                    _probe_results(env),
+                    " | ".join(env["runtime"].get("probeContradictions", []) + env["platform"].get("probeContradictions", [])),
+                    _covers_text(env),
+                    "YES - re-probe" if env["runtime"].get("evidencePredatesTarget") or env["platform"].get("evidencePredatesTarget") else "",
+                    " | ".join(c["change"] for c in changes), " | ".join(WHO.get(c["who"], "") for c in changes),
+                    target_framework or "", report["matrix"]["version"] or "", source,
+                ])
+    return buffer.getvalue()
+
+
+@router.get(
+    "/{engagement_id}/estate/soap-compatibility.csv",
+    response_class=Response,
+    summary="Export the SOAP backend compatibility report as CSV",
+    response_description="One row per backend host, calling application and environment, with both verdicts, what must change "
+                         "and who changes it. The file name ends in -DRAFT while any matrix entry it rests on is unconfirmed, "
+                         "contradicted by a probe, or has evidence older than the targeted WCF client.",
+    operation_id="export_soap_compatibility",
+    responses={200: {"content": {"text/csv": {}}}, 404: _NOT_FOUND,
+               409: {"model": ErrorResponse, "description": "The estate has not been consolidated with the SOAP report yet."}},
+)
+def export_soap_compatibility(engagement_id: str, db: Session = Depends(get_db)):
+    engagement = _engagement(db, engagement_id)
+    _, artifacts = _latest_run(db, engagement_id)
+    if "soap-backend-compatibility" not in artifacts:
+        raise error(409, "No SOAP backend compatibility report yet: run the estate consolidation.", code="NOT_RUN")
+    annotations = db.query(models.EndpointAnnotation).filter(models.EndpointAnnotation.engagement_id == engagement_id).all()
+    report = _soap_report(artifacts["soap-backend-compatibility"], annotations, engagement)
+    draft = "" if report["matrix"]["readyForClient"] else "-DRAFT"
+    return Response(content=soap_csv(report, engagement.target_framework).encode("utf-8-sig"), media_type="text/csv",
+                    headers={"Content-Disposition": f'attachment; filename="soap-backend-compatibility-{engagement_id}{draft}.csv"'})

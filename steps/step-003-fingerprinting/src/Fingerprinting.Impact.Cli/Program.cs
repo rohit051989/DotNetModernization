@@ -5,4 +5,4 @@ using Fingerprinting.StepHost;
 // impact-analysis reads source syntax only and never loads MSBuild.
 var stdout = StepBootstrap.Initialise(registerMsBuild: false);
 
-return await ImpactCli.RunAsync(Console.In, stdout, Console.Error);
+return await ImpactCli.RunAsync(args, Console.In, stdout, Console.Error);

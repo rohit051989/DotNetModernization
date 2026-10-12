@@ -67,6 +67,19 @@ class ImpactRulesTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             impact_rules.checked([{"id": "a", "action": "update"}], "t")
 
+    def test_project_files_needs_a_pattern_and_node_project_dir_is_a_placeholder(self):
+        self.assertTrue(any("needs a pattern" in p for p in impact_rules.validate(
+            [{"id": "cfg", "from": "seed", "traverse": "project_files", "action": "delete"}])))
+        self.assertEqual([], impact_rules.validate([
+            {"id": "c", "from": "seed", "select": "self", "action": "update"},
+            {"id": "f", "create": "x", "for_each": "c", "proposed_path": "{node.project.dir}/F.cs", "action": "create"}]))
+
+    def test_none_is_only_for_a_traversal_later_rules_build_on(self):
+        self.assertEqual([], impact_rules.validate([
+            {"id": "c", "from": "seed", "select": "self", "action": "update"},
+            {"id": "h", "from": "c", "traverse": "hosting_project", "action": "none"}]))
+        self.assertTrue(impact_rules.validate([{"id": "c", "from": "seed", "select": "self", "action": "none"}]))
+
     def test_config_elements_never_delete_a_file(self):
         problems = impact_rules.validate([{"id": "cfg", "from": "seed", "traverse": "config_elements",
                                            "path": "system.serviceModel/services", "action": "delete"}])
@@ -317,6 +330,30 @@ class EstateRuleConflictTests(ImpactFixture):
         self.assertEqual({self.repo.slug, self.other.slug}, {i.repository_slug for i in estate.rule_conflicts[0].instances})
         master = [m for m in impact_router.list_catalog_rule_conflicts(db=self.db) if m.rule_key == row.rule_key]
         self.assertEqual([TEST_ENGAGEMENT_ID], [e.engagement_id for e in master[0].engagements])
+
+    def test_the_setparam_collision_on_two_applications_is_one_catalog_rule_conflict(self):
+        """docs/28, conversion ordering: wcf-service-host's ASP.NET Core migration
+        deletes each SetParam file; hardcoded-windows-path updates it. One
+        application per repository, as on a real estate: one catalog rule
+        conflict across the two."""
+        self.db.query(models.FileImpactRollup).filter(
+            models.FileImpactRollup.repository_id.in_([self.repo.id, self.other.id])).delete()
+        for repository in (self.repo, self.other):
+            path = "CustomFiles/Catalog.Host/SetParamFiles/DEV/SetParam.xml"
+            fix = {"itemId": "hardcoded-windows-path", "projectPath": "src/Catalog.Host/Catalog.Host.csproj",
+                   "resolutionId": "externalize-path-setting", "action": "update", "source": "structural", "ruleIds": ["evidence"]}
+            host = {"itemId": "wcf-service-host", "projectPath": "src/Catalog.Host/Catalog.Host.csproj",
+                    "resolutionId": "wcf-host-aspnetcore-web-host", "action": "delete", "source": "structural",
+                    "ruleIds": ["deploy-parameters"]}
+            self.db.add(models.FileImpactRollup(repository_id=repository.id, file_key=path, work_items=[fix, host], hotspot=False,
+                                                conflicts=[{"kind": "delete_with_change", "first": fix, "second": host}],
+                                                includes_client=False))
+        self.db.flush()
+        self.assertEqual({"rule_conflicts": 1, "work_items": 4}, conflicts.apply_estate(self.db, TEST_ENGAGEMENT_ID))
+        row = self.db.query(models.ImpactRuleConflict).filter_by(engagement_id=TEST_ENGAGEMENT_ID).one()
+        self.assertEqual("delete_with_change|hardcoded-windows-path:externalize-path-setting:evidence"
+                         "|wcf-service-host:wcf-host-aspnetcore-web-host:deploy-parameters", row.rule_key)
+        self.assertEqual(2, row.repositories)
 
     def test_a_rule_pair_on_one_pair_of_work_items_across_the_estate_stays_a_work_item_conflict(self):
         self.db.query(models.FileImpactRollup).filter_by(repository_id=self.other.id).delete()

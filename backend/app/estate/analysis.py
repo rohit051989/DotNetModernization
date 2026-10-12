@@ -20,6 +20,8 @@ import hashlib
 import re
 from collections import Counter, defaultdict
 
+from app.estate import wcf_matrix
+
 # ---------- hosts ----------
 
 # Development addresses. A loopback host is not a team: it is where a
@@ -29,11 +31,6 @@ from collections import Counter, defaultdict
 LOOPBACK_HOSTS = {"localhost", "127.0.0.1", "::1", "0.0.0.0", "(localdb)", "(local)", "."}
 
 VERDICT_RANK = {"incompatible": 0, "requires_change": 1, "unknown": 2, "compatible": 3}
-
-# Bindings only the service's owner can replace: the client cannot call a
-# NetTcp service over anything but NetTcp until the service offers another.
-OWNER_ONLY_BINDINGS = {"nettcpbinding", "netnamedpipebinding", "netmsmqbinding", "netpeertcpbinding", "nettcprelaybinding"}
-WINDOWS_CREDENTIALS = {"windows", "ntlm", "negotiate", "kerberos"}
 
 
 def normalise_host(host: str | None) -> str | None:
@@ -50,8 +47,41 @@ def is_loopback(host: str | None) -> bool:
 
 
 def worst_verdict(verdicts) -> str | None:
+    """The worst of the verdicts. UNDER_REVIEW is not one: it is counted apart."""
     ranked = [v for v in verdicts if v in VERDICT_RANK]
     return min(ranked, key=VERDICT_RANK.get) if ranked else None
+
+
+# A platform matrix entry a probe contradicts is shown as under review until a
+# reviewer revises it — never as its unrevised verdict, never in a worst
+# verdict, and its fix is not a change anyone is asked to make yet
+# (29-ENTRY-POINT-AND-OUTBOUND-INVENTORIES.md C11).
+UNDER_REVIEW = "under_review"
+
+
+def contradicted_platform_entry(binding: dict) -> str | None:
+    """The environment binding's platform matrix entry, if a probe contradicts it."""
+    entry_id = binding.get("platformMatrixEntry")
+    entry = wcf_matrix.entries("platform").get(entry_id or "")
+    return entry_id if entry and wcf_matrix.probe_contradictions("platform", entry) else None
+
+
+def environment_linux_verdict(binding: dict) -> str | None:
+    return UNDER_REVIEW if contradicted_platform_entry(binding) else binding.get("linuxVerdict")
+
+
+def call_linux_verdict(call: dict) -> str | None:
+    """The call's Linux verdict, without any environment whose matrix entry is
+    under review; UNDER_REVIEW when every environment is."""
+    bindings = call.get("environment_bindings") or []
+    if not any(contradicted_platform_entry(b) for b in bindings):
+        return call.get("linux_verdict")
+    verdicts = [environment_linux_verdict(b) for b in bindings]
+    return worst_verdict(verdicts) or UNDER_REVIEW
+
+
+def under_review(calls) -> list[str]:
+    return sorted({e for c in calls for b in c.get("environment_bindings") or [] if (e := contradicted_platform_entry(b))})
 
 
 def _block(call: dict) -> dict:
@@ -78,28 +108,45 @@ def backend_change_owner(call: dict) -> str:
     return THIS_MIGRATION if call.get("servers") else ANOTHER_TEAM
 
 
+def platform_fixes(call: dict) -> list[tuple[str, str, str]]:
+    """(environment, who, change) for each of a SOAP call's environment
+    bindings whose platform verdict needs a change — from the WCF client
+    platform matrix entry outbound-invocation-inventory judged it by
+    (platformMatrixEntry), never from a rule here."""
+    entries = wcf_matrix.entries("platform")
+    fixes = []
+    for binding in call.get("environment_bindings") or []:
+        entry = entries.get(binding.get("platformMatrixEntry") or "")
+        if entry and entry.get("fix") and not contradicted_platform_entry(binding):
+            fixes.append((binding.get("environment") or "default", entry["fix"]["who"], entry["fix"]["change"]))
+    return fixes
+
+
+def _who(call: dict) -> str:
+    serving = sorted({s["repository_slug"] for s in call.get("servers") or []})
+    return (f"the service ({', '.join(serving)}) is inside this migration: plan its change with its callers"
+            if backend_change_owner(call) == THIS_MIGRATION else "another team owns the service: ask them, and start now")
+
+
 def backend_change_reasons(call: dict) -> list[str]:
     """Why only the endpoint's owner can make this call work on Linux (Part
-    C2): a binding the client cannot change unilaterally, or Windows-integrated
-    service security. Empty when the fix is in the caller's own code.
+    C2): its platform matrix entry says the backend's owner must change.
+    Empty when the fix is in the caller's own code or configuration.
 
     Worded by ownership: for a service inside this migration the change is
     ours to plan — sequence the service before or with its callers; for
     another team's service it is a request to them, with a lead time that
     should start now."""
-    reasons = []
-    owner = backend_change_owner(call)
-    serving = sorted({s["repository_slug"] for s in call.get("servers") or []})
-    who = (f"the service ({', '.join(serving)}) is inside this migration: plan its change with its callers"
-           if owner == THIS_MIGRATION else "another team owns the service: ask them, and start now")
-    binding = binding_of(call)
-    if binding and binding.lower() in OWNER_ONLY_BINDINGS:
-        reasons.append(f"{binding}: the service must offer an HTTP-based binding before callers can move — {who}")
-    credential = (_block(call).get("clientCredentialType") or "").lower()
-    if credential in WINDOWS_CREDENTIALS:
-        reasons.append(f"Windows-integrated service security (clientCredentialType {_block(call).get('clientCredentialType')}): "
-                       f"the service must accept another credential — {who}")
-    return reasons
+    return sorted({f"{change} — {_who(call)}" for _, who, change in platform_fixes(call) if who == "backend_owner"})
+
+
+def possible_backend_change_reasons(call: dict) -> list[str]:
+    """Changes that are ours or the backend owner's, not yet known which:
+    Windows credentials negotiate Kerberos on Linux, which we can configure
+    on the calling side — or the owner offers another credential. Not a
+    required backend change until a probe says it is."""
+    return sorted({f"{change} — until a probe in a Kerberos environment says which; {_who(call)}"
+                   for _, who, change in platform_fixes(call) if who == "we_or_backend_owner"})
 
 
 # ---------- production-host grouping (Part C1) ----------
@@ -164,12 +211,23 @@ def _svc_path(host_file: str | None) -> str | None:
     return f"/{name.lower()}" if name.lower().endswith(".svc") else None
 
 
+def asmx_path_matches(call_path: str | None, service_path: str | None) -> bool:
+    """An ASMX service is addressed by its .asmx file under the application
+    root, and the application may sit in a virtual directory:
+    '/fundstransferws/fundstransferws.asmx' is '/fundstransferws.asmx'."""
+    if not call_path or not service_path:
+        return False
+    call_path, service_path = call_path.rstrip("/").lower(), service_path.rstrip("/").lower()
+    return call_path == service_path or call_path.endswith(service_path if service_path.startswith("/") else f"/{service_path}")
+
+
 def build_servers(entry_points: list[dict]) -> list[dict]:
-    """One server per WCF contract per project, and one per HTTP route per
-    project: what a call can be matched against. Each carries the entry
-    point it links to (the lowest id among that contract's operations, so the
-    link is stable across rescans of the same code)."""
+    """One server per WCF contract per project, one per ASMX service per
+    project, and one per HTTP route per project: what a call can be matched
+    against. Each carries the entry point it links to (the lowest id among
+    that service's operations, so the link is stable across rescans)."""
     soap: dict = {}
+    asmx: dict = {}
     http: dict = {}
     for ep in sorted(entry_points, key=lambda e: e["id"]):
         detail = ep.get("detail") or {}
@@ -187,6 +245,16 @@ def build_servers(entry_points: list[dict]) -> list[dict]:
                     server["paths"].add(path)
                 if endpoint.get("binding"):
                     server["bindings"].add(endpoint["binding"])
+        elif ep["kind"] == "asmx_web_method" and detail.get("servicePath"):
+            key = (ep["project_id"], detail["servicePath"].lower())
+            server = asmx.setdefault(key, {
+                "kind": "asmx", "service_path": detail["servicePath"].lower(), "methods": set(),
+                "repository_id": ep["repository_id"], "repository_slug": ep["repository_slug"],
+                "project_id": ep["project_id"], "project_path": ep["project_path"],
+                "entry_point_id": ep["id"], "handler": ep.get("handler_type"),
+            })
+            if detail.get("method"):
+                server["methods"].add(detail["method"])
         elif ep["kind"] in ("http_controller_action", "http_minimal_api"):
             template = detail.get("mappedTemplate") or detail.get("routeTemplate")
             if not template:
@@ -199,7 +267,8 @@ def build_servers(entry_points: list[dict]) -> list[dict]:
                 "project_id": ep["project_id"], "project_path": ep["project_path"],
                 "entry_point_id": ep["id"], "handler": ep.get("handler_type"),
             })
-    return [soap[k] for k in sorted(soap, key=str)] + [http[k] for k in sorted(http, key=str)]
+    return ([soap[k] for k in sorted(soap, key=str)] + [asmx[k] for k in sorted(asmx, key=str)]
+            + [http[k] for k in sorted(http, key=str)])
 
 
 def _segment_matches(route_segment: str, call_segment: str) -> bool:
@@ -280,6 +349,14 @@ def match_servers(call: dict, servers: list[dict], served_by: dict | None = None
         how = "contract and path"
         if not found and same_contract:
             found, how = same_contract, "contract"
+        if not found:
+            # An ASMX service has no WCF contract: its .asmx path, and the web
+            # methods the call invokes — every one of them must be the service's.
+            invoked = {o.get("operation") for o in call.get("operations") or [] if o.get("operation")}
+            invoked = {name[:-5] if name.endswith("Async") else name for name in invoked}
+            found = [s for s in servers if s["kind"] == "asmx" and asmx_path_matches(path, s["service_path"])
+                     and invoked and invoked <= s["methods"]]
+            how = "ASMX service path and web methods"
     elif call["mechanism"] == "http_client" and path and is_loopback(normalise_host(call.get("host"))):
         found = [s for s in servers if s["kind"] == "http" and _http_route_matches(s, path)]
         how = "route template on a local address"
@@ -294,7 +371,7 @@ def match_servers(call: dict, servers: list[dict], served_by: dict | None = None
     kept = [s for s in found if _rank(s, call) == best]
     # One server per project is enough to link: an HTTP call matches many
     # routes of the same API project only if they share a template.
-    unique = {(s["project_id"], s.get("contract") or s.get("route")): s for s in kept}
+    unique = {(s["project_id"], s.get("contract") or s.get("service_path") or s.get("route")): s for s in kept}
     return [unique[k] for k in sorted(unique, key=str)], how
 
 
@@ -308,7 +385,7 @@ def _target(server: dict, call_repository_id) -> dict:
         "projectId": str(server["project_id"]),
         "projectPath": server["project_path"],
         "entryPointId": server["entry_point_id"],
-        "served": server.get("contract") or server.get("route"),
+        "served": server.get("contract") or server.get("service_path") or server.get("route"),
         "sameRepository": server["repository_id"] == call_repository_id,
     }
 
@@ -363,8 +440,10 @@ def build_register(calls: list[dict], entry_points: list[dict], production_envir
     hosts.sort(key=lambda h: (not h["requiresBackendChange"], -h["callingRepositoryCount"], h["host"]))
     unresolved.sort(key=lambda u: (u["repositorySlug"], u["projectPath"], u["mechanism"], u["invocationId"]))
     # keyByInvocation: which row each call is filed under — for carrying
-    # annotations (C4); not written to the artifact.
-    return {"hosts": hosts, "unresolved": unresolved, "unusedExcluded": unused, "keyByInvocation": key_by_invocation}
+    # annotations (C4); callsByKey: the calls filed under each row, for the
+    # SOAP backend compatibility report (Part K). Neither is written to the artifact.
+    return {"hosts": hosts, "unresolved": unresolved, "unusedExcluded": unused, "keyByInvocation": key_by_invocation,
+            "callsByKey": dict(groups)}
 
 
 def carry_annotations(register: dict, as_found: dict, annotated: list[str]) -> dict[str, list[str]]:
@@ -438,7 +517,8 @@ def _host_row(key: str, calls: list[dict], production_environment: str | None = 
             "bindings": sorted({b for c in group if (b := binding_of(c))}),
             "callingRepositories": sorted({c["repository_slug"] for c in group}),
             "callingProjects": sorted({f"{c['repository_slug']}:{c['project_path']}" for c in group}),
-            "worstVerdict": worst_verdict(c["linux_verdict"] for c in group),
+            "worstVerdict": worst_verdict(call_linux_verdict(c) for c in group),
+            "underReview": under_review(group),
             "requiresBackendChange": any(backend_change_reasons(c) for c in group),
             "backendChangeOwner": (
                 None if not any(backend_change_reasons(c) for c in group) else THIS_MIGRATION if targets else ANOTHER_TEAM
@@ -452,7 +532,7 @@ def _host_row(key: str, calls: list[dict], production_environment: str | None = 
     for call in calls:
         for binding in call.get("environment_bindings") or []:
             if binding.get("linuxVerdict"):
-                by_environment[binding.get("environment") or "default"].append(binding["linuxVerdict"])
+                by_environment[binding.get("environment") or "default"].append(environment_linux_verdict(binding))
     reasons = sorted({r for c in calls for r in backend_change_reasons(c)})
     owners = {backend_change_owner(c) for c in calls if backend_change_reasons(c)}
     other_hosts: dict = defaultdict(set)
@@ -476,13 +556,18 @@ def _host_row(key: str, calls: list[dict], production_environment: str | None = 
         "mechanisms": sorted({c["mechanism"] for c in calls}),
         "bindings": sorted({b for c in calls if (b := binding_of(c))}),
         "ports": sorted({p for c in calls if (p := c.get("port_n", c.get("port")))}),
-        "worstVerdict": worst_verdict(c["linux_verdict"] for c in calls),
-        "verdictByEnvironment": {env: worst_verdict(v) for env, v in sorted(by_environment.items())},
+        "worstVerdict": worst_verdict(call_linux_verdict(c) for c in calls),
+        "verdictByEnvironment": {env: worst_verdict(v) or (UNDER_REVIEW if UNDER_REVIEW in v else None)
+                                 for env, v in sorted(by_environment.items())},
+        # endpoint-register 1.5.0: matrix entries a probe contradicts — counted apart, never as their verdict.
+        "underReview": under_review(calls),
         "requiresBackendChange": bool(reasons),
         # C2 by ownership: 'this_migration' (a service inside this
         # migration must change) or 'another_team'; another team wins a mix.
         "backendChangeOwner": None if not owners else ANOTHER_TEAM if ANOTHER_TEAM in owners else THIS_MIGRATION,
         "backendChangeReasons": reasons,
+        # endpoint-register 1.4.0: changes that are ours or the owner's, not yet known which (Kerberos).
+        "possibleBackendChangeReasons": sorted({r for c in calls for r in possible_backend_change_reasons(c)}),
         "invocationCount": len(calls),
     }
 
@@ -548,7 +633,7 @@ def _soap_candidates(call: dict, op: dict, entry_points: list[dict]) -> tuple[li
                 found.append((ep, "contract_operation_and_path", 0.95))
             else:
                 found.append((ep, "contract_and_operation", 0.85))
-        elif ep["kind"] == "asmx_web_method" and path and (detail.get("servicePath") or "").lower() == path:
+        elif ep["kind"] == "asmx_web_method" and asmx_path_matches(path, detail.get("servicePath")):
             if detail.get("method") == name or f"{detail.get('method')}Async" == name:
                 found.append((ep, "service_path_and_method", 0.9))
     if found:

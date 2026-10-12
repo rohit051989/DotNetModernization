@@ -64,7 +64,7 @@ public static class Resolutions
 public sealed record OutboundInventoryArtifact
 {
     public string ArtifactType { get; init; } = "outbound-invocation-inventory";
-    public string ArtifactVersion { get; init; } = "1.3.0";
+    public string ArtifactVersion { get; init; } = "1.5.0";
     public required string ScannerVersion { get; init; }
     public required Guid RepositoryId { get; init; }
     public required string RepositorySlug { get; init; }
@@ -78,9 +78,29 @@ public sealed record OutboundInventoryArtifact
         "Credentials added outside the code (a sidecar, a gateway, a delegating handler registered elsewhere) are not visible " +
         "to static analysis, so none_declared and not_assessed are prompts to review, not findings.";
 
+    /// <summary>1.4.0: the WCF client support matrix the runtime verdicts
+    /// were given from, and for which target; null when none was loaded.</summary>
+    public WcfClientSupportStamp? WcfClientSupport { get; init; }
+
     public required OutboundSummary Summary { get; init; }
     public required IReadOnlyList<ProjectInvocations> Projects { get; init; }
     public IReadOnlyList<Warning> Warnings { get; init; } = [];
+}
+
+public sealed record WcfClientSupportStamp
+{
+    public required string MatrixVersion { get; init; }
+
+    /// <summary>1.5.0: the platform matrix's version and sha256.</summary>
+    public string? PlatformMatrixVersion { get; init; }
+    public string? PlatformSha256 { get; init; }
+    public required string Target { get; init; }
+
+    /// <summary>sha256 of the matrix file as read.</summary>
+    public required string Sha256 { get; init; }
+
+    /// <summary>Entries not yet confirmed by a person: a report resting on one is a draft.</summary>
+    public required int UnconfirmedEntries { get; init; }
 }
 
 public sealed record OutboundSummary
@@ -99,6 +119,9 @@ public sealed record OutboundSummary
 
     /// <summary>Used invocations only: an unused client has no verdict worth counting.</summary>
     public SortedDictionary<string, int> CountByVerdict { get; init; } = new(StringComparer.Ordinal);
+
+    /// <summary>1.4.0: used SOAP clients, by runtime verdict.</summary>
+    public SortedDictionary<string, int> CountByRuntimeVerdict { get; init; } = new(StringComparer.Ordinal);
 }
 
 public sealed record ProjectInvocations
@@ -259,6 +282,9 @@ public sealed record Invocation
     /// other mechanisms. See <see cref="OperationTracer"/>.</summary>
     public IReadOnlyList<InvokedOperation> Operations { get; init; } = [];
     public required LinuxCompatibility LinuxCompatibility { get; init; }
+
+    /// <summary>1.4.0, SOAP only: see <see cref="RuntimeVerdicts"/>.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public RuntimeCompatibility? RuntimeCompatibility { get; init; }
     public required double Confidence { get; init; }
     public IReadOnlyList<string> ConfidenceReasons { get; init; } = [];
 
@@ -336,6 +362,71 @@ public sealed record EnvironmentBinding
     public string? DeployParameter { get; init; }
     public string? LinkMethod { get; init; }
     public double? LinkConfidence { get; init; }
+
+    /// <summary>1.4.0, SOAP only: this environment's own effective security —
+    /// binding, mode and the credential type that mode uses, declared or
+    /// else the binding's default. Two environment files can configure one
+    /// endpoint differently.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public EnvironmentSoapSecurity? Soap { get; init; }
+
+    /// <summary>1.4.0, SOAP only: does the target .NET's WCF client support
+    /// this binding, mode and credential type — <see cref="RuntimeVerdicts"/>,
+    /// from the WCF client support matrix. The Linux verdict above is the
+    /// platform question; this is the runtime one.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? RuntimeVerdict { get; init; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public IReadOnlyList<string>? RuntimeReasons { get; init; }
+
+    /// <summary>The matrix entry the runtime verdict rests on; null when none matched.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? RuntimeMatrixEntry { get; init; }
+
+    /// <summary>1.5.0, SOAP only: the WCF client platform matrix entry the
+    /// Linux verdict rests on; null when none matched.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] public string? PlatformMatrixEntry { get; init; }
+}
+
+/// <summary>1.5.0: what a SOAP client's two verdicts are given from — the
+/// engagement's target framework, the runtime matrix (wcf-client-support) and
+/// the platform matrix (wcf-client-platform). Null matrices give
+/// <c>unknown</c>, never a rule from code.</summary>
+public sealed record SoapMatrices(string? Target, WcfClientSupport? Runtime, WcfClientSupport? Platform);
+
+public sealed record EnvironmentSoapSecurity
+{
+    public required string Binding { get; init; }
+    public string? SecurityMode { get; init; }
+    public string? ClientCredentialType { get; init; }
+
+    /// <summary><c>declared</c>, <c>binding_default</c> or <c>unresolved</c>.</summary>
+    public required string SecuritySource { get; init; }
+}
+
+/// <summary>1.4.0: the runtime verdict of a SOAP client — the worst of its
+/// environment bindings' — for the engagement's target framework, from
+/// matrix version <see cref="MatrixVersion"/>.</summary>
+public sealed record RuntimeCompatibility
+{
+    public required string Target { get; init; }
+    public required string MatrixVersion { get; init; }
+    public required string Verdict { get; init; }
+    public IReadOnlyList<string> Reasons { get; init; } = [];
+}
+
+/// <summary>Runtime verdict values, worst first.</summary>
+public static class RuntimeVerdictValues
+{
+    public const string Unsupported = "unsupported";
+    public const string Unknown = "unknown";
+    public const string SupportedWithCaveat = "supported_with_caveat";
+    public const string Supported = "supported";
+
+    public static int Rank(string verdict) => verdict switch
+    {
+        Unsupported => 0,
+        Unknown => 1,
+        SupportedWithCaveat => 2,
+        _ => 3,
+    };
 }
 
 public sealed record CredentialReference

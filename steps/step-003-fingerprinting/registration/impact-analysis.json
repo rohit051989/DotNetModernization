@@ -3,7 +3,7 @@
   "lifecycle_step_no": 9,
   "display_name": "Impact analysis",
   "owner_code": "P",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "owner_team": "platform",
   "viewpoint": "DEVELOPMENT",
   "implementation_status": "implemented",
@@ -11,7 +11,8 @@
     { "artifact_type": "solution-project-inventory", "version_range": "^2.0.0", "optional": false },
     { "artifact_type": "entry-point-inventory", "version_range": "^2.0.0", "optional": false },
     { "artifact_type": "item-occurrences", "version_range": "^1.0.0", "optional": false },
-    { "artifact_type": "test-coverage", "version_range": "^1.0.0", "optional": false }
+    { "artifact_type": "test-coverage", "version_range": "^1.0.0", "optional": false },
+    { "artifact_type": "outbound-invocation-inventory", "version_range": "^1.3.0", "optional": false }
   ],
   "produces": [
     { "artifact_type": "impact-analysis", "artifact_version": "2.1.0" }

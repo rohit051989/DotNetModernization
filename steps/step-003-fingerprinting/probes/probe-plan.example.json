@@ -1,0 +1,39 @@
+{
+  "notes": [
+    "Copy to backend/runs/probes/probe-plan.json (gitignored); paths are relative to the plan file.",
+    "certificates: a scratch folder of files written by 'python -m app.estate.wcf_probe --make-certificates' (WcfClientProbe make-certificates): server.pfx, server.cer, client.pfx, client.cer, pfx.password. No certificate store is read or written; the client pins server.cer, the services pin client.cer.",
+    "The services are the WCF sample's and wcf-backend's, run from copies under backend/runs/probes/wcf-sample, never the registered repositories:",
+    "basicHttp-None-None: wcf-backend's FundsTransferWS under IIS Express (WCF-backend/scripts/Start-FundsTransferWS.ps1), plain HTTP.",
+    "netTcp-*, basicHttp-Transport-None, wsHttp-*: Start-ProbeServices.ps1 -ServicesBin <copy>/WCF/src/Hosting.Iis/bin -Certs <certificates>."
+  ],
+  "image": "mcr.microsoft.com/dotnet/runtime:10.0",
+  "certificates": "certs",
+  "scenarios": {
+    "basicHttp-None-None": {
+      "address": "http://localhost:8090/FundsTransferWS.asmx",
+      "service": "wcf-backend FundsTransferWS (ASMX) under IIS Express"
+    },
+    "basicHttp-Transport-None": {
+      "address": "https://localhost:44301/Utility.svc",
+      "serverCertificate": true,
+      "service": "WCF sample UtilityService, Hosting.Iis binding (ProbeServices, TLS from a certificate file)"
+    },
+    "netTcp-Transport-None": {
+      "address": "net.tcp://localhost:8101/Utility",
+      "serverCertificate": true,
+      "service": "WCF sample UtilityService, Catalog.Host binding (ProbeServices)"
+    },
+    "netTcp-Transport-Certificate": {
+      "address": "net.tcp://localhost:8202/Account",
+      "serverCertificate": true,
+      "clientCertificate": true,
+      "service": "WCF sample AccountService, Catalog.Host binding, mutual TLS (ProbeServices)"
+    },
+    "wsHttp-TransportWithMessageCredential-Certificate": {
+      "address": "https://localhost:44301/Account.svc",
+      "serverCertificate": true,
+      "clientCertificate": true,
+      "service": "WCF sample AccountService, Hosting.Iis binding (ProbeServices, TLS from a certificate file)"
+    }
+  }
+}

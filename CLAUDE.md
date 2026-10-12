@@ -157,6 +157,17 @@ modernization-platform/
     at commit. The API moves the default with make-default; it never unsets,
     deprecates or deletes it while the item has other resolutions. List any
     violations with `python -m app.items.catalog_seed --check-defaults`.
+14. **Never change certificate stores, trust settings or other machine security
+    configuration without explicit approval.** That covers importing into or
+    removing from any CurrentUser or LocalMachine certificate store, trusted
+    roots or peers, http.sys certificate bindings and URL reservations,
+    firewall rules, and registry security keys. A sample's own setup script
+    that does any of these counts too. Prefer file-based material in a scratch
+    folder: generate certificates as `.pfx`/`.cer` files under `backend/runs/`
+    (gitignored), load them by path, and trust by pinning a thumbprint. The WCF
+    client probe shows how (`29-ENTRY-POINT-AND-OUTBOUND-INVENTORIES.md` C11:
+    `WcfClientProbe make-certificates`, `ProbeServices`). If a task truly needs
+    a machine change, ask first, saying exactly what changes and how to undo it.
 
 ## Domain vocabulary
 

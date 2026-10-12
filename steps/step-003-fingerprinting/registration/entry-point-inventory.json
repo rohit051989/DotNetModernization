@@ -3,7 +3,7 @@
   "lifecycle_step_no": 4,
   "display_name": "Entry point inventory",
   "owner_code": "P",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "owner_team": "platform",
   "viewpoint": "FUNCTIONAL",
   "implementation_status": "implemented",

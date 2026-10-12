@@ -13,7 +13,8 @@ public sealed record CatalogItemInfo(string ItemId, string Name, IReadOnlyList<R
 public sealed record ImpactInput(
     Guid RepositoryId, string RepositorySlug, string EngagementId, ProjectMap Projects, IReadOnlyList<WorkItemSeed> WorkItems,
     IReadOnlyDictionary<string, CatalogItemInfo> Items, IReadOnlyDictionary<string, string> Decisions,
-    IReadOnlyList<TestLink> Tests, IReadOnlyList<EntryPointRef> EntryPoints);
+    IReadOnlyList<TestLink> Tests, IReadOnlyList<EntryPointRef> EntryPoints,
+    IReadOnlyList<HostLink>? HostLinks = null, IReadOnlyList<DeployFile>? DeployFiles = null);
 
 /// <summary>
 /// Lifecycle step impact-analysis — 33-IMPACT-ANALYSIS.md.
@@ -29,7 +30,7 @@ public static class ImpactPipeline
     public static async Task<ImpactArtifact> RunAsync(ImpactInput input, string repositoryRoot, CancellationToken ct)
     {
         var index = await CodeIndex.BuildAsync(repositoryRoot, ct);
-        var engine = new RuleEngine(index, input.Projects, input.Tests, input.EntryPoints);
+        var engine = new RuleEngine(index, input.Projects, input.Tests, input.EntryPoints, input.HostLinks, input.DeployFiles);
         var warnings = new List<Warning>();
         var workItems = new List<WorkItemImpact>();
 

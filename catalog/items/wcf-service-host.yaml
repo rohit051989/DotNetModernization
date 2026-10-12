@@ -1,6 +1,8 @@
 category: hosting
 deleted: false
-description: 'The project is the process a WCF service runs in: it constructs a ServiceHost (or CoreWCF host) or holds the service''s .svc file. Not a batch job and not the service''s implementation — that is wcf-service, usually on another project. The host follows the service''s decision where it settles the question: CoreWCF, REST and gRPC all run in ASP.NET Core, so each derives "ASP.NET Core web host"; a service that remains Windows-hosted leaves the host to be decided on its own.'
+description: |-
+  The project is the process a WCF service runs in: it constructs a ServiceHost (or CoreWCF host) or holds the service's .svc file. Not a batch job and not the service's implementation — that is wcf-service, usually on another project. The host follows the service's decision where it settles the question: CoreWCF, REST and gRPC all run in ASP.NET Core, so each derives "ASP.NET Core web host"; a service that remains Windows-hosted leaves the host to be decided on its own.
+  Conversion ordering (docs/28 Part E): the ASP.NET Core web host's configuration migration runs FIRST: each environment's values move from the Web Deploy SetParam files into appsettings.{Environment}.json and the SetParam files are deleted. Fixes to those values (hardcoded-windows-path, unqualified-hostname) then apply where the values now live. Becomes a depends_on entry on theirs.
 detection:
   match:
     all: []
@@ -55,6 +57,38 @@ resolutions:
     path: system.serviceModel
     reason: system.serviceModel hosting configuration moves into the ASP.NET Core host
     traverse: config_elements
+  - action: delete
+    from: seed
+    id: app-config
+    pattern: App.config
+    reason: 'ASP.NET Core does not read App.config: its settings move to appsettings.json'
+    traverse: project_files
+  - action: delete
+    from: seed
+    id: web-deploy-parameters
+    pattern: Parameters.xml
+    reason: Web Deploy parameters are replaced by appsettings.{Environment}.json
+    traverse: project_files
+  - action: delete
+    from: seed
+    id: deploy-parameters
+    reason: Web Deploy SetParam files are replaced by appsettings.{Environment}.json, which ASPNETCORE_ENVIRONMENT selects
+    traverse: deploy_parameter_files
+  - action: create
+    create: 'Per-environment settings: the values the SetParam file held'
+    for_each: deploy-parameters
+    id: environment-settings
+    proposed_path: '{project.dir}/appsettings.{node.environment}.json'
+  - action: create
+    create: 'ASP.NET Core configuration: Kestrel endpoints and the settings App.config held'
+    for_each: project
+    id: appsettings
+    proposed_path: '{project.dir}/appsettings.json'
+  - action: create
+    create: Local launch profile (ASPNETCORE_ENVIRONMENT)
+    for_each: project
+    id: launch-settings
+    proposed_path: '{project.dir}/Properties/launchSettings.json'
   is_default: true
   linux_compatible: true
   name: ASP.NET Core web host

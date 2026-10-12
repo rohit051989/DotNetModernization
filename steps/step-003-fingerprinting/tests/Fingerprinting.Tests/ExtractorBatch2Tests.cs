@@ -480,10 +480,11 @@ public sealed class ExtractorBatch2Tests
         // + 1.6.0 the six PACKAGE_* signals, produced by step 6 (not step 3)
         // + 1.7.0 UNQUALIFIED_HOSTNAME_URL
         // + 1.8.0 seven architecture signals, produced by step 4 (not step 3)
-        // + 1.9.0 INTERACTIVE_CONSOLE_INPUT and CONSOLE_PAUSE_FOR_INPUT.
-        Assert.Equal("1.9.0", registry.RegistryVersion);
-        Assert.Equal(137, registry.Entries.Count);
-        Assert.Equal(7, registry.Entries.Count(e => e.Extractor == "EntryPointInventory"));
+        // + 1.9.0 INTERACTIVE_CONSOLE_INPUT and CONSOLE_PAUSE_FOR_INPUT
+        // + 1.10.0 AMBIGUOUS_TOP_LEVEL_PROGRAM_ON_NET10, a framework delta from step 4.
+        Assert.Equal("1.10.0", registry.RegistryVersion);
+        Assert.Equal(138, registry.Entries.Count);
+        Assert.Equal(8, registry.Entries.Count(e => e.Extractor == "EntryPointInventory"));
         Assert.Equal(6, registry.Entries.Count(e => e.Extractor == "DependencyAssessment" && e.Category == SignalCategories.PackageDependency));
         Assert.Contains(registry.Entries, e => e.Name == "WCF_CLIENT_BINDING_CONFIG" && e.Extractor == ConfigurationExtractor.ExtractorName);
         Assert.Equal(12, registry.Entries.Count(e => e.Extractor == ApiUsageExtractor.ExtractorName));

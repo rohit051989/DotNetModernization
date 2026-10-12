@@ -15,21 +15,10 @@ namespace Fingerprinting.Outbound;
 /// </summary>
 public static class LinuxVerdicts
 {
-    private static readonly HashSet<string> WindowsBindings = new(StringComparer.Ordinal)
-    {
-        "netTcpBinding", "netNamedPipeBinding", "netMsmqBinding", "msmqIntegrationBinding", "netPeerTcpBinding",
-    };
-
-    private static readonly HashSet<string> HttpBindings = new(StringComparer.Ordinal)
-    {
-        "basicHttpBinding", "basicHttpsBinding", "wsHttpBinding", "ws2007HttpBinding", "webHttpBinding", "netHttpBinding",
-        "netHttpsBinding", "wsFederationHttpBinding", "ws2007FederationHttpBinding",
-    };
-
-    private static readonly HashSet<string> WindowsCredentials = new(StringComparer.Ordinal) { "Windows", "Ntlm" };
-
-    /// <summary>Stamps a verdict on every environment binding and on the invocation.</summary>
-    public static Invocation Apply(Invocation invocation)
+    /// <summary>Stamps a verdict on every environment binding and on the
+    /// invocation. A SOAP client's comes from the platform matrix in
+    /// <paramref name="soap"/> (1.5.0), never a rule here.</summary>
+    public static Invocation Apply(Invocation invocation, SoapMatrices? soap = null)
     {
         var perEnvironment = invocation.Mechanism switch
         {
@@ -41,7 +30,23 @@ public static class LinuxVerdicts
 
         LinuxCompatibility summary;
         IReadOnlyList<EnvironmentBinding> bindings;
-        if (perEnvironment is not null && invocation.EnvironmentBindings.Count > 0)
+        if (invocation.Mechanism == Mechanisms.SoapClient && invocation.EnvironmentBindings.Count > 0)
+        {
+            // 1.4.0: each environment on its own binding and security; 1.5.0: by the platform matrix.
+            var results = invocation.EnvironmentBindings.Select(b => (Binding: b, Result: SoapPlatform(b.Soap ?? Security(invocation.Soap!), soap))).ToList();
+            bindings = results.Select(r => r.Binding with
+            {
+                LinuxVerdict = r.Result.Verdict, LinuxReasons = r.Result.Reasons, PlatformMatrixEntry = r.Result.Entry,
+            }).ToList();
+            var worst = results.Min(r => Verdicts.Rank(r.Result.Verdict));
+            var differ = results.Select(r => string.Join("|", r.Result.Reasons)).Distinct().Count() > 1;
+            summary = new LinuxCompatibility
+            {
+                Verdict = results.First(r => Verdicts.Rank(r.Result.Verdict) == worst).Result.Verdict,
+                Reasons = results.SelectMany(r => r.Result.Reasons.Select(reason => differ ? $"{r.Binding.Environment}: {reason}" : reason)).Distinct().ToList(),
+            };
+        }
+        else if (perEnvironment is not null && invocation.EnvironmentBindings.Count > 0)
         {
             var results = invocation.EnvironmentBindings.Select(b => (Binding: b, Result: perEnvironment(b))).ToList();
             bindings = results.Select(r => r.Binding with { LinuxVerdict = r.Result.Item1, LinuxReasons = [r.Result.Item2] }).ToList();
@@ -55,7 +60,7 @@ public static class LinuxVerdicts
         }
         else
         {
-            summary = Summary(invocation);
+            summary = Summary(invocation, soap);
             bindings = invocation.EnvironmentBindings.Select(b => b with { LinuxVerdict = summary.Verdict, LinuxReasons = summary.Reasons }).ToList();
         }
 
@@ -113,11 +118,11 @@ public static class LinuxVerdicts
         return (updated, summary with { Verdict = verdict, Reasons = reasons });
     }
 
-    private static LinuxCompatibility Summary(Invocation invocation)
+    private static LinuxCompatibility Summary(Invocation invocation, SoapMatrices? soap)
     {
         var (verdict, reasons) = invocation.Mechanism switch
         {
-            Mechanisms.SoapClient => Soap(invocation.Soap!),
+            Mechanisms.SoapClient => SoapSummary(invocation, soap),
             Mechanisms.Database => One(Database(invocation, invocation.Database!.Authentication, invocation.Endpoint.Host)),
             Mechanisms.MessageProducer or Mechanisms.MessageConsumer => invocation.Messaging!.Transport == "msmq"
                 ? (Verdicts.Incompatible, ["MSMQ is Windows-only"])
@@ -141,36 +146,61 @@ public static class LinuxVerdicts
         _ => "SMTP",
     };
 
-    private static (string, List<string>) Soap(SoapDetail soap)
+    private static EnvironmentSoapSecurity Security(SoapDetail soap) => new()
     {
-        var reasons = new List<string>();
-        var verdict = Verdicts.Compatible;
-        if (WindowsBindings.Contains(soap.Binding))
+        Binding = soap.Binding, SecurityMode = soap.SecurityMode, ClientCredentialType = soap.ClientCredentialType, SecuritySource = soap.SecuritySource,
+    };
+
+    private static (string, List<string>) SoapSummary(Invocation invocation, SoapMatrices? soap)
+    {
+        var (verdict, reasons, _) = SoapPlatform(Security(invocation.Soap!), soap);
+        return (verdict, reasons.ToList());
+    }
+
+    /// <summary>
+    /// 1.5.0: a SOAP call's platform verdict from the WCF client platform
+    /// matrix (schemas/wcf-client-platform-*.json), keyed by binding, effective
+    /// security mode and credential type — declared, or the binding's
+    /// default. The flat rule it replaces said netTcpBinding was incompatible
+    /// on Linux; netTcp works cross-platform, and what needs configuration is
+    /// its default Windows credential, which negotiates Kerberos.
+    /// </summary>
+    public static (string Verdict, IReadOnlyList<string> Reasons, string? Entry) SoapPlatform(EnvironmentSoapSecurity security, SoapMatrices? soap)
+    {
+        if (soap?.Platform is not { } matrix || soap.Target is not { } target)
         {
-            verdict = Verdicts.Incompatible;
-            reasons.Add(soap.Binding is "netTcpBinding" ? "netTcpBinding: Windows binary framing, no reliable Linux support" : $"{soap.Binding}: Windows-only transport");
+            return (Verdicts.Unknown, [soap?.Platform is null ? "no WCF client platform matrix was loaded" : "the engagement has no target framework"], null);
         }
 
-        var credentials = soap.ClientCredentialType?.Split('|') ?? [];
-        if (credentials.Any(WindowsCredentials.Contains))
+        if (security.Binding == "unknown")
         {
-            verdict = Verdicts.Incompatible;
-            reasons.Add(soap.SecuritySource == "binding_default" ? "Windows client credentials (the binding's default)" : "Windows client credentials");
+            return (Verdicts.Unknown, ["binding unresolved"], null);
         }
 
-        if (verdict == Verdicts.Incompatible)
+        if (security.SecurityMode is null || security.SecurityMode.Contains('|'))
         {
-            return (verdict, reasons);
+            return (Verdicts.Unknown, [$"{security.Binding}: security mode unresolved"], null);
         }
 
-        if (HttpBindings.Contains(soap.Binding))
+        var credential = security.SecurityMode == "None" ? "None" : security.ClientCredentialType;
+        if (credential is null || credential.Contains('|'))
         {
-            reasons.Add($"{soap.Binding}: HTTP-based, ports cleanly");
-            return (Verdicts.Compatible, reasons);
+            return (Verdicts.Unknown, [$"{security.Binding} {security.SecurityMode}: client credential type unresolved"], null);
         }
 
-        reasons.Add(soap.Binding == "unknown" ? "binding unresolved" : $"{soap.Binding}: not assessed");
-        return (Verdicts.Unknown, reasons);
+        var described = $"{security.Binding}, {security.SecurityMode} security, {credential} credentials" +
+                        (security.SecuritySource == "binding_default" ? " (the binding's default: nothing declared)" : "");
+        var entry = matrix.Find(target, security.Binding, security.SecurityMode, credential);
+        if (entry is null)
+        {
+            return (Verdicts.Unknown, [$"{described}: no entry in the WCF client platform matrix {matrix.MatrixVersion}"], null);
+        }
+
+        var reasons = new List<string> { $"{described}: {entry.Verdict.Replace('_', ' ')} on Linux — {entry.Basis}" };
+        if (entry.Fix is not null) reasons.Add($"change: {entry.Fix.Change}");
+        if (entry.Caveat is not null) reasons.Add($"caveat: {entry.Caveat}");
+        if (!entry.Confirmed) reasons.Add($"matrix entry {entry.Id} not yet confirmed by a person");
+        return (entry.Verdict, reasons, entry.Id);
     }
 
     /// <summary>One environment's database verdict.</summary>

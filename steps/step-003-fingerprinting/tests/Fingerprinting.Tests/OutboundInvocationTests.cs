@@ -26,7 +26,7 @@ public class OutboundInvocationTests
         var source = ProjectSource.FromText(projectPath, sources);
         var repositoryConfig = RepositoryConfig.FromText(config ?? [])
             .WithDeployParameters(DeployParameterFiles.FromText(setParameters ?? [], [projectPath]), declarations ?? new Dictionary<string, string>());
-        return OutboundPipeline.Detect(RepositoryId, [(project, source)], repositoryConfig);
+        return OutboundPipeline.Detect(RepositoryId, [(project, source)], repositoryConfig, soapMatrices: TestMatrices.Soap);
     }
 
     private static OutboundInventoryArtifact Artifact(IReadOnlyList<ProjectInvocations> projects) => new()
@@ -129,7 +129,7 @@ public class OutboundInvocationTests
         Assert.Equal("None", utility.Soap.ClientCredentialType);
         Assert.Equal(AuthDeclared.NoneDeclared, utility.AuthDeclared);
         Assert.Empty(utility.Credentials);
-        Assert.Equal(Verdicts.Incompatible, utility.LinuxCompatibility.Verdict);
+        Assert.Equal(Verdicts.Compatible, utility.LinuxCompatibility.Verdict);    // netTcp works on Linux (platform matrix)
         Assert.StartsWith("CreateTcpFactory", utility.Soap.Via);
         var port = Assert.Single(utility.EnvironmentBindings);
         Assert.Equal(("src/Client/App.config", "Ports.UtilityTcp"), (port.SourceFile, port.KeyPath));
@@ -175,9 +175,11 @@ public class OutboundInvocationTests
         Assert.Equal(("config", "hand_written", "AccountClient"), (account.Soap!.BindingSource, account.Soap.ClientSource, account.Soap.ClientType));
         Assert.Equal(("net.tcp", "wsse0.saifg.rbc.com", 808), (account.Endpoint.Scheme, account.Endpoint.Host, account.Endpoint.Port));
         Assert.Equal("Windows", account.Soap.ClientCredentialType);
-        Assert.Equal(Verdicts.Incompatible, account.LinuxCompatibility.Verdict);
-        Assert.Contains(account.LinuxCompatibility.Reasons, r => r.StartsWith("netTcpBinding"));
-        Assert.Contains(account.LinuxCompatibility.Reasons, r => r.StartsWith("Windows client credentials"));
+        // netTcp is cross-platform; its Windows credential negotiates Kerberos, which needs configuring.
+        Assert.Equal(Verdicts.RequiresChange, account.LinuxCompatibility.Verdict);
+        Assert.Contains(account.LinuxCompatibility.Reasons, r => r.StartsWith("netTcpBinding, Transport security, Windows credentials"));
+        Assert.Contains(account.LinuxCompatibility.Reasons, r => r == "change: Kerberos configuration on our side, or a credential change by the backend's owner");
+        Assert.Equal("net10.0/linux/netTcpBinding/*/Windows", account.EnvironmentBindings.Single().PlatformMatrixEntry);
 
         // Declared in config, never constructed: still recorded.
         var catalog = Assert.Single(invocations, i => i.Soap!.Contract == "ICatalogService");
@@ -226,7 +228,8 @@ public class OutboundInvocationTests
         Assert.Equal(("generated_reference", "generated"), (invocation.Soap!.BindingSource, invocation.Soap.ClientSource));
         Assert.Equal(("netTcpBinding", "None"), (invocation.Soap.Binding, invocation.Soap.SecurityMode));
         Assert.Equal(("orders.local", 9000), (invocation.Endpoint.Host, invocation.Endpoint.Port));
-        Assert.Equal(Verdicts.Incompatible, invocation.LinuxCompatibility.Verdict);
+        // Platform matrix 1.1.0: netTcp with no security is unprobed, so unknown, never assumed compatible.
+        Assert.Equal(Verdicts.Unknown, invocation.LinuxCompatibility.Verdict);
     }
 
     // ---------- C3: normalisation ----------
@@ -274,7 +277,9 @@ public class OutboundInvocationTests
         // No default file sets it: the default endpoint waits on the key.
         Assert.Equal(Resolutions.Unresolved, invocation.Endpoint.Resolution);
         Assert.Equal("config:Services:Account:Url", invocation.Endpoint.Placeholder);
-        Assert.Equal(Verdicts.Incompatible, invocation.LinuxCompatibility.Verdict);
+        // new NetTcpBinding(): nothing declared, so Transport with Windows credentials — the default — and Kerberos to configure.
+        Assert.Equal(Verdicts.RequiresChange, invocation.LinuxCompatibility.Verdict);
+        Assert.All(invocation.EnvironmentBindings, b => Assert.Equal(("Windows", "binding_default"), (b.Soap!.ClientCredentialType, b.Soap.SecuritySource)));
     }
 
     [Fact]

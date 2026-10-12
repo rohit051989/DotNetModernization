@@ -1,5 +1,5 @@
 import { api } from './client'
-import type { EntryPointBackend, EntryPointCapabilities, EntryPointInventory, OutboundInventory } from '../types/surface'
+import type { EntryPointBackend, EntryPointCapabilities, EntryPointInventory, OutboundInventory, RepositorySoap } from '../types/surface'
 import type { EngagementRuleConflicts, MasterRuleConflict, RepositoryImpact, WorkItemImpact } from '../types/impact'
 import type { RepositoryTests } from '../types/tests'
 
@@ -48,4 +48,9 @@ export function getEngagementRuleConflicts(engagementId: string) {
 /** Catalog rule conflicts across every engagement, for catalog authors (master view). */
 export function listCatalogRuleConflicts() {
   return api.get<MasterRuleConflict[]>('/api/catalog/impact-rule-conflicts')
+}
+
+/** The repository's SOAP calls with both verdicts per environment and live matrix confirmation (31 Part J). 409 until step 5 has run. */
+export function getRepositorySoapCompatibility(repositoryId: string) {
+  return api.get<RepositorySoap>(`/api/repositories/${encodeURIComponent(repositoryId)}/soap-compatibility`)
 }

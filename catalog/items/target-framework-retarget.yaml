@@ -1,0 +1,50 @@
+category: framework
+deleted: false
+description: |-
+  The project targets a modern .NET (net5.0 or later) below the engagement's target framework. Converted by editing the target framework where it is declared — the project file or an imported Directory.*.props (solution-discovery's target_framework_source) — not by assuming the project file.
+  Not ready: detection needs TARGET_FRAMEWORK_BELOW_ENGAGEMENT_TARGET, which dependency-assessment is declared to emit but does not yet. The conversion recipe framework-retarget binds here (34-CONVERSION-ARCHITECTURE.md C1), and a plan takes the framework declarations from solution-discovery directly.
+  Conversion ordering: package bumps are ordered around it by framework support — a version that drops the current framework after it, a current version that does not support the target before it.
+  Framework deltas: it carries the known breaking changes between source and target frameworks (backend/app/conversion/framework_deltas.yaml, 34-CONVERSION-ARCHITECTURE.md C6), each detected in discovery as a signal and fixed by a unit before the retarget that builds on both frameworks. First entry, from net10.0: a project referencing two web projects with top-level statements and naming Program no longer compiles (CS0433, AMBIGUOUS_TOP_LEVEL_PROGRAM_ON_NET10).
+detection:
+  match:
+    all:
+    - id: below-target
+      signal:
+        name: TARGET_FRAMEWORK_BELOW_ENGAGEMENT_TARGET
+    any: []
+    atLeast: []
+    metadata: []
+    none: []
+excluded_roles: []
+id: target-framework-retarget
+name: Modern .NET below the engagement's target framework
+owner_team: null
+resolutions:
+- consumer_impact: none
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: Edit the target framework where it is declared, and the SDK pin in global.json to match.
+  effort: low
+  id: retarget-to-engagement-target
+  is_default: true
+  linux_compatible: true
+  name: Retarget to the engagement's target framework
+  notes: null
+  status: active
+  target_description: The engagement's target framework, e.g. net10.0
+- consumer_impact: none
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: 'Leave the target framework as it is, for now: the current framework is still supported, and something holds the application back (a package with no target-framework version, a platform constraint). Record the reason and the current framework''s support end date.'
+  effort: low
+  id: stay-on-current-framework
+  is_default: false
+  linux_compatible: true
+  name: Stay on the current framework
+  notes: null
+  status: active
+  target_description: The current target framework, unchanged
+scope: application
+status: active

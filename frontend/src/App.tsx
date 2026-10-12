@@ -24,6 +24,8 @@ function App() {
   const [selectedEngagementId, setSelectedEngagementId] = useState<string | null>(null)
   const [engagements, setEngagements] = useState<Engagement[]>([])
   const [activeTab, setActiveTab] = useState<TabKey>('catalog')
+  // A repository page's SOAP call, to open at its row in the Estate tab's SOAP report.
+  const [estateSoapFocus, setEstateSoapFocus] = useState<string | null>(null)
   const [selectedExecutionId, setSelectedExecutionId] = useState<string | null>(null)
   // A repository detail is a page of its own (/repositories/<id>), owned
   // here like an execution so the URL, Back and reload all work.
@@ -165,6 +167,11 @@ function App() {
             selectedRepositoryId={selectedRepositoryId}
             onSelectRepository={handleSelectRepository}
             onNavigateToExecution={handleNavigateToExecution}
+            onOpenEstateSoap={(invocationId) => {
+              setEstateSoapFocus(invocationId)
+              handleSelectRepository(null)
+              setActiveTab('estate')
+            }}
           />
         ) : activeTab === 'dashboard' && selectedEngagementId ? (
           <DashboardPage
@@ -177,6 +184,8 @@ function App() {
           <EstatePage
             key={selectedEngagementId}
             engagementId={selectedEngagementId}
+            focusSoapInvocation={estateSoapFocus}
+            onFocusShown={() => setEstateSoapFocus(null)}
             onOpenRepository={(repositoryId) => {
               setActiveTab('repositories')
               handleSelectRepository(repositoryId)

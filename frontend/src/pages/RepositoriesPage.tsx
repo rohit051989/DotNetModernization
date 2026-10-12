@@ -9,6 +9,7 @@ interface RepositoriesPageProps {
   selectedRepositoryId: string | null
   onSelectRepository: (repositoryId: string | null) => void
   onNavigateToExecution: (executionId: string) => void
+  onOpenEstateSoap?: (invocationId: string) => void
 }
 
 /** Engagement-scoped. Hidden entirely in Master Catalog view — see
@@ -24,6 +25,7 @@ export function RepositoriesPage({
   selectedRepositoryId,
   onSelectRepository,
   onNavigateToExecution,
+  onOpenEstateSoap,
 }: RepositoriesPageProps) {
   const [refreshToken, setRefreshToken] = useState(0)
 
@@ -72,6 +74,7 @@ export function RepositoriesPage({
           onChanged={handleChanged}
           onDeleted={handleRemoved}
           onNavigateToExecution={onNavigateToExecution}
+          onOpenEstateSoap={onOpenEstateSoap}
         />
       )}
     </>

@@ -1,0 +1,75 @@
+# Conversion recipes — 34-CONVERSION-ARCHITECTURE.md C1. Client-agnostic: the
+# ordered approaches that carry out one resolution. Synced into
+# conversion_recipes / conversion_recipe_steps by app/conversion/recipes.py,
+# which never deletes a step: a recipe that drops one needs a new id.
+#
+# All are draft: no fixture corpus certifies them yet (Part J). The eShopOnWeb
+# proofs are their runs on real code.
+
+recipes:
+  - id: framework-retarget
+    version: 0.2.0
+    item_id: target-framework-retarget
+    resolution_id: retarget-to-engagement-target
+    supported_layouts: [in_place]
+    status: draft
+    owner_team: platform
+    steps:
+      # 0.2.0: the framework delta catalog (framework_deltas.yaml) — one unit per
+      # delta the retarget crosses and per place discovery found it, each
+      # building on both frameworks, so the retarget commit stays green.
+      - step_id: D01
+        phase: foundation
+        # Each delta names its own fix approach and automation class; this
+        # step's are the defaults the delta catalog overrides.
+        approach_id: framework-delta
+        approach_version: 0.1.0
+        automation_class: deterministic
+        targets: {kind: framework_deltas}
+      - step_id: F01
+        phase: foundation
+        approach_id: retarget-tfm
+        approach_version: 0.1.0
+        automation_class: deterministic
+        # One unit for every framework declaration of the repository: the
+        # projects move together, or a net10.0 library would be referenced
+        # from a net8.0 project between commits.
+        targets: {kind: framework_declarations}
+        depends_on: [D01]
+
+  - id: package-upgrade-safe-bump
+    version: 0.2.0
+    item_id: package-upgrade-safe
+    resolution_id: package-upgrade-safe-bump
+    supported_layouts: [in_place, side_by_side]
+    status: draft
+    owner_team: platform
+    steps:
+      - step_id: F01
+        phase: foundation
+        # 0.2.0: a unit bumps one package occurrence, or — for packages that
+        # only resolve together (one requires the other at a version above
+        # its current one, or both move a shared dependency across a major
+        # version) — every package of the group at once, atomically.
+        approach_id: package-upgrade-safe
+        approach_version: 0.2.0
+        automation_class: deterministic
+        targets: {kind: occurrences, item_id: package-upgrade-safe}
+
+  - id: package-upgrade-breaking-adapt
+    version: 0.1.0
+    item_id: package-upgrade-breaking
+    resolution_id: package-upgrade-breaking-bump-and-adapt
+    supported_layouts: [in_place, side_by_side]
+    status: draft
+    owner_team: platform
+    steps:
+      # The bump is mechanical; adapting the call sites dependency-assessment
+      # found is not, so the step is assisted. No approach implements it yet:
+      # its units are planned and left for T1b, and what depends on them waits.
+      - step_id: F01
+        phase: foundation
+        approach_id: package-upgrade-adapt
+        approach_version: 0.1.0
+        automation_class: assisted
+        targets: {kind: occurrences, item_id: package-upgrade-breaking}

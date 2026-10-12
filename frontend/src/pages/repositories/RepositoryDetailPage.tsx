@@ -27,6 +27,7 @@ import { RepositoryStructureSection } from './RepositoryStructureSection'
 import { RepositorySurfaceSection } from './RepositorySurfaceSection'
 import { RepositoryImpactSection } from './RepositoryImpactSection'
 import { RepositoryTestsSection } from './RepositoryTestsSection'
+import { RepositoryConversionSection } from './RepositoryConversionSection'
 import { useLatestArtifacts, type LatestArtifact } from './useLatestArtifacts'
 
 interface RepositoryDetailPageProps {
@@ -36,6 +37,8 @@ interface RepositoryDetailPageProps {
   onChanged: () => void
   onDeleted: () => void
   onNavigateToExecution: (executionId: string) => void
+  /** Opens a SOAP call's row in the Estate tab's SOAP compatibility report. */
+  onOpenEstateSoap?: (invocationId: string) => void
 }
 
 const SECTIONS = [
@@ -45,6 +48,8 @@ const SECTIONS = [
   { id: 'repo-dependencies', label: 'Dependencies' },
   { id: 'repo-worklist', label: 'Work list' },
   { id: 'repo-tests', label: 'Tests' },
+  { id: 'repo-impact', label: 'Impact' },
+  { id: 'repo-conversion', label: 'Conversion' },
   { id: 'repo-executions', label: 'Executions' },
   { id: 'repo-details', label: 'Details' },
 ]
@@ -90,6 +95,7 @@ export function RepositoryDetailPage({
   onChanged,
   onDeleted,
   onNavigateToExecution,
+  onOpenEstateSoap,
 }: RepositoryDetailPageProps) {
   const { showToast } = useToast()
   const [repo, setRepo] = useState<RepositoryDetail | null>(null)
@@ -365,7 +371,7 @@ export function RepositoryDetailPage({
               : 'inbound and outbound'
           }
         >
-          <RepositorySurfaceSection repositoryId={repo.id} localPath={repo.local_path} refreshToken={localRefresh} />
+          <RepositorySurfaceSection repositoryId={repo.id} localPath={repo.local_path} refreshToken={localRefresh} onOpenEstateSoap={onOpenEstateSoap} />
         </CollapsibleSection>
       )}
 
@@ -459,6 +465,14 @@ export function RepositoryDetailPage({
         <CollapsibleSection id="repo:impact" anchorId="repo-impact" title="Impact">
           <div className="p-4">
             <RepositoryImpactSection repositoryId={repo.id} localPath={repo.local_path} refreshToken={localRefresh} />
+          </div>
+        </CollapsibleSection>
+      )}
+
+      {!editing && (
+        <CollapsibleSection id="repo:conversion" anchorId="repo-conversion" title="Conversion">
+          <div className="p-4">
+            <RepositoryConversionSection repositoryId={repo.id} refreshToken={localRefresh} />
           </div>
         </CollapsibleSection>
       )}

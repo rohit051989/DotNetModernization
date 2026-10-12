@@ -1,0 +1,1552 @@
+{
+  "artifactType": "item-occurrences",
+  "artifactVersion": "1.1.0",
+  "catalog": [
+    {
+      "itemId": "asmx-service",
+      "scope": "application",
+      "version": 2
+    },
+    {
+      "itemId": "aspnetcore-rest-api-legacy",
+      "scope": "application",
+      "version": 1
+    },
+    {
+      "itemId": "aspnet-webforms",
+      "scope": "application",
+      "version": 2
+    },
+    {
+      "itemId": "console-batch-job",
+      "scope": "application",
+      "version": 4
+    },
+    {
+      "itemId": "datetime-now-usage",
+      "scope": "occurrence",
+      "version": 1
+    },
+    {
+      "itemId": "directory-services-usage",
+      "scope": "occurrence",
+      "version": 1
+    },
+    {
+      "itemId": "encoding-default",
+      "scope": "occurrence",
+      "version": 1
+    },
+    {
+      "itemId": "fx47-class-library",
+      "scope": "application",
+      "version": 1
+    },
+    {
+      "itemId": "fx-aspnet-mvc",
+      "scope": "application",
+      "version": 2
+    },
+    {
+      "itemId": "hardcoded-windows-path",
+      "scope": "occurrence",
+      "version": 1
+    },
+    {
+      "itemId": "interactive-console-tool",
+      "scope": "application",
+      "version": 1
+    },
+    {
+      "itemId": "missing-dockerfile",
+      "scope": "application",
+      "version": 3
+    },
+    {
+      "itemId": "missing-health-endpoint",
+      "scope": "application",
+      "version": 3
+    },
+    {
+      "itemId": "missing-ocp4-manifests",
+      "scope": "application",
+      "version": 3
+    },
+    {
+      "itemId": "modern-worker-service",
+      "scope": "application",
+      "version": 1
+    },
+    {
+      "itemId": "msmq-usage",
+      "scope": "application",
+      "version": 1
+    },
+    {
+      "itemId": "package-not-approved",
+      "scope": "occurrence",
+      "version": 1
+    },
+    {
+      "itemId": "package-replacement-required",
+      "scope": "occurrence",
+      "version": 1
+    },
+    {
+      "itemId": "package-upgrade-breaking",
+      "scope": "occurrence",
+      "version": 1
+    },
+    {
+      "itemId": "package-upgrade-safe",
+      "scope": "occurrence",
+      "version": 1
+    },
+    {
+      "itemId": "package-vulnerable",
+      "scope": "occurrence",
+      "version": 1
+    },
+    {
+      "itemId": "registry-access",
+      "scope": "occurrence",
+      "version": 1
+    },
+    {
+      "itemId": "sensitive-config-key",
+      "scope": "occurrence",
+      "version": 1
+    },
+    {
+      "itemId": "serilog-file-sink",
+      "scope": "occurrence",
+      "version": 1
+    },
+    {
+      "itemId": "ssis-package",
+      "scope": "application",
+      "version": 1
+    },
+    {
+      "itemId": "system-drawing-common",
+      "scope": "occurrence",
+      "version": 2
+    },
+    {
+      "itemId": "unqualified-hostname",
+      "scope": "occurrence",
+      "version": 1
+    },
+    {
+      "itemId": "wcf-nettcp-client",
+      "scope": "application",
+      "version": 2
+    },
+    {
+      "itemId": "wcf-service",
+      "scope": "application",
+      "version": 1
+    },
+    {
+      "itemId": "wcf-service-host",
+      "scope": "application",
+      "version": 1
+    },
+    {
+      "itemId": "windows-auth-connection-string",
+      "scope": "occurrence",
+      "version": 1
+    },
+    {
+      "itemId": "windows-service",
+      "scope": "application",
+      "version": 1
+    },
+    {
+      "itemId": "windows-service-hosting",
+      "scope": "application",
+      "version": 1
+    },
+    {
+      "itemId": "winforms-desktop",
+      "scope": "application",
+      "version": 1
+    },
+    {
+      "itemId": "wpf-desktop",
+      "scope": "application",
+      "version": 1
+    }
+  ],
+  "projects": [
+    {
+      "fingerprintStatus": "partial",
+      "items": [
+        {
+          "detectionState": "checked_absent",
+          "itemId": "asmx-service",
+          "itemVersion": 2,
+          "occurrences": [],
+          "reason": null,
+          "scope": "application"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "aspnetcore-rest-api-legacy",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "application"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "aspnet-webforms",
+          "itemVersion": 2,
+          "occurrences": [],
+          "reason": null,
+          "scope": "application"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "console-batch-job",
+          "itemVersion": 4,
+          "occurrences": [],
+          "reason": null,
+          "scope": "application"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "datetime-now-usage",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "occurrence"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "directory-services-usage",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "occurrence"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "encoding-default",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "occurrence"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "fx47-class-library",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "application"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "fx-aspnet-mvc",
+          "itemVersion": 2,
+          "occurrences": [],
+          "reason": null,
+          "scope": "application"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "hardcoded-windows-path",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "occurrence"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "interactive-console-tool",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "application"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "msmq-usage",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "application"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "package-not-approved",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "occurrence"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "package-replacement-required",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "occurrence"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "package-upgrade-breaking",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "occurrence"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "package-upgrade-safe",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "occurrence"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "package-vulnerable",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "occurrence"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "registry-access",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "occurrence"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "sensitive-config-key",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "occurrence"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "serilog-file-sink",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "occurrence"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "ssis-package",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "application"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "system-drawing-common",
+          "itemVersion": 2,
+          "occurrences": [],
+          "reason": null,
+          "scope": "occurrence"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "unqualified-hostname",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "occurrence"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "wcf-nettcp-client",
+          "itemVersion": 2,
+          "occurrences": [],
+          "reason": null,
+          "scope": "application"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "wcf-service",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "application"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "wcf-service-host",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "application"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "windows-auth-connection-string",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "occurrence"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "windows-service",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "application"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "winforms-desktop",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "application"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "wpf-desktop",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "application"
+        }
+      ],
+      "projectId": "67572dde-e6e2-54be-9649-dc502e26584d",
+      "projectPath": "src/Catalog.Contracts/Catalog.Contracts.csproj",
+      "role": "LIBRARY",
+      "roleReason": "no entry point"
+    },
+    {
+      "fingerprintStatus": "partial",
+      "items": [
+        {
+          "detectionState": "checked_absent",
+          "itemId": "asmx-service",
+          "itemVersion": 2,
+          "occurrences": [],
+          "reason": null,
+          "scope": "application"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "aspnetcore-rest-api-legacy",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "application"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "aspnet-webforms",
+          "itemVersion": 2,
+          "occurrences": [],
+          "reason": null,
+          "scope": "application"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "console-batch-job",
+          "itemVersion": 4,
+          "occurrences": [],
+          "reason": null,
+          "scope": "application"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "datetime-now-usage",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "occurrence"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "directory-services-usage",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "occurrence"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "encoding-default",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "occurrence"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "fx47-class-library",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "application"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "fx-aspnet-mvc",
+          "itemVersion": 2,
+          "occurrences": [],
+          "reason": null,
+          "scope": "application"
+        },
+        {
+          "detectionState": "found",
+          "itemId": "hardcoded-windows-path",
+          "itemVersion": 1,
+          "occurrences": [
+            {
+              "certainty": "confirmed",
+              "evidence": [
+                {
+                  "line_end": 3,
+                  "line_start": 3,
+                  "matched_value": "G:\\Logs\\WcfCatalog\\FundsTransfer\\",
+                  "signal_name": "WINDOWS_PATH_LITERAL",
+                  "value": "G:\\Logs\\WcfCatalog\\FundsTransfer\\"
+                }
+              ],
+              "filePath": "CustomFiles/Catalog.Host/SetParamFiles/DEV/SetParam.xml",
+              "value": null
+            },
+            {
+              "certainty": "confirmed",
+              "evidence": [
+                {
+                  "line_end": 3,
+                  "line_start": 3,
+                  "matched_value": "G:\\Logs\\WcfCatalog\\FundsTransfer\\",
+                  "signal_name": "WINDOWS_PATH_LITERAL",
+                  "value": "G:\\Logs\\WcfCatalog\\FundsTransfer\\"
+                }
+              ],
+              "filePath": "CustomFiles/Catalog.Host/SetParamFiles/PROD/SetParam.xml",
+              "value": null
+            },
+            {
+              "certainty": "confirmed",
+              "evidence": [
+                {
+                  "line_end": 3,
+                  "line_start": 3,
+                  "matched_value": "G:\\Logs\\WcfCatalog\\FundsTransfer\\",
+                  "signal_name": "WINDOWS_PATH_LITERAL",
+                  "value": "G:\\Logs\\WcfCatalog\\FundsTransfer\\"
+                }
+              ],
+              "filePath": "CustomFiles/Catalog.Host/SetParamFiles/SITP/SetParam.xml",
+              "value": null
+            },
+            {
+              "certainty": "confirmed",
+              "evidence": [
+                {
+                  "line_end": 3,
+                  "line_start": 3,
+                  "matched_value": "G:\\Logs\\WcfCatalog\\FundsTransfer\\",
+                  "signal_name": "WINDOWS_PATH_LITERAL",
+                  "value": "G:\\Logs\\WcfCatalog\\FundsTransfer\\"
+                }
+              ],
+              "filePath": "CustomFiles/Catalog.Host/SetParamFiles/STE/SetParam.xml",
+              "value": null
+            }
+          ],
+          "reason": null,
+          "scope": "occurrence"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "interactive-console-tool",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "application"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "missing-dockerfile",
+          "itemVersion": 3,
+          "occurrences": [],
+          "reason": null,
+          "scope": "application"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "missing-health-endpoint",
+          "itemVersion": 3,
+          "occurrences": [],
+          "reason": null,
+          "scope": "application"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "missing-ocp4-manifests",
+          "itemVersion": 3,
+          "occurrences": [],
+          "reason": null,
+          "scope": "application"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "modern-worker-service",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "application"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "msmq-usage",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "application"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "package-not-approved",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "occurrence"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "package-replacement-required",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "occurrence"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "package-upgrade-breaking",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "occurrence"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "package-upgrade-safe",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "occurrence"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "package-vulnerable",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "occurrence"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "registry-access",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "occurrence"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "sensitive-config-key",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "occurrence"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "serilog-file-sink",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "occurrence"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "ssis-package",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "application"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "system-drawing-common",
+          "itemVersion": 2,
+          "occurrences": [],
+          "reason": null,
+          "scope": "occurrence"
+        },
+        {
+          "detectionState": "found",
+          "itemId": "unqualified-hostname",
+          "itemVersion": 1,
+          "occurrences": [
+            {
+              "certainty": "confirmed",
+              "evidence": [
+                {
+                  "line_end": 2,
+                  "line_start": 2,
+                  "matched_value": "appsrv0341",
+                  "signal_name": "UNQUALIFIED_HOSTNAME_URL",
+                  "value": "appsrv0341"
+                }
+              ],
+              "filePath": "CustomFiles/Catalog.Host/SetParamFiles/DEV/SetParam.xml",
+              "value": "appsrv0341"
+            }
+          ],
+          "reason": null,
+          "scope": "occurrence"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "wcf-nettcp-client",
+          "itemVersion": 2,
+          "occurrences": [],
+          "reason": null,
+          "scope": "application"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "wcf-service",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "application"
+        },
+        {
+          "detectionState": "found",
+          "itemId": "wcf-service-host",
+          "itemVersion": 1,
+          "occurrences": [
+            {
+              "certainty": "confirmed",
+              "evidence": [
+                {
+                  "repository_level": false,
+                  "rule_id": "hosts-wcf-service",
+                  "signal_name": "HOSTS_WCF_SERVICE",
+                  "source_path": "src/Catalog.Host/Program.cs",
+                  "value": "IAccountService"
+                },
+                {
+                  "repository_level": false,
+                  "rule_id": "hosts-wcf-service",
+                  "signal_name": "HOSTS_WCF_SERVICE",
+                  "source_path": "src/Catalog.Host/Program.cs",
+                  "value": "IFundsTransferService"
+                },
+                {
+                  "repository_level": false,
+                  "rule_id": "hosts-wcf-service",
+                  "signal_name": "HOSTS_WCF_SERVICE",
+                  "source_path": "src/Catalog.Host/Program.cs",
+                  "value": "IOrderService"
+                },
+                {
+                  "repository_level": false,
+                  "rule_id": "hosts-wcf-service",
+                  "signal_name": "HOSTS_WCF_SERVICE",
+                  "source_path": "src/Catalog.Host/Program.cs",
+                  "value": "IProductService"
+                },
+                {
+                  "repository_level": false,
+                  "rule_id": "hosts-wcf-service",
+                  "signal_name": "HOSTS_WCF_SERVICE",
+                  "source_path": "src/Catalog.Host/Program.cs",
+                  "value": "IUtilityService"
+                }
+              ],
+              "filePath": null,
+              "value": null
+            }
+          ],
+          "reason": null,
+          "scope": "application"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "windows-auth-connection-string",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "occurrence"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "windows-service",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "application"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "windows-service-hosting",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "application"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "winforms-desktop",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "application"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "wpf-desktop",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "application"
+        }
+      ],
+      "projectId": "48bf6029-a310-5772-8b84-d7a305dc92f4",
+      "projectPath": "src/Catalog.Host/Catalog.Host.csproj",
+      "role": "APPLICATION",
+      "roleReason": "entry point MAIN_METHOD_ENTRY_POINT"
+    },
+    {
+      "fingerprintStatus": "partial",
+      "items": [
+        {
+          "detectionState": "checked_absent",
+          "itemId": "asmx-service",
+          "itemVersion": 2,
+          "occurrences": [],
+          "reason": null,
+          "scope": "application"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "aspnetcore-rest-api-legacy",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "application"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "aspnet-webforms",
+          "itemVersion": 2,
+          "occurrences": [],
+          "reason": null,
+          "scope": "application"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "console-batch-job",
+          "itemVersion": 4,
+          "occurrences": [],
+          "reason": null,
+          "scope": "application"
+        },
+        {
+          "detectionState": "found",
+          "itemId": "datetime-now-usage",
+          "itemVersion": 1,
+          "occurrences": [
+            {
+              "certainty": "confirmed",
+              "evidence": [
+                {
+                  "declaring_type": "TransferLogger",
+                  "line_end": 38,
+                  "line_start": 38,
+                  "member": "Append",
+                  "signal_name": "DATETIME_NOW_USAGE",
+                  "value": "System.DateTime.Now"
+                },
+                {
+                  "declaring_type": "TransferLogger",
+                  "line_end": 46,
+                  "line_start": 46,
+                  "member": "Append",
+                  "signal_name": "DATETIME_NOW_USAGE",
+                  "value": "System.DateTime.Now"
+                }
+              ],
+              "filePath": "src/Catalog.Services/FundsTransfer/TransferLogger.cs",
+              "value": null
+            }
+          ],
+          "reason": null,
+          "scope": "occurrence"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "directory-services-usage",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "occurrence"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "encoding-default",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "occurrence"
+        },
+        {
+          "detectionState": "found",
+          "itemId": "fx47-class-library",
+          "itemVersion": 1,
+          "occurrences": [
+            {
+              "certainty": "confirmed",
+              "evidence": [
+                {
+                  "actual": "net-framework",
+                  "field": "frameworkFamily",
+                  "rule_id": "legacy-framework"
+                },
+                {
+                  "actual": "Library",
+                  "field": "outputType",
+                  "rule_id": "not-an-executable"
+                }
+              ],
+              "filePath": null,
+              "value": null
+            }
+          ],
+          "reason": null,
+          "scope": "application"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "fx-aspnet-mvc",
+          "itemVersion": 2,
+          "occurrences": [],
+          "reason": null,
+          "scope": "application"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "hardcoded-windows-path",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "occurrence"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "interactive-console-tool",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "application"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "missing-dockerfile",
+          "itemVersion": 3,
+          "occurrences": [],
+          "reason": null,
+          "scope": "application"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "missing-health-endpoint",
+          "itemVersion": 3,
+          "occurrences": [],
+          "reason": null,
+          "scope": "application"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "missing-ocp4-manifests",
+          "itemVersion": 3,
+          "occurrences": [],
+          "reason": null,
+          "scope": "application"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "modern-worker-service",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "application"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "msmq-usage",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "application"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "package-not-approved",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "occurrence"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "package-replacement-required",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "occurrence"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "package-upgrade-breaking",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "occurrence"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "package-upgrade-safe",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "occurrence"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "package-vulnerable",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "occurrence"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "registry-access",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "occurrence"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "sensitive-config-key",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "occurrence"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "serilog-file-sink",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "occurrence"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "ssis-package",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "application"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "system-drawing-common",
+          "itemVersion": 2,
+          "occurrences": [],
+          "reason": null,
+          "scope": "occurrence"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "unqualified-hostname",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "occurrence"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "wcf-nettcp-client",
+          "itemVersion": 2,
+          "occurrences": [],
+          "reason": null,
+          "scope": "application"
+        },
+        {
+          "detectionState": "found",
+          "itemId": "wcf-service",
+          "itemVersion": 1,
+          "occurrences": [
+            {
+              "certainty": "confirmed",
+              "evidence": [
+                {
+                  "repository_level": false,
+                  "rule_id": "implements-wcf-service",
+                  "signal_name": "EXPOSES_WCF_SERVICE",
+                  "source_path": "src/Catalog.Services/AccountService.cs",
+                  "value": "IAccountService"
+                },
+                {
+                  "repository_level": false,
+                  "rule_id": "implements-wcf-service",
+                  "signal_name": "EXPOSES_WCF_SERVICE",
+                  "source_path": "src/Catalog.Services/FundsTransferService.cs",
+                  "value": "IFundsTransferService"
+                },
+                {
+                  "repository_level": false,
+                  "rule_id": "implements-wcf-service",
+                  "signal_name": "EXPOSES_WCF_SERVICE",
+                  "source_path": "src/Catalog.Services/OrderService.cs",
+                  "value": "IOrderService"
+                },
+                {
+                  "repository_level": false,
+                  "rule_id": "implements-wcf-service",
+                  "signal_name": "EXPOSES_WCF_SERVICE",
+                  "source_path": "src/Catalog.Services/ProductService.cs",
+                  "value": "IProductService"
+                },
+                {
+                  "repository_level": false,
+                  "rule_id": "implements-wcf-service",
+                  "signal_name": "EXPOSES_WCF_SERVICE",
+                  "source_path": "src/Catalog.Services/UtilityService.cs",
+                  "value": "IUtilityService"
+                },
+                {
+                  "actual": "net-framework",
+                  "field": "frameworkFamily",
+                  "rule_id": "legacy-framework"
+                }
+              ],
+              "filePath": null,
+              "value": "hosting: IIS .svc in src/Hosting.Iis (no project file); ServiceHost in src/Catalog.Host/Catalog.Host.csproj"
+            }
+          ],
+          "reason": null,
+          "scope": "application"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "wcf-service-host",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "application"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "windows-auth-connection-string",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "occurrence"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "windows-service",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "application"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "windows-service-hosting",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "application"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "winforms-desktop",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "application"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "wpf-desktop",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "application"
+        }
+      ],
+      "projectId": "6832d8f9-7c64-546b-a19e-8979b49c63ee",
+      "projectPath": "src/Catalog.Services/Catalog.Services.csproj",
+      "role": "APPLICATION",
+      "roleReason": "entry point EXPOSES_WCF_SERVICE"
+    },
+    {
+      "fingerprintStatus": "partial",
+      "items": [
+        {
+          "detectionState": "checked_absent",
+          "itemId": "asmx-service",
+          "itemVersion": 2,
+          "occurrences": [],
+          "reason": null,
+          "scope": "application"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "aspnetcore-rest-api-legacy",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "application"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "aspnet-webforms",
+          "itemVersion": 2,
+          "occurrences": [],
+          "reason": null,
+          "scope": "application"
+        },
+        {
+          "detectionState": "found",
+          "itemId": "console-batch-job",
+          "itemVersion": 4,
+          "occurrences": [
+            {
+              "certainty": "confirmed",
+              "evidence": [
+                {
+                  "repository_level": false,
+                  "rule_id": "main-entry",
+                  "signal_name": "MAIN_METHOD_ENTRY_POINT",
+                  "source_path": "src/Catalog.TestClient/Program.cs",
+                  "value": null
+                },
+                {
+                  "actual": "Exe",
+                  "field": "outputType",
+                  "rule_id": "not-desktop-exe"
+                }
+              ],
+              "filePath": null,
+              "value": null
+            }
+          ],
+          "reason": null,
+          "scope": "application"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "datetime-now-usage",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "occurrence"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "directory-services-usage",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "occurrence"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "encoding-default",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "occurrence"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "fx47-class-library",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "application"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "fx-aspnet-mvc",
+          "itemVersion": 2,
+          "occurrences": [],
+          "reason": null,
+          "scope": "application"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "hardcoded-windows-path",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "occurrence"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "interactive-console-tool",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "application"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "missing-dockerfile",
+          "itemVersion": 3,
+          "occurrences": [],
+          "reason": null,
+          "scope": "application"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "missing-health-endpoint",
+          "itemVersion": 3,
+          "occurrences": [],
+          "reason": null,
+          "scope": "application"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "missing-ocp4-manifests",
+          "itemVersion": 3,
+          "occurrences": [],
+          "reason": null,
+          "scope": "application"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "modern-worker-service",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "application"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "msmq-usage",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "application"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "package-not-approved",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "occurrence"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "package-replacement-required",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "occurrence"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "package-upgrade-breaking",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "occurrence"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "package-upgrade-safe",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "occurrence"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "package-vulnerable",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "occurrence"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "registry-access",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "occurrence"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "sensitive-config-key",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "occurrence"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "serilog-file-sink",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "occurrence"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "ssis-package",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "application"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "system-drawing-common",
+          "itemVersion": 2,
+          "occurrences": [],
+          "reason": null,
+          "scope": "occurrence"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "unqualified-hostname",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "occurrence"
+        },
+        {
+          "detectionState": "found",
+          "itemId": "wcf-nettcp-client",
+          "itemVersion": 2,
+          "occurrences": [
+            {
+              "certainty": "confirmed",
+              "evidence": [
+                {
+                  "repository_level": false,
+                  "rule_id": "client-code-nettcp",
+                  "signal_name": "WCF_CLIENT_BINDING_USAGE",
+                  "source_path": "src/Catalog.TestClient/Program.cs",
+                  "value": "System.ServiceModel.NetTcpBinding"
+                }
+              ],
+              "filePath": null,
+              "value": null
+            }
+          ],
+          "reason": null,
+          "scope": "application"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "wcf-service",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "application"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "wcf-service-host",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "application"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "windows-auth-connection-string",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "occurrence"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "windows-service",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "application"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "windows-service-hosting",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "application"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "winforms-desktop",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "application"
+        },
+        {
+          "detectionState": "checked_absent",
+          "itemId": "wpf-desktop",
+          "itemVersion": 1,
+          "occurrences": [],
+          "reason": null,
+          "scope": "application"
+        }
+      ],
+      "projectId": "6232c582-8701-5e2f-bccf-4636fef9dcff",
+      "projectPath": "src/Catalog.TestClient/Catalog.TestClient.csproj",
+      "role": "APPLICATION",
+      "roleReason": "entry point MAIN_METHOD_ENTRY_POINT"
+    }
+  ],
+  "repositoryId": "5e96731f-5bff-4077-adbf-417636507c21",
+  "repositorySlug": "wcf",
+  "signalRegistryVersion": "1.9.0",
+  "summary": {
+    "checked_absent": 127,
+    "excluded": 5,
+    "found": 8,
+    "not_checked": 0,
+    "occurrence_rows": 138,
+    "possible_occurrence_rows": 0,
+    "possible_only_found": 0,
+    "skipped": 0
+  }
+}

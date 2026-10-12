@@ -1,0 +1,1870 @@
+{
+  "artifactType": "entry-point-inventory",
+  "artifactVersion": "2.2.0",
+  "authDeclaredScope": "auth_declared reports authentication as declared in source and config only. Gateway, reverse-proxy and header-based authentication (an API gateway, an access manager injecting identity headers) are not visible to static analysis, so none_declared is a prompt to review how the entry point is protected, not a security finding.",
+  "capabilities": {
+    "kinds": [
+      "asmx_web_method",
+      "azure_function",
+      "blazor_component",
+      "console_main",
+      "desktop_app",
+      "global_asax",
+      "grpc_service_method",
+      "hosted_service",
+      "http_controller_action",
+      "http_handler",
+      "http_minimal_api",
+      "message_consumer",
+      "owin_startup",
+      "razor_page",
+      "scheduled_job",
+      "signalr_hub_method",
+      "wcf_operation",
+      "webforms_page",
+      "windows_service"
+    ],
+    "manifestVersion": "1.2.0"
+  },
+  "projects": [
+    {
+      "entryPoints": [],
+      "projectId": "67572dde-e6e2-54be-9649-dc502e26584d",
+      "projectPath": "src/Catalog.Contracts/Catalog.Contracts.csproj",
+      "signals": [],
+      "skipReason": null,
+      "status": "SCANNED",
+      "summary": {
+        "authorisationNotAssessedCount": 0,
+        "conventionalRoutes": [],
+        "countByKind": {},
+        "countByOrigin": {},
+        "countByVerb": {},
+        "globalAuthorisation": [],
+        "lifecycleHookCount": 0,
+        "noDeclaredAuthenticationCount": 0,
+        "requestEntryPointCount": 0
+      },
+      "warnings": []
+    },
+    {
+      "entryPoints": [
+        {
+          "authDeclared": null,
+          "confidence": 1,
+          "confidenceReasons": [],
+          "console": {
+            "form": "main",
+            "staThread": false
+          },
+          "entryClass": "lifecycle",
+          "entryPointId": "f0ab3220b6317514efc01eb018b7622e",
+          "handler": {
+            "filePath": "src/Catalog.Host/Program.cs",
+            "lineEnd": 111,
+            "lineStart": 30,
+            "member": "Main",
+            "namespace": "WcfCatalog.Host",
+            "type": "Program"
+          },
+          "kind": "console_main",
+          "origin": "application",
+          "projectPath": "src/Catalog.Host/Catalog.Host.csproj"
+        }
+      ],
+      "projectId": "48bf6029-a310-5772-8b84-d7a305dc92f4",
+      "projectPath": "src/Catalog.Host/Catalog.Host.csproj",
+      "signals": [
+        {
+          "category": "HOSTING_INDICATOR",
+          "evidence": [
+            {
+              "declaringType": "IAccountService",
+              "lineEnd": 62,
+              "lineStart": 62,
+              "member": "via BuildTcpHost",
+              "snippetHash": null
+            },
+            {
+              "declaringType": "IAccountService",
+              "lineEnd": 74,
+              "lineStart": 74,
+              "member": "via BuildWsHttpsHost",
+              "snippetHash": null
+            }
+          ],
+          "evidenceKind": "FILE",
+          "extractionConfidence": 1.00,
+          "extractor": "EntryPointInventory",
+          "name": "HOSTS_WCF_SERVICE",
+          "occurrenceCount": 4,
+          "sourcePath": "src/Catalog.Host/Program.cs",
+          "sourceType": "SOURCE_CODE",
+          "type": "ENTRY_POINT",
+          "value": "IAccountService"
+        },
+        {
+          "category": "HOSTING_INDICATOR",
+          "evidence": [
+            {
+              "declaringType": "IFundsTransferService",
+              "lineEnd": 66,
+              "lineStart": 66,
+              "member": "via BuildTcpHost",
+              "snippetHash": null
+            },
+            {
+              "declaringType": "IFundsTransferService",
+              "lineEnd": 75,
+              "lineStart": 75,
+              "member": "via BuildWsHttpsHost",
+              "snippetHash": null
+            }
+          ],
+          "evidenceKind": "FILE",
+          "extractionConfidence": 1.00,
+          "extractor": "EntryPointInventory",
+          "name": "HOSTS_WCF_SERVICE",
+          "occurrenceCount": 10,
+          "sourcePath": "src/Catalog.Host/Program.cs",
+          "sourceType": "SOURCE_CODE",
+          "type": "ENTRY_POINT",
+          "value": "IFundsTransferService"
+        },
+        {
+          "category": "HOSTING_INDICATOR",
+          "evidence": [
+            {
+              "declaringType": "IOrderService",
+              "lineEnd": 61,
+              "lineStart": 61,
+              "member": "via BuildTcpHost",
+              "snippetHash": null
+            },
+            {
+              "declaringType": "IOrderService",
+              "lineEnd": 73,
+              "lineStart": 73,
+              "member": "via BuildWsHttpsHost",
+              "snippetHash": null
+            }
+          ],
+          "evidenceKind": "FILE",
+          "extractionConfidence": 1.00,
+          "extractor": "EntryPointInventory",
+          "name": "HOSTS_WCF_SERVICE",
+          "occurrenceCount": 8,
+          "sourcePath": "src/Catalog.Host/Program.cs",
+          "sourceType": "SOURCE_CODE",
+          "type": "ENTRY_POINT",
+          "value": "IOrderService"
+        },
+        {
+          "category": "HOSTING_INDICATOR",
+          "evidence": [
+            {
+              "declaringType": "IProductService",
+              "lineEnd": 57,
+              "lineStart": 57,
+              "member": "via BuildTcpHost",
+              "snippetHash": null
+            },
+            {
+              "declaringType": "IProductService",
+              "lineEnd": 72,
+              "lineStart": 72,
+              "member": "via BuildBasicHttpsHost",
+              "snippetHash": null
+            }
+          ],
+          "evidenceKind": "FILE",
+          "extractionConfidence": 1.00,
+          "extractor": "EntryPointInventory",
+          "name": "HOSTS_WCF_SERVICE",
+          "occurrenceCount": 8,
+          "sourcePath": "src/Catalog.Host/Program.cs",
+          "sourceType": "SOURCE_CODE",
+          "type": "ENTRY_POINT",
+          "value": "IProductService"
+        },
+        {
+          "category": "HOSTING_INDICATOR",
+          "evidence": [
+            {
+              "declaringType": "IUtilityService",
+              "lineEnd": 56,
+              "lineStart": 56,
+              "member": "via BuildTcpHost",
+              "snippetHash": null
+            },
+            {
+              "declaringType": "IUtilityService",
+              "lineEnd": 71,
+              "lineStart": 71,
+              "member": "via BuildBasicHttpsHost",
+              "snippetHash": null
+            }
+          ],
+          "evidenceKind": "FILE",
+          "extractionConfidence": 1.00,
+          "extractor": "EntryPointInventory",
+          "name": "HOSTS_WCF_SERVICE",
+          "occurrenceCount": 4,
+          "sourcePath": "src/Catalog.Host/Program.cs",
+          "sourceType": "SOURCE_CODE",
+          "type": "ENTRY_POINT",
+          "value": "IUtilityService"
+        }
+      ],
+      "skipReason": null,
+      "status": "SCANNED",
+      "summary": {
+        "authorisationNotAssessedCount": 0,
+        "conventionalRoutes": [],
+        "countByKind": {
+          "console_main": 1
+        },
+        "countByOrigin": {
+          "application": 1
+        },
+        "countByVerb": {},
+        "globalAuthorisation": [],
+        "lifecycleHookCount": 1,
+        "noDeclaredAuthenticationCount": 0,
+        "requestEntryPointCount": 0
+      },
+      "warnings": []
+    },
+    {
+      "entryPoints": [
+        {
+          "authDeclared": "declared",
+          "confidence": 1,
+          "confidenceReasons": [],
+          "entryClass": "request",
+          "entryPointId": "7805bc18a8a8a61c286cd2e415ca8d96",
+          "handler": {
+            "filePath": "src/Catalog.Services/AccountService.cs",
+            "lineEnd": 26,
+            "lineStart": 15,
+            "member": "GetAccount",
+            "namespace": "WcfCatalog.Services",
+            "type": "AccountService"
+          },
+          "kind": "wcf_operation",
+          "origin": "application",
+          "projectPath": "src/Catalog.Services/Catalog.Services.csproj",
+          "wcf": {
+            "authorisation": null,
+            "contract": "IAccountService",
+            "endpoints": [
+              {
+                "address": "net.tcp://localhost:{port}/Account",
+                "anonymous": false,
+                "binding": "netTcpBinding",
+                "clientCredentialType": "Certificate",
+                "condition": null,
+                "declaredAt": "src/Catalog.Host/Program.cs:137 via src/Catalog.Host/Program.cs:62",
+                "hostKind": "service_host",
+                "hostedAt": "src/Catalog.Host/Program.cs:62 via BuildTcpHost",
+                "securityMode": "Transport",
+                "securitySource": "declared",
+                "source": "code"
+              },
+              {
+                "address": "https://localhost:{port}/Account",
+                "anonymous": false,
+                "binding": "wsHttpBinding",
+                "clientCredentialType": "Certificate",
+                "condition": "settings.EnableHttpEndpoints",
+                "declaredAt": "src/Catalog.Host/Program.cs:192 via src/Catalog.Host/Program.cs:74",
+                "hostKind": "service_host",
+                "hostedAt": "src/Catalog.Host/Program.cs:74 via BuildWsHttpsHost",
+                "securityMode": "TransportWithMessageCredential",
+                "securitySource": "declared",
+                "source": "code"
+              },
+              {
+                "address": "",
+                "anonymous": false,
+                "binding": "wsHttpBinding",
+                "clientCredentialType": "Certificate",
+                "condition": null,
+                "declaredAt": "src/Hosting.Iis/Web.config:43",
+                "hostKind": "svc",
+                "hostedAt": "src/Hosting.Iis/Account.svc:1",
+                "securityMode": "TransportWithMessageCredential",
+                "securitySource": "declared",
+                "source": "config"
+              }
+            ],
+            "hostFile": "src/Hosting.Iis/Account.svc:1",
+            "hostedBy": "svc",
+            "implementation": "AccountService",
+            "isOneWay": false,
+            "operation": "GetAccount"
+          }
+        },
+        {
+          "authDeclared": "declared",
+          "confidence": 1,
+          "confidenceReasons": [],
+          "entryClass": "request",
+          "entryPointId": "7a3e14b03d0b8c5381de1416a5115e1f",
+          "handler": {
+            "filePath": "src/Catalog.Services/AccountService.cs",
+            "lineEnd": 56,
+            "lineStart": 28,
+            "member": "UpdateContactInfo",
+            "namespace": "WcfCatalog.Services",
+            "type": "AccountService"
+          },
+          "kind": "wcf_operation",
+          "origin": "application",
+          "projectPath": "src/Catalog.Services/Catalog.Services.csproj",
+          "wcf": {
+            "authorisation": null,
+            "contract": "IAccountService",
+            "endpoints": [
+              {
+                "address": "net.tcp://localhost:{port}/Account",
+                "anonymous": false,
+                "binding": "netTcpBinding",
+                "clientCredentialType": "Certificate",
+                "condition": null,
+                "declaredAt": "src/Catalog.Host/Program.cs:137 via src/Catalog.Host/Program.cs:62",
+                "hostKind": "service_host",
+                "hostedAt": "src/Catalog.Host/Program.cs:62 via BuildTcpHost",
+                "securityMode": "Transport",
+                "securitySource": "declared",
+                "source": "code"
+              },
+              {
+                "address": "https://localhost:{port}/Account",
+                "anonymous": false,
+                "binding": "wsHttpBinding",
+                "clientCredentialType": "Certificate",
+                "condition": "settings.EnableHttpEndpoints",
+                "declaredAt": "src/Catalog.Host/Program.cs:192 via src/Catalog.Host/Program.cs:74",
+                "hostKind": "service_host",
+                "hostedAt": "src/Catalog.Host/Program.cs:74 via BuildWsHttpsHost",
+                "securityMode": "TransportWithMessageCredential",
+                "securitySource": "declared",
+                "source": "code"
+              },
+              {
+                "address": "",
+                "anonymous": false,
+                "binding": "wsHttpBinding",
+                "clientCredentialType": "Certificate",
+                "condition": null,
+                "declaredAt": "src/Hosting.Iis/Web.config:43",
+                "hostKind": "svc",
+                "hostedAt": "src/Hosting.Iis/Account.svc:1",
+                "securityMode": "TransportWithMessageCredential",
+                "securitySource": "declared",
+                "source": "config"
+              }
+            ],
+            "hostFile": "src/Hosting.Iis/Account.svc:1",
+            "hostedBy": "svc",
+            "implementation": "AccountService",
+            "isOneWay": false,
+            "operation": "UpdateContactInfo"
+          }
+        },
+        {
+          "authDeclared": "declared",
+          "confidence": 1,
+          "confidenceReasons": [],
+          "entryClass": "request",
+          "entryPointId": "52f545169e7b39880b41e89131f8c557",
+          "handler": {
+            "filePath": "src/Catalog.Services/FundsTransferService.cs",
+            "lineEnd": 202,
+            "lineStart": 159,
+            "member": "GetFundsTransferStatus",
+            "namespace": "WcfCatalog.Services",
+            "type": "FundsTransferService"
+          },
+          "kind": "wcf_operation",
+          "origin": "application",
+          "projectPath": "src/Catalog.Services/Catalog.Services.csproj",
+          "wcf": {
+            "authorisation": null,
+            "contract": "IFundsTransferService",
+            "endpoints": [
+              {
+                "address": "net.tcp://localhost:{port}/FundsTransfer",
+                "anonymous": false,
+                "binding": "netTcpBinding",
+                "clientCredentialType": "Certificate",
+                "condition": null,
+                "declaredAt": "src/Catalog.Host/Program.cs:137 via src/Catalog.Host/Program.cs:66",
+                "hostKind": "service_host",
+                "hostedAt": "src/Catalog.Host/Program.cs:66 via BuildTcpHost",
+                "securityMode": "Transport",
+                "securitySource": "declared",
+                "source": "code"
+              },
+              {
+                "address": "https://localhost:{port}/FundsTransfer",
+                "anonymous": false,
+                "binding": "wsHttpBinding",
+                "clientCredentialType": "Certificate",
+                "condition": "settings.EnableHttpEndpoints",
+                "declaredAt": "src/Catalog.Host/Program.cs:192 via src/Catalog.Host/Program.cs:75",
+                "hostKind": "service_host",
+                "hostedAt": "src/Catalog.Host/Program.cs:75 via BuildWsHttpsHost",
+                "securityMode": "TransportWithMessageCredential",
+                "securitySource": "declared",
+                "source": "code"
+              },
+              {
+                "address": "",
+                "anonymous": false,
+                "binding": "wsHttpBinding",
+                "clientCredentialType": "Certificate",
+                "condition": null,
+                "declaredAt": "src/Hosting.Iis/Web.config:46",
+                "hostKind": "svc",
+                "hostedAt": "src/Hosting.Iis/FundsTransfer.svc:1",
+                "securityMode": "TransportWithMessageCredential",
+                "securitySource": "declared",
+                "source": "config"
+              }
+            ],
+            "hostFile": "src/Hosting.Iis/FundsTransfer.svc:1",
+            "hostedBy": "svc",
+            "implementation": "FundsTransferService",
+            "isOneWay": false,
+            "operation": "GetFundsTransferStatus"
+          }
+        },
+        {
+          "authDeclared": "declared",
+          "confidence": 1,
+          "confidenceReasons": [],
+          "entryClass": "request",
+          "entryPointId": "9b7e5543be85002abfd2c2c312ea9be1",
+          "handler": {
+            "filePath": "src/Catalog.Services/FundsTransferService.cs",
+            "lineEnd": 207,
+            "lineStart": 204,
+            "member": "GetTransferHistory",
+            "namespace": "WcfCatalog.Services",
+            "type": "FundsTransferService"
+          },
+          "kind": "wcf_operation",
+          "origin": "application",
+          "projectPath": "src/Catalog.Services/Catalog.Services.csproj",
+          "wcf": {
+            "authorisation": null,
+            "contract": "IFundsTransferService",
+            "endpoints": [
+              {
+                "address": "net.tcp://localhost:{port}/FundsTransfer",
+                "anonymous": false,
+                "binding": "netTcpBinding",
+                "clientCredentialType": "Certificate",
+                "condition": null,
+                "declaredAt": "src/Catalog.Host/Program.cs:137 via src/Catalog.Host/Program.cs:66",
+                "hostKind": "service_host",
+                "hostedAt": "src/Catalog.Host/Program.cs:66 via BuildTcpHost",
+                "securityMode": "Transport",
+                "securitySource": "declared",
+                "source": "code"
+              },
+              {
+                "address": "https://localhost:{port}/FundsTransfer",
+                "anonymous": false,
+                "binding": "wsHttpBinding",
+                "clientCredentialType": "Certificate",
+                "condition": "settings.EnableHttpEndpoints",
+                "declaredAt": "src/Catalog.Host/Program.cs:192 via src/Catalog.Host/Program.cs:75",
+                "hostKind": "service_host",
+                "hostedAt": "src/Catalog.Host/Program.cs:75 via BuildWsHttpsHost",
+                "securityMode": "TransportWithMessageCredential",
+                "securitySource": "declared",
+                "source": "code"
+              },
+              {
+                "address": "",
+                "anonymous": false,
+                "binding": "wsHttpBinding",
+                "clientCredentialType": "Certificate",
+                "condition": null,
+                "declaredAt": "src/Hosting.Iis/Web.config:46",
+                "hostKind": "svc",
+                "hostedAt": "src/Hosting.Iis/FundsTransfer.svc:1",
+                "securityMode": "TransportWithMessageCredential",
+                "securitySource": "declared",
+                "source": "config"
+              }
+            ],
+            "hostFile": "src/Hosting.Iis/FundsTransfer.svc:1",
+            "hostedBy": "svc",
+            "implementation": "FundsTransferService",
+            "isOneWay": false,
+            "operation": "GetTransferHistory"
+          }
+        },
+        {
+          "authDeclared": "declared",
+          "confidence": 1,
+          "confidenceReasons": [],
+          "entryClass": "request",
+          "entryPointId": "9e23256b4195df3df3916dd8f0525a4c",
+          "handler": {
+            "filePath": "src/Catalog.Services/FundsTransferService.cs",
+            "lineEnd": 82,
+            "lineStart": 35,
+            "member": "PlaceFundsTransfer",
+            "namespace": "WcfCatalog.Services",
+            "type": "FundsTransferService"
+          },
+          "kind": "wcf_operation",
+          "origin": "application",
+          "projectPath": "src/Catalog.Services/Catalog.Services.csproj",
+          "wcf": {
+            "authorisation": null,
+            "contract": "IFundsTransferService",
+            "endpoints": [
+              {
+                "address": "net.tcp://localhost:{port}/FundsTransfer",
+                "anonymous": false,
+                "binding": "netTcpBinding",
+                "clientCredentialType": "Certificate",
+                "condition": null,
+                "declaredAt": "src/Catalog.Host/Program.cs:137 via src/Catalog.Host/Program.cs:66",
+                "hostKind": "service_host",
+                "hostedAt": "src/Catalog.Host/Program.cs:66 via BuildTcpHost",
+                "securityMode": "Transport",
+                "securitySource": "declared",
+                "source": "code"
+              },
+              {
+                "address": "https://localhost:{port}/FundsTransfer",
+                "anonymous": false,
+                "binding": "wsHttpBinding",
+                "clientCredentialType": "Certificate",
+                "condition": "settings.EnableHttpEndpoints",
+                "declaredAt": "src/Catalog.Host/Program.cs:192 via src/Catalog.Host/Program.cs:75",
+                "hostKind": "service_host",
+                "hostedAt": "src/Catalog.Host/Program.cs:75 via BuildWsHttpsHost",
+                "securityMode": "TransportWithMessageCredential",
+                "securitySource": "declared",
+                "source": "code"
+              },
+              {
+                "address": "",
+                "anonymous": false,
+                "binding": "wsHttpBinding",
+                "clientCredentialType": "Certificate",
+                "condition": null,
+                "declaredAt": "src/Hosting.Iis/Web.config:46",
+                "hostKind": "svc",
+                "hostedAt": "src/Hosting.Iis/FundsTransfer.svc:1",
+                "securityMode": "TransportWithMessageCredential",
+                "securitySource": "declared",
+                "source": "config"
+              }
+            ],
+            "hostFile": "src/Hosting.Iis/FundsTransfer.svc:1",
+            "hostedBy": "svc",
+            "implementation": "FundsTransferService",
+            "isOneWay": false,
+            "operation": "PlaceFundsTransfer"
+          }
+        },
+        {
+          "authDeclared": "declared",
+          "confidence": 1,
+          "confidenceReasons": [],
+          "entryClass": "request",
+          "entryPointId": "97a0480ab9ddc6dbe97140d77c298958",
+          "handler": {
+            "filePath": "src/Catalog.Services/FundsTransferService.cs",
+            "lineEnd": 157,
+            "lineStart": 91,
+            "member": "ProcessTransferQueue",
+            "namespace": "WcfCatalog.Services",
+            "type": "FundsTransferService"
+          },
+          "kind": "wcf_operation",
+          "origin": "application",
+          "projectPath": "src/Catalog.Services/Catalog.Services.csproj",
+          "wcf": {
+            "authorisation": null,
+            "contract": "IFundsTransferService",
+            "endpoints": [
+              {
+                "address": "net.tcp://localhost:{port}/FundsTransfer",
+                "anonymous": false,
+                "binding": "netTcpBinding",
+                "clientCredentialType": "Certificate",
+                "condition": null,
+                "declaredAt": "src/Catalog.Host/Program.cs:137 via src/Catalog.Host/Program.cs:66",
+                "hostKind": "service_host",
+                "hostedAt": "src/Catalog.Host/Program.cs:66 via BuildTcpHost",
+                "securityMode": "Transport",
+                "securitySource": "declared",
+                "source": "code"
+              },
+              {
+                "address": "https://localhost:{port}/FundsTransfer",
+                "anonymous": false,
+                "binding": "wsHttpBinding",
+                "clientCredentialType": "Certificate",
+                "condition": "settings.EnableHttpEndpoints",
+                "declaredAt": "src/Catalog.Host/Program.cs:192 via src/Catalog.Host/Program.cs:75",
+                "hostKind": "service_host",
+                "hostedAt": "src/Catalog.Host/Program.cs:75 via BuildWsHttpsHost",
+                "securityMode": "TransportWithMessageCredential",
+                "securitySource": "declared",
+                "source": "code"
+              },
+              {
+                "address": "",
+                "anonymous": false,
+                "binding": "wsHttpBinding",
+                "clientCredentialType": "Certificate",
+                "condition": null,
+                "declaredAt": "src/Hosting.Iis/Web.config:46",
+                "hostKind": "svc",
+                "hostedAt": "src/Hosting.Iis/FundsTransfer.svc:1",
+                "securityMode": "TransportWithMessageCredential",
+                "securitySource": "declared",
+                "source": "config"
+              }
+            ],
+            "hostFile": "src/Hosting.Iis/FundsTransfer.svc:1",
+            "hostedBy": "svc",
+            "implementation": "FundsTransferService",
+            "isOneWay": false,
+            "operation": "ProcessTransferQueue"
+          }
+        },
+        {
+          "authDeclared": "declared",
+          "confidence": 1,
+          "confidenceReasons": [],
+          "entryClass": "request",
+          "entryPointId": "45f1bc1ba1c385c40b3b3d1736d492a7",
+          "handler": {
+            "filePath": "src/Catalog.Services/FundsTransferService.cs",
+            "lineEnd": 89,
+            "lineStart": 84,
+            "member": "QueueFundsTransfer",
+            "namespace": "WcfCatalog.Services",
+            "type": "FundsTransferService"
+          },
+          "kind": "wcf_operation",
+          "origin": "application",
+          "projectPath": "src/Catalog.Services/Catalog.Services.csproj",
+          "wcf": {
+            "authorisation": null,
+            "contract": "IFundsTransferService",
+            "endpoints": [
+              {
+                "address": "net.tcp://localhost:{port}/FundsTransfer",
+                "anonymous": false,
+                "binding": "netTcpBinding",
+                "clientCredentialType": "Certificate",
+                "condition": null,
+                "declaredAt": "src/Catalog.Host/Program.cs:137 via src/Catalog.Host/Program.cs:66",
+                "hostKind": "service_host",
+                "hostedAt": "src/Catalog.Host/Program.cs:66 via BuildTcpHost",
+                "securityMode": "Transport",
+                "securitySource": "declared",
+                "source": "code"
+              },
+              {
+                "address": "https://localhost:{port}/FundsTransfer",
+                "anonymous": false,
+                "binding": "wsHttpBinding",
+                "clientCredentialType": "Certificate",
+                "condition": "settings.EnableHttpEndpoints",
+                "declaredAt": "src/Catalog.Host/Program.cs:192 via src/Catalog.Host/Program.cs:75",
+                "hostKind": "service_host",
+                "hostedAt": "src/Catalog.Host/Program.cs:75 via BuildWsHttpsHost",
+                "securityMode": "TransportWithMessageCredential",
+                "securitySource": "declared",
+                "source": "code"
+              },
+              {
+                "address": "",
+                "anonymous": false,
+                "binding": "wsHttpBinding",
+                "clientCredentialType": "Certificate",
+                "condition": null,
+                "declaredAt": "src/Hosting.Iis/Web.config:46",
+                "hostKind": "svc",
+                "hostedAt": "src/Hosting.Iis/FundsTransfer.svc:1",
+                "securityMode": "TransportWithMessageCredential",
+                "securitySource": "declared",
+                "source": "config"
+              }
+            ],
+            "hostFile": "src/Hosting.Iis/FundsTransfer.svc:1",
+            "hostedBy": "svc",
+            "implementation": "FundsTransferService",
+            "isOneWay": false,
+            "operation": "QueueFundsTransfer"
+          }
+        },
+        {
+          "authDeclared": "declared",
+          "confidence": 1,
+          "confidenceReasons": [],
+          "entryClass": "request",
+          "entryPointId": "79e6708bdb48dcd2e173d8d907a7bf66",
+          "handler": {
+            "filePath": "src/Catalog.Services/OrderService.cs",
+            "lineEnd": 150,
+            "lineStart": 125,
+            "member": "CancelOrder",
+            "namespace": "WcfCatalog.Services",
+            "type": "OrderService"
+          },
+          "kind": "wcf_operation",
+          "origin": "application",
+          "projectPath": "src/Catalog.Services/Catalog.Services.csproj",
+          "wcf": {
+            "authorisation": null,
+            "contract": "IOrderService",
+            "endpoints": [
+              {
+                "address": "net.tcp://localhost:{port}/Order",
+                "anonymous": false,
+                "binding": "netTcpBinding",
+                "clientCredentialType": "Certificate",
+                "condition": null,
+                "declaredAt": "src/Catalog.Host/Program.cs:137 via src/Catalog.Host/Program.cs:61",
+                "hostKind": "service_host",
+                "hostedAt": "src/Catalog.Host/Program.cs:61 via BuildTcpHost",
+                "securityMode": "Transport",
+                "securitySource": "declared",
+                "source": "code"
+              },
+              {
+                "address": "https://localhost:{port}/Order",
+                "anonymous": false,
+                "binding": "wsHttpBinding",
+                "clientCredentialType": "Certificate",
+                "condition": "settings.EnableHttpEndpoints",
+                "declaredAt": "src/Catalog.Host/Program.cs:192 via src/Catalog.Host/Program.cs:73",
+                "hostKind": "service_host",
+                "hostedAt": "src/Catalog.Host/Program.cs:73 via BuildWsHttpsHost",
+                "securityMode": "TransportWithMessageCredential",
+                "securitySource": "declared",
+                "source": "code"
+              },
+              {
+                "address": "",
+                "anonymous": false,
+                "binding": "wsHttpBinding",
+                "clientCredentialType": "Certificate",
+                "condition": null,
+                "declaredAt": "src/Hosting.Iis/Web.config:40",
+                "hostKind": "svc",
+                "hostedAt": "src/Hosting.Iis/Order.svc:1",
+                "securityMode": "TransportWithMessageCredential",
+                "securitySource": "declared",
+                "source": "config"
+              }
+            ],
+            "hostFile": "src/Hosting.Iis/Order.svc:1",
+            "hostedBy": "svc",
+            "implementation": "OrderService",
+            "isOneWay": false,
+            "operation": "CancelOrder"
+          }
+        },
+        {
+          "authDeclared": "declared",
+          "confidence": 1,
+          "confidenceReasons": [],
+          "entryClass": "request",
+          "entryPointId": "cb7d9f6c9fad73c667e44dba7aea6164",
+          "handler": {
+            "filePath": "src/Catalog.Services/OrderService.cs",
+            "lineEnd": 118,
+            "lineStart": 107,
+            "member": "GetOrder",
+            "namespace": "WcfCatalog.Services",
+            "type": "OrderService"
+          },
+          "kind": "wcf_operation",
+          "origin": "application",
+          "projectPath": "src/Catalog.Services/Catalog.Services.csproj",
+          "wcf": {
+            "authorisation": null,
+            "contract": "IOrderService",
+            "endpoints": [
+              {
+                "address": "net.tcp://localhost:{port}/Order",
+                "anonymous": false,
+                "binding": "netTcpBinding",
+                "clientCredentialType": "Certificate",
+                "condition": null,
+                "declaredAt": "src/Catalog.Host/Program.cs:137 via src/Catalog.Host/Program.cs:61",
+                "hostKind": "service_host",
+                "hostedAt": "src/Catalog.Host/Program.cs:61 via BuildTcpHost",
+                "securityMode": "Transport",
+                "securitySource": "declared",
+                "source": "code"
+              },
+              {
+                "address": "https://localhost:{port}/Order",
+                "anonymous": false,
+                "binding": "wsHttpBinding",
+                "clientCredentialType": "Certificate",
+                "condition": "settings.EnableHttpEndpoints",
+                "declaredAt": "src/Catalog.Host/Program.cs:192 via src/Catalog.Host/Program.cs:73",
+                "hostKind": "service_host",
+                "hostedAt": "src/Catalog.Host/Program.cs:73 via BuildWsHttpsHost",
+                "securityMode": "TransportWithMessageCredential",
+                "securitySource": "declared",
+                "source": "code"
+              },
+              {
+                "address": "",
+                "anonymous": false,
+                "binding": "wsHttpBinding",
+                "clientCredentialType": "Certificate",
+                "condition": null,
+                "declaredAt": "src/Hosting.Iis/Web.config:40",
+                "hostKind": "svc",
+                "hostedAt": "src/Hosting.Iis/Order.svc:1",
+                "securityMode": "TransportWithMessageCredential",
+                "securitySource": "declared",
+                "source": "config"
+              }
+            ],
+            "hostFile": "src/Hosting.Iis/Order.svc:1",
+            "hostedBy": "svc",
+            "implementation": "OrderService",
+            "isOneWay": false,
+            "operation": "GetOrder"
+          }
+        },
+        {
+          "authDeclared": "declared",
+          "confidence": 1,
+          "confidenceReasons": [],
+          "entryClass": "request",
+          "entryPointId": "7fc076e5298eeaabd3db292a7be4c624",
+          "handler": {
+            "filePath": "src/Catalog.Services/OrderService.cs",
+            "lineEnd": 123,
+            "lineStart": 120,
+            "member": "GetOrdersByCustomer",
+            "namespace": "WcfCatalog.Services",
+            "type": "OrderService"
+          },
+          "kind": "wcf_operation",
+          "origin": "application",
+          "projectPath": "src/Catalog.Services/Catalog.Services.csproj",
+          "wcf": {
+            "authorisation": null,
+            "contract": "IOrderService",
+            "endpoints": [
+              {
+                "address": "net.tcp://localhost:{port}/Order",
+                "anonymous": false,
+                "binding": "netTcpBinding",
+                "clientCredentialType": "Certificate",
+                "condition": null,
+                "declaredAt": "src/Catalog.Host/Program.cs:137 via src/Catalog.Host/Program.cs:61",
+                "hostKind": "service_host",
+                "hostedAt": "src/Catalog.Host/Program.cs:61 via BuildTcpHost",
+                "securityMode": "Transport",
+                "securitySource": "declared",
+                "source": "code"
+              },
+              {
+                "address": "https://localhost:{port}/Order",
+                "anonymous": false,
+                "binding": "wsHttpBinding",
+                "clientCredentialType": "Certificate",
+                "condition": "settings.EnableHttpEndpoints",
+                "declaredAt": "src/Catalog.Host/Program.cs:192 via src/Catalog.Host/Program.cs:73",
+                "hostKind": "service_host",
+                "hostedAt": "src/Catalog.Host/Program.cs:73 via BuildWsHttpsHost",
+                "securityMode": "TransportWithMessageCredential",
+                "securitySource": "declared",
+                "source": "code"
+              },
+              {
+                "address": "",
+                "anonymous": false,
+                "binding": "wsHttpBinding",
+                "clientCredentialType": "Certificate",
+                "condition": null,
+                "declaredAt": "src/Hosting.Iis/Web.config:40",
+                "hostKind": "svc",
+                "hostedAt": "src/Hosting.Iis/Order.svc:1",
+                "securityMode": "TransportWithMessageCredential",
+                "securitySource": "declared",
+                "source": "config"
+              }
+            ],
+            "hostFile": "src/Hosting.Iis/Order.svc:1",
+            "hostedBy": "svc",
+            "implementation": "OrderService",
+            "isOneWay": false,
+            "operation": "GetOrdersByCustomer"
+          }
+        },
+        {
+          "authDeclared": "declared",
+          "confidence": 1,
+          "confidenceReasons": [],
+          "entryClass": "request",
+          "entryPointId": "8558e0ebe5d38664f0f419b552724b3c",
+          "handler": {
+            "filePath": "src/Catalog.Services/OrderService.cs",
+            "lineEnd": 105,
+            "lineStart": 16,
+            "member": "PlaceOrder",
+            "namespace": "WcfCatalog.Services",
+            "type": "OrderService"
+          },
+          "kind": "wcf_operation",
+          "origin": "application",
+          "projectPath": "src/Catalog.Services/Catalog.Services.csproj",
+          "wcf": {
+            "authorisation": null,
+            "contract": "IOrderService",
+            "endpoints": [
+              {
+                "address": "net.tcp://localhost:{port}/Order",
+                "anonymous": false,
+                "binding": "netTcpBinding",
+                "clientCredentialType": "Certificate",
+                "condition": null,
+                "declaredAt": "src/Catalog.Host/Program.cs:137 via src/Catalog.Host/Program.cs:61",
+                "hostKind": "service_host",
+                "hostedAt": "src/Catalog.Host/Program.cs:61 via BuildTcpHost",
+                "securityMode": "Transport",
+                "securitySource": "declared",
+                "source": "code"
+              },
+              {
+                "address": "https://localhost:{port}/Order",
+                "anonymous": false,
+                "binding": "wsHttpBinding",
+                "clientCredentialType": "Certificate",
+                "condition": "settings.EnableHttpEndpoints",
+                "declaredAt": "src/Catalog.Host/Program.cs:192 via src/Catalog.Host/Program.cs:73",
+                "hostKind": "service_host",
+                "hostedAt": "src/Catalog.Host/Program.cs:73 via BuildWsHttpsHost",
+                "securityMode": "TransportWithMessageCredential",
+                "securitySource": "declared",
+                "source": "code"
+              },
+              {
+                "address": "",
+                "anonymous": false,
+                "binding": "wsHttpBinding",
+                "clientCredentialType": "Certificate",
+                "condition": null,
+                "declaredAt": "src/Hosting.Iis/Web.config:40",
+                "hostKind": "svc",
+                "hostedAt": "src/Hosting.Iis/Order.svc:1",
+                "securityMode": "TransportWithMessageCredential",
+                "securitySource": "declared",
+                "source": "config"
+              }
+            ],
+            "hostFile": "src/Hosting.Iis/Order.svc:1",
+            "hostedBy": "svc",
+            "implementation": "OrderService",
+            "isOneWay": false,
+            "operation": "PlaceOrder"
+          }
+        },
+        {
+          "authDeclared": "none_declared",
+          "confidence": 1,
+          "confidenceReasons": [],
+          "entryClass": "request",
+          "entryPointId": "467b789f15c48ec7cabecb6dc7796a25",
+          "handler": {
+            "filePath": "src/Catalog.Services/ProductService.cs",
+            "lineEnd": 111,
+            "lineStart": 95,
+            "member": "AdjustStock",
+            "namespace": "WcfCatalog.Services",
+            "type": "ProductService"
+          },
+          "kind": "wcf_operation",
+          "origin": "application",
+          "projectPath": "src/Catalog.Services/Catalog.Services.csproj",
+          "wcf": {
+            "authorisation": null,
+            "contract": "IProductService",
+            "endpoints": [
+              {
+                "address": "net.tcp://localhost:{port}/Product",
+                "anonymous": true,
+                "binding": "netTcpBinding",
+                "clientCredentialType": "None",
+                "condition": null,
+                "declaredAt": "src/Catalog.Host/Program.cs:137 via src/Catalog.Host/Program.cs:57",
+                "hostKind": "service_host",
+                "hostedAt": "src/Catalog.Host/Program.cs:57 via BuildTcpHost",
+                "securityMode": "Transport",
+                "securitySource": "declared",
+                "source": "code"
+              },
+              {
+                "address": "https://localhost:{port}/Product",
+                "anonymous": true,
+                "binding": "basicHttpBinding",
+                "clientCredentialType": "None",
+                "condition": "settings.EnableHttpEndpoints",
+                "declaredAt": "src/Catalog.Host/Program.cs:167 via src/Catalog.Host/Program.cs:72",
+                "hostKind": "service_host",
+                "hostedAt": "src/Catalog.Host/Program.cs:72 via BuildBasicHttpsHost",
+                "securityMode": "Transport",
+                "securitySource": "declared",
+                "source": "code"
+              },
+              {
+                "address": "",
+                "anonymous": true,
+                "binding": "basicHttpBinding",
+                "clientCredentialType": "None",
+                "condition": null,
+                "declaredAt": "src/Hosting.Iis/Web.config:35",
+                "hostKind": "svc",
+                "hostedAt": "src/Hosting.Iis/Product.svc:1",
+                "securityMode": "Transport",
+                "securitySource": "declared",
+                "source": "config"
+              }
+            ],
+            "hostFile": "src/Hosting.Iis/Product.svc:1",
+            "hostedBy": "svc",
+            "implementation": "ProductService",
+            "isOneWay": false,
+            "operation": "AdjustStock"
+          }
+        },
+        {
+          "authDeclared": "none_declared",
+          "confidence": 1,
+          "confidenceReasons": [],
+          "entryClass": "request",
+          "entryPointId": "8933b3c8d0b9356f899d2bf37a07e267",
+          "handler": {
+            "filePath": "src/Catalog.Services/ProductService.cs",
+            "lineEnd": 93,
+            "lineStart": 60,
+            "member": "CreateProduct",
+            "namespace": "WcfCatalog.Services",
+            "type": "ProductService"
+          },
+          "kind": "wcf_operation",
+          "origin": "application",
+          "projectPath": "src/Catalog.Services/Catalog.Services.csproj",
+          "wcf": {
+            "authorisation": null,
+            "contract": "IProductService",
+            "endpoints": [
+              {
+                "address": "net.tcp://localhost:{port}/Product",
+                "anonymous": true,
+                "binding": "netTcpBinding",
+                "clientCredentialType": "None",
+                "condition": null,
+                "declaredAt": "src/Catalog.Host/Program.cs:137 via src/Catalog.Host/Program.cs:57",
+                "hostKind": "service_host",
+                "hostedAt": "src/Catalog.Host/Program.cs:57 via BuildTcpHost",
+                "securityMode": "Transport",
+                "securitySource": "declared",
+                "source": "code"
+              },
+              {
+                "address": "https://localhost:{port}/Product",
+                "anonymous": true,
+                "binding": "basicHttpBinding",
+                "clientCredentialType": "None",
+                "condition": "settings.EnableHttpEndpoints",
+                "declaredAt": "src/Catalog.Host/Program.cs:167 via src/Catalog.Host/Program.cs:72",
+                "hostKind": "service_host",
+                "hostedAt": "src/Catalog.Host/Program.cs:72 via BuildBasicHttpsHost",
+                "securityMode": "Transport",
+                "securitySource": "declared",
+                "source": "code"
+              },
+              {
+                "address": "",
+                "anonymous": true,
+                "binding": "basicHttpBinding",
+                "clientCredentialType": "None",
+                "condition": null,
+                "declaredAt": "src/Hosting.Iis/Web.config:35",
+                "hostKind": "svc",
+                "hostedAt": "src/Hosting.Iis/Product.svc:1",
+                "securityMode": "Transport",
+                "securitySource": "declared",
+                "source": "config"
+              }
+            ],
+            "hostFile": "src/Hosting.Iis/Product.svc:1",
+            "hostedBy": "svc",
+            "implementation": "ProductService",
+            "isOneWay": false,
+            "operation": "CreateProduct"
+          }
+        },
+        {
+          "authDeclared": "none_declared",
+          "confidence": 1,
+          "confidenceReasons": [],
+          "entryClass": "request",
+          "entryPointId": "2b531682c774c90bd0cc8fe23faaffee",
+          "handler": {
+            "filePath": "src/Catalog.Services/ProductService.cs",
+            "lineEnd": 23,
+            "lineStart": 12,
+            "member": "GetProduct",
+            "namespace": "WcfCatalog.Services",
+            "type": "ProductService"
+          },
+          "kind": "wcf_operation",
+          "origin": "application",
+          "projectPath": "src/Catalog.Services/Catalog.Services.csproj",
+          "wcf": {
+            "authorisation": null,
+            "contract": "IProductService",
+            "endpoints": [
+              {
+                "address": "net.tcp://localhost:{port}/Product",
+                "anonymous": true,
+                "binding": "netTcpBinding",
+                "clientCredentialType": "None",
+                "condition": null,
+                "declaredAt": "src/Catalog.Host/Program.cs:137 via src/Catalog.Host/Program.cs:57",
+                "hostKind": "service_host",
+                "hostedAt": "src/Catalog.Host/Program.cs:57 via BuildTcpHost",
+                "securityMode": "Transport",
+                "securitySource": "declared",
+                "source": "code"
+              },
+              {
+                "address": "https://localhost:{port}/Product",
+                "anonymous": true,
+                "binding": "basicHttpBinding",
+                "clientCredentialType": "None",
+                "condition": "settings.EnableHttpEndpoints",
+                "declaredAt": "src/Catalog.Host/Program.cs:167 via src/Catalog.Host/Program.cs:72",
+                "hostKind": "service_host",
+                "hostedAt": "src/Catalog.Host/Program.cs:72 via BuildBasicHttpsHost",
+                "securityMode": "Transport",
+                "securitySource": "declared",
+                "source": "code"
+              },
+              {
+                "address": "",
+                "anonymous": true,
+                "binding": "basicHttpBinding",
+                "clientCredentialType": "None",
+                "condition": null,
+                "declaredAt": "src/Hosting.Iis/Web.config:35",
+                "hostKind": "svc",
+                "hostedAt": "src/Hosting.Iis/Product.svc:1",
+                "securityMode": "Transport",
+                "securitySource": "declared",
+                "source": "config"
+              }
+            ],
+            "hostFile": "src/Hosting.Iis/Product.svc:1",
+            "hostedBy": "svc",
+            "implementation": "ProductService",
+            "isOneWay": false,
+            "operation": "GetProduct"
+          }
+        },
+        {
+          "authDeclared": "none_declared",
+          "confidence": 1,
+          "confidenceReasons": [],
+          "entryClass": "request",
+          "entryPointId": "e66e80c51040504a1839e600fd614246",
+          "handler": {
+            "filePath": "src/Catalog.Services/ProductService.cs",
+            "lineEnd": 58,
+            "lineStart": 25,
+            "member": "SearchProducts",
+            "namespace": "WcfCatalog.Services",
+            "type": "ProductService"
+          },
+          "kind": "wcf_operation",
+          "origin": "application",
+          "projectPath": "src/Catalog.Services/Catalog.Services.csproj",
+          "wcf": {
+            "authorisation": null,
+            "contract": "IProductService",
+            "endpoints": [
+              {
+                "address": "net.tcp://localhost:{port}/Product",
+                "anonymous": true,
+                "binding": "netTcpBinding",
+                "clientCredentialType": "None",
+                "condition": null,
+                "declaredAt": "src/Catalog.Host/Program.cs:137 via src/Catalog.Host/Program.cs:57",
+                "hostKind": "service_host",
+                "hostedAt": "src/Catalog.Host/Program.cs:57 via BuildTcpHost",
+                "securityMode": "Transport",
+                "securitySource": "declared",
+                "source": "code"
+              },
+              {
+                "address": "https://localhost:{port}/Product",
+                "anonymous": true,
+                "binding": "basicHttpBinding",
+                "clientCredentialType": "None",
+                "condition": "settings.EnableHttpEndpoints",
+                "declaredAt": "src/Catalog.Host/Program.cs:167 via src/Catalog.Host/Program.cs:72",
+                "hostKind": "service_host",
+                "hostedAt": "src/Catalog.Host/Program.cs:72 via BuildBasicHttpsHost",
+                "securityMode": "Transport",
+                "securitySource": "declared",
+                "source": "code"
+              },
+              {
+                "address": "",
+                "anonymous": true,
+                "binding": "basicHttpBinding",
+                "clientCredentialType": "None",
+                "condition": null,
+                "declaredAt": "src/Hosting.Iis/Web.config:35",
+                "hostKind": "svc",
+                "hostedAt": "src/Hosting.Iis/Product.svc:1",
+                "securityMode": "Transport",
+                "securitySource": "declared",
+                "source": "config"
+              }
+            ],
+            "hostFile": "src/Hosting.Iis/Product.svc:1",
+            "hostedBy": "svc",
+            "implementation": "ProductService",
+            "isOneWay": false,
+            "operation": "SearchProducts"
+          }
+        },
+        {
+          "authDeclared": "none_declared",
+          "confidence": 1,
+          "confidenceReasons": [],
+          "entryClass": "request",
+          "entryPointId": "aa7e4ebf590d8497e440faf193196f85",
+          "handler": {
+            "filePath": "src/Catalog.Services/UtilityService.cs",
+            "lineEnd": 12,
+            "lineStart": 12,
+            "member": "GetServerTimeUtc",
+            "namespace": "WcfCatalog.Services",
+            "type": "UtilityService"
+          },
+          "kind": "wcf_operation",
+          "origin": "application",
+          "projectPath": "src/Catalog.Services/Catalog.Services.csproj",
+          "wcf": {
+            "authorisation": null,
+            "contract": "IUtilityService",
+            "endpoints": [
+              {
+                "address": "net.tcp://localhost:{port}/Utility",
+                "anonymous": true,
+                "binding": "netTcpBinding",
+                "clientCredentialType": "None",
+                "condition": null,
+                "declaredAt": "src/Catalog.Host/Program.cs:137 via src/Catalog.Host/Program.cs:56",
+                "hostKind": "service_host",
+                "hostedAt": "src/Catalog.Host/Program.cs:56 via BuildTcpHost",
+                "securityMode": "Transport",
+                "securitySource": "declared",
+                "source": "code"
+              },
+              {
+                "address": "https://localhost:{port}/Utility",
+                "anonymous": true,
+                "binding": "basicHttpBinding",
+                "clientCredentialType": "None",
+                "condition": "settings.EnableHttpEndpoints",
+                "declaredAt": "src/Catalog.Host/Program.cs:167 via src/Catalog.Host/Program.cs:71",
+                "hostKind": "service_host",
+                "hostedAt": "src/Catalog.Host/Program.cs:71 via BuildBasicHttpsHost",
+                "securityMode": "Transport",
+                "securitySource": "declared",
+                "source": "code"
+              },
+              {
+                "address": "",
+                "anonymous": true,
+                "binding": "basicHttpBinding",
+                "clientCredentialType": "None",
+                "condition": null,
+                "declaredAt": "src/Hosting.Iis/Web.config:32",
+                "hostKind": "svc",
+                "hostedAt": "src/Hosting.Iis/Utility.svc:1",
+                "securityMode": "Transport",
+                "securitySource": "declared",
+                "source": "config"
+              }
+            ],
+            "hostFile": "src/Hosting.Iis/Utility.svc:1",
+            "hostedBy": "svc",
+            "implementation": "UtilityService",
+            "isOneWay": false,
+            "operation": "GetServerTimeUtc"
+          }
+        },
+        {
+          "authDeclared": "none_declared",
+          "confidence": 1,
+          "confidenceReasons": [],
+          "entryClass": "request",
+          "entryPointId": "e73832abdcec66033b1d5d03613b849d",
+          "handler": {
+            "filePath": "src/Catalog.Services/UtilityService.cs",
+            "lineEnd": 10,
+            "lineStart": 10,
+            "member": "Ping",
+            "namespace": "WcfCatalog.Services",
+            "type": "UtilityService"
+          },
+          "kind": "wcf_operation",
+          "origin": "application",
+          "projectPath": "src/Catalog.Services/Catalog.Services.csproj",
+          "wcf": {
+            "authorisation": null,
+            "contract": "IUtilityService",
+            "endpoints": [
+              {
+                "address": "net.tcp://localhost:{port}/Utility",
+                "anonymous": true,
+                "binding": "netTcpBinding",
+                "clientCredentialType": "None",
+                "condition": null,
+                "declaredAt": "src/Catalog.Host/Program.cs:137 via src/Catalog.Host/Program.cs:56",
+                "hostKind": "service_host",
+                "hostedAt": "src/Catalog.Host/Program.cs:56 via BuildTcpHost",
+                "securityMode": "Transport",
+                "securitySource": "declared",
+                "source": "code"
+              },
+              {
+                "address": "https://localhost:{port}/Utility",
+                "anonymous": true,
+                "binding": "basicHttpBinding",
+                "clientCredentialType": "None",
+                "condition": "settings.EnableHttpEndpoints",
+                "declaredAt": "src/Catalog.Host/Program.cs:167 via src/Catalog.Host/Program.cs:71",
+                "hostKind": "service_host",
+                "hostedAt": "src/Catalog.Host/Program.cs:71 via BuildBasicHttpsHost",
+                "securityMode": "Transport",
+                "securitySource": "declared",
+                "source": "code"
+              },
+              {
+                "address": "",
+                "anonymous": true,
+                "binding": "basicHttpBinding",
+                "clientCredentialType": "None",
+                "condition": null,
+                "declaredAt": "src/Hosting.Iis/Web.config:32",
+                "hostKind": "svc",
+                "hostedAt": "src/Hosting.Iis/Utility.svc:1",
+                "securityMode": "Transport",
+                "securitySource": "declared",
+                "source": "config"
+              }
+            ],
+            "hostFile": "src/Hosting.Iis/Utility.svc:1",
+            "hostedBy": "svc",
+            "implementation": "UtilityService",
+            "isOneWay": false,
+            "operation": "Ping"
+          }
+        }
+      ],
+      "projectId": "6832d8f9-7c64-546b-a19e-8979b49c63ee",
+      "projectPath": "src/Catalog.Services/Catalog.Services.csproj",
+      "signals": [
+        {
+          "category": "ENTRY_POINT",
+          "evidence": [
+            {
+              "declaringType": "AccountService",
+              "lineEnd": 26,
+              "lineStart": 15,
+              "member": "GetAccount",
+              "snippetHash": null
+            },
+            {
+              "declaringType": "AccountService",
+              "lineEnd": 56,
+              "lineStart": 28,
+              "member": "UpdateContactInfo",
+              "snippetHash": null
+            }
+          ],
+          "evidenceKind": "FILE",
+          "extractionConfidence": 1.00,
+          "extractor": "EntryPointInventory",
+          "name": "EXPOSES_WCF_SERVICE",
+          "occurrenceCount": 2,
+          "sourcePath": "src/Catalog.Services/AccountService.cs",
+          "sourceType": "SOURCE_CODE",
+          "type": "ENTRY_POINT",
+          "value": "IAccountService"
+        },
+        {
+          "category": "ENTRY_POINT",
+          "evidence": [
+            {
+              "declaringType": "FundsTransferService",
+              "lineEnd": 82,
+              "lineStart": 35,
+              "member": "PlaceFundsTransfer",
+              "snippetHash": null
+            },
+            {
+              "declaringType": "FundsTransferService",
+              "lineEnd": 89,
+              "lineStart": 84,
+              "member": "QueueFundsTransfer",
+              "snippetHash": null
+            },
+            {
+              "declaringType": "FundsTransferService",
+              "lineEnd": 157,
+              "lineStart": 91,
+              "member": "ProcessTransferQueue",
+              "snippetHash": null
+            },
+            {
+              "declaringType": "FundsTransferService",
+              "lineEnd": 202,
+              "lineStart": 159,
+              "member": "GetFundsTransferStatus",
+              "snippetHash": null
+            },
+            {
+              "declaringType": "FundsTransferService",
+              "lineEnd": 207,
+              "lineStart": 204,
+              "member": "GetTransferHistory",
+              "snippetHash": null
+            }
+          ],
+          "evidenceKind": "FILE",
+          "extractionConfidence": 1.00,
+          "extractor": "EntryPointInventory",
+          "name": "EXPOSES_WCF_SERVICE",
+          "occurrenceCount": 5,
+          "sourcePath": "src/Catalog.Services/FundsTransferService.cs",
+          "sourceType": "SOURCE_CODE",
+          "type": "ENTRY_POINT",
+          "value": "IFundsTransferService"
+        },
+        {
+          "category": "ENTRY_POINT",
+          "evidence": [
+            {
+              "declaringType": "OrderService",
+              "lineEnd": 105,
+              "lineStart": 16,
+              "member": "PlaceOrder",
+              "snippetHash": null
+            },
+            {
+              "declaringType": "OrderService",
+              "lineEnd": 118,
+              "lineStart": 107,
+              "member": "GetOrder",
+              "snippetHash": null
+            },
+            {
+              "declaringType": "OrderService",
+              "lineEnd": 123,
+              "lineStart": 120,
+              "member": "GetOrdersByCustomer",
+              "snippetHash": null
+            },
+            {
+              "declaringType": "OrderService",
+              "lineEnd": 150,
+              "lineStart": 125,
+              "member": "CancelOrder",
+              "snippetHash": null
+            }
+          ],
+          "evidenceKind": "FILE",
+          "extractionConfidence": 1.00,
+          "extractor": "EntryPointInventory",
+          "name": "EXPOSES_WCF_SERVICE",
+          "occurrenceCount": 4,
+          "sourcePath": "src/Catalog.Services/OrderService.cs",
+          "sourceType": "SOURCE_CODE",
+          "type": "ENTRY_POINT",
+          "value": "IOrderService"
+        },
+        {
+          "category": "ENTRY_POINT",
+          "evidence": [
+            {
+              "declaringType": "ProductService",
+              "lineEnd": 23,
+              "lineStart": 12,
+              "member": "GetProduct",
+              "snippetHash": null
+            },
+            {
+              "declaringType": "ProductService",
+              "lineEnd": 58,
+              "lineStart": 25,
+              "member": "SearchProducts",
+              "snippetHash": null
+            },
+            {
+              "declaringType": "ProductService",
+              "lineEnd": 93,
+              "lineStart": 60,
+              "member": "CreateProduct",
+              "snippetHash": null
+            },
+            {
+              "declaringType": "ProductService",
+              "lineEnd": 111,
+              "lineStart": 95,
+              "member": "AdjustStock",
+              "snippetHash": null
+            }
+          ],
+          "evidenceKind": "FILE",
+          "extractionConfidence": 1.00,
+          "extractor": "EntryPointInventory",
+          "name": "EXPOSES_WCF_SERVICE",
+          "occurrenceCount": 4,
+          "sourcePath": "src/Catalog.Services/ProductService.cs",
+          "sourceType": "SOURCE_CODE",
+          "type": "ENTRY_POINT",
+          "value": "IProductService"
+        },
+        {
+          "category": "ENTRY_POINT",
+          "evidence": [
+            {
+              "declaringType": "UtilityService",
+              "lineEnd": 10,
+              "lineStart": 10,
+              "member": "Ping",
+              "snippetHash": null
+            },
+            {
+              "declaringType": "UtilityService",
+              "lineEnd": 12,
+              "lineStart": 12,
+              "member": "GetServerTimeUtc",
+              "snippetHash": null
+            }
+          ],
+          "evidenceKind": "FILE",
+          "extractionConfidence": 1.00,
+          "extractor": "EntryPointInventory",
+          "name": "EXPOSES_WCF_SERVICE",
+          "occurrenceCount": 2,
+          "sourcePath": "src/Catalog.Services/UtilityService.cs",
+          "sourceType": "SOURCE_CODE",
+          "type": "ENTRY_POINT",
+          "value": "IUtilityService"
+        },
+        {
+          "category": "HOSTING_INDICATOR",
+          "evidence": [
+            {
+              "declaringType": "IUtilityService",
+              "lineEnd": 56,
+              "lineStart": 56,
+              "member": "via BuildTcpHost",
+              "snippetHash": null
+            },
+            {
+              "declaringType": "IProductService",
+              "lineEnd": 57,
+              "lineStart": 57,
+              "member": "via BuildTcpHost",
+              "snippetHash": null
+            },
+            {
+              "declaringType": "IOrderService",
+              "lineEnd": 61,
+              "lineStart": 61,
+              "member": "via BuildTcpHost",
+              "snippetHash": null
+            },
+            {
+              "declaringType": "IAccountService",
+              "lineEnd": 62,
+              "lineStart": 62,
+              "member": "via BuildTcpHost",
+              "snippetHash": null
+            },
+            {
+              "declaringType": "IFundsTransferService",
+              "lineEnd": 66,
+              "lineStart": 66,
+              "member": "via BuildTcpHost",
+              "snippetHash": null
+            },
+            {
+              "declaringType": "IUtilityService",
+              "lineEnd": 71,
+              "lineStart": 71,
+              "member": "via BuildBasicHttpsHost",
+              "snippetHash": null
+            },
+            {
+              "declaringType": "IProductService",
+              "lineEnd": 72,
+              "lineStart": 72,
+              "member": "via BuildBasicHttpsHost",
+              "snippetHash": null
+            },
+            {
+              "declaringType": "IOrderService",
+              "lineEnd": 73,
+              "lineStart": 73,
+              "member": "via BuildWsHttpsHost",
+              "snippetHash": null
+            },
+            {
+              "declaringType": "IAccountService",
+              "lineEnd": 74,
+              "lineStart": 74,
+              "member": "via BuildWsHttpsHost",
+              "snippetHash": null
+            },
+            {
+              "declaringType": "IFundsTransferService",
+              "lineEnd": 75,
+              "lineStart": 75,
+              "member": "via BuildWsHttpsHost",
+              "snippetHash": null
+            }
+          ],
+          "evidenceKind": "FILE",
+          "extractionConfidence": 1.00,
+          "extractor": "EntryPointInventory",
+          "name": "WCF_SERVICE_HOSTING",
+          "occurrenceCount": 34,
+          "sourcePath": "src/Catalog.Host/Program.cs",
+          "sourceType": "SOURCE_CODE",
+          "type": "ENTRY_POINT",
+          "value": "ServiceHost in src/Catalog.Host/Catalog.Host.csproj"
+        },
+        {
+          "category": "HOSTING_INDICATOR",
+          "evidence": [
+            {
+              "declaringType": "IAccountService",
+              "lineEnd": 1,
+              "lineStart": 1,
+              "member": null,
+              "snippetHash": null
+            }
+          ],
+          "evidenceKind": "FILE",
+          "extractionConfidence": 1.00,
+          "extractor": "EntryPointInventory",
+          "name": "WCF_SERVICE_HOSTING",
+          "occurrenceCount": 2,
+          "sourcePath": "src/Hosting.Iis/Account.svc",
+          "sourceType": "SOURCE_CODE",
+          "type": "ENTRY_POINT",
+          "value": "IIS .svc in src/Hosting.Iis (no project file)"
+        },
+        {
+          "category": "HOSTING_INDICATOR",
+          "evidence": [
+            {
+              "declaringType": "IFundsTransferService",
+              "lineEnd": 1,
+              "lineStart": 1,
+              "member": null,
+              "snippetHash": null
+            }
+          ],
+          "evidenceKind": "FILE",
+          "extractionConfidence": 1.00,
+          "extractor": "EntryPointInventory",
+          "name": "WCF_SERVICE_HOSTING",
+          "occurrenceCount": 5,
+          "sourcePath": "src/Hosting.Iis/FundsTransfer.svc",
+          "sourceType": "SOURCE_CODE",
+          "type": "ENTRY_POINT",
+          "value": "IIS .svc in src/Hosting.Iis (no project file)"
+        },
+        {
+          "category": "HOSTING_INDICATOR",
+          "evidence": [
+            {
+              "declaringType": "IOrderService",
+              "lineEnd": 1,
+              "lineStart": 1,
+              "member": null,
+              "snippetHash": null
+            }
+          ],
+          "evidenceKind": "FILE",
+          "extractionConfidence": 1.00,
+          "extractor": "EntryPointInventory",
+          "name": "WCF_SERVICE_HOSTING",
+          "occurrenceCount": 4,
+          "sourcePath": "src/Hosting.Iis/Order.svc",
+          "sourceType": "SOURCE_CODE",
+          "type": "ENTRY_POINT",
+          "value": "IIS .svc in src/Hosting.Iis (no project file)"
+        },
+        {
+          "category": "HOSTING_INDICATOR",
+          "evidence": [
+            {
+              "declaringType": "IProductService",
+              "lineEnd": 1,
+              "lineStart": 1,
+              "member": null,
+              "snippetHash": null
+            }
+          ],
+          "evidenceKind": "FILE",
+          "extractionConfidence": 1.00,
+          "extractor": "EntryPointInventory",
+          "name": "WCF_SERVICE_HOSTING",
+          "occurrenceCount": 4,
+          "sourcePath": "src/Hosting.Iis/Product.svc",
+          "sourceType": "SOURCE_CODE",
+          "type": "ENTRY_POINT",
+          "value": "IIS .svc in src/Hosting.Iis (no project file)"
+        },
+        {
+          "category": "HOSTING_INDICATOR",
+          "evidence": [
+            {
+              "declaringType": "IUtilityService",
+              "lineEnd": 1,
+              "lineStart": 1,
+              "member": null,
+              "snippetHash": null
+            }
+          ],
+          "evidenceKind": "FILE",
+          "extractionConfidence": 1.00,
+          "extractor": "EntryPointInventory",
+          "name": "WCF_SERVICE_HOSTING",
+          "occurrenceCount": 2,
+          "sourcePath": "src/Hosting.Iis/Utility.svc",
+          "sourceType": "SOURCE_CODE",
+          "type": "ENTRY_POINT",
+          "value": "IIS .svc in src/Hosting.Iis (no project file)"
+        }
+      ],
+      "skipReason": null,
+      "status": "SCANNED",
+      "summary": {
+        "authorisationNotAssessedCount": 0,
+        "conventionalRoutes": [],
+        "countByKind": {
+          "wcf_operation": 17
+        },
+        "countByOrigin": {
+          "application": 17
+        },
+        "countByVerb": {},
+        "globalAuthorisation": [],
+        "lifecycleHookCount": 0,
+        "noDeclaredAuthenticationCount": 6,
+        "requestEntryPointCount": 17
+      },
+      "warnings": []
+    },
+    {
+      "entryPoints": [
+        {
+          "authDeclared": null,
+          "confidence": 1,
+          "confidenceReasons": [],
+          "console": {
+            "form": "main",
+            "staThread": false
+          },
+          "entryClass": "lifecycle",
+          "entryPointId": "097b071e2bafbef6f6c13b426c3301b5",
+          "handler": {
+            "filePath": "src/Catalog.TestClient/Program.cs",
+            "lineEnd": 78,
+            "lineStart": 22,
+            "member": "Main",
+            "namespace": "WcfCatalog.TestClient",
+            "type": "Program"
+          },
+          "kind": "console_main",
+          "origin": "application",
+          "projectPath": "src/Catalog.TestClient/Catalog.TestClient.csproj"
+        }
+      ],
+      "projectId": "6232c582-8701-5e2f-bccf-4636fef9dcff",
+      "projectPath": "src/Catalog.TestClient/Catalog.TestClient.csproj",
+      "signals": [],
+      "skipReason": null,
+      "status": "SCANNED",
+      "summary": {
+        "authorisationNotAssessedCount": 0,
+        "conventionalRoutes": [],
+        "countByKind": {
+          "console_main": 1
+        },
+        "countByOrigin": {
+          "application": 1
+        },
+        "countByVerb": {},
+        "globalAuthorisation": [],
+        "lifecycleHookCount": 1,
+        "noDeclaredAuthenticationCount": 0,
+        "requestEntryPointCount": 0
+      },
+      "warnings": []
+    }
+  ],
+  "repositoryId": "5e96731f-5bff-4077-adbf-417636507c21",
+  "repositorySlug": "wcf",
+  "scannerVersion": "2.2.0",
+  "semanticAnalysisEnabled": false,
+  "skipSource": "application-fingerprint",
+  "summary": {
+    "authorisationNotAssessedCount": 0,
+    "countByKind": {
+      "console_main": 2,
+      "wcf_operation": 17
+    },
+    "countByOrigin": {
+      "application": 19
+    },
+    "countByVerb": {},
+    "entryPointCount": 19,
+    "lifecycleHookCount": 2,
+    "noDeclaredAuthenticationCount": 6,
+    "projectsFailed": 0,
+    "projectsScanned": 4,
+    "projectsSkipped": 0,
+    "requestEntryPointCount": 17
+  },
+  "warnings": []
+}

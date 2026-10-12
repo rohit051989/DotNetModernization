@@ -1,6 +1,8 @@
 category: configuration
 deleted: false
-description: 'An endpoint URL whose host is a single label, such as http://appsrv0341/FundsTransferWS/FundsTransferWS.asmx — in C# source, a configuration value or a Web Deploy SetParameters value. On Windows the name resolves through NetBIOS or the DNS suffix search list; in an OpenShift container it resolves only if the cluster''s DNS search domains cover it. Linux verdict: requires_change (lifecycle step 5 marks the environment binding the same way). One occurrence per host per file, so each environment''s SetParam file that names the host is its own occurrence. localhost and IP addresses are not matched.'
+description: |-
+  An endpoint URL whose host is a single label, such as http://appsrv0341/FundsTransferWS/FundsTransferWS.asmx — in C# source, a configuration value or a Web Deploy SetParameters value. On Windows the name resolves through NetBIOS or the DNS suffix search list; in an OpenShift container it resolves only if the cluster's DNS search domains cover it. Linux verdict: requires_change (outbound-invocation-inventory marks the environment binding the same way). One occurrence per host per file, so each environment's SetParam file that names the host is its own occurrence. localhost and IP addresses are not matched.
+  Conversion ordering (docs/28 Part E): runs AFTER wcf-service-host's move to an ASP.NET Core web host where that applies: a hostname in a Web Deploy SetParam file is fixed in the appsettings.{Environment}.json the host conversion moved it to. Becomes a depends_on entry.
 detection:
   match:
     all:

@@ -95,10 +95,12 @@ made — falls back to the host as found, and the row says so (`groupingNote`).
 | `services` | Path and contract groups beneath it |
 | `calling_repositories` / `calling_projects` | Distinct counts, with the lists |
 | `mechanisms` | `soap_client`, `http_client`, `database` and so on |
-| `bindings` | For SOAP, every binding seen — `netTcpBinding` appearing here is the headline |
+| `bindings` | For SOAP, every binding seen — read with the security mode and credential, never alone |
 | `worst_verdict` | Worst Linux verdict across every call |
 | `verdict_by_environment` | Per environment, carried from `outbound-invocation-inventory` |
-| `requires_backend_change` | True when any call is `incompatible` for a reason only the endpoint's owner can fix — a NetTcp binding, Windows-integrated service security |
+| `requires_backend_change` | True when a call's platform matrix entry (29 C10) says only the endpoint's owner can fix it (`fix.who: backend_owner`) — a named pipe, MSMQ, an NTLM credential |
+| `possible_backend_change_reasons` | Fixes that are ours or the owner's, not yet known which (`we_or_backend_owner`) — a Windows credential, which is Kerberos we may configure on our side. Not counted as a required backend change until a probe in a Kerberos environment says so (endpoint-register 1.4.0) |
+| `under_review` | Platform matrix entries a probe contradicts (29 C11). Until a reviewer revises one, its verdict is left out of `worst_verdict` and shown as "contradicted by probe — under review", and its fix is not a backend change. Counted apart in the summary (endpoint-register 1.5.0) |
 
 `requires_backend_change` is the field the register exists for. It separates *"we can fix
 this in our code"* from *"another team must change their service first"* — and the second
@@ -109,6 +111,15 @@ has a lead time that should start now.
 A host matching an entry point inventoried in **another repository in the engagement** is an
 internal dependency — the estate calling itself. Mark it `internal` and link it to the
 serving repository and entry point. Everything else is `external`.
+
+A SOAP call matches a WCF service by contract and path, on any host. A SOAP call to an
+**ASMX** service has no WCF contract to match. It matches `entry-point-inventory`'s
+`asmx_web_method` entries instead, by the `.asmx` service path (the application may sit in a
+virtual directory: `/FundsTransferWS/FundsTransferWS.asmx` is `/FundsTransferWS.asmx`) and by
+web method. Every operation the call invokes, with its `Async` suffix stripped, must be one of
+the service's web methods. On the WCF sample, `ftmt.corp.example.com` (FundsTransferWS) is
+served by `wcf-backend`, so its owner is this migration ("ASMX service path and web
+methods").
 
 This matters for wave planning: an internal dependency means both sides migrate in a
 coordinated way; an external one means a conversation with someone outside the programme.
@@ -284,7 +295,7 @@ Artifacts, all deterministic, sorted keys, coverage carried:
 - `context-map@1.0.0` — the Structurizr DSL text
 - `integration-map@1.0.0` — Part I
 
-Registration: engagement-scoped, `consumes: []` per Part B1, the five artifacts declared in
+Registration: engagement-scoped, `consumes: []` per Part B1, the six artifacts declared in
 `produces`.
 
 ---
@@ -311,6 +322,88 @@ fifty repositories a list of shared libraries and cycles is more useful than a p
 
 Coverage — *"12 of 50 repositories included"* — on every view.
 
+**SOAP compatibility** — Part J's report, with its CSV export.
+
+---
+
+## Part J — SOAP backend compatibility report
+
+The client's question: **for each SOAP backend, will the call still work after the move to
+.NET 10?** One artifact, `soap-backend-compatibility` 1.1.0 (step version 1.8.0, with
+endpoint-register 1.5.0), built from
+the same grouping as the endpoint register (Part C1) — `build_register` hands back the calls
+it filed under each row — and from outbound-invocation-inventory 1.5.0's two verdicts, each
+resting on a matrix entry (29-ENTRY-POINT-AND-OUTBOUND-INVENTORIES.md C10, C11).
+
+**Per backend host:** whether an estate repository serves it (the register matched it, or a
+person annotated `served_by`) — then its owner is this migration — or another team does, with
+the owning team a person annotated. **Per calling application and environment:** the address,
+binding, effective security mode and credential type (and whether declared or the binding's
+default), the **runtime** verdict with the matrix entry it rests on, the **platform** verdict,
+and what must change, each change with who makes it:
+
+| Finding | Change | Who |
+|---|---|---|
+| Runtime `unsupported`: the mode (Message) | The service must offer the binding with Transport or TransportWithMessageCredential over HTTPS | Backend owner |
+| | Then repoint the client to it | We |
+| Runtime `unsupported`: the binding has no WCF client | The service must also offer basicHttp, wsHttp or netTcp | Backend owner |
+| Runtime `unknown` (no entry, or unresolved) | Read the binding and security by hand | We |
+| Runtime or platform `unknown` from an entry: unprobed (matrices 1.1.0, the wildcard rule) | Probe the binding, security mode and credential before relying on it (29 C11) | We |
+| Runtime `supported_with_caveat` | Check the caveat | We |
+| Platform, not `compatible` | The platform matrix entry's `fix.change` — e.g. a named pipe: offer a binding with a Linux client; NTLM: accept another credential | The entry's `fix.who` — backend owner |
+| Platform `requires_change`: a Windows credential | Kerberos configuration on our side, or a credential change by the backend's owner | We or the backend owner, not yet known which (the note is the entry's caveat) |
+| Platform `requires_change` (an unqualified host) | Change this environment's configuration | We |
+| Scanned before 1.4.0 | Rescan: the runtime verdict was never given (`not_assessed`) | We |
+
+"We" is the calling application's side, inside this migration; "backend owner" is the
+service's side, and the note says whether that owner is this migration or another team. No
+platform change is a rule in code: it is the fix of the platform matrix entry the verdict rests
+on (`platformMatrixEntry`, outbound-invocation-inventory 1.5.0).
+
+**Confirmation and probes are read live.** The run records both matrix entries behind each
+environment's verdicts. Whether a person has confirmed each, and the probe results recorded on
+it (29 C11), are read from the matrix files when the report is served, so a confirmation or a
+probe made after the run counts at once. Each verdict shows its entry, its confirmation and
+its probes, each probe once though it is recorded on both entries, and the WCF client
+version and runtimes its evidence covers.
+
+- **Under review.** A verdict resting on an entry a probe contradicts reads "contradicted by
+  probe — under review", never the entry's unrevised verdict (kept as `unrevisedVerdict` for the
+  reviewer). The changes that entry implied are withdrawn; each change records its `source`
+  (runtime, platform or configuration), so only that entry's changes go. Every total counts it
+  apart (`summary.underReview`, the host's `underReview` and chip, the CSV), and recomputes
+  the worst verdicts and backend-change counts without it (`soap_compatibility.review`,
+  `summarize`).
+- **Evidence and the targeted WCF client.** The engagement's target WCF client version is
+  an estate setting (`target_wcf_client_version`), or else the version the matrices record for
+  its target framework. An entry whose evidence covers an older WCF client is listed in
+  `evidencePredatesTarget` and flagged "re-probe".
+- **The run's matrices.** The report reads the matrix versions the run recorded
+  (`matrixVersion`, `platformMatrixVersion`) and lists in `newerMatrices` any that a newer file
+  supersedes: rescan.
+
+The report is a **draft** (a banner in the UI, `readyForClient: false`, and `-DRAFT` in the
+export's file name) until every entry it rests on, runtime and platform, is confirmed, none
+is contradicted, none has evidence older than the targeted WCF client, and the run used the
+newest matrices.
+
+**Per repository.** The repository page's Surface section shows the same answer for one
+repository (`GET /api/repositories/{id}/soap-compatibility`): each used SOAP call, per
+environment, with binding, effective security, both verdicts, and the confirmation state of
+the matrix entry each rests on (who confirmed it, and the decision). Verdicts under review
+read as such there too (`wcf_matrix.live_verdict`). It is read from the repository's own
+outbound invocations, so a rescan updates it at once, and each call links to its row in this
+report. The report itself is rebuilt only by the estate consolidation. When that has not run
+since the repository's last scan, the section says so plainly (`estate_stale`, with both
+times), and a call the newest estate run does not have says "not in the estate report: rerun
+it".
+
+**Export:** `GET /api/engagements/{id}/estate/soap-compatibility.csv`, one row per backend
+host, calling application and environment, each carrying the target framework, matrix
+version and source, both matrix entries and their confirmation, the probe results and any
+contradiction, what the evidence covers and whether it predates the targeted WCF client, so a
+row read alone says what it rests on.
+
 ---
 
 ## Acceptance criteria
@@ -320,7 +413,10 @@ Coverage — *"12 of 50 repositories included"* — on every view.
 - [ ] Every output carries coverage; the UI shows it on every view
 - [ ] Unused clients are excluded; unresolved endpoints are listed separately
 - [ ] The register groups by normalised host, with services beneath
-- [ ] `requires_backend_change` is true for NetTcp and Windows-integrated service security
+- [ ] `requires_backend_change` is true only where a call's platform matrix entry says the
+      backend's owner must change; a Windows credential (Kerberos) is a possible backend
+      change, listed apart
+- [ ] SOAP callers match ASMX services by `.asmx` path and web methods
 - [ ] A host served by an entry point in another engagement repository is marked internal and
       linked to it
 - [ ] Annotations survive a rescan; a host with no remaining calls is retained as

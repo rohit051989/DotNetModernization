@@ -32,7 +32,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from app import models
-from app.estate import analysis
+from app.estate import analysis, soap_compatibility, wcf_matrix
 from app.impact import client as client_impact
 from app.impact import conflicts as impact_conflicts
 from app.impact import stale as impact_stale
@@ -45,8 +45,13 @@ STEP_NAME = "dependency-and-context-map"
 # served-by annotations. integration-map is new with step 1.1.0.
 # endpoint-register 1.2.0 (additive): carried annotations (step 1.2.0).
 # endpoint-register 1.3.0 (additive): backendChangeOwner (step 1.3.0).
-ARTIFACT_VERSIONS = {"endpoint-register": "1.3.0", "package-estate": "1.0.0", "dependency-graph": "1.0.0",
-                     "context-map": "1.0.0", "integration-map": "1.0.0"}
+# endpoint-register 1.4.0 (additive): possibleBackendChangeReasons — Kerberos to configure on our side, or a
+# credential change by the owner; backend change reasons come from the WCF client platform matrix (step 1.7.0).
+# endpoint-register 1.5.0 (additive): underReview — matrix entries a probe contradicts, counted apart and never
+# as their verdict. soap-backend-compatibility 1.1.0 (additive): platformMatrixVersion, each change's source,
+# summary.underReview (step 1.8.0).
+ARTIFACT_VERSIONS = {"endpoint-register": "1.5.0", "package-estate": "1.0.0", "dependency-graph": "1.0.0",
+                     "context-map": "1.0.0", "integration-map": "1.0.0", "soap-backend-compatibility": "1.1.0"}
 
 # The per-repository steps whose rows this step reads, and what it needs
 # from each. A repository is included once all four have completed.
@@ -114,7 +119,8 @@ def load_estate(db: Session, engagement_id: str) -> dict:
          "project_path": paths.get(o.project_id, ""), "mechanism": o.mechanism, "usage": o.usage, "scheme": o.endpoint_scheme,
          "host": o.endpoint_host, "port": o.endpoint_port, "path": o.endpoint_path, "resolution": o.resolution,
          "placeholder": o.placeholder, "linux_verdict": o.linux_verdict, "linux_reasons": o.linux_reasons, "detail": o.detail,
-         "environment_bindings": o.environment_bindings, "operations": o.operations or []}
+         "environment_bindings": o.environment_bindings, "operations": o.operations or [],
+         "runtime_verdict": o.runtime_verdict, "runtime_reasons": o.runtime_reasons}
         for o in db.query(models.OutboundInvocation).filter(models.OutboundInvocation.repository_id.in_(ids))
     ]
     entry_points = [
@@ -207,6 +213,7 @@ def build(db: Session, engagement_id: str) -> dict:
         "reconciliations": reconciliations,
         "context": context_map,
         "integration": integration,
+        "soap": soap_compatibility.build(register),
     }
 
 
@@ -292,7 +299,7 @@ def write_tables(db: Session, engagement_id: str, result: dict, step_execution_i
 
 
 def artifacts(engagement_id: str, result: dict) -> dict[str, dict]:
-    """The five artifacts (Part G): deterministic — sorted keys and
+    """The six artifacts (Part G; Part J for the SOAP backend compatibility report): deterministic — sorted keys and
     collections, ids rather than times — and each carrying coverage and the
     per-repository sources it was built from."""
     data = result["data"]
@@ -322,6 +329,7 @@ def artifacts(engagement_id: str, result: dict) -> dict[str, dict]:
                 "requiresBackendChange": sum(1 for h in register["hosts"] if h["requiresBackendChange"]),
                 "requiresChangeByAnotherTeam": sum(1 for h in register["hosts"] if h["backendChangeOwner"] == analysis.ANOTHER_TEAM),
                 "requiresChangeInThisMigration": sum(1 for h in register["hosts"] if h["backendChangeOwner"] == analysis.THIS_MIGRATION),
+                "underReview": sum(1 for h in register["hosts"] if h["underReview"]),
                 "internal": sum(1 for h in register["hosts"] if h["classification"] == "internal"),
                 "external": sum(1 for h in register["hosts"] if h["classification"] == "external"),
                 "unresolved": len(register["unresolved"]),
@@ -386,6 +394,17 @@ def artifacts(engagement_id: str, result: dict) -> dict[str, dict]:
             "unmatched": integration["unmatched"],
             "entryPoints": integration["entryPoints"],
             "applications": analysis.integration_by_application(integration),
+        },
+        # Part J: will each SOAP backend's calls still work on the target .NET?
+        # Confirmation, probes and contradictions of the matrix entries are not
+        # here: they are read when the report is served, from the matrix files
+        # (app/routers/estate.py), which recomputes the summary the same way.
+        "soap-backend-compatibility": {
+            **header("soap-backend-compatibility"),
+            "matrixVersion": (soap_compatibility.load_matrix() or {}).get("matrixVersion"),
+            "platformMatrixVersion": (wcf_matrix.load("platform") or {}).get("matrixVersion"),
+            "summary": soap_compatibility.summarize(result["soap"]["hosts"]),
+            "hosts": result["soap"]["hosts"],
         },
     }
 
