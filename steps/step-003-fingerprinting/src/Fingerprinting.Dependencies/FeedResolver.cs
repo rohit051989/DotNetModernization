@@ -127,7 +127,12 @@ public static class FeedResolver
     /// <summary>A feed URL as it may be stored: scheme, host, port and path
     /// only — userinfo, query and fragment never kept (Part B4). A local
     /// folder inside the repository is recorded relative to it; one outside
-    /// as an absolute path, which names a folder, never a credential.</summary>
+    /// as an absolute path, which names a folder, never a credential. 1.4.2:
+    /// with every junction or symbolic link on the way resolved, so the same
+    /// folder has one key from any checkout — AccountsApi's
+    /// <c>../EnterprisePackages/feed</c> reached through the junction beside a
+    /// worktree is the sample's own folder, and a frozen lookup snapshot
+    /// (36-COPILOT-ENHANCED-CONVERSION Part L) answers it.</summary>
     public static string NormaliseUrl(string source, string repositoryRoot)
     {
         if (Uri.TryCreate(source, UriKind.Absolute, out var uri) && !uri.IsFile)
@@ -142,6 +147,32 @@ public static class FeedResolver
             return "repo:" + full[repositoryRoot.Length..].Replace('\\', '/').TrimEnd('/');
         }
 
-        return "file:" + full.Replace('\\', '/').TrimEnd('/');
+        return "file:" + RealPath(full).Replace('\\', '/').TrimEnd('/');
+    }
+
+    /// <summary>The path with each junction or symbolic link in it replaced by the folder it points to.</summary>
+    private static string RealPath(string full)
+    {
+        var root = Path.GetPathRoot(full);
+        if (string.IsNullOrEmpty(root)) return full;
+        var current = root;
+        foreach (var part in full[root.Length..].Split([Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar], StringSplitOptions.RemoveEmptyEntries))
+        {
+            current = Path.Combine(current, part);
+            try
+            {
+                var info = new DirectoryInfo(current);
+                if (info.Exists && info.LinkTarget is not null && info.ResolveLinkTarget(returnFinalTarget: true) is { } target)
+                {
+                    current = Path.GetFullPath(target.FullName);
+                }
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // Unreadable: keep the path as written.
+            }
+        }
+
+        return current;
     }
 }

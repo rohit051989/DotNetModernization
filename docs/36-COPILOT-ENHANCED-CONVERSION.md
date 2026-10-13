@@ -435,6 +435,12 @@ the snapshot too. Each verification records `packageLookups` (`source: snapshot`
 `source: live`), and `report` and `calibrate` mark any verification not made against the experiment's snapshot,
 including one answered from live feeds.
 
+**One key per local feed.** A local folder feed is keyed by its path, and AccountsApi's `../EnterprisePackages/feed`
+resolves, in a verifier's worktree, through the junction beside it, to a path under `runs/`, so no frozen answer
+matched it, and every AccountsApi package went unanswered. Live, this had stayed hidden: the verifier simply looked
+the feed up again under the new key. dependency-assessment 1.4.2 resolves junctions and links in a local feed's path,
+so every checkout names the folder by one key.
+
 **What it does not freeze.** Package files (`.nupkg`) already downloaded are used as they are: a version's content
 never changes. The restore that builds and tests each branch still uses the machine's package folders and feeds, as
 any build does; it decides whether the branch builds, not which work items remain.

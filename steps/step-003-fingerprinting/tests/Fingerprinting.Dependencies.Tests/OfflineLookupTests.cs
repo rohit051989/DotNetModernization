@@ -52,6 +52,33 @@ public sealed class OfflineLookupTests : IDisposable
     }
 
     [Fact]
+    public void A_local_feed_reached_through_a_junction_has_the_folder_s_own_key()
+    {
+        // AccountsApi's ../EnterprisePackages/feed: the verifier's worktree reaches it through a junction beside it.
+        var real = Path.Combine(_root, "samples", "EnterprisePackages");
+        Directory.CreateDirectory(Path.Combine(real, "feed"));
+        var checkout = Path.Combine(_root, "runs", "verification");
+        Directory.CreateDirectory(Path.Combine(checkout, "wt"));
+        var link = Path.Combine(checkout, "EnterprisePackages");
+        if (OperatingSystem.IsWindows())
+        {
+            using var mklink = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("cmd.exe", $"/c mklink /J \"{link}\" \"{real}\"")
+                { RedirectStandardOutput = true, UseShellExecute = false })!;
+            mklink.WaitForExit();
+        }
+        else
+        {
+            Directory.CreateSymbolicLink(link, real);
+        }
+
+        var throughLink = FeedResolver.NormaliseUrl(Path.Combine(checkout, "wt", "..", "EnterprisePackages", "feed"), Path.Combine(checkout, "wt"));
+        var direct = FeedResolver.NormaliseUrl(Path.Combine(real, "feed"), Path.Combine(_root, "samples", "App"));
+        Assert.Equal(direct, throughLink);
+        Assert.StartsWith("file:", direct);
+        Directory.Delete(link);                                                                      // the link, not its target
+    }
+
+    [Fact]
     public async Task Online_an_expired_answer_is_refreshed_from_the_feed()
     {
         // The contrast: without offline, the 30-day-old entry is past its TTL, so the feed is asked (and here fails).
