@@ -187,14 +187,14 @@ when to stop. The experiment runs interactively; unattended operation is not wha
 
 ## Acceptance criteria
 
-- [ ] Plugin components vendored under `third_party/` with licence, notice and modification headers
-- [ ] The generator produces every Part D output; no generated file contains a secret value
-- [ ] Each run records the hash of every input it was given
-- [ ] The verifier computes one verdict per run by fixed rules, written into its output
-- [ ] Re-discovery and impact comparison run on every branch
-- [ ] Engine state and generated inputs are excluded from diff and impact comparison
-- [ ] The runbook keeps both Copilot arms identical except the enhancement
-- [ ] At least two runs per Copilot arm, each in its own branch
+- [x] Plugin components vendored under `third_party/` with licence, notice and modification headers
+- [x] The generator produces every Part D output; no generated file contains a secret value
+- [x] Each run records the hash of every input it was given
+- [x] The verifier computes one verdict per run by fixed rules, written into its output
+- [x] Re-discovery and impact comparison run on every branch
+- [x] Engine state and generated inputs are excluded from diff and impact comparison
+- [x] The runbook keeps both Copilot arms identical except the enhancement
+- [x] At least two runs per Copilot arm, each in its own branch
 - [ ] One comparison report across all runs, with the scorecard per run and the arm 3 limitation stated
 
 ---
@@ -271,9 +271,44 @@ conversions safe to run twice, and a crashed step's child processes terminated w
 
 ### Additional acceptance criteria
 
-- [ ] The platform has no field, setting or file that accepts an engine credential
-- [ ] Sending code to an engine or LLM provider not on the engagement's allowlist is refused, and tested
-- [ ] A client engagement's allowlist defaults to empty
-- [ ] Every run records identity, organisation, model and engine version
-- [ ] The runbook stops when the signed-in account is not the company account
-- [ ] No vendored file makes a network call
+- [x] The platform has no field, setting or file that accepts an engine credential
+- [x] Sending code to an engine or LLM provider not on the engagement's allowlist is refused, and tested
+- [x] A client engagement's allowlist defaults to empty
+- [x] Every run records identity, organisation, model and engine version
+- [x] The runbook stops when the signed-in account is not the company account
+- [x] No vendored file makes a network call
+
+---
+
+## Part J — Built for the experiment (2026-10-13)
+
+The lifecycle register is unchanged (Part H). What exists, and where:
+
+| Part | Built | Run with |
+|---|---|---|
+| C | `third_party/code-modernization/`: the five scripts and three test files, `LICENSE`, `NOTICE` (upstream commit `f359d43`, 2026-10-10), modification headers; telemetry not vendored | `cd third_party\code-modernization; python -m unittest discover -s scripts/tests` |
+| I | `engagements.engine_allowlist` (empty by default), `engine_runs`, `app/engine/boundary.py` | `python -m app.engine.allowlist`, `python -m app.engine.runs` |
+| D | `app/engine/inputs/`: collector, renderer, adapted templates, secret check | `python -m app.engine.inputs generate` / `merge-addendum` / `check` |
+| E | `app/engine/verifier/`: the vendored checks plus re-discovery and impact comparison | `python -m app.engine.verifier` |
+| F | `app/experiment/`, `experiments/copilot-eshoponweb/` (configuration, generated runbook) | `python -m app.experiment.prepare`, `python -m app.experiment.report` |
+
+**Where Copilot reads its inputs, confirmed 2026-10-12** against the GitHub Copilot upgrade documentation
+(customization, ms.date 2026-09-21) and `microsoft/upgrade-agent-plugins` (2026-10-09): the current agent has
+no separate folder for custom upgrade instructions. It retrieves them through the same `get_instructions`
+call as skills, from `.github/upgrades/skills/` (repository upgrade skills, priority 3) and `.github/skills/`
+(priority 2). So each per-item instruction is an upgrade skill, `.github/upgrades/skills/applying-<resolution>.md`,
+with the metadata header skills require, and `discovery: preload` so it is in context at assessment; the
+adapted agents are `.github/skills/*.md` with `discovery: lazy`. The addendum, decision sheet and inputs
+manifest sit under `.github/platform-inputs/`, which the engine is not pointed at except through the runbook.
+
+**Where the boundary is enforced.** The platform never launches the engine, so the refusal is at the start of
+a run: `app.engine.runs start` refuses unless the allowlist admits the provider under the organisation the
+engine reports, and records the run only then. The shared LLM provider (32 Part G) calls
+`boundary.require_allowed` before any request carrying source, once it is built. Preparing branches and
+generating inputs send nothing anywhere and are not gated.
+
+**Verdict rules as built.** Two checks not in the Part E table are part of the fixed rules: *something
+converted* (no change outside engine state and generated inputs fails the run — the baseline must read as
+nothing converted) and, within re-discovery, *a project not on the engagement's target framework* (caps at
+PARTLY). Re-discovery's remaining or introduced work items cap at PARTLY; the impact comparison and diff
+size are reported, never judged. The canary is configured per repository in the experiment configuration.

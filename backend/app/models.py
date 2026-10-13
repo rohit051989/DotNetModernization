@@ -354,6 +354,10 @@ class Engagement(Base):
     # Step 5 (29-ENTRY-POINT-AND-OUTBOUND-INVENTORIES Part C9, 1.3.0): globs for Web Deploy SetParameters
     # files. Null means **/SetParam*.xml and **/SetParameters*.xml.
     deploy_parameter_globs: Mapped[list | None] = mapped_column(JSONB)
+    # 36-COPILOT-ENHANCED-CONVERSION Part I: the engines and LLM providers this engagement's code may be
+    # sent to, [{provider, organisation}], enforced by app.engine.boundary. Empty by default: nothing is
+    # allowed until a person sets it. Names and organisations only; never a credential.
+    engine_allowlist: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default="active")
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -2816,4 +2820,51 @@ class ConversionUnit(Base):
         CheckConstraint(f"status IN {UNIT_STATUS}", name="ck_conversion_units_status"),
         CheckConstraint("status <> 'committed' OR commit_sha IS NOT NULL", name="ck_conversion_units_committed_has_commit"),
         UniqueConstraint("plan_id", "sequence", name="uq_conversion_units_sequence"),
+    )
+
+
+# ---------- engine runs (36-COPILOT-ENHANCED-CONVERSION Parts D and I) ----------
+
+ENGINE_RUN_OUTCOMES = ("completed", "stopped", "abandoned")
+
+
+class EngineRun(Base):
+    """One person-executed run of a conversion engine on one branch. Recorded at the start, after
+    app.engine.boundary has checked the engagement's allowlist: who was signed in to the engine
+    and under which organisation, as the engine reports them, the model and engine version, and
+    a sha256 per input file the engine was given. The platform never holds the engine's
+    credential; nothing here is one (app.engine.boundary.refuse_credential)."""
+
+    __tablename__ = "engine_runs"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid())
+    engagement_id: Mapped[str] = mapped_column(Text, ForeignKey("engagements.id"), nullable=False)
+    repository_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("repositories.id"))
+    label: Mapped[str] = mapped_column(Text, nullable=False)
+    provider: Mapped[str] = mapped_column(Text, nullable=False)
+    organisation: Mapped[str] = mapped_column(Text, nullable=False)
+    signed_in_identity: Mapped[str] = mapped_column(Text, nullable=False)
+    model: Mapped[str] = mapped_column(Text, nullable=False)
+    engine_version: Mapped[str] = mapped_column(Text, nullable=False)
+    host: Mapped[str | None] = mapped_column(Text)
+    worktree_path: Mapped[str | None] = mapped_column(Text)
+    branch: Mapped[str | None] = mapped_column(Text)
+    base_commit: Mapped[str | None] = mapped_column(Text)
+    # [{path, sha256}] for every input file present at the start, sorted by path.
+    inputs: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    started_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    finished_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
+    outcome: Mapped[str | None] = mapped_column(Text)
+    head_commit: Mapped[str | None] = mapped_column(Text)
+    elapsed_minutes: Mapped[int | None] = mapped_column(Integer)
+    premium_requests: Mapped[int | None] = mapped_column(Integer)
+    # [{at, stage, what}]: each time the person had to step in beyond the runbook's wording.
+    interventions: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    # The engine's session transcript: a record of the run, never evidence (Part F).
+    transcript: Mapped[dict | None] = mapped_column(JSONB)
+    notes: Mapped[str | None] = mapped_column(Text)
+
+    __table_args__ = (
+        CheckConstraint(f"outcome IS NULL OR outcome IN {ENGINE_RUN_OUTCOMES}", name="ck_engine_runs_outcome"),
+        UniqueConstraint("engagement_id", "label", name="uq_engine_runs_label"),
     )

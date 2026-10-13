@@ -369,6 +369,31 @@ def _occurrences(db: Session, repository_id, exclusions: list[dict]) -> tuple[di
     return packages, skipped
 
 
+def package_moves(db: Session, repository_id, from_tfm: str, to_tfm: str,
+                  exclusions: list[dict]) -> tuple[dict, list[PackageMove], list[str]]:
+    """(packages, moves, skipped): each package dependency-assessment recommends moving, with its
+    occurrences, framework support and whether its dependencies are known, and the PackageMove
+    `couplings` reads. Shared with the engine input generator (app.engine.inputs), which reports
+    the same couplings without making a plan."""
+    packages, skipped = _occurrences(db, repository_id, exclusions)
+    moves_in: list[PackageMove] = []
+    for key, p in sorted(packages.items()):
+        merged_before, merged_after, known = {}, {}, True
+        for tfm in (from_tfm, to_tfm):
+            b = frameworks.dependency_minimums(frameworks.version_metadata(db, p["package_id"], p["from"]), tfm)
+            a = frameworks.dependency_minimums(frameworks.version_metadata(db, p["package_id"], p["to"]), tfm)
+            known &= b is not None and a is not None
+            for target, minimums in ((merged_before, b or {}), (merged_after, a or {})):
+                for dep, v in minimums.items():
+                    target[dep] = max(target.get(dep, v), v)
+        p["dependencies_known"] = known
+        p["support"] = {"from": p["from"], "to": p["to"],
+                        "current": {t: _support(db, p["package_id"], p["from"], t) for t in (from_tfm, to_tfm)},
+                        "recommended": {t: _support(db, p["package_id"], p["to"], t) for t in (from_tfm, to_tfm)}}
+        moves_in.append(PackageMove(p["package_id"], p["from"], p["to"], p["outcome"], merged_before, merged_after))
+    return packages, moves_in, skipped
+
+
 def create(db: Session, slug: str, exclusions: list[dict], layout: str = "in_place") -> models.ConversionPlan:
     repository = db.query(models.Repository).filter_by(slug=slug).filter(models.Repository.deleted_at.is_(None)).one()
     engagement = db.get(models.Engagement, repository.engagement_id)
@@ -397,26 +422,12 @@ def create(db: Session, slug: str, exclusions: list[dict], layout: str = "in_pla
     db.flush()
 
     # ---- the packages, their declarations and their couplings
-    packages, skipped = _occurrences(db, repository.id, exclusions)
-    moves_in: list[PackageMove] = []
+    packages, moves_in, skipped = package_moves(db, repository.id, from_tfm, to_tfm, exclusions)
     for key, p in sorted(packages.items()):
-        merged_before, merged_after, known = {}, {}, True
-        for tfm in (from_tfm, to_tfm):
-            b = frameworks.dependency_minimums(frameworks.version_metadata(db, p["package_id"], p["from"]), tfm)
-            a = frameworks.dependency_minimums(frameworks.version_metadata(db, p["package_id"], p["to"]), tfm)
-            known &= b is not None and a is not None
-            for target, minimums in ((merged_before, b or {}), (merged_after, a or {})):
-                for dep, v in minimums.items():
-                    target[dep] = max(target.get(dep, v), v)
-        p["dependencies_known"] = known
-        p["support"] = {"from": p["from"], "to": p["to"],
-                        "current": {t: _support(db, p["package_id"], p["from"], t) for t in (from_tfm, to_tfm)},
-                        "recommended": {t: _support(db, p["package_id"], p["to"], t) for t in (from_tfm, to_tfm)}}
         p["declarations"] = {}
         for occurrence in p["occurrences"]:
             d = msbuild.version_declaration(root, occurrence[1], p["package_id"])
             p["declarations"].setdefault(d.key, d)
-        moves_in.append(PackageMove(p["package_id"], p["from"], p["to"], p["outcome"], merged_before, merged_after))
     together, depends = couplings(moves_in)
 
     union = _Union()

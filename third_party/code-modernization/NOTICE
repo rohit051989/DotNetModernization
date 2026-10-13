@@ -1,0 +1,62 @@
+Modernization Platform — third-party component notice
+
+Component:  code-modernization plugin, by Anthropic
+Source:     https://github.com/anthropics/claude-plugins-official
+Path:       plugins/code-modernization
+Commit:     f359d43b406057f1a8cdbc4ea93b827642c162e6 (committed 2026-10-10T19:41:21-07:00)
+Vendored:   2026-10-12
+License:    Apache License 2.0 — the upstream LICENSE is in this folder, unchanged.
+
+Used by the platform's verifier (backend/app/engine/verifier) and adapted into GitHub Copilot inputs
+(backend/app/engine/inputs/templates), per docs/36-COPILOT-ENHANCED-CONVERSION.md Part C.
+
+Vendored files
+--------------
+scripts/baseline_diff.py                 unmodified
+scripts/compare.py                       unmodified
+scripts/uplift_checks.py                 unmodified
+scripts/trace_rules.py                   unmodified
+scripts/proof_pack.py                    unmodified
+scripts/tests/test_compare_tolerance.py  unmodified
+scripts/tests/test_proof_tools.py        MODIFIED — header in the file says how: build_report.py is
+                                         not vendored, so its import and the tests of the report's
+                                         Proof section are removed; BaselineEvidence compares paths
+                                         with "/" on every OS; one hostile-file-name test is skipped
+                                         on Windows, where the file name cannot exist.
+scripts/tests/test_proof_rules_run.py    MODIFIED — header in the file says how: build_report.py
+                                         assertions removed; two hostile-file-name tests skipped on
+                                         Windows.
+upstream-agents/*.md                     unmodified reference copies of the four agents adapted
+                                         below, kept so an upstream update can be compared.
+
+Adapted, with attribution in each generated file
+------------------------------------------------
+agents/version-delta-analyst.md  -> backend/app/engine/inputs/templates/skills/analyzing-version-deltas.md
+agents/test-engineer.md          -> backend/app/engine/inputs/templates/skills/writing-characterization-tests.md
+agents/architecture-critic.md    -> backend/app/engine/inputs/templates/skills/reviewing-converted-code.md
+                                    (a read-only review pass)
+agents/uplift-migrator.md        -> backend/app/engine/inputs/templates/copilot-instructions.md
+                                    (global execution instructions)
+Methods from commands/modernize-uplift.md and modernize-verify.md: the verifier's checks and verdict
+rules (backend/app/engine/verifier).
+
+Not vendored
+------------
+scripts/telemetry.py, scripts/telemetry.sh — usage telemetry; never vendored (Part I: nothing vendored
+makes a network call). Also not vendored: scripts/build_report.py, make_shards.py, render_rules.py and
+their tests, hooks/, workflows/, commands/, assets/ and the remaining agents.
+
+Network
+-------
+No vendored file opens a network connection, starts a process or reads a credential.
+backend/tests/test_vendored_plugin.py checks this on every run: no vendored module imports a network,
+process or dynamic-import module, and the vendored test suite passes with sockets disabled.
+
+Updating
+--------
+Clone the upstream repository at the new commit, diff plugins/code-modernization/scripts and agents
+against this folder (upstream-agents/ holds the adapted agents as they were), re-apply the
+modifications listed above, update the commit and date here and in each modified file's header, and
+run the vendored tests in place:
+
+    cd third_party\code-modernization; python -m unittest discover -s scripts/tests

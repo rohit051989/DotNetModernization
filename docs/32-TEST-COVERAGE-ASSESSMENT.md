@@ -224,6 +224,10 @@ safety check.
 `llm_may_receive_source_code`, per engagement, default **false**. Uses that need source — the
 `test-coverage-assessment` veto — cannot run while it is false. Uses that send only names and signals are unaffected.
 
+The provider itself must also be on the engagement's engine allowlist (36-COPILOT-ENHANCED-CONVERSION Part I):
+the adapter calls `app.engine.boundary.require_allowed` before any request, and an engagement's list starts
+empty. `none` and `fake` send nothing and need no entry.
+
 ### G5. Audit
 
 Every call records: purpose, provider, model and version, prompt hash, item count, response,
