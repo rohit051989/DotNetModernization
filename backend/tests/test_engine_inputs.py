@@ -301,18 +301,73 @@ class PinnedInstrument(unittest.TestCase):
     def test_the_runbook_names_the_pinned_commit(self):
         self.assertIn(f"Platform commit `{'c' * 40}`", Runbook.text_for_test())
 
-    def test_the_recorded_create_command_leaves_out_where_it_was_written(self):
+    def _create(self, folder: Path, out: str) -> int:
         from app.experiment import create
-        with tempfile.TemporaryDirectory() as out, mock.patch.object(create.instrument, "require_clean", return_value="d" * 40):
-            argv = ["--engagement", "e", "--repository", "r", "--name", "n", "--baseline", "abc1234", "--title", "T",
-                    "--canary-file", "f.cs", "--canary-find", 'x == "0"', "--canary-replace", "y", "--canary-why", "w",
-                    "--out", out, "--force"]
-            self.assertEqual(create.main(argv), 0)
+        argv = ["--engagement", "e", "--repository", "r", "--name", "n", "--baseline", "abc1234", "--title", "T",
+                "--canary-file", "f.cs", "--canary-find", 'x == "0"', "--canary-replace", "y", "--canary-why", "w",
+                "--out", out, "--force"]
+        with mock.patch.object(create.instrument, "require_clean", return_value="d" * 40), \
+                mock.patch.object(create, "experiment_dir", return_value=folder):
+            return create.main(argv)
+
+    def test_the_recorded_create_command_leaves_out_where_it_was_written(self):
+        from app.experiment import lookups
+        with tempfile.TemporaryDirectory() as folder, tempfile.TemporaryDirectory() as out:
+            data = lookups.render({"format": 1, "rows": []})
+            (Path(folder) / lookups.FILE).write_bytes(data)
+            self.assertEqual(self._create(Path(folder), out), 0)
             text = (Path(out) / "experiment.yaml").read_text(encoding="utf-8")
         self.assertIn(f'platform_commit: "{"d" * 40}"', text)
+        self.assertIn(f'sha256: "{lookups.sha256(data)}"', text)                    # the frozen package lookups
         self.assertNotIn("--out", text)
         self.assertNotIn("--force", text)
         self.assertIn("""--canary-find 'x == \\"0\\"'""", text)
+
+
+class FrozenLookups(unittest.TestCase):
+    """Part L: an experiment's package lookups are a frozen snapshot, named by its sha256 in experiment.yaml; a
+    verification answers from it only, and one made against anything else is flagged."""
+
+    def test_no_experiment_is_created_without_frozen_lookups(self):
+        with tempfile.TemporaryDirectory() as folder, tempfile.TemporaryDirectory() as out:
+            self.assertEqual(PinnedInstrument()._create(Path(folder), out), 1)
+            self.assertFalse((Path(out) / "experiment.yaml").exists())
+
+    def test_the_snapshot_is_deterministic_and_loaded_only_when_its_hash_matches(self):
+        from app.experiment import lookups
+        rows = [{"feed": "https://api.nuget.org/v3/index.json", "package": "System.Text.Json", "fetchedAt": "2026-10-13T14:00:00+00:00",
+                 "versions": ["10.0.12"], "metadata": {"10.0.12": {"listed": True}}}]
+        a = lookups.render({"format": 1, "rows": rows, "repository": "r"})
+        b = lookups.render({"repository": "r", "rows": rows, "format": 1})
+        self.assertEqual(a, b)                                                       # key order does not matter
+        with tempfile.TemporaryDirectory() as folder, mock.patch.object(lookups, "experiment_dir", return_value=Path(folder)):
+            (Path(folder) / lookups.FILE).write_bytes(a)
+            config = {"engagement": "e", "experiment": "n", "package_lookups": {"sha256": lookups.sha256(a)}}
+            loaded, digest = lookups.load(config)
+            self.assertEqual((loaded, digest), (rows, lookups.sha256(a)))
+            (Path(folder) / lookups.FILE).write_bytes(a.replace(b"10.0.12", b"10.0.13"))   # a newer answer slipped in
+            with self.assertRaises(lookups.SnapshotError):
+                lookups.load(config)
+
+    def test_a_verification_against_another_snapshot_or_live_feeds_is_flagged(self):
+        from app.experiment import instrument
+        config = {"platform_commit": "a" * 40, "package_lookups": {"sha256": "f" * 64}}
+        platform = {"commit": "a" * 40, "dirty": False}
+        self.assertIsNone(instrument.mismatch(config, {"platform": platform,
+                                                       "packageLookups": {"source": "snapshot", "sha256": "f" * 64}}))
+        self.assertIn("live feeds", instrument.mismatch(config, {"platform": platform, "packageLookups": {"source": "live"}}))
+        self.assertIn("e" * 12, instrument.mismatch(config, {"platform": platform,
+                                                             "packageLookups": {"source": "snapshot", "sha256": "e" * 64}}))
+        self.assertIn("live feeds", instrument.mismatch(config, {"platform": platform}))     # verified before the freeze
+
+    def test_the_verifier_s_throwaway_database_gets_the_snapshot_and_runs_discovery_offline(self):
+        import inspect
+        from app.engine.verifier import rediscovery
+        source = inspect.getsource(rediscovery)
+        self.assertIn('parameters["lookup_offline"] = True', source)
+        self.assertIn('if name == "package_lookup_cache" and lookups is not None', source)
+        job = (Path(rediscovery.BACKEND) / "app" / "jobs" / "phase0-repository-discovery.yaml").read_text(encoding="utf-8")
+        self.assertIn('lookup_offline: "${params.lookup_offline}"', job)
 
 
 class SelfContained(unittest.TestCase):

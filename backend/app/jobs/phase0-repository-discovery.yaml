@@ -1,5 +1,5 @@
 job_name: phase0-repository-discovery
-version: 15
+version: 16
 description: "Per-repository discovery and analysis, repository-ingest through risk-scoring-tier-assignment (17-LIFECYCLE-STEPS.md)."
 
 parameters:
@@ -15,6 +15,14 @@ parameters:
     type: string
     required: true
     description: "UUID generated per registration or rescan. Makes each rescan a distinct job instance rather than a restart of the previous one."
+  # v16: an experiment's verification answers package lookups from its frozen snapshot only
+  # (36-COPILOT-ENHANCED-CONVERSION Part L): the verifier loads the snapshot into its throwaway database
+  # and sets this, so dependency-assessment contacts no feed.
+  - name: lookup_offline
+    type: boolean
+    required: false
+    default: false
+    description: "Answer package lookups from the lookup cache only, whatever their age; a package it does not hold is reported as not answered, never looked up live."
 
 stub_policy: continue
 
@@ -60,6 +68,7 @@ flow:
       compare_public_feed: true
       lookup_cache_ttl_hours: 24
       force_refresh: false
+      lookup_offline: "${params.lookup_offline}"
       include_transitive: false
       enable_change_explanation: false
   # item-detection replaces pattern-classification: it matches catalog items

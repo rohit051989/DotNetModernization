@@ -118,6 +118,11 @@ So determinism is defined **against a lookup cache**:
 - `force_refresh` bypasses the cache
 - the cache snapshot time is recorded in `StepOutput.metadata`, per the volatile-field
   pattern, so a result is always read alongside when it was true
+- `lookup_offline` (scanner 1.4.1; job parameter `lookup_offline`, default false): every
+  answer comes from the cache whatever its age, a package the cache does not hold is reported
+  as not answered, and no package file is downloaded: no feed is contacted. An experiment's
+  verifier runs this way against the experiment's frozen snapshot
+  (36-COPILOT-ENHANCED-CONVERSION Part L)
 
 ### B7. Unreachable feeds
 

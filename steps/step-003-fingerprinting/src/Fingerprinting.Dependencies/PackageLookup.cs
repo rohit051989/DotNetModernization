@@ -22,8 +22,16 @@ public sealed record LookupResult(CacheEntry? Entry, string? Error)
 /// are downloaded only into <see cref="PackageCacheDirectory"/>, outside every
 /// repository (Part B5). Nothing is restored, nothing is written beside a
 /// project.
+/// <para>
+/// <paramref name="offline"/> (1.4.1, <c>lookup_offline</c>; 36-COPILOT-ENHANCED-CONVERSION Part L): every answer
+/// comes from the cache, whatever its age, and no feed is contacted. A package the cache does not hold is reported as
+/// not answered, and a package file not already downloaded is not downloaded. An experiment's verifier loads its
+/// frozen snapshot into the cache and runs this way, so a release published between two verifications changes
+/// nothing.
+/// </para>
 /// </summary>
-public sealed partial class PackageLookup(ILookupCache cache, string packageCacheDirectory, TimeSpan ttl, bool forceRefresh, DateTimeOffset now)
+public sealed partial class PackageLookup(ILookupCache cache, string packageCacheDirectory, TimeSpan ttl, bool forceRefresh, DateTimeOffset now,
+    bool offline = false)
 {
     private readonly SourceCacheContext _sourceCache = new() { NoCache = true, DirectDownload = true };
     private readonly Dictionary<string, SourceRepository> _repositories = new(StringComparer.Ordinal);
@@ -62,10 +70,15 @@ public sealed partial class PackageLookup(ILookupCache cache, string packageCach
     {
         var key = $"{feed.Url}|{packageId.ToLowerInvariant()}";
         var cached = cache.Get(feed.Url, packageId);
-        if (cached is not null && (_refreshed.Contains(key) || (!forceRefresh && now - cached.FetchedAt < ttl)))
+        if (cached is not null && (offline || _refreshed.Contains(key) || (!forceRefresh && now - cached.FetchedAt < ttl)))
         {
             SnapshotTimes.Add(cached.FetchedAt);
             return new LookupResult(cached, null);
+        }
+
+        if (offline)
+        {
+            return new LookupResult(null, $"feed '{feed.Name}' was not asked: '{packageId}' is not in the frozen package lookups, and lookups are offline");
         }
 
         try
@@ -215,6 +228,7 @@ public sealed partial class PackageLookup(ILookupCache cache, string packageCach
         var directory = Path.Combine(packageCacheDirectory, feedKey, packageId.ToLowerInvariant(), version.ToLowerInvariant());
         var path = Path.Combine(directory, $"{packageId.ToLowerInvariant()}.{version.ToLowerInvariant()}.nupkg");
         if (File.Exists(path)) return path;
+        if (offline) return null;                   // never downloaded while lookups are offline
 
         try
         {

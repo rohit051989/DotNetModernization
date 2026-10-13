@@ -410,3 +410,32 @@ refused and named, with nothing written; `RealRepository` generates the three ex
 clean. Over the inputs generated before this change, the check finds 413, 476 and 550 findings
 (AccountsApi.Net10, AccountsApi.Net8, eShopOnWeb); over the regenerated inputs, none.
 
+## Part L — Frozen package lookups (2026-10-14)
+
+The pinned commit fixes the platform but not the package feeds. eShopOnWeb arm 3 resolved 16 work items at
+generation 2 and 14 at generation 3 only because nuget.org published System.Text.Json and System.Net.Http.Json
+10.0.13 in between: the verifier's throwaway database copied the live lookup cache, and discovery refreshed entries
+older than the 24-hour TTL. Package changes are most of each application's work items, so a release between two
+verifications would shift the comparison with nothing about the runs differing.
+
+**The snapshot.** `python -m app.experiment.lookups freeze --engagement E --repository R --name N` writes
+`package-lookups.json` into the experiment's folder: every lookup cache row for the packages the repository's
+dependency assessment covers, and for their dependencies (the planner reads those to couple moves). That is every
+answer the experiment's inputs were built from. It refuses, naming each, when an answer is no longer the one the
+assessment used (a row fetched after the assessment ran, or a feed answer the cache no longer holds): it never
+substitutes a newer one. The file is deterministic (sorted keys, one format) and never replaced without `--force`.
+`create` refuses without it and records its sha256 in experiment.yaml as `package_lookups.sha256`.
+
+**Verification answers from it only.** When experiment.yaml names a snapshot, the verifier checks the file against
+that sha256 (a mismatch stops it), loads its rows, and nothing of the live cache, into the throwaway database, and
+launches discovery there with the job parameter `lookup_offline` (phase0-repository-discovery v16), which
+dependency-assessment 1.4.1 reads: answers come from the cache whatever their age, a package the snapshot does not
+hold is reported as not answered, and no package file is downloaded. The baseline's cached re-discovery is keyed on
+the snapshot too. Each verification records `packageLookups` (`source: snapshot`, its sha256 and row count, or
+`source: live`), and `report` and `calibrate` mark any verification not made against the experiment's snapshot,
+including one answered from live feeds.
+
+**What it does not freeze.** Package files (`.nupkg`) already downloaded are used as they are: a version's content
+never changes. The restore that builds and tests each branch still uses the machine's package folders and feeds, as
+any build does; it decides whether the branch builds, not which work items remain.
+

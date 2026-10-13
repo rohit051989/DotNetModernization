@@ -45,7 +45,7 @@ from app.conversion.runner import fingerprint
 from app.engine import paths, siblings
 from app.engine.inputs.collect import SILENT_ITEMS
 from app.engine.verifier import plugin, rediscovery
-from app.experiment import instrument
+from app.experiment import instrument, lookups
 
 VERIFIER_VERSION = "1.0.0"
 RUNS = planner.RUNS          # the same runs folder as the conversion runner, whatever the working directory
@@ -347,12 +347,18 @@ def verify(db, *, engagement_id: str, slug: str, base: str, ref: str, label: str
     base_tree = base_dir / "wt"
     _outside(root, base_tree)
     state = platform_state(db)
+    # Part L: an experiment's package lookups come from its frozen snapshot, never a live feed.
+    frozen_rows, frozen_sha = lookups.load(config) if lookups.recorded(config) else (None, None)
+    answered = ({"source": "snapshot", "sha256": frozen_sha, "rows": len(frozen_rows)} if frozen_rows is not None
+                else {"source": "live"})
     cached = json.loads(snapshot_file.read_text(encoding="utf-8")) if snapshot_file.exists() else None
-    if refresh_baseline or cached is None or cached.get("platform") != state or "isolation" not in cached:
+    if (refresh_baseline or cached is None or cached.get("platform") != state or "isolation" not in cached
+            or cached.get("packageLookups") != answered):
         gitops.add_scratch(root, base_tree, base_sha)
         siblings.link(base_tree, root, siblings_needed)
-        snap = rediscovery.snapshot(engagement_id, base_tree, f"{slug} verifier baseline {base_sha[:8]}", base_dir / "scratch")
-        snap.update(commit=base_sha, at=_now(), platform=state)
+        snap = rediscovery.snapshot(engagement_id, base_tree, f"{slug} verifier baseline {base_sha[:8]}", base_dir / "scratch",
+                                    frozen_rows)
+        snap.update(commit=base_sha, at=_now(), platform=state, packageLookups=answered)
         snapshot_file.write_text(json.dumps(snap, indent=2, sort_keys=True, default=str), encoding="utf-8")
     base_snap = json.loads(snapshot_file.read_text(encoding="utf-8"))
     if not base_tree.exists():
@@ -478,7 +484,7 @@ def verify(db, *, engagement_id: str, slug: str, base: str, ref: str, label: str
         checks.append(_check("same", "Equivalence", "na", "no equivalence cases exist for this repository"))
 
     # Re-discovery on the branch, and the impact comparison against the baseline's prediction.
-    tip_snap = rediscovery.snapshot(engagement_id, tip_tree, f"{slug} verifier {label}", out / "scratch")
+    tip_snap = rediscovery.snapshot(engagement_id, tip_tree, f"{slug} verifier {label}", out / "scratch", frozen_rows)
     (out / "rediscovery.json").write_text(json.dumps(tip_snap, indent=2, sort_keys=True, default=str), encoding="utf-8")
     before_items, after_items = rediscovery.work_items(base_snap["model"]), rediscovery.work_items(tip_snap["model"])
     resolved = sorted(k for k in before_items if k not in after_items)
@@ -511,6 +517,8 @@ def verify(db, *, engagement_id: str, slug: str, base: str, ref: str, label: str
         "verifier": {"version": VERIFIER_VERSION, "plugin": "third_party/code-modernization @ f359d43"},
         # The platform commit the verification ran at, and whether its tree was clean (app.experiment.instrument).
         "platform": instrument.platform_state(),
+        # Where package lookups were answered from: the experiment's frozen snapshot (by sha256), or live feeds.
+        "packageLookups": answered,
         "label": label, "repository": slug, "engagement": engagement_id, "base": base_sha, "ref": ref, "tip": tip_sha,
         "verifiedAt": _now(), "verdict": result_verdict, "reasons": reasons, "rules": RULES, "checks": checks,
         "forAPerson": person, "baseline": baseline_info, "baselineSnapshot": {"commit": base_snap["commit"], "at": base_snap["at"]},
@@ -529,12 +537,18 @@ def _platform_line(state: dict | None) -> str:
     return f"Platform commit `{state['commit'][:12]}`" + (" with uncommitted changes." if state.get("dirty") else ".")
 
 
+def _lookups_line(answered: dict | None) -> str:
+    if not answered or answered.get("source") != "snapshot":
+        return "Package lookups: answered from live feeds."
+    return f"Package lookups: answered from the frozen snapshot `{answered['sha256'][:12]}` ({answered['rows']} answers), offline."
+
+
 def markdown(r: dict) -> str:
     out = [f"# Verification: {r['label']}", "",
            f"**Verdict: {r['verdict']}**", "",
            f"Repository `{r['repository']}`, base `{r['base'][:8]}`, `{r['ref']}` at `{r['tip'][:8]}`; verified {r['verifiedAt']} "
            f"by verifier {r['verifier']['version']} ({r['verifier']['plugin']}).", "",
-           _platform_line(r.get("platform")), "", "## Reasons", ""]
+           _platform_line(r.get("platform")), _lookups_line(r.get("packageLookups")), "", "## Reasons", ""]
     out += [f"- {x}" for x in r["reasons"]] or ["- None: every check passed."]
     out += ["", "## Checks", "", "| Check | State | Detail |", "|---|---|---|"]
     out += [f"| {c['label']} | {c['state']} | {c['detail'].replace('|', '/')} |" for c in r["checks"]]

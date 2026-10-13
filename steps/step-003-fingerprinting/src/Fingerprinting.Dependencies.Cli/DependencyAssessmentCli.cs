@@ -36,7 +36,8 @@ public static class DependencyAssessmentCli
     };
 
     public sealed record Options(
-        string TargetFramework, bool ComparePublicFeed, double CacheTtlHours, bool ForceRefresh, bool IncludeTransitive, bool ExplainChanges);
+        string TargetFramework, bool ComparePublicFeed, double CacheTtlHours, bool ForceRefresh, bool IncludeTransitive, bool ExplainChanges,
+        bool LookupOffline = false);
 
     public static async Task<int> RunAsync(string[] args, TextReader input, TextWriter output, TextWriter error)
     {
@@ -150,7 +151,8 @@ public static class DependencyAssessmentCli
             Number(config, "lookup_cache_ttl_hours", 24),
             Bool(config, "force_refresh", false),
             Bool(config, "include_transitive", false),
-            Bool(config, "enable_change_explanation", false));
+            Bool(config, "enable_change_explanation", false),
+            Bool(config, "lookup_offline", false));
 
         var projectIds = await platform.ResolveProjectIdsAsync(inventory.RepositoryId, CancellationToken.None);
         var cache = new PostgresLookupCache(connectionString);
@@ -193,6 +195,7 @@ public static class DependencyAssessmentCli
                         ["lookup_cache_snapshot_at"] = snapshot.UtcDateTime.ToString("yyyy-MM-ddTHH:mm:ss.ffffffZ", CultureInfo.InvariantCulture),
                         ["lookup_cache_ttl_hours"] = options.CacheTtlHours,
                         ["force_refresh"] = options.ForceRefresh,
+                        ["lookup_offline"] = options.LookupOffline,
                     },
                 },
             ],
@@ -261,7 +264,8 @@ public static class DependencyAssessmentCli
         }
 
         var now = DateTimeOffset.UtcNow;
-        var lookup = new PackageLookup(cache, Path.Combine(CacheRoot, "packages"), TimeSpan.FromHours(options.CacheTtlHours), options.ForceRefresh, now);
+        var lookup = new PackageLookup(cache, Path.Combine(CacheRoot, "packages"), TimeSpan.FromHours(options.CacheTtlHours), options.ForceRefresh, now,
+            options.LookupOffline);
         var transitive = options.IncludeTransitive
             ? new TransitiveResolver(Path.Combine(Path.GetTempPath(), "modernization-platform", "dependency-scratch"), Path.Combine(CacheRoot, "restore-packages"), TimeSpan.FromMinutes(5))
             : null;

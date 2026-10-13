@@ -3,6 +3,7 @@
 #   $command
 # Do not edit by hand: run the command again with changed values. Engagement data: lives under RUNS_DIR, never in git.
 #
+#   python -m app.experiment.lookups freeze ...              package-lookups.json, before this file is created
 #   python -m app.experiment.prepare   --config <this file>   branches, worktrees, arm 2 inputs, RUNBOOK.md
 #   python -m app.experiment.calibrate --config <this file>   the verifier on the baseline (and arm 3), CALIBRATION.md
 #   python -m app.experiment.report    --config <this file>   one scorecard per run, REPORT.md
@@ -16,6 +17,11 @@ baseline_commit: $baseline_commit
 # The platform commit this experiment is measured with (app.experiment.instrument). prepare refuses at any other
 # commit, and the report flags a run verified at another one.
 platform_commit: $platform_commit
+# The frozen package lookups (app.experiment.lookups): package-lookups.json beside this file, named by its sha256. Every
+# verification answers package lookups from it and nothing else, and the report flags one made against any other.
+package_lookups:
+  file: package-lookups.json
+  sha256: $package_lookups_sha256
 # The conversion plan whose measured baseline the verifier reuses; null: the verifier measures the base commit.
 baseline_plan: $baseline_plan
 # Each generation is a fresh set of branches and worktrees (experiment/v<generation>/...); an earlier generation is

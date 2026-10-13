@@ -33,8 +33,9 @@ public sealed record DependencyInput(
 /// </summary>
 public sealed class DependencyPipeline(PackageLookup lookup, DependencyOptions options, TransitiveResolver? transitive = null)
 {
-    /// <summary>Matches the dependency-assessment step registration version.</summary>
-    public const string ScannerVersion = "1.4.0";
+    /// <summary>Matches the dependency-assessment step registration version. 1.4.1: <c>lookup_offline</c>, answers
+    /// from the lookup cache only (PackageLookup); artifact 1.4.0 unchanged.</summary>
+    public const string ScannerVersion = "1.4.1";
 
     /// <summary>The producer name its signals are registered under (Part D1).</summary>
     public const string Extractor = "DependencyAssessment";

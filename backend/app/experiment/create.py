@@ -19,7 +19,7 @@ from string import Template
 
 import yaml
 
-from app.experiment import instrument
+from app.experiment import instrument, lookups
 from app.experiment.location import experiment_dir
 
 TEMPLATE = Path(__file__).resolve().parent / "templates" / "experiment.yaml.tmpl"
@@ -38,7 +38,7 @@ def _scalar(value) -> str:
     return json.dumps(value, ensure_ascii=False)
 
 
-def render(args: argparse.Namespace, command: str, platform_commit: str) -> str:
+def render(args: argparse.Namespace, command: str, platform_commit: str, lookups_sha256: str) -> str:
     arm3 = ""
     if args.arm3_ref:
         arm3 = (f"  - arm: 3\n    name: Platform codemods\n    ref: {_scalar(args.arm3_ref)}\n"
@@ -46,6 +46,7 @@ def render(args: argparse.Namespace, command: str, platform_commit: str) -> str:
     text = Template(TEMPLATE.read_text(encoding="utf-8")).substitute(
         command=command, name=_scalar(args.name), title=_scalar(args.title), engagement=_scalar(args.engagement),
         repository=_scalar(args.repository), baseline_commit=_scalar(args.baseline), platform_commit=_scalar(platform_commit),
+        package_lookups_sha256=_scalar(lookups_sha256),
         baseline_plan=_scalar(args.baseline_plan), generation=args.generation,
         sequence_note=_scalar(args.sequence_note), goal=_scalar(args.goal), model=_scalar(args.model),
         sibling_links=_scalar(args.sibling_link or []), runs=args.runs, arm3=arm3,
@@ -88,6 +89,13 @@ def main(argv: list[str] | None = None) -> int:
     except RuntimeError as error:
         print(f"not created: {error}", file=sys.stderr)
         return 1
+    # The frozen package lookups are in the experiment's own folder, even when writing elsewhere with --out.
+    snapshot = experiment_dir(args.engagement, args.name) / lookups.FILE
+    if not snapshot.exists():
+        print(f"not created: {snapshot} is missing. Freeze the package lookups first: python -m app.experiment.lookups "
+              f"freeze --engagement {args.engagement} --repository {args.repository} --name {args.name}", file=sys.stderr)
+        return 1
+    lookups_sha256 = lookups.sha256(snapshot.read_bytes())
     folder = args.out.resolve() if args.out else experiment_dir(args.engagement, args.name)
     target = folder / "experiment.yaml"
     if target.exists() and not args.force:
@@ -98,7 +106,7 @@ def main(argv: list[str] | None = None) -> int:
     shown = [a for i, a in enumerate(given) if a not in ("--force", "--out") and (i == 0 or given[i - 1] != "--out")]
     command = "python -m app.experiment.create " + " ".join(_powershell(a) for a in shown)
     folder.mkdir(parents=True, exist_ok=True)
-    target.write_text(render(args, command, platform_commit), encoding="utf-8", newline="\n")
+    target.write_text(render(args, command, platform_commit, lookups_sha256), encoding="utf-8", newline="\n")
     print(target)
     return 0
 

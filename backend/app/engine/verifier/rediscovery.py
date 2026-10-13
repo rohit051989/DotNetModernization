@@ -5,7 +5,9 @@ The client database is only read. A scratch database is created and bootstrapped
 repository (migrate, seed: platform configuration and the catalog from the committed export — the same bootstrap
 as `python -m app.seed.reproduce`, which proves it equals this machine's catalog). Into it are copied the few rows
 discovery reads for one engagement: the engagement itself, its item decisions and scope, its probe evidence and
-matrix confirmations, and the shared package lookup cache, so dependency assessment answers as it does here. A
+matrix confirmations, and the package lookup cache: an experiment's frozen snapshot when it has one (Part L), and
+then discovery runs with `lookup_offline`, so no lookup reaches a live feed; otherwise the shared cache, so dependency
+assessment answers as it does here. A
 worker process pointed at the scratch database (DATABASE_URL) and a scratch runs folder (RUNS_DIR) registers the
 worktree, runs phase0-repository-discovery through impact-analysis, and writes what it found to a file. The
 database is then dropped and the runs folder deleted: nothing is left behind, soft-deleted or otherwise.
@@ -48,12 +50,21 @@ class RediscoveryFailed(RuntimeError):
     pass
 
 
-def _copy(source_url: str, target_url: str, engagement_id: str) -> dict[str, int]:
+def _copy(source_url: str, target_url: str, engagement_id: str, lookups: list[dict] | None = None) -> dict[str, int]:
+    """Copies the engagement's rows. With `lookups` (a frozen snapshot), the package lookup cache is the snapshot's
+    rows and nothing of the live cache."""
     source, target = create_engine(source_url), create_engine(target_url)
     counts = {}
     try:
         with source.connect() as read, target.begin() as write:
             for name, column in ENGAGEMENT_ROWS:
+                if name == "package_lookup_cache" and lookups is not None:
+                    rows = [{"feed_url_normalised": r["feed"], "package_id": r["package"], "versions": r["versions"],
+                             "metadata": r["metadata"], "fetched_at": r["fetchedAt"]} for r in lookups]
+                    if rows:
+                        write.execute(Table(name, MetaData(), autoload_with=target).insert(), rows)
+                    counts[f"{name} (frozen snapshot)"] = len(rows)
+                    continue
                 table = Table(name, MetaData(), autoload_with=source)
                 query = select(table) if column is None else select(table).where(table.c[column] == engagement_id)
                 rows = [dict(r) for r in read.execute(query).mappings()]
@@ -68,8 +79,9 @@ def _copy(source_url: str, target_url: str, engagement_id: str) -> dict[str, int
     return counts
 
 
-def snapshot(engagement_id: str, worktree: Path, name: str, scratch_dir: Path) -> dict:
-    """Discovery of `worktree` as `engagement_id` sees it, run in a scratch database that is dropped afterwards."""
+def snapshot(engagement_id: str, worktree: Path, name: str, scratch_dir: Path, lookups: list[dict] | None = None) -> dict:
+    """Discovery of `worktree` as `engagement_id` sees it, run in a scratch database that is dropped afterwards. With
+    `lookups`, package lookups are answered from that frozen snapshot only, offline."""
     from app.seed.reproduce import Scratch
 
     scratch_dir.mkdir(parents=True, exist_ok=True)
@@ -79,10 +91,11 @@ def snapshot(engagement_id: str, worktree: Path, name: str, scratch_dir: Path) -
         with Scratch(make_url(settings.database_url), "verifier") as scratch:
             scratch.bootstrap()
             url = scratch.url.render_as_string(hide_password=False)
-            copied = _copy(settings.database_url, url, engagement_id)
+            copied = _copy(settings.database_url, url, engagement_id, lookups)
             env = {**os.environ, "DATABASE_URL": url, "RUNS_DIR": str(runs)}
             done = subprocess.run([sys.executable, "-m", "app.engine.verifier.rediscovery", "--worker",
-                                   "--engagement", engagement_id, "--path", str(worktree), "--name", name, "--out", str(out)],
+                                   "--engagement", engagement_id, "--path", str(worktree), "--name", name, "--out", str(out)]
+                                  + (["--offline"] if lookups is not None else []),
                                   cwd=BACKEND, env=env, capture_output=True, text=True, timeout=7200)
             if done.returncode != 0 or not out.exists():
                 raise RediscoveryFailed(f"isolated discovery of {worktree} failed:\n{done.stdout[-3000:]}\n{done.stderr[-3000:]}")
@@ -95,7 +108,7 @@ def snapshot(engagement_id: str, worktree: Path, name: str, scratch_dir: Path) -
             shutil.rmtree(runs, ignore_errors=True)
 
 
-def _worker(engagement_id: str, worktree: Path, name: str, out: Path) -> int:
+def _worker(engagement_id: str, worktree: Path, name: str, out: Path, offline: bool = False) -> int:
     """Runs inside the scratch database only. Refuses to run against any other database."""
     from app.conversion import planner
     from app.db import SessionLocal
@@ -113,9 +126,11 @@ def _worker(engagement_id: str, worktree: Path, name: str, out: Path) -> int:
         repository = repositories.register_local_path(db, engagement, RegisterLocalPathRequest(
             source_type="local_path", local_path=str(worktree), name=name))
         db.commit()
-        execution = runtime.launch_job(db, JOB, {"engagement_id": engagement_id, "repository_id": str(repository.id),
-                                                 "ingest_token": repository.ingest_token or str(uuid.uuid4())},
-                                       triggered_by="manual")
+        parameters = {"engagement_id": engagement_id, "repository_id": str(repository.id),
+                      "ingest_token": repository.ingest_token or str(uuid.uuid4())}
+        if offline:
+            parameters["lookup_offline"] = True      # dependency-assessment: the frozen snapshot only, no feed
+        execution = runtime.launch_job(db, JOB, parameters, triggered_by="manual")
         db.commit()
         steps = {s.step_name: s.exit_status for s in runtime.get_step_executions(db, execution.id)}
         if execution.batch_status != "COMPLETED":
@@ -157,5 +172,6 @@ if __name__ == "__main__":
     parser.add_argument("--path", required=True, type=Path)
     parser.add_argument("--name", required=True)
     parser.add_argument("--out", required=True, type=Path)
+    parser.add_argument("--offline", action="store_true", help="answer package lookups from the scratch cache only")
     a = parser.parse_args()
-    sys.exit(_worker(a.engagement, a.path, a.name, a.out))
+    sys.exit(_worker(a.engagement, a.path, a.name, a.out, a.offline))

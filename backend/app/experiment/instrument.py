@@ -43,7 +43,13 @@ def require_clean(expected: str | None = None) -> str:
 
 
 def mismatch(config: dict, verification: dict) -> str | None:
-    """Why a verification was not made with the experiment's pinned platform, or None when it was."""
+    """Why a verification was not made with the experiment's pinned platform and frozen package lookups, or None
+    when it was."""
+    frozen = (config.get("package_lookups") or {}).get("sha256")
+    answered = verification.get("packageLookups") or {}
+    if frozen and answered.get("sha256") != frozen:
+        return (f"package lookups answered from {'live feeds' if answered.get('source') != 'snapshot' else answered['sha256'][:12]}"
+                f", not the experiment's frozen snapshot {frozen[:12]}")
     pinned = config.get("platform_commit")
     state = verification.get("platform")
     if not pinned:
