@@ -1,0 +1,60 @@
+category: dependencies
+deleted: false
+description: 'A direct NuGet package that the target framework''s shared framework already provides at a version it carries (the SDK''s PackageOverrides.txt): Microsoft.NETCore.App''s for every project, Microsoft.AspNetCore.App''s for a Web or Razor SDK project or one with a FrameworkReference to it. Microsoft.AspNetCore.Server.Kestrel 2.x in a net10.0 web project is the usual case. A removal, not an upgrade: upgrading would pin an old copy the framework supersedes anyway. One occurrence per project per package, at the PackageReference line; the value reads "{id} {from}: provided by {shared framework} {target}".'
+detection:
+  match:
+    all:
+    - id: provided-by-framework
+      signal:
+        name: PACKAGE_PROVIDED_BY_FRAMEWORK
+    any: []
+    atLeast: []
+    metadata: []
+    none: []
+  occurrence_source:
+    group_by: source_path_and_value
+    signal: PACKAGE_PROVIDED_BY_FRAMEWORK
+excluded_roles: []
+id: package-provided-by-framework
+name: Package the target framework already provides
+owner_team: null
+resolutions:
+- consumer_impact: none
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: Keep the reference, at a version no lower than the framework's, where a tool or analyzer needs the package itself.
+  effort: low
+  id: keep-framework-provided-package
+  is_default: false
+  linux_compatible: true
+  name: Keep the package reference
+  notes: null
+  status: active
+  target_description: The PackageReference, at or above the framework's version
+- consumer_impact: none
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: Remove the PackageReference, and its central version where nothing else uses it; the shared framework supplies the assemblies.
+  effort: low
+  id: remove-framework-provided-package
+  impact_rules:
+  - action: update
+    from: seed
+    id: reference
+    reason: The PackageReference is removed from the project file
+    traverse: project_file
+  - action: update
+    from: seed
+    id: version
+    reason: The central version is removed where it is declared, when no other project uses it
+    traverse: version_declaration
+  is_default: true
+  linux_compatible: true
+  name: Remove the package reference
+  notes: null
+  status: active
+  target_description: No PackageReference; the shared framework's version
+scope: occurrence
+status: active

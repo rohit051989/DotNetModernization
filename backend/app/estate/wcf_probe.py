@@ -78,6 +78,13 @@ SCENARIOS = [
      "support": "net10.0/basicHttpBinding/None/None", "platform": "net10.0/linux/basicHttpBinding/None/None"},
     {"scenario": "basicHttp-Transport-None",
      "support": "net10.0/basicHttpBinding/Transport/None", "platform": "net10.0/linux/basicHttpBinding/Transport/None"},
+    # basicHttpsBinding: the same HTTPS service, called through the BasicHttpsBinding client type; with a
+    # client certificate, against a TLS endpoint that requires and pins one. Both bear on the platform
+    # matrix's one basicHttps entry, a wildcard.
+    {"scenario": "basicHttps-Transport-None",
+     "support": "net10.0/basicHttpsBinding/Transport/None", "platform": "net10.0/linux/basicHttpsBinding/*/*"},
+    {"scenario": "basicHttps-Transport-Certificate",
+     "support": "net10.0/basicHttpsBinding/Transport/Certificate", "platform": "net10.0/linux/basicHttpsBinding/*/*"},
     {"scenario": "netTcp-Transport-None",
      "support": "net10.0/netTcpBinding/Transport/None", "platform": "net10.0/linux/netTcpBinding/Transport/None"},
     {"scenario": "netTcp-Transport-Certificate",

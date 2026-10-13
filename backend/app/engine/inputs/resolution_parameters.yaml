@@ -1,0 +1,140 @@
+# What each resolution needs that discovery cannot supply (36-COPILOT-ENHANCED-CONVERSION Part D: conversion never
+# stops for a decision). Client-agnostic; keyed by resolution id.
+#
+# parameters: values the converted code must read at run time rather than contain. The generated instruction tells
+#   the engine to reference each by name and never invent a value; the decision sheet lists them "to supply before
+#   deployment". `per`: application (one), project (one per project) or occurrence (one per place). In `name`,
+#   {PROJECT} is the project's name and {VALUE} the occurrence's value, both as an upper-case identifier.
+#   `kind`: secret (an OpenShift Secret), config (a ConfigMap or environment variable).
+# cannot_apply: when the resolution cannot apply at a place. `always: <why>`, or `value_matches: <regex>` with
+#   `why`. Such a place is left unchanged and listed as unresolved.
+
+container-local-timezone:
+  parameters:
+    - name: TZ
+      per: application
+      kind: config
+      what: "The IANA time zone of the source servers (for example America/Toronto), set on the container"
+
+utc-at-boundaries:
+  parameters:
+    - name: DISPLAY_TIME_ZONE
+      per: application
+      kind: config
+      what: "The IANA time zone local times are displayed in"
+
+explicit-legacy-code-page:
+  parameters:
+    - name: LEGACY_CODE_PAGE
+      per: application
+      kind: config
+      what: "The Windows code page the source servers used (for example 1252)"
+
+externalize-path-setting:
+  parameters:
+    - name: "PATH_{VALUE}"
+      per: occurrence
+      kind: config
+      what: "The Linux path that replaces this Windows path in the container"
+
+ldap-protocols:
+  parameters:
+    - name: LDAP_HOST
+      per: application
+      kind: config
+      what: "The directory's LDAP host and port"
+    - name: LDAP_BIND_CREDENTIALS
+      per: application
+      kind: secret
+      what: "The service account the application binds with"
+
+migrate-to-message-broker:
+  parameters:
+    - name: MESSAGE_BROKER_URL
+      per: application
+      kind: config
+      what: "The engagement's broker endpoint"
+
+move-to-configuration:
+  parameters:
+    - name: "SETTING_{VALUE}"
+      per: occurrence
+      kind: config
+      what: "The value the registry key held, now supplied as configuration"
+
+ocp4-secret-injection:
+  parameters:
+    - name: "{VALUE}"
+      per: occurrence
+      kind: secret
+      what: "The secret value, supplied from an OpenShift Secret under its configuration key (\":\" written as \"__\")"
+
+sql-auth-from-secret:
+  parameters:
+    - name: "ConnectionStrings__{VALUE}"
+      per: occurrence
+      kind: secret
+      what: "The connection string with a SQL login, supplied from an OpenShift Secret"
+
+fully-qualify-hostname:
+  parameters:
+    - name: "FQDN_{VALUE}"
+      per: occurrence
+      kind: config
+      what: "The fully qualified DNS name of this host, per environment"
+
+cluster-dns-search-domain:
+  parameters:
+    - name: DNS_SEARCH_DOMAIN
+      per: application
+      kind: config
+      what: "The corporate DNS suffix added to the pod's search list"
+
+plain-manifests:
+  parameters:
+    - name: IMAGE_REGISTRY
+      per: application
+      kind: config
+      what: "The image registry and repository the deployment pulls from"
+    - name: OPENSHIFT_NAMESPACE
+      per: application
+      kind: config
+      what: "The OpenShift project (namespace) the application deploys to"
+    - name: "ROUTE_HOST_{PROJECT}"
+      per: project
+      kind: config
+      what: "The external host name of this application's Route"
+
+helm-chart:
+  parameters:
+    - name: IMAGE_REGISTRY
+      per: application
+      kind: config
+      what: "The image registry and repository the chart's values point at"
+    - name: OPENSHIFT_NAMESPACE
+      per: application
+      kind: config
+      what: "The OpenShift project (namespace) the chart installs into"
+
+ocp4-cronjob-container:
+  parameters:
+    - name: "CRON_SCHEDULE_{PROJECT}"
+      per: project
+      kind: config
+      what: "When the job runs, as a cron expression"
+
+call-http-binding:
+  parameters:
+    - name: "ENDPOINT_{VALUE}"
+      per: occurrence
+      kind: config
+      what: "The service's BasicHttp or WSHttp endpoint address"
+
+package-replacement-publisher-suggested:
+  cannot_apply:
+    - value_matches: "no suggested replacement"
+      why: "the publisher names no replacement package; choosing one is a decision"
+
+package-not-approved-request-approval:
+  cannot_apply:
+    - always: "the newer version must first pass the client's package-approval process"

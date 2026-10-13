@@ -3,7 +3,7 @@
   "lifecycle_step_no": 3,
   "display_name": "Application fingerprinting",
   "owner_code": "P",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "owner_team": null,
   "viewpoint": "DEVELOPMENT",
   "implementation_status": "implemented",

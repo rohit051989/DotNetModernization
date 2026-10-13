@@ -31,7 +31,7 @@ from app import models
 from app.config import settings
 from app.db import SessionLocal
 
-RUNS_DIR = Path(__file__).resolve().parents[2] / "runs"
+RUNS_DIR = settings.runs_path
 
 # Truncated together in one statement, so FKs among them need no ordering.
 # Nothing kept references any of these (checked against

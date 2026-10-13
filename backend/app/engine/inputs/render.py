@@ -11,16 +11,92 @@ templates, so the same discovery produces byte-identical files.
 | Assessment addendum | `.github/platform-inputs/assessment-addendum.md`, merged into the engine's assessment.md |
 | Decision sheet | `.github/platform-inputs/decision-sheet.md` |
 """
+import re
 from pathlib import Path
+
+import yaml
 
 from app.engine import paths
 from app.engine.inputs.collect import SILENT_ITEMS
 
-GENERATOR_VERSION = "1.0.0"
+GENERATOR_VERSION = "1.1.0"
 TEMPLATES = Path(__file__).resolve().parent / "templates"
 ADDENDUM_START = "<!-- platform-assessment-addendum:start -->"
 ADDENDUM_END = "<!-- platform-assessment-addendum:end -->"
 MAX_LIST = 200
+
+
+RESOLUTION_NEEDS = yaml.safe_load((Path(__file__).resolve().parent / "resolution_parameters.yaml").read_text(encoding="utf-8"))
+
+
+def _env_name(text: str) -> str:
+    """A configuration key as an environment variable name: ":" becomes "__", anything else not a letter, digit
+    or underscore becomes "_"."""
+    text = (text or "").replace(":", "__")
+    return re.sub(r"_{3,}", "__", re.sub(r"[^A-Za-z0-9_]", "_", text)).strip("_")[:80] or "VALUE"
+
+
+def _occurrence_value(occ: dict) -> str:
+    if occ.get("value"):
+        return occ["value"]
+    first = (occ.get("lines") or [{}])[0]
+    return first.get("value") or Path(occ.get("file") or occ["project"]).stem
+
+
+def plan_item(item: dict) -> dict:
+    """How the item's resolution applies: the places it applies to, the places it cannot (left unchanged, with
+    why), and the deployment parameters it needs — never a decision the engine has to stop for."""
+    res = item["resolution"]
+    needs = RESOLUTION_NEEDS.get(res["id"], {}) if res else {}
+    apply, unresolved = [], []
+    for occ in item["occurrences"]:
+        value = _occurrence_value(occ)
+        why = None
+        if res is None:
+            why = "the item has no resolution in the catalog"
+        for rule in needs.get("cannot_apply", []):
+            if "always" in rule:
+                why = rule["always"]
+            elif re.search(rule["value_matches"], value or "", re.I):
+                why = rule["why"]
+        (unresolved if why else apply).append({**occ, "why": why} if why else occ)
+    parameters: dict[str, dict] = {}
+    for p in needs.get("parameters", []):
+        if p["per"] == "application":
+            targets = [(p["name"], None)] if apply else []
+        elif p["per"] == "project":
+            targets = [(p["name"].replace("{PROJECT}", _env_name(Path(o["project"]).stem).upper()), o) for o in apply]
+        else:
+            targets = [(p["name"].replace("{VALUE}", _env_name(_occurrence_value(o))), o) for o in apply]
+        for name, occ in targets:
+            entry = parameters.setdefault(name, {"name": name, "kind": p["kind"], "what": p["what"], "places": []})
+            if occ is not None:
+                place = _site(occ, (occ["lines"] or [None])[0]).strip("`")
+                if place not in entry["places"]:
+                    entry["places"].append(place)
+    return {"apply": apply, "unresolved": unresolved, "parameters": sorted(parameters.values(), key=lambda x: x["name"])}
+
+
+def deployment_parameters(model: dict) -> list[dict]:
+    """Every value to supply before deployment, across the work items: {name, kind, what, items, places}."""
+    out: dict[str, dict] = {}
+    for item in model["items"]:
+        for p in plan_item(item)["parameters"]:
+            entry = out.setdefault(p["name"], {**p, "items": [], "places": []})
+            entry["items"] = sorted(set(entry["items"]) | {item["id"]})
+            entry["places"] = sorted(set(entry["places"]) | set(p["places"]))
+    return [out[k] for k in sorted(out)]
+
+
+def unresolved(model: dict) -> list[dict]:
+    """Every place a default resolution cannot apply: {item, resolution, place, value, why}. Left unchanged."""
+    out = []
+    for item in model["items"]:
+        for occ in plan_item(item)["unresolved"]:
+            out.append({"item": item["id"], "resolution": item["resolution"]["id"] if item["resolution"] else None,
+                        "place": _site(occ, (occ["lines"] or [None])[0]).strip("`"), "value": occ.get("value"),
+                        "why": occ["why"]})
+    return out
 
 
 def skill_name(resolution_id: str) -> str:
@@ -51,16 +127,15 @@ def upgrade_options(model: dict) -> list[dict]:
     eng = model["engagement"]
     frameworks = model["current_frameworks"]
     projects = [p for p in model["projects"] if p["framework"]]
-    simple = len(frameworks) == 1 and len(projects) <= 15
     lift = eng["posture"] == "lift-and-shift"
     return [
         {"question": "Target framework", "answer": eng["target_framework"],
          "source": "engagement target_framework", "presumptive": False},
-        {"question": "Upgrade strategy",
-         "answer": "All-at-once" if simple else "Bottom-up",
-         "source": (f"platform default: {len(projects)} projects on one framework ({', '.join(frameworks)})" if simple
-                    else "platform default: several frameworks or more than 15 projects"),
-         "presumptive": True},
+        # Never all-at-once: one task per project in dependency order keeps every commit small, buildable and
+        # attributable, which is what the verifier and the per-task commit strategy measure.
+        {"question": "Upgrade strategy", "answer": "Bottom-up",
+         "source": f"platform default: {len(projects)} project(s) on {', '.join(frameworks) or 'no framework'}; "
+                   "leaf projects first, one task per project", "presumptive": True},
         {"question": "Project upgrade approach", "answer": "In-place" if lift else "Side-by-side",
          "source": f"engagement posture {eng['posture']}", "presumptive": True},
         {"question": "Technology modernization (Entity Framework, dependency injection, logging, configuration)",
@@ -136,10 +211,11 @@ def _instruction(model: dict, item: dict, present: set[str], by_id: dict) -> str
     prereq = _prerequisites(item, present, by_id)
     out += ["", "## Prerequisites", ""] + (prereq or ["- None among this repository's work items."])
 
+    plan = plan_item(item)
     out += ["", "## Steps", "",
             "Apply exactly this transformation, and only at the places listed. For each line below:", ""]
     count = 0
-    for occ in item["occurrences"]:
+    for occ in plan["apply"]:
         for line in occ["lines"] or [None]:
             if count >= MAX_LIST:
                 break
@@ -154,12 +230,27 @@ def _instruction(model: dict, item: dict, present: set[str], by_id: dict) -> str
             found = " ".join(what) if what else f"this item ({item['name']})"
             out.append(f"- If {_site(occ, line)} ({occ['project']}) still contains {found}, then: {_md(res['description']).rstrip('.')}"
                        f"{' (call site is ambiguous: confirm before changing)' if (line or {}).get('certainty') == 'ambiguous' or occ['certainty'] == 'possible' else ''}.")
-    total = sum(max(1, len(o["lines"])) for o in item["occurrences"])
+    total = sum(max(1, len(o["lines"])) for o in plan["apply"])
     if total > count:
         out.append(f"- ... and {total - count} more of the same kind: find them by the same pattern.")
     out += ["- If a listed place no longer contains it (already changed by an earlier task), change nothing there "
             "and record it as not applicable.",
             "- If you find the same pattern somewhere not listed, apply the same change there and record it as a gap."]
+
+    if plan["parameters"]:
+        out += ["", "## Values this needs (deployment parameters)", "",
+                "Nobody has supplied these values, and you must not invent them. Make the code read each one by name "
+                "from configuration (environment variable, ConfigMap or Secret) and put only the name in any manifest "
+                "or settings file. They are listed for a person to supply before deployment.", "",
+                "| Name | Kind | What | Where |", "|---|---|---|---|"]
+        for p in plan["parameters"]:
+            out.append(f"| `{p['name']}` | {p['kind']} | {_md(p['what'])} | {_md(', '.join(p['places']) or 'the application')} |")
+    if plan["unresolved"]:
+        out += ["", "## Leave unchanged", "",
+                "This resolution cannot apply at these places. Do not change them, and do not choose an alternative: "
+                "record each as unresolved in the task's progress notes.", ""]
+        for occ in plan["unresolved"]:
+            out.append(f"- {_site(occ, (occ['lines'] or [None])[0])} `{_md(occ.get('value'))}`: {occ['why']}")
 
     if item["impact"]:
         out += ["", "## Files this changes (impact analysis)", "", "| Action | File | Project | Certainty | Why |", "|---|---|---|---|---|"]
@@ -268,6 +359,10 @@ def addendum(model: dict) -> str:
         if model["couplings"]["depends"]:
             out += ["", "Packages that must be bumped **in order** (the second first):", ""]
             out += [f"- {a} after {b}: {why}" for a, b, why in model["couplings"]["depends"]]
+        if model.get("version_drift"):
+            out += ["", "**Version drift**: one package at different versions in different projects. Move every project to "
+                    "the same recommended version, in one task per package:", ""]
+            out += [f"- {d}" for d in model["version_drift"]]
         unknown = [p["package"] for p in model["packages"] if not p["dependencies_known"]]
         if unknown:
             out += ["", "Dependencies not known (couplings may be missing): " + ", ".join(unknown) + "."]
@@ -302,6 +397,28 @@ def decision_sheet(model: dict) -> str:
     shown = [f"- `{i['id']}` runs {r['relation'] if r['relation'] != 'together' else 'together with'} `{r['item']}`"
              for i, r in rules if r["item"] in present]
     out += shown or ["- No ordering constraint between this repository's work items."]
+
+    out += ["", "## To supply before deployment", "",
+            "Values a default resolution needs that nobody has supplied. The conversion references each by name and "
+            "never contains a value; a person supplies them in the deployment (ConfigMap, environment or Secret).", ""]
+    params = deployment_parameters(model)
+    if params:
+        out += ["| Name | Kind | What | For | Where |", "|---|---|---|---|---|"]
+        for p in params:
+            out.append(f"| `{p['name']}` | {p['kind']} | {_md(p['what'])} | {_md(', '.join(p['items']))} | "
+                       f"{_md(', '.join(p['places']) or 'the application')} |")
+    else:
+        out.append("None.")
+    out += ["", "## Unresolved", "",
+            "Places where the default resolution cannot apply. They are left unchanged by the conversion and need a "
+            "decision afterwards.", ""]
+    left = unresolved(model)
+    if left:
+        out += ["| Item | Place | Value | Why |", "|---|---|---|---|"]
+        for u in left:
+            out.append(f"| `{u['item']}` | `{_md(u['place'])}` | {_md(u['value'])} | {_md(u['why'])} |")
+    else:
+        out.append("None.")
     out.append("")
     return "\n".join(out)
 
@@ -312,8 +429,8 @@ def render(model: dict) -> dict[str, str]:
     by_id = {i["id"]: i for i in model["items"]}
     present = set(by_id)
     for item in model["items"]:
-        if item["resolution"] is None:
-            continue
+        if item["resolution"] is None or not plan_item(item)["apply"]:
+            continue                # nothing to change: listed as unresolved in the decision sheet
         files[f"{paths.UPGRADE_SKILLS_DIR}/{skill_name(item['resolution']['id'])}.md"] = _instruction(model, item, present, by_id)
     for template in sorted((TEMPLATES / "skills").glob("*.md")):
         files[f"{paths.SKILLS_DIR}/{template.name}"] = template.read_text(encoding="utf-8")

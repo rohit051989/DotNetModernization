@@ -111,6 +111,7 @@ public sealed class FileIndicatorExtractor : IFingerprintExtractor
             if (DeploymentSignal(filePath) is { } deployment)
             {
                 signals.Add(BuildSignal(deployment, relativePath, SignalCategories.DeploymentIndicator));
+                signals.AddRange(ContentSignals(deployment, filePath, relativePath));
             }
         }
 
@@ -151,11 +152,32 @@ public sealed class FileIndicatorExtractor : IFingerprintExtractor
 
             if (DeploymentSignal(filePath) is { } deployment)
             {
-                signals.Add(BuildSignal(deployment, FileSystemWalk.ToRepositoryRelativePath(repositoryRoot, filePath), SignalCategories.DeploymentIndicator));
+                var relative = FileSystemWalk.ToRepositoryRelativePath(repositoryRoot, filePath);
+                signals.Add(BuildSignal(deployment, relative, SignalCategories.DeploymentIndicator));
+                signals.AddRange(ContentSignals(deployment, filePath, relative));
             }
         }
 
         return signals;
+    }
+
+    /// <summary>Registry 1.11.0: what an existing Dockerfile or manifest would fail under OpenShift's restricted
+    /// security policy (<see cref="ContainerSecurity"/>). Presence alone is DOCKERFILE_FILE / OCP4_MANIFEST_FILE.</summary>
+    private static IEnumerable<Signal> ContentSignals(string deployment, string filePath, string relativePath)
+    {
+        if (deployment is not (DockerfileFile or Ocp4ManifestFile)) return [];
+        string text;
+        try
+        {
+            text = File.ReadAllText(filePath);
+        }
+        catch (IOException)
+        {
+            return [];
+        }
+
+        var findings = deployment == DockerfileFile ? ContainerSecurity.Dockerfile(text) : ContainerSecurity.Manifest(text);
+        return ContainerSecurity.Signals(findings, relativePath, ExtractorName);
     }
 
     private static string? DeploymentSignal(string filePath)

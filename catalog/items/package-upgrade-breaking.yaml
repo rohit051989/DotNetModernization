@@ -36,9 +36,9 @@ resolutions:
     select: self
   - action: update
     from: seed
-    id: project
-    reason: The PackageReference version is bumped
-    traverse: project_file
+    id: version
+    reason: 'The version is edited where it is declared: the project file, Directory.Packages.props, or the property it names'
+    traverse: version_declaration
   is_default: true
   linux_compatible: true
   name: Bump and adapt the call sites
@@ -60,9 +60,14 @@ resolutions:
     select: self
   - action: update
     from: seed
-    id: project
-    reason: The PackageReference is replaced by the replacement package
+    id: reference
+    reason: The PackageReference names the replacement package
     traverse: project_file
+  - action: update
+    from: seed
+    id: version
+    reason: 'The version is edited where it is declared: the project file, Directory.Packages.props, or the property it names'
+    traverse: version_declaration
   is_default: false
   linux_compatible: true
   name: Replace the package

@@ -26,12 +26,4 @@
 # and were removed. Add an entry the next time a signal is declared ahead of
 # its code.
 
-signals:
-  - name: TARGET_FRAMEWORK_BELOW_ENGAGEMENT_TARGET
-    category: PROJECT_METADATA
-    type: CONFIG_ELEMENT
-    description: "A modern .NET project (net5.0 or later) whose target framework is below the engagement's target framework (engagements.target_framework). Where the framework is declared — the project file or an imported Directory.*.props — is solution-discovery's target_framework_source."
-    extractor: DependencyAssessment
-    evidence_kind: FILE
-    value_semantics: "'{from} -> {to}', located at the declaration of the target framework."
-    signal_introduced_in_version: "1.11.0"
+signals: []

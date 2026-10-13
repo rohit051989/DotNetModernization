@@ -31,6 +31,7 @@ registration, artifact and tables.
 dotnet publish src/Fingerprinting.Cli -c Release -o publish
 dotnet publish src/Fingerprinting.EntryPoints.Cli -c Release -o publish/entry-point-inventory
 dotnet publish src/Fingerprinting.Impact.Cli -c Release -o publish/impact-analysis
+dotnet publish src/Fingerprinting.Dependencies.Cli -c Release -o publish/dependency-assessment
 ```
 
 `publish/Fingerprinting.Cli.exe` is what `wf_step_registrations.adapter_config`

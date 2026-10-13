@@ -18,8 +18,12 @@ public sealed class FingerprintPipeline(SignalRegistry registry, IReadOnlyList<I
     // keys and connection strings; UNQUALIFIED_HOSTNAME_URL (registry 1.7.0).
     // 1.4.0: console input — INTERACTIVE_CONSOLE_INPUT and
     // CONSOLE_PAUSE_FOR_INPUT from ApiUsageExtractor (registry 1.9.0).
+    // 1.5.0 (registry 1.11.0): IisHostingExtractor (ASPNETCORE_HOSTING_MODEL),
+    // USE_IIS_INVOCATION, the CONTAINER_* OpenShift-compliance signals read from
+    // Dockerfiles and manifests, and SENSITIVE_CONFIG_KEY as a full key path
+    // without descriptive keys (ClientCredentialType, TokenEndpoint).
     // Matches the application-fingerprinting step registration version.
-    public const string ScannerVersion = "1.4.0";
+    public const string ScannerVersion = "1.5.0";
 
     // The registry is the single source of truth for evidence_kind per
     // signal name (25-STANDARDS-AND-VIEWPOINTS.md Part A3 addendum) —

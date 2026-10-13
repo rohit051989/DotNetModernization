@@ -104,12 +104,12 @@ public sealed class DependencyAssessmentTests : IDisposable
 
     private void Project(string packageReferences, string code) => ProjectAt("App", packageReferences, code);
 
-    private void ProjectAt(string name, string packageReferences, string code)
+    private void ProjectAt(string name, string packageReferences, string code, string sdk = "Microsoft.NET.Sdk")
     {
         var directory = Path.Combine(_repo, "src", name);
         Directory.CreateDirectory(directory);
         File.WriteAllText(Path.Combine(directory, $"{name}.csproj"), $"""
-            <Project Sdk="Microsoft.NET.Sdk">
+            <Project Sdk="{sdk}">
               <PropertyGroup><TargetFramework>net8.0</TargetFramework></PropertyGroup>
               <ItemGroup>
             {packageReferences}
@@ -133,13 +133,17 @@ public sealed class DependencyAssessmentTests : IDisposable
     private Task<DependencyAssessmentArtifact> Run(IReadOnlyList<InputPackage> packages, ILookupCache? cache = null, string? currentFramework = "net8.0") =>
         RunProjects([("src/App/App.csproj", packages)], cache, currentFramework);
 
-    private async Task<DependencyAssessmentArtifact> RunProjects(IReadOnlyList<(string Path, IReadOnlyList<InputPackage> Packages)> projects, ILookupCache? cache = null, string? currentFramework = "net8.0")
+    private static readonly SharedFrameworks Shared =
+        SharedFrameworks.Load(Path.Combine(AppContext.BaseDirectory, "schemas", "shared-frameworks-1.0.0.json"));
+
+    private async Task<DependencyAssessmentArtifact> RunProjects(IReadOnlyList<(string Path, IReadOnlyList<InputPackage> Packages)> projects, ILookupCache? cache = null, string? currentFramework = "net8.0",
+        string? projectSdk = null)
     {
         var lookup = new PackageLookup(cache ?? new MemoryLookupCache(), Path.Combine(_root, "packages"), TimeSpan.FromHours(24), forceRefresh: false,
             DateTimeOffset.Parse("2026-10-02T00:00:00Z"));
-        var pipeline = new DependencyPipeline(lookup, new DependencyOptions("net10.0", ComparePublicFeed: true, PublicFeedSource: _publicFeed));
+        var pipeline = new DependencyPipeline(lookup, new DependencyOptions("net10.0", ComparePublicFeed: true, PublicFeedSource: _publicFeed, SharedFrameworks: Shared));
         var input = new DependencyInput(RepositoryId, "fixture", "application-fingerprint",
-            projects.Select(p => new DependencyInputProject(p.Path, Guid.Empty, null, currentFramework, p.Packages)).ToList(), []);
+            projects.Select(p => new DependencyInputProject(p.Path, Guid.Empty, null, currentFramework, p.Packages, projectSdk)).ToList(), []);
         return await pipeline.RunAsync(input, _repo, CancellationToken.None);
     }
 
@@ -399,12 +403,12 @@ public sealed class DependencyAssessmentTests : IDisposable
         PackageSchema().Validate(DeterministicJson.Serialize(artifact.Projects.Single().Packages));
     }
 
-    /// <summary>dependency-assessment-1.2.0's package definition, as a schema
+    /// <summary>dependency-assessment-1.3.0's package definition, as a schema
     /// for an array of packages. The whole artifact is not validated here: the
     /// fixture's "public" feed is a local folder, which the feed enum rightly refuses.</summary>
     private static ArtifactSchemaValidator PackageSchema()
     {
-        var schema = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "schemas", "dependency-assessment-1.2.0.schema.json")))!;
+        var schema = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "schemas", "dependency-assessment-1.4.0.schema.json")))!;
         var wrapper = new System.Text.Json.Nodes.JsonObject
         {
             ["$schema"] = schema["$schema"]!.DeepClone(),
@@ -605,6 +609,97 @@ public sealed class DependencyAssessmentTests : IDisposable
         Assert.Equal(Outcomes.UpgradeBreaking, json.Outcome);
         Assert.Equal("System.Text.Json", json.Deprecated!.ReplacementId);
         Assert.Equal(("high", true), (json.Vulnerable!.MaxSeverity, json.Vulnerable.ResolvedByUpgrade));
+    }
+
+    /// <summary>1.3.0 (Part C3): NuGet deprecates versions. A deprecated release of a maintained package — a newer
+    /// version is not deprecated, and the reason is not Legacy — is an upgrade; a Legacy package, or one whose newer
+    /// versions are all deprecated too, is retired and needs replacing. The signal's value says which.</summary>
+    [Theory]
+    [InlineData("CriticalBugs", "System.Text.Json", false, "version", "Acme.Json 1.0.0: version deprecated (CriticalBugs); 1.1.0 is not")]
+    [InlineData("Other", null, false, "version", "Acme.Json 1.0.0: version deprecated (Other); 1.1.0 is not")]
+    [InlineData("Legacy", null, false, "version", "Acme.Json 1.0.0: version deprecated (Legacy); 1.1.0 is not")]
+    [InlineData("Legacy", "Acme.Json", false, "version", "Acme.Json 1.0.0: version deprecated (Legacy); 1.1.0 is not")]
+    [InlineData("Legacy", "System.Text.Json", false, "package", "Acme.Json 1.0.0: package deprecated (Legacy); replacement System.Text.Json")]
+    [InlineData("CriticalBugs", "System.Text.Json", true, "package", "Acme.Json 1.0.0: package deprecated (CriticalBugs); replacement System.Text.Json")]
+    [InlineData("Other", null, true, "package", "Acme.Json 1.0.0: package deprecated (Other); no suggested replacement")]
+    public async Task A_deprecated_version_of_a_maintained_package_is_told_apart_from_a_retired_package(
+        string reason, string? alternate, bool newerDeprecatedToo, string scope, string signalValue)
+    {
+        ClientFeedConfig();
+        Project("""    <PackageReference Include="Acme.Json" Version="1.0.0" />""",
+            "using Acme.Json; class P { static void Main() { var x = Serializer.Parse(\"{}\"); } }");
+        Package(_clientFeed, "Acme.Json", "1.0.0", "net8.0", JsonV1);
+        Package(_clientFeed, "Acme.Json", "1.1.0", "net8.0", JsonV11);
+        var deprecation = new CachedDeprecation { Reasons = [reason], AlternateId = alternate };
+        var cache = new MemoryLookupCache();
+        cache.Put(new CacheEntry
+        {
+            FeedUrl = "repo:feeds/artifactory",
+            PackageId = "acme.json",
+            FetchedAt = DateTimeOffset.Parse("2026-10-01T23:00:00Z"),
+            Versions =
+            [
+                new CachedVersion { Version = "1.1.0", DependencyFrameworks = ["net8.0"], Deprecation = newerDeprecatedToo ? deprecation : null },
+                new CachedVersion { Version = "1.0.0", DependencyFrameworks = ["net8.0"], Deprecation = deprecation },
+            ],
+        });
+
+        var artifact = await Run([new InputPackage("Acme.Json", "1.0.0", "packagereference")], cache);
+        var json = Package(artifact, "Acme.Json");
+        Assert.Equal("1.4.0", artifact.ArtifactVersion);
+        Assert.Equal(scope, json.Deprecated!.Scope);
+        Assert.Equal(scope == "version" ? "1.1.0" : null, json.Deprecated.NewestNotDeprecated);
+        Assert.Equal(signalValue, Assert.Single(artifact.Projects.Single().Signals, s => s.Name == "PACKAGE_DEPRECATED").Value);
+        PackageSchema().Validate(DeterministicJson.Serialize(artifact.Projects.Single().Packages));
+    }
+
+    /// <summary>1.4.0: a package the target's shared framework provides is a removal, decided before any feed
+    /// lookup. Microsoft.AspNetCore.App's packages are a Web project's; Microsoft.NETCore.App's are every project's.</summary>
+    [Fact]
+    public async Task A_package_the_target_framework_provides_is_a_removal_not_an_upgrade()
+    {
+        ClientFeedConfig();
+        ProjectAt("App", """    <PackageReference Include="Microsoft.AspNetCore.Server.Kestrel" Version="2.3.9" />""", "class P {}", "Microsoft.NET.Sdk.Web");
+        var artifact = await RunProjects([("src/App/App.csproj", [new InputPackage("Microsoft.AspNetCore.Server.Kestrel", "2.3.9", "packagereference")])],
+            projectSdk: "Microsoft.NET.Sdk.Web");
+        var kestrel = Package(artifact, "Microsoft.AspNetCore.Server.Kestrel");
+        Assert.Equal(Outcomes.FrameworkProvided, kestrel.Outcome);
+        Assert.Null(kestrel.RecommendedVersion);
+        Assert.Contains("Microsoft.AspNetCore.App", kestrel.OutcomeReason);
+        Assert.Equal("Microsoft.AspNetCore.Server.Kestrel 2.3.9: provided by Microsoft.AspNetCore.App net10.0",
+            Assert.Single(artifact.Projects.Single().Signals, s => s.Name == "PACKAGE_PROVIDED_BY_FRAMEWORK").Value);
+        Assert.DoesNotContain(artifact.Projects.Single().Signals, s => s.Name == "PACKAGE_UPGRADE_SAFE");
+        PackageSchema().Validate(DeterministicJson.Serialize(artifact.Projects.Single().Packages));
+    }
+
+    [Fact]
+    public async Task An_aspnetcore_package_in_a_plain_library_is_not_provided_but_a_runtime_one_is()
+    {
+        ClientFeedConfig();
+        Project("""
+                <PackageReference Include="Microsoft.AspNetCore.Server.Kestrel" Version="2.3.9" />
+                <PackageReference Include="System.Text.Json" Version="8.0.6" />
+            """, "class P {}");
+        var artifact = await Run([new InputPackage("Microsoft.AspNetCore.Server.Kestrel", "2.3.9", "packagereference"),
+                                  new InputPackage("System.Text.Json", "8.0.6", "packagereference")]);
+        Assert.NotEqual(Outcomes.FrameworkProvided, Package(artifact, "Microsoft.AspNetCore.Server.Kestrel").Outcome);
+        Assert.Equal(Outcomes.FrameworkProvided, Package(artifact, "System.Text.Json").Outcome);
+    }
+
+    /// <summary>1.4.0: TARGET_FRAMEWORK_BELOW_ENGAGEMENT_TARGET for a modern .NET project below the target, at the line
+    /// declaring its framework; none for one already on it.</summary>
+    [Fact]
+    public async Task A_project_below_the_engagement_target_framework_emits_the_retarget_signal()
+    {
+        ClientFeedConfig();
+        Project("", "class P {}");
+        var below = await Run([], currentFramework: "net8.0");
+        var signal = Assert.Single(below.Projects.Single().Signals, s => s.Name == "TARGET_FRAMEWORK_BELOW_ENGAGEMENT_TARGET");
+        Assert.Equal(("net8.0 -> net10.0", "src/App/App.csproj", 2), (signal.Value, signal.SourcePath, signal.Evidence.Single().LineStart));
+        var onTarget = await Run([], currentFramework: "net10.0");
+        Assert.DoesNotContain(onTarget.Projects.Single().Signals, s => s.Name == "TARGET_FRAMEWORK_BELOW_ENGAGEMENT_TARGET");
+        var framework = await Run([], currentFramework: "net48");
+        Assert.DoesNotContain(framework.Projects.Single().Signals, s => s.Name == "TARGET_FRAMEWORK_BELOW_ENGAGEMENT_TARGET");
     }
 
     [Fact]

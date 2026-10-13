@@ -546,11 +546,14 @@ class AuthoredItemTests(unittest.TestCase):
     # Generic, parameterised by package (30-DEPENDENCY-ASSESSMENT Part D2); signals from step 6.
     PACKAGE = {
         "package-upgrade-safe", "package-upgrade-breaking", "package-replacement-required",
-        "package-vulnerable", "package-not-approved",
+        "package-vulnerable", "package-not-approved", "package-provided-by-framework",
     }
     # The engagement's target framework, from dependency-assessment; converted by
     # the retarget-tfm approach (34-CONVERSION-ARCHITECTURE "As built").
     FRAMEWORK = {"target-framework-retarget"}
+    # Registry 1.11.0: hosting and container files that exist but are not
+    # OpenShift-ready — presence is not readiness.
+    READINESS = {"aspnetcore-iis-hosting", "container-runs-as-root", "container-privileged-port", "container-fixed-user-writable-path"}
     # Hard Linux blockers: "stay on Windows" is a legitimate answer and must
     # be on the menu, Linux-incompatible, so the decision warning fires.
     LINUX_BLOCKERS = {"registry-access", "directory-services-usage", "msmq-usage"}
@@ -573,12 +576,28 @@ class AuthoredItemTests(unittest.TestCase):
 
     def test_every_authored_item_has_a_menu_and_no_computed_state(self):
         items = self._items()
-        self.assertEqual(set(items), self.OCCURRENCE | self.ABSENCE | self.HOSTING | self.APPLICATION_WORK | self.PACKAGE | self.FRAMEWORK)
+        self.assertEqual(set(items), self.OCCURRENCE | self.ABSENCE | self.HOSTING | self.APPLICATION_WORK | self.PACKAGE | self.FRAMEWORK | self.READINESS)
         for item_id, data in items.items():
             with self.subTest(item=item_id):
                 self.assertNotIn("state", data)
                 self.assertGreaterEqual(len(data["resolutions"]), 2)
                 self.assertEqual(sum(1 for r in data["resolutions"] if r.get("is_default")), 1)
+
+    def test_readiness_items_are_application_scope_on_their_own_signals(self):
+        from app.items.detection import validate_detection
+
+        items = self._items()
+        for item_id in self.READINESS:
+            data = items[item_id]
+            with self.subTest(item=item_id):
+                self.assertEqual(data["scope"], "application")
+                validate_detection("application", data["detection"], {})
+                self.assertIn("TEST", data["excluded_roles"])
+        self.assertEqual(
+            {c["signal"]["name"] for c in items["aspnetcore-iis-hosting"]["detection"]["match"]["any"]},
+            {"ASPNETCORE_HOSTING_MODEL", "USE_IIS_INVOCATION", "ASPNETCORE_CONFIG"})
+        default = next(r for r in items["aspnetcore-iis-hosting"]["resolutions"] if r.get("is_default"))
+        self.assertEqual(default["id"], "kestrel-on-container-port")
 
     def test_occurrence_items_project_from_one_signal(self):
         from app.items.detection import validate_detection

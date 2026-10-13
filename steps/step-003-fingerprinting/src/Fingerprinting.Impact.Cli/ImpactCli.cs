@@ -187,9 +187,20 @@ public static class ImpactCli
                 if (item.GetProperty("detectionState").GetString() != "found") continue;
                 var seeds = new List<SeedFile>();
                 var metadata = new List<string>();
+                var packages = new List<string>();
                 foreach (var occurrence in item.GetProperty("occurrences").EnumerateArray())
                 {
                     var evidence = occurrence.TryGetProperty("evidence", out var e) ? e.EnumerateArray().ToList() : [];
+                    // A package work item names its packages: "Foo 1.0.0 -> 2.0.0", "Foo 1.0.0: ...".
+                    var firstSignal = evidence.Select(v => Str(v, "signal_name")).FirstOrDefault(n => n is not null);
+                    foreach (var (signal, value) in evidence.Select(v => (Str(v, "signal_name"), Str(v, "value"))).Append((firstSignal, Str(occurrence, "value"))))
+                    {
+                        if (signal is not null && signal.StartsWith("PACKAGE_", StringComparison.Ordinal) && value?.Split(' ', 2)[0] is { Length: > 0 } package)
+                        {
+                            packages.Add(package);
+                        }
+                    }
+
                     metadata.AddRange(evidence.Where(v => Str(v, "field") is not null).Select(v => $"{Str(v, "field")} {Raw(v, "actual")}"));
                     if (occurrence.TryGetProperty("filePath", out var file) && file.ValueKind == JsonValueKind.String)
                     {
@@ -215,7 +226,8 @@ public static class ImpactCli
                 }
 
                 result.Add(new WorkItemSeed(item.GetProperty("itemId").GetString()!, projectId, projectPath,
-                    seeds.DistinctBy(s => s.Path).OrderBy(s => s.Path, StringComparer.Ordinal).ToList()));
+                    seeds.DistinctBy(s => s.Path).OrderBy(s => s.Path, StringComparer.Ordinal).ToList(),
+                    packages.Distinct(StringComparer.OrdinalIgnoreCase).Order(StringComparer.OrdinalIgnoreCase).ToList()));
             }
         }
 

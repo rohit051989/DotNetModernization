@@ -467,6 +467,36 @@ Sources, in order of preference: `<client><endpoint binding=…>` in config; a b
 constructed in client code (`new NetTcpBinding()`); the binding inside a generated
 `Reference.cs` — which, per `application-fingerprinting`'s precedent, is read for this purpose only.
 
+**Clients built by a custom helper (scanner 1.6.0).** AccountsApi creates every SOAP client
+through one helper: `_wcfClientHelper.CreateClient<ICreditCheckService>(ClientName)`, which
+caches `BuildFactory<TChannel>(name)` in a `GetOrAdd`, which builds
+`new ChannelFactory<TChannel>(WcfBindingFactory.Create(client.BindingName, bindingSettings), …)`
+from `_settings.Clients.TryGetValue(clientName, out var client)` and
+`_settings.Bindings.TryGetValue(client.BindingName, out var bindingSettings)` — options bound
+from the `Wcf` section. Before 1.6.0 that was one client, contract `TChannel`, binding unknown.
+Two additions, both syntactic (`SoapClientDetector.Options.cs`):
+
+- Call sites are followed up through the helper's callers while a site only forwards the
+  enclosing method's type or value parameters (at most three levels). A parameter of a lambda
+  handed to `GetOrAdd(key, name => …)` / `AddOrUpdate` is the key. So each
+  `CreateClient<I>(name)` is its own client, with its contract and name bound, and its
+  operations are followed on the channel it returns. An unqualified constant (`ClientName`,
+  declared by five classes) resolves in its own type first.
+- An options-bound dictionary lookup gives a variable a configuration section
+  (`Wcf:Clients:CreditCheck`); a lookup keyed by a member of that variable reads it
+  (`Wcf:Bindings:{BindingName}`). The binding section's type, security mode and credential
+  type are read by key name — `BindingType`/`Binding`/`Type`, `BindingMode`/`SecurityMode`/`Mode`,
+  `ClientCredentialType`/`CredentialType` — falling back to a settings property's initializer
+  when every declaration agrees (`BindingMode = "Transport"`), because the code maps them
+  through a switch this step does not evaluate. The address is the client section's member that
+  reaches `new EndpointAddress(…)`, through `Uri.TryCreate(…, out var address)`. Every environment
+  whose files set any key read is one binding with its own address and security
+  (`bindingSource: config`, confidence 0.9).
+- A credential attached under `if (!string.IsNullOrWhiteSpace(client.CertificateName))` is
+  attached only when some environment sets that key, and carries it as `keyPath`.
+
+Tests: `SoapHelperClientTests`.
+
 Also record `securityMode` where declared — `Transport`, `Message`,
 `TransportWithMessageCredential`, `None` — and `clientCredentialType`. Where nothing is
 declared, the binding's default applies, and that default is what gets judged (C10).
@@ -1082,7 +1112,12 @@ python -m app.estate.wcf_probe --plan runs\probes\probe-plan.json --make-certifi
     it hosts the sample's own `UtilityService` and `AccountService` (loaded by path) on the
     sample's bindings: Catalog.Host's netTcp (8101 Transport/None, 8202 Transport/Certificate)
     and Hosting.Iis's HTTPS (basicHttp Transport/None, wsHttp
-    TransportWithMessageCredential/Certificate).
+    TransportWithMessageCredential/Certificate). basicHttpsBinding (2026-10-13) calls the same
+    HTTPS UtilityService through the `BasicHttpsBinding` client type: Transport/None on 44301, and
+    Transport/Certificate on 44302, a second TLS terminator that requires a client certificate
+    and accepts only the pinned `client.cer`, as IIS does with client certificates required.
+    Both bear on the runtime entries `net10.0/basicHttpsBinding/Transport/None|Certificate` and
+    the platform matrix's one basicHttps entry, the wildcard `net10.0/linux/basicHttpsBinding/*/*`.
   - **HTTPS without a store.** .NET Framework WCF serves HTTP only through http.sys, which
     takes its certificate from LocalMachine, and WCF's hosted activation under IIS Express
     needs full IIS. So the HTTP services listen on plain `http://localhost:8601`, behind a

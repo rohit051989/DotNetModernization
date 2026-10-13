@@ -10,6 +10,7 @@
     net.tcp://localhost:8101/Utility      netTcp Transport/None         (Catalog.Host)
     net.tcp://localhost:8202/Account      netTcp Transport/Certificate  (Catalog.Host, mutual TLS)
     https://localhost:44301/Utility.svc   basicHttp Transport/None      (Hosting.Iis)
+    https://localhost:44302/Utility.svc   the same, client certificate required (basicHttps Transport/Certificate)
     https://localhost:44301/Account.svc   wsHttp TransportWithMessageCredential/Certificate (Hosting.Iis)
 
   Certificates come only from files in -Certs, written by

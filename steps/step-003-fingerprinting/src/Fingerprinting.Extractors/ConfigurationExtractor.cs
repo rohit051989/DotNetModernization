@@ -322,9 +322,11 @@ public sealed class ConfigurationExtractor : IFingerprintExtractor
 
             if (node.IsSensitiveKey)
             {
+                // The full configuration path (Section:Sub:Key), never the value: a deployment parameter must
+                // name the key it replaces, and two keys can share a leaf name (registry 1.11.0).
                 accumulator.Add(
                     "SENSITIVE_CONFIG_KEY", SignalCategories.ConfigurationIndicator, SignalTypes.ConfigElement,
-                    node.Name, EvidenceSourceTypes.Configuration, relativePath, ExtractorName, evidence: evidence);
+                    node.KeyPath, EvidenceSourceTypes.Configuration, relativePath, ExtractorName, evidence: evidence);
             }
 
             if (node.Path.Count == 0)

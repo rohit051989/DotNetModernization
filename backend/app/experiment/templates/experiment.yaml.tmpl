@@ -1,0 +1,59 @@
+# Copilot-enhanced conversion experiment (36-COPILOT-ENHANCED-CONVERSION Part F).
+# Written by `python -m app.experiment.create` from backend/app/experiment/templates/experiment.yaml.tmpl:
+#   $command
+# Do not edit by hand: run the command again with changed values. Engagement data: lives under RUNS_DIR, never in git.
+#
+#   python -m app.experiment.prepare   --config <this file>   branches, worktrees, arm 2 inputs, RUNBOOK.md
+#   python -m app.experiment.calibrate --config <this file>   the verifier on the baseline (and arm 3), CALIBRATION.md
+#   python -m app.experiment.report    --config <this file>   one scorecard per run, REPORT.md
+
+experiment: $name
+title: $title
+spec: docs/36-COPILOT-ENHANCED-CONVERSION.md Part F
+engagement: $engagement
+repository: $repository
+baseline_commit: $baseline_commit
+# The platform commit this experiment is measured with (app.experiment.instrument). prepare refuses at any other
+# commit, and the report flags a run verified at another one.
+platform_commit: $platform_commit
+# The conversion plan whose measured baseline the verifier reuses; null: the verifier measures the base commit.
+baseline_plan: $baseline_plan
+# Each generation is a fresh set of branches and worktrees (experiment/v<generation>/...); an earlier generation is
+# never touched.
+generation: $generation
+# The order this experiment runs in among the engagement's experiments, and why.
+sequence_note: $sequence_note
+# The message that starts every run, in both arms.
+goal: $goal
+engine:
+  provider: github-copilot
+  scenario: dotnet-version-upgrade
+  # One model for every run of both arms. A decision, recorded before the first run; the runbook stops while it is
+  # unset. Name it exactly as the Copilot chat model picker shows it.
+  model: $model
+
+# Folders the repository reaches by relative path (a nuget.config feed beside it): each worktree gets a junction to
+# the folder beside the registered checkout.
+sibling_links: $sibling_links
+
+arms:
+  - arm: 1
+    name: Engine alone
+    runs: $runs
+    enhancement: false
+  - arm: 2
+    name: Engine with enhancement
+    runs: $runs
+    enhancement: true
+$arm3
+# A deliberate one-line break in code the unit tests cover. The verifier applies it after the clean run, rebuilds, and
+# expects at least one test that passed to fail; then restores the file.
+canaries:
+  - file: $canary_file
+    find: $canary_find
+    replace: $canary_replace
+    why: $canary_why
+
+stop:
+  max_elapsed_minutes: $max_minutes
+  max_attempts_on_one_task: $max_attempts

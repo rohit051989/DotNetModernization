@@ -69,11 +69,12 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app import models
+from app.config import settings
 from app.conversion import frameworks, gitops, msbuild, recipes
 from app.db import SessionLocal
 
 CODE = Path(__file__).resolve().parents[3]
-RUNS = CODE / "backend" / "runs"
+RUNS = settings.runs_path
 DELTAS_FILE = Path(__file__).with_name("framework_deltas.yaml")
 
 # Dependencies of the framework's own generation: moved by every package of
@@ -328,9 +329,11 @@ class _Move:
     depends: dict[str, str] = field(default_factory=dict)       # move key -> reason
 
 
-def _occurrences(db: Session, repository_id, exclusions: list[dict]) -> tuple[dict, list[str]]:
+def _occurrences(db: Session, repository_id, exclusions: list[dict], drift: list[str] | None = None) -> tuple[dict, list[str]]:
     """{package id lowercase: {package_id, from, to, outcome, occurrences: [(occurrence id, project)]}},
-    from dependency-assessment's assessments and item-detection's occurrences."""
+    from dependency-assessment's assessments and item-detection's occurrences. Version drift (one package at
+    different versions in different projects) raises, unless `drift` is given: then it is recorded there and the
+    lowest current version is kept, so a report can describe the move without a plan."""
     excluded = {e["package_id"].lower() for e in exclusions}
     packages: dict[str, dict] = {}
     skipped = []
@@ -345,8 +348,14 @@ def _occurrences(db: Session, repository_id, exclusions: list[dict]) -> tuple[di
         entry = packages.setdefault(package_id.lower(), {"package_id": package_id, "from": current, "to": recommended,
                                                          "outcome": outcome, "occurrences": []})
         if (entry["from"], entry["to"]) != (current, recommended):
-            raise ValueError(f"{package_id}: {entry['from']} -> {entry['to']} in one project, {current} -> {recommended} "
-                             f"in {project}: version drift is consolidated before a conversion plan")
+            if drift is not None:
+                drift.append(f"{package_id}: {entry['from']} in one project, {current} in {project}; both move to "
+                             f"{recommended or entry['to']}")
+                if frameworks.parse_version(current or "0") < frameworks.parse_version(entry["from"] or "0"):
+                    entry["from"] = current
+            else:
+                raise ValueError(f"{package_id}: {entry['from']} -> {entry['to']} in one project, {current} -> {recommended} "
+                                 f"in {project}: version drift is consolidated before a conversion plan")
         if outcome == "upgrade_breaking":
             entry["outcome"] = outcome
         entry["occurrences"].append([None, project])
@@ -370,12 +379,12 @@ def _occurrences(db: Session, repository_id, exclusions: list[dict]) -> tuple[di
 
 
 def package_moves(db: Session, repository_id, from_tfm: str, to_tfm: str,
-                  exclusions: list[dict]) -> tuple[dict, list[PackageMove], list[str]]:
+                  exclusions: list[dict], drift: list[str] | None = None) -> tuple[dict, list[PackageMove], list[str]]:
     """(packages, moves, skipped): each package dependency-assessment recommends moving, with its
     occurrences, framework support and whether its dependencies are known, and the PackageMove
     `couplings` reads. Shared with the engine input generator (app.engine.inputs), which reports
     the same couplings without making a plan."""
-    packages, skipped = _occurrences(db, repository_id, exclusions)
+    packages, skipped = _occurrences(db, repository_id, exclusions, drift)
     moves_in: list[PackageMove] = []
     for key, p in sorted(packages.items()):
         merged_before, merged_after, known = {}, {}, True

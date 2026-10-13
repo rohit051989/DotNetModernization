@@ -86,8 +86,14 @@ public static class FeedResolver
         var clients = all.Where(f => f.Role == Feed.RoleClient).ToList();
         if (clients.Count > 0)
         {
-            var publicFeed = comparePublicFeed ? NuGetOrg(publicFeedSource, root, "public comparison") : null;
-            return new FeedSet(all, clients, UsingClientFeeds: true, publicFeed);
+            // Part B2: the declared sources, in declared order, are the authority — a nuget.org the configuration
+            // declares beside a client feed is one of them. The public comparison (B3) is only needed when
+            // nuget.org is not already an authority.
+            var authorities = all.Where(f => f.Role is Feed.RoleClient or Feed.RoleNuGetOrg).ToList();
+            var publicFeed = comparePublicFeed && !authorities.Any(f => f.Role == Feed.RoleNuGetOrg)
+                ? NuGetOrg(publicFeedSource, root, "default")
+                : null;
+            return new FeedSet(all, authorities, UsingClientFeeds: true, publicFeed);
         }
 
         // No client feed: nuget.org as the fallback — the declared nuget.org

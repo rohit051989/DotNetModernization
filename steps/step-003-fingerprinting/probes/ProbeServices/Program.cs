@@ -36,11 +36,17 @@ using System.Threading.Tasks;
 // it would against IIS. wsHttp TransportWithMessageCredential is the sample's
 // binding with AllowInsecureTransport on the server's security element: the
 // standard SSL-offload arrangement; the client's messages are unchanged.
+//
+// A second terminator on 44302 requires a client certificate and accepts only the
+// pinned client.cer, as IIS does with "Require SSL" and client certificates
+// required: basicHttps Transport/Certificate. The service behind it is the same
+// basicHttp endpoint; TLS is where a Transport client certificate is checked.
 
 internal static class Program
 {
     private const int HttpPort = 8601;
     private const int HttpsPort = 44301;
+    private const int HttpsClientCertificatePort = 44302;
 
     private static int Main(string[] args)
     {
@@ -77,10 +83,13 @@ internal static class Program
             }
         }
 
-        using (var terminator = TlsTerminator.Start(HttpsPort, HttpPort, server))
+        using (var terminator = TlsTerminator.Start(HttpsPort, HttpPort, server, null))
+        using (var mutual = TlsTerminator.Start(HttpsClientCertificatePort, HttpPort, server, client))
         {
             Console.WriteLine($"TLS terminator: https://localhost:{HttpsPort} -> http://localhost:{HttpPort} " +
                               $"(server certificate {server.Subject}, {server.Thumbprint}, from {Path.Combine(certs, "server.pfx")})");
+            Console.WriteLine($"TLS terminator: https://localhost:{HttpsClientCertificatePort} -> http://localhost:{HttpPort} " +
+                              $"(client certificate required, pinned {client.Thumbprint})");
             Console.WriteLine("Ctrl+C to stop.");
             var stop = new ManualResetEvent(false);
             Console.CancelKeyPress += (_, e) => { e.Cancel = true; stop.Set(); };
@@ -177,14 +186,15 @@ internal sealed class PinnedThumbprint : X509CertificateValidator
     }
 }
 
-/// <summary>localhost:https → localhost:http: TLS with the server certificate from its file, then the bytes as they are.</summary>
+/// <summary>localhost:https → localhost:http: TLS with the server certificate from its file, then the bytes as they are.
+/// With a pinned client certificate, TLS requires the client to present exactly that one.</summary>
 internal sealed class TlsTerminator : IDisposable
 {
     private readonly TcpListener _listener;
 
     private TlsTerminator(TcpListener listener) => _listener = listener;
 
-    public static TlsTerminator Start(int httpsPort, int httpPort, X509Certificate2 certificate)
+    public static TlsTerminator Start(int httpsPort, int httpPort, X509Certificate2 certificate, X509Certificate2 pinnedClient)
     {
         var listener = new TcpListener(IPAddress.Loopback, httpsPort);
         listener.Start();
@@ -197,21 +207,24 @@ internal sealed class TlsTerminator : IDisposable
                 try { inbound = await listener.AcceptTcpClientAsync(); }
                 catch (ObjectDisposedException) { return; }
                 catch (SocketException) { return; }
-                _ = Task.Run(() => Serve(inbound, httpPort, certificate));
+                _ = Task.Run(() => Serve(inbound, httpPort, certificate, pinnedClient));
             }
         });
         return terminator;
     }
 
-    private static async Task Serve(TcpClient inbound, int httpPort, X509Certificate2 certificate)
+    private static async Task Serve(TcpClient inbound, int httpPort, X509Certificate2 certificate, X509Certificate2 pinnedClient)
     {
+        RemoteCertificateValidationCallback pin = (sender, presented, chain, errors) =>
+            pinnedClient is null || (presented is not null
+                                     && string.Equals(new X509Certificate2(presented).Thumbprint, pinnedClient.Thumbprint, StringComparison.OrdinalIgnoreCase));
         using (inbound)
-        using (var tls = new SslStream(inbound.GetStream()))
+        using (var tls = new SslStream(inbound.GetStream(), false, pin))
         using (var outbound = new TcpClient())
         {
             try
             {
-                await tls.AuthenticateAsServerAsync(certificate, clientCertificateRequired: false, SslProtocols.Tls12, checkCertificateRevocation: false);
+                await tls.AuthenticateAsServerAsync(certificate, clientCertificateRequired: pinnedClient is not null, SslProtocols.Tls12, checkCertificateRevocation: false);
                 await outbound.ConnectAsync(IPAddress.Loopback, httpPort);
                 var plain = outbound.GetStream();
                 await Task.WhenAny(tls.CopyToAsync(plain), plain.CopyToAsync(tls));

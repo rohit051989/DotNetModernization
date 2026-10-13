@@ -11,6 +11,15 @@ execution. They come from the Modernization Platform's engagement and override a
   unreviewable rewrite. Do not reformat, rename, reorder or modernize code that the upgrade does not
   require.
 
+## Never stop for a decision
+
+- Every work item has an instruction under `.github/upgrades/skills/` that already says what to do: apply it. Do
+  not stop to ask which option to take; where an instruction is labelled presumptive, it is still the one to apply.
+- Where an instruction lists a **deployment parameter**, make the code read that name from configuration and
+  never write a value for it. Do not invent host names, time zones, credentials or paths.
+- Where an instruction says **leave unchanged**, leave those places exactly as they are and record them as
+  unresolved. Do not choose an alternative yourself.
+
 ## Report only what you ran
 
 - Report a project or the solution as **built only from a build you actually ran in this session**, and

@@ -49,8 +49,11 @@ public sealed record ProjectMap(IReadOnlyDictionary<string, string> Directories)
 /// </summary>
 public sealed class RuleEngine(
     CodeIndex index, ProjectMap projects, IReadOnlyList<TestLink> tests, IReadOnlyList<EntryPointRef> entryPoints,
-    IReadOnlyList<HostLink>? hostLinks = null, IReadOnlyList<DeployFile>? deployFiles = null)
+    IReadOnlyList<HostLink>? hostLinks = null, IReadOnlyList<DeployFile>? deployFiles = null,
+    VersionDeclarations? versionDeclarations = null)
 {
+    private IReadOnlyList<string> _packageIds = [];
+
     /// <summary>A file reached by a rule, with the type that brought it there.</summary>
     /// <param name="Element">Set when the rule reached part of a file (a config
     /// element), not the file: "&lt;services&gt; at system.serviceModel/services, line 30".</param>
@@ -65,8 +68,10 @@ public sealed class RuleEngine(
 
     public sealed record Result(IReadOnlyList<ImpactEntry> Entries, IReadOnlyList<string> KnownLimits, IReadOnlyList<string> DeferredRules);
 
-    public Result Evaluate(IReadOnlyList<ImpactRule> rules, IReadOnlyList<SeedFile> seeds, string projectPath)
+    public Result Evaluate(IReadOnlyList<ImpactRule> rules, IReadOnlyList<SeedFile> seeds, string projectPath,
+        IReadOnlyList<string>? packageIds = null)
     {
+        _packageIds = packageIds ?? [];
         var outputs = new Dictionary<string, List<Node>>(StringComparer.Ordinal) { ["seed"] = SeedNodes(seeds) };
         var raw = new List<(ImpactEntry Entry, string Key)>();
         var deferred = new List<string>();
@@ -222,6 +227,7 @@ public sealed class RuleEngine(
         "convention_files" => ConventionFiles(input, rule.Kind ?? ""),
         "referencing_tests" => ReferencingTests(input),
         "project_file" => ProjectFiles(input, projectPath),
+        "version_declaration" => VersionDeclarationFiles(input, projectPath),
         "project_files" => ProjectFilesMatching(input, projectPath, rule.Pattern ?? ""),
         "hosting_project" => HostingProjects(input),
         "deploy_parameter_files" => DeployParameterFiles(input, projectPath),
@@ -491,6 +497,28 @@ public sealed class RuleEngine(
         return owners.Order(StringComparer.Ordinal)
             .Select(p => origin is null ? new Node(p, null, true, [$"project file {p}"]) : origin.Then(p, null, true, $"project file {p}"))
             .ToList();
+    }
+
+    /// <summary>version_declaration: for each package the work item names, the file where its version is
+    /// declared for the owning project — the project file, Directory.Packages.props, or the props file holding the
+    /// property its version names (VersionDeclarations). Where it cannot be found, the project file, possible.</summary>
+    private List<Node> VersionDeclarationFiles(List<Node> input, string projectPath)
+    {
+        var owners = ProjectFiles(input, projectPath);
+        if (versionDeclarations is null || _packageIds.Count == 0) return owners;
+        var result = new List<Node>();
+        foreach (var owner in owners)
+        {
+            foreach (var package in _packageIds)
+            {
+                var found = versionDeclarations.Find(owner.File, package);
+                result.Add(found is null
+                    ? owner.Then(owner.File, null, false, $"version of {package}: declaration not found, assumed in the project file")
+                    : owner.Then(found.File, null, true, $"version of {package} declared in {found.File}", element: found.Element));
+            }
+        }
+
+        return result;
     }
 
     private List<Node> EntryPoints(List<Node> input)

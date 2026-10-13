@@ -52,13 +52,13 @@ public sealed class DependencyDatabase(string connectionString)
                          classification_method, deprecated, deprecation_replacement, vulnerable, vulnerability_max_severity,
                          vulnerabilities_resolved_by_upgrade, not_in_client_feed, latest_public_version, feed_source, feed_name, feed_url,
                          confidence, breaking_members, call_sites, step_execution_id, assessed_at,
-                         package_kind, breaking_evidence, content_breaking_possible, version_drift)
+                         package_kind, breaking_evidence, content_breaking_possible, version_drift, deprecation_scope)
                     VALUES
                         (@id, @rid, @pid, @package, @current, @recommended, @outcome, @reason,
                          @method, @deprecated, @replacement, @vulnerable, @severity,
                          @resolved, @gap, @public, @feed_source, @feed_name, @feed_url,
                          @confidence, @members, @sites, @sid, @at,
-                         @kind, @evidence, @content_risk, @drift)
+                         @kind, @evidence, @content_risk, @drift, @deprecation_scope)
                     """,
                     connection, transaction);
                 insert.Parameters.AddWithValue("id", package.AssessmentId);
@@ -72,6 +72,7 @@ public sealed class DependencyDatabase(string connectionString)
                 insert.Parameters.AddWithValue("method", (object?)package.ClassificationMethod ?? DBNull.Value);
                 insert.Parameters.AddWithValue("deprecated", package.Deprecated is not null);
                 insert.Parameters.AddWithValue("replacement", (object?)package.Deprecated?.ReplacementId ?? DBNull.Value);
+                insert.Parameters.AddWithValue("deprecation_scope", (object?)package.Deprecated?.Scope ?? DBNull.Value);
                 insert.Parameters.AddWithValue("vulnerable", package.Vulnerable is not null);
                 insert.Parameters.AddWithValue("severity", (object?)package.Vulnerable?.MaxSeverity ?? DBNull.Value);
                 insert.Parameters.AddWithValue("resolved", (object?)package.Vulnerable?.ResolvedByUpgrade ?? DBNull.Value);

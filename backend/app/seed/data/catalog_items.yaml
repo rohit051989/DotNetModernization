@@ -1321,6 +1321,156 @@ items:
         effort: low
         notes: "Platform-level change; every workload relying on it depends on cluster configuration staying in place."
 
+  # ---- Hosting and container readiness (registry 1.11.0) ----
+  #
+  # Presence is not readiness: missing-dockerfile and missing-ocp4-manifests
+  # fire when the files are absent; these fire when files that exist would be
+  # refused or broken by OpenShift's restricted security context constraint,
+  # which runs every container as an arbitrary non-root UID in group 0. The
+  # signals are read from Dockerfiles and manifests anywhere in the repository,
+  # and a repository-level file counts for every project in it.
+
+  - id: aspnetcore-iis-hosting
+    name: "ASP.NET Core hosted in IIS"
+    scope: application
+    category: hosting
+    description: >-
+      An ASP.NET Core application hosted behind IIS through the ASP.NET Core
+      Module, in-process or out-of-process: a project file's
+      AspNetCoreHostingModel, a web.config aspNetCore element or module
+      handler, or a UseIIS / UseIISIntegration call. In a container nothing of
+      this applies: there is no IIS, Kestrel serves directly, and it must
+      listen on the container's port. The web.config is ignored on Linux, so
+      leaving it does not fail, but in-process-only behaviour (IIS
+      authentication, IISServerOptions, the ANCM startup timeout, request
+      limits set in web.config) silently disappears.
+    excluded_roles: [TEST, LIBRARY, DATABASE]
+    detection:
+      match:
+        any:
+          - id: hosting-model
+            signal:
+              name: ASPNETCORE_HOSTING_MODEL
+          - id: use-iis
+            signal:
+              name: USE_IIS_INVOCATION
+          - id: aspnetcore-module-config
+            signal:
+              name: ASPNETCORE_CONFIG
+    resolutions:
+      - id: kestrel-on-container-port
+        name: "Kestrel on the container's port"
+        description: "Remove the IIS hosting configuration: the AspNetCoreHostingModel property, the web.config aspNetCore element and module handler, and UseIIS / UseIISIntegration calls. Kestrel listens on the container's unprivileged port, set by ASPNETCORE_HTTP_PORTS=8080 in the image; anything IIS did (request limits, Windows authentication) moves to Kestrel options or the route."
+        target_description: "Kestrel listening on 8080 in the container, behind the OpenShift route"
+        consumer_impact: none
+        effort: low
+        is_default: true
+      - id: keep-iis-for-windows-hosts
+        name: "Keep IIS hosting for remaining Windows hosts"
+        description: "Keep the web.config and the IIS integration for Windows servers that stay during the migration, and bind Kestrel to the container's port as well. IIS-only behaviour must be checked in both hosts."
+        target_description: "One build that runs under IIS on Windows and on Kestrel in the container"
+        consumer_impact: none
+        effort: medium
+        notes: "Two hosting models to keep equivalent until the last Windows host is retired."
+
+  - id: container-runs-as-root
+    name: "Container runs as root"
+    scope: application
+    category: packaging
+    description: >-
+      An existing Dockerfile whose final stage never switches to a non-root
+      user, or switches to root; or a manifest that sets runAsUser: 0,
+      runAsNonRoot: false, privileged: true or allowPrivilegeEscalation: true.
+      OpenShift's restricted security context constraint refuses the pod, or
+      overrides the user so that what root could write no longer is.
+    excluded_roles: [TEST, LIBRARY, DATABASE]
+    detection:
+      match:
+        all:
+          - id: runs-as-root
+            signal:
+              name: CONTAINER_RUNS_AS_ROOT
+    resolutions:
+      - id: non-root-numeric-user
+        name: "Run as a numeric non-root user"
+        description: "End the final stage with USER 1001 (or the base image's app user, by UID), and remove privileged settings from the manifests. Nothing the application writes may need root."
+        target_description: "USER 1001 in the image; the restricted SCC assigns the run-time UID"
+        consumer_impact: none
+        effort: low
+        is_default: true
+      - id: dedicated-scc
+        name: "Grant a dedicated security context constraint"
+        description: "Keep the image as it is and have the platform team grant the service account an SCC that allows its user (anyuid, or a custom one)."
+        target_description: "A service account bound to a non-restricted SCC"
+        consumer_impact: none
+        effort: medium
+        notes: "A platform exception: needs the cluster owners' approval, and is often refused."
+
+  - id: container-privileged-port
+    name: "Container binds a privileged port"
+    scope: application
+    category: packaging
+    description: >-
+      An existing Dockerfile or manifest binds a port below 1024: EXPOSE 80,
+      ASPNETCORE_URLS=http://+:80, ASPNETCORE_HTTP_PORTS=80, or a
+      containerPort below 1024. A non-root process cannot bind it, so under
+      OpenShift's restricted policy the application fails to start.
+    excluded_roles: [TEST, LIBRARY, DATABASE]
+    detection:
+      match:
+        all:
+          - id: privileged-port
+            signal:
+              name: CONTAINER_PRIVILEGED_PORT
+    resolutions:
+      - id: unprivileged-port-8080
+        name: "Listen on 8080"
+        description: "Set ASPNETCORE_HTTP_PORTS=8080 (or ASPNETCORE_URLS=http://+:8080) and EXPOSE 8080 in the image, containerPort 8080 in the manifests; the Service maps its port 80 to targetPort 8080 so callers see no change."
+        target_description: "Kestrel on 8080; Service port 80 -> targetPort 8080"
+        consumer_impact: none
+        effort: low
+        is_default: true
+      - id: net-bind-service-capability
+        name: "Grant NET_BIND_SERVICE"
+        description: "Keep the port and add the NET_BIND_SERVICE capability through an SCC that allows it."
+        target_description: "Port below 1024 with a granted capability"
+        consumer_impact: none
+        effort: medium
+        notes: "A platform exception, like a dedicated SCC."
+
+  - id: container-fixed-user-writable-path
+    name: "Writable path owned by a fixed user"
+    scope: application
+    category: packaging
+    description: >-
+      Writable paths that assume a fixed user: in the final stage, a chown to
+      an owner whose group is not 0, or an owner-only chmod (700, 600), with no
+      later chmod giving group 0 the owner's rights; or a manifest's fixed
+      runAsUser or fsGroup. OpenShift runs the image as an arbitrary UID that
+      is a member of group 0, so the path is not writable at run time and the
+      fixed IDs fall outside the namespace's allowed range.
+    excluded_roles: [TEST, LIBRARY, DATABASE]
+    detection:
+      match:
+        all:
+          - id: fixed-user-path
+            signal:
+              name: CONTAINER_FIXED_USER_WRITABLE_PATH
+    resolutions:
+      - id: group-zero-writable
+        name: "Group 0 owns writable paths"
+        description: "chown -R 1001:0 the writable paths and chmod -R g=u them, so any UID in group 0 has the owner's rights; remove fixed runAsUser and fsGroup values from the manifests and let the SCC assign them."
+        target_description: "Paths owned by 1001:0 with g=u; IDs assigned by the namespace"
+        consumer_impact: none
+        effort: low
+        is_default: true
+      - id: writable-volume
+        name: "Write to a mounted volume"
+        description: "Move what the application writes to an emptyDir or persistent volume mounted at that path; the platform makes it writable for the pod's UID."
+        target_description: "emptyDir or PVC mounted at the writable path"
+        consumer_impact: none
+        effort: low
+
   # ---- Package dependencies (lifecycle step 6, dependency-assessment) ----
   #
   # Generic and parameterised by package: never one item per library, which
@@ -1340,10 +1490,11 @@ items:
       (solution-discovery's target_framework_source) — not by assuming the
       project file.
 
-      Not ready: detection needs TARGET_FRAMEWORK_BELOW_ENGAGEMENT_TARGET, which
-      dependency-assessment is declared to emit but does not yet. The conversion
-      recipe framework-retarget binds here (34-CONVERSION-ARCHITECTURE.md C1), and
-      a plan takes the framework declarations from solution-discovery directly.
+      Detected on TARGET_FRAMEWORK_BELOW_ENGAGEMENT_TARGET, which
+      dependency-assessment emits from 1.4.0 at the line that declares the
+      framework. The conversion recipe framework-retarget binds here
+      (34-CONVERSION-ARCHITECTURE.md C1), and a plan takes the framework
+      declarations from solution-discovery directly.
 
       Conversion ordering: package bumps are ordered around it by framework
       support — a version that drops the current framework after it, a current
@@ -1414,6 +1565,8 @@ items:
         consumer_impact: none
         effort: low
         is_default: true
+        impact:
+        - {id: version, from: seed, traverse: version_declaration, action: update, reason: "The version is edited where it is declared: the project file, Directory.Packages.props, or the property it names"}
       - id: package-upgrade-safe-keep-current
         name: "Keep the current version"
         description: "Leave the version as it is: it already supports the target framework, and nothing forces the move."
@@ -1461,7 +1614,7 @@ items:
         is_default: true
         impact:
         - {id: call-sites, from: seed, select: self, action: update, reason: Call sites of the changed members are adapted to the new version}
-        - {id: project, from: seed, traverse: project_file, action: update, reason: The PackageReference version is bumped}
+        - {id: version, from: seed, traverse: version_declaration, action: update, reason: "The version is edited where it is declared: the project file, Directory.Packages.props, or the property it names"}
       - id: package-upgrade-breaking-replace
         name: "Replace the package"
         description: "Where the new major version is a rewrite rather than an evolution, adopt a different library instead."
@@ -1470,7 +1623,48 @@ items:
         effort: high
         impact:
         - {id: call-sites, from: seed, select: self, action: rewrite, reason: Call sites move to the replacement package's API}
-        - {id: project, from: seed, traverse: project_file, action: update, reason: The PackageReference is replaced by the replacement package}
+        - {id: reference, from: seed, traverse: project_file, action: update, reason: The PackageReference names the replacement package}
+        - {id: version, from: seed, traverse: version_declaration, action: update, reason: "The version is edited where it is declared: the project file, Directory.Packages.props, or the property it names"}
+  - id: package-provided-by-framework
+    name: "Package the target framework already provides"
+    scope: occurrence
+    category: dependencies
+    description: >-
+      A direct NuGet package that the target framework's shared framework
+      already provides at a version it carries (the SDK's PackageOverrides.txt):
+      Microsoft.NETCore.App's for every project, Microsoft.AspNetCore.App's for
+      a Web or Razor SDK project or one with a FrameworkReference to it.
+      Microsoft.AspNetCore.Server.Kestrel 2.x in a net10.0 web project is the
+      usual case. A removal, not an upgrade: upgrading would pin an old copy
+      the framework supersedes anyway. One occurrence per project per package,
+      at the PackageReference line; the value reads
+      "{id} {from}: provided by {shared framework} {target}".
+    detection:
+      match:
+        all:
+          - id: provided-by-framework
+            signal:
+              name: PACKAGE_PROVIDED_BY_FRAMEWORK
+      occurrence_source:
+        signal: PACKAGE_PROVIDED_BY_FRAMEWORK
+        group_by: source_path_and_value
+    resolutions:
+      - id: remove-framework-provided-package
+        name: "Remove the package reference"
+        description: "Remove the PackageReference, and its central version where nothing else uses it; the shared framework supplies the assemblies."
+        target_description: "No PackageReference; the shared framework's version"
+        consumer_impact: none
+        effort: low
+        is_default: true
+        impact:
+        - {id: reference, from: seed, traverse: project_file, action: update, reason: The PackageReference is removed from the project file}
+        - {id: version, from: seed, traverse: version_declaration, action: update, reason: "The central version is removed where it is declared, when no other project uses it"}
+      - id: keep-framework-provided-package
+        name: "Keep the package reference"
+        description: "Keep the reference, at a version no lower than the framework's, where a tool or analyzer needs the package itself."
+        target_description: "The PackageReference, at or above the framework's version"
+        consumer_impact: none
+        effort: low
 
   - id: package-replacement-required
     name: "Package needs replacing"
@@ -1478,7 +1672,9 @@ items:
     category: dependencies
     description: >-
       A direct NuGet package has no version supporting the target framework,
-      or its publisher has deprecated it. Either way it is a replacement, not
+      or its publisher has retired it: deprecated as Legacy, or with no newer
+      version free of deprecation. A deprecated version of a maintained package
+      is not this item: upgrading resolves it. Either way it is a replacement, not
       an upgrade, and which replacement to adopt is a client decision. The
       default is the publisher's suggested replacement, carried in the
       PACKAGE_DEPRECATED value where the publisher names one; where none is
@@ -1494,6 +1690,10 @@ items:
           - id: deprecated
             signal:
               name: PACKAGE_DEPRECATED
+              # dependency-assessment 1.3.0: only a retired package. A deprecated version of a maintained package
+              # ("version deprecated") is the upgrade package-upgrade-safe or -breaking already carries.
+              value:
+                contains: ": package deprecated"
       occurrence_source:
         signal: PACKAGE_NO_COMPATIBLE_VERSION
         also:
@@ -1507,18 +1707,27 @@ items:
         consumer_impact: low
         effort: medium
         is_default: true
+        impact:
+        - {id: reference, from: seed, traverse: project_file, action: update, reason: The PackageReference names the replacement package}
+        - {id: version, from: seed, traverse: version_declaration, action: update, reason: "The version is edited where it is declared: the project file, Directory.Packages.props, or the property it names"}
       - id: package-replacement-alternative
         name: "Adopt an alternative library"
         description: "Choose a different maintained library that supports the target framework."
         target_description: "A maintained alternative supporting the target framework"
         consumer_impact: medium
         effort: high
+        impact:
+        - {id: reference, from: seed, traverse: project_file, action: update, reason: The PackageReference names the replacement package}
+        - {id: version, from: seed, traverse: version_declaration, action: update, reason: "The version is edited where it is declared: the project file, Directory.Packages.props, or the property it names"}
       - id: package-replacement-framework-builtin
         name: "Remove it: use the framework's own equivalent"
         description: "Drop the package where the target framework provides the capability itself: OWIN middleware, the compiler packages, System.Web shims."
         target_description: "Built-in .NET capability, no package"
         consumer_impact: low
         effort: medium
+        impact:
+        - {id: reference, from: seed, traverse: project_file, action: update, reason: The PackageReference is removed}
+        - {id: version, from: seed, traverse: version_declaration, action: update, reason: "The version declaration is removed where it is declared: Directory.Packages.props under central package management"}
       - id: package-replacement-remain-windows-hosted
         name: "Remain on .NET Framework"
         description: "Keep the package; the application stays on .NET Framework on Windows."
@@ -1555,12 +1764,17 @@ items:
         consumer_impact: low
         effort: low
         is_default: true
+        impact:
+        - {id: version, from: seed, traverse: version_declaration, action: update, reason: "The version is edited where it is declared: the project file, Directory.Packages.props, or the property it names"}
       - id: package-vulnerable-replace
         name: "Replace the package"
         description: "Where no patched version exists or the package is unmaintained, move to an alternative."
         target_description: "A maintained alternative without the advisory"
         consumer_impact: medium
         effort: high
+        impact:
+        - {id: reference, from: seed, traverse: project_file, action: update, reason: The PackageReference names the replacement package}
+        - {id: version, from: seed, traverse: version_declaration, action: update, reason: "The version is edited where it is declared: the project file, Directory.Packages.props, or the property it names"}
       - id: package-vulnerable-accept-risk
         name: "Accept the risk with a mitigation"
         description: "Keep the version with a documented mitigation, where the vulnerable code path is not reachable."
@@ -1597,9 +1811,13 @@ items:
         consumer_impact: none
         effort: low
         is_default: true
+        impact:
+        - {id: version, from: seed, traverse: version_declaration, action: update, reason: "The version is edited where it is declared: the project file, Directory.Packages.props, or the property it names"}
       - id: package-not-approved-latest-approved
         name: "Stay on the latest approved version"
         description: "Upgrade only as far as the client feed allows."
         target_description: "The newest version the client feed holds"
         consumer_impact: none
         effort: low
+        impact:
+        - {id: version, from: seed, traverse: version_declaration, action: update, reason: "The version is edited where it is declared: the project file, Directory.Packages.props, or the property it names"}

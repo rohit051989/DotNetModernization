@@ -374,6 +374,7 @@ export function OutboundView({ data, localPath }: ArtifactRendererProps) {
 const OUTCOME_STYLE: Record<string, string> = {
   no_compatible_version: 'border-red-200 bg-red-50 text-red-700',
   upgrade_breaking: 'border-amber-200 bg-amber-50 text-amber-800',
+  framework_provided: 'border-sky-200 bg-sky-50 text-sky-800',
   unknown: 'border-neutral-300 bg-neutral-100 text-neutral-600',
   upgrade_safe: 'border-teal-200 bg-teal-50 text-teal-700',
   current: 'border-neutral-200 bg-white text-neutral-400',
@@ -381,11 +382,12 @@ const OUTCOME_STYLE: Record<string, string> = {
 const OUTCOME_LABEL: Record<string, string> = {
   no_compatible_version: 'no compatible version',
   upgrade_breaking: 'upgrade breaking',
+  framework_provided: 'remove: provided by framework',
   unknown: 'unknown',
   upgrade_safe: 'upgrade safe',
   current: 'current',
 }
-const OUTCOME_ORDER = ['no_compatible_version', 'upgrade_breaking', 'unknown', 'upgrade_safe', 'current']
+const OUTCOME_ORDER = ['no_compatible_version', 'upgrade_breaking', 'framework_provided', 'unknown', 'upgrade_safe', 'current']
 
 interface ProjectUse {
   project: string
@@ -500,6 +502,7 @@ export function DependenciesView({ data, localPath }: ArtifactRendererProps) {
         <Chip>{num(summary.packageCount)} package references</Chip>
         {(outcomes.no_compatible_version ?? 0) > 0 && <Chip tone="red">{outcomes.no_compatible_version} no compatible version</Chip>}
         {(outcomes.upgrade_breaking ?? 0) > 0 && <Chip tone="amber">{outcomes.upgrade_breaking} breaking</Chip>}
+        {(outcomes.framework_provided ?? 0) > 0 && <Chip>{outcomes.framework_provided} provided by framework</Chip>}
         {(outcomes.unknown ?? 0) > 0 && <Chip>{outcomes.unknown} unknown</Chip>}
         {(outcomes.upgrade_safe ?? 0) > 0 && <Chip tone="teal">{outcomes.upgrade_safe} safe</Chip>}
         {(outcomes.current ?? 0) > 0 && <Chip>{outcomes.current} current</Chip>}

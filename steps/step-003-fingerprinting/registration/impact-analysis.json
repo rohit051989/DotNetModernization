@@ -3,7 +3,7 @@
   "lifecycle_step_no": 9,
   "display_name": "Impact analysis",
   "owner_code": "P",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "owner_team": "platform",
   "viewpoint": "DEVELOPMENT",
   "implementation_status": "implemented",

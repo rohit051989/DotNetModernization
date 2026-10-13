@@ -1,0 +1,55 @@
+category: hosting
+deleted: false
+description: 'An ASP.NET Core application hosted behind IIS through the ASP.NET Core Module, in-process or out-of-process: a project file''s AspNetCoreHostingModel, a web.config aspNetCore element or module handler, or a UseIIS / UseIISIntegration call. In a container nothing of this applies: there is no IIS, Kestrel serves directly, and it must listen on the container''s port. The web.config is ignored on Linux, so leaving it does not fail, but in-process-only behaviour (IIS authentication, IISServerOptions, the ANCM startup timeout, request limits set in web.config) silently disappears.'
+detection:
+  match:
+    all: []
+    any:
+    - id: hosting-model
+      signal:
+        name: ASPNETCORE_HOSTING_MODEL
+    - id: use-iis
+      signal:
+        name: USE_IIS_INVOCATION
+    - id: aspnetcore-module-config
+      signal:
+        name: ASPNETCORE_CONFIG
+    atLeast: []
+    metadata: []
+    none: []
+excluded_roles:
+- DATABASE
+- LIBRARY
+- TEST
+id: aspnetcore-iis-hosting
+name: ASP.NET Core hosted in IIS
+owner_team: null
+resolutions:
+- consumer_impact: none
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: Keep the web.config and the IIS integration for Windows servers that stay during the migration, and bind Kestrel to the container's port as well. IIS-only behaviour must be checked in both hosts.
+  effort: medium
+  id: keep-iis-for-windows-hosts
+  is_default: false
+  linux_compatible: true
+  name: Keep IIS hosting for remaining Windows hosts
+  notes: Two hosting models to keep equivalent until the last Windows host is retired.
+  status: active
+  target_description: One build that runs under IIS on Windows and on Kestrel in the container
+- consumer_impact: none
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: 'Remove the IIS hosting configuration: the AspNetCoreHostingModel property, the web.config aspNetCore element and module handler, and UseIIS / UseIISIntegration calls. Kestrel listens on the container''s unprivileged port, set by ASPNETCORE_HTTP_PORTS=8080 in the image; anything IIS did (request limits, Windows authentication) moves to Kestrel options or the route.'
+  effort: low
+  id: kestrel-on-container-port
+  is_default: true
+  linux_compatible: true
+  name: Kestrel on the container's port
+  notes: null
+  status: active
+  target_description: Kestrel listening on 8080 in the container, behind the OpenShift route
+scope: application
+status: active

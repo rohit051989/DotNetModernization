@@ -64,6 +64,12 @@ Record per lookup which feed answered:
 Artifactory has decided what may be used. Respect it: when client feeds are configured,
 they are the authority.
 
+**A declared nuget.org is one of the declared sources.** A `NuGet.config` that lists an
+internal feed *and* nuget.org (AccountsApi: `../EnterprisePackages/feed` beside nuget.org)
+makes both the authority, in declared order (1.3.0; before it, nuget.org was dropped as soon
+as a client feed existed, so every public package read "not on the client feed"). The public
+comparison of B3 is then not needed: it runs only when nuget.org is not declared.
+
 ### B3. The client-feed gap
 
 When client feeds are configured, also query nuget.org **for comparison only** — never as
@@ -135,6 +141,7 @@ TestClientB.
 | `upgrade_safe` | A newer compatible version exists and nothing the code calls changed |
 | `upgrade_breaking` | A newer compatible version exists and the code calls a changed API |
 | `no_compatible_version` | No version supports the target framework |
+| `framework_provided` | (1.4.0) The target's shared framework already provides the package at a version it carries: remove the reference, do not upgrade it |
 | `unknown` | Could not be determined — reason recorded |
 
 The **recommended version** is the latest version that supports the target framework,
@@ -145,12 +152,27 @@ may have dropped a framework the project still needs.
 
 | Flag | Meaning |
 |---|---|
-| `deprecated` | Publisher deprecated it, with any suggested replacement recorded. **Upgrading does not clear this** |
+| `deprecated` | Publisher deprecated the current version, with its reasons and any suggested replacement recorded, and its **scope** (1.3.0, below). For a deprecated package, upgrading does not clear this |
 | `vulnerable` | Known advisories against the current version, with severity. Records whether the recommended version resolves them |
 | `not_in_client_feed` | A newer compatible version exists publicly but not in the client feed |
 
 A package may be `upgrade_breaking` **and** `vulnerable` **and** `deprecated` at once.
 That is why these are flags rather than outcomes.
+
+**Deprecation scope (1.3.0).** NuGet deprecates versions, not packages, with reasons `Legacy`,
+`CriticalBugs` or `Other` and an optional alternate package. The scope is read from the reasons
+and the package's other versions, all cached in `package_lookup_cache`:
+
+| Scope | When | Means |
+|---|---|---|
+| `package` | No newer listed version is free of deprecation, or the reason is `Legacy` and the publisher names a different package as successor | Retired: replace it (`package-replacement-required`) |
+| `version` | A newer version is not deprecated and no successor package is named | A maintained package's old release (a vulnerability, "move to latest"): the upgrade the outcome already describes resolves it |
+
+`deprecation.newestNotDeprecated` names the release that resolves a version deprecation;
+`package_assessments.deprecation_scope` stores the scope. On eShopOnWeb: xunit 2.7.0 (Legacy,
+successor xunit.v3) and AutoMapper.Extensions.Microsoft.DependencyInjection 12.0.1 (Legacy,
+successor AutoMapper) are packages; Azure.Identity 1.10.4 (Other), MSTest 3.2.2 and
+System.IdentityModel.Tokens.Jwt 7.3.1 (Legacy, no successor, newer versions maintained) are versions.
 
 ### C4. Safe versus breaking — two methods
 
@@ -185,9 +207,11 @@ confidence.
 | `PACKAGE_UPGRADE_SAFE` | `PACKAGE` | The `PackageReference` line. Value: `{id} {from} -> {to}` |
 | `PACKAGE_UPGRADE_BREAKING` | `API_INVOCATION` | **Each affected call site.** Value: `{id} {from} -> {to}: {member}` |
 | `PACKAGE_NO_COMPATIBLE_VERSION` | `PACKAGE` | The `PackageReference` line |
-| `PACKAGE_DEPRECATED` | `PACKAGE` | The `PackageReference` line. Value carries the suggested replacement |
+| `PACKAGE_DEPRECATED` | `PACKAGE` | The `PackageReference` line. Value (1.3.0): `{id} {from}: package deprecated ({reasons}); replacement {alt} {range}` or `...; no suggested replacement`, or `{id} {from}: version deprecated ({reasons}); {newest} is not` |
 | `PACKAGE_VULNERABLE` | `PACKAGE` | The `PackageReference` line. Value carries the highest severity |
 | `PACKAGE_NOT_IN_CLIENT_FEED` | `PACKAGE` | The `PackageReference` line. Value carries both versions |
+| `PACKAGE_PROVIDED_BY_FRAMEWORK` | `PACKAGE` | (1.4.0) The `PackageReference` line. Value: `{id} {from}: provided by {shared framework} {target}` |
+| `TARGET_FRAMEWORK_BELOW_ENGAGEMENT_TARGET` | `CONFIG_ELEMENT` | (1.4.0) The line declaring the target framework — the project file, else the nearest `Directory.Build.props` that declares one. Value: `{from} -> {to}`. A .NETCoreApp project only |
 
 Register them in the signal registry with this step declared as their producer. Bump the
 registry version in the same change, per the established rule.
@@ -417,3 +441,28 @@ repository.
 **Items (D2).** `package-replacement-required` matches either signal and locates
 occurrences from both with `occurrence_source.also` (28-ITEM-AND-CONVERSION-MODEL.md Part E),
 so a package that is both deprecated and without a compatible version is one occurrence.
+
+## As implemented — scanner 1.4.0, artifact `dependency-assessment@1.4.0`
+
+AccountsApi referenced `Microsoft.AspNetCore.Server.Kestrel` 2.x from a net10.0 web project. 1.3.0
+called it `upgrade_breaking`: a newer version exists. It is a removal: ASP.NET Core 3.0 moved Kestrel
+into the shared framework.
+
+**Shared frameworks.** `schemas/shared-frameworks-1.0.0.json` lists, per target framework (net5.0 to
+net10.0), the packages each shared framework carries and at which version — the SDK's own
+`PackageOverrides.txt` from each targeting pack (`Microsoft.NETCore.App.Ref`,
+`Microsoft.AspNetCore.App.Ref`), generated by `schemas/make_shared_frameworks_1_0_0.py`.
+`SharedFrameworks.UsedBy` decides which frameworks a project uses: `Microsoft.NETCore.App` always;
+`Microsoft.AspNetCore.App` for a Web or Razor SDK project or one with a `FrameworkReference` to it. A
+direct reference to a package one of them carries, at a version no higher than the carried one, is
+outcome `framework_provided` with signal `PACKAGE_PROVIDED_BY_FRAMEWORK`, decided before any feed
+lookup. A class library's `Microsoft.AspNetCore.*` package stays an upgrade: the library does not
+use the shared framework.
+
+**Retarget.** A .NETCoreApp project below the engagement's target framework emits
+`TARGET_FRAMEWORK_BELOW_ENGAGEMENT_TARGET`, located where the framework is declared, so
+`target-framework-retarget` (anticipated since registry 1.4.0) is ready.
+
+The backend outcome constraint gains `framework_provided` (migration `e8b1c4d6a273`); the
+Dependencies view labels it "remove: provided by framework". Item `package-provided-by-framework`
+removes the reference (impact: the project file and the version declaration).

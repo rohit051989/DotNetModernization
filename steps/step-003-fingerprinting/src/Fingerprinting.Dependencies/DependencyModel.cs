@@ -17,6 +17,8 @@ public static class Outcomes
     public const string UpgradeBreaking = "upgrade_breaking";
     public const string NoCompatibleVersion = "no_compatible_version";
     public const string Unknown = "unknown";
+    /// <summary>1.4.0: the target's shared framework provides the package (SharedFrameworks): remove the reference.</summary>
+    public const string FrameworkProvided = "framework_provided";
 
     /// <summary>The UI's order: what blocks first.</summary>
     public static int Rank(string outcome) => outcome switch
@@ -24,8 +26,9 @@ public static class Outcomes
         NoCompatibleVersion => 0,
         UpgradeBreaking => 1,
         Unknown => 2,
-        UpgradeSafe => 3,
-        _ => 4,
+        FrameworkProvided => 3,
+        UpgradeSafe => 4,
+        _ => 5,
     };
 }
 
@@ -121,7 +124,7 @@ public static class CallSiteCertainty
 public sealed record DependencyAssessmentArtifact
 {
     public string ArtifactType { get; init; } = "dependency-assessment";
-    public string ArtifactVersion { get; init; } = "1.2.0";
+    public string ArtifactVersion { get; init; } = "1.4.0";
     public required string ScannerVersion { get; init; }
     public required Guid RepositoryId { get; init; }
     public required string RepositorySlug { get; init; }
@@ -287,6 +290,16 @@ public sealed record DeprecationFlag
     public string? Message { get; init; }
     public string? ReplacementId { get; init; }
     public string? ReplacementRange { get; init; }
+    /// <summary>1.3.0: <c>package</c> (retired: replace it) or <c>version</c> (this release only: upgrade).</summary>
+    public string Scope { get; init; } = DeprecationScopes.Package;
+    /// <summary>1.3.0: for a version deprecation, the newest version that is not deprecated.</summary>
+    public string? NewestNotDeprecated { get; init; }
+}
+
+public static class DeprecationScopes
+{
+    public const string Package = "package";
+    public const string Version = "version";
 }
 
 public sealed record VulnerabilityFlag

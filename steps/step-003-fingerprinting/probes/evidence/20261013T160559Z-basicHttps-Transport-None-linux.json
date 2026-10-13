@@ -1,0 +1,36 @@
+{
+  "command": [
+    "docker",
+    "run",
+    "--rm",
+    "-v",
+    "<repo>\\backend\\runs\\probes\\WcfClientProbe:/probe:ro",
+    "mcr.microsoft.com/dotnet/runtime@sha256:b89586dc17781f25531909993658aa8161205ae38b8cec8847df4a8221a403d5",
+    "dotnet",
+    "/probe/WcfClientProbe.dll",
+    "basicHttps-Transport-None",
+    "https://localhost:44301/Utility.svc",
+    "--server-thumbprint",
+    "3625CD93B87C30D2D7F780B528C016569F220299",
+    "--relay",
+    "44301"
+  ],
+  "image": "mcr.microsoft.com/dotnet/runtime@sha256:b89586dc17781f25531909993658aa8161205ae38b8cec8847df4a8221a403d5",
+  "result": {
+    "address": "https://localhost:44301/Utility.svc",
+    "cryptographyXml": "10.0.12+95017c711e6afc1085133d440e42b4bd78155701",
+    "durationMs": 482,
+    "framework": ".NET 10.0.12",
+    "operation": "IUtilityService.Ping",
+    "os": "Ubuntu 24.04.5 LTS",
+    "outcome": "passed",
+    "response": "pong",
+    "scenario": "basicHttps-Transport-None",
+    "wcfClient": "8.1.2+a47960f931a813617a061adc2ba9cabe1816a551"
+  },
+  "scenario": "basicHttps-Transport-None",
+  "serverThumbprint": "3625CD93B87C30D2D7F780B528C016569F220299",
+  "service": "WCF sample UtilityService, Hosting.Iis binding (ProbeServices, TLS from a certificate file)",
+  "source": "platform-sample",
+  "where": "linux-container"
+}

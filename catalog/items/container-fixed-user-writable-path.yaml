@@ -1,0 +1,49 @@
+category: packaging
+deleted: false
+description: 'Writable paths that assume a fixed user: in the final stage, a chown to an owner whose group is not 0, or an owner-only chmod (700, 600), with no later chmod giving group 0 the owner''s rights; or a manifest''s fixed runAsUser or fsGroup. OpenShift runs the image as an arbitrary UID that is a member of group 0, so the path is not writable at run time and the fixed IDs fall outside the namespace''s allowed range.'
+detection:
+  match:
+    all:
+    - id: fixed-user-path
+      signal:
+        name: CONTAINER_FIXED_USER_WRITABLE_PATH
+    any: []
+    atLeast: []
+    metadata: []
+    none: []
+excluded_roles:
+- DATABASE
+- LIBRARY
+- TEST
+id: container-fixed-user-writable-path
+name: Writable path owned by a fixed user
+owner_team: null
+resolutions:
+- consumer_impact: none
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: chown -R 1001:0 the writable paths and chmod -R g=u them, so any UID in group 0 has the owner's rights; remove fixed runAsUser and fsGroup values from the manifests and let the SCC assign them.
+  effort: low
+  id: group-zero-writable
+  is_default: true
+  linux_compatible: true
+  name: Group 0 owns writable paths
+  notes: null
+  status: active
+  target_description: Paths owned by 1001:0 with g=u; IDs assigned by the namespace
+- consumer_impact: none
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: Move what the application writes to an emptyDir or persistent volume mounted at that path; the platform makes it writable for the pod's UID.
+  effort: low
+  id: writable-volume
+  is_default: false
+  linux_compatible: true
+  name: Write to a mounted volume
+  notes: null
+  status: active
+  target_description: emptyDir or PVC mounted at the writable path
+scope: application
+status: active

@@ -166,6 +166,7 @@ Deterministic, built on Roslyn syntax and file inspection:
 | `convention_files` | Files tied by convention — `.svc`, `.asmx`, `Reference.cs`, WSDL |
 | `referencing_tests` | Test files mapped to the given types, from `test-coverage-assessment` |
 | `project_file` | The project's `.csproj` |
+| `version_declaration` | Where each package the work item names has its version declared for the project: the `.csproj` (`Version` or `VersionOverride`), `Directory.Packages.props` (`PackageVersion`, under central package management), or the `Directory.Packages.props` / `Directory.Build.props` holding the property a version names. Not found: the `.csproj`, possible. Impact-analysis 2.3.0 |
 | `entry_points` | `entry-point-inventory` entry points of the given types |
 
 Filters: `has_attribute`, `in_project`, `namespace_prefix`, `excludes_generated`.
@@ -302,7 +303,9 @@ default rule.
 | `wcf-nettcp-client` | Migrate to the service's new protocol, call HTTP binding |
 | `asmx-service` | Its resolutions |
 | `aspnet-webforms` | Its resolutions |
-| `package-upgrade-breaking` | `self` plus `project_file` — the call sites and the `.csproj` |
+| `package-upgrade-breaking` | `self` plus `version_declaration` — the call sites and where the version is declared |
+| `package-upgrade-safe`, `package-vulnerable`, `package-not-approved` | `version_declaration` |
+| `package-replacement-required` | `project_file` (the reference names the replacement) plus `version_declaration` |
 
 `remain Windows-hosted` resolutions impact nothing structural; give them `select: self`,
 `action: review`, so the work item is still visible without implying edits.

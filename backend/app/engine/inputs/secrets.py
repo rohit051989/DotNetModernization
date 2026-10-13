@@ -19,8 +19,23 @@ import re
 from pathlib import Path
 from xml.etree import ElementTree
 
-# Secrets.cs IsSensitiveKey.
+# Secrets.cs IsSensitiveKey (registry 1.11.0): the key's own name — the last segment of a "Section:Key" path — matches,
+# and its last word does not merely describe a secret (ClientCredentialType, TokenEndpoint, SecretsDir are settings).
 SENSITIVE_KEY = re.compile(r"(?i)password|pwd|secret|token|apikey|api_key|connectionstring|accountkey|sharedaccesskey|credential")
+DESCRIPTIVE_LAST_WORDS = {
+    "type", "kind", "mode", "name", "names", "path", "dir", "directory", "folder", "file", "url", "uri",
+    "endpoint", "provider", "enabled", "required", "expiry", "expiration", "lifetime", "timeout", "seconds",
+    "minutes", "length", "algorithm", "format", "header", "location", "store", "source", "policy", "scheme",
+}
+KEY_WORDS = re.compile(r"[A-Z]?[a-z]+|[A-Z]+(?![a-z])|\d+")
+
+
+def is_sensitive_key(key: str) -> bool:
+    name = re.split(r"[:.]", key)[-1]
+    if not SENSITIVE_KEY.search(name):
+        return False
+    words = KEY_WORDS.findall(name)
+    return not words or words[-1].lower() not in DESCRIPTIVE_LAST_WORDS
 # Secrets.cs LooksLikeConnectionString: two or more `keyword=value` pairs separated by semicolons.
 CS_PAIR = re.compile(r"(?i)(?:^|;)\s*([a-z][a-z0-9 _.]{1,40})\s*=\s*([^;]*)")
 CS_KEYWORDS = re.compile(r"(?i)^(server|data source|host|address|addr|network address|initial catalog|database|user id|uid|"
@@ -42,6 +57,9 @@ SHAPES = (
 )
 
 MIN_VALUE = 6            # shorter values ("true", "1433") would match ordinary text
+# A filesystem path under a sensitive-looking key (ENTERPRISE_VAULT_SECRETS_DIR = D:\Vault\Secrets) is a path, not a
+# secret: the step 5 rules keep a value "only for a path", and discovery records it as a hardcoded Windows path.
+PLAIN_PATH = re.compile(r"^(?:[A-Za-z]:[\\/]|\\\\|/)[^;=@\s]*$")
 CONFIG_GLOBS = ("appsettings*.json", "*.config", "*.settings.json", "launchSettings.json", "secrets.json",
                 "SetParam*.xml", "SetParameters*.xml", "*.pubxml", ".env", "*.env")
 SKIP_DIRS = {".git", "bin", "obj", "node_modules", ".vs", "packages"}
@@ -71,7 +89,7 @@ def _from_json(node, path: str, out: list[tuple[str, str]], sensitive: bool = Fa
     if isinstance(node, dict):
         for k, v in node.items():
             child = f"{path}:{k}" if path else k
-            _from_json(v, child, out, sensitive or bool(SENSITIVE_KEY.search(k)))
+            _from_json(v, child, out, sensitive or is_sensitive_key(k))
     elif isinstance(node, list):
         for i, v in enumerate(node):
             _from_json(v, f"{path}[{i}]", out, sensitive)
@@ -91,7 +109,7 @@ def _from_xml(text: str, out: list[tuple[str, str]], all_values: bool) -> None:
         for attr, value in el.attrib.items():
             if attr in ("name", "key") or not value:
                 continue
-            if all_values or attr.lower() == "connectionstring" or SENSITIVE_KEY.search(name) or looks_like_connection_string(value):
+            if all_values or attr.lower() == "connectionstring" or is_sensitive_key(name) or looks_like_connection_string(value):
                 out.extend((f"{name}@{attr}", part) for part in _connection_parts(value))
             out.extend(_url_passwords(f"{name}@{attr}", value))
 
@@ -118,11 +136,12 @@ def repository_values(root: Path) -> list[dict]:
             else:
                 for line in text.splitlines():
                     k, sep, v = line.partition("=")
-                    if sep and (SENSITIVE_KEY.search(k) or looks_like_connection_string(v)):
+                    if sep and (is_sensitive_key(k.strip()) or looks_like_connection_string(v)):
                         pairs.extend((k.strip(), part) for part in _connection_parts(v))
                     pairs.extend(_url_passwords(k.strip(), v))
             rel = f.relative_to(root).as_posix()
-            found.extend({"file": rel, "key": k, "value": v} for k, v in pairs if len(v.strip()) >= MIN_VALUE)
+            found.extend({"file": rel, "key": k, "value": v} for k, v in pairs
+                         if len(v.strip()) >= MIN_VALUE and not PLAIN_PATH.match(v.strip()))
     unique = {(e["file"], e["key"], e["value"]): e for e in found}
     return [unique[k] for k in sorted(unique)]
 

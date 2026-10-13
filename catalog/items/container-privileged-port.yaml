@@ -1,0 +1,49 @@
+category: packaging
+deleted: false
+description: 'An existing Dockerfile or manifest binds a port below 1024: EXPOSE 80, ASPNETCORE_URLS=http://+:80, ASPNETCORE_HTTP_PORTS=80, or a containerPort below 1024. A non-root process cannot bind it, so under OpenShift''s restricted policy the application fails to start.'
+detection:
+  match:
+    all:
+    - id: privileged-port
+      signal:
+        name: CONTAINER_PRIVILEGED_PORT
+    any: []
+    atLeast: []
+    metadata: []
+    none: []
+excluded_roles:
+- DATABASE
+- LIBRARY
+- TEST
+id: container-privileged-port
+name: Container binds a privileged port
+owner_team: null
+resolutions:
+- consumer_impact: none
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: Keep the port and add the NET_BIND_SERVICE capability through an SCC that allows it.
+  effort: medium
+  id: net-bind-service-capability
+  is_default: false
+  linux_compatible: true
+  name: Grant NET_BIND_SERVICE
+  notes: A platform exception, like a dedicated SCC.
+  status: active
+  target_description: Port below 1024 with a granted capability
+- consumer_impact: none
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: Set ASPNETCORE_HTTP_PORTS=8080 (or ASPNETCORE_URLS=http://+:8080) and EXPOSE 8080 in the image, containerPort 8080 in the manifests; the Service maps its port 80 to targetPort 8080 so callers see no change.
+  effort: low
+  id: unprivileged-port-8080
+  is_default: true
+  linux_compatible: true
+  name: Listen on 8080
+  notes: null
+  status: active
+  target_description: Kestrel on 8080; Service port 80 -> targetPort 8080
+scope: application
+status: active

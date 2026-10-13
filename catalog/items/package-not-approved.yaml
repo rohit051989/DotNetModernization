@@ -26,6 +26,12 @@ resolutions:
   description: Upgrade only as far as the client feed allows.
   effort: low
   id: package-not-approved-latest-approved
+  impact_rules:
+  - action: update
+    from: seed
+    id: version
+    reason: 'The version is edited where it is declared: the project file, Directory.Packages.props, or the property it names'
+    traverse: version_declaration
   is_default: false
   linux_compatible: true
   name: Stay on the latest approved version
@@ -39,6 +45,12 @@ resolutions:
   description: Raise the newer version through the client's package-approval process, then upgrade.
   effort: low
   id: package-not-approved-request-approval
+  impact_rules:
+  - action: update
+    from: seed
+    id: version
+    reason: 'The version is edited where it is declared: the project file, Directory.Packages.props, or the property it names'
+    traverse: version_declaration
   is_default: true
   linux_compatible: true
   name: Request approval into the client feed

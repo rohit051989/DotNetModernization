@@ -2,7 +2,10 @@ using Fingerprinting.Domain;
 
 namespace Fingerprinting.Impact;
 
-public sealed record WorkItemSeed(string ItemId, Guid? ProjectId, string ProjectPath, IReadOnlyList<SeedFile> Seeds);
+/// <param name="PackageIds">The packages the work item names (the first word of a PACKAGE_* occurrence or
+/// evidence value), for version_declaration.</param>
+public sealed record WorkItemSeed(string ItemId, Guid? ProjectId, string ProjectPath, IReadOnlyList<SeedFile> Seeds,
+    IReadOnlyList<string>? PackageIds = null);
 
 public sealed record ResolutionInfo(string Id, string Name, bool IsDefault, string ConsumerImpact, IReadOnlyList<ImpactRule> Rules);
 
@@ -30,7 +33,8 @@ public static class ImpactPipeline
     public static async Task<ImpactArtifact> RunAsync(ImpactInput input, string repositoryRoot, CancellationToken ct)
     {
         var index = await CodeIndex.BuildAsync(repositoryRoot, ct);
-        var engine = new RuleEngine(index, input.Projects, input.Tests, input.EntryPoints, input.HostLinks, input.DeployFiles);
+        var engine = new RuleEngine(index, input.Projects, input.Tests, input.EntryPoints, input.HostLinks, input.DeployFiles,
+            new VersionDeclarations(repositoryRoot, index.Files));
         var warnings = new List<Warning>();
         var workItems = new List<WorkItemImpact>();
 
@@ -59,7 +63,7 @@ public static class ImpactPipeline
             foreach (var (resolution, roles) in computed)
             {
                 var explicitRules = resolution.Rules.Count > 0;
-                var result = engine.Evaluate(explicitRules ? resolution.Rules : ImpactRule.Default, seed.Seeds, seed.ProjectPath);
+                var result = engine.Evaluate(explicitRules ? resolution.Rules : ImpactRule.Default, seed.Seeds, seed.ProjectPath, seed.PackageIds);
                 resolutions.Add(new ResolutionImpact
                 {
                     ResolutionId = resolution.Id, Name = resolution.Name, Roles = roles, Effective = resolution.Id == effective,

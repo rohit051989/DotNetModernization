@@ -2,7 +2,7 @@ category: framework
 deleted: false
 description: |-
   The project targets a modern .NET (net5.0 or later) below the engagement's target framework. Converted by editing the target framework where it is declared — the project file or an imported Directory.*.props (solution-discovery's target_framework_source) — not by assuming the project file.
-  Not ready: detection needs TARGET_FRAMEWORK_BELOW_ENGAGEMENT_TARGET, which dependency-assessment is declared to emit but does not yet. The conversion recipe framework-retarget binds here (34-CONVERSION-ARCHITECTURE.md C1), and a plan takes the framework declarations from solution-discovery directly.
+  Detected on TARGET_FRAMEWORK_BELOW_ENGAGEMENT_TARGET, which dependency-assessment emits from 1.4.0 at the line that declares the framework. The conversion recipe framework-retarget binds here (34-CONVERSION-ARCHITECTURE.md C1), and a plan takes the framework declarations from solution-discovery directly.
   Conversion ordering: package bumps are ordered around it by framework support — a version that drops the current framework after it, a current version that does not support the target before it.
   Framework deltas: it carries the known breaking changes between source and target frameworks (backend/app/conversion/framework_deltas.yaml, 34-CONVERSION-ARCHITECTURE.md C6), each detected in discovery as a signal and fixed by a unit before the retarget that builds on both frameworks. First entry, from net10.0: a project referencing two web projects with top-level statements and naming Program no longer compiles (CS0433, AMBIGUOUS_TOP_LEVEL_PROGRAM_ON_NET10).
 detection:

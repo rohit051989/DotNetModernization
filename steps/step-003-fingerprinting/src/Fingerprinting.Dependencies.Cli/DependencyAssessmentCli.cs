@@ -16,7 +16,7 @@ namespace Fingerprinting.Dependencies.Cli;
 public static class DependencyAssessmentCli
 {
     public const string ArtifactType = "dependency-assessment";
-    public const string ArtifactVersion = "1.2.0";
+    public const string ArtifactVersion = "1.4.0";
     public const string OutputFileName = "dependency-assessment.json";
 
     private const string InventoryType = "solution-project-inventory";
@@ -256,7 +256,8 @@ public static class DependencyAssessmentCli
                 };
             projects.Add(new DependencyInputProject(project.RelativePath, id.Value, skip, CurrentFramework(project),
                 project.Packages.Where(p => !string.IsNullOrWhiteSpace(p.PackageName))
-                    .Select(p => new InputPackage(p.PackageName, p.VersionRaw, p.DeclarationSource ?? "packagereference")).ToList()));
+                    .Select(p => new InputPackage(p.PackageName, p.VersionRaw, p.DeclarationSource ?? "packagereference")).ToList(),
+                project.ProjectSdk));
         }
 
         var now = DateTimeOffset.UtcNow;
@@ -264,7 +265,9 @@ public static class DependencyAssessmentCli
         var transitive = options.IncludeTransitive
             ? new TransitiveResolver(Path.Combine(Path.GetTempPath(), "modernization-platform", "dependency-scratch"), Path.Combine(CacheRoot, "restore-packages"), TimeSpan.FromMinutes(5))
             : null;
-        var pipeline = new DependencyPipeline(lookup, new DependencyOptions(options.TargetFramework, options.ComparePublicFeed, options.IncludeTransitive), transitive);
+        var shared = SharedFrameworks.Load(Path.Combine(AppContext.BaseDirectory, "schemas", "shared-frameworks-1.0.0.json"));
+        var pipeline = new DependencyPipeline(lookup, new DependencyOptions(options.TargetFramework, options.ComparePublicFeed, options.IncludeTransitive,
+            SharedFrameworks: shared), transitive);
         var artifact = await pipeline.RunAsync(new DependencyInput(inventory.RepositoryId, inventory.RepositorySlug, FingerprintType, projects, warnings), repositoryRoot, CancellationToken.None);
         return (artifact, lookup);
     }
@@ -292,7 +295,7 @@ public static class DependencyAssessmentCli
         ?? throw new InvalidOperationException("application-fingerprint deserialized to null");
 
     private static readonly Lazy<ArtifactSchemaValidator> SchemaValidator = new(() =>
-        ArtifactSchemaValidator.Load(Path.Combine(AppContext.BaseDirectory, "schemas", "dependency-assessment-1.2.0.schema.json")));
+        ArtifactSchemaValidator.Load(Path.Combine(AppContext.BaseDirectory, "schemas", "dependency-assessment-1.4.0.schema.json")));
 
     public static async Task<string> WriteArtifactAsync(DependencyAssessmentArtifact artifact, string outDir)
     {

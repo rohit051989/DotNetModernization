@@ -290,7 +290,7 @@ The lifecycle register is unchanged (Part H). What exists, and where:
 | I | `engagements.engine_allowlist` (empty by default), `engine_runs`, `app/engine/boundary.py` | `python -m app.engine.allowlist`, `python -m app.engine.runs` |
 | D | `app/engine/inputs/`: collector, renderer, adapted templates, secret check | `python -m app.engine.inputs generate` / `merge-addendum` / `check` |
 | E | `app/engine/verifier/`: the vendored checks plus re-discovery and impact comparison | `python -m app.engine.verifier` |
-| F | `app/experiment/`, `experiments/copilot-eshoponweb/` (configuration, generated runbook) | `python -m app.experiment.prepare`, `python -m app.experiment.report` |
+| F | `app/experiment/`; each experiment is a folder of engagement data, `<RUNS_DIR>/<engagement>/experiments/<name>/` — never in git | `python -m app.experiment.create`, `prepare`, `calibrate`, `report` |
 
 **Where Copilot reads its inputs, confirmed 2026-10-12** against the GitHub Copilot upgrade documentation
 (customization, ms.date 2026-09-21) and `microsoft/upgrade-agent-plugins` (2026-10-09): the current agent has
@@ -307,8 +307,58 @@ engine reports, and records the run only then. The shared LLM provider (32 Part 
 `boundary.require_allowed` before any request carrying source, once it is built. Preparing branches and
 generating inputs send nothing anywhere and are not gated.
 
+**Upgrade options and commits (2026-10-13).** At the upgrade-options stage arm 1 replies "Use your recommended
+options." to whatever the engine proposes; only arm 2 answers from the decision sheet, which is part of the
+enhancement (Part D). One commit per task is said in the same words in both arms: it is how the verifier
+attributes changes, not knowledge. The decision sheet's strategy default is bottom-up, never all-at-once.
+
+**Conversion never stops for a decision.** An undecided work item uses its default resolution, labelled
+presumptive. A default that needs a value nobody supplied names a deployment parameter instead — the code reads it
+by name and the decision sheet lists it under "To supply before deployment" — and a default that cannot apply at a
+place (a retired package with no named successor) leaves that place unchanged and lists it under "Unresolved". What
+each resolution needs is declared in `app/engine/inputs/resolution_parameters.yaml`.
+
+**Re-discovery is isolated.** The verifier never writes to the client database. Each re-discovery bootstraps a
+scratch database from the repository (as `app.seed.reproduce` does), copies in the engagement's own rows and the
+package lookup cache, runs discovery in a worker process pointed at it, and drops it. A baseline snapshot is reused
+only while every step version and the catalog export are unchanged. Where no conversion plan measured the base
+commit, the verifier builds it and runs its unit tests itself: that is the measured baseline.
+
+**Repositories that reach outside themselves.** A `nuget.config` naming `../EnterprisePackages/feed` (AccountsApi)
+gets a directory junction beside every worktree, configured as `sibling_links`; a junction is removed as a link,
+never recursed into. Verifier worktrees are named `wt` to keep deep repository paths under 260 characters.
+
 **Verdict rules as built.** Two checks not in the Part E table are part of the fixed rules: *something
 converted* (no change outside engine state and generated inputs fails the run — the baseline must read as
 nothing converted) and, within re-discovery, *a project not on the engagement's target framework* (caps at
 PARTLY). Re-discovery's remaining or introduced work items cap at PARTLY; the impact comparison and diff
 size are reported, never judged. The canary is configured per repository in the experiment configuration.
+
+**Every experiment file is produced by the platform, with no AI involved (2026-10-13).** Each experiment is a
+self-contained folder, `<RUNS_DIR>/<engagement>/experiments/<name>/`, engagement data outside git:
+
+| File | Produced by | From |
+|---|---|---|
+| `experiment.yaml` | `python -m app.experiment.create` | `app/experiment/templates/experiment.yaml.tmpl`, filled with the values a person passes on the command line; the command is recorded in the file's header, in Windows PowerShell form, so it can be run again with changed values (`--force` replaces the file) |
+| `RUNBOOK.md` | `python -m app.experiment.prepare --config ...` | `experiment.yaml` and what prepare created: branches, worktrees, arm 2 inputs. Code-rendered (`render_runbook`), absolute paths |
+| `CALIBRATION.md` | `python -m app.experiment.calibrate --config ...` | the verifier's own `verification.json` for the baseline commit and, where an arm has a `ref`, arm 3. `--render-only` re-renders without re-verifying |
+| `REPORT.md` | `python -m app.experiment.report --config ...` | each run's `verification.json` and engine run record; one scorecard per run |
+
+A new generation (`generation: N`) is a new set of branches and worktrees, `experiment/vN/...` in
+`<repository>/experiment-vN/`; the files of an earlier generation are kept in the folder's `generation-<N>/`.
+No step edits an existing worktree: prepare refuses when arm 2 inputs are out of date and says which generation to
+set.
+
+**Pinned instrument (2026-10-13).** An experiment is measured with one platform commit
+(`app/experiment/instrument.py`). `create` records it in `experiment.yaml` as `platform_commit` and refuses while
+the platform's working tree has uncommitted changes. `prepare` refuses at any other commit. Every verification
+records the commit it ran at and whether the tree was clean (`platform` in `verification.json`, a line in
+`VERIFICATION.md`). `report` marks a run verified at another commit or from a changed tree "instrument differs" and
+lists it, and `calibrate` does the same for a calibration.
+
+**Reproducing every experiment file.** Each command can write its file to another folder, so a regenerated file can
+be compared with the one in use without touching it: `create --out <folder>` (the recorded command leaves out
+`--out` and `--force`), `prepare --render-only --out <folder>` (reads the existing worktrees; makes no branch,
+worktree, junction or commit), `calibrate --render-only --out <folder>`, and `report --out <folder>`. The engine
+inputs are reproduced the same way with `python -m app.engine.inputs generate --out <folder>`.
+

@@ -2,7 +2,7 @@
 output, independent of the engine. Nothing an engine reported is evidence; only what this runs.
 
     python -m app.engine.verifier --engagement test-client-a --repository eshoponweb --base 4da8212
-        --ref experiment/arm2-run1 --label arm2-run1 [--config experiments/copilot-eshoponweb/experiment.yaml]
+        --ref experiment/arm2-run1 --label arm2-run1 [--config <RUNS_DIR>/<engagement>/experiments/<name>/experiment.yaml]
         [--baseline-plan 90bc71e0] [--refresh-baseline]
 
 Writes `runs/<engagement>/<repository>/verification/<label>/`: `verification.json`, `VERIFICATION.md` and
@@ -42,9 +42,10 @@ import yaml
 from app import models
 from app.conversion import dotnet, gitops, planner
 from app.conversion.runner import fingerprint
-from app.engine import paths
+from app.engine import paths, siblings
 from app.engine.inputs.collect import SILENT_ITEMS
 from app.engine.verifier import plugin, rediscovery
+from app.experiment import instrument
 
 VERIFIER_VERSION = "1.0.0"
 RUNS = planner.RUNS          # the same runs folder as the conversion runner, whatever the working directory
@@ -170,18 +171,63 @@ def delta_catalog(model: dict) -> str:
 
 # ---------------------------------------------------------------- the baseline the plugin compares with
 
-def measured_baseline(db, repository: models.Repository, base_sha: str, plan_prefix: str | None, workspace: Path) -> tuple[Path, dict]:
-    """BASELINE.md and its result files, from a conversion plan's measured baseline at `base_sha` (the T1 proof
-    kept its TRX files). The typed table is written from the plan's counts; baseline_diff then checks it
-    against the result files, so a disagreement shows."""
+def _baseline_md(adir: Path, origin: str, executed: int, failed: int, skipped: int) -> Path:
+    (adir / "BASELINE.md").write_text(
+        "# Baseline\n\n"
+        f"{origin}\n\n"
+        "- **Recorded:** machine-readable per-test results in `baseline/`.\n\n"
+        "| Totals | Count |\n|---|---|\n"
+        f"| Executed | {executed} |\n| Passed | {executed - failed} |\n| Failed | {failed} |\n| Skipped | {skipped} |\n",
+        encoding="utf-8")
+    return adir / "BASELINE.md"
+
+
+def measure_baseline(base_tree: Path, solution: str | None, projects: list[str], measured_dir: Path, base_sha: str) -> dict:
+    """Builds the base commit and runs its unit tests, once per base commit: the measured baseline where no
+    conversion plan recorded one. Cached in `measured_dir/measured.json` with its TRX files."""
+    record = measured_dir / "measured.json"
+    if record.exists():
+        cached = json.loads(record.read_text(encoding="utf-8"))
+        if cached.get("commit") == base_sha:
+            return cached
+    if measured_dir.exists():
+        gitops._rmtree(measured_dir)
+    if not solution or not projects:
+        result = {"built": False, "buildExit": None, "projects": {}, "trx": [], "why": "no solution or no unit test project"}
+    else:
+        result = build_and_test(base_tree, solution, projects, measured_dir)
+    result.update(commit=base_sha, at=_now(), solution=solution)
+    measured_dir.mkdir(parents=True, exist_ok=True)
+    record.write_text(json.dumps(result, indent=2), encoding="utf-8")
+    return result
+
+
+def measured_baseline(db, repository: models.Repository, base_sha: str, plan_prefix: str | None, workspace: Path,
+                      measured: dict | None = None) -> tuple[Path, dict]:
+    """BASELINE.md and its result files: a conversion plan's measured baseline at `base_sha` where one exists (the T1
+    proof kept its TRX files), else the verifier's own measurement of the base commit. The typed table is written
+    from the counts; baseline_diff then checks it against the result files, so a disagreement shows."""
     q = db.query(models.ConversionPlan).filter_by(repository_id=repository.id, legacy_commit=base_sha)
     plans = [p for p in q.order_by(models.ConversionPlan.created_at.desc()) if (p.baseline or {}).get("passed")
              and (plan_prefix is None or str(p.id).startswith(plan_prefix))]
     adir = workspace / "analysis" / repository.slug
     (adir / "baseline").mkdir(parents=True, exist_ok=True)
+    if not plans and measured is not None and measured.get("trx"):
+        for trx in measured["trx"]:
+            shutil.copyfile(trx, adir / "baseline" / Path(trx).name)
+        counts = measured["projects"].values()
+        total = sum(p.get("total", 0) for p in counts)
+        skipped = sum(p.get("skipped", 0) for p in counts)
+        failed = sum(p.get("failed", 0) for p in counts)
+        path = _baseline_md(adir, f"Measured at `{base_sha}` by the verifier on {measured['at'][:10]}: a clean build of "
+                                  f"`{measured['solution']}` and its unit test projects.", total - skipped, failed, skipped)
+        return path, {"plan": None, "measuredBy": "verifier", "at": measured["at"], "projects": sorted(measured["projects"]),
+                      "total": total, "sources": [{"path": t} for t in measured["trx"]]}
     if not plans:
-        (adir / "BASELINE.md").write_text("# Baseline\n\nNo measured baseline is recorded for this commit.\n", encoding="utf-8")
-        return adir / "BASELINE.md", {"plan": None, "sources": []}
+        why = (measured or {}).get("why") or ("the base commit did not build" if measured and not measured.get("built")
+                                              else "no test ran at the base commit")
+        (adir / "BASELINE.md").write_text(f"# Baseline\n\nNo measured baseline: {why}.\n", encoding="utf-8")
+        return adir / "BASELINE.md", {"plan": None, "sources": [], "why": why, "total": 0, "projects": []}
     plan = plans[0]
     plan_dir = Path(plan.worktree_path).parent
     sources = []
@@ -197,14 +243,9 @@ def measured_baseline(db, repository: models.Repository, base_sha: str, plan_pre
     executed = b["total"] - sum(t["skipped"] for t in b["tests"].values())
     failed = sum(t["failed"] for t in b["tests"].values())
     skipped = sum(t["skipped"] for t in b["tests"].values())
-    (adir / "BASELINE.md").write_text(
-        "# Baseline\n\n"
-        f"Measured at `{b['commit']}` by conversion plan `{str(plan.id)[:8]}` on {b['at'][:10]}.\n\n"
-        "- **Recorded:** machine-readable per-test results in `baseline/`.\n\n"
-        "| Totals | Count |\n|---|---|\n"
-        f"| Executed | {executed} |\n| Passed | {executed - failed} |\n| Failed | {failed} |\n| Skipped | {skipped} |\n",
-        encoding="utf-8")
-    return adir / "BASELINE.md", {"plan": str(plan.id), "at": b["at"], "sources": sources,
+    path = _baseline_md(adir, f"Measured at `{b['commit']}` by conversion plan `{str(plan.id)[:8]}` on {b['at'][:10]}.",
+                        executed, failed, skipped)
+    return path, {"plan": str(plan.id), "at": b["at"], "sources": sources,
                                   "projects": sorted(b["tests"]), "total": b["total"]}
 
 
@@ -258,6 +299,19 @@ def run_canary(worktree: Path, solution: str, projects: list[str], canary: dict,
 
 # ---------------------------------------------------------------- the run
 
+def platform_state(db) -> dict:
+    """What discovery's answer depends on besides the code: each discovery step's registered version and a digest of
+    the committed catalog export. A cached baseline snapshot taken under another state is taken again."""
+    from sqlalchemy import text
+
+    steps = {name: version for name, version in db.execute(text(
+        "SELECT step_name, version FROM wf_step_registrations WHERE deleted_at IS NULL ORDER BY step_name"))}
+    digest = hashlib.sha256()
+    for f in sorted((planner.CODE / "catalog" / "items").glob("*.yaml")):
+        digest.update(f.name.encode() + b"\0" + f.read_bytes())
+    return {"steps": steps, "catalog": digest.hexdigest()}
+
+
 def _outside(checkout: Path, scratch: Path) -> None:
     """A scratch worktree is absolute and never inside the registered checkout, which is never written."""
     if not scratch.is_absolute():
@@ -276,29 +330,39 @@ def verify(db, *, engagement_id: str, slug: str, base: str, ref: str, label: str
     tip_sha = gitops.git(root, "rev-parse", ref).strip()
     home = RUNS / engagement_id / slug / "verification"
     out = home / label
+    config = config or {}
+    siblings_needed = config.get("sibling_links") or []
     if out.exists():
+        siblings.remove(out, siblings_needed)
         gitops._rmtree(out)
+    gitops.git(root, "worktree", "prune")       # a run that crashed leaves its worktree registered
     out.mkdir(parents=True)
     before = fingerprint(root)
-    config = config or {}
 
-    # The baseline's re-discovery, once per base commit: every run is compared with the same snapshot.
+    # The baseline's re-discovery, once per base commit and platform state: every run is compared with the same
+    # snapshot, taken again when a step, the catalog or the input generator changes.
     base_dir = home / f"_baseline-{base_sha[:8]}"
     snapshot_file = base_dir / "rediscovery.json"
-    base_tree = base_dir / f"{slug}-baseline-{base_sha[:8]}"
+    # Short folder names: a worktree under runs/ must keep the repository's deepest path under 260 characters.
+    base_tree = base_dir / "wt"
     _outside(root, base_tree)
-    if refresh_baseline or not snapshot_file.exists():
+    state = platform_state(db)
+    cached = json.loads(snapshot_file.read_text(encoding="utf-8")) if snapshot_file.exists() else None
+    if refresh_baseline or cached is None or cached.get("platform") != state or "isolation" not in cached:
         gitops.add_scratch(root, base_tree, base_sha)
-        snap = rediscovery.snapshot(db, engagement_id, base_tree, f"{slug} verifier baseline {base_sha[:8]}")
-        snap.update(commit=base_sha, at=_now())
+        siblings.link(base_tree, root, siblings_needed)
+        snap = rediscovery.snapshot(engagement_id, base_tree, f"{slug} verifier baseline {base_sha[:8]}", base_dir / "scratch")
+        snap.update(commit=base_sha, at=_now(), platform=state)
         snapshot_file.write_text(json.dumps(snap, indent=2, sort_keys=True, default=str), encoding="utf-8")
     base_snap = json.loads(snapshot_file.read_text(encoding="utf-8"))
     if not base_tree.exists():
         gitops.add_scratch(root, base_tree, base_sha)
+    siblings.link(base_tree, root, siblings_needed)
 
-    tip_tree = out / f"{slug}-{label}"
+    tip_tree = out / "wt"
     _outside(root, tip_tree)
     gitops.add_scratch(root, tip_tree, tip_sha)
+    siblings.link(tip_tree, root, siblings_needed)
     for prefix in paths.EXCLUDED_FROM_COMPARISON:   # inputs and records, not conversion
         target = tip_tree / prefix.rstrip("/")
         if target.is_dir():
@@ -320,7 +384,10 @@ def verify(db, *, engagement_id: str, slug: str, base: str, ref: str, label: str
 
     # Measured baseline and the clean re-run.
     workspace = out / "workspace"
-    baseline_md, baseline_info = measured_baseline(db, repository, base_sha, baseline_plan, workspace)
+    measured = None
+    if not baseline_plan:
+        measured = measure_baseline(base_tree, base_snap["solution"], base_snap["unit_test_projects"], base_dir / "measured", base_sha)
+    baseline_md, baseline_info = measured_baseline(db, repository, base_sha, baseline_plan, workspace, measured)
     projects = baseline_info.get("projects") or base_snap["unit_test_projects"]
     solution = base_snap["solution"]
     clean = build_and_test(tip_tree, solution, projects, out / "clean")
@@ -345,7 +412,8 @@ def verify(db, *, engagement_id: str, slug: str, base: str, ref: str, label: str
         if assessment["kind"] == "measured" and not assessment["disagree"]:
             checks.append(_check("baseline", "Measured baseline", "pass",
                                  f"{assessment['measuredTests']} test result(s) parsed from the baseline's result files "
-                                 f"(plan {baseline_info['plan'][:8]})"))
+                                 + (f"(plan {baseline_info['plan'][:8]})" if baseline_info.get("plan")
+                                    else "(measured by the verifier at the base commit)")))
         else:
             checks.append(_check("baseline", "Measured baseline", "gap",
                                  f"baseline is {assessment['kind']}" + (f", {assessment['disagree']} disagreement(s)" if assessment["disagree"] else "")))
@@ -371,9 +439,15 @@ def verify(db, *, engagement_id: str, slug: str, base: str, ref: str, label: str
     checks.append(_check("kept", "Tests kept", kept["state"], kept["detail"]))
     catalog = delta_catalog(base_snap["model"])
     (workspace / "analysis" / slug / "DELTA_CATALOG.md").write_text(catalog, encoding="utf-8")
-    dc = plugin.uplift_checks.delta_coverage(catalog, str(tip_tree))
-    deltas = plugin.proof_pack.check_deltas(dc, person)
-    checks.append(_check("deltas", "Deltas covered", deltas["state"], deltas["detail"]))
+    if "| D-" not in catalog:
+        # The plugin cannot tell an empty catalog from an unreadable one; the platform can: discovery found none.
+        checks.append(_check("deltas", "Deltas covered", "pass",
+                             "discovery found no Behavioral-silent delta, framework delta or breaking package change "
+                             "in this repository at the base commit: nothing to cover"))
+    else:
+        dc = plugin.uplift_checks.delta_coverage(catalog, str(tip_tree))
+        deltas = plugin.proof_pack.check_deltas(dc, person)
+        checks.append(_check("deltas", "Deltas covered", deltas["state"], deltas["detail"]))
 
     # Canary: a deliberate break in the converted code must make a test fail.
     canaries = config.get("canaries") or []
@@ -404,7 +478,7 @@ def verify(db, *, engagement_id: str, slug: str, base: str, ref: str, label: str
         checks.append(_check("same", "Equivalence", "na", "no equivalence cases exist for this repository"))
 
     # Re-discovery on the branch, and the impact comparison against the baseline's prediction.
-    tip_snap = rediscovery.snapshot(db, engagement_id, tip_tree, f"{slug} verifier {label}")
+    tip_snap = rediscovery.snapshot(engagement_id, tip_tree, f"{slug} verifier {label}", out / "scratch")
     (out / "rediscovery.json").write_text(json.dumps(tip_snap, indent=2, sort_keys=True, default=str), encoding="utf-8")
     before_items, after_items = rediscovery.work_items(base_snap["model"]), rediscovery.work_items(tip_snap["model"])
     resolved = sorted(k for k in before_items if k not in after_items)
@@ -430,10 +504,13 @@ def verify(db, *, engagement_id: str, slug: str, base: str, ref: str, label: str
     if not checkout_untouched:
         checks.append(_check("checkout", "Registered checkout untouched", "fail", "the registered checkout changed during verification"))
     gitops.remove(root, tip_tree)
+    siblings.remove(out, siblings_needed)
 
     result_verdict, reasons = verdict(checks)
     report = {
         "verifier": {"version": VERIFIER_VERSION, "plugin": "third_party/code-modernization @ f359d43"},
+        # The platform commit the verification ran at, and whether its tree was clean (app.experiment.instrument).
+        "platform": instrument.platform_state(),
         "label": label, "repository": slug, "engagement": engagement_id, "base": base_sha, "ref": ref, "tip": tip_sha,
         "verifiedAt": _now(), "verdict": result_verdict, "reasons": reasons, "rules": RULES, "checks": checks,
         "forAPerson": person, "baseline": baseline_info, "baselineSnapshot": {"commit": base_snap["commit"], "at": base_snap["at"]},
@@ -446,11 +523,18 @@ def verify(db, *, engagement_id: str, slug: str, base: str, ref: str, label: str
     return report
 
 
+def _platform_line(state: dict | None) -> str:
+    if not state:
+        return "Platform commit: not recorded."
+    return f"Platform commit `{state['commit'][:12]}`" + (" with uncommitted changes." if state.get("dirty") else ".")
+
+
 def markdown(r: dict) -> str:
     out = [f"# Verification: {r['label']}", "",
            f"**Verdict: {r['verdict']}**", "",
            f"Repository `{r['repository']}`, base `{r['base'][:8]}`, `{r['ref']}` at `{r['tip'][:8]}`; verified {r['verifiedAt']} "
-           f"by verifier {r['verifier']['version']} ({r['verifier']['plugin']}).", "", "## Reasons", ""]
+           f"by verifier {r['verifier']['version']} ({r['verifier']['plugin']}).", "",
+           _platform_line(r.get("platform")), "", "## Reasons", ""]
     out += [f"- {x}" for x in r["reasons"]] or ["- None: every check passed."]
     out += ["", "## Checks", "", "| Check | State | Detail |", "|---|---|---|"]
     out += [f"| {c['label']} | {c['state']} | {c['detail'].replace('|', '/')} |" for c in r["checks"]]

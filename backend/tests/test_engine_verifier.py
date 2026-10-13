@@ -1,5 +1,5 @@
 """The verifier's fixed rules and comparisons (36-COPILOT-ENHANCED-CONVERSION Part E), without .NET or a database.
-The end-to-end calibration on eShopOnWeb is run by hand (experiments/copilot-eshoponweb, CALIBRATION.md).
+The end-to-end calibration on eShopOnWeb is run by hand (`python -m app.experiment.calibrate`, which writes CALIBRATION.md).
 
 Run: python -m unittest tests.test_engine_verifier
 """
@@ -120,6 +120,10 @@ class DeltaCatalog(unittest.TestCase):
         self.assertEqual(len(deltas), 2)
 
 
+    def test_an_empty_catalog_has_no_rows_for_the_plugin_to_misread(self):
+        self.assertNotIn("| D-", verifier.delta_catalog(_model([])))
+
+
 class Checkout(unittest.TestCase):
     def test_a_scratch_worktree_is_absolute_and_never_inside_the_checkout(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -129,6 +133,40 @@ class Checkout(unittest.TestCase):
             with self.assertRaises(ValueError):
                 verifier._outside(checkout, checkout / "runs" / "x")
             verifier._outside(checkout, Path(tmp) / "elsewhere" / "x")
+
+
+class Isolation(unittest.TestCase):
+    def test_the_rediscovery_worker_refuses_any_database_but_a_verifier_scratch_one(self):
+        backend = Path(__file__).resolve().parents[1]
+        done = subprocess.run([str(backend / ".venv" / "Scripts" / "python.exe"), "-m", "app.engine.verifier.rediscovery", "--worker",
+                               "--engagement", "x", "--path", "x", "--name", "x", "--out", "x"],
+                              cwd=backend, capture_output=True, text=True, timeout=120)
+        self.assertEqual(done.returncode, 2)
+        self.assertIn("runs only in a verifier scratch database", done.stderr)
+
+    def test_the_engagement_rows_copied_are_the_engagements_own(self):
+        self.assertEqual([t for t, column in rediscovery.ENGAGEMENT_ROWS if column is None], ["package_lookup_cache"])
+        self.assertEqual(rediscovery.ENGAGEMENT_ROWS[0], ("engagements", "id"))
+
+
+class Siblings(unittest.TestCase):
+    def test_a_junction_beside_the_worktree_is_removed_without_touching_its_target(self):
+        from app.engine import siblings
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "apps" / "App").mkdir(parents=True)
+            (root / "apps" / "Feed").mkdir()
+            (root / "apps" / "Feed" / "pkg.nupkg").write_text("x", encoding="utf-8")
+            worktree = root / "runs" / "exp" / "arm1-run1"
+            worktree.mkdir(parents=True)
+            made = siblings.link(worktree, root / "apps" / "App", ["Feed"])
+            self.assertEqual(made, [worktree.parent / "Feed"])
+            self.assertTrue((worktree.parent / "Feed" / "pkg.nupkg").exists())
+            self.assertEqual(siblings.link(worktree, root / "apps" / "App", ["Feed"]), [])   # idempotent
+            siblings.remove(worktree.parent, ["Feed"])
+            self.assertFalse((worktree.parent / "Feed").exists())
+            self.assertTrue((root / "apps" / "Feed" / "pkg.nupkg").exists())
 
 
 if __name__ == "__main__":

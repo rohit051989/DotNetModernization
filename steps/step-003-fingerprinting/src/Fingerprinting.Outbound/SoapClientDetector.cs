@@ -22,7 +22,7 @@ namespace Fingerprinting.Outbound;
 /// <c>GetEndpointAddress</c> (dotnet-svcutil) — read for this purpose only.</item>
 /// </list>
 /// </summary>
-public static class SoapClientDetector
+public static partial class SoapClientDetector
 {
     private sealed record Found(
         string Contract,
@@ -85,8 +85,9 @@ public static class SoapClientDetector
                 var typeParameters = method?.TypeParameterList?.Parameters.Select(p => p.Identifier.Text).ToHashSet(StringComparer.Ordinal) ?? [];
                 var generic = typeParameters.Contains(contractName);
 
+                // 1.6.0: followed up through generic callers (SoapClientDetector.Options.cs).
                 var sites = method is not null && (generic || method.ParameterList.Parameters.Count > 0)
-                    ? CallSiteEvaluator.CallSites(context.Project, method)
+                    ? Lifted(context.Project, CallSiteEvaluator.CallSites(context.Project, method))
                     : [];
                 if (sites.Count == 0)
                 {
@@ -100,13 +101,15 @@ public static class SoapClientDetector
                     continue;
                 }
 
-                foreach (var (siteFile, call, env) in sites)
+                foreach (var (siteFile, call, env, lifted) in sites)
                 {
                     var found = FromChannelFactory(context, claimed, file, creation, scope, factoryType, contractName, siteFile, call, env,
                         via: $"{method!.Identifier.Text} ({CallSiteEvaluator.Where(file, creation)})");
                     // Each call to the helper is its own client: the operations
-                    // are the ones called on what that call returns.
-                    yield return found with { Operations = OperationTracer.Soap(context, siteFile, call, found.Contract, null, isFactory: true) };
+                    // are the ones called on what that call returns — the
+                    // factory, or for a call followed up to the helper's caller
+                    // (CreateClient<T>), the channel itself.
+                    yield return found with { Operations = OperationTracer.Soap(context, siteFile, call, found.Contract, null, isFactory: !lifted) };
                 }
             }
         }
@@ -156,6 +159,13 @@ public static class SoapClientDetector
         var credentials = CodeCredentials(file, scope, env, via);
         var condition = ConditionChain(context, site);
         var callSites = new[] { CallSiteOf(siteFile, site) };
+
+        // 1.6.0: a binding built from an options-bound configuration section.
+        if (binding?.Binding == "unknown"
+            && FromOptionsClient(context, file, scope, factoryType, contract, arguments, env, via, condition, callSites) is { } optionsBound)
+        {
+            return optionsBound;
+        }
 
         if (binding is null)
         {
@@ -207,7 +217,8 @@ public static class SoapClientDetector
     /// assignment under an <c>if</c> on a bound argument counts only when the
     /// argument makes it true — the per-call certificate switch.
     /// </summary>
-    private static IReadOnlyList<CredentialReference> CodeCredentials(ParsedFile file, SyntaxNode scope, CallSiteEvaluator.Env env, string? via)
+    private static IReadOnlyList<CredentialReference> CodeCredentials(
+        ParsedFile file, SyntaxNode scope, CallSiteEvaluator.Env env, string? via, Func<ExpressionSyntax, (bool? Truth, string? KeyPath)>? gateOf = null)
     {
         var found = new SortedDictionary<string, CredentialReference>(StringComparer.Ordinal);
         foreach (var node in scope.DescendantNodes())
@@ -238,13 +249,21 @@ public static class SoapClientDetector
 
             var gate = node.Ancestors().TakeWhile(a => a != scope).OfType<IfStatementSyntax>()
                 .FirstOrDefault(i => i.Statement.Span.Contains(node.Span));
-            if (gate is not null && CallSiteEvaluator.Truth(gate.Condition, env) == false)
+            string? keyPath = null;
+            if (gate is not null)
             {
-                continue;
+                // 1.6.0: a gate on a configured value is evaluated against configuration.
+                var (truth, path) = gateOf?.Invoke(gate.Condition) ?? (null, null);
+                if ((truth ?? CallSiteEvaluator.Truth(gate.Condition, env)) == false)
+                {
+                    continue;
+                }
+
+                keyPath = path;
             }
 
             var where = CallSiteEvaluator.Where(file, node);
-            found[kind] = new CredentialReference { Kind = kind, DeclaredAt = via is null ? where : $"{where} (in {via.Split(' ')[0]})" };
+            found[kind] = new CredentialReference { Kind = kind, KeyPath = keyPath, DeclaredAt = via is null ? where : $"{where} (in {via.Split(' ')[0]})" };
         }
 
         return found.Values.ToList();

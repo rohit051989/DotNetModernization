@@ -95,7 +95,7 @@ def _run_base_dir(
     # paths (11-STEP-CONTRACT.md), and Path.as_uri() (used when steps report
     # a file:// artifact uri) raises on a relative path. settings.runs_dir
     # defaults to a relative "./runs".
-    return (Path(settings.runs_dir) / engagement_id / repository_slug / execution_dir).resolve()
+    return settings.runs_path / engagement_id / repository_slug / execution_dir
 
 
 def _resolve_config(value, parameters: dict):

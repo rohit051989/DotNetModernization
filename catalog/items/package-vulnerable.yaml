@@ -39,6 +39,17 @@ resolutions:
   description: Where no patched version exists or the package is unmaintained, move to an alternative.
   effort: high
   id: package-vulnerable-replace
+  impact_rules:
+  - action: update
+    from: seed
+    id: reference
+    reason: The PackageReference names the replacement package
+    traverse: project_file
+  - action: update
+    from: seed
+    id: version
+    reason: 'The version is edited where it is declared: the project file, Directory.Packages.props, or the property it names'
+    traverse: version_declaration
   is_default: false
   linux_compatible: true
   name: Replace the package
@@ -52,6 +63,12 @@ resolutions:
   description: Take the recommended version where step 6 reports that it resolves the advisories; otherwise the lowest patched version.
   effort: low
   id: package-vulnerable-upgrade
+  impact_rules:
+  - action: update
+    from: seed
+    id: version
+    reason: 'The version is edited where it is declared: the project file, Directory.Packages.props, or the property it names'
+    traverse: version_declaration
   is_default: true
   linux_compatible: true
   name: Upgrade to a version without the advisory

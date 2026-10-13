@@ -2001,7 +2001,9 @@ class OutboundScan(Base):
 
 # ---------- step 6: dependency assessment ----------
 
-PACKAGE_OUTCOME = ("current", "upgrade_safe", "upgrade_breaking", "no_compatible_version", "unknown")
+# framework_provided (dependency-assessment 1.4.0): the target's shared framework already
+# provides the package, so the reference is removed rather than upgraded.
+PACKAGE_OUTCOME = ("current", "upgrade_safe", "upgrade_breaking", "no_compatible_version", "framework_provided", "unknown")
 
 
 class PackageAssessment(Base):
@@ -2029,6 +2031,9 @@ class PackageAssessment(Base):
     classification_method: Mapped[str | None] = mapped_column(Text)
     deprecated: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
     deprecation_replacement: Mapped[str | None] = mapped_column(Text)
+    # dependency-assessment 1.3.0: "package" (retired: replace it) or "version" (this release only: an upgrade
+    # resolves it). Null where not deprecated.
+    deprecation_scope: Mapped[str | None] = mapped_column(Text)
     vulnerable: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
     vulnerability_max_severity: Mapped[str | None] = mapped_column(Text)
     vulnerabilities_resolved_by_upgrade: Mapped[bool | None] = mapped_column(Boolean)
@@ -2051,6 +2056,8 @@ class PackageAssessment(Base):
 
     __table_args__ = (
         CheckConstraint(f"outcome IN {PACKAGE_OUTCOME}", name="ck_package_assessments_outcome"),
+        CheckConstraint("deprecation_scope IS NULL OR deprecation_scope IN ('package', 'version')",
+                        name="ck_package_assessments_deprecation_scope"),
         CheckConstraint(
             "classification_method IS NULL OR classification_method IN ('api_diff', 'semver_heuristic', 'package_kind')",
             name="ck_package_assessments_method",

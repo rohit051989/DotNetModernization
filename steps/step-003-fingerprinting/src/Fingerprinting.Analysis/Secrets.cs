@@ -21,10 +21,33 @@ public static class Secrets
     private static readonly string[] SensitiveKeyPatterns =
         ["password", "pwd", "secret", "token", "apikey", "api_key", "connectionstring", "accountkey", "sharedaccesskey", "credential"];
 
+    // Words that, last in a key's name, describe a secret rather than hold one: ClientCredentialType is
+    // "Certificate", TokenEndpoint is a URL, SecretsDir is a folder, ApiKeyHeader is a header's name.
+    private static readonly HashSet<string> DescriptiveLastWords = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "type", "kind", "mode", "name", "names", "path", "dir", "directory", "folder", "file", "url", "uri",
+        "endpoint", "provider", "enabled", "required", "expiry", "expiration", "lifetime", "timeout", "seconds",
+        "minutes", "length", "algorithm", "format", "header", "location", "store", "source", "policy", "scheme",
+    };
+
+    private static readonly Regex KeyWords = new(@"[A-Z]?[a-z]+|[A-Z]+(?![a-z])|\d+", RegexOptions.CultureInvariant);
+
     /// <summary>A configuration key (or XML attribute) whose name marks its
-    /// value as secret: record its presence, never its value.</summary>
-    public static bool IsSensitiveKey(string key) =>
-        SensitiveKeyPatterns.Any(pattern => key.Contains(pattern, StringComparison.OrdinalIgnoreCase));
+    /// value as secret: record its presence, never its value. The key's own name
+    /// (the last segment of a "Section:Key" path) is judged; a name whose last word
+    /// only describes a secret — its type, name, path, endpoint (see
+    /// <see cref="DescriptiveLastWords"/>) — is a setting, not a secret.</summary>
+    public static bool IsSensitiveKey(string key)
+    {
+        var name = key.Split(':', '.').Last();
+        if (!SensitiveKeyPatterns.Any(pattern => name.Contains(pattern, StringComparison.OrdinalIgnoreCase)))
+        {
+            return false;
+        }
+
+        var words = KeyWords.Matches(name);
+        return words.Count == 0 || !DescriptiveLastWords.Contains(words[^1].Value);
+    }
 
     // A keyword=value pair a connection string starts with or contains after
     // a ';'. Used only to recognise a connection string written somewhere

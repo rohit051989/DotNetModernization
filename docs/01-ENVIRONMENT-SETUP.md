@@ -318,7 +318,21 @@ export.** The factory defaults in `catalog_items.yaml` apply only when there is 
    python -m app.seed.reproduce --prove-export-bootstrap
    ```
 
-6. **Engagements are client data.** Create them in the UI or API; the seed creates none.
+6. **Put run output outside the repository.** Everything a client's work produces — discovery
+   runs, verifications, conversion worktrees, experiments
+   (`<RUNS_DIR>/<engagement>/experiments/<name>/`) — is written under `RUNS_DIR`. The default,
+   `./runs` resolved against `backend/`, suits a demo; it is ignored by git, but it still sits
+   inside the clone. A client deployment sets an absolute folder outside the repository in
+   `backend\.env`, so the repository holds the platform only and can be updated or re-cloned
+   without touching client data:
+
+   ```
+   RUNS_DIR=D:\ModernizationData\runs
+   ```
+
+   Every component reads it through `settings.runs_path`: the workflow engine, the conversion
+   runner, the verifier and the experiment commands.
+7. **Engagements are client data.** Create them in the UI or API; the seed creates none.
    `scripts/reset-demo.ps1` creates the two demo engagements, and only on a deployment whose
    `.env` sets `DEPLOYMENT=demo`. The default, `client`, refuses: a client's database is the
    only copy of that client's data.

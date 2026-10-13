@@ -5,7 +5,7 @@
     "certificates: a scratch folder of files written by 'python -m app.estate.wcf_probe --make-certificates' (WcfClientProbe make-certificates): server.pfx, server.cer, client.pfx, client.cer, pfx.password. No certificate store is read or written; the client pins server.cer, the services pin client.cer.",
     "The services are the WCF sample's and wcf-backend's, run from copies under backend/runs/probes/wcf-sample, never the registered repositories:",
     "basicHttp-None-None: wcf-backend's FundsTransferWS under IIS Express (WCF-backend/scripts/Start-FundsTransferWS.ps1), plain HTTP.",
-    "netTcp-*, basicHttp-Transport-None, wsHttp-*: Start-ProbeServices.ps1 -ServicesBin <copy>/WCF/src/Hosting.Iis/bin -Certs <certificates>."
+    "netTcp-*, basicHttp-Transport-None, basicHttps-*, wsHttp-*: Start-ProbeServices.ps1 -ServicesBin <copy>/WCF/src/Hosting.Iis/bin -Certs <certificates>."
   ],
   "platformSample": true,
   "image": "mcr.microsoft.com/dotnet/runtime:10.0",
@@ -36,6 +36,17 @@
       "serverCertificate": true,
       "clientCertificate": true,
       "service": "WCF sample AccountService, Hosting.Iis binding (ProbeServices, TLS from a certificate file)"
+    },
+    "basicHttps-Transport-None": {
+      "address": "https://localhost:44301/Utility.svc",
+      "serverCertificate": true,
+      "service": "WCF sample UtilityService, Hosting.Iis binding (ProbeServices, TLS from a certificate file)"
+    },
+    "basicHttps-Transport-Certificate": {
+      "address": "https://localhost:44302/Utility.svc",
+      "serverCertificate": true,
+      "clientCertificate": true,
+      "service": "WCF sample UtilityService, Hosting.Iis binding (ProbeServices, TLS from a certificate file, client certificate required and pinned)"
     }
   }
 }

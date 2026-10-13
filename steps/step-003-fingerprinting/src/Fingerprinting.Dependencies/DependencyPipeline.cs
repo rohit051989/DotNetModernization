@@ -12,12 +12,14 @@ public sealed record DependencyOptions(
     string TargetFramework,
     bool ComparePublicFeed = true,
     bool IncludeTransitive = false,
-    string PublicFeedSource = FeedResolver.NuGetOrgV3);
+    string PublicFeedSource = FeedResolver.NuGetOrgV3,
+    SharedFrameworks? SharedFrameworks = null);
 
 /// <summary>One project as the step receives it: step 2's path, framework
 /// and direct packages, the database id, and step 3's skip verdict.</summary>
 public sealed record DependencyInputProject(
-    string RelativePath, Guid ProjectId, string? SkipReason, string? CurrentFramework, IReadOnlyList<InputPackage> Packages);
+    string RelativePath, Guid ProjectId, string? SkipReason, string? CurrentFramework, IReadOnlyList<InputPackage> Packages,
+    string? ProjectSdk = null);
 
 public sealed record DependencyInput(
     Guid RepositoryId, string RepositorySlug, string SkipSource, IReadOnlyList<DependencyInputProject> Projects, IReadOnlyList<Warning> Warnings);
@@ -32,7 +34,7 @@ public sealed record DependencyInput(
 public sealed class DependencyPipeline(PackageLookup lookup, DependencyOptions options, TransitiveResolver? transitive = null)
 {
     /// <summary>Matches the dependency-assessment step registration version.</summary>
-    public const string ScannerVersion = "1.2.0";
+    public const string ScannerVersion = "1.4.0";
 
     /// <summary>The producer name its signals are registered under (Part D1).</summary>
     public const string Extractor = "DependencyAssessment";
@@ -115,12 +117,19 @@ public sealed class DependencyPipeline(PackageLookup lookup, DependencyOptions o
         // (solution-project-inventory 2.1.0): one answer for every step.
         var current = ParseFramework(project.CurrentFramework);
         ProjectSource? source = null;
+        var projectText = File.Exists(projectFile) ? await File.ReadAllTextAsync(projectFile, ct) : null;
+        var sharedFrameworks = SharedFrameworks.UsedBy(project.ProjectSdk, projectText);
 
         var assessments = new List<PackageAssessment>();
         var signals = new List<Signal>();
+        if (RetargetSignal(repositoryRoot, project.RelativePath, projectText, current) is { } retarget)
+        {
+            signals.Add(retarget);
+        }
+
         foreach (var declaration in declarations)
         {
-            var (assessment, emitted) = await AssessPackageAsync(repositoryId, project, declaration, feeds, current,
+            var (assessment, emitted) = await AssessPackageAsync(repositoryId, project, declaration, feeds, current, sharedFrameworks,
                 async () => source ??= await ProjectSource.LoadAsync(repositoryRoot, project.RelativePath, [], NoAuxiliaryFiles.Instance, ct), ct);
             assessments.Add(assessment);
             signals.AddRange(emitted);
@@ -180,7 +189,7 @@ public sealed class DependencyPipeline(PackageLookup lookup, DependencyOptions o
 
     private async Task<(PackageAssessment, IReadOnlyList<Signal>)> AssessPackageAsync(
         Guid repositoryId, DependencyInputProject project, PackageDeclaration declaration, FeedSet feeds, NuGetFramework? currentFramework,
-        Func<Task<ProjectSource>> loadSource, CancellationToken ct)
+        IReadOnlyList<string> sharedFrameworks, Func<Task<ProjectSource>> loadSource, CancellationToken ct)
     {
         var id = Hash($"{repositoryId:D}\n{project.RelativePath}\n{declaration.PackageId.ToLowerInvariant()}");
         var reasons = new List<string>();
@@ -203,6 +212,15 @@ public sealed class DependencyPipeline(PackageLookup lookup, DependencyOptions o
         }
 
         var currentVersion = declaration.Version;
+
+        // ---- provided by the target's shared framework (1.4.0): a removal, decided before any feed lookup.
+        var target = _target.GetShortFolderName();
+        if (options.SharedFrameworks?.Provider(target, sharedFrameworks, declaration.PackageId, currentVersion) is { } provider)
+        {
+            var removal = Result(Outcomes.FrameworkProvided,
+                $"{declaration.PackageId} {currentVersion.ToNormalizedString()} is provided by the {provider} shared framework on {target}: remove the reference", 1.0);
+            return (removal, Signals(declaration, removal, null, $"{provider} {target}"));
+        }
 
         // ---- the authoritative feeds (Part B2). Every one must answer: a
         // client feed that cannot be reached could hold a newer version, so
@@ -262,7 +280,7 @@ public sealed class DependencyPipeline(PackageLookup lookup, DependencyOptions o
 
         // ---- the recommended version: the newest that supports the target (Part C2).
         var (recommended, examined) = await NewestCompatibleAsync(ordered, ct);
-        var deprecated = Deprecation(currentCandidate);
+        var deprecated = Deprecation(currentCandidate, ordered);
         var vulnerable = Vulnerability(currentCandidate, recommended);
         var answering = recommended ?? currentCandidate ?? latest!;
         var common = new
@@ -486,10 +504,80 @@ public sealed class DependencyPipeline(PackageLookup lookup, DependencyOptions o
         };
     }
 
-    private static DeprecationFlag? Deprecation(Candidate? current) =>
-        current?.Cached.Deprecation is { } d
-            ? new DeprecationFlag { Reasons = d.Reasons, Message = d.Message, ReplacementId = d.AlternateId, ReplacementRange = d.AlternateRange }
-            : null;
+    /// <summary>The current version's deprecation, with its scope (Part C3). NuGet deprecates versions, not packages,
+    /// so the scope is read from the reasons and from the package's other versions. <c>package</c>: no newer listed
+    /// version is free of deprecation (the publisher has retired every release), or the reason is Legacy and the
+    /// publisher names a different package as its successor (xunit to xunit.v3) — replace it. <c>version</c>: a
+    /// newer version is not deprecated and no successor package is named — a maintained package whose old release
+    /// was deprecated, for CriticalBugs, Other, or Legacy with "move to latest" — which an upgrade resolves.</summary>
+    private static readonly System.Text.RegularExpressions.Regex TargetFrameworkElement =
+        new(@"<TargetFrameworks?>", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+    /// <summary>TARGET_FRAMEWORK_BELOW_ENGAGEMENT_TARGET (1.4.0): a modern .NET project (.NETCoreApp) whose framework is
+    /// older than the engagement's target. Value "{from} -> {to}", located at the line declaring the framework: the
+    /// project file, else the nearest Directory.Build.props above it that declares one.</summary>
+    private Signal? RetargetSignal(string repositoryRoot, string relativePath, string? projectText, NuGetFramework? current)
+    {
+        if (current is null || current.Framework != FrameworkConstants.FrameworkIdentifiers.NetCoreApp
+            || _target.Framework != FrameworkConstants.FrameworkIdentifiers.NetCoreApp || current.Version >= _target.Version)
+        {
+            return null;
+        }
+
+        var file = relativePath.Replace('\\', '/');
+        var line = FirstMatchLine(projectText);
+        if (line is null)
+        {
+            var root = Path.GetFullPath(repositoryRoot);
+            for (var dir = Path.GetDirectoryName(Path.Combine(root, relativePath)); dir is not null
+                 && Path.GetFullPath(dir).StartsWith(root, StringComparison.OrdinalIgnoreCase); dir = Path.GetDirectoryName(dir))
+            {
+                var props = Path.Combine(dir, "Directory.Build.props");
+                if (File.Exists(props) && FirstMatchLine(File.ReadAllText(props)) is { } found)
+                {
+                    file = Path.GetRelativePath(root, props).Replace('\\', '/');
+                    line = found;
+                    break;
+                }
+            }
+        }
+
+        return new Signal
+        {
+            Name = "TARGET_FRAMEWORK_BELOW_ENGAGEMENT_TARGET",
+            Category = "PROJECT_METADATA",
+            Type = "CONFIG_ELEMENT",
+            Value = $"{current.GetShortFolderName()} -> {_target.GetShortFolderName()}",
+            SourceType = "PROJECT_FILE",
+            SourcePath = file,
+            EvidenceKind = "FILE",
+            OccurrenceCount = 1,
+            Evidence = line is null ? [] : [new Evidence { LineStart = line, LineEnd = line }],
+            Extractor = Extractor,
+            ExtractionConfidence = 1.0m,
+        };
+    }
+
+    private static int? FirstMatchLine(string? text)
+    {
+        if (text is null) return null;
+        var m = TargetFrameworkElement.Match(text);
+        return m.Success ? text.AsSpan(0, m.Index).Count('\n') + 1 : null;
+    }
+
+    private static DeprecationFlag? Deprecation(Candidate? current, IReadOnlyList<Candidate> ordered)
+    {
+        if (current?.Cached.Deprecation is not { } d) return null;
+        var legacy = d.Reasons.Any(r => string.Equals(r, "Legacy", StringComparison.OrdinalIgnoreCase));
+        var successor = legacy && d.AlternateId is { } alternate && !string.Equals(alternate, current.Entry.PackageId, StringComparison.OrdinalIgnoreCase);
+        var maintainedNewer = ordered.FirstOrDefault(c => c.Version > current.Version && c.Cached.Deprecation is null);
+        return new DeprecationFlag
+        {
+            Reasons = d.Reasons, Message = d.Message, ReplacementId = d.AlternateId, ReplacementRange = d.AlternateRange,
+            Scope = successor || maintainedNewer is null ? DeprecationScopes.Package : DeprecationScopes.Version,
+            NewestNotDeprecated = successor ? null : maintainedNewer?.Version.ToNormalizedString(),
+        };
+    }
 
     private static readonly string[] SeverityNames = ["low", "moderate", "high", "critical"];
 
@@ -678,7 +766,8 @@ public sealed class DependencyPipeline(PackageLookup lookup, DependencyOptions o
 
     // ---------- signals (Part D1) ----------
 
-    private static IReadOnlyList<Signal> Signals(PackageDeclaration declaration, PackageAssessment assessment, IReadOnlyList<CallSite>? callSites)
+    private static IReadOnlyList<Signal> Signals(PackageDeclaration declaration, PackageAssessment assessment, IReadOnlyList<CallSite>? callSites,
+        string? providedBy = null)
     {
         var signals = new List<Signal>();
         var from = assessment.CurrentVersion;
@@ -705,6 +794,9 @@ public sealed class DependencyPipeline(PackageLookup lookup, DependencyOptions o
                 break;
             case Outcomes.NoCompatibleVersion:
                 signals.Add(AtDeclaration("PACKAGE_NO_COMPATIBLE_VERSION", $"{assessment.PackageId} {from}"));
+                break;
+            case Outcomes.FrameworkProvided:
+                signals.Add(AtDeclaration("PACKAGE_PROVIDED_BY_FRAMEWORK", $"{assessment.PackageId} {from}: provided by {providedBy}"));
                 break;
             case Outcomes.UpgradeBreaking when callSites is { Count: > 0 }:
                 // One signal per file and member, its evidence every call site there.
@@ -741,8 +833,15 @@ public sealed class DependencyPipeline(PackageLookup lookup, DependencyOptions o
 
         if (assessment.Deprecated is { } deprecated)
         {
-            var replacement = deprecated.ReplacementId is null ? "no suggested replacement" : $"replacement {deprecated.ReplacementId}{(deprecated.ReplacementRange is null ? "" : " " + deprecated.ReplacementRange)}";
-            signals.Add(AtDeclaration("PACKAGE_DEPRECATED", $"{assessment.PackageId} {from}: {replacement}"));
+            // The value says which: "package deprecated (...)" is a replacement (package-replacement-required);
+            // "version deprecated (...)" is resolved by the upgrade the outcome already describes.
+            var reasons = deprecated.Reasons.Count == 0 ? "no reason given" : string.Join(", ", deprecated.Reasons);
+            var value = deprecated.Scope == DeprecationScopes.Version
+                ? $"{assessment.PackageId} {from}: version deprecated ({reasons}); {deprecated.NewestNotDeprecated} is not"
+                : $"{assessment.PackageId} {from}: package deprecated ({reasons}); " + (deprecated.ReplacementId is null
+                    ? "no suggested replacement"
+                    : $"replacement {deprecated.ReplacementId}{(deprecated.ReplacementRange is null ? "" : " " + deprecated.ReplacementRange)}");
+            signals.Add(AtDeclaration("PACKAGE_DEPRECATED", value));
         }
 
         if (assessment.Vulnerable is { } vulnerable)

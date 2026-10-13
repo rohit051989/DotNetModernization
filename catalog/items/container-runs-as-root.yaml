@@ -1,0 +1,49 @@
+category: packaging
+deleted: false
+description: 'An existing Dockerfile whose final stage never switches to a non-root user, or switches to root; or a manifest that sets runAsUser: 0, runAsNonRoot: false, privileged: true or allowPrivilegeEscalation: true. OpenShift''s restricted security context constraint refuses the pod, or overrides the user so that what root could write no longer is.'
+detection:
+  match:
+    all:
+    - id: runs-as-root
+      signal:
+        name: CONTAINER_RUNS_AS_ROOT
+    any: []
+    atLeast: []
+    metadata: []
+    none: []
+excluded_roles:
+- DATABASE
+- LIBRARY
+- TEST
+id: container-runs-as-root
+name: Container runs as root
+owner_team: null
+resolutions:
+- consumer_impact: none
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: Keep the image as it is and have the platform team grant the service account an SCC that allows its user (anyuid, or a custom one).
+  effort: medium
+  id: dedicated-scc
+  is_default: false
+  linux_compatible: true
+  name: Grant a dedicated security context constraint
+  notes: 'A platform exception: needs the cluster owners'' approval, and is often refused.'
+  status: active
+  target_description: A service account bound to a non-restricted SCC
+- consumer_impact: none
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: End the final stage with USER 1001 (or the base image's app user, by UID), and remove privileged settings from the manifests. Nothing the application writes may need root.
+  effort: low
+  id: non-root-numeric-user
+  is_default: true
+  linux_compatible: true
+  name: Run as a numeric non-root user
+  notes: null
+  status: active
+  target_description: USER 1001 in the image; the restricted SCC assigns the run-time UID
+scope: application
+status: active

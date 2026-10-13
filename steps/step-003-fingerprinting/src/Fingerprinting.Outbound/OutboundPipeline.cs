@@ -50,8 +50,10 @@ public sealed record OutboundInput(
 public sealed class OutboundPipeline
 {
     /// <summary>Matches the outbound-invocation-inventory step registration version. 1.5.1: the WCF client
-    /// matrices 1.1.0 (the wildcard rule; reviewer decisions); artifact 1.5.0 unchanged.</summary>
-    public const string ScannerVersion = "1.5.1";
+    /// matrices 1.1.0 (the wildcard rule; reviewer decisions); artifact 1.5.0 unchanged. 1.6.0: a SOAP client built by
+    /// a custom helper from options-bound configuration (WCFClientHelper.CreateClient&lt;T&gt;(name)) — call sites followed
+    /// up through generic callers, binding, mode, credential and address read per environment; artifact unchanged.</summary>
+    public const string ScannerVersion = "1.6.0";
 
     public async Task<OutboundInventoryArtifact> RunAsync(OutboundInput input, string repositoryRoot, CancellationToken cancellationToken)
     {

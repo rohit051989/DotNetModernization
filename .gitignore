@@ -5,7 +5,16 @@ __pycache__/
 node_modules/
 dist/
 .vite/
+# Engagement data never enters git (CLAUDE.md: git holds the platform only). Run output, verifications and
+# experiments live under RUNS_DIR, by default backend/runs/; a client deployment sets RUNS_DIR outside the
+# repository (01-ENVIRONMENT-SETUP.md section 9). An experiments folder anywhere in the tree is ignored too.
 backend/runs/
+runs/
+experiments/
+
+# Local run output: server logs and step result envelopes name engagements and repositories.
+*.log
+/out*.json
 
 # .NET (steps/step-003-fingerprinting and any later .NET step)
 bin/

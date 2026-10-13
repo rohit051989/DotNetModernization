@@ -28,6 +28,12 @@ resolutions:
   description: 'Change the version to step 6''s recommended version: the latest that supports the target framework.'
   effort: low
   id: package-upgrade-safe-bump
+  impact_rules:
+  - action: update
+    from: seed
+    id: version
+    reason: 'The version is edited where it is declared: the project file, Directory.Packages.props, or the property it names'
+    traverse: version_declaration
   is_default: true
   linux_compatible: true
   name: Bump to the recommended version

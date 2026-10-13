@@ -67,7 +67,7 @@ public sealed class ConfigurationExtractorSecretsTests
         Assert.Contains("CONNECTION_STRING_CONFIG", artifactText);
         Assert.Contains("\"value\": \"CustomerDb\"", artifactText);
         Assert.Contains("SENSITIVE_CONFIG_KEY", artifactText);
-        Assert.Contains("\"value\": \"AccountKey\"", artifactText);
+        Assert.Contains("\"value\": \"Azure:Storage:AccountKey\"", artifactText);
     }
 
     // ---- Part G restated: nothing derived from a connection string is persisted ----

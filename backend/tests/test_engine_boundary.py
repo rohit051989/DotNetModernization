@@ -172,8 +172,11 @@ class NoCredentialAnywhere(unittest.TestCase):
                 self.assertEqual([o for o in options if CREDENTIAL_NAME.search(o)], [], (module, sub))
 
     def test_no_engine_code_reads_a_credential_from_the_environment(self):
+        # Passing the environment through to a child process ({**os.environ, ...}) reads nothing; reading a
+        # variable does, and no engine code reads one or names a token variable.
         source = "\n".join(p.read_text(encoding="utf-8") for p in (BACKEND / "app" / "engine").rglob("*.py"))
-        self.assertNotRegex(source, r"os\.environ|getenv|GITHUB_TOKEN|GH_TOKEN|COPILOT_TOKEN")
+        self.assertNotRegex(source, r"os\.environ\s*\[|os\.environ\.get|getenv|GITHUB_TOKEN|GH_TOKEN|COPILOT_TOKEN")
+        self.assertEqual(re.findall(r"os\.environ(?!\s*,)", source.replace("{**os.environ,", "")), [])
 
     def test_the_allowlist_command_has_no_credential_option(self):
         with self.assertRaises(SystemExit):

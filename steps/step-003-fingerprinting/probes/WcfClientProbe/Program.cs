@@ -95,6 +95,19 @@ static class Scenarios
                 binding.Security.Transport.ClientCredentialType = HttpClientCredentialType.None;
                 return ("IUtilityService.Ping", Open<IUtilityService>(binding, a).Ping());
             }
+            case "basicHttps-Transport-None":
+            {
+                var binding = new BasicHttpsBinding(BasicHttpsSecurityMode.Transport);
+                binding.Security.Transport.ClientCredentialType = HttpClientCredentialType.None;
+                return ("IUtilityService.Ping", Open<IUtilityService>(binding, a).Ping());
+            }
+            case "basicHttps-Transport-Certificate":
+            {
+                // TLS with a client certificate: the service's TLS endpoint requires one and pins it.
+                var binding = new BasicHttpsBinding(BasicHttpsSecurityMode.Transport);
+                binding.Security.Transport.ClientCredentialType = HttpClientCredentialType.Certificate;
+                return ("IUtilityService.Ping", Open<IUtilityService>(binding, a).Ping());
+            }
             case "netTcp-Transport-None":
             {
                 var binding = new NetTcpBinding(SecurityMode.Transport);

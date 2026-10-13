@@ -14,6 +14,7 @@ import json
 import re
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 from app.engine import inputs, paths
@@ -155,6 +156,123 @@ class Outputs(unittest.TestCase):
         self.assertEqual(once.count(render.ADDENDUM_START), 1)
 
 
+class Defaults(unittest.TestCase):
+    """Conversion never stops for a decision: an undecided item applies its default; a value nobody supplied is a
+    named deployment parameter; a default that cannot apply leaves the place unchanged and lists it as unresolved."""
+
+    def test_a_default_needing_a_value_names_a_deployment_parameter(self):
+        files = render.render(model())
+        sheet = files[".github/platform-inputs/decision-sheet.md"]
+        self.assertIn("| `TZ` | config |", sheet)                                      # once, for the application
+        self.assertIn("| `ConnectionStrings__CatalogConnection` | secret |", sheet)    # per occurrence, by its name
+        instruction = files[".github/upgrades/skills/applying-sql-auth-from-secret.md"]
+        self.assertIn("## Values this needs (deployment parameters)", instruction)
+        self.assertIn("you must not invent them", instruction)
+
+    def test_a_default_that_cannot_apply_is_left_unchanged_and_listed_unresolved(self):
+        items = model()["items"]
+        items.append(_item("package-replacement-required", "package-replacement-publisher-suggested",
+                           value="Foo 1.0.0: package deprecated (Legacy); no suggested replacement", file="src/A/A.csproj"))
+        items.append(_item("package-replacement-required-2", "package-replacement-publisher-suggested",
+                           value="Bar 2.0.0: package deprecated (Legacy); replacement Baz [3.0.0, )", file="src/A/A.csproj"))
+        files = render.render(model(items))
+        self.assertEqual(len(render.unresolved(model(items))), 1)
+        self.assertIn("| `package-replacement-required` | `src/A/A.csproj:10` |", files[".github/platform-inputs/decision-sheet.md"])
+        instruction = files[".github/upgrades/skills/applying-package-replacement-publisher-suggested.md"]
+        self.assertIn("Bar 2.0.0", instruction)                                         # the item that applies
+        only_unresolved = model([items[-2]])
+        self.assertNotIn(".github/upgrades/skills/applying-package-replacement-publisher-suggested.md",
+                         render.render(only_unresolved))                                # nothing to apply: no instruction
+
+    def test_the_global_instructions_say_never_stop_for_a_decision(self):
+        text = render.render(model())[paths.COPILOT_INSTRUCTIONS]
+        self.assertIn("## Never stop for a decision", text)
+        self.assertIn("leave unchanged", text)
+
+    def test_the_decision_sheet_never_defaults_to_all_at_once(self):
+        options = {o["question"]: o for o in render.upgrade_options(model())}
+        self.assertEqual(options["Upgrade strategy"]["answer"], "Bottom-up")
+        self.assertNotIn("All-at-once", render.render(model())[".github/platform-inputs/decision-sheet.md"])
+
+
+class Runbook(unittest.TestCase):
+    """Arm 1 takes the engine's own defaults at the upgrade-options stage; arm 2 the decision sheet. The commit
+    strategy, one commit per task, is the same for both arms."""
+
+    def setUp(self):
+        from app.experiment import prepare
+        self.prepare = prepare
+        config = {"engagement": "e", "repository": "r", "engine": {"provider": "github-copilot"}, "_dir": "x/exp",
+                  "arms": [{"arm": 1, "name": "Engine alone", "runs": 2, "enhancement": False},
+                           {"arm": 2, "name": "Engine with enhancement", "runs": 2, "enhancement": True}],
+                  "stop": {"max_elapsed_minutes": 240, "max_attempts_on_one_task": 3}, "goal": "Make it OpenShift-ready.",
+                  "platform_commit": "c" * 40}
+        runs = [dict(r, worktree=f"w/{r['label']}", head="h") for r in prepare.copilot_runs(config)]
+        self.text = prepare.render_runbook({"config": config, "runs": runs, "base": "0" * 40, "solution": "A.sln",
+                                            "options": render.upgrade_options(model())}, Path(tempfile.gettempdir()) / "x" / "experiment.yaml")
+
+    @classmethod
+    def text_for_test(cls) -> str:
+        case = cls("test_the_experiments_goal_is_the_start_message")
+        case.setUp()
+        return case.text
+
+    def test_arm_1_takes_the_engines_own_options_and_arm_2_the_decision_sheet(self):
+        self.assertIn(f"**ARM 1**: reply `{self.prepare.ARM1_OPTIONS}`", self.text)
+        self.assertIn("**ARM 2 ONLY** — answers at the upgrade-options stage (the decision sheet)", self.text)
+        self.assertIn("| Upgrade strategy | `Bottom-up` | presumptive |", self.text)
+
+    def test_the_commit_strategy_is_per_task_in_both_arms(self):
+        self.assertIn("Commit after each task.", self.text)
+        self.assertIn("— the same in both arms", self.text)
+        self.assertEqual(self.text.count("Commit after each task."), 1)
+
+    def test_a_new_generation_makes_new_branches_and_worktrees_and_engagement_unique_labels(self):
+        arms = [{"arm": 1, "name": "a", "runs": 1, "enhancement": False}, {"arm": 2, "name": "b", "runs": 1, "enhancement": True}]
+        first = self.prepare.copilot_runs({"arms": arms, "repository": "app"})
+        second = self.prepare.copilot_runs({"arms": arms, "repository": "app", "generation": 2})
+        self.assertEqual([r["branch"] for r in first], ["experiment/arm1-run1", "experiment/arm2-run1"])
+        self.assertEqual([r["branch"] for r in second], ["experiment/v2/arm1-run1", "experiment/v2/arm2-run1"])
+        self.assertEqual({r["folder"] for r in second}, {"experiment-v2"})
+        self.assertEqual([r["run_label"] for r in second], ["app-v2-arm1-run1", "app-v2-arm2-run1"])
+
+    def test_the_experiments_goal_is_the_start_message(self):
+        self.assertIn("`<goal>`: **Make it OpenShift-ready.**", self.text)
+        self.assertEqual([r["label"] for r in self.prepare.copilot_runs({"arms": [
+            {"arm": 1, "name": "a", "runs": 2, "enhancement": False}, {"arm": 2, "name": "b", "runs": 2, "enhancement": True}]})],
+            ["arm1-run1", "arm2-run1", "arm1-run2", "arm2-run2"])
+
+
+class PinnedInstrument(unittest.TestCase):
+    """Every verification names the platform commit it ran at; a run verified at another, or from a changed tree,
+    is flagged, and the runbook names the pinned commit."""
+
+    def test_a_verification_at_another_commit_or_from_a_changed_tree_is_flagged(self):
+        from app.experiment import instrument
+        config = {"platform_commit": "a" * 40}
+        self.assertIsNone(instrument.mismatch(config, {"platform": {"commit": "a" * 40, "dirty": False}}))
+        self.assertIn("not the experiment's", instrument.mismatch(config, {"platform": {"commit": "b" * 40, "dirty": False}}))
+        self.assertIn("uncommitted", instrument.mismatch(config, {"platform": {"commit": "a" * 40, "dirty": True}}))
+        self.assertIn("before the instrument was pinned", instrument.mismatch(config, {}))
+        self.assertIn("no platform_commit", instrument.mismatch({}, {"platform": {"commit": "a" * 40, "dirty": False}}))
+
+    def test_the_runbook_names_the_pinned_commit(self):
+        self.assertIn(f"Platform commit `{'c' * 40}`", Runbook.text_for_test())
+
+    def test_the_recorded_create_command_leaves_out_where_it_was_written(self):
+        from app.experiment import create
+        with tempfile.TemporaryDirectory() as out, mock.patch.object(create.instrument, "require_clean", return_value="d" * 40):
+            argv = ["--engagement", "e", "--repository", "r", "--name", "n", "--baseline", "abc1234", "--title", "T",
+                    "--canary-file", "f.cs", "--canary-find", 'x == "0"', "--canary-replace", "y", "--canary-why", "w",
+                    "--out", out, "--force"]
+            self.assertEqual(create.main(argv), 0)
+            text = (Path(out) / "experiment.yaml").read_text(encoding="utf-8")
+        self.assertIn(f'platform_commit: "{"d" * 40}"', text)
+        self.assertNotIn("--out", text)
+        self.assertNotIn("--force", text)
+        self.assertIn("""--canary-find 'x == \\"0\\"'""", text)
+
+
 class NoSecretValue(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -167,6 +285,27 @@ class NoSecretValue(unittest.TestCase):
         for secret in (FAKE_PASSWORD, FAKE_KEY, FAKE_SETPARAM):
             self.assertIn(secret, values)
         self.assertIn(FAKE_URL_PASS, values)
+
+    def test_a_path_under_a_sensitive_key_is_a_path_not_a_secret(self):
+        (self.root / "src" / "A" / "appsettings.Vault.json").write_text(json.dumps({
+            "Vault": {"SecretsDir": r"D:\Vault\Secrets", "ClientSecret": "abc-def-123456"}}), encoding="utf-8")
+        values = {v["value"] for v in secrets.repository_values(self.root)}
+        self.assertNotIn(r"D:\Vault\Secrets", values)        # step 5 keeps a value only for a path
+        self.assertIn("abc-def-123456", values)
+
+    def test_a_key_that_only_describes_a_secret_is_a_setting_as_in_secrets_cs(self):
+        # AccountsApi: "Certificate" under Wcf:Bindings:...:ClientCredentialType is a binding setting the outbound
+        # inventory reads and the addendum states; under Token:ClientSecret it is still a secret.
+        (self.root / "src" / "A" / "appsettings.Wcf.json").write_text(json.dumps({
+            "Wcf": {"Bindings": {"Secure": {"ClientCredentialType": "Certificate"}}},
+            "Auth": {"TokenEndpoint": "https://idp.corp.example/token", "Token": {"ClientSecret": "zz-secret-99"}}}), encoding="utf-8")
+        values = {v["value"] for v in secrets.repository_values(self.root)}
+        self.assertNotIn("Certificate", values)
+        self.assertNotIn("https://idp.corp.example/token", values)
+        self.assertIn("zz-secret-99", values)
+        for key, sensitive in (("Password", True), ("DB_PASSWORD", True), ("Wcf:Bindings:Secure:ClientCredentialType", False),
+                               ("TokenEndpoint", False), ("ApiKeyHeader", False), ("ConnectionStringName", False)):
+            self.assertEqual(secrets.is_sensitive_key(key), sensitive, key)
 
     def test_clean_inputs_contain_none_of_the_repositorys_secret_values(self):
         files = inputs.build(model(), self.root)

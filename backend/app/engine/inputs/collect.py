@@ -109,9 +109,9 @@ def collect(db: Session, repository: models.Repository) -> dict:
 
     # Package moves and their couplings, as the conversion planner computes them (34-CONVERSION Part E).
     to_tfm = engagement.target_framework
-    packages, couplings = [], {"together": [], "depends": []}
+    packages, couplings, drift = [], {"together": [], "depends": []}, []
     if len(current) == 1:
-        found, moves, _ = planner.package_moves(db, r, current[0], to_tfm, [])
+        found, moves, _ = planner.package_moves(db, r, current[0], to_tfm, [], drift)
         together, depends = planner.couplings(moves)
         for key, p in sorted(found.items()):
             placement, why = planner._place({"support": {p["package_id"]: p["support"]}}, current[0], to_tfm)
@@ -150,6 +150,6 @@ def collect(db: Session, repository: models.Repository) -> dict:
                        "posture": engagement.default_posture},
         "repository": {"slug": repository.slug, "commit": repository.ingest_commit_sha},
         "projects": projects, "current_frameworks": current,
-        "items": items, "packages": packages, "couplings": couplings, "deltas": deltas,
+        "items": items, "packages": packages, "couplings": couplings, "version_drift": sorted(set(drift)), "deltas": deltas,
         "outbound": outbound, "soap": soap,
     }

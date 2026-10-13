@@ -121,6 +121,64 @@ public sealed class ImpactTests : IDisposable
     private static ImpactEntry Entry(ResolutionImpact resolution, string path) =>
         resolution.Entries.Single(e => (e.FilePath ?? e.ProposedPath) == path);
 
+    // ---------- Part E: version_declaration ----------
+
+    /// <summary>A package's version is edited where it is declared: under central package management that is
+    /// Directory.Packages.props, or the property its version names; a literal version stays in the project file.
+    /// A package whose declaration cannot be found falls back to the project file, possible.</summary>
+    [Fact]
+    public async Task VersionDeclaration_FindsWhereEachPackagesVersionIsDeclared()
+    {
+        Write("Directory.Packages.props", """
+            <Project>
+              <PropertyGroup><ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally></PropertyGroup>
+              <ItemGroup>
+                <PackageVersion Include="Acme.Central" Version="1.0.0" />
+                <PackageVersion Include="Acme.Shared" Version="$(SharedVersion)" />
+              </ItemGroup>
+            </Project>
+            """);
+        Write("Directory.Build.props", """
+            <Project>
+              <PropertyGroup>
+                <SharedVersion>3.0.0</SharedVersion>
+              </PropertyGroup>
+            </Project>
+            """);
+        Write("src/Services/Services.csproj", """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <ItemGroup>
+                <PackageReference Include="Acme.Central" />
+                <PackageReference Include="Acme.Literal" VersionOverride="2.0.0" />
+                <PackageReference Include="Acme.Shared" />
+              </ItemGroup>
+            </Project>
+            """);
+        var rules = Rules("""[{"id": "version", "from": "seed", "traverse": "version_declaration", "action": "update"}]""");
+        var input = Input(new Dictionary<string, string>(), [new ResolutionInfo("bump", "Bump", true, "none", rules)],
+            [new WorkItemSeed("wcf-service", null, "src/Services/Services.csproj", [new SeedFile("src/Services/Services.csproj", "PACKAGE_UPGRADE_SAFE", null)],
+                ["Acme.Central", "Acme.Literal", "Acme.Shared"])]);
+        var bump = Resolution(await Run(input), "bump");
+
+        Assert.Equal(["Directory.Build.props", "Directory.Packages.props", "src/Services/Services.csproj"],
+            bump.Entries.Select(e => e.FilePath).Order(StringComparer.Ordinal));
+        Assert.All(bump.Entries, e => Assert.Equal(("update", "confirmed"), (e.Action, e.Certainty)));
+        Assert.Contains(Entry(bump, "Directory.Packages.props").Details, d => d.Contains("<PackageVersion Include=\"Acme.Central\"> line 4"));
+        Assert.Contains(Entry(bump, "Directory.Build.props").Details, d => d.Contains("<SharedVersion> property, line 3"));
+        Assert.Contains(Entry(bump, "src/Services/Services.csproj").Details, d => d.Contains("VersionOverride"));
+    }
+
+    [Fact]
+    public async Task VersionDeclaration_WithoutAKnownDeclaration_IsTheProjectFile_Possible()
+    {
+        var rules = Rules("""[{"id": "version", "from": "seed", "traverse": "version_declaration", "action": "update"}]""");
+        var input = Input(new Dictionary<string, string>(), [new ResolutionInfo("bump", "Bump", true, "none", rules)],
+            [new WorkItemSeed("wcf-service", null, "src/Services/Services.csproj", [new SeedFile("src/Services/Services.csproj", "PACKAGE_UPGRADE_SAFE", null)],
+                ["Acme.Missing"])]);
+        var entry = Assert.Single(Resolution(await Run(input), "bump").Entries);
+        Assert.Equal(("src/Services/Services.csproj", "possible"), (entry.FilePath, entry.Certainty));
+    }
+
     // ---------- Part C: which resolutions are computed ----------
 
     [Fact]

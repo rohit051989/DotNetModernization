@@ -260,6 +260,7 @@ public static class EntryPoint
         new ConfigurationExtractor(),
         new ApiUsageExtractor(),
         new PathLiteralExtractor(),
+        new IisHostingExtractor(),
     ];
 
     private static string SchemasDir() => Path.Combine(AppContext.BaseDirectory, "schemas");

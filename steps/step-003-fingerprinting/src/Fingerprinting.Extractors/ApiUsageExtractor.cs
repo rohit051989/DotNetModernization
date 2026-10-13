@@ -67,6 +67,9 @@ public sealed class ApiUsageExtractor : IFingerprintExtractor
     [
         new("USE_WINDOWS_SERVICE_INVOCATION", SignalCategories.HostingIndicator, "UseWindowsService"),
         new("USE_WINDOWS_SERVICE_INVOCATION", SignalCategories.HostingIndicator, "AddWindowsService"),
+        // Registry 1.11.0: hosting behind IIS through the ASP.NET Core Module.
+        new("USE_IIS_INVOCATION", SignalCategories.HostingIndicator, "UseIIS"),
+        new("USE_IIS_INVOCATION", SignalCategories.HostingIndicator, "UseIISIntegration"),
         new("ADD_HEALTH_CHECKS_INVOCATION", SignalCategories.HostingIndicator, "AddHealthChecks"),
         new("MAP_HEALTH_CHECKS_INVOCATION", SignalCategories.EndpointIndicator, "MapHealthChecks"),
         new("MAP_HEALTH_CHECKS_INVOCATION", SignalCategories.EndpointIndicator, "UseHealthChecks"),

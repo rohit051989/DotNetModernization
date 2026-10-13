@@ -57,7 +57,7 @@ import re
 PRIMITIVES = (
     "implemented_interfaces", "implementations_of", "signature_types", "declaring_files", "referencing_files",
     "config_elements", "convention_files", "referencing_tests", "project_file", "project_files", "entry_points",
-    "hosting_project", "deploy_parameter_files", "client_call_sites",
+    "hosting_project", "deploy_parameter_files", "client_call_sites", "version_declaration",
 )
 ACTIONS = ("update", "rewrite", "delete", "create", "review")
 FILTERS = ("has_attribute", "in_project", "namespace_prefix", "excludes_generated", "extension")

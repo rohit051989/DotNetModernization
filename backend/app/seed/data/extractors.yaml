@@ -29,6 +29,11 @@
 # DependencyAssessment — lifecycle step 6, a separate step that writes into
 # fingerprint_signals under its own extractor name — so a producer here is any
 # step that emits registered signals, not only a step 3 extractor.
+# Registry 1.11.0 added TARGET_FRAMEWORK_BELOW_ENGAGEMENT_TARGET and
+# PACKAGE_PROVIDED_BY_FRAMEWORK (DependencyAssessment 1.4.0), USE_IIS_INVOCATION
+# (ApiUsageExtractor), ASPNETCORE_HOSTING_MODEL (IisHostingExtractor, new) and the
+# three CONTAINER_* OpenShift-compliance signals (FileIndicatorExtractor; step 3
+# scanner 1.5.0).
 # Nothing is planned at the moment.
 
 extractors:
@@ -47,8 +52,15 @@ extractors:
       - PROCESS_START_USAGE
       - REGISTRY_ACCESS_USAGE
       - SYSTEM_DRAWING_USAGE
+      - USE_IIS_INVOCATION
       - USE_WINDOWS_SERVICE_INVOCATION
       - WCF_CLIENT_BINDING_USAGE
+  - name: IisHostingExtractor
+    status: implemented
+    owner_team: platform
+    description: "How an ASP.NET Core application is hosted in IIS through the ASP.NET Core Module: the project's AspNetCoreHostingModel and web.config's aspNetCore element or module handler (registry 1.11.0)."
+    emits:
+      - ASPNETCORE_HOSTING_MODEL
   - name: AttributeExtractor
     status: implemented
     owner_team: platform
@@ -100,13 +112,12 @@ extractors:
       - PACKAGE_DEPRECATED
       - PACKAGE_NOT_IN_CLIENT_FEED
       - PACKAGE_NO_COMPATIBLE_VERSION
+      - PACKAGE_PROVIDED_BY_FRAMEWORK
       - PACKAGE_UPGRADE_BREAKING
       - PACKAGE_UPGRADE_SAFE
       - PACKAGE_VULNERABLE
-    # Declared ahead of the code (34-CONVERSION-ARCHITECTURE.md, the first
-    # conversion proof): dependency-assessment already knows the engagement's
-    # target framework and each project's, so it is where the comparison lands.
-    planned_emits:
+      # dependency-assessment knows the engagement's target framework and each
+      # project's, so the comparison lands here (registry 1.11.0).
       - TARGET_FRAMEWORK_BELOW_ENGAGEMENT_TARGET
   - name: EntryPointInventory
     status: implemented
@@ -146,6 +157,9 @@ extractors:
       - ASCX_FILE
       - ASMX_FILE
       - ASPX_FILE
+      - CONTAINER_FIXED_USER_WRITABLE_PATH
+      - CONTAINER_PRIVILEGED_PORT
+      - CONTAINER_RUNS_AS_ROOT
       - CONTROLLERS_FOLDER
       - CSHTML_FILE
       - DOCKERFILE_FILE

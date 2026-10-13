@@ -167,7 +167,11 @@ public sealed class SymbolIndex
     {
         null => null,
         _ when SyntaxHelpers.StringValue(expression) is { } literal => literal,
-        IdentifierNameSyntax id => ConstantNamed(id.Identifier.Text),
+        // An unqualified name is its own type's constant first, as C# scopes it:
+        // five clients each declaring ClientName are not ambiguous to themselves.
+        IdentifierNameSyntax id => (id.Ancestors().OfType<TypeDeclarationSyntax>().FirstOrDefault() is { } owner
+                                       ? ConstantNamed($"{owner.Identifier.Text}.{id.Identifier.Text}") : null)
+                                   ?? ConstantNamed(id.Identifier.Text),
         MemberAccessExpressionSyntax { Expression: NameSyntax owner } member =>
             ConstantNamed($"{SyntaxHelpers.RightmostTypeName(owner)}.{member.Name.Identifier.Text}"),
         _ => null,
