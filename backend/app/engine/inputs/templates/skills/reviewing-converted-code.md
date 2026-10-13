@@ -43,7 +43,6 @@ Write the findings into the scenario's progress notes; do not change code in thi
 
 Adapted from `agents/architecture-critic.md` in Anthropic's `code-modernization` plugin
 (anthropics/claude-plugins-official, plugins/code-modernization, commit
-f359d43b406057f1a8cdbc4ea93b827642c162e6, 2026-10-10), Apache License 2.0. **Modified** by the
-Modernization Platform: narrowed to a read-only review pass over an in-place upgrade; the architecture
-proposal lens is removed and the upgrade-specific checks are added. See
-`third_party/code-modernization/NOTICE` in the platform repository.
+f359d43b406057f1a8cdbc4ea93b827642c162e6, 2026-10-10), Apache License 2.0. **Modified**: narrowed to a
+read-only review pass over an in-place upgrade; the architecture proposal lens is removed and the
+upgrade-specific checks are added.

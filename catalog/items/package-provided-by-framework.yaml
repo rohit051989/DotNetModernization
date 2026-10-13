@@ -14,6 +14,11 @@ detection:
   occurrence_source:
     group_by: source_path_and_value
     signal: PACKAGE_PROVIDED_BY_FRAMEWORK
+engine_guidance: |-
+  The project references a NuGet package that the target framework already includes in its shared
+  framework (for example `Microsoft.AspNetCore.Server.Kestrel` 2.x in an ASP.NET Core project, or
+  `System.Text.Json`). The reference pins an old or redundant copy; the framework's own version is
+  the one to use.
 excluded_roles: []
 id: package-provided-by-framework
 name: Package the target framework already provides
@@ -25,6 +30,7 @@ resolutions:
   derivations: []
   description: Keep the reference, at a version no lower than the framework's, where a tool or analyzer needs the package itself.
   effort: low
+  engine_guidance: Keep the reference, at a version no lower than the one the target framework provides.
   id: keep-framework-provided-package
   is_default: false
   linux_compatible: true
@@ -38,6 +44,10 @@ resolutions:
   derivations: []
   description: Remove the PackageReference, and its central version where nothing else uses it; the shared framework supplies the assemblies.
   effort: low
+  engine_guidance: |-
+    Remove the `PackageReference` from the project file. If the version is managed centrally
+    (Directory.Packages.props), remove that version too when no other project uses it. Add nothing
+    in its place: the shared framework provides the assemblies. Build to confirm.
   id: remove-framework-provided-package
   impact_rules:
   - action: update

@@ -1,8 +1,11 @@
 """The engine input generator (36-COPILOT-ENHANCED-CONVERSION Part D).
 
 - Every Part D output is produced, at the location GitHub Copilot upgrade reads it from.
-- One instruction per detected item and resolution; an undecided item is labelled presumptive; ordering
-  constraints become prerequisites; adapted plugin text carries its attribution.
+- One instruction per detected item and resolution, written only from engine-facing guidance; an undecided item is
+  marked as the default approach; ordering constraints become prerequisites; adapted plugin text carries its
+  attribution.
+- Every generated file is self-contained (Part K): planted references to platform documents, platform or local
+  paths, lifecycle steps and platform vocabulary are refused before anything is written.
 - No generated file contains a secret value: a leak is refused before anything is written, and the
   real eShopOnWeb inputs are checked against the values in its own configuration.
 - Output is deterministic, with a sha256 per file in the manifest.
@@ -18,7 +21,7 @@ from unittest import mock
 from pathlib import Path
 
 from app.engine import inputs, paths
-from app.engine.inputs import render, secrets
+from app.engine.inputs import render, secrets, selfcontained
 
 FAKE_PASSWORD = "S3cr3t-Pa55word!"
 FAKE_KEY = "k3y-0123456789abcdef"
@@ -26,12 +29,18 @@ FAKE_URL_PASS = "urlpass-998877"
 FAKE_SETPARAM = "deploy-only-value-4455"
 
 
-def _item(item_id, resolution_id, *, decided=False, ordering=(), value=None, file="src/A/A.cs", line=10, impact=True):
+def _name(slug: str) -> str:
+    return slug.replace("-", " ").capitalize()
+
+
+def _item(item_id, resolution_id, *, decided=False, ordering=(), value=None, file="src/A/A.cs", line=10, impact=True,
+          guidance=True, steps=True):
     return {
-        "id": item_id, "name": f"Item {item_id}", "category": "framework", "scope": "occurrence",
-        "problem": f"Problem of {item_id}.", "ordering": list(ordering), "decided": decided,
-        "resolution": {"id": resolution_id, "name": f"Resolution {resolution_id}", "description": "Do the thing.",
-                       "target": None, "notes": None, "consumer_impact": "low"},
+        "id": item_id, "name": _name(item_id), "category": "framework", "scope": "occurrence",
+        "guidance": f"Why {_name(item_id).lower()} matters on the target." if guidance else None,
+        "ordering": list(ordering), "decided": decided,
+        "resolution": {"id": resolution_id, "name": _name(resolution_id), "guidance": "Do the thing." if steps else None,
+                       "consumer_impact": "low"},
         "alternatives": [{"id": resolution_id + "-other", "name": "Other way", "default": False}],
         "occurrences": [{"project": "src/A/A.csproj", "file": file, "value": value, "certainty": "confirmed",
                          "lines": [{"line": line, "value": value or "System.DateTime.Now", "member": "M", "type": "T", "certainty": None}]}],
@@ -56,6 +65,11 @@ def model(items=None):
                   value="Foo 1.0.0 -> 2.0.0"),
         ],
         "packages": [], "couplings": {"together": [], "depends": []}, "deltas": [], "outbound": [], "soap": [],
+        "vocabulary": {"item_ids": ["datetime-now-usage", "windows-auth-connection-string", "sensitive-config-key",
+                                    "package-upgrade-safe", "package-upgrade-breaking", "package-replacement-required"],
+                       "resolution_ids": ["container-local-timezone", "sql-auth-from-secret", "move-to-secret",
+                                          "package-upgrade-safe-bump", "package-replacement-publisher-suggested"],
+                       "signals": ["DATETIME_NOW_INVOCATION", "SENSITIVE_CONFIG_KEY"], "steps": ["item-detection", "impact-analysis"]},
     }
 
 
@@ -93,28 +107,56 @@ class Outputs(unittest.TestCase):
             self.assertRegex(head.group(1), r"^[a-z]+ing-", path)        # starts with a gerund
             self.assertEqual(head.group(1), Path(path).stem)
 
-    def test_an_undecided_item_is_labelled_presumptive_and_a_decided_one_is_not(self):
+    def test_an_undecided_item_is_marked_as_the_default_and_a_decided_one_as_chosen(self):
         timezone = self.files[".github/upgrades/skills/applying-container-local-timezone.md"]
-        self.assertIn("PRESUMPTIVE", timezone)
+        self.assertIn("> The default approach for this change: apply it as written", timezone)
         secret = self.files[".github/upgrades/skills/applying-sql-auth-from-secret.md"]
-        self.assertIn("DECIDED", secret)
-        self.assertNotIn("PRESUMPTIVE", secret)
+        self.assertIn("> Chosen for this repository: apply it as written", secret)
         rows = {line.split("|")[1].strip(): line for line in self.files[".github/platform-inputs/decision-sheet.md"].splitlines()
-                if line.startswith("| Item ")}
-        self.assertIn("| decided |", rows["Item windows-auth-connection-string (`windows-auth-connection-string`)"])
-        self.assertIn("| presumptive |", rows["Item datetime-now-usage (`datetime-now-usage`)"])
+                if line.startswith("| ")}
+        self.assertIn("| chosen |", rows["Windows auth connection string"])
+        self.assertIn("| default |", rows["Datetime now usage"])
 
     def test_ordering_constraints_become_prerequisites(self):
         secret = self.files[".github/upgrades/skills/applying-sql-auth-from-secret.md"]
         self.assertIn("Apply this **before** `applying-move-to-secret`", secret)
         safe = self.files[".github/upgrades/skills/applying-package-upgrade-safe-bump.md"]
-        self.assertIn("None among this repository's work items.", safe)  # its partner is not present here
+        self.assertIn("None among this repository's other instructions.", safe)  # its partner is not present here
 
-    def test_each_instruction_is_one_transformation_with_explicit_if_then_steps(self):
+    def test_each_instruction_is_the_engine_guidance_and_its_places(self):
         text = self.files[".github/upgrades/skills/applying-container-local-timezone.md"]
-        self.assertIn("If `src/A/A.cs:10` (src/A/A.csproj) still contains `System.DateTime.Now`", text)
-        self.assertIn("then: Do the thing.", text)
-        self.assertEqual(text.count("## Resolution"), 1)
+        self.assertIn("## The change\n\nWhy datetime now usage matters on the target.", text)
+        self.assertIn("## What to do\n\nDo the thing.", text)
+        self.assertIn("- `src/A/A.cs:10` (src/A/A.csproj): `System.DateTime.Now`", text)
+        self.assertEqual(text.count("Do the thing."), 1)                # the steps once, not repeated per place
+
+    def test_author_facing_text_never_reaches_a_generated_file(self):
+        items = model()["items"]
+        for item in items:                                              # what collect() never reads, planted anyway
+            item["description"] = "AUTHOR NOTE: strong candidate for fully deterministic conversion."
+            item["resolution"].update(description="AUTHOR DESCRIPTION", target="AUTHOR TARGET", notes="AUTHOR NOTES")
+        text = "\n".join(render.render(model(items)).values())
+        self.assertNotIn("AUTHOR", text)
+
+    def test_an_item_without_guidance_is_emitted_from_its_steps_alone_and_listed(self):
+        items = model()["items"]
+        items[0] = _item("datetime-now-usage", "container-local-timezone", guidance=False)
+        files = render.render(model(items))
+        text = files[".github/upgrades/skills/applying-container-local-timezone.md"]
+        self.assertNotIn("## The change", text)
+        self.assertIn("## What to do\n\nDo the thing.", text)
+        self.assertEqual(render.without_guidance(model(items)),
+                         [{"item": "datetime-now-usage", "resolution": "container-local-timezone", "missing": "item"}])
+
+    def test_a_resolution_without_steps_is_not_emitted_its_places_are_left_unchanged_and_listed(self):
+        items = model()["items"]
+        items[0] = _item("datetime-now-usage", "container-local-timezone", steps=False)
+        files = render.render(model(items))
+        self.assertNotIn(".github/upgrades/skills/applying-container-local-timezone.md", files)
+        self.assertIn("| Datetime now usage | `src/A/A.cs:10` |  | no conversion guidance is written for this change yet |",
+                      files[".github/platform-inputs/decision-sheet.md"])
+        self.assertIn("none: leave unchanged", files[".github/platform-inputs/assessment-addendum.md"])
+        self.assertEqual(render.without_guidance(model(items))[0]["missing"], "resolution")
 
     def test_adapted_plugin_text_carries_its_attribution(self):
         for path in (".github/skills/analyzing-version-deltas.md", ".github/skills/writing-characterization-tests.md",
@@ -177,7 +219,7 @@ class Defaults(unittest.TestCase):
                            value="Bar 2.0.0: package deprecated (Legacy); replacement Baz [3.0.0, )", file="src/A/A.csproj"))
         files = render.render(model(items))
         self.assertEqual(len(render.unresolved(model(items))), 1)
-        self.assertIn("| `package-replacement-required` | `src/A/A.csproj:10` |", files[".github/platform-inputs/decision-sheet.md"])
+        self.assertIn("| Package replacement required | `src/A/A.csproj:10` |", files[".github/platform-inputs/decision-sheet.md"])
         instruction = files[".github/upgrades/skills/applying-package-replacement-publisher-suggested.md"]
         self.assertIn("Bar 2.0.0", instruction)                                         # the item that applies
         only_unresolved = model([items[-2]])
@@ -273,6 +315,91 @@ class PinnedInstrument(unittest.TestCase):
         self.assertIn("""--canary-find 'x == \\"0\\"'""", text)
 
 
+class SelfContained(unittest.TestCase):
+    """The engine reads only the branch: a generated file that points at the platform is refused, with nothing
+    written. Each violation is planted in an otherwise clean generation."""
+
+    PLANTED = {
+        "platform document": ["Only presence is recorded (docs/21 Part G).", "See 36-COPILOT-ENHANCED-CONVERSION Part D.",
+                              "As 29-ENTRY-POINT-AND-OUTBOUND-INVENTORIES.md says."],
+        "platform path": ["Edit backend/app/seed/data/engine_guidance.yaml.", "See third_party/code-modernization/NOTICE.",
+                          "Run app.engine.inputs again."],
+        "absolute local path": ["Copy it from D:\\Iris\\practice\\runs\\x.", "Read \\\\fileserver\\drop\\in.txt.",
+                                "Logs are in /home/operator/logs."],
+        "lifecycle step": ["Rerun item-detection first.", "As step 6 reported.", "The lifecycle step found it."],
+        "platform vocabulary": ["The catalog's default resolution.", "Not decided by the engagement.", "It is presumptive.",
+                                "One occurrence per file.", "See sensitive-config-key.", "Emitted as SENSITIVE_CONFIG_KEY.",
+                                "Found by discovery.", "A strong signal.", "This work item."],
+    }
+
+    def _with(self, sentence: str) -> dict:
+        items = model()["items"]
+        items[0]["guidance"] = sentence
+        return model(items)
+
+    def test_every_planted_violation_is_refused_and_named(self):
+        for check, sentences in self.PLANTED.items():
+            for sentence in sentences:
+                with self.subTest(sentence=sentence), self.assertRaises(inputs.NotSelfContained) as caught:
+                    inputs.build(self._with(sentence), None)
+                self.assertIn(check, {f["check"] for f in caught.exception.findings})
+                finding = next(f for f in caught.exception.findings if f["check"] == check)
+                self.assertEqual(finding["file"], ".github/upgrades/skills/applying-container-local-timezone.md")
+
+    def test_nothing_is_written_when_a_file_is_not_self_contained(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "out"
+            with self.assertRaises(inputs.NotSelfContained):
+                inputs.write(inputs.build(self._with("See docs/21 Part G."), None), out)
+            self.assertFalse(out.exists())
+
+    def test_a_clean_generation_passes_and_the_manifest_is_checked_too(self):
+        files = inputs.build(model(), None)
+        self.assertEqual(selfcontained.check(files, model()["vocabulary"]), [])
+        manifest = json.loads(files[inputs.MANIFEST])
+        self.assertEqual(set(manifest), {"generator", "source", "files"})   # no engagement, repository or module name
+
+    def test_what_is_allowed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "src" / "Catalog").mkdir(parents=True)
+            (root / "src" / "Catalog" / "appsettings.json").write_text(json.dumps({"Content": {"Path": "C:\\Data\\terms.pdf"}}),
+                                                                         encoding="utf-8")
+            vocabulary = model()["vocabulary"]
+            allowed = {
+                "a.md": "Apply `applying-sensitive-config-key` first.\n"           # a skill name: a file in the branch
+                        "metadata:\n  discovery: preload\n"                       # Copilot's skill format
+                        "The repository's own path `C:\\Data\\terms.pdf` moves to configuration.\n"
+                        "In `src/Catalog/appsettings.json:3` the setting moves.\n"  # the repository's own word
+                        "---\n\nAdapted from `agents/test-engineer.md` in Anthropic's `code-modernization` plugin\n"
+                        "(see docs/ and Part D of its own catalog).\n",            # the attribution paragraph
+            }
+            self.assertEqual(selfcontained.check(allowed, vocabulary, root), [])
+            refused = {"b.md": "Read `C:\\Other\\file.txt`.\nUpdate the `catalog` entry.\n"}
+            self.assertEqual({f["check"] for f in selfcontained.check(refused, vocabulary, root)},
+                             {"absolute local path", "platform vocabulary"})
+
+    def test_the_factory_guidance_is_self_contained_and_covers_whole_items(self):
+        import yaml
+        from app.items import baseline
+        from app.seed.seed_data import _load
+
+        guidance = yaml.safe_load(baseline.ENGINE_GUIDANCE_FILE.read_text(encoding="utf-8"))["items"]
+        authored = {i["id"]: {r["id"] for r in i["resolutions"]} for i in _load("catalog_items.yaml")["items"]}
+        ids = set(guidance) | {r for g in guidance.values() for r in g["resolutions"]}
+        texts = {f"{item}.md": g["guidance"] for item, g in guidance.items()}
+        texts |= {f"{item}/{res}.md": text for item, g in guidance.items() for res, text in g["resolutions"].items()}
+        vocabulary = {**model()["vocabulary"], "item_ids": sorted(ids), "resolution_ids": sorted(ids)}
+        self.assertEqual(selfcontained.check(texts, vocabulary), [])
+        for item, g in guidance.items():                                   # every resolution of an authored item
+            if item in authored:
+                self.assertEqual(set(g["resolutions"]), authored[item], item)
+
+    def test_the_static_templates_are_self_contained(self):
+        files = {p.name: p.read_text(encoding="utf-8") for p in render.TEMPLATES.rglob("*.md")}
+        self.assertEqual(selfcontained.check(files, model()["vocabulary"]), [])
+
+
 class NoSecretValue(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -346,7 +473,28 @@ class NoSecretValue(unittest.TestCase):
 
 
 class RealRepository(unittest.TestCase):
-    """The inputs generated from eShopOnWeb's own discovery contain none of its configuration's values."""
+    """The inputs generated from each experiment application's own discovery contain none of its configuration's
+    values and are self-contained."""
+
+    def test_experiment_applications_inputs_are_self_contained(self):
+        from app import models
+        from app.db import SessionLocal
+        from app.engine.inputs.collect import collect
+
+        db = SessionLocal()
+        self.addCleanup(db.close)
+        checked = 0
+        for slug in ("eshoponweb", "accountsapi-net10", "accountsapi-net8"):
+            repository = (db.query(models.Repository).filter_by(slug=slug).filter(models.Repository.deleted_at.is_(None))
+                          .order_by(models.Repository.created_at).first())
+            if repository is None or not Path(repository.local_path).is_dir():
+                continue
+            model_ = collect(db, repository)
+            files = inputs.build(model_, Path(repository.local_path))   # raises NotSelfContained on any finding
+            self.assertEqual(selfcontained.check(files, model_["vocabulary"], Path(repository.local_path)), [], slug)
+            checked += 1
+        if not checked:
+            self.skipTest("no experiment application is registered on this machine")
 
     def test_eshoponweb_inputs_hold_no_secret_value(self):
         from app import models

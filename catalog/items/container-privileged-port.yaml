@@ -11,6 +11,10 @@ detection:
     atLeast: []
     metadata: []
     none: []
+engine_guidance: |-
+  The Dockerfile or a manifest binds a port below 1024 (for example `EXPOSE 80`,
+  `ASPNETCORE_URLS=http://+:80` or `containerPort: 80`). OpenShift runs containers as a non-root
+  user, which cannot bind a port below 1024, so the application fails to start.
 excluded_roles:
 - DATABASE
 - LIBRARY
@@ -25,6 +29,10 @@ resolutions:
   derivations: []
   description: Keep the port and add the NET_BIND_SERVICE capability through an SCC that allows it.
   effort: medium
+  engine_guidance: |-
+    Keep the port. Add the `NET_BIND_SERVICE` capability to the container's `securityContext` in the
+    manifest, and report in the task's notes that the cluster owners must allow it through a
+    security context constraint. Change no code.
   id: net-bind-service-capability
   is_default: false
   linux_compatible: true
@@ -38,6 +46,12 @@ resolutions:
   derivations: []
   description: Set ASPNETCORE_HTTP_PORTS=8080 (or ASPNETCORE_URLS=http://+:8080) and EXPOSE 8080 in the image, containerPort 8080 in the manifests; the Service maps its port 80 to targetPort 8080 so callers see no change.
   effort: low
+  engine_guidance: |-
+    1. Make the application listen on 8080: set `ASPNETCORE_HTTP_PORTS=8080` (or
+       `ASPNETCORE_URLS=http://+:8080`) in the Dockerfile, and change `EXPOSE` to 8080.
+    2. If the image also exposes 443, remove it: on OpenShift, TLS is terminated by the route.
+    3. In manifests, set `containerPort: 8080`, and have the Service map port 80 to
+       `targetPort: 8080`, so callers see no change.
   id: unprivileged-port-8080
   is_default: true
   linux_compatible: true

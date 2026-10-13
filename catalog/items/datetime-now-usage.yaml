@@ -14,6 +14,10 @@ detection:
   occurrence_source:
     group_by: source_path
     signal: DATETIME_NOW_USAGE
+engine_guidance: |-
+  `DateTime.Now` and `DateTime.Today` return the host's local time. On the Windows servers that is
+  the site's time zone; in a Linux container it is UTC unless set, so timestamps, schedules and
+  date boundaries silently shift by the time-zone offset.
 excluded_roles: []
 id: datetime-now-usage
 name: DateTime.Now rather than UtcNow
@@ -25,6 +29,11 @@ resolutions:
   derivations: []
   description: Keep the code; set TZ in the container to the source servers' zone so Now means what it did.
   effort: low
+  engine_guidance: |-
+    Do not change the code. In the Dockerfile, make sure time-zone data (`tzdata`) is installed and
+    set the `TZ` environment variable from the deployment parameter named below, so local time means
+    what it did on the Windows servers. Before that, add a characterization test that pins the
+    current behaviour of each listed place (skill `writing-characterization-tests`).
   id: container-local-timezone
   is_default: true
   linux_compatible: true
@@ -38,6 +47,11 @@ resolutions:
   derivations: []
   description: Replace with DateTime.UtcNow (or an injected TimeProvider) and convert to local time only for display.
   effort: high
+  engine_guidance: |-
+    Add a characterization test for each listed place first (skill
+    `writing-characterization-tests`). Then use `DateTime.UtcNow` (or an injected `TimeProvider`)
+    wherever the value is stored, compared or calculated with, and convert to local time only where
+    it is displayed, in the display time zone named below.
   id: utc-at-boundaries
   is_default: false
   linux_compatible: true

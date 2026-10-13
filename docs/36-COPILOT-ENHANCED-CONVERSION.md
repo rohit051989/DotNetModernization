@@ -362,3 +362,51 @@ be compared with the one in use without touching it: `create --out <folder>` (th
 worktree, junction or commit), `calibrate --render-only --out <folder>`, and `report --out <folder>`. The engine
 inputs are reproduced the same way with `python -m app.engine.inputs generate --out <folder>`.
 
+## Part K — Engine-facing text, self-contained (2026-10-14)
+
+The experiment's first check found `applying-ocp4-secret-injection.md` quoting its catalog item's whole
+description into a Copilot instruction: a reference to `docs/21 Part G`, and notes written for catalog
+authors ("strong candidate for fully deterministic conversion", "conversion ordering resolves the
+overlap"). Copilot reads only the branch: a platform document is a reference to nothing, and an author's
+note is noise it may act on.
+
+**Two audiences, two fields.** Catalog items and resolutions carry `engine_guidance` beside their
+author-facing `description` (28-ITEM-AND-CONVERSION-MODEL Parts D and F). The item's says what the change
+is and why it matters on the target platform; the resolution's says what to do, in steps. Self-contained:
+no platform documents, lifecycle step names, catalog or signal vocabulary, or internal notes. Factory
+defaults are in `backend/app/seed/data/engine_guidance.yaml`, seeded through the never-overwrite path and
+exported with the catalog. Written for every item detected in the three experiment applications (19
+items, 42 resolutions); the file's header lists the 22 items still to write.
+
+**The generator uses only engine-facing text.** `collect` reads `engine_guidance` and names, never a
+description, target description or note; an item's description is parsed only for its ordering rules,
+which the renderer writes as prerequisites in its own words. An item without guidance is emitted from its
+resolution's guidance alone. A resolution without guidance cannot be applied: no instruction is written,
+and its places go to the decision sheet's "Unresolved", to be left unchanged. Both are listed, outside
+the branch: `generate` prints them and the runbook has a "Changes without engine-facing guidance" section.
+The generator's own wording avoids the platform's vocabulary too: "change" and "approach" rather than
+item and resolution, "default" rather than presumptive. The manifest names only the generator version,
+the commit and each file's hash.
+
+**The self-containedness check** (`app/engine/inputs/selfcontained.py`) runs in `build`, after the secret
+check and before anything is written, over every generated file including the manifest. It fails on:
+
+| Check | Fails on |
+|---|---|
+| platform document | `docs/...`, a spec file name, a `Part X` citation |
+| platform path | `backend/`, `steps/`, `catalog/`, `third_party/` ..., a platform module (`app.engine`), `RUNS_DIR` |
+| absolute local path | a Windows drive or UNC path, or a home or temp directory, unless the repository's own files hold it (the path the instruction is about) |
+| lifecycle step | a lifecycle step's name, "lifecycle step", "step 6" |
+| platform vocabulary | catalog, work item, resolution, occurrence, signal, discovery, engagement, presumptive, matrix entry, input generator, Modernization Platform; any catalog item or resolution id; any signal name |
+
+Item ids, resolution ids, signal names and step names come from the database (`vocabulary` in the
+collected model). Allowed: a skill's name (`applying-<id>`), Copilot's `discovery: preload|lazy` key, the
+attribution paragraph crediting the plugin a template was adapted from, and a word inside a backtick code
+span that the repository itself holds (eShopOnWeb's own `Catalog` names). The adapted templates' notices
+still credit the plugin and say they were modified, without naming platform documents or paths.
+
+Proof: `tests/test_engine_inputs.py` `SelfContained` plants each kind of violation and checks it is
+refused and named, with nothing written; `RealRepository` generates the three experiment applications
+clean. Over the inputs generated before this change, the check finds 413, 476 and 550 findings
+(AccountsApi.Net10, AccountsApi.Net8, eShopOnWeb); over the regenerated inputs, none.
+

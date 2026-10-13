@@ -1,15 +1,22 @@
-"""Render the engine inputs from the collected model (36-COPILOT-ENHANCED-CONVERSION Part D).
+"""Render the engine inputs from the collected model (36-COPILOT-ENHANCED-CONVERSION Parts D and K).
 
 A pure function of `collect()`'s model: no clock, no database, no file reads beyond the static
 templates, so the same discovery produces byte-identical files.
 
 | Output | Where |
 |---|---|
-| One custom upgrade instruction per detected item and its resolution | `.github/upgrades/skills/applying-<resolution>.md` |
+| One custom upgrade instruction per detected change and its chosen approach | `.github/upgrades/skills/applying-<resolution>.md` |
 | The adapted plugin agents | `.github/skills/*.md` |
 | Global instructions | `.github/copilot-instructions.md` |
 | Assessment addendum | `.github/platform-inputs/assessment-addendum.md`, merged into the engine's assessment.md |
 | Decision sheet | `.github/platform-inputs/decision-sheet.md` |
+
+**Written for the engine, which reads only the branch (Part K).** Of the catalog, only engine-facing guidance and
+names are used: an item's `engine_guidance` (what the change is and why), its resolution's `engine_guidance` (what
+to do). Author-facing descriptions never reach a generated file. An item without guidance is emitted from its
+resolution's guidance alone; a resolution without guidance cannot be applied, so its places are listed to leave
+unchanged. Both are listed (`without_guidance`). The wording here avoids the platform's own vocabulary: the
+self-containedness check (selfcontained.py) refuses any generated file that uses it.
 """
 import re
 from pathlib import Path
@@ -19,14 +26,29 @@ import yaml
 from app.engine import paths
 from app.engine.inputs.collect import SILENT_ITEMS
 
-GENERATOR_VERSION = "1.1.0"
+GENERATOR_VERSION = "1.2.0"
 TEMPLATES = Path(__file__).resolve().parent / "templates"
 ADDENDUM_START = "<!-- platform-assessment-addendum:start -->"
 ADDENDUM_END = "<!-- platform-assessment-addendum:end -->"
 MAX_LIST = 200
-
+NO_GUIDANCE = "no conversion guidance is written for this change yet"
 
 RESOLUTION_NEEDS = yaml.safe_load((Path(__file__).resolve().parent / "resolution_parameters.yaml").read_text(encoding="utf-8"))
+
+# dependency-assessment outcomes and verdicts, in the engine's words.
+PACKAGE_OUTCOME = {
+    "upgrade_safe": "upgrade, no code change", "upgrade_breaking": "upgrade, calling code changes",
+    "no_compatible_version": "no version supports the target", "framework_provided": "remove: the framework provides it",
+    "current": "already current", "unknown": "not determined",
+}
+RUNTIME_VERDICT = {
+    "supported": "supported", "supported_with_caveat": "supported, with a caveat", "unsupported": "not supported",
+    "unknown": "not established",
+}
+LINUX_VERDICT = {
+    "compatible": "works on Linux", "requires_change": "needs a change to work on Linux",
+    "incompatible": "does not work on Linux", "unknown": "not yet established on Linux: test the call from the container",
+}
 
 
 def _env_name(text: str) -> str:
@@ -44,8 +66,8 @@ def _occurrence_value(occ: dict) -> str:
 
 
 def plan_item(item: dict) -> dict:
-    """How the item's resolution applies: the places it applies to, the places it cannot (left unchanged, with
-    why), and the deployment parameters it needs — never a decision the engine has to stop for."""
+    """How the chosen approach applies: the places it applies to, the places it cannot (left unchanged, with why),
+    and the deployment parameters it needs — never a decision the engine has to stop for."""
     res = item["resolution"]
     needs = RESOLUTION_NEEDS.get(res["id"], {}) if res else {}
     apply, unresolved = [], []
@@ -53,8 +75,10 @@ def plan_item(item: dict) -> dict:
         value = _occurrence_value(occ)
         why = None
         if res is None:
-            why = "the item has no resolution in the catalog"
-        for rule in needs.get("cannot_apply", []):
+            why = "no approach is defined for this change"
+        elif not res.get("guidance"):
+            why = NO_GUIDANCE
+        for rule in needs.get("cannot_apply", []) if why is None else []:
             if "always" in rule:
                 why = rule["always"]
             elif re.search(rule["value_matches"], value or "", re.I):
@@ -77,23 +101,38 @@ def plan_item(item: dict) -> dict:
     return {"apply": apply, "unresolved": unresolved, "parameters": sorted(parameters.values(), key=lambda x: x["name"])}
 
 
+def without_guidance(model: dict) -> list[dict]:
+    """Detected changes missing engine-facing guidance, for the person preparing the inputs: {item, resolution,
+    missing}. `item`: emitted from the resolution's guidance alone. `resolution`: not emitted; its places are listed
+    to leave unchanged."""
+    out = []
+    for item in model["items"]:
+        res = item["resolution"]
+        if res is not None and not res.get("guidance"):
+            out.append({"item": item["id"], "resolution": res["id"], "missing": "resolution"})
+        elif not item.get("guidance"):
+            out.append({"item": item["id"], "resolution": res["id"] if res else None, "missing": "item"})
+    return out
+
+
 def deployment_parameters(model: dict) -> list[dict]:
-    """Every value to supply before deployment, across the work items: {name, kind, what, items, places}."""
+    """Every value to supply before deployment: {name, kind, what, changes, places}."""
     out: dict[str, dict] = {}
     for item in model["items"]:
         for p in plan_item(item)["parameters"]:
-            entry = out.setdefault(p["name"], {**p, "items": [], "places": []})
-            entry["items"] = sorted(set(entry["items"]) | {item["id"]})
+            entry = out.setdefault(p["name"], {**p, "changes": [], "places": []})
+            entry["changes"] = sorted(set(entry["changes"]) | {item["name"]})
             entry["places"] = sorted(set(entry["places"]) | set(p["places"]))
     return [out[k] for k in sorted(out)]
 
 
 def unresolved(model: dict) -> list[dict]:
-    """Every place a default resolution cannot apply: {item, resolution, place, value, why}. Left unchanged."""
+    """Every place the chosen approach cannot apply: {item, change, resolution, place, value, why}. Left unchanged."""
     out = []
     for item in model["items"]:
         for occ in plan_item(item)["unresolved"]:
-            out.append({"item": item["id"], "resolution": item["resolution"]["id"] if item["resolution"] else None,
+            out.append({"item": item["id"], "change": item["name"],
+                        "resolution": item["resolution"]["id"] if item["resolution"] else None,
                         "place": _site(occ, (occ["lines"] or [None])[0]).strip("`"), "value": occ.get("value"),
                         "why": occ["why"]})
     return out
@@ -115,42 +154,44 @@ def _site(occurrence: dict, line: dict | None = None) -> str:
 
 
 def _generated_note(model: dict) -> str:
-    repo = model["repository"]
-    return (f"> Generated by the Modernization Platform (input generator {GENERATOR_VERSION}) from discovery of "
-            f"`{repo['slug']}` at `{(repo['commit'] or 'unknown')[:12]}` for engagement `{model['engagement']['id']}`. "
-            f"Do not edit: change the source data and regenerate.")
+    return (f"> Generated for this repository at commit `{(model['repository']['commit'] or 'unknown')[:12]}`. "
+            "Do not edit this file.")
 
 
 def upgrade_options(model: dict) -> list[dict]:
-    """The answers at the engine's upgrade-options stage, with where each comes from. Used by the
-    decision sheet and by the operator runbook, identically for every arm."""
+    """The answers at the engine's upgrade-options stage, with where each comes from. Used by the decision sheet
+    and by the operator runbook, identically for every arm. `presumptive`: a default, not someone's decision."""
     eng = model["engagement"]
     frameworks = model["current_frameworks"]
     projects = [p for p in model["projects"] if p["framework"]]
     lift = eng["posture"] == "lift-and-shift"
     return [
         {"question": "Target framework", "answer": eng["target_framework"],
-         "source": "engagement target_framework", "presumptive": False},
+         "source": "the target framework of this upgrade", "presumptive": False},
         # Never all-at-once: one task per project in dependency order keeps every commit small, buildable and
         # attributable, which is what the verifier and the per-task commit strategy measure.
         {"question": "Upgrade strategy", "answer": "Bottom-up",
-         "source": f"platform default: {len(projects)} project(s) on {', '.join(frameworks) or 'no framework'}; "
+         "source": f"default: {len(projects)} project(s) on {', '.join(frameworks) or 'no framework'}; "
                    "leaf projects first, one task per project", "presumptive": True},
         {"question": "Project upgrade approach", "answer": "In-place" if lift else "Side-by-side",
-         "source": f"engagement posture {eng['posture']}", "presumptive": True},
+         "source": f"the {eng['posture']} approach", "presumptive": True},
         {"question": "Technology modernization (Entity Framework, dependency injection, logging, configuration)",
-         "answer": "None beyond what the work items require: keep the current technologies" if lift
-         else "As the work items require",
-         "source": f"engagement posture {eng['posture']}", "presumptive": True},
+         "answer": "None beyond what the instructions require: keep the current technologies" if lift
+         else "As the instructions require",
+         "source": f"the {eng['posture']} approach", "presumptive": True},
         {"question": "Package management (Central Package Management)", "answer": "Keep the current arrangement",
-         "source": "platform default: no package-management change is a work item", "presumptive": True},
+         "source": "default: no instruction changes how packages are managed", "presumptive": True},
         {"question": "Compatibility handling (unsupported APIs and packages)",
-         "answer": "As each work item's resolution says (decision sheet, work items)",
-         "source": "engagement decisions, or each item's default resolution where undecided", "presumptive": True},
+         "answer": "As each instruction says (decision sheet, Changes)",
+         "source": "the approach chosen for each change, or its default", "presumptive": True},
     ]
 
 
-# ---------------------------------------------------------------- per-item upgrade instructions
+def _status(chosen: bool) -> str:
+    return "chosen" if chosen else "default"
+
+
+# ---------------------------------------------------------------- per-change upgrade instructions
 
 def _prerequisites(item: dict, present: set[str], by_id: dict) -> list[str]:
     lines = []
@@ -172,17 +213,14 @@ def _prerequisites(item: dict, present: set[str], by_id: dict) -> list[str]:
 def _instruction(model: dict, item: dict, present: set[str], by_id: dict) -> str:
     res = item["resolution"]
     eng = model["engagement"]
-    status = ("DECIDED: the engagement's approved decision" if item["decided"] else
-              "PRESUMPTIVE: the engagement has not decided this item; this is the catalog's default resolution")
     name = skill_name(res["id"])
-    triggers = ", ".join(sorted({item["name"], res["name"], item["id"], res["id"]}))
     out = [
         "---",
         f"name: {name}",
         "description: >",
-        f"  {_md(item['name'])}: {_md(res['name'])}. Platform-generated custom upgrade instruction for this",
-        f"  repository, for the upgrade to {eng['target_framework']} and OpenShift readiness. Activates during",
-        f"  assessment, planning and execution of this upgrade, and for: {_md(triggers)}.",
+        f"  {_md(item['name'])}: {_md(res['name'])}. Custom upgrade instruction for this repository, for the upgrade",
+        f"  to {eng['target_framework']} and OpenShift readiness. Activates during assessment, planning and execution",
+        f"  of this upgrade, and for: {_md(item['name'])}; {_md(res['name'])}.",
         "metadata:",
         "  discovery: preload",
         "  traits: .NET | CSharp",
@@ -191,29 +229,17 @@ def _instruction(model: dict, item: dict, present: set[str], by_id: dict) -> str
         f"# {res['name']} — {item['name']}",
         "",
         _generated_note(model),
-        f"> Item `{item['id']}`, resolution `{res['id']}`. **{status}.**",
-        "",
-        "## Problem",
-        "",
-        item["problem"] or item["name"],
-        "",
-        "## Resolution",
-        "",
-        res["description"] or res["name"],
+        f"> {'Chosen for this repository' if item['decided'] else 'The default approach for this change'}: apply it "
+        "as written; do not stop to ask.",
     ]
-    if res.get("target"):
-        out += ["", f"Target state: {res['target']}."]
-    if res.get("notes"):
-        out += ["", f"Note: {res['notes']}"]
-    if item["alternatives"]:
-        out += ["", "Other resolutions in the catalog, **not** to be applied unless the engagement decides so: "
-                + "; ".join(f"`{a['id']}` ({a['name']})" for a in item["alternatives"]) + "."]
+    if item.get("guidance"):
+        out += ["", "## The change", "", item["guidance"].strip()]
+    out += ["", "## What to do", "", res["guidance"].strip()]
     prereq = _prerequisites(item, present, by_id)
-    out += ["", "## Prerequisites", ""] + (prereq or ["- None among this repository's work items."])
+    out += ["", "## Prerequisites", ""] + (prereq or ["- None among this repository's other instructions."])
 
     plan = plan_item(item)
-    out += ["", "## Steps", "",
-            "Apply exactly this transformation, and only at the places listed. For each line below:", ""]
+    out += ["", "## Places", "", "Apply what to do above at these places, and only there:", ""]
     count = 0
     for occ in plan["apply"]:
         for line in occ["lines"] or [None]:
@@ -227,40 +253,40 @@ def _instruction(model: dict, item: dict, present: set[str], by_id: dict) -> str
                 what.append(f"`{_md(occ['value'])}`")
             if line and line.get("member"):
                 what.append(f"in `{_md(line.get('type') or '')}.{_md(line['member'])}`".replace("`.", "`"))
-            found = " ".join(what) if what else f"this item ({item['name']})"
-            out.append(f"- If {_site(occ, line)} ({occ['project']}) still contains {found}, then: {_md(res['description']).rstrip('.')}"
-                       f"{' (call site is ambiguous: confirm before changing)' if (line or {}).get('certainty') == 'ambiguous' or occ['certainty'] == 'possible' else ''}.")
+            found = f": {' '.join(what)}" if what else ""
+            ambiguous = (line or {}).get("certainty") == "ambiguous" or occ["certainty"] == "possible"
+            out.append(f"- {_site(occ, line)} ({occ['project']}){found}"
+                       f"{' (this call site is ambiguous: confirm before changing)' if ambiguous else ''}")
     total = sum(max(1, len(o["lines"])) for o in plan["apply"])
     if total > count:
         out.append(f"- ... and {total - count} more of the same kind: find them by the same pattern.")
-    out += ["- If a listed place no longer contains it (already changed by an earlier task), change nothing there "
-            "and record it as not applicable.",
-            "- If you find the same pattern somewhere not listed, apply the same change there and record it as a gap."]
+    out += ["",
+            "If a listed place no longer contains it (an earlier task already changed it), change nothing there and "
+            "record it as not applicable. If you find the same pattern somewhere not listed, apply the same change "
+            "there and record it in the task's notes."]
 
     if plan["parameters"]:
         out += ["", "## Values this needs (deployment parameters)", "",
                 "Nobody has supplied these values, and you must not invent them. Make the code read each one by name "
                 "from configuration (environment variable, ConfigMap or Secret) and put only the name in any manifest "
-                "or settings file. They are listed for a person to supply before deployment.", "",
+                "or settings file. A person supplies them before deployment.", "",
                 "| Name | Kind | What | Where |", "|---|---|---|---|"]
         for p in plan["parameters"]:
             out.append(f"| `{p['name']}` | {p['kind']} | {_md(p['what'])} | {_md(', '.join(p['places']) or 'the application')} |")
     if plan["unresolved"]:
         out += ["", "## Leave unchanged", "",
-                "This resolution cannot apply at these places. Do not change them, and do not choose an alternative: "
-                "record each as unresolved in the task's progress notes.", ""]
+                "This approach cannot apply at these places. Do not change them, and do not choose another approach: "
+                "record each as left unchanged in the task's notes.", ""]
         for occ in plan["unresolved"]:
             out.append(f"- {_site(occ, (occ['lines'] or [None])[0])} `{_md(occ.get('value'))}`: {occ['why']}")
 
     if item["impact"]:
-        out += ["", "## Files this changes (impact analysis)", "", "| Action | File | Project | Certainty | Why |", "|---|---|---|---|---|"]
+        out += ["", "## Files this changes", "", "| Action | File | Project | Certainty |", "|---|---|---|---|"]
         for e in item["impact"][:MAX_LIST]:
             target = e["file"] or f"new: {e['proposed']}"
-            out.append(f"| {e['action']} | `{_md(target)}` | {_md(e['project'])} | {_md(e['certainty'])} | {_md('; '.join(e['reasons']))} |")
-        out += ["", "A change to a file not in this table needs a reason in the task's progress notes."]
+            out.append(f"| {e['action']} | `{_md(target)}` | {_md(e['project'])} | {_md(e['certainty'])} |")
+        out += ["", "A change to a file not in this table needs a reason in the task's notes."]
 
-    out += ["", "## Example", "",
-            "The catalog holds no before-and-after example for this resolution yet. Follow the steps literally."]
     out += ["", "## Done when", "",
             "- [ ] Every listed place is changed, or recorded as not applicable with a reason",
             "- [ ] The solution builds, from a build actually run",
@@ -270,20 +296,24 @@ def _instruction(model: dict, item: dict, present: set[str], by_id: dict) -> str
 
 # ---------------------------------------------------------------- addendum and decision sheet
 
-def addendum(model: dict) -> str:
-    eng, repo = model["engagement"], model["repository"]
-    out = [ADDENDUM_START, "", "# Platform assessment addendum", "", _generated_note(model), "",
-           "Findings from the Modernization Platform's deterministic discovery of this repository, which the "
-           "engine's own assessment cannot see. They are facts about this code, each with where it was found. "
-           "Plan for them; do not drop them.", ""]
+def _soap_security(s: dict) -> str:
+    return "; ".join(f"{b or 'unknown binding'}, {m or 'no'} security, {c or 'no'} client credential"
+                     for b, m, c in s["security"]) or "binding not determined"
 
-    out += ["## Work items", "", "| Item | Resolution | Status | Places | Files changed |", "|---|---|---|---|---|"]
+
+def addendum(model: dict) -> str:
+    out = [ADDENDUM_START, "", "# Platform assessment addendum", "", _generated_note(model), "",
+           "Findings from a deterministic scan of this repository that the upgrade tool's own assessment does not "
+           "see. They are facts about this code, each with where it was found. Plan for them; do not drop them.", ""]
+
+    out += ["## Changes required", "", "| Change | Approach | Instruction | Places | Files changed |", "|---|---|---|---|---|"]
     for item in model["items"]:
         res = item["resolution"]
-        out.append(f"| {_md(item['name'])} (`{item['id']}`) | {_md(res['name'] if res else 'none')} "
-                   f"(`{skill_name(res['id']) if res else '-'}`) | {'decided' if item['decided'] else 'presumptive'} | "
+        instruction = f"`{skill_name(res['id'])}`" if res is not None and res.get("guidance") else "none: leave unchanged"
+        out.append(f"| {_md(item['name'])} | {_md(res['name'] if res else 'none')} | {instruction} | "
                    f"{sum(max(1, len(o['lines'])) for o in item['occurrences'])} | {len(item['impact'])} |")
-    out += ["", "Each work item has a custom upgrade instruction under `.github/upgrades/skills/`, named in the table."]
+    out += ["", "Each change with an instruction has a custom upgrade instruction under `.github/upgrades/skills/`, "
+            "named in the table."]
 
     out += ["", "## Framework deltas", ""]
     if model["deltas"]:
@@ -297,7 +327,7 @@ def addendum(model: dict) -> str:
                 out += ["", f"Proven fix: {d['fix']}"]
             out.append("")
     else:
-        out += ["None of the platform's known framework deltas for this version pair is present.", ""]
+        out += ["No known breaking change between these .NET versions applies to this repository.", ""]
 
     out += ["## Behavioural deltas on Linux", "",
             "These compile and run but give a different result in a Linux container. Write a characterization "
@@ -313,10 +343,14 @@ def addendum(model: dict) -> str:
 
     out += ["", "## Windows-only assumptions", ""]
     if model["outbound"]:
-        out += ["| Mechanism | Host | Linux verdict | Why | Configured in |", "|---|---|---|---|---|"]
+        out += ["| Kind | Host | On Linux | Why | Configured in |", "|---|---|---|---|---|"]
         rows: dict[tuple, set] = {}
+        soap_hosts = {s["host"]: s for s in model["soap"]}
         for o in model["outbound"]:
-            key = (o["mechanism"], o["host"] or "unresolved", o["linux"], "; ".join(o["reasons"]))
+            # A SOAP call's reasons are the support tables' bookkeeping: state its binding instead.
+            why = (_soap_security(soap_hosts[o["host"]]) if o["mechanism"] == "soap_client" and o["host"] in soap_hosts
+                   else "; ".join(o["reasons"]))
+            key = (o["mechanism"].replace("_", " "), o["host"] or "unresolved", LINUX_VERDICT.get(o["linux"], o["linux"]), why)
             rows.setdefault(key, set()).update(b["file"] for b in o["bindings"] if b["file"])
         for (mechanism, host, linux, why), files in sorted(rows.items()):
             where = ", ".join(f"`{f}`" for f in sorted(files)) or "-"
@@ -338,21 +372,22 @@ def addendum(model: dict) -> str:
 
     out += ["", "## SOAP backends", ""]
     if model["soap"]:
-        out += ["| Host | Runtime verdict | Why |", "|---|---|---|"]
+        out += ["| Host | Binding and security | .NET WCF client on the target | On Linux |", "|---|---|---|---|"]
         for s in model["soap"]:
-            out.append(f"| {_md(s['host'] or 'unresolved')} | {_md(s['runtime'])} | {_md('; '.join(s['reasons']))} |")
-        unconfirmed = [s for s in model["soap"] if s["runtime"] and "unconfirmed" in s["runtime"]]
-        out += ["", f"Unconfirmed matrix entries: {len(unconfirmed)}."]
+            out.append(f"| {_md(s['host'] or 'unresolved')} | {_md(_soap_security(s))} | "
+                       f"{_md(RUNTIME_VERDICT.get(s['runtime'], s['runtime']))} | {_md(LINUX_VERDICT.get(s['linux'], s['linux']))} |")
+        out += ["", "Keep each client's binding, security mode and credential exactly as configured."]
     else:
-        out.append("This repository calls no SOAP backend. Unconfirmed matrix entries: none.")
+        out.append("This repository calls no SOAP backend.")
 
     out += ["", "## Package upgrades and their dependencies", ""]
     if model["packages"]:
-        out += ["Recommended versions are the latest supporting the target framework, from the client's feeds first. "
+        out += ["Recommended versions are the latest supporting the target framework, from the organisation's feeds first. "
                 "\"Before\" means bump on the current framework, before the retarget; \"after\" means after it.", "",
-                "| Package | From | To | Outcome | Retarget | Projects |", "|---|---|---|---|---|---|"]
+                "| Package | From | To | Change | Retarget | Projects |", "|---|---|---|---|---|---|"]
         for p in model["packages"]:
-            out.append(f"| {p['package']} | {p['from']} | {p['to']} | {p['outcome']} | {p['retarget']} | {len(p['projects'])} |")
+            out.append(f"| {p['package']} | {p['from']} | {p['to']} | {PACKAGE_OUTCOME.get(p['outcome'], p['outcome'])} | "
+                       f"{p['retarget']} | {len(p['projects'])} |")
         if model["couplings"]["together"]:
             out += ["", "Packages that only resolve **together** (one task, one commit):", ""]
             out += [f"- {a} + {b}: {why}" for a, b, why in model["couplings"]["together"]]
@@ -377,46 +412,49 @@ def addendum(model: dict) -> str:
 def decision_sheet(model: dict) -> str:
     eng = model["engagement"]
     out = ["# Decision sheet", "", _generated_note(model), "",
-           "The operator's answers at the engine's upgrade-options stage, and the engagement's decision for each "
-           "work item. **Presumptive** means the engagement has not decided it: the platform's or the catalog's "
-           "default is used and labelled as such.", "",
-           f"Engagement `{eng['id']}`: target {eng['target_framework']} on {eng['target_platform'] or 'an unrecorded platform'}, "
-           f"posture {eng['posture']}.", "", "## Upgrade options", "",
+           "The answers to give at the upgrade tool's upgrade-options stage, and the approach for each change. "
+           "**Default** means nobody has chosen: the default approach is used and marked as such.", "",
+           f"Target: {eng['target_framework']} on {eng['target_platform'] or 'an unrecorded platform'}; "
+           f"approach: {eng['posture']}.", "", "## Upgrade options", "",
            "| Question | Answer | Source | Status |", "|---|---|---|---|"]
     for o in upgrade_options(model):
-        out.append(f"| {_md(o['question'])} | {_md(o['answer'])} | {_md(o['source'])} | {'presumptive' if o['presumptive'] else 'decided'} |")
-    out += ["", "## Work items", "", "| Item | Resolution | Status | Alternatives |", "|---|---|---|---|"]
+        out.append(f"| {_md(o['question'])} | {_md(o['answer'])} | {_md(o['source'])} | {_status(not o['presumptive'])} |")
+    out += ["", "## Changes", "", "| Change | Approach | Status | Other approaches |", "|---|---|---|---|"]
     for item in model["items"]:
         res = item["resolution"]
-        out.append(f"| {_md(item['name'])} (`{item['id']}`) | {_md(res['name'] if res else 'no resolution')} | "
-                   f"{'decided' if item['decided'] else 'presumptive'} | "
+        out.append(f"| {_md(item['name'])} | {_md(res['name'] if res else 'none defined')} | {_status(item['decided'])} | "
                    f"{_md(', '.join(a['name'] for a in item['alternatives']))} |")
     out += ["", "## Ordering", ""]
-    rules = [(i, r) for i in model["items"] for r in i["ordering"]]
-    present = {i["id"] for i in model["items"]}
-    shown = [f"- `{i['id']}` runs {r['relation'] if r['relation'] != 'together' else 'together with'} `{r['item']}`"
-             for i, r in rules if r["item"] in present]
-    out += shown or ["- No ordering constraint between this repository's work items."]
+    by_id = {i["id"]: i for i in model["items"]}
+    shown = []
+    for i in model["items"]:
+        for r in i["ordering"]:
+            other = by_id.get(r["item"])
+            if other is None or i["resolution"] is None or other["resolution"] is None:
+                continue
+            relation = {"before": "before", "after": "after"}.get(r["relation"], "together with")
+            shown.append(f"- `{skill_name(i['resolution']['id'])}` runs {relation} `{skill_name(other['resolution']['id'])}`")
+    out += shown or ["- No ordering constraint between this repository's changes."]
 
     out += ["", "## To supply before deployment", "",
-            "Values a default resolution needs that nobody has supplied. The conversion references each by name and "
+            "Values a default approach needs that nobody has supplied. The conversion references each by name and "
             "never contains a value; a person supplies them in the deployment (ConfigMap, environment or Secret).", ""]
     params = deployment_parameters(model)
     if params:
         out += ["| Name | Kind | What | For | Where |", "|---|---|---|---|---|"]
         for p in params:
-            out.append(f"| `{p['name']}` | {p['kind']} | {_md(p['what'])} | {_md(', '.join(p['items']))} | "
+            out.append(f"| `{p['name']}` | {p['kind']} | {_md(p['what'])} | {_md(', '.join(p['changes']))} | "
                        f"{_md(', '.join(p['places']) or 'the application')} |")
     else:
         out.append("None.")
     out += ["", "## Unresolved", "",
-            "Places where the default resolution cannot apply. They are left unchanged by the conversion and need a "
-            "decision afterwards.", ""]
+            "Places where the approach cannot apply. They are left unchanged by the conversion and need a decision "
+            "afterwards.", ""]
     left = unresolved(model)
     if left:
-        out += ["| Item | Place | Value | Why |", "|---|---|---|---|"]
+        out += ["| Change | Place | Value | Why |", "|---|---|---|---|"]
         for u in left:
-            out.append(f"| `{u['item']}` | `{_md(u['place'])}` | {_md(u['value'])} | {_md(u['why'])} |")
+            out.append(f"| {_md(u['change'])} | `{_md(u['place'])}` | {_md(u['value'])} | {_md(u['why'])} |")
     else:
         out.append("None.")
     out.append("")
@@ -429,8 +467,8 @@ def render(model: dict) -> dict[str, str]:
     by_id = {i["id"]: i for i in model["items"]}
     present = set(by_id)
     for item in model["items"]:
-        if item["resolution"] is None or not plan_item(item)["apply"]:
-            continue                # nothing to change: listed as unresolved in the decision sheet
+        if item["resolution"] is None or not item["resolution"].get("guidance") or not plan_item(item)["apply"]:
+            continue                # nothing to apply: listed as unresolved in the decision sheet
         files[f"{paths.UPGRADE_SKILLS_DIR}/{skill_name(item['resolution']['id'])}.md"] = _instruction(model, item, present, by_id)
     for template in sorted((TEMPLATES / "skills").glob("*.md")):
         files[f"{paths.SKILLS_DIR}/{template.name}"] = template.read_text(encoding="utf-8")
@@ -438,4 +476,3 @@ def render(model: dict) -> dict[str, str]:
     files[f"{paths.PLATFORM_INPUTS_DIR}/assessment-addendum.md"] = addendum(model)
     files[f"{paths.PLATFORM_INPUTS_DIR}/decision-sheet.md"] = decision_sheet(model)
     return {k: v.replace("\r\n", "\n") for k, v in sorted(files.items())}
-

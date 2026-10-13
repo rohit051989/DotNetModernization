@@ -21,6 +21,9 @@ detection:
     - PACKAGE_DEPRECATED
     group_by: source_path_and_value
     signal: PACKAGE_NO_COMPATIBLE_VERSION
+engine_guidance: |-
+  A NuGet package the project references has no version that supports the target framework, or
+  its publisher has retired it. It has to be replaced, not upgraded.
 excluded_roles: []
 id: package-replacement-required
 name: Package needs replacing
@@ -32,6 +35,9 @@ resolutions:
   derivations: []
   description: Choose a different maintained library that supports the target framework.
   effort: high
+  engine_guidance: |-
+    Replace the package with a maintained library that supports the target framework and provides
+    the same capability, and change the calling code to its API.
   id: package-replacement-alternative
   impact_rules:
   - action: update
@@ -56,6 +62,9 @@ resolutions:
   derivations: []
   description: 'Drop the package where the target framework provides the capability itself: OWIN middleware, the compiler packages, System.Web shims.'
   effort: medium
+  engine_guidance: |-
+    Remove the package and use the capability the target framework provides itself, changing the
+    calling code to the framework's API.
   id: package-replacement-framework-builtin
   impact_rules:
   - action: update
@@ -80,6 +89,11 @@ resolutions:
   derivations: []
   description: Move to the replacement package the publisher names in the deprecation. Not available where none is named.
   effort: medium
+  engine_guidance: |-
+    Replace the package with the replacement its publisher names (shown with each place below), at
+    a version that supports the target framework, and change the calling code to the replacement's
+    API. Where no replacement is named, leave the reference unchanged and record it in the task's
+    notes.
   id: package-replacement-publisher-suggested
   impact_rules:
   - action: update
@@ -104,6 +118,9 @@ resolutions:
   derivations: []
   description: Keep the package; the application stays on .NET Framework on Windows.
   effort: low
+  engine_guidance: |-
+    Leave the package and the project's target framework unchanged: this project stays on .NET
+    Framework on Windows.
   id: package-replacement-remain-windows-hosted
   is_default: false
   linux_compatible: false

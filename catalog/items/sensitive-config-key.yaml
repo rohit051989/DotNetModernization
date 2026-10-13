@@ -16,6 +16,10 @@ detection:
   occurrence_source:
     group_by: source_path_and_value
     signal: SENSITIVE_CONFIG_KEY
+engine_guidance: |-
+  A configuration file holds a secret value (a password, token, client secret, API key or similar)
+  under the key shown. On OpenShift, secrets come from Secrets supplied at deployment, never from
+  files built into the image or kept in the repository.
 excluded_roles:
 - TEST
 id: sensitive-config-key
@@ -28,6 +32,10 @@ resolutions:
   derivations: []
   description: Resolve the value from the engagement's secret store (Vault, via Agent injection or the External Secrets operator) instead of a platform Secret.
   effort: medium
+  engine_guidance: |-
+    Remove the secret value from the configuration files and read it at run time from the external
+    secret store (for example HashiCorp Vault through its agent, or the External Secrets operator),
+    under the same configuration key. Never write a secret value anywhere.
   id: external-secret-store
   is_default: false
   linux_compatible: true
@@ -41,6 +49,14 @@ resolutions:
   derivations: []
   description: Remove the value from the file; supply it from an OCP4 Secret as an environment variable or mounted file, bound through IConfiguration under the same key.
   effort: low
+  engine_guidance: |-
+    1. Remove the secret value from every configuration file in the repository: leave the key out,
+       or empty.
+    2. Keep the code reading the setting through `IConfiguration` under the same key; do not rename
+       it.
+    3. The value is supplied at deployment from an OpenShift Secret, as an environment variable
+       named after the key with `:` written as `__` (for example `Cache__Redis__Password`). The
+       names are listed below. Never write a secret value anywhere.
   id: ocp4-secret-injection
   is_default: true
   linux_compatible: true

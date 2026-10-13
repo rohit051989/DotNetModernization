@@ -26,8 +26,12 @@ content: the seed and readiness maintain them; they are not edits.
 """
 
 import datetime
+import functools
 import hashlib
 import json
+from pathlib import Path
+
+import yaml
 
 from sqlalchemy.orm import Session
 
@@ -37,9 +41,10 @@ from app import models
 # seed writes. "deleted" is whether the row is soft-deleted (deleted_at set).
 CONTENT_FIELDS: dict[type, tuple[str, ...]] = {
     models.CatalogItem: ("name", "description", "scope", "category", "detection", "excluded_roles", "owner_team", "status",
-                         "deleted"),
+                         "deleted", "engine_guidance"),
     models.ItemResolution: ("item_id", "name", "description", "target_description", "consumer_impact", "effort", "is_default",
-                            "linux_compatible", "container_ready", "notes", "status", "deleted", "impact_rules"),
+                            "linux_compatible", "container_ready", "notes", "status", "deleted", "impact_rules",
+                            "engine_guidance"),
     models.ResolutionDerivation: ("item_id", "action", "dependent_resolution_id", "applies_to", "reason", "deleted"),
 }
 
@@ -48,8 +53,26 @@ CONTENT_FIELDS: dict[type, tuple[str, ...]] = {
 # so every row without it keeps its baseline and exports unchanged. A seed or
 # import may omit it; omitted means empty.
 OPTIONAL_FIELDS: dict[type, dict[str, object]] = {
-    models.ItemResolution: {"impact_rules": []},   # 33-IMPACT-ANALYSIS Part D
+    models.CatalogItem: {"engine_guidance": None},                            # 36-COPILOT-ENHANCED-CONVERSION Part K
+    models.ItemResolution: {"impact_rules": [], "engine_guidance": None},   # 33-IMPACT-ANALYSIS Part D; 36 Part K
 }
+
+ENGINE_GUIDANCE_FILE = Path(__file__).resolve().parents[1] / "seed" / "data" / "engine_guidance.yaml"
+
+
+@functools.cache
+def _engine_guidance() -> dict:
+    return yaml.safe_load(ENGINE_GUIDANCE_FILE.read_text(encoding="utf-8"))["items"]
+
+
+def with_engine_guidance(model: type, row_id: str, desired: dict, item_id: str | None = None) -> dict:
+    """A factory default with its engine-facing guidance from engine_guidance.yaml, when one is written. For the
+    factory seeds only (authored items, migrated items): an import carries its own."""
+    if model is models.CatalogItem:
+        text = (_engine_guidance().get(row_id) or {}).get("guidance")
+    else:
+        text = ((_engine_guidance().get(item_id or desired["item_id"]) or {}).get("resolutions") or {}).get(row_id)
+    return {**desired, "engine_guidance": text.strip() if text else None}
 
 TABLES = {models.CatalogItem: "catalog_items", models.ItemResolution: "item_resolutions",
           models.ResolutionDerivation: "resolution_derivations"}

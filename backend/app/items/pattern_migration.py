@@ -357,7 +357,9 @@ def migrate_catalog(db: Session, report: dict | None = None) -> tuple[dict, list
         # Same write-time validation as the API. Application scope, so this
         # also proves no occurrence_source slipped in.
         item, outcome = baseline.seed_row(db, models.CatalogItem, {"id": pattern_id},
-                                          migrated_item_content(pattern, category, registered), report)
+                                          baseline.with_engine_guidance(models.CatalogItem, pattern_id,
+                                                                        migrated_item_content(pattern, category, registered)),
+                                          report)
         if outcome == "updated" and before != (item.detection, item.scope):
             item.version += 1
         db.flush()
@@ -366,7 +368,8 @@ def migrate_catalog(db: Session, report: dict | None = None) -> tuple[dict, list
             inserted.append({"id": item.id, "state": item.state})
 
     for resolution_id, content in migrated_resolution_contents(db):
-        baseline.seed_row(db, models.ItemResolution, {"id": resolution_id}, content, report)
+        baseline.seed_row(db, models.ItemResolution, {"id": resolution_id},
+                          baseline.with_engine_guidance(models.ItemResolution, resolution_id, content), report)
     db.flush()
     return report, inserted
 

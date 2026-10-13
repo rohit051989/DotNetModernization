@@ -9,9 +9,14 @@ instruction per detected item and its resolution, the adapted plugin skills, the
 the assessment addendum and the decision sheet, plus `.github/platform-inputs/inputs-manifest.json`
 with a sha256 per file. Generated, never hand-edited: change the source data and regenerate.
 
-Nothing is written unless the secret check passes (app.engine.inputs.secrets): no generated file may
-look like it holds a secret, and none may contain any value from the repository's own configuration
-that the step 5 rules treat as secret.
+Nothing is written unless two checks pass. The secret check (app.engine.inputs.secrets): no generated file may
+look like it holds a secret, and none may contain any value from the repository's own configuration that the step 5
+rules treat as secret. The self-containedness check (app.engine.inputs.selfcontained, Part K): no generated file may
+refer to a platform document, a platform or absolute local path, a lifecycle step or the platform's vocabulary,
+because the engine reads only the branch.
+
+A detected change without engine-facing guidance is printed by `generate` and listed in the experiment's runbook
+(`render.without_guidance`), never in the branch: the list names the platform's own ids.
 
 `merge-addendum` puts the addendum into the engine's own `assessment.md` (after the engine writes it,
 before planning), between markers, replacing an earlier merge.
@@ -23,7 +28,7 @@ import sys
 from pathlib import Path
 
 from app.engine import paths
-from app.engine.inputs import secrets
+from app.engine.inputs import secrets, selfcontained
 from app.engine.inputs import render as rendering
 from app.engine.inputs.render import ADDENDUM_END, ADDENDUM_START, GENERATOR_VERSION
 
@@ -36,22 +41,34 @@ class SecretFound(Exception):
         super().__init__("; ".join(f"{f['file']}: {f['check']} ({f['detail']})" for f in findings[:10]))
 
 
+class NotSelfContained(Exception):
+    def __init__(self, findings: list[dict]):
+        self.findings = findings
+        super().__init__("; ".join(f"{f['file']}:{f['line']}: {f['check']} ({f['match']})" for f in findings[:20])
+                         + (f"; and {len(findings) - 20} more" if len(findings) > 20 else ""))
+
+
 def manifest(model: dict, files: dict[str, str]) -> str:
+    """What was generated and from which commit, with a sha256 per file. It is in the branch too, so it carries no
+    platform name or id: which engagement and repository it belongs to is where the branch lives."""
     return json.dumps({
-        "generator": {"name": "app.engine.inputs", "version": GENERATOR_VERSION},
-        "source": {"engagement": model["engagement"]["id"], "repository": model["repository"]["slug"],
-                   "commit": model["repository"]["commit"]},
+        "generator": {"version": GENERATOR_VERSION},
+        "source": {"commit": model["repository"]["commit"]},
         "files": [{"path": p, "sha256": hashlib.sha256(t.encode("utf-8")).hexdigest()} for p, t in sorted(files.items())],
     }, indent=2, sort_keys=True) + "\n"
 
 
 def build(model: dict, repository_root: Path | None) -> dict[str, str]:
-    """{path: text} for every input including the manifest. Raises SecretFound."""
+    """{path: text} for every input including the manifest. Raises SecretFound or NotSelfContained; either way
+    nothing has been written."""
     files = rendering.render(model)
     findings = secrets.check(files, repository_root)
     if findings:
         raise SecretFound(findings)
     files[MANIFEST] = manifest(model, files)
+    loose = selfcontained.check(files, model.get("vocabulary"), repository_root)
+    if loose:
+        raise NotSelfContained(loose)
     return files
 
 
@@ -62,14 +79,18 @@ def write(files: dict[str, str], out: Path) -> None:
         target.write_text(text, encoding="utf-8", newline="\n")
 
 
-def generate(db, engagement_id: str, slug: str, out: Path) -> dict[str, str]:
+def generate(db, engagement_id: str, slug: str, out: Path, missing: list | None = None) -> dict[str, str]:
+    """Writes the inputs into `out`. `missing`, when given, receives the changes without engine-facing guidance."""
     from app import models
     from app.engine.inputs.collect import collect
 
     repository = (db.query(models.Repository).filter_by(engagement_id=engagement_id, slug=slug)
                   .filter(models.Repository.deleted_at.is_(None)).one())
-    files = build(collect(db, repository), Path(repository.local_path))
+    model = collect(db, repository)
+    files = build(model, Path(repository.local_path))
     write(files, out)
+    if missing is not None:
+        missing.extend(rendering.without_guidance(model))
     return files
 
 
@@ -118,16 +139,22 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "generate":
         from app.db import SessionLocal
         db = SessionLocal()
+        missing: list[dict] = []
         try:
-            files = generate(db, args.engagement, args.repository, args.out)
+            files = generate(db, args.engagement, args.repository, args.out, missing)
         except SecretFound as err:
             print(f"Refused: a generated file would contain a secret value. Nothing was written. {err}", file=sys.stderr)
             return 1
+        except NotSelfContained as err:
+            print(f"Refused: a generated file is not self-contained. Nothing was written. {err}", file=sys.stderr)
+            return 1
         finally:
             db.close()
-        print(f"{len(files)} files written to {args.out}; no secret value found")
+        print(f"{len(files)} files written to {args.out}; no secret value found; every file self-contained")
         for rel in files:
             print(f"  {rel}")
+        for m in missing:
+            print(f"  without engine-facing guidance ({m['missing']}): {m['item']} / {m['resolution']}")
         return 0
     if args.command == "merge-addendum":
         try:

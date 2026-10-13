@@ -16,6 +16,10 @@ detection:
   occurrence_source:
     group_by: source_path
     signal: WINDOWS_PATH_LITERAL
+engine_guidance: |-
+  A Windows path (one that starts with a drive letter, or a UNC path to a network share) written
+  into source code or a configuration value. These paths do not exist in a Linux container, so file
+  access fails at run time.
 excluded_roles: []
 id: hardcoded-windows-path
 name: Hardcoded Windows path literal
@@ -27,6 +31,11 @@ resolutions:
   derivations: []
   description: Replace the literal with a configuration key; the environment supplies a Linux path (ConfigMap or env var).
   effort: medium
+  engine_guidance: |-
+    Replace each literal path with a configuration setting read through `IConfiguration` or
+    options, with the same meaning. Do not write a Linux path: the value is supplied at deployment
+    under the parameter named below. In configuration files, remove the Windows path value rather
+    than replacing it with another literal.
   id: externalize-path-setting
   is_default: true
   linux_compatible: true
@@ -40,6 +49,9 @@ resolutions:
   derivations: []
   description: Rewrite the literal to a fixed path under a volume mounted into the pod.
   effort: low
+  engine_guidance: |-
+    Replace each Windows path with the equivalent path under a volume mounted into the container
+    (for example `/mnt/data/...`), and add that volume and its mount to the deployment manifest.
   id: rewrite-linux-mount-path
   is_default: false
   linux_compatible: true

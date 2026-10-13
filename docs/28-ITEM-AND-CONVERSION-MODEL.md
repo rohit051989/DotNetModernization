@@ -212,7 +212,8 @@ Client-agnostic. One kind of item: a thing that needs work.
 |---|---|---|
 | `id` | `TEXT` PK | Slug, e.g. `serilog-file-sink` |
 | `name` | `TEXT` NOT NULL | |
-| `description` | `TEXT` | |
+| `description` | `TEXT` | For catalog authors and reviewers; never generated into a repository |
+| `engine_guidance` | `TEXT` | For a conversion engine: what the change is and why it matters on the target (36-COPILOT-ENHANCED-CONVERSION Part K). Null: none written yet |
 | `scope` | `TEXT` NOT NULL | CHECK IN (`application`, `occurrence`) |
 | `category` | `TEXT` NOT NULL | `hosting`, `logging`, `configuration`, `security`, `data-access`, `integration`, `packaging`, `dependencies`, `framework` |
 | `detection` | `JSONB` NOT NULL | Part D |
@@ -415,6 +416,13 @@ The menu. Client-agnostic, grows across engagements.
 `catalog_items.yaml`, seeded through the never-overwrite path and exported; empty means the
 default rule (the work item's own evidence, `update`). Optional in the baseline: an empty
 list is left out of the content hash and the export.
+
+`engine_guidance` TEXT (null when none is written): what to do, in steps, for a conversion
+engine (36-COPILOT-ENHANCED-CONVERSION Part K). `description`, `target_description` and `notes`
+are for catalog authors. Factory defaults in `backend/app/seed/data/engine_guidance.yaml`, for
+the item and its resolutions together; seeded through the never-overwrite path and exported,
+optional in the baseline like `impact_rules`. Editable through the API; a write that omits it
+leaves it unchanged.
 
 Unique on `(item_id, name)`. **Exactly one** `is_default` per active item with any live,
 active resolution, guaranteed by the database, not just by the API: at most one by

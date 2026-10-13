@@ -18,6 +18,9 @@ detection:
   occurrence_source:
     group_by: source_path
     signal: SERILOG_FILE_SINK_CONFIG
+engine_guidance: |-
+  Serilog writes logs to a file on a Windows path. In a container that path does not exist, and
+  logs belong on standard output, where OpenShift collects them.
 excluded_roles: []
 id: serilog-file-sink
 name: Serilog file sink writing to a Windows path
@@ -29,6 +32,10 @@ resolutions:
   derivations: []
   description: Remove the file sink; keep the console sink with CompactJsonFormatter for EFK.
   effort: low
+  engine_guidance: |-
+    Remove the Serilog `File` sink from code and configuration, and keep (or add) the `Console` sink
+    with `CompactJsonFormatter`, so every log event goes to standard output as JSON. Remove the
+    `Serilog.Sinks.File` package if nothing else uses it.
   id: console-json-only
   is_default: true
   linux_compatible: true
@@ -42,6 +49,9 @@ resolutions:
   derivations: []
   description: Replace the file sink with an OpenTelemetry log exporter.
   effort: medium
+  engine_guidance: |-
+    Replace the Serilog `File` sink with the OpenTelemetry sink (`Serilog.Sinks.OpenTelemetry`),
+    sending logs to the collector endpoint supplied at deployment; never write the endpoint value.
   id: otlp-exporter
   is_default: false
   linux_compatible: true

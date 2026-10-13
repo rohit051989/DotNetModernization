@@ -311,7 +311,8 @@ def import_files(db: Session, files: dict[str, str]) -> dict:
     report["mode"] = "bootstrap (empty catalog)" if db.query(models.CatalogItem).first() is None else "merge (seed_row)"
     item_fields = baseline.CONTENT_FIELDS[models.CatalogItem]
     for document in documents:
-        values = {field: document[field] for field in item_fields}
+        # Optional fields (engine_guidance) are absent when empty.
+        values = {field: document[field] for field in item_fields if field in document}
         values["detection"], _warnings = validate_detection(values["scope"], values["detection"], registered)
         existing = db.get(models.CatalogItem, document["id"])
         before = (existing.detection, existing.scope) if existing is not None else None
@@ -325,7 +326,7 @@ def import_files(db: Session, files: dict[str, str]) -> dict:
     resolution_fields = [f for f in baseline.CONTENT_FIELDS[models.ItemResolution] if f != "item_id"]
     for document in documents:
         for resolution in document.get("resolutions", []):
-            # Optional fields (impact_rules) are absent when empty.
+            # Optional fields (impact_rules, engine_guidance) are absent when empty.
             values = {"item_id": document["id"], **{field: resolution[field] for field in resolution_fields if field in resolution}}
             impact_rules.checked(values.get("impact_rules"), f"{document['id']}.yaml resolution {resolution['id']}")
             baseline.seed_row(db, models.ItemResolution, {"id": resolution["id"]}, _deleted(values, resolution), report)

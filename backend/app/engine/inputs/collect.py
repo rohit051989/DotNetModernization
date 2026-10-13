@@ -2,7 +2,10 @@
 Part D). One JSON-serialisable model, sorted, so rendering is a pure function of it and two runs over the
 same data produce the same files.
 
-Only what discovery stored is read. Discovery already follows the secrets rules (29-ENTRY-POINT-AND-OUTBOUND-
+Only what discovery stored is read. Of the catalog, only engine-facing text is read: each item's and resolution's
+`engine_guidance` (36-COPILOT-ENHANCED-CONVERSION Part K), and names. Author-facing descriptions, target descriptions
+and notes are never read here, so they cannot reach a generated file; an item's description is parsed only for its
+ordering rules, which become prerequisites written by the renderer. Discovery already follows the secrets rules (29-ENTRY-POINT-AND-OUTBOUND-
 INVENTORIES C5, 21-APPLICATION-FINGERPRINTING Part G): a connection string is a name, a sensitive key is a
 key path. Nothing here opens a configuration file; the generator's secret check reads them only to prove
 their values did not leak (app.engine.inputs.secrets).
@@ -36,11 +39,6 @@ def _ordering(description: str | None) -> list[dict]:
             rules.append({"relation": {"BEFORE": "before", "AFTER": "after"}.get(relation.upper(), "together"),
                           "item": other})
     return rules
-
-
-def _problem(description: str | None) -> str:
-    """The item's description without its ordering paragraph, which becomes prerequisites."""
-    return "\n".join(p for p in (description or "").split("\n") if not p.lower().startswith("conversion ordering")).strip()
 
 
 def _lines(evidence: list | None) -> list[dict]:
@@ -96,11 +94,11 @@ def collect(db: Session, repository: models.Repository) -> dict:
         chosen = next((x for x in resolutions if x.id == decided), None) if decided else default
         items.append({
             "id": item_id, "name": item.name, "category": item.category, "scope": item.scope,
-            "problem": _problem(item.description), "ordering": _ordering(item.description),
+            "guidance": item.engine_guidance, "ordering": _ordering(item.description),
             "decided": decided is not None,
             "resolution": None if chosen is None else {
-                "id": chosen.id, "name": chosen.name, "description": chosen.description,
-                "target": chosen.target_description, "notes": chosen.notes, "consumer_impact": chosen.consumer_impact},
+                "id": chosen.id, "name": chosen.name, "guidance": chosen.engine_guidance,
+                "consumer_impact": chosen.consumer_impact},
             "alternatives": [{"id": x.id, "name": x.name, "default": x.is_default} for x in resolutions
                              if chosen is None or x.id != chosen.id],
             "occurrences": occurrences[item_id],
@@ -141,9 +139,24 @@ def collect(db: Session, repository: models.Repository) -> dict:
              for b in bindings or []), key=lambda b: (b["file"] or "", b["key"] or "", b["environment"] or "")))
         if entry not in outbound:
             outbound.append(entry)
-    soap = [dict(host=h, runtime=rv, reasons=list(rs or [])) for h, rv, rs in db.execute(text("""
-        SELECT endpoint_host, runtime_verdict, runtime_reasons FROM outbound_invocations
-        WHERE repository_id = :r AND runtime_verdict IS NOT NULL ORDER BY endpoint_host NULLS LAST"""), {"r": r})]
+    soap = []
+    for h, rv, lv, bindings in db.execute(text("""
+            SELECT endpoint_host, runtime_verdict, linux_verdict, environment_bindings FROM outbound_invocations
+            WHERE repository_id = :r AND runtime_verdict IS NOT NULL ORDER BY endpoint_host NULLS LAST"""), {"r": r}):
+        security = sorted({(s.get("binding"), s.get("securityMode"), s.get("clientCredentialType"))
+                           for s in ((b or {}).get("soap") for b in bindings or []) if s}, key=lambda x: tuple(v or "" for v in x))
+        entry = dict(host=h, runtime=rv, linux=lv, security=[list(x) for x in security])
+        if entry not in soap:
+            soap.append(entry)
+
+    # The platform's own vocabulary, which no generated file may contain (selfcontained.py): catalog ids, signal
+    # names and lifecycle step names, read from where the platform keeps them.
+    vocabulary = {
+        "item_ids": sorted(x for (x,) in db.execute(text("SELECT id FROM catalog_items"))),
+        "resolution_ids": sorted(x for (x,) in db.execute(text("SELECT id FROM item_resolutions"))),
+        "signals": sorted(x for (x,) in db.execute(text("SELECT name FROM signal_registry_entries"))),
+        "steps": sorted(x for (x,) in db.execute(text("SELECT step_name FROM wf_step_registrations"))),
+    }
 
     return {
         "engagement": {"id": engagement.id, "target_framework": to_tfm, "target_platform": engagement.target_platform,
@@ -151,5 +164,5 @@ def collect(db: Session, repository: models.Repository) -> dict:
         "repository": {"slug": repository.slug, "commit": repository.ingest_commit_sha},
         "projects": projects, "current_frameworks": current,
         "items": items, "packages": packages, "couplings": couplings, "version_drift": sorted(set(drift)), "deltas": deltas,
-        "outbound": outbound, "soap": soap,
+        "outbound": outbound, "soap": soap, "vocabulary": vocabulary,
     }

@@ -58,6 +58,8 @@ def _apply_item_fields(item: models.CatalogItem, payload: item_schemas.CatalogIt
     item.excluded_roles = sorted(set(payload.excluded_roles))
     item.owner_team = payload.owner_team
     item.status = payload.status
+    if "engine_guidance" in payload.model_fields_set:   # omitted: unchanged (a client unaware of it never wipes it)
+        item.engine_guidance = payload.engine_guidance
     item.updated_at = _now()
     return detection_changed
 
@@ -335,6 +337,8 @@ def _apply_resolution_fields(resolution: models.ItemResolution, payload: item_sc
         "status",
     ):
         setattr(resolution, field, getattr(payload, field))
+    if "engine_guidance" in payload.model_fields_set:   # omitted: unchanged
+        resolution.engine_guidance = payload.engine_guidance
     resolution.updated_at = _now()
 
 

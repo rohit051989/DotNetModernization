@@ -27,7 +27,7 @@ from app.engine import paths, siblings
 from app.engine.inputs import MANIFEST, generate
 from app.engine.inputs.collect import collect
 from app.experiment import instrument
-from app.engine.inputs.render import upgrade_options
+from app.engine.inputs.render import upgrade_options, without_guidance
 
 INPUTS_COMMIT = "Platform inputs for GitHub Copilot upgrade (generated, 36-COPILOT-ENHANCED-CONVERSION Part D)"
 DEFAULT_GOAL = "Upgrade this solution to .NET 10 and make the application ready to run on OpenShift."
@@ -113,7 +113,13 @@ def prepare(db, config: dict) -> dict:
         raise RuntimeError("arm 2's runs were given different inputs")
     sln = sorted(root.glob("*.sln"))
     return {"config": config, "runs": runs, "base": base, "solution": sln[0].name if sln else "<solution>.sln",
-            "options": upgrade_options(collect(db, repository))}
+            **_from_inputs(collect(db, repository))}
+
+
+def _from_inputs(model: dict) -> dict:
+    """What the runbook takes from the inputs' model: the upgrade-options answers, and the detected changes without
+    engine-facing guidance (listed for the operator, never in the branch)."""
+    return {"options": upgrade_options(model), "missing": without_guidance(model)}
 
 
 def inspect(db, config: dict) -> dict:
@@ -131,7 +137,7 @@ def inspect(db, config: dict) -> dict:
         r.update(worktree=str(worktree), head=gitops.head(worktree))
     sln = sorted(root.glob("*.sln"))
     return {"config": config, "runs": runs, "base": base, "solution": sln[0].name if sln else "<solution>.sln",
-            "options": upgrade_options(collect(db, repository))}
+            **_from_inputs(collect(db, repository))}
 
 
 # ---------------------------------------------------------------- the runbook
@@ -261,6 +267,16 @@ def render_runbook(prepared: dict, config_path: Path) -> str:
     if arm3:
         out += ["", f"Arm 3 — {arm3['name']}: the existing branch `{arm3['ref']}`. Not run by a person; verified only "
                 f"(CALIBRATION.md). It covers the {arm3['scope']}, not OpenShift readiness, and is compared on that dimension alone."]
+    missing = prepared.get("missing") or []
+    out += ["", "## Changes without engine-facing guidance", ""]
+    if missing:
+        out += ["Arm 2's inputs carry no conversion guidance for these. Where the approach has none, its places are listed "
+                "in the decision sheet to leave unchanged; where only the change's own explanation is missing, the "
+                "instruction carries the approach's steps alone.", "",
+                "| Item | Resolution | Missing |", "|---|---|---|"]
+        out += [f"| `{m['item']}` | `{m['resolution'] or '-'}` | {m['missing']} guidance |" for m in missing]
+    else:
+        out.append("None: every detected change has engine-facing guidance.")
     out += ["", "**ARM 2 ONLY** — answers at the upgrade-options stage (the decision sheet):", "",
             "| Option | Answer | Status |", "|---|---|---|"]
     for o in prepared["options"]:

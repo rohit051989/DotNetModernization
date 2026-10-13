@@ -238,6 +238,9 @@ class CatalogItemWrite(BaseModel):
     excluded_roles: list[ProjectRole] = Field(default_factory=list, description="Project roles this item never applies to.")
     owner_team: str | None = None
     status: ItemStatus = Field(default="active", description="Lifecycle status. Distinct from computed readiness.")
+    engine_guidance: str | None = Field(
+        default=None, description="Engine-facing guidance (36-COPILOT-ENHANCED-CONVERSION Part K): self-contained text for a "
+        "conversion engine, kept apart from the author-facing description. Omit it to leave the stored guidance unchanged.")
 
     @model_validator(mode="before")
     @classmethod
@@ -269,6 +272,7 @@ class CatalogItemOut(BaseModel):
     version: int = Field(description="Bumped whenever detection changes.")
     owner_team: str | None
     status: ItemStatus
+    engine_guidance: str | None = None
     deleted_at: datetime.datetime | None
     deleted_by: str | None
     created_at: datetime.datetime
@@ -301,6 +305,9 @@ class ResolutionWrite(BaseModel):
     container_ready: bool = True
     notes: str | None = None
     status: ItemStatus = "active"
+    engine_guidance: str | None = Field(
+        default=None, description="Engine-facing guidance (36-COPILOT-ENHANCED-CONVERSION Part K): self-contained text for a "
+        "conversion engine, kept apart from the author-facing description. Omit it to leave the stored guidance unchanged.")
 
 
 class ResolutionCreate(ResolutionWrite):
@@ -338,6 +345,7 @@ class ResolutionOut(BaseModel):
     linux_compatible: bool
     container_ready: bool
     notes: str | None
+    engine_guidance: str | None = None
     status: ItemStatus
     deleted_at: datetime.datetime | None
     created_at: datetime.datetime

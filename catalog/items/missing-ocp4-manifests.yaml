@@ -40,6 +40,9 @@ detection:
     - id: has-helm-chart
       signal:
         name: HELM_CHART_FILE
+engine_guidance: |-
+  The application has no OpenShift (Kubernetes) deployment manifests and no Helm chart, so it
+  cannot be deployed to OpenShift.
 excluded_roles:
 - DATABASE
 - DEPLOYMENT
@@ -55,6 +58,10 @@ resolutions:
   derivations: []
   description: A Helm chart with per-environment values files.
   effort: medium
+  engine_guidance: |-
+    Add a Helm chart for the application: a Deployment (numeric non-root user, port 8080, probes),
+    a Service, a Route and a ConfigMap, with one values file per environment. The namespace, image
+    registry and route host are values supplied at deployment; never write them.
   id: helm-chart
   is_default: false
   linux_compatible: true
@@ -68,6 +75,12 @@ resolutions:
   derivations: []
   description: Deployment, Service, Route and ConfigMap YAML for the application, kept beside the code.
   effort: low
+  engine_guidance: |-
+    For each deployable application, add OpenShift manifests kept in the repository beside the
+    code: a Deployment (numeric non-root user, port 8080, liveness and readiness probes, resource
+    requests and limits), a Service, a Route, and a ConfigMap for settings that are not secret.
+    Take the namespace, image registry and route host names from the deployment parameters named
+    below; never write values for them. Refer to Secrets by name only.
   id: plain-manifests
   is_default: true
   linux_compatible: true

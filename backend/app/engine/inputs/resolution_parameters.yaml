@@ -53,7 +53,7 @@ migrate-to-message-broker:
     - name: MESSAGE_BROKER_URL
       per: application
       kind: config
-      what: "The engagement's broker endpoint"
+      what: "The message broker's endpoint"
 
 move-to-configuration:
   parameters:

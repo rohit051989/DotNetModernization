@@ -16,6 +16,10 @@ detection:
   occurrence_source:
     group_by: source_path_and_value
     signal: WINDOWS_AUTH_CONNECTION_STRING_CONFIG
+engine_guidance: |-
+  A database connection string authenticates with the process's Windows identity
+  (`Integrated Security`, `Trusted_Connection` or SSPI). A Linux container has no Windows domain
+  identity, so the connection fails.
 excluded_roles:
 - TEST
 id: windows-auth-connection-string
@@ -28,6 +32,10 @@ resolutions:
   derivations: []
   description: 'Keep Windows authentication by giving the pod a Kerberos identity: keytab from a Secret, krb5.conf, and a ticket-renewal sidecar.'
   effort: high
+  engine_guidance: |-
+    Keep Windows authentication in the connection string. The pod is given a Kerberos identity at
+    deployment: a keytab from a Secret, a `krb5.conf`, and a ticket-renewal sidecar in the manifest.
+    Change no code; add the manifest pieces with names only, never credentials.
   id: kerberos-keytab
   is_default: false
   linux_compatible: true
@@ -41,6 +49,12 @@ resolutions:
   derivations: []
   description: Switch to a SQL login; user and password come from an OCP4 Secret injected at runtime, never from the config file.
   effort: low
+  engine_guidance: |-
+    1. Remove `Integrated Security` / `Trusted_Connection` from the connection string.
+    2. Remove the connection string's value from the configuration files. It is supplied at
+       deployment from an OpenShift Secret, as a connection string with a SQL login, under the
+       name listed below (`ConnectionStrings__<Name>`).
+    3. Never write a user name or password anywhere.
   id: sql-auth-from-secret
   is_default: true
   linux_compatible: true

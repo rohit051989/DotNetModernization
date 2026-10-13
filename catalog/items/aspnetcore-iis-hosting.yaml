@@ -17,6 +17,13 @@ detection:
     atLeast: []
     metadata: []
     none: []
+engine_guidance: |-
+  This application is hosted in IIS through the ASP.NET Core Module: an `AspNetCoreHostingModel`
+  property in the project file, an `aspNetCore` element or `AspNetCoreModuleV2` handler in
+  web.config, or a `UseIIS()` / `UseIISIntegration()` call. In an OpenShift container there is no
+  IIS: Kestrel serves requests directly and must listen on the container's port. web.config is
+  ignored on Linux, so anything configured only there (request size limits, timeouts, Windows
+  authentication, IIS server options) stops applying without any error.
 excluded_roles:
 - DATABASE
 - LIBRARY
@@ -31,6 +38,11 @@ resolutions:
   derivations: []
   description: Keep the web.config and the IIS integration for Windows servers that stay during the migration, and bind Kestrel to the container's port as well. IIS-only behaviour must be checked in both hosts.
   effort: medium
+  engine_guidance: |-
+    Keep web.config and the IIS integration, so the same build still runs under IIS on the Windows
+    servers, and also let Kestrel listen on port 8080 in the container (`ASPNETCORE_HTTP_PORTS=8080`
+    in the image). Configure anything web.config sets that the application relies on (request size
+    limits, timeouts) for Kestrel too, with the same values.
   id: keep-iis-for-windows-hosts
   is_default: false
   linux_compatible: true
@@ -44,6 +56,16 @@ resolutions:
   derivations: []
   description: 'Remove the IIS hosting configuration: the AspNetCoreHostingModel property, the web.config aspNetCore element and module handler, and UseIIS / UseIISIntegration calls. Kestrel listens on the container''s unprivileged port, set by ASPNETCORE_HTTP_PORTS=8080 in the image; anything IIS did (request limits, Windows authentication) moves to Kestrel options or the route.'
   effort: low
+  engine_guidance: |-
+    1. Remove the `<AspNetCoreHostingModel>` property from the project file.
+    2. Remove the `aspNetCore` element and the AspNetCoreModule handler from web.config. Delete
+       web.config if nothing else is left in it.
+    3. Remove `UseIIS()` and `UseIISIntegration()` calls and any `IISServerOptions` configuration.
+    4. Let Kestrel listen on port 8080: set `ASPNETCORE_HTTP_PORTS=8080` in the container image
+       (an `ENV` line in the Dockerfile), not in code.
+    5. Move anything web.config configured that the application relies on (request size limits,
+       timeouts) to Kestrel options, with the same values. If web.config enabled Windows
+       authentication, leave it and report it in the task's notes: it needs a decision.
   id: kestrel-on-container-port
   is_default: true
   linux_compatible: true

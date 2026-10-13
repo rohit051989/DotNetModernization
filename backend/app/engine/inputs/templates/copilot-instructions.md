@@ -1,7 +1,7 @@
 # Instructions for every request in this repository
 
 These rules apply to every stage of an upgrade or migration of this solution: assessment, planning and
-execution. They come from the Modernization Platform's engagement and override any general habit.
+execution. They are this project's rules for the upgrade and override any general habit.
 
 ## Change as little as possible
 
@@ -13,12 +13,13 @@ execution. They come from the Modernization Platform's engagement and override a
 
 ## Never stop for a decision
 
-- Every work item has an instruction under `.github/upgrades/skills/` that already says what to do: apply it. Do
-  not stop to ask which option to take; where an instruction is labelled presumptive, it is still the one to apply.
+- Every required change has an instruction under `.github/upgrades/skills/` that already says what to do: apply
+  it. Do not stop to ask which option to take; where an instruction is marked as the default approach, it is still
+  the one to apply.
 - Where an instruction lists a **deployment parameter**, make the code read that name from configuration and
   never write a value for it. Do not invent host names, time zones, credentials or paths.
 - Where an instruction says **leave unchanged**, leave those places exactly as they are and record them as
-  unresolved. Do not choose an alternative yourself.
+  left unchanged. Do not choose another approach yourself.
 
 ## Report only what you ran
 
@@ -63,8 +64,6 @@ execution. They come from the Modernization Platform's engagement and override a
 
 Adapted from `agents/uplift-migrator.md` in Anthropic's `code-modernization` plugin
 (anthropics/claude-plugins-official, plugins/code-modernization, commit
-f359d43b406057f1a8cdbc4ea93b827642c162e6, 2026-10-10), Apache License 2.0. **Modified** by the
-Modernization Platform: rewritten as global instructions for GitHub Copilot upgrade; the pilot-playbook
-prerequisite, the per-unit write scope and the tool names are removed, and the test-integrity rules of
-36-COPILOT-ENHANCED-CONVERSION Part D are added. See `third_party/code-modernization/NOTICE` in the
-platform repository.
+f359d43b406057f1a8cdbc4ea93b827642c162e6, 2026-10-10), Apache License 2.0. **Modified**: rewritten as
+global instructions for GitHub Copilot upgrade; the pilot-playbook prerequisite, the per-unit write scope and the
+tool names are removed, and test-integrity rules are added.

@@ -15,9 +15,12 @@ detection:
     atLeast: []
     metadata: []
     none: []
+engine_guidance: |-
+  The project targets a .NET version below this upgrade's target framework (each place shows
+  `from -> to`).
 excluded_roles: []
 id: target-framework-retarget
-name: Modern .NET below the engagement's target framework
+name: Modern .NET below the target framework
 owner_team: null
 resolutions:
 - consumer_impact: none
@@ -26,10 +29,14 @@ resolutions:
   derivations: []
   description: Edit the target framework where it is declared, and the SDK pin in global.json to match.
   effort: low
+  engine_guidance: |-
+    Change the target framework where it is declared (the project file's `TargetFramework`, or the
+    `Directory.Build.props` that sets it) to the target shown, and update the SDK version in
+    `global.json` to match, if there is one.
   id: retarget-to-engagement-target
   is_default: true
   linux_compatible: true
-  name: Retarget to the engagement's target framework
+  name: Retarget to the target framework
   notes: null
   status: active
   target_description: The engagement's target framework, e.g. net10.0
@@ -39,6 +46,7 @@ resolutions:
   derivations: []
   description: 'Leave the target framework as it is, for now: the current framework is still supported, and something holds the application back (a package with no target-framework version, a platform constraint). Record the reason and the current framework''s support end date.'
   effort: low
+  engine_guidance: Leave the target framework unchanged.
   id: stay-on-current-framework
   is_default: false
   linux_compatible: true

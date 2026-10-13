@@ -400,14 +400,18 @@ def upsert_authored_item(db, data: dict, registered: dict[str, str], report: dic
             )
     existing = db.get(models.CatalogItem, data["id"])
     before = (existing.detection, existing.scope) if existing is not None else None
-    item, outcome = baseline.seed_row(db, models.CatalogItem, {"id": data["id"]}, authored_item_content(data, registered), report)
+    item, outcome = baseline.seed_row(db, models.CatalogItem, {"id": data["id"]},
+                                      baseline.with_engine_guidance(models.CatalogItem, data["id"], authored_item_content(data, registered)),
+                                      report)
     if outcome == "updated" and before != (item.detection, item.scope):
         item.version += 1
     db.flush()
     item_readiness.recompute_item(db, item)
 
     for res_data in data.get("resolutions", []):
-        baseline.seed_row(db, models.ItemResolution, {"id": res_data["id"]}, authored_resolution_content(item.id, res_data), report)
+        baseline.seed_row(db, models.ItemResolution, {"id": res_data["id"]},
+                          baseline.with_engine_guidance(models.ItemResolution, res_data["id"], authored_resolution_content(item.id, res_data)),
+                          report)
     db.flush()
     return item, outcome == "inserted"
 

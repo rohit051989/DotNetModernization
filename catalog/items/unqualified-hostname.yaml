@@ -16,6 +16,10 @@ detection:
   occurrence_source:
     group_by: source_path_and_value
     signal: UNQUALIFIED_HOSTNAME_URL
+engine_guidance: |-
+  An endpoint URL uses a single-label host name (for example `http://appsrv0341/...`). On Windows
+  the name is completed by NetBIOS or the DNS suffix list; in an OpenShift container it is found
+  only if the cluster's DNS search domains cover it, so calls fail.
 excluded_roles:
 - TEST
 id: unqualified-hostname
@@ -28,6 +32,9 @@ resolutions:
   derivations: []
   description: Keep the short name and add the corporate DNS suffix to the pod's dnsConfig.searches (or the cluster DNS forwarding), so it resolves as on Windows.
   effort: low
+  engine_guidance: |-
+    Do not change the URLs. Add the corporate DNS domain to the pod's `dnsConfig.searches` in the
+    deployment manifest, using the domain supplied at deployment.
   id: cluster-dns-search-domain
   is_default: false
   linux_compatible: true
@@ -41,6 +48,10 @@ resolutions:
   derivations: []
   description: Replace the single-label host with its fully qualified DNS name in the URL, in every environment's configuration.
   effort: low
+  engine_guidance: |-
+    Replace the single-label host in each listed URL with its fully qualified DNS name, in every
+    environment's configuration. The fully qualified names are deployment parameters named below;
+    never guess a domain.
   id: fully-qualify-hostname
   is_default: true
   linux_compatible: true

@@ -14,7 +14,7 @@ metadata:
 
 Use during the **assessment** stage of a same-stack .NET version upgrade, before planning. The code works;
 the job is to find the specific, knowable ways the target version breaks or changes it, and hand back a
-precise, testable catalog of those deltas.
+precise, testable list of those deltas.
 
 ## What a delta is
 
@@ -30,10 +30,10 @@ A removed API nobody calls is not a delta here. Report only what bites this code
 ## Workflow
 
 1. **Read the platform's findings first.** If `.github/platform-inputs/assessment-addendum.md` exists, its
-   "Framework deltas" and "Behavioural deltas on Linux" sections are deterministic discovery of this
+   "Framework deltas" and "Behavioural deltas on Linux" sections come from a deterministic scan of this
    repository: start from them, do not re-derive them, and do not drop them.
 2. **Run the upgrade tooling's analysis** where it runs here, and say which ran: present, runnable here,
-   actually ran. Never fold a tool's findings into the catalog unless it actually ran.
+   actually ran. Never fold a tool's findings into the list unless it actually ran.
 3. **Cover each category** and name the landmines inside them explicitly:
    - **API removed / changed** — types, members and signatures gone or altered, including reflection and
      trimming breaks that fail only at run time on the code path.
@@ -76,8 +76,6 @@ A removed API nobody calls is not a delta here. Report only what bites this code
 
 Adapted from `agents/version-delta-analyst.md` in Anthropic's `code-modernization` plugin
 (anthropics/claude-plugins-official, plugins/code-modernization, commit
-f359d43b406057f1a8cdbc4ea93b827642c162e6, 2026-10-10), Apache License 2.0. **Modified** by the
-Modernization Platform: rewritten as a GitHub Copilot upgrade skill for .NET; the Java, Python and
-JavaScript tooling, the `legacy/` workspace layout and tool names are removed, and the platform's
-assessment addendum is made the starting point. See `third_party/code-modernization/NOTICE` in the
-platform repository.
+f359d43b406057f1a8cdbc4ea93b827642c162e6, 2026-10-10), Apache License 2.0. **Modified**: rewritten as a
+GitHub Copilot upgrade skill for .NET; the Java, Python and JavaScript tooling, the `legacy/` workspace layout and
+tool names are removed, and the assessment addendum is made the starting point.

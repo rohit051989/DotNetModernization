@@ -16,6 +16,9 @@ detection:
   occurrence_source:
     group_by: source_path_and_value
     signal: PACKAGE_UPGRADE_SAFE
+engine_guidance: |-
+  A NuGet package has a newer version that supports the target framework, and nothing this code
+  calls changed between the two versions.
 excluded_roles: []
 id: package-upgrade-safe
 name: Package upgrade, no code change
@@ -27,6 +30,11 @@ resolutions:
   derivations: []
   description: 'Change the version to step 6''s recommended version: the latest that supports the target framework.'
   effort: low
+  engine_guidance: |-
+    Change the version to the recommended one shown at each place (`package from -> to`), where the
+    version is declared: the project file, Directory.Packages.props, or the MSBuild property it
+    names. Change every project that references the package in the same change, so the solution
+    never mixes two versions of one package.
   id: package-upgrade-safe-bump
   impact_rules:
   - action: update
@@ -46,6 +54,7 @@ resolutions:
   derivations: []
   description: 'Leave the version as it is: it already supports the target framework, and nothing forces the move.'
   effort: low
+  engine_guidance: 'Leave the version unchanged: it already supports the target framework.'
   id: package-upgrade-safe-keep-current
   is_default: false
   linux_compatible: true

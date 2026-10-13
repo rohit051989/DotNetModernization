@@ -1,0 +1,351 @@
+# Engine-facing guidance: the factory default for catalog_items.engine_guidance and
+# item_resolutions.engine_guidance (36-COPILOT-ENHANCED-CONVERSION Part K).
+#
+# This is the only catalog text the input generator puts in front of a conversion engine. The
+# author-facing `description`, `target_description` and `notes` stay for catalog authors and
+# reviewers and are never generated into a repository.
+#
+#   item guidance        what the change is and why it matters on the target platform
+#   resolution guidance  what to do, in concrete steps
+#
+# Written for the engine reading one repository's branch and nothing else, so: self-contained;
+# no platform documents, "Part X" citations or platform paths; no lifecycle step names; no
+# catalog or signal vocabulary (catalog, item, resolution, occurrence, signal, discovery,
+# engagement, presumptive, matrix); no notes for authors. The generator's self-containedness
+# check (app/engine/inputs/selfcontained.py) refuses generated files that break these rules.
+#
+# Seeded through app/items/baseline.py like every catalog default: a row edited since it was
+# seeded is never overwritten, and the field is exported with the catalog (catalog/items/).
+#
+# Written so far: every item detected in the first experiment's three applications
+# (AccountsApi.Net10, AccountsApi.Net8, eShopOnWeb), with every one of their resolutions.
+# Still to write (no guidance yet; the generator lists any of them it meets): asmx-service,
+# aspnet-webforms, container-fixed-user-writable-path, directory-services-usage,
+# encoding-default, fx-aspnet-mvc, fx47-class-library, interactive-console-tool,
+# missing-dockerfile, modern-worker-service, msmq-usage, package-not-approved, registry-access,
+# ssis-package, system-drawing-common, wcf-nettcp-client, wcf-service, wcf-service-host,
+# windows-service, windows-service-hosting, winforms-desktop, wpf-desktop.
+
+items:
+
+  aspnetcore-iis-hosting:
+    guidance: |-
+      This application is hosted in IIS through the ASP.NET Core Module: an `AspNetCoreHostingModel`
+      property in the project file, an `aspNetCore` element or `AspNetCoreModuleV2` handler in
+      web.config, or a `UseIIS()` / `UseIISIntegration()` call. In an OpenShift container there is no
+      IIS: Kestrel serves requests directly and must listen on the container's port. web.config is
+      ignored on Linux, so anything configured only there (request size limits, timeouts, Windows
+      authentication, IIS server options) stops applying without any error.
+    resolutions:
+      kestrel-on-container-port: |-
+        1. Remove the `<AspNetCoreHostingModel>` property from the project file.
+        2. Remove the `aspNetCore` element and the AspNetCoreModule handler from web.config. Delete
+           web.config if nothing else is left in it.
+        3. Remove `UseIIS()` and `UseIISIntegration()` calls and any `IISServerOptions` configuration.
+        4. Let Kestrel listen on port 8080: set `ASPNETCORE_HTTP_PORTS=8080` in the container image
+           (an `ENV` line in the Dockerfile), not in code.
+        5. Move anything web.config configured that the application relies on (request size limits,
+           timeouts) to Kestrel options, with the same values. If web.config enabled Windows
+           authentication, leave it and report it in the task's notes: it needs a decision.
+      keep-iis-for-windows-hosts: |-
+        Keep web.config and the IIS integration, so the same build still runs under IIS on the Windows
+        servers, and also let Kestrel listen on port 8080 in the container (`ASPNETCORE_HTTP_PORTS=8080`
+        in the image). Configure anything web.config sets that the application relies on (request size
+        limits, timeouts) for Kestrel too, with the same values.
+
+  aspnetcore-rest-api-legacy:
+    guidance: |-
+      A REST API built on ASP.NET Core with a `Startup` class (`ConfigureServices` and `Configure`) and
+      `WebHost.CreateDefaultBuilder` or `Host.CreateDefaultBuilder`. On .NET 10 the hosting model is
+      `WebApplication.CreateBuilder`. The controllers, routes, status codes and JSON payloads that
+      callers depend on must not change.
+    resolutions:
+      net10-api-controllers-preserved: |-
+        1. Target .NET 10 (`net10.0`).
+        2. Replace `Program` and `Startup` with `WebApplication.CreateBuilder`: move each registration in
+           `ConfigureServices` to `builder.Services`, and each middleware call in `Configure` to the
+           `app` pipeline, in the same order.
+        3. Keep every controller class, route, attribute and action signature exactly as it is.
+        4. Keep the JSON serializer the API uses today. If it uses Newtonsoft.Json
+           (`AddNewtonsoftJson`), keep it with the same settings, so responses do not change.
+        5. Build and run the existing tests; no test may be edited to make it pass.
+      net10-api-minimal: |-
+        Target .NET 10, move to `WebApplication.CreateBuilder`, and rewrite each controller action as a
+        minimal API endpoint with the same route, HTTP method, request and response shapes, and status
+        codes. Callers must see no difference.
+
+  console-batch-job:
+    guidance: |-
+      A console application that does batch work (file processing, data loads, reports) and exits, run
+      on a schedule; on Windows typically by Task Scheduler. On OpenShift a scheduled run is a CronJob:
+      it starts a container, runs the program to completion and stops. The program must not wait for
+      keyboard input, and must exit with a non-zero code when it fails.
+    resolutions:
+      ocp4-cronjob-container: |-
+        1. Target .NET 10.
+        2. Make the program run to completion without user input, and return a non-zero exit code when
+           it fails.
+        3. Read file and directory locations from configuration, never from fixed Windows paths.
+        4. Add a Dockerfile for the program (numeric non-root user, no ports) and an OpenShift CronJob
+           manifest. Take the schedule from the deployment parameter named below; never write a
+           schedule yourself.
+      console-batch-job-not-deployable: |-
+        This program is a tool a person runs by hand, not a workload: do not containerize or deploy it.
+        Only make it build and run on the target framework.
+      worker-service-container: |-
+        Convert the program to a .NET Worker Service (a `BackgroundService`) that runs continuously and
+        does the work on an internal timer, add a Dockerfile, and deploy it as an OpenShift Deployment.
+        The interval is supplied at deployment; never write a value for it.
+
+  container-privileged-port:
+    guidance: |-
+      The Dockerfile or a manifest binds a port below 1024 (for example `EXPOSE 80`,
+      `ASPNETCORE_URLS=http://+:80` or `containerPort: 80`). OpenShift runs containers as a non-root
+      user, which cannot bind a port below 1024, so the application fails to start.
+    resolutions:
+      unprivileged-port-8080: |-
+        1. Make the application listen on 8080: set `ASPNETCORE_HTTP_PORTS=8080` (or
+           `ASPNETCORE_URLS=http://+:8080`) in the Dockerfile, and change `EXPOSE` to 8080.
+        2. If the image also exposes 443, remove it: on OpenShift, TLS is terminated by the route.
+        3. In manifests, set `containerPort: 8080`, and have the Service map port 80 to
+           `targetPort: 8080`, so callers see no change.
+      net-bind-service-capability: |-
+        Keep the port. Add the `NET_BIND_SERVICE` capability to the container's `securityContext` in the
+        manifest, and report in the task's notes that the cluster owners must allow it through a
+        security context constraint. Change no code.
+
+  container-runs-as-root:
+    guidance: |-
+      The image runs as root: its final stage has no `USER` instruction or switches to `root`, or a
+      manifest asks for user 0, privileged mode or privilege escalation. OpenShift's default security
+      policy refuses such a pod, or starts it as an arbitrary non-root user in group 0, so anything that
+      needed root fails at run time.
+    resolutions:
+      non-root-numeric-user: |-
+        1. End the final stage of the Dockerfile with `USER 1001` (a numeric user; or the base image's
+           `$APP_UID`).
+        2. Make every path the application writes to owned by group 0 and writable by the group:
+           `chown -R 1001:0 <path> && chmod -R g=u <path>`.
+        3. Remove `runAsUser: 0`, `privileged: true` and `allowPrivilegeEscalation: true` from manifests.
+        4. Nothing the application does at run time may need root.
+      dedicated-scc: |-
+        Leave the image unchanged. The service account must be granted a security context constraint
+        that allows its user, which the cluster owners grant. Change no code; report the requirement in
+        the task's notes.
+
+  datetime-now-usage:
+    guidance: |-
+      `DateTime.Now` and `DateTime.Today` return the host's local time. On the Windows servers that is
+      the site's time zone; in a Linux container it is UTC unless set, so timestamps, schedules and
+      date boundaries silently shift by the time-zone offset.
+    resolutions:
+      container-local-timezone: |-
+        Do not change the code. In the Dockerfile, make sure time-zone data (`tzdata`) is installed and
+        set the `TZ` environment variable from the deployment parameter named below, so local time means
+        what it did on the Windows servers. Before that, add a characterization test that pins the
+        current behaviour of each listed place (skill `writing-characterization-tests`).
+      utc-at-boundaries: |-
+        Add a characterization test for each listed place first (skill
+        `writing-characterization-tests`). Then use `DateTime.UtcNow` (or an injected `TimeProvider`)
+        wherever the value is stored, compared or calculated with, and convert to local time only where
+        it is displayed, in the display time zone named below.
+
+  hardcoded-windows-path:
+    guidance: |-
+      A Windows path (one that starts with a drive letter, or a UNC path to a network share) written
+      into source code or a configuration value. These paths do not exist in a Linux container, so file
+      access fails at run time.
+    resolutions:
+      externalize-path-setting: |-
+        Replace each literal path with a configuration setting read through `IConfiguration` or
+        options, with the same meaning. Do not write a Linux path: the value is supplied at deployment
+        under the parameter named below. In configuration files, remove the Windows path value rather
+        than replacing it with another literal.
+      rewrite-linux-mount-path: |-
+        Replace each Windows path with the equivalent path under a volume mounted into the container
+        (for example `/mnt/data/...`), and add that volume and its mount to the deployment manifest.
+
+  missing-health-endpoint:
+    guidance: |-
+      The application exposes no health endpoint, so OpenShift's liveness and readiness probes have
+      nothing meaningful to call; a hung or not-yet-ready instance keeps receiving traffic.
+    resolutions:
+      aspnetcore-health-checks: |-
+        1. Register health checks with `builder.Services.AddHealthChecks()`, with a check for each
+           dependency the application cannot serve without (its database, required downstream
+           services).
+        2. Map two endpoints: `/health/live`, with no dependency checks (the process is up), and
+           `/health/ready`, with the dependency checks.
+        3. In the deployment manifest, point the liveness probe at `/health/live` and the readiness
+           probe at `/health/ready`, on port 8080.
+        4. Do not require authentication on either endpoint.
+      tcp-socket-probe: |-
+        Do not change the code. In the deployment manifest, add `tcpSocket` liveness and readiness
+        probes on port 8080.
+
+  missing-ocp4-manifests:
+    guidance: |-
+      The application has no OpenShift (Kubernetes) deployment manifests and no Helm chart, so it
+      cannot be deployed to OpenShift.
+    resolutions:
+      plain-manifests: |-
+        For each deployable application, add OpenShift manifests kept in the repository beside the
+        code: a Deployment (numeric non-root user, port 8080, liveness and readiness probes, resource
+        requests and limits), a Service, a Route, and a ConfigMap for settings that are not secret.
+        Take the namespace, image registry and route host names from the deployment parameters named
+        below; never write values for them. Refer to Secrets by name only.
+      helm-chart: |-
+        Add a Helm chart for the application: a Deployment (numeric non-root user, port 8080, probes),
+        a Service, a Route and a ConfigMap, with one values file per environment. The namespace, image
+        registry and route host are values supplied at deployment; never write them.
+
+  package-provided-by-framework:
+    guidance: |-
+      The project references a NuGet package that the target framework already includes in its shared
+      framework (for example `Microsoft.AspNetCore.Server.Kestrel` 2.x in an ASP.NET Core project, or
+      `System.Text.Json`). The reference pins an old or redundant copy; the framework's own version is
+      the one to use.
+    resolutions:
+      remove-framework-provided-package: |-
+        Remove the `PackageReference` from the project file. If the version is managed centrally
+        (Directory.Packages.props), remove that version too when no other project uses it. Add nothing
+        in its place: the shared framework provides the assemblies. Build to confirm.
+      keep-framework-provided-package: |-
+        Keep the reference, at a version no lower than the one the target framework provides.
+
+  package-replacement-required:
+    guidance: |-
+      A NuGet package the project references has no version that supports the target framework, or
+      its publisher has retired it. It has to be replaced, not upgraded.
+    resolutions:
+      package-replacement-publisher-suggested: |-
+        Replace the package with the replacement its publisher names (shown with each place below), at
+        a version that supports the target framework, and change the calling code to the replacement's
+        API. Where no replacement is named, leave the reference unchanged and record it in the task's
+        notes.
+      package-replacement-alternative: |-
+        Replace the package with a maintained library that supports the target framework and provides
+        the same capability, and change the calling code to its API.
+      package-replacement-framework-builtin: |-
+        Remove the package and use the capability the target framework provides itself, changing the
+        calling code to the framework's API.
+      package-replacement-remain-windows-hosted: |-
+        Leave the package and the project's target framework unchanged: this project stays on .NET
+        Framework on Windows.
+
+  package-upgrade-breaking:
+    guidance: |-
+      The recommended version of a NuGet package removes or changes public members this code calls.
+      Bumping the version alone breaks the build: the calling code has to change in the same change.
+    resolutions:
+      package-upgrade-breaking-bump-and-adapt: |-
+        1. Change the package's version to the recommended version where it is declared (the project
+           file, Directory.Packages.props, or the property it names), in every project that references
+           the package, together with any no-code-change upgrade of the same package.
+        2. Change each listed call site to the new version's API, keeping the behaviour the same.
+        3. Build and run the tests.
+      package-upgrade-breaking-replace: |-
+        Replace the package with a different library that supports the target framework, and change the
+        call sites to its API.
+
+  package-upgrade-safe:
+    guidance: |-
+      A NuGet package has a newer version that supports the target framework, and nothing this code
+      calls changed between the two versions.
+    resolutions:
+      package-upgrade-safe-bump: |-
+        Change the version to the recommended one shown at each place (`package from -> to`), where the
+        version is declared: the project file, Directory.Packages.props, or the MSBuild property it
+        names. Change every project that references the package in the same change, so the solution
+        never mixes two versions of one package.
+      package-upgrade-safe-keep-current: |-
+        Leave the version unchanged: it already supports the target framework.
+
+  package-vulnerable:
+    guidance: |-
+      The version of a NuGet package this project uses has a published security advisory.
+    resolutions:
+      package-vulnerable-upgrade: |-
+        Change the package to the recommended version, which has no open advisory, where the version is
+        declared. If the same package is also being upgraded for the target framework, do both in one
+        change.
+      package-vulnerable-accept-risk: |-
+        Leave the version unchanged: the risk has been accepted. Change nothing.
+      package-vulnerable-replace: |-
+        Replace the package with a maintained alternative that has no advisory and supports the target
+        framework, and change the calling code to its API.
+
+  sensitive-config-key:
+    guidance: |-
+      A configuration file holds a secret value (a password, token, client secret, API key or similar)
+      under the key shown. On OpenShift, secrets come from Secrets supplied at deployment, never from
+      files built into the image or kept in the repository.
+    resolutions:
+      ocp4-secret-injection: |-
+        1. Remove the secret value from every configuration file in the repository: leave the key out,
+           or empty.
+        2. Keep the code reading the setting through `IConfiguration` under the same key; do not rename
+           it.
+        3. The value is supplied at deployment from an OpenShift Secret, as an environment variable
+           named after the key with `:` written as `__` (for example `Cache__Redis__Password`). The
+           names are listed below. Never write a secret value anywhere.
+      external-secret-store: |-
+        Remove the secret value from the configuration files and read it at run time from the external
+        secret store (for example HashiCorp Vault through its agent, or the External Secrets operator),
+        under the same configuration key. Never write a secret value anywhere.
+
+  serilog-file-sink:
+    guidance: |-
+      Serilog writes logs to a file on a Windows path. In a container that path does not exist, and
+      logs belong on standard output, where OpenShift collects them.
+    resolutions:
+      console-json-only: |-
+        Remove the Serilog `File` sink from code and configuration, and keep (or add) the `Console` sink
+        with `CompactJsonFormatter`, so every log event goes to standard output as JSON. Remove the
+        `Serilog.Sinks.File` package if nothing else uses it.
+      otlp-exporter: |-
+        Replace the Serilog `File` sink with the OpenTelemetry sink (`Serilog.Sinks.OpenTelemetry`),
+        sending logs to the collector endpoint supplied at deployment; never write the endpoint value.
+
+  target-framework-retarget:
+    guidance: |-
+      The project targets a .NET version below this upgrade's target framework (each place shows
+      `from -> to`).
+    resolutions:
+      retarget-to-engagement-target: |-
+        Change the target framework where it is declared (the project file's `TargetFramework`, or the
+        `Directory.Build.props` that sets it) to the target shown, and update the SDK version in
+        `global.json` to match, if there is one.
+      stay-on-current-framework: |-
+        Leave the target framework unchanged.
+
+  unqualified-hostname:
+    guidance: |-
+      An endpoint URL uses a single-label host name (for example `http://appsrv0341/...`). On Windows
+      the name is completed by NetBIOS or the DNS suffix list; in an OpenShift container it is found
+      only if the cluster's DNS search domains cover it, so calls fail.
+    resolutions:
+      fully-qualify-hostname: |-
+        Replace the single-label host in each listed URL with its fully qualified DNS name, in every
+        environment's configuration. The fully qualified names are deployment parameters named below;
+        never guess a domain.
+      cluster-dns-search-domain: |-
+        Do not change the URLs. Add the corporate DNS domain to the pod's `dnsConfig.searches` in the
+        deployment manifest, using the domain supplied at deployment.
+
+  windows-auth-connection-string:
+    guidance: |-
+      A database connection string authenticates with the process's Windows identity
+      (`Integrated Security`, `Trusted_Connection` or SSPI). A Linux container has no Windows domain
+      identity, so the connection fails.
+    resolutions:
+      sql-auth-from-secret: |-
+        1. Remove `Integrated Security` / `Trusted_Connection` from the connection string.
+        2. Remove the connection string's value from the configuration files. It is supplied at
+           deployment from an OpenShift Secret, as a connection string with a SQL login, under the
+           name listed below (`ConnectionStrings__<Name>`).
+        3. Never write a user name or password anywhere.
+      kerberos-keytab: |-
+        Keep Windows authentication in the connection string. The pod is given a Kerberos identity at
+        deployment: a keytab from a Secret, a `krb5.conf`, and a ticket-renewal sidecar in the manifest.
+        Change no code; add the manifest pieces with names only, never credentials.

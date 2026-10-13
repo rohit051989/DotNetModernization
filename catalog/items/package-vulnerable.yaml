@@ -14,6 +14,7 @@ detection:
   occurrence_source:
     group_by: source_path_and_value
     signal: PACKAGE_VULNERABLE
+engine_guidance: The version of a NuGet package this project uses has a published security advisory.
 excluded_roles: []
 id: package-vulnerable
 name: Package with a known vulnerability
@@ -25,6 +26,7 @@ resolutions:
   derivations: []
   description: Keep the version with a documented mitigation, where the vulnerable code path is not reachable.
   effort: low
+  engine_guidance: 'Leave the version unchanged: the risk has been accepted. Change nothing.'
   id: package-vulnerable-accept-risk
   is_default: false
   linux_compatible: true
@@ -38,6 +40,9 @@ resolutions:
   derivations: []
   description: Where no patched version exists or the package is unmaintained, move to an alternative.
   effort: high
+  engine_guidance: |-
+    Replace the package with a maintained alternative that has no advisory and supports the target
+    framework, and change the calling code to its API.
   id: package-vulnerable-replace
   impact_rules:
   - action: update
@@ -62,6 +67,10 @@ resolutions:
   derivations: []
   description: Take the recommended version where step 6 reports that it resolves the advisories; otherwise the lowest patched version.
   effort: low
+  engine_guidance: |-
+    Change the package to the recommended version, which has no open advisory, where the version is
+    declared. If the same package is also being upgraded for the target framework, do both in one
+    change.
   id: package-vulnerable-upgrade
   impact_rules:
   - action: update

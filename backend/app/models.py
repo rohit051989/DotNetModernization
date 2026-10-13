@@ -1464,6 +1464,10 @@ class CatalogItem(Base):
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default="active")
     deleted_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
     deleted_by: Mapped[str | None] = mapped_column(Text)
+    # What the change is and why it matters on the target, written for a conversion engine
+    # (36-COPILOT-ENHANCED-CONVERSION Part K). `description` is for catalog authors and never
+    # reaches an engine. Null: none written yet.
+    engine_guidance: Mapped[str | None] = mapped_column(Text)
     # Hash of the content the seed last wrote (app/items/baseline.py): a
     # reseed never overwrites a row edited since. Null: no baseline.
     seeded_hash: Mapped[str | None] = mapped_column(Text)
@@ -1503,6 +1507,9 @@ class ItemResolution(Base):
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default="active")
     deleted_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
     deleted_by: Mapped[str | None] = mapped_column(Text)
+    # What to do, in steps, written for a conversion engine (36-COPILOT-ENHANCED-CONVERSION
+    # Part K); `description`, `target_description` and `notes` are for catalog authors.
+    engine_guidance: Mapped[str | None] = mapped_column(Text)
     # Hash of the content the seed last wrote (app/items/baseline.py): a
     # reseed never overwrites a row edited since. Null: no baseline.
     seeded_hash: Mapped[str | None] = mapped_column(Text)

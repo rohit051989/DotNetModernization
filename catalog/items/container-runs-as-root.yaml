@@ -11,6 +11,11 @@ detection:
     atLeast: []
     metadata: []
     none: []
+engine_guidance: |-
+  The image runs as root: its final stage has no `USER` instruction or switches to `root`, or a
+  manifest asks for user 0, privileged mode or privilege escalation. OpenShift's default security
+  policy refuses such a pod, or starts it as an arbitrary non-root user in group 0, so anything that
+  needed root fails at run time.
 excluded_roles:
 - DATABASE
 - LIBRARY
@@ -25,6 +30,10 @@ resolutions:
   derivations: []
   description: Keep the image as it is and have the platform team grant the service account an SCC that allows its user (anyuid, or a custom one).
   effort: medium
+  engine_guidance: |-
+    Leave the image unchanged. The service account must be granted a security context constraint
+    that allows its user, which the cluster owners grant. Change no code; report the requirement in
+    the task's notes.
   id: dedicated-scc
   is_default: false
   linux_compatible: true
@@ -38,6 +47,13 @@ resolutions:
   derivations: []
   description: End the final stage with USER 1001 (or the base image's app user, by UID), and remove privileged settings from the manifests. Nothing the application writes may need root.
   effort: low
+  engine_guidance: |-
+    1. End the final stage of the Dockerfile with `USER 1001` (a numeric user; or the base image's
+       `$APP_UID`).
+    2. Make every path the application writes to owned by group 0 and writable by the group:
+       `chown -R 1001:0 <path> && chmod -R g=u <path>`.
+    3. Remove `runAsUser: 0`, `privileged: true` and `allowPrivilegeEscalation: true` from manifests.
+    4. Nothing the application does at run time may need root.
   id: non-root-numeric-user
   is_default: true
   linux_compatible: true

@@ -31,6 +31,9 @@ detection:
     - id: has-health-endpoint
       signal:
         name: MAP_HEALTH_CHECKS_INVOCATION
+engine_guidance: |-
+  The application exposes no health endpoint, so OpenShift's liveness and readiness probes have
+  nothing meaningful to call; a hung or not-yet-ready instance keeps receiving traffic.
 excluded_roles:
 - DATABASE
 - DEPLOYMENT
@@ -46,6 +49,15 @@ resolutions:
   derivations: []
   description: AddHealthChecks() plus separate liveness and readiness endpoints (MapHealthChecks), readiness checking the application's dependencies.
   effort: low
+  engine_guidance: |-
+    1. Register health checks with `builder.Services.AddHealthChecks()`, with a check for each
+       dependency the application cannot serve without (its database, required downstream
+       services).
+    2. Map two endpoints: `/health/live`, with no dependency checks (the process is up), and
+       `/health/ready`, with the dependency checks.
+    3. In the deployment manifest, point the liveness probe at `/health/live` and the readiness
+       probe at `/health/ready`, on port 8080.
+    4. Do not require authentication on either endpoint.
   id: aspnetcore-health-checks
   is_default: true
   linux_compatible: true
@@ -59,6 +71,9 @@ resolutions:
   derivations: []
   description: No code change; the OCP4 probe checks that the port accepts connections.
   effort: low
+  engine_guidance: |-
+    Do not change the code. In the deployment manifest, add `tcpSocket` liveness and readiness
+    probes on port 8080.
   id: tcp-socket-probe
   is_default: false
   linux_compatible: true

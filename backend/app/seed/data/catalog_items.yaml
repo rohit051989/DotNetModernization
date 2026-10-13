@@ -1480,7 +1480,7 @@ items:
   # item-detection through fingerprint_signals like any other signal.
 
   - id: target-framework-retarget
-    name: "Modern .NET below the engagement's target framework"
+    name: "Modern .NET below the target framework"
     scope: application
     category: framework
     description: >-
@@ -1515,7 +1515,7 @@ items:
               name: TARGET_FRAMEWORK_BELOW_ENGAGEMENT_TARGET
     resolutions:
       - id: retarget-to-engagement-target
-        name: "Retarget to the engagement's target framework"
+        name: "Retarget to the target framework"
         description: "Edit the target framework where it is declared, and the SDK pin in global.json to match."
         target_description: "The engagement's target framework, e.g. net10.0"
         consumer_impact: none

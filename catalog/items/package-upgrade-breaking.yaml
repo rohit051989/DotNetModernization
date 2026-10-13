@@ -16,6 +16,9 @@ detection:
   occurrence_source:
     group_by: source_path
     signal: PACKAGE_UPGRADE_BREAKING
+engine_guidance: |-
+  The recommended version of a NuGet package removes or changes public members this code calls.
+  Bumping the version alone breaks the build: the calling code has to change in the same change.
 excluded_roles: []
 id: package-upgrade-breaking
 name: Package upgrade that breaks calling code
@@ -27,6 +30,12 @@ resolutions:
   derivations: []
   description: Bump to the recommended version, then change each listed call site to the new API, in the same change.
   effort: medium
+  engine_guidance: |-
+    1. Change the package's version to the recommended version where it is declared (the project
+       file, Directory.Packages.props, or the property it names), in every project that references
+       the package, together with any no-code-change upgrade of the same package.
+    2. Change each listed call site to the new version's API, keeping the behaviour the same.
+    3. Build and run the tests.
   id: package-upgrade-breaking-bump-and-adapt
   impact_rules:
   - action: update
@@ -51,6 +60,9 @@ resolutions:
   derivations: []
   description: Where the new major version is a rewrite rather than an evolution, adopt a different library instead.
   effort: high
+  engine_guidance: |-
+    Replace the package with a different library that supports the target framework, and change the
+    call sites to its API.
   id: package-upgrade-breaking-replace
   impact_rules:
   - action: rewrite
