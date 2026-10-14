@@ -649,6 +649,15 @@ class NoSecretValue(unittest.TestCase):
             with self.subTest(shape=shape[:6]), self.assertRaises(inputs.SecretFound):
                 inputs.build(model(items), None)
 
+    def test_a_configuration_key_path_is_not_a_key_with_a_value(self):
+        """Registry 1.12.0 names keys by their leaf: EnterpriseAuthentication:Token:SigningKey is a path, not a secret."""
+        clean = {"a.md": "- `src/A/appsettings.json:11`: `EnterpriseAuthentication:Token:SigningKey`\n"
+                         "- `Cache:Redis:Password` and `EnterpriseAuthentication__Token__SigningKey`\n"}
+        self.assertEqual(secrets.check(clean, None), [])
+        for leak in ("token: abcdef123456", "token:abc123def", "password=Hunter22"):
+            with self.subTest(leak=leak[:6]):
+                self.assertTrue(secrets.check({"a.md": leak}, None))
+
     def test_nothing_is_written_when_a_secret_is_found(self):
         items = model()["items"]
         items[0]["occurrences"][0]["lines"][0]["value"] = FAKE_PASSWORD

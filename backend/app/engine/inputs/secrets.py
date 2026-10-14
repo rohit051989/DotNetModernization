@@ -56,7 +56,11 @@ SHAPES = (
                          r"|\bAKIA[0-9A-Z]{16}\b|\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}")),
 )
 
-MIN_VALUE = 6            # shorter values ("true", "1433") would match ordinary text
+# A segment of a configuration key's path, as the generator names keys (EnterpriseAuthentication:Token:SigningKey):
+# a sensitive word, a colon with no space, then a PascalCase name. Not a key with a value.
+CONFIG_KEY_PATH = re.compile(r"""["']?\w+["']?:[A-Z][A-Za-z0-9]*(?::[A-Z][A-Za-z0-9]*)*`?""")
+
+MIN_VALUE = 6           # shorter values ("true", "1433") would match ordinary text
 # A filesystem path under a sensitive-looking key (ENTERPRISE_VAULT_SECRETS_DIR = D:\Vault\Secrets) is a path, not a
 # secret: the step 5 rules keep a value "only for a path", and discovery records it as a hardcoded Windows path.
 PLAIN_PATH = re.compile(r"^(?:[A-Za-z]:[\\/]|\\\\|/)[^;=@\s]*$")
@@ -153,6 +157,8 @@ def check(files: dict[str, str], repository_root: Path | None) -> list[dict]:
     for path, text in sorted(files.items()):
         for check_name, shape in SHAPES:
             for m in shape.finditer(text):
+                if check_name == "sensitive key with a value" and CONFIG_KEY_PATH.fullmatch(m.group(0)):
+                    continue        # Token:SigningKey is a configuration key's path, not a token with a value
                 line = text.count("\n", 0, m.start()) + 1
                 findings.append({"file": path, "check": check_name, "detail": f"line {line}"})
     if repository_root is not None:
