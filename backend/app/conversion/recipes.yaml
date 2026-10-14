@@ -56,6 +56,24 @@ recipes:
         automation_class: deterministic
         targets: {kind: occurrences, item_id: package-upgrade-safe}
 
+  - id: remove-framework-provided-package
+    version: 0.1.0
+    item_id: package-provided-by-framework
+    resolution_id: remove-framework-provided-package
+    supported_layouts: [in_place, side_by_side]
+    status: draft
+    owner_team: platform
+    steps:
+      # One unit per project and package: the PackageReference is removed from
+      # the project file. After the retarget, where there is one: the target
+      # framework is the one that provides the package.
+      - step_id: F01
+        phase: foundation
+        approach_id: remove-package-reference
+        approach_version: 0.1.0
+        automation_class: deterministic
+        targets: {kind: occurrences, item_id: package-provided-by-framework}
+
   - id: package-upgrade-breaking-adapt
     version: 0.1.0
     item_id: package-upgrade-breaking

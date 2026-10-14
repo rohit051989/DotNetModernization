@@ -31,13 +31,44 @@ def version_key(version: str) -> tuple:
     return tuple(numbers), 0 if pre else 1, labels
 
 
-def inputs_commit(root: Path, base: str, tip: str) -> str | None:
-    """The first commit after `base` made by the platform: the inputs, written when the conversion was prepared."""
+def _platform_commits(root: Path, base: str, tip: str) -> list[str]:
+    """The commits after `base` the platform made, oldest first."""
+    out = []
     for line in gitops.git(root, "log", "--reverse", "--format=%H %ae", f"{base}..{tip}").splitlines():
         sha, _, email = line.partition(" ")
         if email.strip().lower() == PLATFORM_EMAIL:
+            out.append(sha)
+    return out
+
+
+def inputs_commit(root: Path, base: str, tip: str) -> str | None:
+    """The platform's commit that wrote the instructions, when the conversion was prepared: the first platform commit
+    after `base` that touches the instructions folder (the package commits before it touch project files only)."""
+    for sha in _platform_commits(root, base, tip):
+        if gitops.git(root, "diff-tree", "--no-commit-id", "--name-only", "-r", sha, "--", paths.UPGRADE_SKILLS_DIR).strip():
             return sha
     return None
+
+
+# A package commit's message (app.conversion.approaches.PackageUpgradeSafe.message): "Bump P a -> b" and "used by
+# project.", or one "- P a -> b (file, ...)" line per package of a group.
+BUMP_LINE = re.compile(r"^(?:Bump |- )(?P<package>\S+) (?P<current>\S+) -> (?P<asked>[^\s,]+)")
+USED_BY = re.compile(r"; used by (?P<project>\S+?)\.(?:\s|$)")
+
+
+def applied_by_platform(root: Path, base: str, tip: str) -> list[dict]:
+    """[{project, package, current, asked}] for every package the platform bumped on the branch before the agent ran
+    (Part N): versions it asked for as surely as an instruction does. `project` is "" for a group commit."""
+    out = []
+    for sha in _platform_commits(root, base, tip):
+        message = gitops.git(root, "log", "-1", "--format=%B", sha)
+        used = USED_BY.search(message)
+        for line in message.splitlines():
+            m = BUMP_LINE.match(line.strip())
+            if m:
+                out.append({"project": used["project"] if used and line.startswith("Bump ") else "",
+                            "package": m["package"], "current": m["current"], "asked": m["asked"], "instruction": None})
+    return out
 
 
 def asked_for(root: Path, commit: str) -> list[dict]:

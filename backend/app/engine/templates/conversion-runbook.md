@@ -38,7 +38,8 @@ Anything else: decide for yourself, and note what you sent.
 ## 4. A stuck terminal
 
 If a terminal shows `>>` (PowerShell is waiting for the rest of a command), or a command has run ${stuck_minutes} minutes
-with no output, press **Ctrl+C** in that terminal. If the agent then stops, send `Continue.`
+with no output, press **Ctrl+C** in that terminal. If Ctrl+C does not clear `>>`, close the Copilot terminal: it
+reopens and retries the command. If the agent then stops, send `Continue.`
 
 ## 5. When the agent reports done
 

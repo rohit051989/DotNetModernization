@@ -544,3 +544,35 @@ version the inputs ask for is checked against the package lookups (`convert.chec
 advisory, every one must be known to the lookups, and the lookups must be less than a day old. Otherwise prepare
 refuses and says to run discovery again. The versions checked are recorded in `conversion.json`.
 
+**What conversion 1 found (2026-10-14).**
+
+- *Every instruction names its files.* The agent's file search failed, so it worked blind. It reported no `Build/`
+  folder when `Build/` holds nine files, created a root `Dockerfile` duplicating `deploy/docker/Dockerfile`, and
+  pointed CI at a `Build/validate-config.sh` that does not exist. Every instruction now has a **Files** section
+  (`render.concerned_files`, from the repository's file list at the discovered commit). It lists the files of its
+  places and impact and the project files of its projects. A package instruction adds the project settings
+  (`Directory.*.props`, `nuget.config`, `global.json`); every other instruction adds all container, build, CI and
+  deployment files. The opening message and the global instructions say: open the files the instructions name; do
+  not search for them; never create a file the instructions say already exists.
+- *Never hide a warning or an error.* Conversion 1 built with `-nowarn:NU1902,NU1903`, hiding the vulnerability
+  warnings. The opening message and the global instructions forbid suppressing a warning or an error to make a check
+  pass.
+- *The stuck terminal.* If Ctrl+C does not clear `>>`, close the Copilot terminal: it reopens and retries the command.
+- *Package changes applied by the platform.* Conversion 1 applied none of its package changes. Now `prepare` applies
+  those that need no code before the agent's inputs are generated, on the conversion branch, with the conversion unit
+  loop (34-CONVERSION-ARCHITECTURE Part E). Each is one commit that builds and passes the baseline's tests: safe
+  upgrades (a vulnerability's fix is its package's upgrade) and removals of framework-provided packages (recipe
+  `remove-framework-provided-package`, approach `remove-package-reference`). There is no retarget unit when the
+  projects already target the engagement's framework. A change that does not go green is not committed, is reported
+  by prepare, and stays in the agent's instructions. The agent is left what needs code: breaking upgrades, a retired
+  package's successor, and any package change that did not go green. The verifier reads the package commits' versions
+  as requested versions (`packages.applied_by_platform`), and the inputs commit is the platform commit that writes
+  the instructions.
+- *Tests kept counted a settings file.* The plugin's test-name rule includes Java's integration-test suffix
+  `IT.<ext>`, which `appsettings.SIT.json` matches. The verifier now counts .NET test files only: in a test project's
+  folder, or source code (`verifier.is_test_file`). VERIFICATION.md lists every test file changed, added or removed.
+- *Resolved by a deployment file* (verifier 1.3.0, `app.engine.verifier.deployment`). A `console-batch-job` occurrence
+  is resolved when a CronJob manifest on the branch names the project. An `enterprise-vault-secret-reference`
+  occurrence is resolved when a Vault Agent `agent-inject-secret-<name>` annotation delivers the secret its reference
+  names. VERIFICATION.md lists each with the file that carries it.
+

@@ -10,9 +10,11 @@ from pathlib import Path
 
 from app import engine  # noqa: F401
 from app.conversion import gitops
-from app.engine import configfiles, convert, verifier
+from app.conversion import approaches, msbuild
+from app.engine import configfiles, convert, inputs, verifier
+from app.engine.inputs import selfcontained
 from app.engine.inputs import render
-from app.engine.verifier import packages, rediscovery
+from app.engine.verifier import deployment, packages, rediscovery
 
 
 class ConfigurationFiles(unittest.TestCase):
@@ -133,19 +135,17 @@ class Unrun(unittest.TestCase):
             _git(repo, "commit", "-qm", "base")
             base = _git(repo, "rev-parse", "HEAD")
             self.assertTrue(convert.unrun(repo, base))
-            (repo / "inputs.md").write_text("i")
-            _git(repo, "add", "-A")
-            _git(repo, "commit", "-qm", convert.INPUTS_COMMIT)
-            self.assertTrue(convert.unrun(repo, base))
+            for name in ("package.csproj", "inputs.md"):          # a package commit, then the inputs: the platform's
+                (repo / name).write_text(name)
+                subprocess.run(["git", "-C", str(repo), *gitops.PLATFORM_IDENTITY, "add", "-A"], check=True)
+                subprocess.run(["git", "-C", str(repo), *gitops.PLATFORM_IDENTITY, "commit", "-qm", name], check=True)
+                self.assertTrue(convert.unrun(repo, base))
             (repo / "a.txt").write_text("changed")
             self.assertFalse(convert.unrun(repo, base))          # uncommitted work
             _git(repo, "commit", "-qam", "agent change")
             self.assertFalse(convert.unrun(repo, base))          # committed work
             self.assertFalse(convert.unrun(repo / "missing", base))
 
-
-if __name__ == "__main__":
-    unittest.main()
 
 
 def _upgrade(project, value, item="package-upgrade-safe"):
@@ -279,3 +279,181 @@ class Advisories(unittest.TestCase):
             convert.check_advisories(self._db(fetched_hours_ago=30), self.FILES, now=self.NOW)
         with self.assertRaisesRegex(convert.AdvisoryFound, "no package lookup knows this version"):
             convert.check_advisories(_Db({}), self.FILES, now=self.NOW)
+
+
+class FromConversionOne(unittest.TestCase):
+    """What conversion 1 of AccountsApi.Net10 found (36-COPILOT-ENHANCED-CONVERSION Part N)."""
+
+    def test_the_opening_message_says_open_the_named_files_and_never_hide_a_warning(self):
+        m = convert.opening_message("Goal.", "A.sln")
+        self.assertIn("Open those files by their paths; do not search for them", m)
+        self.assertIn("never create a file the instructions say already exists", m)
+        self.assertIn("Never suppress a warning or an error to make a check pass: no -nowarn", m)
+        g = (render.TEMPLATES / "copilot-instructions.md").read_text(encoding="utf-8")
+        self.assertIn("Open them by those paths; do not", g)
+        self.assertIn("NU1901 to\n  NU1904", g)
+
+    def test_the_runbook_says_close_the_terminal_when_ctrl_c_does_not_clear_it(self):
+        self.assertIn("If Ctrl+C does not clear `>>`, close the Copilot terminal: it\nreopens and retries the command.",
+                      convert.render_runbook(Runbook.RECORD))
+
+    def test_every_instruction_names_the_existing_files_it_concerns(self):
+        files = ["Build/validate-config.bat", "Build/Jenkins/Jenkinsfile", "deploy/docker/Dockerfile",
+                 ".github/workflows/ci.yml", ".github/upgrades/skills/x.md", "src/Api/Api.csproj", "src/Api/Program.cs",
+                 "src/Api/appsettings.json", "Directory.Packages.props", "README.md"]
+        model = {"files": files}
+        build = {"id": "windows-build-pipeline", "occurrences": [{"project": "src/Api/Api.csproj", "file": None}], "impact": []}
+        named = render.concerned_files(model, build)
+        self.assertEqual(named, [".github/workflows/ci.yml", "Build/Jenkins/Jenkinsfile", "Build/validate-config.bat",
+                                 "Directory.Packages.props", "deploy/docker/Dockerfile", "src/Api/Api.csproj"])
+        package = {"id": "package-upgrade-safe", "occurrences": [{"project": "src/Api/Api.csproj", "file": "src/Api/Api.csproj"}],
+                   "impact": []}
+        self.assertEqual(render.concerned_files(model, package), ["Directory.Packages.props", "src/Api/Api.csproj"])
+        config = {"id": "hardcoded-windows-path", "occurrences": [{"project": "src/Api/Api.csproj", "file": "src/Api/appsettings.json"}],
+                  "impact": [{"file": "src/Api/Program.cs"}, {"file": None, "proposed": "src/Api/New.cs"}]}
+        self.assertIn("src/Api/Program.cs", render.concerned_files(model, config))
+        self.assertIn("src/Api/appsettings.json", render.concerned_files(model, config))
+        self.assertEqual(render.concerned_files({}, config), [])
+
+    def test_a_settings_file_named_like_a_java_integration_test_is_not_a_test_file(self):
+        projects = ["tests/Api.UnitTests/Api.UnitTests.csproj"]
+        self.assertFalse(verifier.is_test_file("src/Api/appsettings.SIT.json", projects))
+        self.assertTrue(verifier.is_test_file("tests/Api.UnitTests/appsettings.json", projects))
+        self.assertTrue(verifier.is_test_file("src/Api/ServiceTests.cs", projects))
+
+    def test_tests_kept_counts_and_lists_dotnet_test_files_only(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base, tip = Path(tmp) / "base", Path(tmp) / "tip"
+            for root, settings, test in ((base, "a", "x"), (tip, "b", "y")):
+                for rel, text in {"src/Api/appsettings.SIT.json": settings, "tests/Api.UnitTests/ApiTests.cs": test,
+                                  "tests/Api.UnitTests/Same.cs": "same"}.items():
+                    (root / rel).parent.mkdir(parents=True, exist_ok=True)
+                    (root / rel).write_text(text + "\n")
+            tc = verifier.tests_changed(base, tip, ["tests/Api.UnitTests/Api.UnitTests.csproj"])
+        self.assertEqual((tc["legacyTests"], [c["path"] for c in tc["changed"]]), (2, ["tests/Api.UnitTests/ApiTests.cs"]))
+        md = verifier.markdown({"label": "x", "verdict": "PROVEN", "repository": "r", "base": "b" * 8, "ref": "r",
+                                "tip": "t" * 8, "verifiedAt": "now", "verifier": {"version": "v", "plugin": "p"},
+                                "reasons": [], "checks": [], "rules": [], "forAPerson": [],
+                                "rediscovery": {"before": 0, "resolved": [], "remaining": [], "introduced": [], "offTarget": []},
+                                "impact": {"predictedFiles": 0, "predictedCreates": 0, "changedFiles": 0, "unpredicted": [],
+                                           "predictedUntouched": []},
+                                "diff": {"filesTouched": 0, "linesAdded": 0, "linesDeleted": 0, "commits": 0}, "excludedPaths": [],
+                                "testFiles": {k: tc[k] for k in ("changed", "added", "removed")}})
+        self.assertIn("| changed | `tests/Api.UnitTests/ApiTests.cs` | +1 -1 |", md)
+
+
+class CarriedByDeployment(unittest.TestCase):
+    def test_a_cronjob_naming_the_console_application_and_an_inject_annotation_for_the_secret(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            files = {
+                "deploy/openshift/cronjob-encryptionutility.yaml":
+                    "apiVersion: batch/v1\nkind: CronJob\nmetadata:\n  name: accounts-encryptionutility\n",
+                "deploy/openshift/notes.yaml": "kind: ConfigMap\nname: accounts-keygenerator\n",
+                "deploy/openshift/vault-agent-annotations.yaml":
+                    'vault.hashicorp.com/agent-inject-secret-token-signing-key: "${VAULT_SECRETS_PATH}"\n',
+                "src/Api/appsettings.json": '{\n  "Token": {\n    "SigningKey": "vault:token-signing-key",\n'
+                                            '    "ClientSecret": "vault:client-secret"\n  }\n}\n',
+            }
+            for rel, text in files.items():
+                (root / rel).parent.mkdir(parents=True, exist_ok=True)
+                (root / rel).write_text(text)
+            model = {"items": [
+                {"id": "console-batch-job", "occurrences": [
+                    {"project": "src/Accounts.EncryptionUtility/Accounts.EncryptionUtility.csproj", "file": None, "lines": []},
+                    {"project": "src/Accounts.KeyGenerator/Accounts.KeyGenerator.csproj", "file": None, "lines": []}]},
+                {"id": "enterprise-vault-secret-reference", "occurrences": [
+                    {"project": "src/Api/Api.csproj", "file": "src/Api/appsettings.json",
+                     "lines": [{"line": 3, "value": "Token:SigningKey"}, {"line": 4, "value": "Token:ClientSecret"}]}]},
+            ]}
+            left, carried = deployment.carried(model, root)
+        self.assertEqual([(c["item"], c["file"]) for c in carried], [
+            ("console-batch-job", "deploy/openshift/cronjob-encryptionutility.yaml"),
+            ("enterprise-vault-secret-reference", "deploy/openshift/vault-agent-annotations.yaml")])
+        self.assertEqual([(i["id"], [o["project"] for o in i["occurrences"]]) for i in left["items"]], [
+            ("console-batch-job", ["src/Accounts.KeyGenerator/Accounts.KeyGenerator.csproj"]),
+            ("enterprise-vault-secret-reference", ["src/Api/Api.csproj"])])
+        self.assertEqual(left["items"][1]["occurrences"][0]["lines"], [{"line": 4, "value": "Token:ClientSecret"}])
+
+
+class PackagesBeforeTheAgent(unittest.TestCase):
+    def test_a_framework_provided_reference_is_removed_with_its_line(self):
+        text = ('<Project>\r\n  <ItemGroup>\r\n    <PackageReference Include="System.Text.Json" Version="10.0.9" />\r\n'
+                '    <PackageReference Include="Moq" Version="4.20.72">\r\n      <PrivateAssets>all</PrivateAssets>\r\n'
+                '    </PackageReference>\r\n  </ItemGroup>\r\n</Project>')
+        once, removed = msbuild.remove_package_reference(text, "System.Text.Json")
+        self.assertTrue(removed)
+        self.assertNotIn("System.Text.Json", once)
+        self.assertIn('    <PackageReference Include="Moq"', once)
+        twice, _ = msbuild.remove_package_reference(once, "moq")
+        self.assertEqual(twice, "<Project>\r\n  <ItemGroup>\r\n  </ItemGroup>\r\n</Project>")
+        self.assertEqual(msbuild.remove_package_reference(twice, "Moq"), (twice, False))
+
+    def test_the_removal_approach_checks_applies_and_says_why(self):
+        approach = approaches.APPROACHES["remove-package-reference"]
+        target = {"package_id": "System.Text.Json", "version": "10.0.9", "project": "src/U/U.csproj",
+                  "provided_by": "Microsoft.NETCore.App net10.0"}
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "src/U").mkdir(parents=True)
+            (root / "src/U/U.csproj").write_text('<Project>\n  <ItemGroup>\n    <PackageReference Include="System.Text.Json" '
+                                                 'Version="10.0.9" />\n  </ItemGroup>\n</Project>\n')
+            self.assertEqual(approach.pre_check(root, target).outcome, "apply")
+            approach.apply(root, target)
+            self.assertEqual(approach.post_check(root, target), [])
+            self.assertEqual(approach.pre_check(root, target).outcome, "not_applicable")
+        self.assertEqual(approach.allowed_paths(target), {"src/U/U.csproj"})
+        self.assertEqual(selfcontained.check_commit_message(approach.message(target), None), [])
+
+    def test_the_agent_is_not_asked_for_what_the_platform_applied(self):
+        model = {"items": [
+            {"id": "package-upgrade-safe", "occurrences": [
+                {"project": "src/I/I.csproj", "value": "System.Runtime.Caching 10.0.10 -> 10.0.13"},
+                {"project": "src/A/A.csproj", "value": "PdfPig 0.1.13 -> 0.1.16"}]},
+            {"id": "package-vulnerable", "occurrences": [
+                {"project": "src/I/I.csproj", "value": "System.Security.Cryptography.Xml 10.0.9: high; fixed in 10.0.13"}]},
+            {"id": "package-provided-by-framework", "occurrences": [
+                {"project": "src/U/U.csproj", "value": "System.Text.Json 10.0.9: provided by Microsoft.NETCore.App net10.0"}]},
+            {"id": "package-replacement-required", "occurrences": [
+                {"project": "src/A/A.csproj", "value": "Old 5.1.0: package deprecated (Other); replacement New 10.2.1"}]},
+        ], "packages": [{"package": "System.Runtime.Caching", "projects": ["src/I/I.csproj"]},
+                        {"package": "PdfPig", "projects": ["src/A/A.csproj"]}]}
+        applied = [{"item": "package-upgrade-safe", "project": "src/I/I.csproj", "package": "System.Runtime.Caching", "to": "10.0.13"},
+                   {"item": "package-upgrade-safe", "project": "src/I/I.csproj", "package": "System.Security.Cryptography.Xml",
+                    "to": "10.0.13"},
+                   {"item": "package-provided-by-framework", "project": "src/U/U.csproj", "package": "System.Text.Json", "to": None}]
+        left = inputs.without_applied(model, applied)
+        self.assertEqual([(i["id"], [o["value"] for o in i["occurrences"]]) for i in left["items"]], [
+            ("package-upgrade-safe", ["PdfPig 0.1.13 -> 0.1.16"]),
+            ("package-replacement-required", ["Old 5.1.0: package deprecated (Other); replacement New 10.2.1"])])
+        self.assertEqual([p["package"] for p in left["packages"]], ["PdfPig"])
+
+    def test_the_verifier_reads_the_package_commits_and_finds_the_inputs_commit_after_them(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            _git(repo, "init", "-q")
+            (repo / "a.txt").write_text("a")
+            _git(repo, "add", "-A")
+            _git(repo, "commit", "-qm", "base")
+            base = _git(repo, "rev-parse", "HEAD")
+
+            def platform(message, rel, text):
+                (repo / rel).parent.mkdir(parents=True, exist_ok=True)
+                (repo / rel).write_text(text, newline="\n")
+                subprocess.run(["git", "-C", str(repo), *gitops.PLATFORM_IDENTITY, "add", "-A"], check=True)
+                subprocess.run(["git", "-C", str(repo), *gitops.PLATFORM_IDENTITY, "commit", "-qm", message], check=True)
+                return _git(repo, "rev-parse", "HEAD")
+
+            bump = approaches.APPROACHES["package-upgrade-safe"].message(
+                {"package_id": "Moq", "from": "4.20.72", "to": "4.21.0", "project": "t/T.csproj",
+                 "declaration": {"file": "t/T.csproj", "kind": "package_reference", "name": "Moq"}})
+            platform(bump, "t/T.csproj", "moq")
+            inputs_sha = platform(convert.INPUTS_COMMIT, ".github/upgrades/skills/applying-package-upgrade-safe-bump.md",
+                                  "- `p.csproj:3` (p.csproj): `PdfPig 0.1.13 -> 0.1.16`\n")
+            self.assertEqual(packages.inputs_commit(repo, base, "HEAD"), inputs_sha)
+            self.assertEqual([(t["project"], t["package"], t["asked"]) for t in packages.applied_by_platform(repo, base, "HEAD")],
+                             [("t/T.csproj", "Moq", "4.21.0")])
+
+
+if __name__ == "__main__":
+    unittest.main()

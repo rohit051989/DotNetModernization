@@ -7,11 +7,17 @@
         [--base e89bc6a] [--label L] [--refresh-baseline]
 
 `prepare` makes the next conversion of a repository: a branch `conversion/<n>` from its baseline, in a worktree at
-`<RUNS_DIR>/<engagement>/<repository>/conversions/<n>/wt`. It generates the engine inputs into it and commits them as
-the platform, then writes `RUNBOOK.md` and `conversion.json` beside the worktree. It records the platform commit it
-ran at and pins nothing. There are no arms or generations. When the latest conversion has not been run (its branch is
-still the baseline plus the inputs commit, and its worktree is clean), preparing again refreshes it in place.
-Otherwise preparing again makes the next one. So fixing an instruction and preparing again needs nothing more.
+`<RUNS_DIR>/<engagement>/<repository>/conversions/<n>/wt`. First the platform applies the package changes that need no
+code: safe upgrades (each also fixing the vulnerability its package carries) and removals of packages the target
+framework provides. It uses the conversion unit loop (app.conversion.runner): one commit each on the conversion
+branch, every one building and passing the baseline's tests. A change that does not go green is not committed, and is
+reported. Then it generates the engine inputs, less what those commits did, commits them as the platform, and writes
+`RUNBOOK.md` and `conversion.json` beside the worktree. The agent is left what needs code: breaking upgrades, a
+retired package's successor, and any package change that did not go green. It records the platform commit it ran at
+and pins nothing. There are no arms or generations. When the latest conversion has not been run (every commit on its
+branch is the platform's, and its worktree is clean), preparing again refreshes it in place. Its package commits are
+kept when the planned package changes are the same, and made again otherwise. Otherwise preparing again makes the
+next one. So fixing an instruction and preparing again needs nothing more.
 
 A conversion's baseline, goal, sibling links and canaries default to the previous conversion's, so they are given
 once per repository.
@@ -37,7 +43,7 @@ from pathlib import Path
 from app import models
 from app.conversion import gitops, planner
 from app.engine import siblings
-from app.engine.inputs import MANIFEST, generate
+from app.engine.inputs import generate
 from app.experiment import instrument
 
 INPUTS_COMMIT = "Add generated upgrade inputs for GitHub Copilot (do not edit)"
@@ -57,7 +63,11 @@ def opening_message(goal: str, solution: str | None) -> str:
         goal.strip(),
         "",
         "How to work:",
+        "- Every instruction names, by path, the existing files it concerns. Open those files by their paths; do not "
+        "search for them, and never create a file the instructions say already exists.",
         "- Edit files with your file-editing tools, not through terminal commands.",
+        "- Never suppress a warning or an error to make a check pass: no -nowarn, NoWarn, #pragma warning disable, "
+        "lowered warning level or skipped analyzer.",
         "- Keep every terminal command on a single line.",
         "- Work on the current branch and do not create another branch. Commit after each change, with a message "
         "naming the change.",
@@ -106,15 +116,16 @@ def _write_record(record: dict) -> None:
 
 
 def unrun(worktree: Path, base: str) -> bool:
-    """True when nothing has happened in the conversion's worktree since it was prepared: it is clean, and its branch
-    is the baseline, or the baseline plus the platform's inputs commit."""
+    """True when nothing has happened in the conversion's worktree since it was prepared: it is clean, and every commit
+    on its branch after the baseline is the platform's (its package commits and its inputs commit)."""
+    from app.engine.verifier.packages import PLATFORM_EMAIL
+
     if not worktree.exists() or gitops.git(worktree, "status", "--porcelain").strip():
         return False
-    head = gitops.head(worktree)
-    if head == base:
-        return True
-    parents = gitops.git(worktree, "rev-list", "--parents", "-n", "1", "HEAD").split()
-    return parents[1:] == [base] and gitops.git(worktree, "log", "-1", "--format=%s").strip() == INPUTS_COMMIT
+    if gitops.git(worktree, "merge-base", base, "HEAD", check=False).strip() != base:
+        return False
+    authors = gitops.git(worktree, "log", "--format=%ae", f"{base}..HEAD").split()
+    return all(a.lower() == PLATFORM_EMAIL for a in authors)
 
 
 def _repository(db, engagement_id: str, slug: str) -> models.Repository:
@@ -122,18 +133,67 @@ def _repository(db, engagement_id: str, slug: str) -> models.Repository:
             .filter(models.Repository.deleted_at.is_(None)).one())
 
 
-def _commit_inputs(db, engagement_id: str, slug: str, worktree: Path) -> None:
+def _commit_inputs(db, engagement_id: str, slug: str, worktree: Path, applied: list[dict]) -> None:
     from app.engine import paths
     from app.engine.inputs import selfcontained
 
-    generate(db, engagement_id, slug, worktree)
+    generate(db, engagement_id, slug, worktree, applied=applied)
     gitops.platform_commit(worktree, INPUTS_COMMIT, vocabulary=selfcontained.vocabulary(db),
                            paths=[p.rstrip("/") for p in paths.GENERATED_INPUT_PATHS if (worktree / p.rstrip("/")).exists()])
 
 
-def _inputs_current(fresh: dict[str, str], worktree: Path) -> bool:
-    shown = gitops.git(worktree, "show", f"HEAD:{MANIFEST}", check=False)
-    return bool(shown.strip()) and fresh[MANIFEST].strip() == shown.strip()
+# ---------------------------------------------------------------- the package changes the platform applies
+
+# Settled on the branch (app.conversion.runner.SATISFIED): committed, or found already done.
+SATISFIED = ("committed", "not_applicable")
+
+
+def plan_packages(db, slug: str, base: str, branch: str, worktree: Path):
+    """A conversion plan (app.conversion.planner) on the conversion's own branch and worktree. Its deterministic units
+    are the package changes that need no code; its breaking upgrades stay assisted and are left for the agent."""
+    plan = planner.create(db, slug, [])
+    plan.legacy_commit, plan.branch, plan.worktree_path = base, branch, str(worktree)
+    db.commit()
+    units = db.query(models.ConversionUnit).filter_by(plan_id=plan.id).order_by(models.ConversionUnit.sequence).all()
+    return plan, units
+
+
+def unit_targets(units) -> list[dict]:
+    """[{project, package, asked}] for every version the plan's deterministic units would set."""
+    out = []
+    for u in units:
+        if u.automation_class != "deterministic" or u.approach_id != "package-upgrade-safe":
+            continue
+        for b in u.target.get("bumps") or [u.target]:
+            out.append({"project": b["project"], "package": b["package_id"], "asked": b["to"]})
+    return out
+
+
+def applied_changes(units) -> list[dict]:
+    """[{item, project, package, to}] for every unit settled on the branch: what the inputs leave out."""
+    out = []
+    for u in units:
+        if u.status not in SATISFIED:
+            continue
+        if u.approach_id == "package-upgrade-safe":
+            out += [{"item": "package-upgrade-safe", "project": b["project"], "package": b["package_id"], "to": b["to"]}
+                    for b in u.target.get("bumps") or [u.target]]
+        elif u.approach_id == "remove-package-reference":
+            out.append({"item": "package-provided-by-framework", "project": u.target["project"],
+                        "package": u.target["package_id"], "to": None})
+    return out
+
+
+def _unit_record(u) -> dict:
+    return {"sequence": u.sequence, "title": u.target.get("title"), "approach": u.approach_id,
+            "automation": u.automation_class, "status": u.status, "reason": u.status_reason, "commit": u.commit_sha}
+
+
+def run_packages(db, plan, sibling_links: list[str]) -> list:
+    from app.conversion import runner
+
+    runner.Run(db, plan, sibling_links).run()
+    return db.query(models.ConversionUnit).filter_by(plan_id=plan.id).order_by(models.ConversionUnit.sequence).all()
 
 
 # ---------------------------------------------------------------- advisories
@@ -145,17 +205,19 @@ class AdvisoryFound(RuntimeError):
     pass
 
 
-def check_advisories(db, files: dict[str, str], now: datetime.datetime | None = None) -> list[dict]:
-    """Every package version the generated instructions ask for, checked against the package lookups: [{project,
-    package, asked, advisories, fetchedAt}]. Refuses (AdvisoryFound) when one has a known advisory, is unknown to
-    the lookups, or was answered by lookups older than a day: "today's advisories" must be today's."""
+def check_advisories(db, files: dict[str, str] | None = None, now: datetime.datetime | None = None,
+                     targets: list[dict] | None = None) -> list[dict]:
+    """Every package version the generated instructions (`files`) and the package commits (`targets`) ask for,
+    checked against the package lookups: [{project, package, asked, advisories, fetchedAt}]. Refuses (AdvisoryFound)
+    when one has a known advisory, is unknown to the lookups, or was answered by lookups older than a day: "today's
+    advisories" must be today's."""
     from sqlalchemy import text
 
     from app.engine.inputs import render
 
     now = now or datetime.datetime.now(datetime.timezone.utc)
     checked, problems = [], []
-    for t in render.package_targets(files):
+    for t in (targets or []) + render.package_targets(files or {}):
         rows = db.execute(text("SELECT metadata, fetched_at FROM package_lookup_cache WHERE package_id = :p"),
                           {"p": t["package"].lower()}).all()
         answers = [(m.get(t["asked"]) or {}, fetched) for m, fetched in rows if (m or {}).get(t["asked"])]
@@ -198,27 +260,37 @@ def prepare(db, engagement_id: str, slug: str, *, baseline: str | None = None, g
     if worktree.resolve().is_relative_to(root.resolve()):
         raise ValueError(f"{worktree} would be inside the registered checkout")
 
-    # The inputs as they are now, generated aside first: nothing is changed unless no version they ask for has a
-    # known advisory today.
-    with tempfile.TemporaryDirectory() as tmp:
-        fresh = generate(db, engagement_id, slug, Path(tmp))
-    checked = check_advisories(db, fresh)
-
-    if refresh:
-        if not _inputs_current(fresh, worktree):
-            # Not run, so nothing is lost: back to the baseline, then the inputs as they are now.
-            gitops.git(worktree, "reset", "--hard", "-q", base)
-            _commit_inputs(db, engagement_id, slug, worktree)
-        action = "refreshed"
-    else:
+    if not refresh:
         if folder.exists():
             raise RuntimeError(f"{folder} exists without a conversion record: resolve it by hand")
         if gitops.git(root, "rev-parse", "--verify", "--quiet", f"refs/heads/{branch}", check=False).strip():
             raise RuntimeError(f"branch {branch} exists without its conversion record: resolve it by hand")
+
+    # Nothing is changed unless no version the package commits or the inputs would ask for has a known advisory
+    # today. The inputs are generated aside first, whole: a superset of what they will ask for.
+    plan, units = plan_packages(db, slug, base, branch, worktree)
+    with tempfile.TemporaryDirectory() as tmp:
+        fresh = generate(db, engagement_id, slug, Path(tmp))
+    checked = check_advisories(db, fresh, targets=unit_targets(units))
+
+    planned = [u.target.get("title") for u in units]
+    reuse = bool(refresh and latest.get("packagesHead") and latest.get("plannedPackageChanges") == planned)
+    if refresh:
+        # Not run, so nothing is lost: back to the package commits when the same changes are planned, else to the
+        # baseline, and everything again.
+        gitops.git(worktree, "reset", "--hard", "-q", latest["packagesHead"] if reuse else base)
+        action = "refreshed"
+    else:
         gitops.ensure_branch_worktree(root, worktree, branch, base)
-        _commit_inputs(db, engagement_id, slug, worktree)
         action = "prepared"
     siblings.link(worktree, root, sibling_links)
+    if reuse:
+        changes, applied = latest["packageChanges"], latest["applied"]
+    else:
+        units = run_packages(db, plan, sibling_links)
+        changes, applied = [_unit_record(u) for u in units], applied_changes(units)
+    packages_head = gitops.head(worktree)
+    _commit_inputs(db, engagement_id, slug, worktree, applied)
 
     solutions = sorted(p.name for p in worktree.glob("*.sln"))
     record = {
@@ -228,13 +300,30 @@ def prepare(db, engagement_id: str, slug: str, *, baseline: str | None = None, g
         "preparedAt": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
         "goal": goal, "solution": solutions[0] if solutions else None, "siblingLinks": sibling_links,
         "canaries": canaries, "targetFramework": engagement.target_framework,
-        # Every package version the inputs ask for, confirmed free of known advisories when prepared.
+        # Every package version the package commits and the inputs ask for, confirmed free of known advisories.
         "packageVersionsChecked": [{**c, "fetchedAt": c["fetchedAt"].isoformat() if c["fetchedAt"] else None}
                                    for c in checked],
+        # The package changes the platform applied before the agent: each unit, committed or why not.
+        "plannedPackageChanges": planned, "packageChanges": changes, "applied": applied, "packagesHead": packages_head,
+        "leftForAgent": left_for_agent(db, engagement_id, slug, applied, changes),
     }
     _write_record(record)
     Path(record["runbook"]).write_text(render_runbook(record), encoding="utf-8", newline="\n")
     return {**record, "action": action}
+
+
+def left_for_agent(db, engagement_id: str, slug: str, applied: list[dict], changes: list[dict]) -> dict:
+    """What the agent's inputs still ask for: each item with its resolution and places (a package item's values),
+    the package changes that did not go green, and the assisted ones (breaking upgrades)."""
+    from app.engine.inputs import model_for
+
+    model, _ = model_for(db, engagement_id, slug, applied)
+    return {"items": [{"item": i["id"], "resolution": (i["resolution"] or {}).get("id"), "places": len(i["occurrences"]),
+                       "values": [o.get("value") for o in i["occurrences"]] if i["id"].startswith("package-") else []}
+                      for i in model["items"]],
+            "packageChangesNotGreen": [c for c in changes if c["automation"] == "deterministic"
+                                       and c["status"] not in SATISFIED],
+            "assisted": [c for c in changes if c["automation"] != "deterministic"]}
 
 
 def verify_command(record: dict, branch: str | None = None, base: str | None = None) -> str:
@@ -316,6 +405,12 @@ def main(argv: list[str] | None = None) -> int:
             print(f"{r['action']} {args.repository} {r['branch']} at {r['head'][:8]} (baseline {r['baseline'][:8]})")
             print(f"worktree: {r['worktree']}")
             print(f"runbook:  {r['runbook']}")
+            for c in r["packageChanges"]:
+                print(f"  package {c['sequence']:>3} {c['status']:<14} {(c['commit'] or '')[:8]:<8} {c['title']}"
+                      + (f"  ({c['reason']})" if c["status"] not in SATISFIED and c["reason"] else ""))
+            left = r["leftForAgent"]
+            print(f"left for the agent: {len(left['items'])} instruction item(s); "
+                  f"{len(left['packageChangesNotGreen'])} package change(s) not green; {len(left['assisted'])} assisted")
             checked = r["packageVersionsChecked"]
             oldest = min((c["fetchedAt"] for c in checked if c["fetchedAt"]), default=None)
             print(f"package versions asked for: {len(checked)}, none with a known advisory"

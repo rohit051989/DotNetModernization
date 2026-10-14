@@ -21,6 +21,22 @@ execution. They are this project's rules for the upgrade and override any genera
 - Where an instruction says **leave unchanged**, leave those places exactly as they are and record them as
   left unchanged. Do not choose another approach yourself.
 
+## Files the instructions name
+
+- Every instruction under `.github/upgrades/skills/` names, by path, the existing files it concerns: project files,
+  Dockerfiles, build scripts, CI workflows, deployment manifests. **Open them by those paths; do not search for
+  them.** A file an instruction lists exists, even if a search does not find it.
+- **Never create a file an instruction says already exists**, and never create a second copy of one elsewhere
+  (a root `Dockerfile` beside `deploy/docker/Dockerfile`). Change the existing file.
+- Refer only to files that exist: a script, workflow or manifest you point at must be one an instruction lists or
+  one you create in the same change.
+
+## Never hide a warning or an error
+
+- Never suppress a warning or an error to make a check pass: no `-nowarn`, `<NoWarn>`, `#pragma warning disable`,
+  lowered warning level, `TreatWarningsAsErrors` turned off or skipped analyzer. A vulnerability warning (NU1901 to
+  NU1904) is fixed by the package version its instruction names, or reported; never hidden.
+
 ## Configuration files
 
 - When several changes touch the same configuration file, make them **in a single edit** of that file, not one

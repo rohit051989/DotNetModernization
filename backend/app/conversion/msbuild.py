@@ -175,6 +175,36 @@ def version_declaration(root: Path, project_path: str, package_id: str) -> Versi
     raise LookupError(f"{project_path}: no version declared for {package_id}")
 
 
+def package_reference(text: str, package_id: str) -> tuple[int, int] | None:
+    """(start, end) of the project file's <PackageReference Include="package_id">, with its body and closing tag when
+    it has one, widened to the whole line or lines it stands on (indentation and line break included)."""
+    for m in _elements(text, "PackageReference"):
+        if _attr(m.group(0), "Include") is None or not _includes(m.group(0), package_id):
+            continue
+        end = m.end()
+        if not m.group(0).endswith("/>"):
+            close = re.compile(r"</PackageReference\s*>").search(text, m.end())
+            if close is None:
+                return None
+            end = close.end()
+        start = text.rfind("\n", 0, m.start()) + 1
+        if text[start:m.start()].strip():
+            start = m.start()                       # something else on the line before it: keep the line
+        newline = text.find("\n", end)
+        if newline != -1 and not text[end:newline].strip():
+            end = newline + 1
+        return start, end
+    return None
+
+
+def remove_package_reference(text: str, package_id: str) -> tuple[str, bool]:
+    """Removes the project's <PackageReference> of `package_id` and the line it stands on; (new text, removed)."""
+    span = package_reference(text, package_id)
+    if span is None:
+        return text, False
+    return text[:span[0]] + text[span[1]:], True
+
+
 def set_version(text: str, declaration: VersionDeclaration, to_version: str) -> tuple[str, bool]:
     """Changes the declared value; (new text, whether anything changed)."""
     if declaration.kind == "property":

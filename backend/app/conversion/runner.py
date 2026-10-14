@@ -53,6 +53,7 @@ from app import models
 from app.conversion import dotnet, evidence, gitops
 from app.conversion.approaches import APPROACHES
 from app.db import SessionLocal
+from app.engine import siblings
 from app.engine.inputs import selfcontained
 
 # Settled: never run again. `excluded` is the first proof's history (models.UNIT_STATUS).
@@ -82,8 +83,11 @@ def fingerprint(root: Path) -> dict:
 
 
 class Run:
-    def __init__(self, db, plan: models.ConversionPlan):
+    def __init__(self, db, plan: models.ConversionPlan, sibling_links: list[str] | None = None):
         self.db = db
+        # Folders the repository reaches by relative path (a nuget.config feed beside it): a junction beside the
+        # scratch worktrees points at each one beside the registered checkout (app.engine.siblings).
+        self.sibling_links = sibling_links or []
         self.plan = plan
         self.repository = db.get(models.Repository, plan.repository_id)
         self.root = Path(self.repository.local_path)
@@ -127,6 +131,7 @@ class Run:
         self.log(f"baseline: build {self.solution} and unit tests at {self.plan.legacy_commit[:10]}")
         scratch = self.dir / "scratch" / "baseline"
         gitops.add_scratch(self.root, scratch, self.plan.legacy_commit)
+        siblings.link(scratch, self.root, self.sibling_links)
         try:
             records, results, failure = self.build_and_test(scratch, self.evidence / "000-baseline")
         finally:
@@ -205,6 +210,7 @@ class Run:
         scratch = self.dir / "scratch" / f"{unit.sequence:03d}"
         tip = gitops.head(self.target)
         gitops.add_scratch(self.root, scratch, tip)
+        siblings.link(scratch, self.root, self.sibling_links)
         records: list[dict] = []
         try:
             changes = approach.apply(scratch, unit.target)
@@ -291,6 +297,7 @@ class Run:
                 self.db.commit()
                 self.log(f"plan {self.plan.status}: {summary}")
         finally:
+            siblings.remove(self.dir / "scratch", self.sibling_links)
             after = fingerprint(self.root)
             evidence.write(self.evidence / f"checkout-after-{_now():%Y%m%dT%H%M%S}.json", json.dumps(after, indent=2))
             if after != before:

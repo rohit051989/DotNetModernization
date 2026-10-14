@@ -35,6 +35,9 @@ checked**, never resolved: discovery cannot see inside a file it cannot read, so
 
 On the simple path (app.engine.convert), a package upgrade is judged against the version the conversion's inputs asked
 for, not today's newest release (app.engine.verifier.packages).
+
+An occurrence a deployment file on the branch carries is resolved (app.engine.verifier.deployment). Tests kept counts
+.NET test files only (is_test_file), and VERIFICATION.md lists every one changed, added or removed.
 """
 import argparse
 import datetime
@@ -52,10 +55,10 @@ from app.conversion import dotnet, gitops, planner
 from app.conversion.runner import fingerprint
 from app.engine import configfiles, paths, siblings
 from app.engine.inputs.collect import SILENT_ITEMS
-from app.engine.verifier import packages, plugin, rediscovery
+from app.engine.verifier import deployment, packages, plugin, rediscovery
 from app.experiment import instrument, lookups
 
-VERIFIER_VERSION = "1.2.0"
+VERIFIER_VERSION = "1.3.0"
 RUNS = planner.RUNS          # the same runs folder as the conversion runner, whatever the working directory
 
 RULES = [
@@ -72,6 +75,9 @@ RULES = [
     "resolved: discovery cannot read inside that file.",
     "On the simple path, a package upgrade is met at or above the version the conversion's inputs asked for; a "
     "release published since is information, never remaining. Vulnerabilities are judged against today's advisories.",
+    "An occurrence a deployment file on the branch carries is resolved: a console application a CronJob manifest "
+    "names, a vault reference whose secret a Vault Agent inject-secret annotation delivers.",
+    "A test file is a .NET test file: in a test project's folder, or source code the plugin calls a test.",
     "Otherwise PROVEN.",
     "The impact comparison and the diff size are reported, never judged.",
     "Engine state under .github/upgrades/ and the generated inputs are excluded from the diff, the impact "
@@ -193,6 +199,44 @@ def split_not_checked(resolved: list[tuple[str, str]], before_items: dict, unpar
         files = {_place_file(p) for p in before_items[key]["places"]}
         (not_checked if files & unparseable else kept).append(key)
     return kept, not_checked
+
+
+# ---------------------------------------------------------------- test files (Part N)
+
+CODE_EXTENSIONS = (".cs", ".vb", ".fs")
+
+
+def is_test_file(rel: str, test_projects: list[str]) -> bool:
+    """Of the files the plugin calls tests (trace_rules.file_kind, by folder or name), the ones that are .NET test files:
+    under a test project's folder, or source code. The plugin's name rule includes Java's integration-test suffix
+    `IT.<ext>`, which `appsettings.SIT.json` matches; a settings file outside a test project is not a test."""
+    folders = {p.rsplit("/", 1)[0] + "/" for p in test_projects if "/" in p}
+    return any(rel.startswith(f) for f in folders) or rel.lower().endswith(CODE_EXTENSIONS)
+
+
+def tests_changed(base_tree: Path, tip_tree: Path, test_projects: list[str]) -> dict:
+    """The plugin's uplift_checks.tests_changed, over the .NET test files only (is_test_file), in the same shape
+    proof_pack.check_tests_kept reads. Every list is complete, for VERIFICATION.md."""
+    u = plugin.uplift_checks
+    old, cut_a, _ = u.walk_tests(str(base_tree))
+    new, cut_b, _ = u.walk_tests(str(tip_tree))
+    old = {r: p for r, p in old.items() if is_test_file(r, test_projects)}
+    new = {r: p for r, p in new.items() if is_test_file(r, test_projects)}
+    removed, added = sorted(set(old) - set(new)), sorted(set(new) - set(old))
+    changed, budget = [], u.DIFF_BUDGET
+    for rel in sorted(set(old) & set(new)):
+        got, budget = u.compare_files(old[rel], new[rel], budget)
+        if got is not None:
+            changed.append(dict(got, path=rel))
+    share = round(len(changed) / len(old), 4) if old else 0.0
+    return {"checked": True, "why": "" if old else "the legacy tree has no test files, so nothing shows that the working "
+                                                     "copy's tests were not written during the uplift",
+            "legacyTests": len(old), "workTests": len(new), "cut": cut_a or cut_b,
+            "counts": {"added": len(added), "removed": len(removed), "changed": len(changed)},
+            "added": [{"path": r, "lines": u.count_lines(new[r])} for r in added],
+            "removed": [{"path": r, "lines": u.count_lines(old[r])} for r in removed],
+            "changed": changed, "share": share,
+            "gap": bool(removed) or not old or len(changed) > u.SHARE_LIMIT * len(old)}
 
 
 # ---------------------------------------------------------------- the delta catalog the plugin reads
@@ -495,7 +539,7 @@ def verify(db, *, engagement_id: str, slug: str, base: str, ref: str, label: str
         checks.append(_check("diff", "Baseline diff", "fail", "no result file from the clean re-run to compare"))
 
     # Tests kept and deltas covered: the plugin's own checks, in its own words.
-    tc = plugin.uplift_checks.tests_changed(str(base_tree), str(tip_tree))
+    tc = tests_changed(base_tree, tip_tree, base_snap["unit_test_projects"])
     kept = plugin.proof_pack.check_tests_kept(tc, person)
     checks.append(_check("kept", "Tests kept", kept["state"], kept["detail"]))
     catalog = delta_catalog(base_snap["model"])
@@ -548,9 +592,12 @@ def verify(db, *, engagement_id: str, slug: str, base: str, ref: str, label: str
     tip_model, releases_since, targets_from = tip_snap["model"], [], None
     if config.get("package_targets_from_inputs"):
         commit = packages.inputs_commit(root, base_sha, tip_sha)
-        targets = packages.asked_for(root, commit) if commit else []
+        targets = (packages.asked_for(root, commit) if commit else []) + packages.applied_by_platform(root, base_sha, tip_sha)
         targets_from = {"commit": commit, "targets": len(targets)}
         tip_model, releases_since = packages.judge(tip_model, targets)
+    # Part N: an occurrence a deployment file on the branch carries (a CronJob running the console application, a
+    # Vault Agent annotation delivering the secret) is resolved, though discovery still finds it in the code.
+    tip_model, carried = deployment.carried(tip_model, tip_tree)
     before_items, after_items = rediscovery.work_items(base_snap["model"]), rediscovery.work_items(tip_model)
     resolved, not_checked = split_not_checked(sorted(k for k in before_items if k not in after_items), before_items,
                                               set(tip_unparseable))
@@ -567,6 +614,7 @@ def verify(db, *, engagement_id: str, slug: str, base: str, ref: str, label: str
     # listed apart, never as unresolved or unknown.
     rd["newerThanSnapshot"] = tip_snap.get("newerThanSnapshot") or []
     rd["releasesSince"], rd["packageTargets"] = releases_since, targets_from
+    rd["carriedByDeployment"] = carried
     detail = (f"{len(resolved)} of {len(before_items)} work item(s) resolved, {len(remaining)} remaining, "
               f"{len(introduced)} introduced"
               + (f", {len(not_checked)} not checked (a place in a configuration file that does not parse)"
@@ -603,6 +651,7 @@ def verify(db, *, engagement_id: str, slug: str, base: str, ref: str, label: str
         "forAPerson": person, "baseline": baseline_info, "baselineSnapshot": {"commit": base_snap["commit"], "at": base_snap["at"]},
         "cleanRun": clean, "diff": {k: v for k, v in changes.items() if k not in ("files", "excluded")},
         "excludedPaths": [e["path"] for e in changes["excluded"]], "rediscovery": rd, "impact": impact,
+        "testFiles": {k: tc[k] for k in ("changed", "added", "removed")},
         "checkoutUntouched": checkout_untouched,
     }
     (out / "verification.json").write_text(json.dumps(report, indent=2, default=str), encoding="utf-8")
@@ -653,6 +702,10 @@ def markdown(r: dict) -> str:
         out += [f"Package upgrades are judged against the versions the conversion's inputs asked for: {t['targets']} "
                 f"package place(s), from the inputs commit `{(t['commit'] or 'none found')[:8]}`. Vulnerabilities are judged "
                 "against today's advisories.", ""]
+    if rd.get("carriedByDeployment"):
+        out += ["**Carried by a deployment file** (resolved, though discovery still finds it in the code): "
+                + ", ".join(f"`{c['item']}` {c['place']}" + (f" (secret {c['secret']})" if c.get("secret") else "")
+                            + f" by `{c['file']}`" for c in rd["carriedByDeployment"]), ""]
     if rd.get("releasesSince"):
         out += ["**Released since the conversion was prepared** (information, never remaining): "
                 + ", ".join(f"`{n['package']} {n['version']}` ({n['project']}; asked for {n['asked']}, newest now {n['newest']})"
@@ -664,6 +717,17 @@ def markdown(r: dict) -> str:
         out += ["Changed but not predicted:", ""] + [f"- `{p}`" for p in im["unpredicted"][:100]] + [""]
     if im["predictedUntouched"]:
         out += ["Predicted but untouched:", ""] + [f"- `{p}` ({', '.join(im['predictedUntouchedByItem'][p])})" for p in im["predictedUntouched"][:100]] + [""]
+    tf = r.get("testFiles")
+    if tf:
+        out += ["## Test files", ""]
+        rows = ([("changed", f["path"], f"+{f['added']} -{f['removed']}" + (f" ({f['note']})" if f.get("note") else ""))
+                 for f in tf["changed"]] + [("added", f["path"], f"{f['lines']} lines") for f in tf["added"]]
+                + [("removed", f["path"], f"{f['lines']} lines") for f in tf["removed"]])
+        if rows:
+            out += ["Every test file the branch changed, added or removed, for a person to review:", "",
+                    "| Change | File | Lines |", "|---|---|---|"] + [f"| {c} | `{p}` | {n} |" for c, p, n in rows] + [""]
+        else:
+            out += ["No test file was changed, added or removed.", ""]
     d = r["diff"]
     out += ["## Diff", "", f"{d['filesTouched']} file(s), +{d['linesAdded']} -{d['linesDeleted']}, {d['commits']} commit(s). "
             f"Excluded as engine state or generated inputs: {len(r['excludedPaths'])} file(s).", ""]

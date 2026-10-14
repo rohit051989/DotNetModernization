@@ -34,6 +34,12 @@ recorded by dependency-assessment (package_lookup_cache, `dependencies`):
    package of the framework's generation moves them, and the runtime unifies
    them, so they would join everything to everything.
 
+**Packages the target framework provides** (dependency-assessment's framework_provided): one unit per project and
+package, removing the reference (recipe remove-framework-provided-package), after the retarget.
+
+**Already on the target.** When every project already targets the engagement's framework there is no retarget
+unit, and nothing waits on one.
+
 **Around the retarget.** Every commit must build. A package version that
 drops the current framework cannot be bumped before the retarget; a current
 version that does not support the target cannot stay through it.
@@ -59,6 +65,7 @@ recorded on the plan (`ordering`), and on every unit (`order_reason`,
 
 import argparse
 import json
+import re
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -498,6 +505,7 @@ def create(db: Session, slug: str, exclusions: list[dict], layout: str = "in_pla
             delta_units.append((delta, file, consumers))
 
     # ---- the units
+    remove_step = recipes.step(db, "remove-framework-provided-package")
     safe_step = recipes.step(db, "package-upgrade-safe-bump")
     adapt_step = recipes.step(db, "package-upgrade-breaking-adapt")
     delta_step = recipes.step(db, "framework-retarget", "D01")
@@ -583,13 +591,29 @@ def create(db: Session, slug: str, exclusions: list[dict], layout: str = "in_pla
         retarget_needs.append({"sequence": s, "reason": f"framework delta {delta['id']} in {file}: without it {to_tfm} "
                                                         f"does not build ({delta['symptom']})"})
     files = ", ".join(d.file for d in declarations)
-    retarget = add("framework-retarget:F01:repository", retarget_step,
-                   {"from": from_tfm, "to": to_tfm, "declarations": [d.__dict__ for d in declarations],
-                    "title": f"Retarget {from_tfm} -> {to_tfm} ({files}, global.json)"},
-                   (f"after every framework delta fix and every package whose current version lacks {to_tfm}; before "
-                    f"every package placed after it"), retarget_needs, [])
+    retarget = None
+    if from_tfm != to_tfm:      # already on the target: there is nothing to retarget
+        retarget = add("framework-retarget:F01:repository", retarget_step,
+                       {"from": from_tfm, "to": to_tfm, "declarations": [d.__dict__ for d in declarations],
+                        "title": f"Retarget {from_tfm} -> {to_tfm} ({files}, global.json)"},
+                       (f"after every framework delta fix and every package whose current version lacks {to_tfm}; "
+                        f"before every package placed after it"), retarget_needs, [])
     for key in after:
         add_move(key, retarget)
+
+    # ---- packages the target framework provides: removed, one unit per project and package, after the retarget
+    for occurrence_id, value, project in db.execute(text("""
+            SELECT o.id, o.value, p.relative_path FROM item_occurrences o JOIN projects p ON p.id = o.project_id
+            WHERE o.repository_id = :r AND o.detection_state = 'found' AND o.item_id = 'package-provided-by-framework'
+            ORDER BY p.relative_path, o.value"""), {"r": repository.id}):
+        m = re.match(r"^(\S+) (\S+): provided by (.+)$", value or "")
+        if not m or m.group(1).lower() in {e["package_id"].lower() for e in exclusions}:
+            continue
+        target = {"package_id": m.group(1), "version": m.group(2), "project": project, "provided_by": m.group(3),
+                  "occurrence_id": str(occurrence_id), "title": f"Remove {m.group(1)} {m.group(2)} ({project})"}
+        depends_on = [{"sequence": retarget, "reason": f"{to_tfm} provides it, so it goes after the retarget"}] if retarget else []
+        add(f"remove-framework-provided-package:F01:{occurrence_id}", remove_step, target,
+            f"provided by {m.group(3)}: the reference is redundant", depends_on, [str(occurrence_id)])
 
     plan.ordering = {
         "from": from_tfm, "to": to_tfm, "solution": _solution(db, repository.id, unit_tests), "unit_test_projects": unit_tests,
@@ -603,6 +627,7 @@ def create(db: Session, slug: str, exclusions: list[dict], layout: str = "in_pla
                                                             for k in moves[m].packages}}
                   for m in before + after],
         "framework_deltas": [{"delta": d["id"], "file": f, "consumers": c} for d, f, c in delta_units],
+        "retarget": retarget is not None,
     }
     db.flush()
     return plan

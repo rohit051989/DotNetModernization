@@ -228,6 +228,35 @@ def _prerequisites(item: dict, present: set[str], by_id: dict) -> list[str]:
     return lines
 
 
+# The kinds of file an instruction names by path (36-COPILOT-ENHANCED-CONVERSION Part N). The pilot's agent could not
+# find Build/ and created a root Dockerfile beside deploy/docker/Dockerfile: it is told where every one is.
+FILE_KINDS = {
+    "project settings": re.compile(r"(^|/)(Directory\.(Build|Packages)\.(props|targets)|nuget\.config|global\.json)$", re.I),
+    "container": re.compile(r"(^|/)(Dockerfile[^/]*|[^/]*\.dockerfile|\.dockerignore|docker-compose[^/]*\.ya?ml|"
+                            r"docker-entrypoint[^/]*)$", re.I),
+    "build": re.compile(r"(^|/)build/|\.(bat|cmd|ps1|sh|cake)$|(^|/)(Jenkinsfile[^/]*|Makefile)$", re.I),
+    "ci": re.compile(r"^\.github/workflows/|(^|/)azure-pipelines[^/]*\.ya?ml$|(^|/)\.gitlab-ci\.ya?ml$", re.I),
+    "deployment": re.compile(r"(^|/)(deploy|deployment|deployments|k8s|kubernetes|openshift|helm|charts|manifests)/|"
+                             r"(^|/)manifest[^/]*\.ya?ml$", re.I),
+}
+PACKAGE_KINDS = ("project settings",)
+
+
+def concerned_files(model: dict, item: dict) -> list[str]:
+    """Every existing file this item's instruction concerns, by repository path: the files of its places and of its
+    impact, the project files of its projects, and the repository's files of the kinds it touches — for a package
+    change its project settings, for every other change also its container, build, CI and deployment files."""
+    existing = set(model.get("files") or [])
+    if not existing:
+        return []
+    wanted = {o["file"] for o in item["occurrences"] if o.get("file")}
+    wanted |= {o["project"] for o in item["occurrences"] if o.get("project")}
+    wanted |= {e["file"] for e in item["impact"] if e.get("file")}
+    kinds = PACKAGE_KINDS if item["id"].startswith("package-") else tuple(FILE_KINDS)
+    wanted |= {f for f in existing if any(FILE_KINDS[k].search(f) for k in kinds)}
+    return sorted(f for f in wanted & existing if not paths.is_under(f, paths.GENERATED_INPUT_PATHS))
+
+
 def _instruction(model: dict, item: dict, present: set[str], by_id: dict) -> str:
     res = item["resolution"]
     eng = model["engagement"]
@@ -297,6 +326,16 @@ def _instruction(model: dict, item: dict, present: set[str], by_id: dict) -> str
                 "record each as left unchanged in the task's notes.", ""]
         for occ in plan["unresolved"]:
             out.append(f"- {_site(occ, (occ['lines'] or [None])[0])} `{_md(occ.get('value'))}`: {occ['why']}")
+
+    files = concerned_files(model, item)
+    if files:
+        out += ["", "## Files", "",
+                "These files exist in this repository and concern this change. Open each one by this path; do not "
+                "search for them. Never create a file listed here, or a second copy of one elsewhere: change it where "
+                "it is.", ""]
+        out += [f"- `{f}`" for f in files[:MAX_LIST]]
+        if len(files) > MAX_LIST:
+            out.append(f"- ... and {len(files) - MAX_LIST} more")
 
     if item["impact"]:
         out += ["", "## Files this changes", "", "| Action | File | Project | Certainty |", "|---|---|---|---|"]

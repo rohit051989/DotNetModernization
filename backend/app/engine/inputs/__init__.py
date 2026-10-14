@@ -24,6 +24,7 @@ before planning), between markers, replacing an earlier merge.
 import argparse
 import hashlib
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -85,14 +86,53 @@ def write(files: dict[str, str], out: Path) -> None:
         target.write_text(text, encoding="utf-8", newline=eols[rel])
 
 
-def generate(db, engagement_id: str, slug: str, out: Path, missing: list | None = None) -> dict[str, str]:
-    """Writes the inputs into `out`. `missing`, when given, receives the changes without engine-facing guidance."""
+APPLIED_ITEMS = ("package-upgrade-safe", "package-provided-by-framework")
+
+
+def without_applied(model: dict, applied: list[dict]) -> dict:
+    """The model without what the platform already applied on the branch (36-COPILOT-ENHANCED-CONVERSION Part N):
+    `applied` is [{item, project, package, to}] — a package bumped (package-upgrade-safe) or removed
+    (package-provided-by-framework). A vulnerability goes too when its package was bumped to the version that fixes
+    it. An item with no place left is dropped, and so is a package move with no project left."""
+    from app.engine.verifier.packages import version_key
+
+    done = {(a["item"], a["project"], a["package"].lower()) for a in applied}
+    bumped = {(a["project"], a["package"].lower()): a.get("to") for a in applied if a["item"] == "package-upgrade-safe"}
+    items = []
+    for item in model["items"]:
+        left = []
+        for occ in item["occurrences"]:
+            package = (occ.get("value") or "").split(" ", 1)[0].lower()
+            if (item["id"], occ["project"], package) in done:
+                continue
+            fixed = re.search(r"; fixed in (\S+)$", occ.get("value") or "")
+            to = bumped.get((occ["project"], package))
+            if item["id"] == "package-vulnerable" and fixed and to and version_key(to) >= version_key(fixed.group(1)):
+                continue
+            left.append(occ)
+        if left:
+            items.append({**item, "occurrences": left})
+    packages = [p for p in model.get("packages", [])
+                if any((project, p["package"].lower()) not in bumped for project in p["projects"])]
+    return {**model, "items": items, "packages": packages}
+
+
+def model_for(db, engagement_id: str, slug: str, applied: list[dict] | None = None):
+    """(the collected model, less what was `applied`; the repository)."""
     from app import models
     from app.engine.inputs.collect import collect
 
     repository = (db.query(models.Repository).filter_by(engagement_id=engagement_id, slug=slug)
                   .filter(models.Repository.deleted_at.is_(None)).one())
     model = collect(db, repository)
+    return (without_applied(model, applied) if applied else model), repository
+
+
+def generate(db, engagement_id: str, slug: str, out: Path, missing: list | None = None,
+             applied: list[dict] | None = None) -> dict[str, str]:
+    """Writes the inputs into `out`. `missing`, when given, receives the changes without engine-facing guidance.
+    `applied`: what the platform already applied on the branch, left out of the inputs (without_applied)."""
+    model, repository = model_for(db, engagement_id, slug, applied)
     files = build(model, Path(repository.local_path))
     write(files, out)
     if missing is not None:

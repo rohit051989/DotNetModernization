@@ -247,6 +247,47 @@ class PinProgramInternal:
                 "Made by a deterministic conversion, not an AI.")
 
 
+class RemovePackageReference:
+    """remove-package-reference 0.1.0: a package the target framework's shared framework provides
+    (dependency-assessment's framework_provided) is removed from the project file. The framework supplies the
+    assembly, so the reference is redundant and can only pin an older copy. Under central package management the
+    project's reference is removed and its <PackageVersion> left: another project may still take it."""
+
+    id = "remove-package-reference"
+    version = "0.1.0"
+
+    def pre_check(self, root: Path, target: dict) -> PreCheck:
+        path = root / target["project"]
+        if not path.exists():
+            return PreCheck("stale", f"{target['project']} no longer exists")
+        if msbuild.package_reference(msbuild.read(path), target["package_id"]) is None:
+            return PreCheck("not_applicable", f"{target['project']} no longer references {target['package_id']}")
+        return PreCheck("apply")
+
+    def apply(self, root: Path, target: dict) -> list[str]:
+        path = root / target["project"]
+        original = path.read_bytes()
+        text, removed = msbuild.remove_package_reference(msbuild.read(path), target["package_id"])
+        if not removed:
+            raise RuntimeError(f"{target['project']}: the reference to {target['package_id']} was found but not removed")
+        msbuild.write(path, original, text)
+        return [f"{target['project']}: PackageReference {target['package_id']} {target['version']} removed "
+                f"(provided by {target['provided_by']})"]
+
+    def allowed_paths(self, target: dict) -> set[str]:
+        return {target["project"]}
+
+    def post_check(self, root: Path, target: dict) -> list[str]:
+        if msbuild.package_reference(msbuild.read(root / target["project"]), target["package_id"]) is not None:
+            return [f"{target['project']} still references {target['package_id']}"]
+        return []
+
+    def message(self, target: dict) -> str:
+        return (f"Remove {target['package_id']} {target['version']} from {target['project']}\n\n"
+                f"Provided by the {target['provided_by']} shared framework: the reference is redundant.\n"
+                "Made by a deterministic conversion, not an AI.")
+
+
 # Assisted approaches (package-upgrade-adapt) have no implementation here: the
 # deterministic runner never applies an assisted unit (Part F); they are T1b's.
-APPROACHES = {a.id: a for a in (RetargetTfm(), PackageUpgradeSafe(), PinProgramInternal())}
+APPROACHES = {a.id: a for a in (RetargetTfm(), PackageUpgradeSafe(), PinProgramInternal(), RemovePackageReference())}

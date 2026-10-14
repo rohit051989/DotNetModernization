@@ -51,6 +51,15 @@ def _lines(evidence: list | None) -> list[dict]:
     return sorted(out, key=lambda x: (x["line"], x["value"] or ""))
 
 
+def _repository_files(repository: models.Repository) -> list[str]:
+    import subprocess
+
+    commit = repository.ingest_commit_sha or "HEAD"
+    done = subprocess.run(["git", "-C", repository.local_path, "ls-tree", "-r", "--name-only", commit],
+                          capture_output=True, text=True, encoding="utf-8", errors="replace")
+    return sorted(done.stdout.splitlines()) if done.returncode == 0 else []
+
+
 def collect(db: Session, repository: models.Repository) -> dict:
     engagement = db.get(models.Engagement, repository.engagement_id)
     r = repository.id
@@ -154,6 +163,9 @@ def collect(db: Session, repository: models.Repository) -> dict:
     vocabulary = selfcontained.vocabulary(db)
 
     return {
+        # Every file in the repository at the discovered commit: each instruction names the existing files it concerns
+        # (render.concerned_files), so the engine opens them by path and never searches for them or recreates one.
+        "files": _repository_files(repository),
         "engagement": {"id": engagement.id, "target_framework": to_tfm, "target_platform": engagement.target_platform,
                        "posture": engagement.default_posture},
         "repository": {"slug": repository.slug, "commit": repository.ingest_commit_sha},
