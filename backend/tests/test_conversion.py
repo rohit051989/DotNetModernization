@@ -201,6 +201,14 @@ class CouplingTests(unittest.TestCase):
         self.assertEqual([], together)
         self.assertEqual([("lib.web", "lib.core")], [d[:2] for d in depends])
 
+    def test_one_family_released_together_moves_together(self):
+        # AccountsApi conversion 2: MSTest.TestFramework 4.5.1 beside MSTest.TestAdapter 4.4.1 discovered no test.
+        together, depends = planner.couplings([
+            self.move("MSTest.TestFramework", "4.4.1", "4.5.1"),
+            self.move("MSTest.TestAdapter", "4.4.1", "4.5.1", {"mstest.testframework": "4.4.1"}, {"mstest.testframework": "4.5.1"})])
+        self.assertEqual([("mstest.testadapter", "mstest.testframework")], [t[:2] for t in together])
+        self.assertEqual([], depends)
+
     def test_a_shared_dependency_one_family_raises_moves_them_together_another_family_waits(self):
         together, depends = planner.couplings([
             self.move("Azure.Identity", "1.10.4", "1.21.0", {"azure.core": "1.36.0"}, {"azure.core": "1.53.0"}),

@@ -199,8 +199,15 @@ def couplings(moves: list[PackageMove]) -> tuple[list[tuple[str, str, str]], lis
                 continue
             new_major = frameworks.parse_version(b.to_version)[:1] > current[:1]
             reason = f"{a.package_id} {a.to_version} requires {b.package_id} >= {_v(minimum)}, above its {b.from_version}"
+            # One family released together (MSTest.TestAdapter and MSTest.TestFramework, 4.4.1 -> 4.5.1): the newer
+            # one beside the older is not a combination its publisher shipped, and the test adapter, for one,
+            # discovers no test with a framework newer than itself. They move as one.
+            released_together = family(a.package_id) == family(b.package_id) and a.to_version == b.to_version
             if new_major:
                 together.append((a.package_id.lower(), dep, f"{reason}, and {b.package_id} moves to a new major version"))
+            elif released_together:
+                together.append((a.package_id.lower(), dep, f"{reason}; one family ({family(a.package_id)}), released "
+                                                           f"together at {a.to_version}"))
             else:
                 depends.append((a.package_id.lower(), dep, reason))
 
