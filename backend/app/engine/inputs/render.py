@@ -314,19 +314,34 @@ def _instruction(model: dict, item: dict, present: set[str], by_id: dict) -> str
 
 # ---------------------------------------------------------------- addendum and decision sheet
 
-# A package place in an instruction, as _instruction writes it: "- `file:line` (project): `Package from -> to`".
-PACKAGE_PLACE = re.compile(r"^- `[^`]+` \((?P<project>[^)]+)\): `(?P<package>[^\s`]+) (?P<current>[^\s`]+) -> (?P<asked>[^\s`]+)`",
-                           re.MULTILINE)
+# A package place in an instruction, as _instruction writes it: "- `file:line` (project): `value`". The value asks for
+# a version in one of three ways (dependency-assessment 1.5.0): an upgrade "Package from -> to"; a vulnerability
+# "Package from: severity; fixed in V"; a retired package's successor "Old from: package deprecated (...); replacement
+# New V", which asks for New at V.
+PACKAGE_PLACE = re.compile(r"^- `[^`]+` \((?P<project>[^)]+)\): `(?P<value>[^`]+)`", re.MULTILINE)
+ASKED = (
+    re.compile(r"^(?P<package>\S+) (?P<current>\S+) -> (?P<asked>\S+)$"),
+    re.compile(r"^(?P<package>\S+) (?P<current>\S+): \w+; fixed in (?P<asked>\S+)$"),
+    re.compile(r"^\S+ \S+: package deprecated \([^)]*\); replacement (?P<package>[^\s;]+) (?P<asked>\d[^\s;]*)$"),
+)
 
 
 def package_targets(files: dict[str, str]) -> list[dict]:
     """The version each package instruction asks for, read back from generated instruction texts ({path: text}):
-    [{project, package, current, asked}]. The verifier judges a package upgrade against these (Part N)."""
+    [{project, package, current, asked, instruction}]; `current` is None for a successor the project does not
+    reference yet. The verifier judges a package upgrade against these (Part N), and prepare checks none has a
+    known advisory."""
     out = []
     for path, text in sorted(files.items()):
-        if Path(path).name.startswith("applying-package-"):
-            out += [{"project": m["project"], "package": m["package"], "current": m["current"], "asked": m["asked"],
-                     "instruction": Path(path).name} for m in PACKAGE_PLACE.finditer(text)]
+        if not Path(path).name.startswith("applying-package-"):
+            continue
+        for place in PACKAGE_PLACE.finditer(text):
+            for shape in ASKED:
+                m = shape.match(place["value"].strip())
+                if m:
+                    out.append({"project": place["project"], "package": m["package"], "current": m.groupdict().get("current"),
+                                "asked": m["asked"], "instruction": Path(path).name})
+                    break
     return out
 
 

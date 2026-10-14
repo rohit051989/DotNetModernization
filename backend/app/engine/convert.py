@@ -16,6 +16,10 @@ Otherwise preparing again makes the next one. So fixing an instruction and prepa
 A conversion's baseline, goal, sibling links and canaries default to the previous conversion's, so they are given
 once per repository.
 
+Before anything is changed, every package version the inputs ask for (an upgrade's, a vulnerability's fix, a retired
+package's successor) is checked against the package lookups: none may carry a known advisory, and the lookups must be
+less than a day old. Otherwise prepare refuses and says to run discovery again.
+
 `verify` runs the verifier (app.engine.verifier) on a branch against its baseline. It needs no experiment
 configuration. The baseline, sibling links and canaries come from the branch's conversion record, or from the
 repository's latest one for any other branch (then `--base` is required). Package lookups are answered live, and a
@@ -127,11 +131,50 @@ def _commit_inputs(db, engagement_id: str, slug: str, worktree: Path) -> None:
                            paths=[p.rstrip("/") for p in paths.GENERATED_INPUT_PATHS if (worktree / p.rstrip("/")).exists()])
 
 
-def _inputs_current(db, engagement_id: str, slug: str, worktree: Path) -> bool:
-    with tempfile.TemporaryDirectory() as tmp:
-        fresh = generate(db, engagement_id, slug, Path(tmp))[MANIFEST]
+def _inputs_current(fresh: dict[str, str], worktree: Path) -> bool:
     shown = gitops.git(worktree, "show", f"HEAD:{MANIFEST}", check=False)
-    return bool(shown.strip()) and fresh.strip() == shown.strip()
+    return bool(shown.strip()) and fresh[MANIFEST].strip() == shown.strip()
+
+
+# ---------------------------------------------------------------- advisories
+
+LOOKUP_TTL = datetime.timedelta(hours=24)       # dependency-assessment's lookup_cache_ttl_hours
+
+
+class AdvisoryFound(RuntimeError):
+    pass
+
+
+def check_advisories(db, files: dict[str, str], now: datetime.datetime | None = None) -> list[dict]:
+    """Every package version the generated instructions ask for, checked against the package lookups: [{project,
+    package, asked, advisories, fetchedAt}]. Refuses (AdvisoryFound) when one has a known advisory, is unknown to
+    the lookups, or was answered by lookups older than a day: "today's advisories" must be today's."""
+    from sqlalchemy import text
+
+    from app.engine.inputs import render
+
+    now = now or datetime.datetime.now(datetime.timezone.utc)
+    checked, problems = [], []
+    for t in render.package_targets(files):
+        rows = db.execute(text("SELECT metadata, fetched_at FROM package_lookup_cache WHERE package_id = :p"),
+                          {"p": t["package"].lower()}).all()
+        answers = [(m.get(t["asked"]) or {}, fetched) for m, fetched in rows if (m or {}).get(t["asked"])]
+        entry = {**{k: t[k] for k in ("project", "package", "asked")},
+                 "advisories": sorted({v["advisoryUrl"] for meta, _ in answers for v in meta.get("vulnerabilities") or []}),
+                 "fetchedAt": min((f for _, f in answers), default=None)}
+        checked.append(entry)
+        where = f"{t['package']} {t['asked']} ({t['project']})"
+        if not answers:
+            problems.append(f"{where}: no package lookup knows this version")
+        elif entry["advisories"]:
+            problems.append(f"{where}: known advisories {', '.join(entry['advisories'])}")
+        elif now - entry["fetchedAt"] > LOOKUP_TTL:
+            problems.append(f"{where}: looked up {entry['fetchedAt']:%Y-%m-%d %H:%M} UTC, more than a day ago")
+    if problems:
+        raise AdvisoryFound("the inputs ask for package versions that cannot be confirmed free of known advisories "
+                            "today. Run discovery again (python -m app.repositories.cli discover) so the lookups are "
+                            "fresh, then prepare again:\n  " + "\n  ".join(problems))
+    return checked
 
 
 # ---------------------------------------------------------------- prepare
@@ -155,8 +198,14 @@ def prepare(db, engagement_id: str, slug: str, *, baseline: str | None = None, g
     if worktree.resolve().is_relative_to(root.resolve()):
         raise ValueError(f"{worktree} would be inside the registered checkout")
 
+    # The inputs as they are now, generated aside first: nothing is changed unless no version they ask for has a
+    # known advisory today.
+    with tempfile.TemporaryDirectory() as tmp:
+        fresh = generate(db, engagement_id, slug, Path(tmp))
+    checked = check_advisories(db, fresh)
+
     if refresh:
-        if not _inputs_current(db, engagement_id, slug, worktree):
+        if not _inputs_current(fresh, worktree):
             # Not run, so nothing is lost: back to the baseline, then the inputs as they are now.
             gitops.git(worktree, "reset", "--hard", "-q", base)
             _commit_inputs(db, engagement_id, slug, worktree)
@@ -179,6 +228,9 @@ def prepare(db, engagement_id: str, slug: str, *, baseline: str | None = None, g
         "preparedAt": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
         "goal": goal, "solution": solutions[0] if solutions else None, "siblingLinks": sibling_links,
         "canaries": canaries, "targetFramework": engagement.target_framework,
+        # Every package version the inputs ask for, confirmed free of known advisories when prepared.
+        "packageVersionsChecked": [{**c, "fetchedAt": c["fetchedAt"].isoformat() if c["fetchedAt"] else None}
+                                   for c in checked],
     }
     _write_record(record)
     Path(record["runbook"]).write_text(render_runbook(record), encoding="utf-8", newline="\n")
@@ -264,6 +316,10 @@ def main(argv: list[str] | None = None) -> int:
             print(f"{r['action']} {args.repository} {r['branch']} at {r['head'][:8]} (baseline {r['baseline'][:8]})")
             print(f"worktree: {r['worktree']}")
             print(f"runbook:  {r['runbook']}")
+            checked = r["packageVersionsChecked"]
+            oldest = min((c["fetchedAt"] for c in checked if c["fetchedAt"]), default=None)
+            print(f"package versions asked for: {len(checked)}, none with a known advisory"
+                  + (f" (lookups from {oldest[:16]} UTC or later)" if oldest else ""))
         else:
             report = verify(db, args.engagement, args.repository, args.branch, base=args.base, label=args.label,
                             refresh_baseline=args.refresh_baseline)

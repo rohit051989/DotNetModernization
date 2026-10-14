@@ -27,8 +27,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Content Include="..\..\schemas\dependency-assessment-1.4.0.schema.json">
-      <Link>schemas\dependency-assessment-1.4.0.schema.json</Link>
+    <Content Include="..\..\schemas\dependency-assessment-1.5.0.schema.json">
+      <Link>schemas\dependency-assessment-1.5.0.schema.json</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
     <Content Include="..\..\schemas\shared-frameworks-1.0.0.json">

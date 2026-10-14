@@ -68,9 +68,11 @@ resolutions:
   description: Take the recommended version where step 6 reports that it resolves the advisories; otherwise the lowest patched version.
   effort: low
   engine_guidance: |-
-    Change the package to the recommended version, which has no open advisory, where the version is
-    declared. If the same package is also being upgraded for the target framework, do both in one
-    change.
+    Change the package to the version shown with each place below (`fixed in <version>`), which has
+    no known advisory, where the version is declared. If the same package is also being upgraded for
+    the target framework, do both in one change. Where a place says there is no release without a
+    known advisory yet, leave the version unchanged, do not look for another, and record it in the
+    task's notes.
   id: package-vulnerable-upgrade
   impact_rules:
   - action: update

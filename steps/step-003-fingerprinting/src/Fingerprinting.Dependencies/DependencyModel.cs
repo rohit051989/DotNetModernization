@@ -124,7 +124,7 @@ public static class CallSiteCertainty
 public sealed record DependencyAssessmentArtifact
 {
     public string ArtifactType { get; init; } = "dependency-assessment";
-    public string ArtifactVersion { get; init; } = "1.4.0";
+    public string ArtifactVersion { get; init; } = "1.5.0";
     public required string ScannerVersion { get; init; }
     public required Guid RepositoryId { get; init; }
     public required string RepositorySlug { get; init; }
@@ -294,6 +294,10 @@ public sealed record DeprecationFlag
     public string Scope { get; init; } = DeprecationScopes.Package;
     /// <summary>1.3.0: for a version deprecation, the newest version that is not deprecated.</summary>
     public string? NewestNotDeprecated { get; init; }
+    /// <summary>1.5.0: for a replacement, the replacement package's newest release within
+    /// <see cref="ReplacementRange"/> that supports the target framework, carries no known advisory and is not
+    /// deprecated; null when it has none, or none is named.</summary>
+    public string? ReplacementVersion { get; init; }
 }
 
 public static class DeprecationScopes
@@ -311,6 +315,10 @@ public sealed record VulnerabilityFlag
     /// <summary>The recommended version carries no advisory. Upgrading does
     /// not clear <see cref="DeprecationFlag"/>; it may clear this.</summary>
     public bool? ResolvedByUpgrade { get; init; }
+
+    /// <summary>1.5.0: the version to move to, the recommended one, newer than the current one and with no known
+    /// advisory; null when no release without a known advisory supports the target yet.</summary>
+    public string? FixedIn { get; init; }
 }
 
 public sealed record Advisory

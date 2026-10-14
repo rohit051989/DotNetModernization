@@ -1,0 +1,1304 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://modernization-platform.local/schemas/dependency-assessment-1.5.0.schema.json",
+  "title": "dependency-assessment 1.5.0",
+  "description": "Lifecycle step 6 (30-DEPENDENCY-ASSESSMENT.md). One assessment per project per direct package: the recommended version for the engagement's target framework from the authoritative feed, the outcome, the deprecated / vulnerable / not-in-client-feed flags, and for a breaking upgrade the changed members the code calls. Deterministic against the lookup cache; no fetch time and nothing derived from a feed credential appears here.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "artifactType",
+    "artifactVersion",
+    "scannerVersion",
+    "repositoryId",
+    "repositorySlug",
+    "targetFramework",
+    "comparePublicFeed",
+    "includeTransitive",
+    "skipSource",
+    "summary",
+    "projects",
+    "warnings"
+  ],
+  "properties": {
+    "artifactType": {
+      "const": "dependency-assessment"
+    },
+    "artifactVersion": {
+      "const": "1.5.0"
+    },
+    "scannerVersion": {
+      "type": "string",
+      "minLength": 1
+    },
+    "repositoryId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "repositorySlug": {
+      "type": "string",
+      "minLength": 1
+    },
+    "targetFramework": {
+      "type": "string",
+      "minLength": 1
+    },
+    "comparePublicFeed": {
+      "type": "boolean"
+    },
+    "includeTransitive": {
+      "type": "boolean"
+    },
+    "skipSource": {
+      "type": "string",
+      "minLength": 1
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "projectsScanned",
+        "projectsSkipped",
+        "projectsFailed",
+        "packageCount",
+        "countByOutcome",
+        "countByFeedSource",
+        "deprecatedCount",
+        "vulnerableCount",
+        "notInClientFeedCount",
+        "versionDriftCount",
+        "contentBreakingPossibleCount"
+      ],
+      "properties": {
+        "projectsScanned": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "projectsSkipped": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "projectsFailed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "packageCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "countByOutcome": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "current": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "upgrade_safe": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "upgrade_breaking": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "no_compatible_version": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "unknown": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "framework_provided": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "countByFeedSource": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "client_feed": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "nuget_org_fallback": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "none": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "deprecatedCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "vulnerableCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "notInClientFeedCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "versionDriftCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "contentBreakingPossibleCount": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "projects": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/project"
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/warning"
+      }
+    }
+  },
+  "$defs": {
+    "signalCategory": {
+      "enum": [
+        "PROJECT_METADATA",
+        "FRAMEWORK_REFERENCE",
+        "PACKAGE_DEPENDENCY",
+        "SOURCE_CONSTRUCT",
+        "FILE_INDICATOR",
+        "CONFIGURATION_INDICATOR",
+        "ENTRY_POINT",
+        "ENDPOINT_INDICATOR",
+        "EXECUTION_INDICATOR",
+        "HOSTING_INDICATOR",
+        "UI_INDICATOR",
+        "DATA_ACCESS_INDICATOR",
+        "MESSAGING_INDICATOR",
+        "SCHEDULING_INDICATOR",
+        "DEPLOYMENT_INDICATOR",
+        "TESTING_INDICATOR"
+      ]
+    },
+    "signalType": {
+      "enum": [
+        "ATTRIBUTE",
+        "BASE_CLASS",
+        "FILE_PRESENCE",
+        "INVOCATION",
+        "CONFIG_ELEMENT",
+        "PACKAGE",
+        "ASSEMBLY",
+        "NAMESPACE",
+        "ROUTE",
+        "ENTRY_POINT",
+        "API_INVOCATION",
+        "LITERAL"
+      ]
+    },
+    "evidenceSourceType": {
+      "enum": [
+        "PROJECT_FILE",
+        "SOURCE_CODE",
+        "CONFIGURATION",
+        "FILE_STRUCTURE",
+        "PACKAGE_REFERENCE",
+        "ASSEMBLY_REFERENCE",
+        "PIPELINE",
+        "DEPLOYMENT_SCRIPT",
+        "SOLUTION_METADATA"
+      ]
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "lineStart",
+        "lineEnd",
+        "declaringType",
+        "member",
+        "snippetHash"
+      ],
+      "properties": {
+        "lineStart": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "lineEnd": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "declaringType": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "member": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "snippetHash": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "matchedValue": {
+          "description": "LITERAL signals only: exactly the text the signal's pattern matched at this span, never the enclosing literal or line. Part G applies: never taken from a connection string or sensitive-key value.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "certainty": {
+          "enum": [
+            "confirmed",
+            "ambiguous"
+          ]
+        }
+      }
+    },
+    "signal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "category",
+        "type",
+        "value",
+        "sourceType",
+        "sourcePath",
+        "evidenceKind",
+        "occurrenceCount",
+        "evidence",
+        "extractor",
+        "extractionConfidence"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9_]*$"
+        },
+        "category": {
+          "$ref": "#/$defs/signalCategory"
+        },
+        "type": {
+          "$ref": "#/$defs/signalType"
+        },
+        "value": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sourceType": {
+          "$ref": "#/$defs/evidenceSourceType"
+        },
+        "sourcePath": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "evidenceKind": {
+          "$ref": "#/$defs/signalEvidenceKind"
+        },
+        "occurrenceCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "evidence": {
+          "type": "array",
+          "maxItems": 20,
+          "items": {
+            "$ref": "#/$defs/evidence"
+          }
+        },
+        "extractor": {
+          "type": "string",
+          "minLength": 1
+        },
+        "extractionConfidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "LITERAL"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "value": {
+                "type": "string",
+                "minLength": 1
+              },
+              "evidenceKind": {
+                "const": "FILE"
+              },
+              "evidence": {
+                "minItems": 1,
+                "items": {
+                  "required": [
+                    "matchedValue"
+                  ]
+                }
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "evidence": {
+                "items": {
+                  "not": {
+                    "required": [
+                      "matchedValue"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "API_INVOCATION"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "value": {
+                "type": "string",
+                "minLength": 1
+              },
+              "evidenceKind": {
+                "const": "FILE"
+              },
+              "evidence": {
+                "minItems": 1,
+                "items": {
+                  "properties": {
+                    "lineStart": {
+                      "type": "integer"
+                    },
+                    "lineEnd": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "signalEvidenceKind": {
+      "description": "What sourcePath names \u2014 from the signal registry's evidence_kind field (25-STANDARDS-AND-VIEWPOINTS.md Part A3 addendum). FOLDER and NONE must never be treated as an openable file location.",
+      "enum": [
+        "FILE",
+        "FOLDER",
+        "NONE"
+      ]
+    },
+    "warning": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "code",
+        "message",
+        "severity"
+      ],
+      "properties": {
+        "code": {
+          "type": "string",
+          "minLength": 1
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1
+        },
+        "severity": {
+          "enum": [
+            "info",
+            "warning",
+            "error"
+          ]
+        }
+      }
+    },
+    "outcome": {
+      "enum": [
+        "current",
+        "upgrade_safe",
+        "upgrade_breaking",
+        "no_compatible_version",
+        "unknown",
+        "framework_provided"
+      ]
+    },
+    "feedSource": {
+      "enum": [
+        "client_feed",
+        "nuget_org_fallback"
+      ]
+    },
+    "sourceLine": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "filePath",
+        "line"
+      ],
+      "properties": {
+        "filePath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "line": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        }
+      }
+    },
+    "feed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "url",
+        "role",
+        "declaredIn"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "url": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Normalised: never userinfo, query or fragment (Part B4)."
+        },
+        "role": {
+          "enum": [
+            "client_feed",
+            "nuget_org",
+            "ignored",
+            "public_comparison"
+          ]
+        },
+        "declaredIn": {
+          "enum": [
+            "repository",
+            "user",
+            "machine",
+            "default"
+          ]
+        }
+      }
+    },
+    "deprecation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reasons",
+        "message",
+        "replacementId",
+        "replacementRange",
+        "scope",
+        "newestNotDeprecated"
+      ],
+      "properties": {
+        "reasons": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "message": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "replacementId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "replacementRange": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "scope": {
+          "enum": [
+            "package",
+            "version"
+          ]
+        },
+        "newestNotDeprecated": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "replacementVersion": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "scope": {
+                "const": "version"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "newestNotDeprecated": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    "advisory": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "severity",
+        "url"
+      ],
+      "properties": {
+        "severity": {
+          "enum": [
+            "low",
+            "moderate",
+            "high",
+            "critical"
+          ]
+        },
+        "url": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "vulnerability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "maxSeverity",
+        "advisories",
+        "resolvedByUpgrade"
+      ],
+      "properties": {
+        "maxSeverity": {
+          "enum": [
+            "low",
+            "moderate",
+            "high",
+            "critical"
+          ]
+        },
+        "advisories": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/advisory"
+          }
+        },
+        "resolvedByUpgrade": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "fixedIn": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "clientFeedGap": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "latestPublicVersion",
+        "latestInClientFeed",
+        "clientFeedName"
+      ],
+      "properties": {
+        "latestPublicVersion": {
+          "type": "string",
+          "minLength": 1
+        },
+        "latestInClientFeed": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "clientFeedName": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "apiDiff": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "removedTypes",
+        "removedMembers",
+        "changedSignatures",
+        "currentAssemblies",
+        "recommendedAssemblies"
+      ],
+      "properties": {
+        "removedTypes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "removedMembers": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "changedSignatures": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "currentAssemblies": {
+          "type": "string",
+          "minLength": 1
+        },
+        "recommendedAssemblies": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "breakingMember": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "change",
+        "type",
+        "member",
+        "oldSignature",
+        "newSignatures"
+      ],
+      "properties": {
+        "change": {
+          "enum": [
+            "type_removed",
+            "member_removed",
+            "signature_changed"
+          ]
+        },
+        "type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "member": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "oldSignature": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "newSignatures": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "callSite": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "filePath",
+        "lineStart",
+        "lineEnd",
+        "member"
+      ],
+      "properties": {
+        "filePath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "lineStart": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "lineEnd": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "member": {
+          "type": "string",
+          "minLength": 1
+        },
+        "certainty": {
+          "enum": [
+            "confirmed",
+            "ambiguous"
+          ]
+        }
+      }
+    },
+    "package": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "assessmentId",
+        "packageId",
+        "currentVersion",
+        "versionSource",
+        "declaredAt",
+        "recommendedVersion",
+        "latestVersion",
+        "outcome",
+        "outcomeReason",
+        "packageKind",
+        "classificationMethod",
+        "breakingEvidence",
+        "contentBreakingPossible",
+        "versionDrift",
+        "semverChange",
+        "deprecated",
+        "vulnerable",
+        "notInClientFeed",
+        "feedSource",
+        "feedName",
+        "feedUrl",
+        "apiDiff",
+        "breakingMembers",
+        "callSites",
+        "confidence",
+        "confidenceReasons"
+      ],
+      "properties": {
+        "assessmentId": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "packageId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "currentVersion": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "versionSource": {
+          "enum": [
+            "project",
+            "central",
+            "packages_config",
+            "unresolved"
+          ]
+        },
+        "declaredAt": {
+          "$ref": "#/$defs/sourceLine"
+        },
+        "recommendedVersion": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "latestVersion": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "outcome": {
+          "$ref": "#/$defs/outcome"
+        },
+        "outcomeReason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "packageKind": {
+          "enum": [
+            "runtime",
+            "build",
+            "tools",
+            "analyzer",
+            "content",
+            null
+          ]
+        },
+        "classificationMethod": {
+          "enum": [
+            "api_diff",
+            "semver_heuristic",
+            "package_kind",
+            null
+          ]
+        },
+        "breakingEvidence": {
+          "enum": [
+            "confirmed_call_sites",
+            "ambiguous_call_sites_only",
+            "semver_presumed",
+            null
+          ]
+        },
+        "contentBreakingPossible": {
+          "type": "boolean"
+        },
+        "versionDrift": {
+          "type": "boolean"
+        },
+        "semverChange": {
+          "enum": [
+            "major",
+            "minor",
+            "patch",
+            null
+          ]
+        },
+        "deprecated": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/deprecation"
+            }
+          ]
+        },
+        "vulnerable": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/vulnerability"
+            }
+          ]
+        },
+        "notInClientFeed": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/clientFeedGap"
+            }
+          ]
+        },
+        "feedSource": {
+          "enum": [
+            "client_feed",
+            "nuget_org_fallback",
+            null
+          ]
+        },
+        "feedName": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "feedUrl": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "apiDiff": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/apiDiff"
+            }
+          ]
+        },
+        "breakingMembers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/breakingMember"
+          }
+        },
+        "callSites": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/callSite"
+          }
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "confidenceReasons": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "outcome": {
+                "enum": [
+                  "upgrade_safe",
+                  "upgrade_breaking"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "recommendedVersion"
+            ],
+            "properties": {
+              "recommendedVersion": {
+                "type": "string",
+                "minLength": 1
+              },
+              "classificationMethod": {
+                "enum": [
+                  "api_diff",
+                  "semver_heuristic",
+                  "package_kind"
+                ]
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "classificationMethod": {
+                "const": null
+              },
+              "breakingMembers": {
+                "maxItems": 0
+              },
+              "callSites": {
+                "maxItems": 0
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "outcome": {
+                "const": "unknown"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "outcomeReason": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "outcome": {
+                "const": "upgrade_breaking"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "breakingEvidence": {
+                "enum": [
+                  "confirmed_call_sites",
+                  "ambiguous_call_sites_only",
+                  "semver_presumed"
+                ]
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "breakingEvidence": {
+                "const": null
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "contentBreakingPossible": {
+                "const": true
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "outcome": {
+                "const": "upgrade_safe"
+              },
+              "packageKind": {
+                "const": "content"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "outcome",
+              "packageKind"
+            ],
+            "properties": {
+              "outcome": {
+                "const": "upgrade_breaking"
+              },
+              "packageKind": {
+                "enum": [
+                  "build",
+                  "tools",
+                  "analyzer",
+                  "content"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "classificationMethod": {
+                "const": "api_diff"
+              },
+              "breakingEvidence": {
+                "enum": [
+                  "confirmed_call_sites",
+                  "ambiguous_call_sites_only"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "outcome"
+            ],
+            "properties": {
+              "outcome": {
+                "const": "framework_provided"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "outcomeReason"
+            ],
+            "properties": {
+              "outcomeReason": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    "transitivePackage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "packageId",
+        "version",
+        "vulnerable"
+      ],
+      "properties": {
+        "packageId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "vulnerable": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/vulnerability"
+            }
+          ]
+        }
+      }
+    },
+    "project": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "projectId",
+        "projectPath",
+        "status",
+        "skipReason",
+        "currentFramework",
+        "feeds",
+        "summary",
+        "packages",
+        "signals",
+        "warnings"
+      ],
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "projectPath": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "enum": [
+            "SCANNED",
+            "SKIPPED",
+            "FAILED"
+          ]
+        },
+        "skipReason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "currentFramework": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "feeds": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/feed"
+          }
+        },
+        "summary": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "countByOutcome",
+            "deprecatedCount",
+            "vulnerableCount",
+            "notInClientFeedCount"
+          ],
+          "properties": {
+            "countByOutcome": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "deprecatedCount": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "vulnerableCount": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "notInClientFeedCount": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "packages": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/package"
+          }
+        },
+        "transitive": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/transitivePackage"
+          }
+        },
+        "signals": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/signal"
+          }
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/warning"
+          }
+        }
+      }
+    }
+  }
+}

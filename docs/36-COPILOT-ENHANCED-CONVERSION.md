@@ -533,3 +533,14 @@ release published since then is listed as information, "released since the conve
 remaining work item. A package the inputs never named (one the conversion added) has no asked version and is judged
 against today's releases. `package-vulnerable` is always judged against today's advisories, because a new advisory is
 a real finding.
+
+**Successors and fixes are requested versions; prepare checks advisories.** An instruction that replaces a retired
+package with its successor names the successor's version (dependency-assessment 1.5.0: its newest release that
+supports the target and has no known advisory). A vulnerability names the version that fixes it, or says plainly that
+no release without a known advisory exists yet, and then asks for nothing. Both are read back as requested versions
+(`render.package_targets`), so the verifier judges a successor like any other upgrade: in the pilot, the agent chose
+`Asp.Versioning.Mvc.ApiExplorer 8.1.0` with no version to judge it against. Before `prepare` changes anything, every
+version the inputs ask for is checked against the package lookups (`convert.check_advisories`). None may carry a known
+advisory, every one must be known to the lookups, and the lookups must be less than a day old. Otherwise prepare
+refuses and says to run discovery again. The versions checked are recorded in `conversion.json`.
+

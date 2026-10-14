@@ -16,7 +16,7 @@ namespace Fingerprinting.Dependencies.Cli;
 public static class DependencyAssessmentCli
 {
     public const string ArtifactType = "dependency-assessment";
-    public const string ArtifactVersion = "1.4.0";
+    public const string ArtifactVersion = "1.5.0";
     public const string OutputFileName = "dependency-assessment.json";
 
     private const string InventoryType = "solution-project-inventory";
@@ -299,7 +299,7 @@ public static class DependencyAssessmentCli
         ?? throw new InvalidOperationException("application-fingerprint deserialized to null");
 
     private static readonly Lazy<ArtifactSchemaValidator> SchemaValidator = new(() =>
-        ArtifactSchemaValidator.Load(Path.Combine(AppContext.BaseDirectory, "schemas", "dependency-assessment-1.4.0.schema.json")));
+        ArtifactSchemaValidator.Load(Path.Combine(AppContext.BaseDirectory, "schemas", "dependency-assessment-1.5.0.schema.json")));
 
     public static async Task<string> WriteArtifactAsync(DependencyAssessmentArtifact artifact, string outDir)
     {

@@ -36,8 +36,14 @@ public sealed class DependencyPipeline(PackageLookup lookup, DependencyOptions o
     /// <summary>Matches the dependency-assessment step registration version. 1.4.1: <c>lookup_offline</c>, answers
     /// from the lookup cache only (PackageLookup). 1.4.2: a local feed's key resolves junctions and links
     /// (FeedResolver.NormaliseUrl). 1.4.3: a version newer than the lookup answers is current
-    /// (<see cref="NewerThanLookups"/>). Artifact 1.4.0 unchanged.</summary>
-    public const string ScannerVersion = "1.4.3";
+    /// (<see cref="NewerThanLookups"/>). 1.5.0 (artifact 1.5.0): the recommended version never carries a known
+    /// advisory (<see cref="WithoutAdvisoryAsync"/>); a vulnerability names the version that fixes it, or says there
+    /// is none yet; a retired package's replacement is given a version (<see cref="ReplacementVersionAsync"/>).</summary>
+    public const string ScannerVersion = "1.5.0";
+
+    /// <summary>1.5.0: the PACKAGE_VULNERABLE value's ending when no release without a known advisory supports the
+    /// target.</summary>
+    public const string NoFixedRelease = "no release without a known advisory yet";
 
     /// <summary>1.4.3: the start of the outcome reason for a version newer than every version the lookup answers
     /// know. An engine run looks up live feeds and may take a release published after an experiment's lookups were
@@ -288,8 +294,14 @@ public sealed class DependencyPipeline(PackageLookup lookup, DependencyOptions o
         }
 
         // ---- the recommended version: the newest that supports the target (Part C2).
-        var (recommended, examined) = await NewestCompatibleAsync(ordered, ct);
+        var (newestCompatible, examined) = await NewestCompatibleAsync(ordered, ct);
+        var recommended = await WithoutAdvisoryAsync(newestCompatible, currentCandidate, ordered, ct);
         var deprecated = Deprecation(currentCandidate, ordered);
+        if (deprecated is { Scope: DeprecationScopes.Package, ReplacementId: { } replacementId })
+        {
+            deprecated = deprecated with { ReplacementVersion = await ReplacementVersionAsync(feeds, replacementId, deprecated.ReplacementRange, ct) };
+        }
+
         var vulnerable = Vulnerability(currentCandidate, recommended);
         var answering = recommended ?? currentCandidate ?? latest!;
         var common = new
@@ -502,6 +514,45 @@ public sealed class DependencyPipeline(PackageLookup lookup, DependencyOptions o
         return (null, examined);
     }
 
+    /// <summary>1.5.0: never recommend a version with a known advisory. When the newest version supporting the target
+    /// has one, the newest without one, not below the current version, is recommended instead. When there is none,
+    /// the current version, if it supports the target itself: the package stays where it is, and the vulnerability
+    /// says no fixed release exists yet. Otherwise (the current version does not support the target) the newest
+    /// compatible version stands, and the vulnerability on it is reported.</summary>
+    private async Task<Candidate?> WithoutAdvisoryAsync(Candidate? newest, Candidate? current, IReadOnlyList<Candidate> ordered, CancellationToken ct)
+    {
+        if (newest is null || newest.Cached.Vulnerabilities.Count == 0) return newest;
+        var floor = current?.Version;
+        var clean = ordered.Where(c => c.Version < newest.Version && (floor is null || c.Version >= floor) && c.Cached.Vulnerabilities.Count == 0).ToList();
+        var (cleanCompatible, _) = await NewestCompatibleAsync(clean, ct);
+        if (cleanCompatible is not null) return cleanCompatible;
+        if (current is not null && (await NewestCompatibleAsync([current], ct)).Compatible is not null) return current;
+        return newest;
+    }
+
+    /// <summary>1.5.0: the version of a retired package's replacement to move to: its newest release within the
+    /// publisher's range (any, when the range is <c>[*, )</c> or unreadable), stable, listed, not deprecated, with no
+    /// known advisory, supporting the target. Null when no feed answers or no release qualifies.</summary>
+    private async Task<string?> ReplacementVersionAsync(FeedSet feeds, string packageId, string? range, CancellationToken ct)
+    {
+        VersionRange? allowed = range is not null && VersionRange.TryParse(range, out var parsed) ? parsed : null;
+        var candidates = new List<Candidate>();
+        foreach (var feed in feeds.Authorities)
+        {
+            var result = await lookup.GetAsync(feed, packageId, ct);
+            if (!result.Reachable) continue;
+            foreach (var cached in result.Entry!.Versions.Where(v => v.Listed && v.Deprecation is null && v.Vulnerabilities.Count == 0))
+            {
+                var version = NuGetVersion.Parse(cached.Version);
+                if (version.IsPrerelease || (allowed is not null && !allowed.Satisfies(version))) continue;
+                if (candidates.All(c => c.Version != version)) candidates.Add(new Candidate(version, feed, result.Entry, cached));
+            }
+        }
+
+        var (compatible, _) = await NewestCompatibleAsync(candidates.OrderByDescending(c => c.Version).ToList(), ct);
+        return compatible?.Version.ToNormalizedString();
+    }
+
     /// <summary>No frameworks at all (content, tools, a meta-package) is
     /// framework-neutral; otherwise one group must be compatible with the target.</summary>
     private bool Supports(IReadOnlyList<NuGetFramework> frameworks) =>
@@ -607,6 +658,8 @@ public sealed class DependencyPipeline(PackageLookup lookup, DependencyOptions o
             MaxSeverity = SeverityNames[Math.Clamp(max, 0, 3)],
             Advisories = current.Cached.Vulnerabilities.Select(v => new Advisory { Severity = SeverityNames[Math.Clamp(v.Severity, 0, 3)], Url = v.AdvisoryUrl }).ToList(),
             ResolvedByUpgrade = recommended is null || recommended.Version == current.Version ? null : recommended.Cached.Vulnerabilities.Count == 0,
+            FixedIn = recommended is not null && recommended.Version > current.Version && recommended.Cached.Vulnerabilities.Count == 0
+                ? recommended.Version.ToNormalizedString() : null,
         };
     }
 
@@ -857,13 +910,18 @@ public sealed class DependencyPipeline(PackageLookup lookup, DependencyOptions o
                 ? $"{assessment.PackageId} {from}: version deprecated ({reasons}); {deprecated.NewestNotDeprecated} is not"
                 : $"{assessment.PackageId} {from}: package deprecated ({reasons}); " + (deprecated.ReplacementId is null
                     ? "no suggested replacement"
-                    : $"replacement {deprecated.ReplacementId}{(deprecated.ReplacementRange is null ? "" : " " + deprecated.ReplacementRange)}");
+                    : deprecated.ReplacementVersion is { } replacementVersion
+                        ? $"replacement {deprecated.ReplacementId} {replacementVersion}"
+                        : $"replacement {deprecated.ReplacementId}{(deprecated.ReplacementRange is null ? "" : " " + deprecated.ReplacementRange)}; "
+                          + "no release of it supports the target without a known advisory");
             signals.Add(AtDeclaration("PACKAGE_DEPRECATED", value));
         }
 
         if (assessment.Vulnerable is { } vulnerable)
         {
-            signals.Add(AtDeclaration("PACKAGE_VULNERABLE", $"{assessment.PackageId} {from}: {vulnerable.MaxSeverity}"));
+            // 1.5.0: the version that fixes it, or plainly that none does yet; never a version with an advisory.
+            signals.Add(AtDeclaration("PACKAGE_VULNERABLE", $"{assessment.PackageId} {from}: {vulnerable.MaxSeverity}; "
+                + (vulnerable.FixedIn is { } fixedIn ? $"fixed in {fixedIn}" : NoFixedRelease)));
         }
 
         if (assessment.NotInClientFeed is { } gap)

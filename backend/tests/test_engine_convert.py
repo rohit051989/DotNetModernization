@@ -212,3 +212,70 @@ class PackagesAgainstTheInputs(unittest.TestCase):
             _git(repo, "commit", "-qam", "agent change")
             self.assertEqual(packages.inputs_commit(repo, base, "HEAD"), inputs)
             self.assertEqual([(t["package"], t["asked"]) for t in packages.asked_for(repo, inputs)], [("Moq", "4.21.0")])
+
+
+class SuccessorsAndFixes(unittest.TestCase):
+    PLACES = "\n".join([
+        "- `src/Api/Api.csproj:20` (src/Api/Api.csproj): `Microsoft.AspNetCore.Mvc.Versioning.ApiExplorer 5.1.0: package "
+        "deprecated (Other); replacement Asp.Versioning.Mvc.ApiExplorer 10.2.1`",
+        "- `src/Api/Api.csproj:24` (src/Api/Api.csproj): `Microsoft.Extensions.PlatformAbstractions 1.1.0: package "
+        "deprecated (Legacy, Other); no suggested replacement`",
+        "- `src/Infra/Infra.csproj:21` (src/Infra/Infra.csproj): `System.Security.Cryptography.Xml 10.0.9: high; fixed in 10.0.13`",
+        "- `src/Infra/Infra.csproj:22` (src/Infra/Infra.csproj): `Acme.Crypto 1.0.0: critical; no release without a known advisory yet`",
+    ])
+
+    def test_a_successor_and_a_fix_are_requested_versions_too(self):
+        targets = render.package_targets({".github/upgrades/skills/applying-package-x.md": self.PLACES})
+        self.assertEqual([(t["project"], t["package"], t["current"], t["asked"]) for t in targets], [
+            ("src/Api/Api.csproj", "Asp.Versioning.Mvc.ApiExplorer", None, "10.2.1"),
+            ("src/Infra/Infra.csproj", "System.Security.Cryptography.Xml", "10.0.9", "10.0.13")])
+
+    def test_the_verifier_judges_a_successor_like_any_other_upgrade(self):
+        targets = render.package_targets({".github/upgrades/skills/applying-package-x.md": self.PLACES})
+        judged, since = packages.judge({"items": [_upgrade("src/Api/Api.csproj", "Asp.Versioning.Mvc.ApiExplorer 8.1.0 -> 10.2.1")]},
+                                       targets)
+        self.assertEqual(len(judged["items"]), 1)          # 8.1.0 is below the 10.2.1 asked for: remaining
+        judged, since = packages.judge({"items": [_upgrade("src/Api/Api.csproj", "Asp.Versioning.Mvc.ApiExplorer 10.2.1 -> 10.3.0")]},
+                                       targets)
+        self.assertEqual((judged["items"], [s["asked"] for s in since]), ([], ["10.2.1"]))
+
+
+class _Rows:
+    def __init__(self, rows):
+        self.rows = rows
+
+    def all(self):
+        return self.rows
+
+
+class _Db:
+    """package_lookup_cache rows by package id: [(metadata, fetched_at)]."""
+    def __init__(self, cache):
+        self.cache = cache
+
+    def execute(self, _sql, params):
+        return _Rows(self.cache.get(params["p"], []))
+
+
+class Advisories(unittest.TestCase):
+    NOW = convert.datetime.datetime(2026, 10, 14, 12, 0, tzinfo=convert.datetime.timezone.utc)
+    FILES = {".github/upgrades/skills/applying-package-x.md": SuccessorsAndFixes.PLACES}
+
+    def _db(self, xml_advisory=False, fetched_hours_ago=1):
+        fetched = self.NOW - convert.datetime.timedelta(hours=fetched_hours_ago)
+        vuln = [{"severity": 2, "advisoryUrl": "https://github.com/advisories/GHSA-x"}] if xml_advisory else []
+        return _Db({"asp.versioning.mvc.apiexplorer": [({"10.2.1": {"vulnerabilities": []}}, fetched)],
+                    "system.security.cryptography.xml": [({"10.0.13": {"vulnerabilities": vuln}}, fetched)]})
+
+    def test_every_version_asked_for_is_confirmed_free_of_known_advisories(self):
+        checked = convert.check_advisories(self._db(), self.FILES, now=self.NOW)
+        self.assertEqual([(c["package"], c["asked"], c["advisories"]) for c in checked],
+                         [("Asp.Versioning.Mvc.ApiExplorer", "10.2.1", []), ("System.Security.Cryptography.Xml", "10.0.13", [])])
+
+    def test_a_version_with_an_advisory_or_stale_lookups_is_refused(self):
+        with self.assertRaisesRegex(convert.AdvisoryFound, "System.Security.Cryptography.Xml 10.0.13 .*GHSA-x"):
+            convert.check_advisories(self._db(xml_advisory=True), self.FILES, now=self.NOW)
+        with self.assertRaisesRegex(convert.AdvisoryFound, "more than a day ago"):
+            convert.check_advisories(self._db(fetched_hours_ago=30), self.FILES, now=self.NOW)
+        with self.assertRaisesRegex(convert.AdvisoryFound, "no package lookup knows this version"):
+            convert.check_advisories(_Db({}), self.FILES, now=self.NOW)

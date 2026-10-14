@@ -408,7 +408,7 @@ public sealed class DependencyAssessmentTests : IDisposable
     /// fixture's "public" feed is a local folder, which the feed enum rightly refuses.</summary>
     private static ArtifactSchemaValidator PackageSchema()
     {
-        var schema = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "schemas", "dependency-assessment-1.4.0.schema.json")))!;
+        var schema = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "schemas", "dependency-assessment-1.5.0.schema.json")))!;
         var wrapper = new System.Text.Json.Nodes.JsonObject
         {
             ["$schema"] = schema["$schema"]!.DeepClone(),
@@ -611,6 +611,86 @@ public sealed class DependencyAssessmentTests : IDisposable
         Assert.Equal(("high", true), (json.Vulnerable!.MaxSeverity, json.Vulnerable.ResolvedByUpgrade));
     }
 
+    private static CachedVersion Cached(string version, bool vulnerable = false, CachedDeprecation? deprecation = null) => new()
+    {
+        Version = version,
+        DependencyFrameworks = ["net8.0"],
+        Deprecation = deprecation,
+        Vulnerabilities = vulnerable ? [new CachedVulnerability { Severity = 2, AdvisoryUrl = "https://github.com/advisories/GHSA-fixture" }] : [],
+    };
+
+    private static CacheEntry Entry(string packageId, params CachedVersion[] versions) => new()
+    {
+        FeedUrl = "repo:feeds/artifactory", PackageId = packageId, FetchedAt = DateTimeOffset.Parse("2026-10-01T23:00:00Z"), Versions = versions,
+    };
+
+    /// <summary>1.5.0: no recommended version carries a known advisory. The newest compatible version has one, so the
+    /// newest without one is recommended, and the vulnerability names it as the fix.</summary>
+    [Fact]
+    public async Task A_version_with_a_known_advisory_is_never_recommended()
+    {
+        ClientFeedConfig();
+        Project("""    <PackageReference Include="Acme.Json" Version="1.0.0" />""",
+            "using Acme.Json; class P { static void Main() { var x = Serializer.Parse(\"{}\"); } }");
+        Package(_clientFeed, "Acme.Json", "1.0.0", "net8.0", JsonV1);
+        Package(_clientFeed, "Acme.Json", "1.1.0", "net8.0", JsonV11);
+        var cache = new MemoryLookupCache();
+        cache.Put(Entry("acme.json", Cached("1.2.0", vulnerable: true), Cached("1.1.0"), Cached("1.0.0", vulnerable: true)));
+
+        var artifact = await Run([new InputPackage("Acme.Json", "1.0.0", "packagereference")], cache);
+        var json = Package(artifact, "Acme.Json");
+        Assert.Equal("1.1.0", json.RecommendedVersion);
+        Assert.Equal("1.1.0", json.Vulnerable!.FixedIn);
+        Assert.Equal("Acme.Json 1.0.0: high; fixed in 1.1.0",
+            Assert.Single(artifact.Projects.Single().Signals, s => s.Name == "PACKAGE_VULNERABLE").Value);
+        PackageSchema().Validate(DeterministicJson.Serialize(artifact.Projects.Single().Packages));
+    }
+
+    /// <summary>1.5.0: when every newer version has a known advisory too, nothing is asked for: the package stays at
+    /// its version, and the vulnerability says plainly that no fixed release exists yet.</summary>
+    [Fact]
+    public async Task A_vulnerability_with_no_fixed_release_says_so_instead_of_asking_for_a_vulnerable_version()
+    {
+        ClientFeedConfig();
+        Project("""    <PackageReference Include="Acme.Json" Version="1.0.0" />""",
+            "using Acme.Json; class P { static void Main() { var x = Serializer.Parse(\"{}\"); } }");
+        Package(_clientFeed, "Acme.Json", "1.0.0", "net8.0", JsonV1);
+        Package(_clientFeed, "Acme.Json", "1.1.0", "net8.0", JsonV11);
+        var cache = new MemoryLookupCache();
+        cache.Put(Entry("acme.json", Cached("1.1.0", vulnerable: true), Cached("1.0.0", vulnerable: true)));
+
+        var artifact = await Run([new InputPackage("Acme.Json", "1.0.0", "packagereference")], cache);
+        var json = Package(artifact, "Acme.Json");
+        Assert.Equal(Outcomes.Current, json.Outcome);
+        Assert.Null(json.Vulnerable!.FixedIn);
+        var signals = artifact.Projects.Single().Signals;
+        Assert.Equal($"Acme.Json 1.0.0: high; {DependencyPipeline.NoFixedRelease}", Assert.Single(signals, s => s.Name == "PACKAGE_VULNERABLE").Value);
+        Assert.DoesNotContain(signals, s => s.Name.StartsWith("PACKAGE_UPGRADE_", StringComparison.Ordinal));
+    }
+
+    /// <summary>1.5.0: a retired package's replacement is given a version: its newest release within the
+    /// publisher's range that is stable, not deprecated, free of known advisories and supports the target.</summary>
+    [Fact]
+    public async Task A_replacement_names_its_newest_compatible_release_without_a_known_advisory()
+    {
+        ClientFeedConfig();
+        Project("""    <PackageReference Include="Acme.Json" Version="1.0.0" />""",
+            "using Acme.Json; class P { static void Main() { var x = Serializer.Parse(\"{}\"); } }");
+        Package(_clientFeed, "Acme.Json", "1.0.0", "net8.0", JsonV1);
+        var retired = new CachedDeprecation { Reasons = ["Other"], AlternateId = "Acme.Json.Next", AlternateRange = "[*, )" };
+        var cache = new MemoryLookupCache();
+        cache.Put(Entry("acme.json", Cached("1.0.0", deprecation: retired)));
+        cache.Put(Entry("acme.json.next", Cached("4.0.0-beta.1"), Cached("3.0.0", vulnerable: true),
+            Cached("2.5.0", deprecation: new CachedDeprecation { Reasons = ["CriticalBugs"] }), Cached("2.1.0"), Cached("2.0.0")));
+
+        var artifact = await Run([new InputPackage("Acme.Json", "1.0.0", "packagereference")], cache);
+        var json = Package(artifact, "Acme.Json");
+        Assert.Equal("2.1.0", json.Deprecated!.ReplacementVersion);
+        Assert.Equal("Acme.Json 1.0.0: package deprecated (Other); replacement Acme.Json.Next 2.1.0",
+            Assert.Single(artifact.Projects.Single().Signals, s => s.Name == "PACKAGE_DEPRECATED").Value);
+        PackageSchema().Validate(DeterministicJson.Serialize(artifact.Projects.Single().Packages));
+    }
+
     /// <summary>1.4.3: an engine run may take a release published after an experiment's lookups were frozen. A
     /// version newer than every version the answers know is an upgrade (current), reported as newer than the
     /// lookups; never no-compatible-version, which would raise a replacement work item.</summary>
@@ -636,6 +716,9 @@ public sealed class DependencyAssessmentTests : IDisposable
         Assert.DoesNotContain(artifact.Projects.Single().Signals, s => s.Name.StartsWith("PACKAGE_", StringComparison.Ordinal));
     }
 
+    // 1.5.0: the replacement is not on the fixture's feed, so no release of it is named.
+    private const string NoReplacementRelease = "no release of it supports the target without a known advisory";
+
     /// <summary>1.3.0 (Part C3): NuGet deprecates versions. A deprecated release of a maintained package — a newer
     /// version is not deprecated, and the reason is not Legacy — is an upgrade; a Legacy package, or one whose newer
     /// versions are all deprecated too, is retired and needs replacing. The signal's value says which.</summary>
@@ -644,8 +727,8 @@ public sealed class DependencyAssessmentTests : IDisposable
     [InlineData("Other", null, false, "version", "Acme.Json 1.0.0: version deprecated (Other); 1.1.0 is not")]
     [InlineData("Legacy", null, false, "version", "Acme.Json 1.0.0: version deprecated (Legacy); 1.1.0 is not")]
     [InlineData("Legacy", "Acme.Json", false, "version", "Acme.Json 1.0.0: version deprecated (Legacy); 1.1.0 is not")]
-    [InlineData("Legacy", "System.Text.Json", false, "package", "Acme.Json 1.0.0: package deprecated (Legacy); replacement System.Text.Json")]
-    [InlineData("CriticalBugs", "System.Text.Json", true, "package", "Acme.Json 1.0.0: package deprecated (CriticalBugs); replacement System.Text.Json")]
+    [InlineData("Legacy", "System.Text.Json", false, "package", "Acme.Json 1.0.0: package deprecated (Legacy); replacement System.Text.Json; " + NoReplacementRelease)]
+    [InlineData("CriticalBugs", "System.Text.Json", true, "package", "Acme.Json 1.0.0: package deprecated (CriticalBugs); replacement System.Text.Json; " + NoReplacementRelease)]
     [InlineData("Other", null, true, "package", "Acme.Json 1.0.0: package deprecated (Other); no suggested replacement")]
     public async Task A_deprecated_version_of_a_maintained_package_is_told_apart_from_a_retired_package(
         string reason, string? alternate, bool newerDeprecatedToo, string scope, string signalValue)
@@ -671,7 +754,7 @@ public sealed class DependencyAssessmentTests : IDisposable
 
         var artifact = await Run([new InputPackage("Acme.Json", "1.0.0", "packagereference")], cache);
         var json = Package(artifact, "Acme.Json");
-        Assert.Equal("1.4.0", artifact.ArtifactVersion);
+        Assert.Equal("1.5.0", artifact.ArtifactVersion);
         Assert.Equal(scope, json.Deprecated!.Scope);
         Assert.Equal(scope == "version" ? "1.1.0" : null, json.Deprecated.NewestNotDeprecated);
         Assert.Equal(signalValue, Assert.Single(artifact.Projects.Single().Signals, s => s.Name == "PACKAGE_DEPRECATED").Value);

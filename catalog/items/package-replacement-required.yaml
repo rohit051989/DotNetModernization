@@ -90,10 +90,11 @@ resolutions:
   description: Move to the replacement package the publisher names in the deprecation. Not available where none is named.
   effort: medium
   engine_guidance: |-
-    Replace the package with the replacement its publisher names (shown with each place below), at
-    a version that supports the target framework, and change the calling code to the replacement's
-    API. Where no replacement is named, leave the reference unchanged and record it in the task's
-    notes.
+    Replace the package with the replacement its publisher names, at the version shown with each
+    place below (`replacement <package> <version>`): the replacement's newest release that supports
+    the target framework and has no known advisory. Use exactly that version, and change the calling
+    code to the replacement's API. Where no replacement is named, or the place says no release of it
+    qualifies, leave the reference unchanged and record it in the task's notes.
   id: package-replacement-publisher-suggested
   impact_rules:
   - action: update

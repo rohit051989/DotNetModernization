@@ -220,10 +220,11 @@ items:
       its publisher has retired it. It has to be replaced, not upgraded.
     resolutions:
       package-replacement-publisher-suggested: |-
-        Replace the package with the replacement its publisher names (shown with each place below), at
-        a version that supports the target framework, and change the calling code to the replacement's
-        API. Where no replacement is named, leave the reference unchanged and record it in the task's
-        notes.
+        Replace the package with the replacement its publisher names, at the version shown with each
+        place below (`replacement <package> <version>`): the replacement's newest release that supports
+        the target framework and has no known advisory. Use exactly that version, and change the calling
+        code to the replacement's API. Where no replacement is named, or the place says no release of it
+        qualifies, leave the reference unchanged and record it in the task's notes.
       package-replacement-alternative: |-
         Replace the package with a maintained library that supports the target framework and provides
         the same capability, and change the calling code to its API.
@@ -267,9 +268,11 @@ items:
       The version of a NuGet package this project uses has a published security advisory.
     resolutions:
       package-vulnerable-upgrade: |-
-        Change the package to the recommended version, which has no open advisory, where the version is
-        declared. If the same package is also being upgraded for the target framework, do both in one
-        change.
+        Change the package to the version shown with each place below (`fixed in <version>`), which has
+        no known advisory, where the version is declared. If the same package is also being upgraded for
+        the target framework, do both in one change. Where a place says there is no release without a
+        known advisory yet, leave the version unchanged, do not look for another, and record it in the
+        task's notes.
       package-vulnerable-accept-risk: |-
         Leave the version unchanged: the risk has been accepted. Change nothing.
       package-vulnerable-replace: |-

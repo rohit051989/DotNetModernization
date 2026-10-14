@@ -127,6 +127,17 @@ So determinism is defined **against a lookup cache**:
   `current`, reason "newer than the lookup answers: ...": a release published after they were
   taken. An engine run looks up live feeds and is not penalised for a newer valid release; before
   1.4.3 it was `no_compatible_version`, which raised a replacement work item
+- no recommended version carries a known advisory (scanner 1.5.0, artifact 1.5.0). When the
+  newest version supporting the target has one, the newest without one, not below the current
+  version, is recommended. When there is none, the package stays at its version (outcome
+  `current` if that version supports the target), and nothing with an advisory is asked for.
+  `vulnerable.fixedIn` names the version that fixes the advisory, or is null. The
+  PACKAGE_VULNERABLE value ends "fixed in V" or "no release without a known advisory yet"
+- a retired package's replacement is given a version (scanner 1.5.0):
+  `deprecated.replacementVersion`, the replacement's newest release within the publisher's range
+  that is stable, listed, not deprecated, free of known advisories and supports the target. The
+  PACKAGE_DEPRECATED value reads "replacement New V". When none qualifies, it reads
+  "replacement New; no release of it supports the target without a known advisory"
 
 ### B7. Unreachable feeds
 
