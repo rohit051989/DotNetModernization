@@ -4,7 +4,9 @@
 # parameters: values the converted code must read at run time rather than contain. The generated instruction tells
 #   the engine to reference each by name and never invent a value; the decision sheet lists them "to supply before
 #   deployment". `per`: application (one), project (one per project) or occurrence (one per place). In `name`,
-#   {PROJECT} is the project's name and {VALUE} the occurrence's value, both as an upper-case identifier.
+#   {PROJECT} is the project's name and {VALUE} the occurrence's value, both as an upper-case identifier. {KEY} is the
+#   configuration key each place's value sits under, as an environment variable name (FileContent:FilePath ->
+#   FileContent__FilePath), one parameter per key; a place with no key (a literal in code) takes `fallback`.
 #   `kind`: secret (an OpenShift Secret), config (a ConfigMap or environment variable).
 # cannot_apply: when the resolution cannot apply at a place. `always: <why>`, or `value_matches: <regex>` with
 #   `why`. Such a place is left unchanged and listed as unresolved.
@@ -32,7 +34,8 @@ explicit-legacy-code-page:
 
 externalize-path-setting:
   parameters:
-    - name: "PATH_{VALUE}"
+    - name: "{KEY}"
+      fallback: "PATH_{VALUE}"
       per: occurrence
       kind: config
       what: "The Linux path that replaces this Windows path in the container"
@@ -138,3 +141,30 @@ package-replacement-publisher-suggested:
 package-not-approved-request-approval:
   cannot_apply:
     - always: "the newer version must first pass the client's package-approval process"
+
+# Registry 1.12.0 items.
+vault-agent-files:
+  parameters:
+    - name: VAULT_ROLE
+      per: application
+      kind: config
+      what: "The Vault Kubernetes authentication role the application's pod signs in as"
+    - name: VAULT_SECRETS_PATH
+      per: application
+      kind: config
+      what: "The Vault path the application's secrets are read from"
+
+openshift-secret-files:
+  parameters:
+    - name: VAULT_SECRETS_SECRET_NAME
+      per: application
+      kind: config
+      what: "The OpenShift Secret holding one file per referenced secret name, mounted as the secrets directory"
+
+environment-secrets:
+  parameters:
+    - name: "{VALUE}"
+      per: occurrence
+      kind: secret
+      what: "The secret value, supplied from an OpenShift Secret under its configuration key (\":\" written as \"__\")"
+

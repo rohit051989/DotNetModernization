@@ -38,9 +38,13 @@ public sealed record JsonConfigNode
     /// those (Part G).</summary>
     public string? StringValue { get; init; }
 
-    /// <summary>The node is a sensitive key itself (its subtree is skipped,
-    /// never read).</summary>
+    /// <summary>The node is a secret: a sensitive key's leaf, recorded by its full path (registry 1.12.0), or a
+    /// sensitive section with no secret leaf under it. Its value is never kept.</summary>
     public bool IsSensitiveKey { get; init; }
+
+    /// <summary>Registry 1.12.0: the value is an Enterprise.Vault reference (<c>vault:&lt;name&gt;</c>), resolved
+    /// at run time by <c>AddEnterpriseVaultSecrets</c>: the file holds a reference, not the secret.</summary>
+    public bool IsVaultReference { get; init; }
 
     /// <summary>A direct child of a <c>ConnectionStrings</c> section.</summary>
     public bool IsConnectionString { get; init; }
@@ -122,6 +126,7 @@ public static class JsonConfigWalker
             {
                 Path = [.. path], Line = line, Kind = reader.TokenType,
                 IsConnectionString = true, UsesWindowsAuthentication = windowsAuth,
+                IsVaultReference = connectionString is not null && Secrets.IsVaultReference(connectionString),
                 ConnectionFacts = connectionString is null ? null : Secrets.ReadConnectionFacts(connectionString),
             });
             reader.Skip();
@@ -133,8 +138,7 @@ public static class JsonConfigWalker
 
         if (!isConnectionStringsSection && path.Count > 0 && Secrets.IsSensitiveKey(name))
         {
-            nodes.Add(new JsonConfigNode { Path = [.. path], Line = line, Kind = reader.TokenType, IsSensitiveKey = true });
-            reader.Skip();
+            ReadSensitive(ref reader, path, line, nodes, lines);
             return;
         }
 
@@ -166,9 +170,11 @@ public static class JsonConfigWalker
                 break;
 
             case JsonTokenType.String:
+                var text = reader.GetString();
                 nodes.Add(new JsonConfigNode
                 {
-                    Path = [.. path], Line = line, Kind = JsonTokenType.String, StringValue = reader.GetString(),
+                    Path = [.. path], Line = line, Kind = JsonTokenType.String, StringValue = text,
+                    IsVaultReference = text is not null && Secrets.IsVaultReference(text),
                 });
                 break;
 
@@ -176,6 +182,70 @@ public static class JsonConfigWalker
                 nodes.Add(new JsonConfigNode { Path = [.. path], Line = line, Kind = reader.TokenType });
                 break;
         }
+    }
+
+    /// <summary>
+    /// A sensitive key's value (registry 1.12.0). A leaf is recorded by its own full path. A section is walked, and
+    /// each leaf under it that holds the secret is recorded by its full path: one named as a secret, one whose name
+    /// ends in <c>Key</c> (<c>Token:SigningKey</c>), or a vault reference. Other leaves under it (<c>Token:Issuer</c>,
+    /// <c>Token:ClockSkewSeconds</c>) are passed over, their values discarded. A section with no such leaf is
+    /// recorded itself. A value is read only to see whether it is a vault reference, and is never kept.
+    /// </summary>
+    private static void ReadSensitive(ref Utf8JsonReader reader, List<string> path, int line, List<JsonConfigNode> nodes, LineMap lines)
+    {
+        if (reader.TokenType is not (JsonTokenType.StartObject or JsonTokenType.StartArray))
+        {
+            nodes.Add(SensitiveLeaf(ref reader, path, line));
+            return;
+        }
+
+        var before = nodes.Count;
+        ReadSensitiveSection(ref reader, path, nodes, lines);
+        if (nodes.Count == before)
+        {
+            nodes.Add(new JsonConfigNode { Path = [.. path], Line = line, Kind = JsonTokenType.StartObject, IsSensitiveKey = true });
+        }
+    }
+
+    private static void ReadSensitiveSection(ref Utf8JsonReader reader, List<string> path, List<JsonConfigNode> nodes, LineMap lines)
+    {
+        var isArray = reader.TokenType == JsonTokenType.StartArray;
+        var index = 0;
+        while (reader.Read() && reader.TokenType is not (JsonTokenType.EndObject or JsonTokenType.EndArray))
+        {
+            string member;
+            int memberLine;
+            if (isArray)
+            {
+                member = index++.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                memberLine = lines.LineOf(reader.TokenStartIndex);
+            }
+            else
+            {
+                member = reader.GetString() ?? string.Empty;
+                memberLine = lines.LineOf(reader.TokenStartIndex);
+                reader.Read();
+            }
+
+            path.Add(member);
+            if (reader.TokenType is JsonTokenType.StartObject or JsonTokenType.StartArray)
+            {
+                ReadSensitiveSection(ref reader, path, nodes, lines);
+            }
+            else if (reader.TokenType == JsonTokenType.String
+                     && (Secrets.IsSensitiveKey(member) || Secrets.NamesKeyMaterial(member) || Secrets.IsVaultReference(reader.GetString() ?? "")))
+            {
+                nodes.Add(SensitiveLeaf(ref reader, path, memberLine));
+            }
+
+            path.RemoveAt(path.Count - 1);
+        }
+    }
+
+    private static JsonConfigNode SensitiveLeaf(ref Utf8JsonReader reader, List<string> path, int line)
+    {
+        var vault = reader.TokenType == JsonTokenType.String && Secrets.IsVaultReference(reader.GetString() ?? "");
+        return new JsonConfigNode { Path = [.. path], Line = line, Kind = reader.TokenType, IsSensitiveKey = !vault, IsVaultReference = vault };
     }
 
     /// <summary>Byte offset to 1-based line number.</summary>

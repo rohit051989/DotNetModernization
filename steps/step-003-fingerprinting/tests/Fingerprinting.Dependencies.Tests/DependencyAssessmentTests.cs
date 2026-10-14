@@ -611,6 +611,31 @@ public sealed class DependencyAssessmentTests : IDisposable
         Assert.Equal(("high", true), (json.Vulnerable!.MaxSeverity, json.Vulnerable.ResolvedByUpgrade));
     }
 
+    /// <summary>1.4.3: an engine run may take a release published after an experiment's lookups were frozen. A
+    /// version newer than every version the answers know is an upgrade (current), reported as newer than the
+    /// lookups; never no-compatible-version, which would raise a replacement work item.</summary>
+    [Fact]
+    public async Task A_version_newer_than_the_lookup_answers_counts_as_upgraded()
+    {
+        ClientFeedConfig();
+        Project("""    <PackageReference Include="Acme.Json" Version="1.2.0" />""",
+            "using Acme.Json; class P { static void Main() { var x = Serializer.Write(1); } }");
+        var cache = new MemoryLookupCache();
+        cache.Put(new CacheEntry
+        {
+            FeedUrl = "repo:feeds/artifactory", PackageId = "acme.json", FetchedAt = DateTimeOffset.Parse("2026-10-01T23:00:00Z"),
+            Versions = [new CachedVersion { Version = "1.1.0", DependencyFrameworks = ["net8.0"] },
+                        new CachedVersion { Version = "1.0.0", DependencyFrameworks = ["net8.0"] }],
+        });
+
+        var artifact = await Run([new InputPackage("Acme.Json", "1.2.0", "packagereference")], cache);
+        var json = Package(artifact, "Acme.Json");
+        Assert.Equal(Outcomes.Current, json.Outcome);
+        Assert.StartsWith(DependencyPipeline.NewerThanLookups, json.OutcomeReason);
+        Assert.Contains("recommended 1.1.0", json.OutcomeReason);
+        Assert.DoesNotContain(artifact.Projects.Single().Signals, s => s.Name.StartsWith("PACKAGE_", StringComparison.Ordinal));
+    }
+
     /// <summary>1.3.0 (Part C3): NuGet deprecates versions. A deprecated release of a maintained package — a newer
     /// version is not deprecated, and the reason is not Legacy — is an upgrade; a Legacy package, or one whose newer
     /// versions are all deprecated too, is retired and needs replacing. The signal's value says which.</summary>

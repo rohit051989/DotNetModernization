@@ -24,7 +24,7 @@ ARM3_LABEL = "arm3"
 
 def scorecard(verification: dict | None, record: dict | None) -> dict:
     if verification is None:
-        return {"verdict": "not verified"}
+        return {"verdict": "not verified", "role": (record or {}).get("role", "comparison")}
     clean = verification["cleanRun"]
     executed = sum(p.get("total", 0) for p in clean["projects"].values())
     passed = sum(p.get("passed", 0) for p in clean["projects"].values())
@@ -38,9 +38,12 @@ def scorecard(verification: dict | None, record: dict | None) -> dict:
         "testsKept": kept.get("detail", ""),
         "workItems": f"{len(rd['resolved'])} resolved, {len(rd['remaining'])} remaining, {len(rd['introduced'])} introduced (of {rd['before']})",
         "offTarget": len(rd["offTarget"]),
+        "newerThanSnapshot": rd.get("newerThanSnapshot") or [],
         "outsidePrediction": len(im["unpredicted"]), "predictedUntouched": len(im["predictedUntouched"]),
         "diff": f"{d['filesTouched']} files, +{d['linesAdded']} -{d['linesDeleted']}",
         "interventions": len(record["interventions"]) if record else None,
+        "protocolActions": len(record.get("protocolActions") or []) if record else None,
+        "role": record.get("role", "comparison") if record else "comparison",
         "premiumRequests": record.get("premiumRequests") if record else None,
         "elapsedMinutes": record.get("elapsedMinutes") if record else None,
         "model": record.get("model") if record else None,
@@ -67,6 +70,10 @@ def build(db, config: dict) -> str:
            "> record; nothing an engine reported is evidence. Spec: `docs/36-COPILOT-ENHANCED-CONVERSION.md` Part F.", "",
            f"Subject `{config['repository']}` from `{config['baseline_commit']}`, engagement `{config['engagement']}`.", "",
            f"Platform commit `{config.get('platform_commit') or 'not recorded'}`: every run must be verified at it.", ""]
+    pilots = [r for r in rows if r["card"].get("role") == "pilot"]
+    if pilots:
+        out += ["**Pilot, excluded from the comparison.** Kept and verified as a dress rehearsal; not counted for either arm:", ""]
+        out += [f"- `{r['label']}`" for r in pilots] + [""]
     flagged = [r for r in rows if r["instrument"]]
     if flagged:
         out += ["**Not measured with the same instrument.** These verifications were not made at the experiment's "
@@ -76,15 +83,18 @@ def build(db, config: dict) -> str:
         out += [f"**Arm 3 covers the {arm3['scope']}, not OpenShift readiness.** It is compared with the other arms on "
                 "the version upgrade alone: its OpenShift work items are expected to remain.", ""]
     out += ["## Scorecard", "",
-            "| Run | Arm | Verdict | Builds | Tests vs baseline | Work items | Outside prediction | Diff | Interventions | Premium requests | Minutes |",
-            "|---|---|---|---|---|---|---|---|---|---|---|"]
+            "| Run | Arm | Verdict | Builds | Tests vs baseline | Work items | Newer than snapshot | Outside prediction | Diff | Interventions | Protocol actions | Premium requests | Minutes |",
+            "|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
     for r in rows:
         c = r["card"]
         if c["verdict"] == "not verified":
-            out.append(f"| `{r['label']}` | {r['arm']} | not verified | | | | | | | | |")
+            out.append(f"| `{r['label']}` | {r['arm']} | not verified | | | | | | | | | | |")
             continue
-        out.append(f"| `{r['label']}` | {r['arm']} | **{c['verdict']}**{' (instrument differs)' if r['instrument'] else ''} | {c['builds']} | {c['tests']} | {c['workItems']} | "
-                   f"{c['outsidePrediction']} | {c['diff']} | {c['interventions'] if c['interventions'] is not None else '-'} | "
+        note = (" (instrument differs)" if r["instrument"] else "") + (" (pilot: excluded)" if c.get("role") == "pilot" else "")
+        out.append(f"| `{r['label']}` | {r['arm']} | **{c['verdict']}**{note} | {c['builds']} | {c['tests']} | {c['workItems']} | "
+                   f"{len(c['newerThanSnapshot'])} | {c['outsidePrediction']} | {c['diff']} | "
+                   f"{c['interventions'] if c['interventions'] is not None else '-'} | "
+                   f"{c['protocolActions'] if c['protocolActions'] is not None else '-'} | "
                    f"{c['premiumRequests'] if c['premiumRequests'] is not None else '-'} | "
                    f"{c['elapsedMinutes'] if c['elapsedMinutes'] is not None else '-'} |")
     out += ["", "## Reasons per run", ""]
@@ -97,6 +107,9 @@ def build(db, config: dict) -> str:
         out += [f"Verdict **{c['verdict']}**. Tests kept: {c['testsKept']}"]
         if c.get("identity"):
             out.append(f"Signed in: {c['identity']}; model {c['model']}.")
+        if c["newerThanSnapshot"]:
+            out.append("Newer than snapshot (counted as upgraded): " + ", ".join(
+                f"{n['package']} {n['version']} ({n['project']})" for n in c["newerThanSnapshot"]) + ".")
         out += [""] + [f"- {x}" for x in c["reasons"]] + [""]
     out += ["## What the result means (Part F)", "",
             "- **Arm 2 clearly ahead of arm 1**: the enhancement is the platform's value; proceed to the second app.",

@@ -30,12 +30,16 @@ def _report(db, execution: models.WfJobExecution) -> int:
     return 0 if execution.batch_status == "COMPLETED" else 1
 
 
-def discover(db, repository: models.Repository) -> models.WfJobExecution:
+def discover(db, repository: models.Repository, lookup_offline: bool = False) -> models.WfJobExecution:
+    """`lookup_offline`: dependency-assessment answers package lookups from the lookup cache only, contacting no feed
+    (36-COPILOT-ENHANCED-CONVERSION Part L): rediscovering an experiment's repository against the answers its frozen
+    snapshot holds, so no release published since changes them."""
     token = service.start_rescan(repository)
     db.commit()
-    execution = runtime.launch_job(db, DISCOVERY, {"engagement_id": repository.engagement_id,
-                                                   "repository_id": str(repository.id), "ingest_token": token},
-                                   triggered_by="manual")
+    parameters = {"engagement_id": repository.engagement_id, "repository_id": str(repository.id), "ingest_token": token}
+    if lookup_offline:
+        parameters["lookup_offline"] = True
+    execution = runtime.launch_job(db, DISCOVERY, parameters, triggered_by="manual")
     db.commit()
     return execution
 
@@ -53,6 +57,8 @@ def main(argv: list[str] | None = None) -> int:
     d = sub.add_parser("discover")
     d.add_argument("--engagement", required=True)
     d.add_argument("--repository", required=True, help="repository slug")
+    d.add_argument("--lookup-offline", action="store_true",
+                   help="answer package lookups from the lookup cache only; no feed is contacted")
     c = sub.add_parser("consolidate")
     c.add_argument("--engagement", required=True)
     args = parser.parse_args(argv)
@@ -76,7 +82,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "discover":
             repository = (db.query(models.Repository).filter_by(engagement_id=engagement.id, slug=args.repository)
                           .filter(models.Repository.deleted_at.is_(None)).one())
-            return _report(db, discover(db, repository))
+            return _report(db, discover(db, repository, args.lookup_offline))
         execution = runtime.launch_job(db, CONSOLIDATION, {"engagement_id": engagement.id, "run_token": str(uuid.uuid4())},
                                        triggered_by="manual")
         db.commit()

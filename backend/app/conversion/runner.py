@@ -53,6 +53,7 @@ from app import models
 from app.conversion import dotnet, evidence, gitops
 from app.conversion.approaches import APPROACHES
 from app.db import SessionLocal
+from app.engine.inputs import selfcontained
 
 # Settled: never run again. `excluded` is the first proof's history (models.UNIT_STATUS).
 DONE = ("committed", "not_applicable", "excluded")
@@ -236,7 +237,8 @@ class Run:
             if outside:
                 self.fail(unit, f"build or tests changed tracked files: {', '.join(outside)}", records)
                 return False
-            sha = gitops.commit(scratch, approach.message(unit.target))
+            # Part M: the message is checked like every platform commit; no catalog id, no co-author trailer.
+            sha = gitops.commit(scratch, approach.message(unit.target), vocabulary=selfcontained.vocabulary(self.db))
             gitops.fast_forward(self.target, sha)
             result = evidence.write(out / "result.json", json.dumps(
                 {"unit_id": unit.unit_id, "sequence": unit.sequence, "commit": sha, "evidence": records}, indent=2))

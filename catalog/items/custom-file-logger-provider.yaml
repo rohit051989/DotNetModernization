@@ -1,0 +1,63 @@
+category: logging
+deleted: false
+description: |-
+  A class implementing ILoggerProvider that writes log files (AccountsApi's FileLoggerProvider), the hand-written counterpart of a Serilog file sink. In a container the files are lost with the pod and nothing collects them; logs belong on standard output. One occurrence per provider.
+  Conversion ordering (docs/28 Part E): runs BEFORE hardcoded-windows-path. Removing the provider removes its log directory setting with it.
+detection:
+  match:
+    all:
+    - id: file-logger-provider
+      signal:
+        name: CUSTOM_FILE_LOGGER_PROVIDER
+    any: []
+    atLeast: []
+    metadata: []
+    none: []
+  occurrence_source:
+    group_by: source_path_and_value
+    signal: CUSTOM_FILE_LOGGER_PROVIDER
+engine_guidance: |-
+  This class is a custom logging provider (`ILoggerProvider`) that writes log files. In a container the
+  files are lost with the pod and nothing collects them; on OpenShift, logs belong on standard output.
+excluded_roles:
+- TEST
+id: custom-file-logger-provider
+name: Custom logging provider writing files
+owner_team: null
+resolutions:
+- consumer_impact: none
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: Keep the provider's format, and write each line to standard output instead of a file.
+  effort: low
+  engine_guidance: |-
+    Keep the provider and its line format, but write each line to standard output (`Console.Out`)
+    instead of a file, and remove its directory setting and any file handling.
+  id: file-logger-to-stdout
+  is_default: false
+  linux_compatible: true
+  name: Keep the provider, writing to standard output
+  notes: null
+  status: active
+  target_description: The same provider, writing to standard output
+- consumer_impact: none
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: Remove the provider, its registration and its configuration; the console provider writes to standard output.
+  effort: low
+  engine_guidance: |-
+    1. Remove the provider's registration (`AddProvider`, or the extension method that adds it) and the
+       provider class itself.
+    2. Remove its configuration section and the settings class bound to it.
+    3. Make sure console logging stays enabled, so every log event goes to standard output.
+  id: remove-file-logger-provider
+  is_default: true
+  linux_compatible: true
+  name: Remove the provider; log to standard output
+  notes: null
+  status: active
+  target_description: Console logging only, collected from standard output
+scope: occurrence
+status: active

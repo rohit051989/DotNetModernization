@@ -1471,6 +1471,156 @@ items:
         consumer_impact: none
         effort: low
 
+  # ---- Gaps the first Copilot pilot run exposed (registry 1.12.0) ----
+
+  - id: enterprise-vault-secret-reference
+    name: "Secret read from Enterprise Vault"
+    scope: occurrence
+    category: security
+    description: >-
+      A configuration value that is an Enterprise.Vault reference, vault:<name>: a connection
+      string, a signing key, a client secret, a certificate or its key. At start-up
+      AddEnterpriseVaultSecrets replaces each reference with the contents of the file <name> in the
+      secrets directory: ENTERPRISE_VAULT_SECRETS_DIR, else a Windows default, else /vault/secrets.
+      The file holds a reference, not the secret, so a key holding one is this item and never
+      sensitive-config-key. On OpenShift the directory must be filled at deployment, one file per
+      referenced name. One occurrence per key per file.
+    excluded_roles: [TEST]
+    detection:
+      match:
+        all:
+          - id: vault-reference
+            signal:
+              name: VAULT_SECRET_REFERENCE
+      occurrence_source:
+        signal: VAULT_SECRET_REFERENCE
+        group_by: source_path_and_value
+    resolutions:
+      - id: vault-agent-files
+        name: "Vault Agent writes the secrets as files"
+        description: "Keep the vault: references and Enterprise.Vault. The Vault Agent injector writes each referenced secret as a file named after it into /vault/secrets, and ENTERPRISE_VAULT_SECRETS_DIR points there."
+        target_description: "Vault Agent injector annotations on the Deployment; ENTERPRISE_VAULT_SECRETS_DIR=/vault/secrets"
+        consumer_impact: none
+        effort: low
+        is_default: true
+      - id: openshift-secret-files
+        name: "OpenShift Secret mounted as the secrets directory"
+        description: "Keep the vault: references and Enterprise.Vault. An OpenShift Secret (synced from Vault by the External Secrets operator, or created by the platform team) holds one key per referenced name and is mounted as the secrets directory."
+        target_description: "Secret volume at /vault/secrets; ENTERPRISE_VAULT_SECRETS_DIR=/vault/secrets"
+        consumer_impact: none
+        effort: low
+      - id: environment-secrets
+        name: "Replace the references with Secret environment variables"
+        description: "Remove each vault: reference and Enterprise.Vault; each value comes from an OpenShift Secret as an environment variable under its configuration key."
+        target_description: "Kubernetes Secret -> environment variable -> IConfiguration"
+        consumer_impact: none
+        effort: medium
+
+  - id: unparseable-config-file
+    name: "Configuration file that cannot be parsed"
+    scope: occurrence
+    category: configuration
+    description: >-
+      An appsettings*.json, web.config or app.config that cannot be parsed: typically a Windows path
+      written with single backslashes in a JSON string. The application fails to start with it, and
+      discovery could read nothing in it, so its paths, secrets and connection strings are not among
+      the work items until it is fixed. AccountsApi's two utilities had one each. One occurrence per
+      file.
+
+      Conversion ordering (docs/28 Part E): runs BEFORE hardcoded-windows-path, whose places in the
+      file can be seen only once it parses.
+    excluded_roles: [TEST]
+    detection:
+      match:
+        all:
+          - id: unparseable
+            signal:
+              name: CONFIG_FILE_UNPARSEABLE
+      occurrence_source:
+        signal: CONFIG_FILE_UNPARSEABLE
+        group_by: source_path
+    resolutions:
+      - id: fix-config-syntax
+        name: "Correct the file's syntax"
+        description: "Make the file valid without changing any value's meaning: escape backslashes in JSON strings."
+        target_description: "A configuration file that parses"
+        consumer_impact: none
+        effort: low
+        is_default: true
+      - id: remove-unused-config-file
+        name: "Remove the file"
+        description: "Where nothing loads the file, delete it."
+        target_description: "No such file"
+        consumer_impact: none
+        effort: low
+
+  - id: custom-file-logger-provider
+    name: "Custom logging provider writing files"
+    scope: occurrence
+    category: logging
+    description: >-
+      A class implementing ILoggerProvider that writes log files (AccountsApi's FileLoggerProvider),
+      the hand-written counterpart of a Serilog file sink. In a container the files are lost with
+      the pod and nothing collects them; logs belong on standard output. One occurrence per provider.
+
+      Conversion ordering (docs/28 Part E): runs BEFORE hardcoded-windows-path. Removing the
+      provider removes its log directory setting with it.
+    excluded_roles: [TEST]
+    detection:
+      match:
+        all:
+          - id: file-logger-provider
+            signal:
+              name: CUSTOM_FILE_LOGGER_PROVIDER
+      occurrence_source:
+        signal: CUSTOM_FILE_LOGGER_PROVIDER
+        group_by: source_path_and_value
+    resolutions:
+      - id: remove-file-logger-provider
+        name: "Remove the provider; log to standard output"
+        description: "Remove the provider, its registration and its configuration; the console provider writes to standard output."
+        target_description: "Console logging only, collected from standard output"
+        consumer_impact: none
+        effort: low
+        is_default: true
+      - id: file-logger-to-stdout
+        name: "Keep the provider, writing to standard output"
+        description: "Keep the provider's format, and write each line to standard output instead of a file."
+        target_description: "The same provider, writing to standard output"
+        consumer_impact: none
+        effort: low
+
+  - id: windows-build-pipeline
+    name: "Build and pipeline files that assume Windows"
+    scope: application
+    category: packaging
+    description: >-
+      Windows batch scripts (.bat, .cmd), CI workflows that run on Windows agents or call Windows
+      workflows, and Jenkinsfiles with Windows agent labels or bat / powershell steps. They build on
+      Windows what is to run in a Linux container, and an OpenShift build pipeline runs on Linux.
+      A repository-level file counts for every deployable project.
+    excluded_roles: [TEST, LIBRARY, DATABASE]
+    detection:
+      match:
+        all:
+          - id: windows-build
+            signal:
+              name: WINDOWS_BUILD_PIPELINE
+    resolutions:
+      - id: linux-build-pipeline
+        name: "Build on Linux agents"
+        description: "Replace batch scripts with shell scripts or plain dotnet commands, run CI on Linux agents, and build the container image in the pipeline."
+        target_description: "dotnet CLI on Linux agents; container image built by the pipeline"
+        consumer_impact: none
+        effort: medium
+        is_default: true
+      - id: keep-windows-build-agents
+        name: "Keep the Windows agents"
+        description: "Keep building on Windows: publish for linux-x64 and build the container image with a Linux builder the pipeline calls."
+        target_description: "Windows agents publishing linux-x64; image built on a Linux builder"
+        consumer_impact: none
+        effort: low
+
   # ---- Package dependencies (lifecycle step 6, dependency-assessment) ----
   #
   # Generic and parameterised by package: never one item per library, which

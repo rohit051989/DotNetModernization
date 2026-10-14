@@ -61,6 +61,12 @@ extractors:
     description: "How an ASP.NET Core application is hosted in IIS through the ASP.NET Core Module: the project's AspNetCoreHostingModel and web.config's aspNetCore element or module handler (registry 1.11.0)."
     emits:
       - ASPNETCORE_HOSTING_MODEL
+  - name: FileLoggerProviderExtractor
+    status: implemented
+    owner_team: platform
+    description: "A custom logging provider (ILoggerProvider) in a source file that writes to the file system (registry 1.12.0)."
+    emits:
+      - CUSTOM_FILE_LOGGER_PROVIDER
   - name: AttributeExtractor
     status: implemented
     owner_team: platform
@@ -88,6 +94,7 @@ extractors:
     description: "Elements and keys in web.config, app.config and appsettings*.json."
     emits:
       - ASPNETCORE_CONFIG
+      - CONFIG_FILE_UNPARSEABLE
       - CONNECTION_STRING_CONFIG
       - CONNECTION_STRING_PROVIDER_CONFIG
       - KAFKA_BOOTSTRAP_CONFIG
@@ -98,6 +105,7 @@ extractors:
       - SYSTEM_SERVICE_MODEL_CONFIG
       - SYSTEM_WEBSERVER_CONFIG
       - SYSTEM_WEB_CONFIG
+      - VAULT_SECRET_REFERENCE
       - VAULT_CONFIG
       - WCF_BINDING_CONFIG
       - WCF_CLIENT_BINDING_CONFIG
@@ -177,6 +185,7 @@ extractors:
       - TASKS_FOLDER
       - VIEWS_FOLDER
       - WEB_CONFIG_FILE
+      - WINDOWS_BUILD_PIPELINE
       - XAML_FILE
   - name: FrameworkReferenceExtractor
     status: implemented

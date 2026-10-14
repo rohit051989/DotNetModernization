@@ -18,7 +18,8 @@
 # seeded is never overwritten, and the field is exported with the catalog (catalog/items/).
 #
 # Written so far: every item detected in the first experiment's three applications
-# (AccountsApi.Net10, AccountsApi.Net8, eShopOnWeb), with every one of their resolutions.
+# (AccountsApi.Net10, AccountsApi.Net8, eShopOnWeb), with every one of their resolutions, and the
+# four items the first pilot run exposed (registry 1.12.0).
 # Still to write (no guidance yet; the generator lists any of them it meets): asmx-service,
 # aspnet-webforms, container-fixed-user-writable-path, directory-services-usage,
 # encoding-default, fx-aspnet-mvc, fx47-class-library, interactive-console-tool,
@@ -349,3 +350,81 @@ items:
         Keep Windows authentication in the connection string. The pod is given a Kerberos identity at
         deployment: a keytab from a Secret, a `krb5.conf`, and a ticket-renewal sidecar in the manifest.
         Change no code; add the manifest pieces with names only, never credentials.
+
+  enterprise-vault-secret-reference:
+    guidance: |-
+      This configuration value is not the secret itself but a reference, `vault:<name>`. At start-up
+      `AddEnterpriseVaultSecrets()` (Enterprise.Vault) replaces each reference with the contents of the
+      file `<name>` in its secrets directory: the `ENTERPRISE_VAULT_SECRETS_DIR` environment variable,
+      else a Windows default, else `/vault/secrets`. On OpenShift that directory must be filled at
+      deployment, one file per referenced name, or the application starts with these settings unresolved.
+    resolutions:
+      vault-agent-files: |-
+        1. Keep every `vault:` reference and the `AddEnterpriseVaultSecrets()` call as they are.
+        2. In the deployment manifest, have the Vault Agent injector write each referenced secret as a
+           file named after it (the text after `vault:`) into `/vault/secrets`: the
+           `vault.hashicorp.com/agent-inject` annotations, with one `agent-inject-secret-<name>` per
+           reference, using the Vault role and secret path from the deployment parameters named below.
+        3. Set `ENTERPRISE_VAULT_SECRETS_DIR=/vault/secrets` in the container.
+        4. Never write a secret value anywhere.
+      openshift-secret-files: |-
+        1. Keep every `vault:` reference and the `AddEnterpriseVaultSecrets()` call as they are.
+        2. In the deployment manifest, mount the OpenShift Secret named below as a volume at
+           `/vault/secrets`, so each referenced name is a file there, and set
+           `ENTERPRISE_VAULT_SECRETS_DIR=/vault/secrets` in the container.
+        3. Never write a secret value anywhere.
+      environment-secrets: |-
+        1. Replace each `vault:` reference with nothing: remove the value from the configuration file and
+           keep the code reading the setting under the same key.
+        2. Remove the `AddEnterpriseVaultSecrets()` call and the Enterprise.Vault package once no reference
+           is left.
+        3. Each value is supplied at deployment from an OpenShift Secret as an environment variable named
+           after its key, with `:` written as `__`; the names are listed below. Never write a secret value
+           anywhere.
+
+  unparseable-config-file:
+    guidance: |-
+      This configuration file is not valid JSON or XML; each place shows where parsing stopped. Usually a
+      Windows path is written with single backslashes in a JSON string. .NET fails to load the file at
+      start-up, and none of its settings take effect.
+    resolutions:
+      fix-config-syntax: |-
+        Correct the syntax without changing what any value means: in a JSON string, write each backslash
+        twice. Change nothing else in the file in this step, and confirm it now parses (build and start the
+        application, or load it with a JSON parser). Its paths and secrets are then handled by the other
+        instructions.
+      remove-unused-config-file: |-
+        If nothing loads this file (no `AddJsonFile` or default host configuration reads it, and it is not
+        copied to the output), delete it. Otherwise correct its syntax instead.
+
+  custom-file-logger-provider:
+    guidance: |-
+      This class is a custom logging provider (`ILoggerProvider`) that writes log files. In a container the
+      files are lost with the pod and nothing collects them; on OpenShift, logs belong on standard output.
+    resolutions:
+      remove-file-logger-provider: |-
+        1. Remove the provider's registration (`AddProvider`, or the extension method that adds it) and the
+           provider class itself.
+        2. Remove its configuration section and the settings class bound to it.
+        3. Make sure console logging stays enabled, so every log event goes to standard output.
+      file-logger-to-stdout: |-
+        Keep the provider and its line format, but write each line to standard output (`Console.Out`)
+        instead of a file, and remove its directory setting and any file handling.
+
+  windows-build-pipeline:
+    guidance: |-
+      The repository's build and pipeline files assume Windows: batch scripts (`.bat`, `.cmd`), CI
+      workflows that run on Windows agents or call Windows workflows, or Jenkinsfiles with a Windows agent
+      label or `bat` / `powershell` steps. The application is to run in a Linux container, built by a
+      pipeline that runs on Linux.
+    resolutions:
+      linux-build-pipeline: |-
+        1. For each batch script the pipeline runs, add an equivalent shell script (or plain `dotnet` commands
+           in the pipeline) that does the same steps with the .NET CLI.
+        2. Change each CI workflow and Jenkinsfile to run on a Linux agent, calling those instead of the batch
+           scripts, and keep their stages, order and outputs the same.
+        3. Build the container image in the pipeline from the repository's Dockerfile.
+        4. Keep the batch scripts only if a person still runs them by hand on Windows; otherwise remove them.
+      keep-windows-build-agents: |-
+        Keep the Windows agents and batch scripts. Make the publish step target `linux-x64`, and build the
+        container image with a Linux builder the pipeline calls, not on the Windows agent.

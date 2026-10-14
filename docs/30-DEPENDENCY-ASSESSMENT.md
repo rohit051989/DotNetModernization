@@ -123,6 +123,10 @@ So determinism is defined **against a lookup cache**:
   as not answered, and no package file is downloaded: no feed is contacted. An experiment's
   verifier runs this way against the experiment's frozen snapshot
   (36-COPILOT-ENHANCED-CONVERSION Part L)
+- a version newer than every version the lookup answers know (scanner 1.4.3) is outcome
+  `current`, reason "newer than the lookup answers: ...": a release published after they were
+  taken. An engine run looks up live feeds and is not penalised for a newer valid release; before
+  1.4.3 it was `no_compatible_version`, which raised a replacement work item
 
 ### B7. Unreachable feeds
 

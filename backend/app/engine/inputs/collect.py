@@ -149,14 +149,9 @@ def collect(db: Session, repository: models.Repository) -> dict:
         if entry not in soap:
             soap.append(entry)
 
-    # The platform's own vocabulary, which no generated file may contain (selfcontained.py): catalog ids, signal
-    # names and lifecycle step names, read from where the platform keeps them.
-    vocabulary = {
-        "item_ids": sorted(x for (x,) in db.execute(text("SELECT id FROM catalog_items"))),
-        "resolution_ids": sorted(x for (x,) in db.execute(text("SELECT id FROM item_resolutions"))),
-        "signals": sorted(x for (x,) in db.execute(text("SELECT name FROM signal_registry_entries"))),
-        "steps": sorted(x for (x,) in db.execute(text("SELECT step_name FROM wf_step_registrations"))),
-    }
+    # The platform's own vocabulary, which no generated file may contain (selfcontained.py).
+    from app.engine.inputs import selfcontained
+    vocabulary = selfcontained.vocabulary(db)
 
     return {
         "engagement": {"id": engagement.id, "target_framework": to_tfm, "target_platform": engagement.target_platform,

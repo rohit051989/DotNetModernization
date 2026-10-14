@@ -1,0 +1,64 @@
+category: packaging
+deleted: false
+description: Windows batch scripts (.bat, .cmd), CI workflows that run on Windows agents or call Windows workflows, and Jenkinsfiles with Windows agent labels or bat / powershell steps. They build on Windows what is to run in a Linux container, and an OpenShift build pipeline runs on Linux. A repository-level file counts for every deployable project.
+detection:
+  match:
+    all:
+    - id: windows-build
+      signal:
+        name: WINDOWS_BUILD_PIPELINE
+    any: []
+    atLeast: []
+    metadata: []
+    none: []
+engine_guidance: |-
+  The repository's build and pipeline files assume Windows: batch scripts (`.bat`, `.cmd`), CI
+  workflows that run on Windows agents or call Windows workflows, or Jenkinsfiles with a Windows agent
+  label or `bat` / `powershell` steps. The application is to run in a Linux container, built by a
+  pipeline that runs on Linux.
+excluded_roles:
+- DATABASE
+- LIBRARY
+- TEST
+id: windows-build-pipeline
+name: Build and pipeline files that assume Windows
+owner_team: null
+resolutions:
+- consumer_impact: none
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: 'Keep building on Windows: publish for linux-x64 and build the container image with a Linux builder the pipeline calls.'
+  effort: low
+  engine_guidance: |-
+    Keep the Windows agents and batch scripts. Make the publish step target `linux-x64`, and build the
+    container image with a Linux builder the pipeline calls, not on the Windows agent.
+  id: keep-windows-build-agents
+  is_default: false
+  linux_compatible: true
+  name: Keep the Windows agents
+  notes: null
+  status: active
+  target_description: Windows agents publishing linux-x64; image built on a Linux builder
+- consumer_impact: none
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: Replace batch scripts with shell scripts or plain dotnet commands, run CI on Linux agents, and build the container image in the pipeline.
+  effort: medium
+  engine_guidance: |-
+    1. For each batch script the pipeline runs, add an equivalent shell script (or plain `dotnet` commands
+       in the pipeline) that does the same steps with the .NET CLI.
+    2. Change each CI workflow and Jenkinsfile to run on a Linux agent, calling those instead of the batch
+       scripts, and keep their stages, order and outputs the same.
+    3. Build the container image in the pipeline from the repository's Dockerfile.
+    4. Keep the batch scripts only if a person still runs them by hand on Windows; otherwise remove them.
+  id: linux-build-pipeline
+  is_default: true
+  linux_compatible: true
+  name: Build on Linux agents
+  notes: null
+  status: active
+  target_description: dotnet CLI on Linux agents; container image built by the pipeline
+scope: application
+status: active

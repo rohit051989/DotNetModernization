@@ -3,7 +3,7 @@
   "lifecycle_step_no": 6,
   "display_name": "Dependency upgrade assessment",
   "owner_code": "P",
-  "version": "1.4.2",
+  "version": "1.4.3",
   "owner_team": "platform",
   "viewpoint": "DEVELOPMENT",
   "implementation_status": "implemented",

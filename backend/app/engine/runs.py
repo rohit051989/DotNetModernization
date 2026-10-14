@@ -112,6 +112,28 @@ def intervene(db: Session, engagement_id: str, label: str, stage: str, what: str
     return run
 
 
+PROTOCOL_ACTIONS = ("ctrl-c",)
+
+
+def protocol(db: Session, engagement_id: str, label: str, action: str, why: str) -> models.EngineRun:
+    """A step the runbook prescribes, identically in both arms: recorded, never counted as an intervention."""
+    if action not in PROTOCOL_ACTIONS:
+        raise ValueError(f"action must be one of {', '.join(PROTOCOL_ACTIONS)}")
+    run = _run(db, engagement_id, label)
+    run.protocol_actions = [*run.protocol_actions, {"at": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
+                                                    "action": action, "why": why}]
+    db.flush()
+    return run
+
+
+def mark_pilot(db: Session, engagement_id: str, label: str, why: str) -> models.EngineRun:
+    """The run is the pilot: kept and verified, excluded from the experiment's comparison."""
+    run = _run(db, engagement_id, label)
+    run.role, run.role_reason = "pilot", why
+    db.flush()
+    return run
+
+
 def finish(db: Session, engagement_id: str, label: str, outcome: str, elapsed_minutes: int | None = None,
            premium_requests: int | None = None, transcript: Path | None = None, notes: str | None = None) -> models.EngineRun:
     run = _run(db, engagement_id, label)
@@ -139,7 +161,8 @@ def as_dict(run: models.EngineRun) -> dict:
         "startedAt": run.started_at.isoformat() if run.started_at else None,
         "finishedAt": run.finished_at.isoformat() if run.finished_at else None, "outcome": run.outcome,
         "elapsedMinutes": run.elapsed_minutes, "premiumRequests": run.premium_requests,
-        "interventions": run.interventions, "transcript": run.transcript, "notes": run.notes,
+        "interventions": run.interventions, "protocolActions": run.protocol_actions, "transcript": run.transcript,
+        "notes": run.notes, "role": run.role, "roleReason": run.role_reason,
     }
 
 
@@ -174,6 +197,15 @@ def main(argv: list[str] | None = None) -> int:
     f.add_argument("--premium-requests", type=int)
     f.add_argument("--transcript", type=Path)
     f.add_argument("--notes")
+    p = sub.add_parser("protocol", help="a step the runbook prescribes in both arms; not an intervention")
+    p.add_argument("--engagement", required=True)
+    p.add_argument("--label", required=True)
+    p.add_argument("--action", required=True, choices=PROTOCOL_ACTIONS)
+    p.add_argument("--why", required=True)
+    m = sub.add_parser("mark-pilot", help="keep the run and verify it, excluded from the comparison")
+    m.add_argument("--engagement", required=True)
+    m.add_argument("--label", required=True)
+    m.add_argument("--why", required=True)
     w = sub.add_parser("show")
     w.add_argument("--engagement", required=True)
     w.add_argument("--label")
@@ -188,6 +220,10 @@ def main(argv: list[str] | None = None) -> int:
                         worktree=args.worktree, base_commit=args.base, runbook=args.runbook)
         elif args.command == "intervene":
             run = intervene(db, args.engagement, args.label, args.stage, args.what)
+        elif args.command == "protocol":
+            run = protocol(db, args.engagement, args.label, args.action, args.why)
+        elif args.command == "mark-pilot":
+            run = mark_pilot(db, args.engagement, args.label, args.why)
         elif args.command == "finish":
             run = finish(db, args.engagement, args.label, args.outcome, args.elapsed_minutes, args.premium_requests,
                          args.transcript, args.notes)

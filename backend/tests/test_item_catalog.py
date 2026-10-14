@@ -539,6 +539,8 @@ class AuthoredItemTests(unittest.TestCase):
         "serilog-file-sink", "hardcoded-windows-path", "encoding-default", "datetime-now-usage",
         "system-drawing-common", "windows-auth-connection-string", "registry-access",
         "directory-services-usage", "sensitive-config-key", "unqualified-hostname",
+        # Registry 1.12.0, from the first pilot run.
+        "enterprise-vault-secret-reference", "unparseable-config-file", "custom-file-logger-provider",
     }
     ABSENCE = {"missing-dockerfile", "missing-health-endpoint", "missing-ocp4-manifests"}
     HOSTING = {"windows-service-hosting", "modern-worker-service", "wcf-service-host", "interactive-console-tool"}
@@ -553,7 +555,8 @@ class AuthoredItemTests(unittest.TestCase):
     FRAMEWORK = {"target-framework-retarget"}
     # Registry 1.11.0: hosting and container files that exist but are not
     # OpenShift-ready — presence is not readiness.
-    READINESS = {"aspnetcore-iis-hosting", "container-runs-as-root", "container-privileged-port", "container-fixed-user-writable-path"}
+    READINESS = {"aspnetcore-iis-hosting", "container-runs-as-root", "container-privileged-port", "container-fixed-user-writable-path",
+                 "windows-build-pipeline"}
     # Hard Linux blockers: "stay on Windows" is a legitimate answer and must
     # be on the menu, Linux-incompatible, so the decision warning fires.
     LINUX_BLOCKERS = {"registry-access", "directory-services-usage", "msmq-usage"}

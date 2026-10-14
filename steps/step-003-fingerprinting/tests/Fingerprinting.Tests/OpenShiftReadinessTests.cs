@@ -173,7 +173,7 @@ public sealed class OpenShiftReadinessTests : IDisposable
             ProjectId = Guid.NewGuid(), RepositoryRoot = _root, ProjectRelativePath = "src/Api/Api.csproj", ProjectDirectory = project,
         }, CancellationToken.None);
         var keys = result.Signals.Where(s => s.Name == "SENSITIVE_CONFIG_KEY").Select(s => s.Value!).ToArray();
-        Assert.Equal(["EnterpriseAuthentication:Token"], keys);                                     // the section, once; nothing below it read
+        Assert.Equal(["EnterpriseAuthentication:Token:ClientSecret"], keys);                        // the leaf (1.12.0); never TokenEndpoint
         Assert.DoesNotContain(result.Signals, s => (s.Value ?? "").Contains("s3cr3t"));
     }
 }

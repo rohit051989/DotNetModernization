@@ -29,6 +29,14 @@ public sealed class ConfigurationExtractor : IFingerprintExtractor
     // recorded, never the value (hosts, passwords and tokens live there).
     private const decimal HeuristicConfidence = 0.80m;
 
+    /// <summary>Registry 1.12.0: a configuration value that is an Enterprise.Vault reference (<c>vault:&lt;name&gt;</c>);
+    /// the value is the key's full path.</summary>
+    public const string VaultSecretReference = "VAULT_SECRET_REFERENCE";
+
+    /// <summary>Registry 1.12.0: a configuration file that cannot be parsed. A finding, never skipped silently: the
+    /// application fails to start with it, and nothing in it was read. The value says where parsing stopped.</summary>
+    public const string ConfigFileUnparseable = "CONFIG_FILE_UNPARSEABLE";
+
     public bool CanProcess(ProjectContext context) => Directory.Exists(context.ProjectDirectory);
 
     public Task<ExtractorResult> ExtractAsync(ProjectContext context, CancellationToken cancellationToken)
@@ -68,6 +76,20 @@ public sealed class ConfigurationExtractor : IFingerprintExtractor
                     Message = $"Could not parse configuration file '{relativePath}': {ex.Message}",
                     Severity = WarningSeverities.Warning,
                 });
+                if (ex is JsonException or XmlException)
+                {
+                    // Registry 1.12.0: also a finding. Where parsing stopped, never the text there.
+                    var (where, line) = ex switch
+                    {
+                        JsonException j => ($"invalid JSON at line {j.LineNumber + 1}, position {j.BytePositionInLine + 1}", (int?)(j.LineNumber + 1)),
+                        XmlException x => ($"invalid XML at line {x.LineNumber}, position {x.LinePosition}", (int?)x.LineNumber),
+                        _ => ("unreadable", null),
+                    };
+                    accumulator.Add(
+                        ConfigFileUnparseable, SignalCategories.ConfigurationIndicator, SignalTypes.ConfigElement,
+                        where, EvidenceSourceTypes.Configuration, relativePath, ExtractorName,
+                        evidence: new Evidence { LineStart = (int?)line, LineEnd = (int?)line });
+                }
             }
         }
 
@@ -252,7 +274,14 @@ public sealed class ConfigurationExtractor : IFingerprintExtractor
             }
 
             var evidence = LineEvidence((IXmlLineInfo)add, add);
-            if (Secrets.IsSensitiveKey(key))
+            if (Secrets.IsVaultReference((string?)add.Attribute("value") ?? ""))
+            {
+                // Read only to see that it is a vault reference (registry 1.12.0).
+                accumulator.Add(
+                    VaultSecretReference, SignalCategories.ConfigurationIndicator, SignalTypes.ConfigElement,
+                    key, EvidenceSourceTypes.Configuration, relativePath, ExtractorName, evidence: evidence);
+            }
+            else if (Secrets.IsSensitiveKey(key))
             {
                 accumulator.Add(
                     "SENSITIVE_CONFIG_KEY", SignalCategories.ConfigurationIndicator, SignalTypes.ConfigElement,
@@ -309,6 +338,13 @@ public sealed class ConfigurationExtractor : IFingerprintExtractor
                         node.Name, EvidenceSourceTypes.Configuration, relativePath, ExtractorName, evidence: evidence);
                 }
 
+                if (node.IsVaultReference)
+                {
+                    accumulator.Add(
+                        VaultSecretReference, SignalCategories.ConfigurationIndicator, SignalTypes.ConfigElement,
+                        node.KeyPath, EvidenceSourceTypes.Configuration, relativePath, ExtractorName, evidence: evidence);
+                }
+
                 if (node.Name.Contains("redis", StringComparison.OrdinalIgnoreCase))
                 {
                     accumulator.Add(
@@ -318,6 +354,15 @@ public sealed class ConfigurationExtractor : IFingerprintExtractor
                 }
 
                 continue;
+            }
+
+            if (node.IsVaultReference)
+            {
+                // Registry 1.12.0: a reference the application resolves through Enterprise.Vault, not a secret in
+                // the file. Recorded by its full path, once, as a vault reference only.
+                accumulator.Add(
+                    VaultSecretReference, SignalCategories.ConfigurationIndicator, SignalTypes.ConfigElement,
+                    node.KeyPath, EvidenceSourceTypes.Configuration, relativePath, ExtractorName, evidence: evidence);
             }
 
             if (node.IsSensitiveKey)

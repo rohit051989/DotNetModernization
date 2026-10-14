@@ -260,14 +260,37 @@ class Runbook(unittest.TestCase):
         return case.text
 
     def test_arm_1_takes_the_engines_own_options_and_arm_2_the_decision_sheet(self):
-        self.assertIn(f"**ARM 1**: reply `{self.prepare.ARM1_OPTIONS}`", self.text)
-        self.assertIn("**ARM 2 ONLY** — answers at the upgrade-options stage (the decision sheet)", self.text)
+        self.assertIn(f"**ARM 1** replies `{self.prepare.ARM1_OPTIONS}`", self.text)
+        self.assertIn("**ARM 2 ONLY** — answers at the upgrade-options stage, if it appears (the decision sheet)", self.text)
         self.assertIn("| Upgrade strategy | `Bottom-up` | presumptive |", self.text)
 
-    def test_the_commit_strategy_is_per_task_in_both_arms(self):
-        self.assertIn("Commit after each task.", self.text)
+    def test_the_commit_strategy_is_per_change_in_both_arms(self):
+        self.assertIn("Commit after each change.", self.text)
         self.assertIn("— the same in both arms", self.text)
-        self.assertEqual(self.text.count("Commit after each task."), 1)
+        self.assertEqual(self.text.count("Commit after each change."), 1)
+
+    def test_everything_the_engine_needs_is_in_the_opening_message(self):
+        """Part M: the pilot skipped the assessment, options and planning stages, so nothing depends on them."""
+        arm1 = self.prepare.opening_message("Make it OpenShift-ready.", enhancement=False)
+        arm2 = self.prepare.opening_message("Make it OpenShift-ready.", enhancement=True)
+        for rule in ("Edit files with your file-editing tools, not through terminal commands.",
+                     "Keep every terminal command on a single line.",
+                     "Work on the current branch and do not create another branch.",
+                     "Commit after each change, with a message naming the change."):
+            self.assertIn(rule, arm1)
+        self.assertTrue(arm2.startswith(arm1))                                         # identical, and arm 2 adds one part
+        self.assertIn(".github/platform-inputs/assessment-addendum.md", arm2[len(arm1):])
+        self.assertIn(".github/platform-inputs/decision-sheet.md", arm2[len(arm1):])
+        self.assertNotIn(".github", arm1)
+        self.assertIn(arm1, self.text)
+        self.assertIn(arm2, self.text)
+        self.assertNotIn("merge-addendum", self.text)                                  # the step is gone
+
+    def test_a_stuck_terminal_is_a_protocol_step_in_both_arms_not_an_intervention(self):
+        self.assertIn("**Protocol: a stuck terminal.** If a terminal shows `>>`", self.text)
+        self.assertIn("press **Ctrl+C**", self.text)
+        self.assertIn("python -m app.engine.runs protocol", self.text)
+        self.assertIn("never as an intervention", self.text)
 
     def test_a_new_generation_makes_new_branches_and_worktrees_and_engagement_unique_labels(self):
         arms = [{"arm": 1, "name": "a", "runs": 1, "enhancement": False}, {"arm": 2, "name": "b", "runs": 1, "enhancement": True}]
@@ -322,6 +345,118 @@ class PinnedInstrument(unittest.TestCase):
         self.assertNotIn("--out", text)
         self.assertNotIn("--force", text)
         self.assertIn("""--canary-find 'x == \\"0\\"'""", text)
+
+
+class PlatformCommits(unittest.TestCase):
+    """Part M: every commit the platform makes in a client repository is self-contained and has no co-author trailer;
+    generated files carry the line endings the repository's git settings expect."""
+
+    def _repo(self, root: Path, autocrlf: str, attributes: str | None) -> None:
+        import subprocess
+        subprocess.run(["git", "init", "-q", str(root)], check=True)
+        subprocess.run(["git", "-C", str(root), "config", "core.autocrlf", autocrlf], check=True)
+        if attributes is not None:
+            (root / ".gitattributes").write_text(attributes, encoding="utf-8")
+
+    def test_the_inputs_commit_message_is_self_contained_and_the_old_one_is_not(self):
+        from app.experiment import prepare
+        self.assertEqual(selfcontained.check_commit_message(prepare.INPUTS_COMMIT, model()["vocabulary"]), [])
+        old = "Platform inputs for GitHub Copilot upgrade (generated, 36-COPILOT-ENHANCED-CONVERSION Part D)"
+        self.assertIn("platform document", {f["check"] for f in selfcontained.check_commit_message(old)})
+
+    def test_conversion_commit_messages_carry_no_catalog_id(self):
+        from app.conversion.approaches import APPROACHES
+        safe = APPROACHES["package-upgrade-safe"]
+        message = safe.message({"bumps": [{"package_id": "Foo", "from": "1.0", "to": "2.0", "project": "src/A/A.csproj",
+                                            "declaration": {"file": "src/A/A.csproj", "kind": "attribute", "name": "Version"}}]}) \
+            if hasattr(safe, "bumps") else ""
+        vocabulary = {**model()["vocabulary"], "item_ids": ["package-upgrade-safe"]}
+        self.assertNotIn("Approach package-upgrade-safe", message)
+        self.assertEqual(selfcontained.check_commit_message(message, vocabulary), [])
+
+    def test_a_co_author_trailer_or_a_platform_reference_refuses_the_commit_and_nothing_is_committed(self):
+        import subprocess
+        from app.conversion import gitops
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self._repo(root, "false", None)
+            (root / "a.txt").write_text("x", encoding="utf-8")
+            for message in ("Change a\n\nCo-authored-by: Claude <noreply@anthropic.com>", "Change a (docs/36 Part D)"):
+                with self.subTest(message=message[:12]), self.assertRaises(gitops.CommitRefused):
+                    gitops.platform_commit(root, message)
+            self.assertNotEqual(subprocess.run(["git", "-C", str(root), "rev-parse", "HEAD"], capture_output=True).returncode, 0)
+            gitops.platform_commit(root, "Change a")
+            body = subprocess.run(["git", "-C", str(root), "log", "-1", "--format=%B"], capture_output=True, text=True).stdout
+            self.assertNotIn("Co-authored-by", body)
+
+    def test_generated_files_get_the_line_endings_git_expects_and_never_show_as_modified(self):
+        import subprocess
+        files = {".github/a.md": "one\ntwo\n", "build.sh": "echo\n"}
+        for autocrlf, attributes, expected in (
+                ("true", "* text=auto\n*.sh text eol=lf\n", {".github/a.md": b"one\r\ntwo\r\n", "build.sh": b"echo\n"}),
+                ("false", "* text=auto eol=lf\n", {".github/a.md": b"one\ntwo\n", "build.sh": b"echo\n"}),
+                ("false", None, {".github/a.md": b"one\ntwo\n", "build.sh": b"echo\n"})):
+            with self.subTest(autocrlf=autocrlf, attributes=attributes), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                self._repo(root, autocrlf, attributes)
+                inputs.write(files, root)
+                for rel, data in expected.items():
+                    self.assertEqual((root / rel).read_bytes(), data, rel)
+                subprocess.run(["git", "-C", str(root), "add", "-A"], check=True, capture_output=True)
+                subprocess.run(["git", "-C", str(root), "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "x"],
+                               check=True, capture_output=True)
+                self.assertEqual(subprocess.run(["git", "-C", str(root), "status", "--porcelain"], capture_output=True,
+                                                text=True).stdout, "")
+                # The committed text is the generated text: git stores it normalised.
+                self.assertEqual(subprocess.run(["git", "-C", str(root), "show", "HEAD:.github/a.md"], capture_output=True).stdout,
+                                 b"one\ntwo\n")
+
+
+class ParameterNames(unittest.TestCase):
+    """Part M (pilot finding): a deployment parameter is named after the configuration key the code reads."""
+
+    def test_a_path_parameter_is_named_after_its_configuration_key(self):
+        item = _item("hardcoded-windows-path", "externalize-path-setting", file="src/A/appsettings.json")
+        item["occurrences"][0]["lines"] = [
+            {"line": 152, "value": "C:\\Accounts\\Content\\terms.pdf", "member": "FileContent:FilePath", "type": None, "certainty": None},
+            {"line": 171, "value": "C:\\logs\\AccountsApi\\", "member": "Logging:File:Path", "type": None, "certainty": None}]
+        env = _item("hardcoded-windows-path", "externalize-path-setting", file="src/A/appsettings.SIT.json")
+        env["occurrences"][0]["lines"] = [
+            {"line": 41, "value": "C:\\Accounts\\Content\\SIT\\terms.pdf", "member": "FileContent:FilePath", "type": None, "certainty": None}]
+        code = _item("hardcoded-windows-path", "externalize-path-setting", file="src/A/Exporter.cs")
+        code["occurrences"][0]["lines"] = [
+            {"line": 9, "value": "D:\\export", "member": "Export", "type": "Exporter", "certainty": None}]
+        item["occurrences"] += env["occurrences"] + code["occurrences"]
+        names = {p["name"]: p["places"] for p in render.plan_item(item)["parameters"]}
+        self.assertEqual(set(names), {"FileContent__FilePath", "Logging__File__Path", "PATH_D__export"})
+        self.assertEqual(names["FileContent__FilePath"], ["src/A/appsettings.json:152", "src/A/appsettings.SIT.json:41"])
+        self.assertFalse(any(n.startswith("PATH_C__") for n in names))
+
+
+class RunRecords(unittest.TestCase):
+    """Part M: protocol actions are counted apart from interventions; the pilot is marked and excluded."""
+
+    def test_the_scorecard_counts_protocol_actions_apart_and_shows_the_pilot_and_newer_than_snapshot(self):
+        from app.experiment import report
+        verification = {"cleanRun": {"projects": {}, "built": True}, "baseline": {"total": 1}, "checks": [], "verdict": "PROVEN",
+                        "reasons": [], "diff": {"filesTouched": 1, "linesAdded": 1, "linesDeleted": 0},
+                        "impact": {"unpredicted": [], "predictedUntouched": []},
+                        "rediscovery": {"before": 2, "resolved": [["p", "a"], ["p", "b"]], "remaining": [], "introduced": [], "offTarget": [],
+                                        "newerThanSnapshot": [{"project": "p", "package": "System.Text.Json", "version": "10.0.13",
+                                                               "snapshotRecommended": "10.0.12"}]}}
+        record = {"interventions": [], "protocolActions": [{"action": "ctrl-c"}], "role": "pilot", "premiumRequests": None,
+                  "elapsedMinutes": None, "model": "m", "signedInIdentity": "a", "organisation": "o"}
+        card = report.scorecard(verification, record)
+        self.assertEqual((card["interventions"], card["protocolActions"], card["role"]), (0, 1, "pilot"))
+        self.assertEqual(card["workItems"], "2 resolved, 0 remaining, 0 introduced (of 2)")       # upgraded, not unresolved
+        self.assertEqual(card["newerThanSnapshot"][0]["version"], "10.0.13")
+        self.assertEqual(report.scorecard(None, record)["role"], "pilot")
+
+    def test_the_verifier_recognises_dependency_assessment_s_newer_than_reason(self):
+        from app.engine.verifier import rediscovery
+        source = (Path(__file__).resolve().parents[2] / "steps" / "step-003-fingerprinting" / "src" / "Fingerprinting.Dependencies"
+                  / "DependencyPipeline.cs").read_text(encoding="utf-8")
+        self.assertIn(f'NewerThanLookups = "{rediscovery.NEWER_THAN_LOOKUPS}"', source)
 
 
 class FrozenLookups(unittest.TestCase):

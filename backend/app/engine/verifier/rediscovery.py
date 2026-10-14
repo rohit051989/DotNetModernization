@@ -138,17 +138,38 @@ def _worker(engagement_id: str, worktree: Path, name: str, out: Path, offline: b
             return 1
         db.refresh(repository)
         model = collect(db, repository)
+        newer = newer_than_snapshot(db, repository.id)
         try:
             unit_tests = planner._unit_test_projects(db, repository.id)
             solution = planner._solution(db, repository.id, unit_tests)
         except (LookupError, ValueError) as err:
             unit_tests, solution = [], None
             model["test_projects_problem"] = str(err)
-        out.write_text(json.dumps({"steps": steps, "model": model, "unit_test_projects": unit_tests, "solution": solution},
+        out.write_text(json.dumps({"steps": steps, "model": model, "unit_test_projects": unit_tests, "solution": solution,
+                                   "newerThanSnapshot": newer},
                                   indent=2, sort_keys=True, default=str), encoding="utf-8")
         return 0
     finally:
         db.close()
+
+
+# dependency-assessment 1.4.3 (DependencyPipeline.NewerThanLookups): the reason a package's version is newer than every
+# version the lookup answers know.
+NEWER_THAN_LOOKUPS = "newer than the lookup answers"
+
+
+def newer_than_snapshot(db: Session, repository_id) -> list[dict]:
+    """Packages at a version newer than the lookup answers know (Part M): an engine run looks up live feeds and may
+    take a release published after the experiment's snapshot. Upgraded, never unresolved or unknown; reported apart."""
+    from sqlalchemy import text
+
+    rows = db.execute(text("""
+        SELECT p.relative_path, a.package_id, a.current_version, a.recommended_version
+        FROM package_assessments a JOIN projects p ON p.id = a.project_id
+        WHERE a.repository_id = :r AND a.outcome = 'current' AND a.outcome_reason LIKE :reason
+        ORDER BY p.relative_path, a.package_id"""), {"r": repository_id, "reason": NEWER_THAN_LOOKUPS + "%"})
+    return [{"project": project, "package": package, "version": version, "snapshotRecommended": recommended}
+            for project, package, version, recommended in rows]
 
 
 def work_items(model: dict) -> dict[tuple[str, str], dict]:

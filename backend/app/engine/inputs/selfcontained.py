@@ -13,6 +13,10 @@ finding stops it. Each finding names the file, the line, the check and the text 
 | lifecycle step | a lifecycle step's name (`item-detection`), "lifecycle step", "step 6" |
 | platform vocabulary | catalog, work item, resolution, occurrence, signal, discovery, engagement, presumptive, matrix entry, input generator, Modernization Platform; a catalog item or resolution id; a signal name |
 
+Commit messages (Part M): every commit the platform makes in a client repository passes the same check, through
+`check_commit_message` (app.conversion.gitops.platform_commit), and may carry no co-author trailer: no commit the
+platform makes names an AI as a co-author.
+
 Allowed: a skill's name (`applying-<id>`, a file in the branch), the `discovery: preload|lazy` key that Copilot's
 skill format requires, the attribution paragraph crediting the plugin a template was adapted from ("Adapted from
 `agents/...`" to the end of its paragraph), and a vocabulary word inside a backtick code span the repository's own
@@ -103,6 +107,32 @@ class _Repository:
         texts = self._corpus()
         forms = {text, text.replace("\\", "\\\\")}
         return any(form in name for name in self._names for form in forms) or any(form in t for t in texts for form in forms)
+
+
+CO_AUTHOR_TRAILER = re.compile(r"(?im)^\s*co-authored-by\s*:.*$")
+
+
+def vocabulary(db) -> dict:
+    """The platform's own names, which no generated file or commit message may contain: catalog ids, signal names and
+    lifecycle step names, read from where the platform keeps them."""
+    from sqlalchemy import text
+
+    return {
+        "item_ids": sorted(x for (x,) in db.execute(text("SELECT id FROM catalog_items"))),
+        "resolution_ids": sorted(x for (x,) in db.execute(text("SELECT id FROM item_resolutions"))),
+        "signals": sorted(x for (x,) in db.execute(text("SELECT name FROM signal_registry_entries"))),
+        "steps": sorted(x for (x,) in db.execute(text("SELECT step_name FROM wf_step_registrations"))),
+    }
+
+
+def check_commit_message(message: str, vocabulary_: dict | None = None) -> list[dict]:
+    """Findings for a commit message the platform writes into a client repository: the self-containedness checks, and
+    any co-author trailer."""
+    findings = check({"commit message": message}, vocabulary_, None)
+    for m in CO_AUTHOR_TRAILER.finditer(message):
+        findings.append({"file": "commit message", "line": message[:m.start()].count("\n") + 1, "check": "co-author trailer",
+                         "match": m.group(0).strip()[:120]})
+    return findings
 
 
 def check(files: dict[str, str], vocabulary: dict | None = None, repository_root: Path | None = None) -> list[dict]:

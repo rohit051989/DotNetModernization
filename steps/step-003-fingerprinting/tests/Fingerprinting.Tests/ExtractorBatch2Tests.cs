@@ -483,9 +483,12 @@ public sealed class ExtractorBatch2Tests
         // + 1.9.0 INTERACTIVE_CONSOLE_INPUT and CONSOLE_PAUSE_FOR_INPUT
         // + 1.10.0 AMBIGUOUS_TOP_LEVEL_PROGRAM_ON_NET10, a framework delta from step 4
         // + 1.11.0 TARGET_FRAMEWORK_BELOW_ENGAGEMENT_TARGET and PACKAGE_PROVIDED_BY_FRAMEWORK (step 6),
-        //   USE_IIS_INVOCATION, ASPNETCORE_HOSTING_MODEL and the three CONTAINER_* signals.
-        Assert.Equal("1.11.0", registry.RegistryVersion);
-        Assert.Equal(145, registry.Entries.Count);
+        //   USE_IIS_INVOCATION, ASPNETCORE_HOSTING_MODEL and the three CONTAINER_* signals
+        // + 1.12.0 VAULT_SECRET_REFERENCE, CONFIG_FILE_UNPARSEABLE, CUSTOM_FILE_LOGGER_PROVIDER, WINDOWS_BUILD_PIPELINE.
+        Assert.Equal("1.12.0", registry.RegistryVersion);
+        Assert.Equal(149, registry.Entries.Count);
+        Assert.Contains(registry.Entries, e => e.Name == FileLoggerProviderExtractor.CustomFileLoggerProvider && e.Extractor == FileLoggerProviderExtractor.ExtractorName);
+        Assert.Contains(registry.Entries, e => e.Name == WindowsBuild.WindowsBuildPipeline && e.Extractor == FileIndicatorExtractor.ExtractorName);
         Assert.Equal(8, registry.Entries.Count(e => e.Extractor == "EntryPointInventory"));
         Assert.Equal(7, registry.Entries.Count(e => e.Extractor == "DependencyAssessment" && e.Category == SignalCategories.PackageDependency));
         Assert.Contains(registry.Entries, e => e.Name == "WCF_CLIENT_BINDING_CONFIG" && e.Extractor == ConfigurationExtractor.ExtractorName);

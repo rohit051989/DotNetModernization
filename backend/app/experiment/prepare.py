@@ -29,7 +29,8 @@ from app.engine.inputs.collect import collect
 from app.experiment import instrument
 from app.engine.inputs.render import upgrade_options, without_guidance
 
-INPUTS_COMMIT = "Platform inputs for GitHub Copilot upgrade (generated, 36-COPILOT-ENHANCED-CONVERSION Part D)"
+# Self-contained like every platform commit (gitops.platform_commit): no platform document or vocabulary.
+INPUTS_COMMIT = "Add generated upgrade inputs for GitHub Copilot (do not edit)"
 DEFAULT_GOAL = "Upgrade this solution to .NET 10 and make the application ready to run on OpenShift."
 
 
@@ -59,10 +60,11 @@ def copilot_runs(config: dict) -> list[dict]:
 
 
 def _commit_inputs(db, config: dict, worktree: Path) -> None:
+    from app.engine.inputs import selfcontained
+
     generate(db, config["engagement"], config["repository"], worktree)
-    gitops.git(worktree, "add", "--", *[p.rstrip("/") for p in paths.GENERATED_INPUT_PATHS
-                                        if (worktree / p.rstrip("/")).exists()])
-    gitops.git(worktree, *gitops.PLATFORM_IDENTITY, "commit", "--no-verify", "-q", "-m", INPUTS_COMMIT)
+    gitops.platform_commit(worktree, INPUTS_COMMIT, vocabulary=selfcontained.vocabulary(db),
+                           paths=[p.rstrip("/") for p in paths.GENERATED_INPUT_PATHS if (worktree / p.rstrip("/")).exists()])
 
 
 def _arm2(db, config: dict, r: dict, worktree: Path, base: str, created: bool) -> None:
@@ -142,11 +144,22 @@ def inspect(db, config: dict) -> dict:
 
 # ---------------------------------------------------------------- the runbook
 
-ENHANCEMENT_MESSAGE = (" Use the custom upgrade instructions in .github/upgrades/skills and the skills in .github/skills,"
-                       " and follow .github/copilot-instructions.md.")
-ADDENDUM_MESSAGE = ("I added the platform's findings to assessment.md, under \"Platform assessment addendum\". "
-                    "Take them into account in the upgrade options and the plan.")
+# The opening message carries everything the engine needs (36-COPILOT-ENHANCED-CONVERSION Part M): the pilot showed
+# the assessment, options and planning stages may never appear (a goal with no framework change skips them).
+# OPENING_RULES are identical in both arms; arm 2 adds ENHANCEMENT_MESSAGE.
+OPENING_RULES = ("Edit files with your file-editing tools, not through terminal commands. Keep every terminal command on a "
+                 "single line. Work on the current branch and do not create another branch. Commit after each change, with "
+                 "a message naming the change.")
+ENHANCEMENT_MESSAGE = ("Use the custom upgrade instructions in .github/upgrades/skills and the skills in .github/skills, and "
+                       "follow .github/copilot-instructions.md. Read .github/platform-inputs/assessment-addendum.md and "
+                       ".github/platform-inputs/decision-sheet.md, and follow them.")
 ARM1_OPTIONS = "Use your recommended options."
+STUCK_MINUTES = 5
+
+
+def opening_message(goal: str, enhancement: bool) -> str:
+    """The message that starts a run, word for word: the goal, the rules both arms share, and for arm 2 its inputs."""
+    return " ".join([goal.strip(), OPENING_RULES] + ([ENHANCEMENT_MESSAGE] if enhancement else []))
 
 
 def _common(stop: dict) -> list[str]:
@@ -187,54 +200,54 @@ def _common(stop: dict) -> list[str]:
         "Open `<worktree>\\<solution>` in Visual Studio — the worktree, never the registered checkout. Confirm the Git",
         "branch shown is `<branch>`. Open a **new** Copilot chat thread and select the model from step 1. Start a timer.", "",
         "### 4. Start", "",
-        "Right-click the solution in Solution Explorer > **Modernize**. Send the `<goal>` message exactly.", "",
-        f"**ARM 2 ONLY**, the same message with one sentence added:{ENHANCEMENT_MESSAGE}", "",
+        "Right-click the solution in Solution Explorer > **Modernize**. Send the opening message for the run's arm, exactly",
+        "as written in **Opening messages** above: everything the engine needs is in it. Do not add to it.", "",
         "### 5. Answer the pre-initialization questions — the same in both arms", "",
         "| If it asks | Reply |", "|---|---|",
         "| Target framework | `.NET 10` |",
-        "| Branch, Git strategy, commits | `Work on the current branch <branch>. Do not create another branch. Commit after each task.` |",
+        "| Branch, Git strategy, commits | `Work on the current branch and do not create another branch. Commit after each change.` |",
         "| Automatic or guided flow | `Guided.` |",
         "| Whether to continue an existing upgrade or start fresh | stop: the worktree is not clean; report it |", "",
-        "One commit per task is how the verifier attributes each change; it is the same for both arms.", "",
-        "### 6. After the assessment", "",
-        "When the agent says the assessment is done and `.github/upgrades/<scenario>/assessment.md` exists:", "",
-        "**ARM 2 ONLY**: merge the platform's addendum, then send the message below it.", "",
-        "```powershell", "python -m app.engine.inputs merge-addendum --worktree <worktree>", "```", "",
-        f"> {ADDENDUM_MESSAGE}", "",
-        "Both arms: do not edit `assessment.md` in any other way.", "",
-        "### 7. Answer the upgrade options", "",
-        f"**ARM 1**: reply `{ARM1_OPTIONS}` to the options the agent presents, whatever they are. Arm 1 takes the engine's",
-        "own defaults; nothing from the platform reaches it.", "",
-        "**ARM 2 ONLY**: answer each option with the decision sheet's answer, in the table below (also in",
-        "`.github/platform-inputs/decision-sheet.md`). For an option not in that table, reply "
-        f"`{ARM1_OPTIONS}` and record it (step 10).", "",
-        "### 8. Planning and execution", "",
-        "When it offers planning, send `Proceed to planning.` When `plan.md` is written, send `Proceed to execution.`",
-        "Do not edit `plan.md`, `tasks.md` or any task file.", "",
-        "During execution, when the agent asks a question (both arms):", "",
+        "One commit per change is how the verifier attributes each change; it is the same for both arms.", "",
+        "### 6. If the assessment, options and planning stages appear", "",
+        "The run does not depend on them: a goal with no framework change may skip them entirely. If they appear, as they",
+        "may for a framework upgrade:", "",
+        "- **Assessment**: let it finish. Do not edit `assessment.md`.",
+        f"- **Upgrade options**: **ARM 1** replies `{ARM1_OPTIONS}` to the options the agent presents, whatever they are.",
+        "  **ARM 2 ONLY** answers each option with the decision sheet's answer, in the table above (also in",
+        f"  `.github/platform-inputs/decision-sheet.md`); for an option not in that table, reply `{ARM1_OPTIONS}` and record",
+        "  it (step 9).",
+        "- **Planning and execution**: when it offers planning, send `Proceed to planning.` When `plan.md` is written, send",
+        "  `Proceed to execution.` Do not edit `plan.md`, `tasks.md` or any task file.", "",
+        "### 7. While it works — the same in both arms", "",
+        "When the agent asks a question:", "",
         "| It asks | Reply |", "|---|---|",
         "| To choose between options | `Continue with your recommended option.` |",
         "| For a credential, a secret, a sign-in, an installation or a change outside the repository | `No. Continue without it.` |",
         "| For a value it does not have (host name, time zone, path) | `Do not invent it. Read it from configuration by name and continue.` |",
         "| Whether to continue after a pause | `Continue.` |", "",
-        "### 9. When to stop", "",
+        f"**Protocol: a stuck terminal.** If a terminal shows `>>` (PowerShell waiting for the rest of a command), or a command",
+        f"has run {STUCK_MINUTES} minutes with no output, press **Ctrl+C** in that terminal. This is part of the protocol, the same in",
+        "both arms: record it with the `runs protocol` command below, never as an intervention.", "",
+        "### 8. When to stop", "",
         "Stop the run, and do not resume it, when the first of these happens:", "",
-        "- the agent reports the work complete (`tasks.md` shows every task done);",
+        "- the agent reports the work complete;",
         f"- {stop['max_elapsed_minutes']} minutes have passed since step 3;",
-        f"- the agent has attempted one task {stop['max_attempts_on_one_task']} times without completing it;",
+        f"- the agent has attempted one change {stop['max_attempts_on_one_task']} times without completing it;",
         "- the agent asks for a credential or a machine change a second time;",
         "- the agent works outside `<worktree>`, or on a branch other than `<branch>`.", "",
         "Then send `Commit all remaining changes on the current branch.` and wait until it has.", "",
-        "### 10. Record interventions as they happen", "",
-        "Every message you send that is not worded in this runbook, every manual edit and every option not in step 7:",
-        "use the `runs intervene` command below.", "",
-        "### 11. Finish the record", "",
+        "### 9. Record interventions as they happen", "",
+        "Every message you send that is not worded in this runbook, every manual edit and every option not in the decision",
+        "sheet: use the `runs intervene` command below. A protocol step (step 7) is not an intervention.", "",
+        "### 10. Finish the record", "",
         "Save the chat transcript (copy the whole Copilot chat thread into `<worktree>-transcript.md`, beside the worktree).",
         "It is a record of the run, never evidence. Note the elapsed time and the premium requests the run used (the",
-        "Copilot usage figure before step 4 and after step 9). Then use the `runs finish` command below.", "",
-        "### 12. Verify", "",
+        "Copilot usage figure before step 4 and after step 8). Then use the `runs finish` command below.", "",
+        "### 11. Verify", "",
         "Use the `verifier` command below. It is independent of the engine; nothing it reported counts.", "",
     ]
+
 
 
 def render_runbook(prepared: dict, config_path: Path) -> str:
@@ -277,7 +290,11 @@ def render_runbook(prepared: dict, config_path: Path) -> str:
         out += [f"| `{m['item']}` | `{m['resolution'] or '-'}` | {m['missing']} guidance |" for m in missing]
     else:
         out.append("None: every detected change has engine-facing guidance.")
-    out += ["", "**ARM 2 ONLY** — answers at the upgrade-options stage (the decision sheet):", "",
+    out += ["", "## Opening messages", "",
+            "Step 4 sends one of these, word for word. Both arms share every sentence but the last; arm 2 adds its inputs.", "",
+            "**ARM 1**:", "", "```text", opening_message(goal, enhancement=False), "```", "",
+            "**ARM 2**:", "", "```text", opening_message(goal, enhancement=True), "```"]
+    out += ["", "**ARM 2 ONLY** — answers at the upgrade-options stage, if it appears (the decision sheet):", "",
             "| Option | Answer | Status |", "|---|---|---|"]
     for o in prepared["options"]:
         out.append(f"| {o['question']} | `{o['answer']}` | {'presumptive' if o['presumptive'] else 'decided'} |")
@@ -289,6 +306,7 @@ def render_runbook(prepared: dict, config_path: Path) -> str:
             f"--model \"<model>\" --engine-version \"<app modernization version>\" --host \"<Visual Studio version>\" "
             f"--runbook \"{folder / 'RUNBOOK.md'}\"",
             f"python -m app.engine.runs intervene --engagement {eng} --label <run> --stage <assessment|options|planning|execution> --what \"<what and why>\"",
+            f"python -m app.engine.runs protocol --engagement {eng} --label <run> --action ctrl-c --why \"<'>>' prompt, or {STUCK_MINUTES} minutes with no output>\"",
             f"python -m app.engine.runs finish --engagement {eng} --label <run> --outcome <completed|stopped|abandoned> "
             "--elapsed-minutes <n> --premium-requests <n> --transcript <worktree>-transcript.md --notes \"<which stop rule ended it>\"",
             f"python -m app.engine.verifier --engagement {eng} --repository {slug} --base {base[:8]} --ref <branch> --label <label> "

@@ -37,6 +37,17 @@ public static class Secrets
     /// (the last segment of a "Section:Key" path) is judged; a name whose last word
     /// only describes a secret — its type, name, path, endpoint (see
     /// <see cref="DescriptiveLastWords"/>) — is a setting, not a secret.</summary>
+    /// <summary>Registry 1.12.0: an Enterprise.Vault reference, <c>vault:&lt;name&gt;</c>. A reference, not a secret.</summary>
+    public static bool IsVaultReference(string value) => value.StartsWith("vault:", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Registry 1.12.0: under a sensitive section, a name whose last word is <c>Key</c> holds key material
+    /// (<c>SigningKey</c>, <c>CertificateKey</c>, <c>PrivateKey</c>).</summary>
+    public static bool NamesKeyMaterial(string name)
+    {
+        var words = KeyWords.Matches(name);
+        return words.Count > 0 && words[^1].Value.Equals("key", StringComparison.OrdinalIgnoreCase);
+    }
+
     public static bool IsSensitiveKey(string key)
     {
         var name = key.Split(':', '.').Last();

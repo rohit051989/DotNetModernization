@@ -2877,8 +2877,15 @@ class EngineRun(Base):
     # The engine's session transcript: a record of the run, never evidence (Part F).
     transcript: Mapped[dict | None] = mapped_column(JSONB)
     notes: Mapped[str | None] = mapped_column(Text)
+    # [{at, action, why}]: steps the runbook prescribes, identically in both arms (Ctrl+C on a stuck terminal):
+    # part of the protocol, so never counted as interventions (36-COPILOT-ENHANCED-CONVERSION Part M).
+    protocol_actions: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    # comparison: counted in the experiment's report; pilot: kept, verified, and excluded from the comparison.
+    role: Mapped[str] = mapped_column(Text, nullable=False, server_default="comparison")
+    role_reason: Mapped[str | None] = mapped_column(Text)
 
     __table_args__ = (
         CheckConstraint(f"outcome IS NULL OR outcome IN {ENGINE_RUN_OUTCOMES}", name="ck_engine_runs_outcome"),
+        CheckConstraint("role IN ('comparison', 'pilot')", name="ck_engine_runs_role"),
         UniqueConstraint("engagement_id", "label", name="uq_engine_runs_label"),
     )

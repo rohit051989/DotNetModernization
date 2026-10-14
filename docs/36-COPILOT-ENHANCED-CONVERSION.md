@@ -445,3 +445,37 @@ so every checkout names the folder by one key.
 never changes. The restore that builds and tests each branch still uses the machine's package folders and feeds, as
 any build does; it decides whether the branch builds, not which work items remain.
 
+## Part M — What the pilot run found (2026-10-14)
+
+AccountsApi.Net10 arm 2 run 1 of generation 3 was the first Copilot run. It is the **pilot**: kept, verified as a
+dress rehearsal, and excluded from the comparison (`python -m app.engine.runs mark-pilot`; the run record's `role`).
+
+**Inputs.** A sensitive key is named by its leaf (`EnterpriseAuthentication:Token:SigningKey`, not the section), and a
+key holding an Enterprise.Vault reference is a vault reference, handled by `enterprise-vault-secret-reference`, not a
+secret in the file (21-APPLICATION-FINGERPRINTING, registry 1.12.0). A deployment parameter for a path is named after
+the configuration key the code reads (`FileContent__FilePath`, `resolution_parameters.yaml` `{KEY}`), one per key at
+every place it is set; a literal in code, which has no key yet, takes the old value-based name.
+
+**Discovery gaps.** Four items: Enterprise.Vault references, configuration files that cannot be parsed (the two
+utilities' `appsettings.json` had unescaped backslashes, so nothing in them was seen), custom logging providers that
+write files, and build and pipeline files that assume Windows.
+
+**What the platform writes into a client repository.** Every commit the platform makes goes through
+`gitops.platform_commit`: its message passes the self-containedness check (the inputs commit had cited this document)
+and carries no co-author trailer; otherwise nothing is committed. The conversion runner's messages no longer name the
+approach (a catalog id) or say "occurrence". Generated files are written with the line endings the repository's git
+settings expect in the working tree (`eol` and `text` attributes, then `core.autocrlf`, then `core.eol`), so opening
+them never shows them modified; the committed text, and the manifest's hashes, are the same either way.
+
+**The runbook.** Copilot skipped the assessment, options and planning stages (the goal asked for no framework change),
+never committed as it worked, and its terminal hung for over an hour on a multi-line PowerShell here-string. So the
+opening message now carries everything: both arms, identically, are told to edit files with file-editing tools, keep
+every terminal command on one line, stay on the current branch, and commit after each change with a message naming it;
+arm 2 adds its instructions, skills, assessment addendum and decision sheet. The merge-addendum step is gone. If the
+stages appear, the runbook answers them as before. A stuck terminal (`>>`, or five minutes with no output) gets
+Ctrl+C, the same in both arms, recorded as a **protocol action** (`runs protocol`), never an intervention; the report
+counts them apart.
+
+**The verifier.** An engine run looks up live feeds and may take a release newer than the frozen snapshot. Such a
+package is upgraded (dependency-assessment 1.4.3, outcome current), its work item resolved, and it is listed apart as
+"newer than snapshot" in the verification and the report, never as unresolved or unknown.

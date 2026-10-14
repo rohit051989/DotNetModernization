@@ -73,10 +73,16 @@ def build(model: dict, repository_root: Path | None) -> dict[str, str]:
 
 
 def write(files: dict[str, str], out: Path) -> None:
+    """Each file with the line endings the repository's git settings expect in its working tree (Part M), so opening
+    it never shows it as modified. The text, its manifest hash and the committed blob are the same whatever the
+    ending: git stores text normalised."""
+    from app.conversion.gitops import expected_eols
+
+    eols = expected_eols(out, sorted(files))
     for rel, text in files.items():
         target = out / rel
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(text, encoding="utf-8", newline="\n")
+        target.write_text(text, encoding="utf-8", newline=eols[rel])
 
 
 def generate(db, engagement_id: str, slug: str, out: Path, missing: list | None = None) -> dict[str, str]:

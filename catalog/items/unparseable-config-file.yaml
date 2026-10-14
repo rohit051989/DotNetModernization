@@ -1,0 +1,64 @@
+category: configuration
+deleted: false
+description: |-
+  An appsettings*.json, web.config or app.config that cannot be parsed: typically a Windows path written with single backslashes in a JSON string. The application fails to start with it, and discovery could read nothing in it, so its paths, secrets and connection strings are not among the work items until it is fixed. AccountsApi's two utilities had one each. One occurrence per file.
+  Conversion ordering (docs/28 Part E): runs BEFORE hardcoded-windows-path, whose places in the file can be seen only once it parses.
+detection:
+  match:
+    all:
+    - id: unparseable
+      signal:
+        name: CONFIG_FILE_UNPARSEABLE
+    any: []
+    atLeast: []
+    metadata: []
+    none: []
+  occurrence_source:
+    group_by: source_path
+    signal: CONFIG_FILE_UNPARSEABLE
+engine_guidance: |-
+  This configuration file is not valid JSON or XML; each place shows where parsing stopped. Usually a
+  Windows path is written with single backslashes in a JSON string. .NET fails to load the file at
+  start-up, and none of its settings take effect.
+excluded_roles:
+- TEST
+id: unparseable-config-file
+name: Configuration file that cannot be parsed
+owner_team: null
+resolutions:
+- consumer_impact: none
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: 'Make the file valid without changing any value''s meaning: escape backslashes in JSON strings.'
+  effort: low
+  engine_guidance: |-
+    Correct the syntax without changing what any value means: in a JSON string, write each backslash
+    twice. Change nothing else in the file in this step, and confirm it now parses (build and start the
+    application, or load it with a JSON parser). Its paths and secrets are then handled by the other
+    instructions.
+  id: fix-config-syntax
+  is_default: true
+  linux_compatible: true
+  name: Correct the file's syntax
+  notes: null
+  status: active
+  target_description: A configuration file that parses
+- consumer_impact: none
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: Where nothing loads the file, delete it.
+  effort: low
+  engine_guidance: |-
+    If nothing loads this file (no `AddJsonFile` or default host configuration reads it, and it is not
+    copied to the output), delete it. Otherwise correct its syntax instead.
+  id: remove-unused-config-file
+  is_default: false
+  linux_compatible: true
+  name: Remove the file
+  notes: null
+  status: active
+  target_description: No such file
+scope: occurrence
+status: active

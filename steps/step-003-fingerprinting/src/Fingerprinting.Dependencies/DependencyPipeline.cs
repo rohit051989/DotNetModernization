@@ -35,8 +35,15 @@ public sealed class DependencyPipeline(PackageLookup lookup, DependencyOptions o
 {
     /// <summary>Matches the dependency-assessment step registration version. 1.4.1: <c>lookup_offline</c>, answers
     /// from the lookup cache only (PackageLookup). 1.4.2: a local feed's key resolves junctions and links
-    /// (FeedResolver.NormaliseUrl). Artifact 1.4.0 unchanged.</summary>
-    public const string ScannerVersion = "1.4.2";
+    /// (FeedResolver.NormaliseUrl). 1.4.3: a version newer than the lookup answers is current
+    /// (<see cref="NewerThanLookups"/>). Artifact 1.4.0 unchanged.</summary>
+    public const string ScannerVersion = "1.4.3";
+
+    /// <summary>1.4.3: the start of the outcome reason for a version newer than every version the lookup answers
+    /// know. An engine run looks up live feeds and may take a release published after an experiment's lookups were
+    /// frozen: that is an upgrade (outcome current), never unresolved or unknown. The verifier reports these apart,
+    /// as "newer than snapshot".</summary>
+    public const string NewerThanLookups = "newer than the lookup answers";
 
     /// <summary>The producer name its signals are registered under (Part D1).</summary>
     public const string Extractor = "DependencyAssessment";
@@ -320,6 +327,14 @@ public sealed class DependencyPipeline(PackageLookup lookup, DependencyOptions o
             Vulnerable = vulnerable,
             NotInClientFeed = gapFlag,
         };
+
+        if (currentCandidate is null && currentVersion > candidates.Max(c => c.Version)!)
+        {
+            var assessment = Finish(Result(Outcomes.Current,
+                $"{NewerThanLookups}: {currentVersion} is not among them (newest known {common.Latest}, recommended "
+                + $"{common.Recommended ?? "none"}); a release after they were taken, counted as upgraded", 0.8));
+            return (assessment, Signals(declaration, assessment, null));
+        }
 
         if (recommended is null)
         {

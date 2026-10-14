@@ -496,8 +496,13 @@ def verify(db, *, engagement_id: str, slug: str, base: str, ref: str, label: str
           "introduced": [list(k) for k in introduced], "offTarget": off_target,
           "remainingPlaces": {f"{p} {i}": after_items[(p, i)]["places"][:10] for p, i in remaining},
           "introducedPlaces": {f"{p} {i}": after_items[(p, i)]["places"][:10] for p, i in introduced}}
+    # Part M: a package at a version newer than the snapshot's answers is upgraded (its work item resolved), and is
+    # listed apart, never as unresolved or unknown.
+    rd["newerThanSnapshot"] = tip_snap.get("newerThanSnapshot") or []
     detail = (f"{len(resolved)} of {len(before_items)} work item(s) resolved, {len(remaining)} remaining, "
-              f"{len(introduced)} introduced; {len(off_target)} project(s) not on {target}")
+              f"{len(introduced)} introduced; {len(off_target)} project(s) not on {target}"
+              + (f"; {len(rd['newerThanSnapshot'])} package(s) newer than snapshot, counted as upgraded"
+                 if rd["newerThanSnapshot"] else ""))
     checks.append(_check("rediscovery", "Re-discovery", "gap" if remaining or introduced or off_target else "pass", detail))
     impact = impact_comparison(base_snap["model"], changes["files"])
     checks.append(_check("impact", "Impact comparison", "info",
@@ -560,6 +565,10 @@ def markdown(r: dict) -> str:
             out += [f"**{name}:** " + ", ".join(f"`{i}` ({p})" for p, i in rows), ""]
     if rd["offTarget"]:
         out += ["**Not on the target framework:** " + ", ".join(f"`{p}`" for p in rd["offTarget"]), ""]
+    if rd.get("newerThanSnapshot"):
+        out += ["**Newer than snapshot** (upgraded; the frozen lookups predate the release): "
+                + ", ".join(f"`{n['package']} {n['version']}` ({n['project']}; snapshot recommended {n['snapshotRecommended']})"
+                            for n in rd["newerThanSnapshot"]), ""]
     im = r["impact"]
     out += ["## Impact comparison", "",
             f"Predicted files {im['predictedFiles']}, predicted new files {im['predictedCreates']}, changed files {im['changedFiles']}.", ""]

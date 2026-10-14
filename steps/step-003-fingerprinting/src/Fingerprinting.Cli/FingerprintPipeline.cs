@@ -22,8 +22,12 @@ public sealed class FingerprintPipeline(SignalRegistry registry, IReadOnlyList<I
     // USE_IIS_INVOCATION, the CONTAINER_* OpenShift-compliance signals read from
     // Dockerfiles and manifests, and SENSITIVE_CONFIG_KEY as a full key path
     // without descriptive keys (ClientCredentialType, TokenEndpoint).
+    // 1.6.0 (registry 1.12.0): SENSITIVE_CONFIG_KEY by the leaf's full path,
+    // VAULT_SECRET_REFERENCE, CONFIG_FILE_UNPARSEABLE, CUSTOM_FILE_LOGGER_PROVIDER
+    // (FileLoggerProviderExtractor), WINDOWS_BUILD_PIPELINE, and the configuration
+    // key on a path literal's evidence.
     // Matches the application-fingerprinting step registration version.
-    public const string ScannerVersion = "1.5.0";
+    public const string ScannerVersion = "1.6.0";
 
     // The registry is the single source of truth for evidence_kind per
     // signal name (25-STANDARDS-AND-VIEWPOINTS.md Part A3 addendum) —

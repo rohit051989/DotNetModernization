@@ -78,10 +78,66 @@ def diff(worktree: Path) -> str:
     return git(worktree, "diff", "--binary")
 
 
-def commit(worktree: Path, message: str) -> str:
-    git(worktree, "add", "--all")
-    git(worktree, *PLATFORM_IDENTITY, "commit", "--no-verify", "-m", message)
+class CommitRefused(ValueError):
+    pass
+
+
+def platform_commit(worktree: Path, message: str, *, paths: list[str] | None = None, vocabulary: dict | None = None) -> str:
+    """Every commit the platform makes in a client repository (36-COPILOT-ENHANCED-CONVERSION Part M). The message
+    must be self-contained (no platform document, path, lifecycle step or vocabulary: app.engine.inputs.selfcontained)
+    and carry no co-author trailer; otherwise nothing is committed. `paths`: what to stage, else everything."""
+    from app.engine.inputs import selfcontained
+
+    findings = selfcontained.check_commit_message(message, vocabulary)
+    if findings:
+        raise CommitRefused("commit message refused: " + "; ".join(f"{f['check']} ({f['match']})" for f in findings))
+    git(worktree, "add", "--", *paths) if paths else git(worktree, "add", "--all")
+    git(worktree, *PLATFORM_IDENTITY, "commit", "--no-verify", "-q", "-m", message)
     return head(worktree)
+
+
+def commit(worktree: Path, message: str, vocabulary: dict | None = None) -> str:
+    return platform_commit(worktree, message, vocabulary=vocabulary)
+
+
+def expected_eols(worktree: Path, paths: list[str]) -> dict[str, str]:
+    """The line ending git expects in the working tree for each path, from the repository's own settings: the `eol` and
+    `text` attributes, then core.autocrlf, then core.eol. A file written so never shows as modified. "\n" outside a
+    git repository."""
+    if not paths or subprocess.run(["git", "-C", str(worktree), "rev-parse", "--is-inside-work-tree"],
+                                   capture_output=True, text=True).returncode != 0:
+        return {p: "\n" for p in paths}
+
+    def config(key: str) -> str:
+        return subprocess.run(["git", "-C", str(worktree), "config", "--get", key], capture_output=True, text=True).stdout.strip().lower()
+
+    autocrlf, core_eol = config("core.autocrlf"), config("core.eol") or "native"
+    native = "\r\n" if os.name == "nt" else "\n"
+    attrs: dict[str, dict[str, str]] = {p: {} for p in paths}
+    # Bytes, not text: on Windows a text pipe turns each "\n" into "\r\n", and every path would end in "\r".
+    out = subprocess.run(["git", "-C", str(worktree), "check-attr", "--stdin", "text", "eol"],
+                         input=("\n".join(paths) + "\n").encode("utf-8"), capture_output=True).stdout.decode("utf-8")
+    for line in out.splitlines():
+        path, _, rest = line.partition(": ")
+        name, _, value = rest.partition(": ")
+        if path in attrs:
+            attrs[path][name] = value
+    result = {}
+    for p in paths:
+        a = attrs[p]
+        if a.get("eol") in ("lf", "crlf"):
+            result[p] = "\r\n" if a["eol"] == "crlf" else "\n"
+        elif a.get("text") == "unset":
+            result[p] = "\n"                                   # binary or -text: no conversion
+        elif autocrlf == "true":
+            result[p] = "\r\n"
+        elif autocrlf == "input":
+            result[p] = "\n"
+        elif a.get("text") in ("set", "auto"):
+            result[p] = {"crlf": "\r\n", "lf": "\n"}.get(core_eol, native)
+        else:
+            result[p] = "\n"
+    return result
 
 
 def fast_forward(branch_worktree: Path, sha: str) -> None:

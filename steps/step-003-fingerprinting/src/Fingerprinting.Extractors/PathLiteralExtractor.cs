@@ -90,10 +90,12 @@ public sealed class PathLiteralExtractor : IFingerprintExtractor
                 {
                     foreach (var node in JsonConfigWalker.Walk(filePath))
                     {
-                        // StringValue is null for anything secret-bearing.
+                        // StringValue is null for anything secret-bearing. Registry 1.12.0: the member is the
+                        // configuration key the code reads it by (FileContent:FilePath), so a deployment parameter
+                        // can be named after it.
                         if (node.StringValue is { } text)
                         {
-                            AddMatches(text, relativePath, EvidenceSourceTypes.Configuration, node.Line, null, null, accumulator);
+                            AddMatches(text, relativePath, EvidenceSourceTypes.Configuration, node.Line, null, node.KeyPath, accumulator);
                         }
                     }
                 }
@@ -218,7 +220,7 @@ public sealed class PathLiteralExtractor : IFingerprintExtractor
                 }
 
                 var line = ((IXmlLineInfo)attribute).HasLineInfo() ? ((IXmlLineInfo)attribute).LineNumber : (int?)null;
-                AddMatches(attribute.Value, relativePath, EvidenceSourceTypes.Configuration, line, null, null, accumulator);
+                AddMatches(attribute.Value, relativePath, EvidenceSourceTypes.Configuration, line, null, XmlSetting(element, attributeName), accumulator);
             }
 
             if (!valueIsSecret)
@@ -230,6 +232,15 @@ public sealed class PathLiteralExtractor : IFingerprintExtractor
                 }
             }
         }
+    }
+
+    /// <summary>The setting an XML value belongs to (registry 1.12.0): the <c>key</c> or <c>name</c> of an
+    /// <c>&lt;add key=... value=...&gt;</c> or <c>&lt;environmentVariable name=... value=...&gt;</c>, else
+    /// <c>element@attribute</c>.</summary>
+    private static string XmlSetting(XElement element, string attributeName)
+    {
+        var name = (string?)element.Attribute("key") ?? (string?)element.Attribute("name");
+        return attributeName == "value" && !string.IsNullOrEmpty(name) ? name : $"{element.Name.LocalName}@{attributeName}";
     }
 
     // ---- matching ----------------------------------------------------------

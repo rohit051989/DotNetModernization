@@ -65,6 +65,14 @@ def _occurrence_value(occ: dict) -> str:
     return first.get("value") or Path(occ.get("file") or occ["project"]).stem
 
 
+def _config_key(line: dict | None) -> str | None:
+    """The configuration key a place's value sits under (registry 1.12.0: a path literal in a configuration file carries
+    it as its member), or None for a literal in code or an XML attribute that is not a setting."""
+    if not line or line.get("type") or not line.get("member") or "@" in line["member"]:
+        return None
+    return line["member"]
+
+
 def plan_item(item: dict) -> dict:
     """How the chosen approach applies: the places it applies to, the places it cannot (left unchanged, with why),
     and the deployment parameters it needs — never a decision the engine has to stop for."""
@@ -87,15 +95,25 @@ def plan_item(item: dict) -> dict:
     parameters: dict[str, dict] = {}
     for p in needs.get("parameters", []):
         if p["per"] == "application":
-            targets = [(p["name"], None)] if apply else []
+            targets = [(p["name"], None, None)] if apply else []
         elif p["per"] == "project":
-            targets = [(p["name"].replace("{PROJECT}", _env_name(Path(o["project"]).stem).upper()), o) for o in apply]
+            targets = [(p["name"].replace("{PROJECT}", _env_name(Path(o["project"]).stem).upper()), o, None) for o in apply]
+        elif "{KEY}" in p["name"]:
+            # Named after the configuration key the code reads (FileContent__FilePath), one per key, at every place
+            # it is set; a literal in code has no key yet, so it takes the fallback name.
+            targets = []
+            for o in apply:
+                for line in o["lines"] or [None]:
+                    key = _config_key(line)
+                    name = (p["name"].replace("{KEY}", _env_name(key)) if key else
+                            p["fallback"].replace("{VALUE}", _env_name((line or {}).get("value") or _occurrence_value(o))))
+                    targets.append((name, o, line))
         else:
-            targets = [(p["name"].replace("{VALUE}", _env_name(_occurrence_value(o))), o) for o in apply]
-        for name, occ in targets:
+            targets = [(p["name"].replace("{VALUE}", _env_name(_occurrence_value(o))), o, None) for o in apply]
+        for name, occ, line in targets:
             entry = parameters.setdefault(name, {"name": name, "kind": p["kind"], "what": p["what"], "places": []})
             if occ is not None:
-                place = _site(occ, (occ["lines"] or [None])[0]).strip("`")
+                place = _site(occ, line or (occ["lines"] or [None])[0]).strip("`")
                 if place not in entry["places"]:
                     entry["places"].append(place)
     return {"apply": apply, "unresolved": unresolved, "parameters": sorted(parameters.values(), key=lambda x: x["name"])}

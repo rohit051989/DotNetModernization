@@ -113,6 +113,7 @@ public sealed class FileIndicatorExtractor : IFingerprintExtractor
                 signals.Add(BuildSignal(deployment, relativePath, SignalCategories.DeploymentIndicator));
                 signals.AddRange(ContentSignals(deployment, filePath, relativePath));
             }
+            signals.AddRange(WindowsBuild.Signals(filePath, relativePath, ExtractorName));   // registry 1.12.0
         }
 
         foreach (var directoryPath in FileSystemWalk.EnumerateDirectories(context.ProjectDirectory, cancellationToken))
@@ -156,6 +157,8 @@ public sealed class FileIndicatorExtractor : IFingerprintExtractor
                 signals.Add(BuildSignal(deployment, relative, SignalCategories.DeploymentIndicator));
                 signals.AddRange(ContentSignals(deployment, filePath, relative));
             }
+
+            signals.AddRange(WindowsBuild.Signals(filePath, FileSystemWalk.ToRepositoryRelativePath(repositoryRoot, filePath), ExtractorName));
         }
 
         return signals;

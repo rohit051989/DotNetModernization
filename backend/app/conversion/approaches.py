@@ -92,7 +92,7 @@ class RetargetTfm:
         files = ", ".join(d["file"] for d in target["declarations"])
         projects = sum(len(d["projects"]) for d in target["declarations"])
         return (f"Retarget {target['from']} -> {target['to']}\n\nDeclared in {files}, inherited by {projects} project(s).\n"
-                f"Approach {self.id} {self.version}, deterministic.")
+                "Made by a deterministic conversion, not an AI.")
 
     @staticmethod
     def _global_json(root: Path):
@@ -187,13 +187,13 @@ class PackageUpgradeSafe:
             d = b["declaration"]
             shared = f"\nShared declaration: also {', '.join(d['shared_with'])}." if d.get("shared_with") else ""
             return (f"Bump {b['package_id']} {b['from']} -> {b['to']}\n\n"
-                    f"Declared in {d['file']} ({d['kind']} {d['name']}); occurrence in {b['project']}.{shared}\n"
-                    f"Approach {self.id} {self.version}, deterministic.")
+                    f"Declared in {d['file']} ({d['kind']} {d['name']}); used by {b['project']}.{shared}\n"
+                    "Made by a deterministic conversion, not an AI.")
         lines = "\n".join(f"- {b['package_id']} {b['from']} -> {b['to']} ({b['declaration']['file']}, "
                           f"{b['declaration']['kind']} {b['declaration']['name']})" for b in bumps)
         return (f"Bump {', '.join(b['package_id'] for b in bumps)} together\n\n"
                 f"They only resolve together: {target.get('group_reason', '')}\n{lines}\n"
-                f"Approach {self.id} {self.version}, deterministic.")
+                "Made by a deterministic conversion, not an AI.")
 
 
 class PinProgramInternal:
@@ -244,7 +244,7 @@ class PinProgramInternal:
         return (f"Keep Program internal in {target['file']}\n\n"
                 f"Framework delta {target['delta_id']}: from {target['breaks_from']} the implicit Program of a web project\n"
                 f"is public, and {consumers} would see two (CS0433). Builds on both frameworks.\n"
-                f"Approach {self.id} {self.version}, deterministic.")
+                "Made by a deterministic conversion, not an AI.")
 
 
 # Assisted approaches (package-upgrade-adapt) have no implementation here: the
