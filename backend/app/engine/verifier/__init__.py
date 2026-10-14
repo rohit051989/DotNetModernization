@@ -868,7 +868,11 @@ def markdown(r: dict) -> str:
         out += ["## Shell scripts", "", "| Script | LF | Executable | eol=lf rule |", "|---|---|---|---|"]
         out += [f"| `{s['path']}` | {'yes' if s['lf'] else 'NO'} | {'yes' if s['executable'] else 'NO'} | "
                 f"{'yes' if s['attribute'] else 'NO'} |" for s in r["shellScripts"]] + [""]
-    if r.get("attribution"):
+    if r.get("attribution") and not any(x["named"] for x in r["attribution"]["instructions"]):
+        out += ["## Instructions and the files they name", "",
+                "The branch's instructions have no Files section (generated before instructions named their files): "
+                "nothing to attribute.", ""]
+    elif r.get("attribution"):
         a = r["attribution"]
         out += ["## Instructions and the files they name", "",
                 "Each instruction's Files section, against the files the branch changed. Reported, never judged.", "",
