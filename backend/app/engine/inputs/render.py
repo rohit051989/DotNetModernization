@@ -314,6 +314,22 @@ def _instruction(model: dict, item: dict, present: set[str], by_id: dict) -> str
 
 # ---------------------------------------------------------------- addendum and decision sheet
 
+# A package place in an instruction, as _instruction writes it: "- `file:line` (project): `Package from -> to`".
+PACKAGE_PLACE = re.compile(r"^- `[^`]+` \((?P<project>[^)]+)\): `(?P<package>[^\s`]+) (?P<current>[^\s`]+) -> (?P<asked>[^\s`]+)`",
+                           re.MULTILINE)
+
+
+def package_targets(files: dict[str, str]) -> list[dict]:
+    """The version each package instruction asks for, read back from generated instruction texts ({path: text}):
+    [{project, package, current, asked}]. The verifier judges a package upgrade against these (Part N)."""
+    out = []
+    for path, text in sorted(files.items()):
+        if Path(path).name.startswith("applying-package-"):
+            out += [{"project": m["project"], "package": m["package"], "current": m["current"], "asked": m["asked"],
+                     "instruction": Path(path).name} for m in PACKAGE_PLACE.finditer(text)]
+    return out
+
+
 def _soap_security(s: dict) -> str:
     return "; ".join(f"{b or 'unknown binding'}, {m or 'no'} security, {c or 'no'} client credential"
                      for b, m, c in s["security"]) or "binding not determined"

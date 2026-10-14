@@ -9,9 +9,10 @@ import unittest
 from pathlib import Path
 
 from app import engine  # noqa: F401
+from app.conversion import gitops
 from app.engine import configfiles, convert, verifier
 from app.engine.inputs import render
-from app.engine.verifier import rediscovery
+from app.engine.verifier import packages, rediscovery
 
 
 class ConfigurationFiles(unittest.TestCase):
@@ -145,3 +146,69 @@ class Unrun(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def _upgrade(project, value, item="package-upgrade-safe"):
+    return {"id": item, "occurrences": [{"project": project, "file": project, "value": value, "lines": [{"line": 7}]}]}
+
+
+class PackagesAgainstTheInputs(unittest.TestCase):
+    TARGETS = [{"project": "Infra.csproj", "package": "System.Runtime.Caching", "current": "10.0.10", "asked": "10.0.12"},
+               {"project": "Infra.csproj", "package": "Microsoft.Extensions.Http.Resilience", "current": "10.9.0", "asked": "10.10.0"},
+               {"project": "Api.csproj", "package": "PdfPig", "current": "0.1.13", "asked": "0.1.16"}]
+
+    def test_nuget_versions_are_ordered(self):
+        k = packages.version_key
+        self.assertLess(k("10.0.9"), k("10.0.12"))
+        self.assertLess(k("10.0.0-rc.2.25502.107"), k("10.0.0"))
+        self.assertLess(k("1.0.0-alpha"), k("1.0.0-beta"))
+        self.assertEqual(k("10.0"), k("10.0.0"))
+
+    def test_at_the_asked_version_a_newer_release_since_is_information_never_remaining(self):
+        model = {"items": [
+            _upgrade("Infra.csproj", "System.Runtime.Caching 10.0.12 -> 10.0.13"),               # asked: met
+            _upgrade("Infra.csproj", "Microsoft.Extensions.Http.Resilience 10.11.0 -> 10.12.0"),  # above asked: met
+            _upgrade("Api.csproj", "PdfPig 0.1.14 -> 0.1.17"),                                     # below asked: remains
+            _upgrade("Api.csproj", "Asp.Versioning.Mvc.ApiExplorer 8.1.0 -> 10.2.1"),             # never asked: remains
+            {"id": "package-vulnerable", "occurrences": [
+                {"project": "Infra.csproj", "file": "Infra.csproj", "value": "System.Runtime.Caching 10.0.12: high", "lines": []}]},
+        ]}
+        judged, since = packages.judge(model, self.TARGETS)
+        left = [(i["id"], o["value"]) for i in judged["items"] for o in i["occurrences"]]
+        self.assertEqual(left, [("package-upgrade-safe", "PdfPig 0.1.14 -> 0.1.17"),
+                                ("package-upgrade-safe", "Asp.Versioning.Mvc.ApiExplorer 8.1.0 -> 10.2.1"),
+                                ("package-vulnerable", "System.Runtime.Caching 10.0.12: high")])
+        self.assertEqual([(s["package"], s["version"], s["asked"], s["newest"]) for s in since],
+                         [("System.Runtime.Caching", "10.0.12", "10.0.12", "10.0.13"),
+                          ("Microsoft.Extensions.Http.Resilience", "10.11.0", "10.10.0", "10.12.0")])
+        items = rediscovery.work_items(judged)
+        self.assertNotIn(("Infra.csproj", "package-upgrade-safe"), items)
+        self.assertIn(("Infra.csproj", "package-vulnerable"), items)       # a vulnerability is today's finding
+
+    def test_the_versions_asked_for_are_read_back_from_a_package_instructions_places(self):
+        # The place line as render._instruction writes it: "- `file:line` (project): `value`".
+        place = "- `src/Infra/Infra.csproj:20` (src/Infra/Infra.csproj): `System.Runtime.Caching 10.0.10 -> 10.0.12`"
+        targets = render.package_targets({".github/upgrades/skills/applying-package-upgrade-safe-bump.md": "x\n" + place + "\n",
+                                          ".github/upgrades/skills/applying-other.md": place})
+        self.assertEqual([(t["project"], t["package"], t["current"], t["asked"]) for t in targets],
+                         [("src/Infra/Infra.csproj", "System.Runtime.Caching", "10.0.10", "10.0.12")])
+
+    def test_the_inputs_commit_is_the_platforms_first_commit_after_the_baseline(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            _git(repo, "init", "-q")
+            (repo / "a.txt").write_text("a")
+            _git(repo, "add", "-A")
+            _git(repo, "commit", "-qm", "base")
+            base = _git(repo, "rev-parse", "HEAD")
+            skills = repo / ".github" / "upgrades" / "skills"
+            skills.mkdir(parents=True)
+            (skills / "applying-package-upgrade-safe-bump.md").write_text(
+                "- `p.csproj:3` (p.csproj): `Moq 4.20.72 -> 4.21.0`\n", newline="\n")
+            subprocess.run(["git", "-C", str(repo), *gitops.PLATFORM_IDENTITY, "add", "-A"], check=True)
+            subprocess.run(["git", "-C", str(repo), *gitops.PLATFORM_IDENTITY, "commit", "-qm", "inputs"], check=True)
+            inputs = _git(repo, "rev-parse", "HEAD")
+            (repo / "a.txt").write_text("agent")
+            _git(repo, "commit", "-qam", "agent change")
+            self.assertEqual(packages.inputs_commit(repo, base, "HEAD"), inputs)
+            self.assertEqual([(t["package"], t["asked"]) for t in packages.asked_for(repo, inputs)], [("Moq", "4.21.0")])

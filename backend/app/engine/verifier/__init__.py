@@ -32,6 +32,9 @@ comparison and re-discovery (app.engine.paths).
 A work item with a place at the base commit in a configuration file that does not parse on the branch is **not
 checked**, never resolved: discovery cannot see inside a file it cannot read, so the item's absence proves nothing
 (Part N).
+
+On the simple path (app.engine.convert), a package upgrade is judged against the version the conversion's inputs asked
+for, not today's newest release (app.engine.verifier.packages).
 """
 import argparse
 import datetime
@@ -49,10 +52,10 @@ from app.conversion import dotnet, gitops, planner
 from app.conversion.runner import fingerprint
 from app.engine import configfiles, paths, siblings
 from app.engine.inputs.collect import SILENT_ITEMS
-from app.engine.verifier import plugin, rediscovery
+from app.engine.verifier import packages, plugin, rediscovery
 from app.experiment import instrument, lookups
 
-VERIFIER_VERSION = "1.1.0"
+VERIFIER_VERSION = "1.2.0"
 RUNS = planner.RUNS          # the same runs folder as the conversion runner, whatever the working directory
 
 RULES = [
@@ -67,6 +70,8 @@ RULES = [
     "checked; a project does not target the engagement's framework.",
     "A work item with a place in a configuration file that does not parse on the branch is not checked, never "
     "resolved: discovery cannot read inside that file.",
+    "On the simple path, a package upgrade is met at or above the version the conversion's inputs asked for; a "
+    "release published since is information, never remaining. Vulnerabilities are judged against today's advisories.",
     "Otherwise PROVEN.",
     "The impact comparison and the diff size are reported, never judged.",
     "Engine state under .github/upgrades/ and the generated inputs are excluded from the diff, the impact "
@@ -538,7 +543,15 @@ def verify(db, *, engagement_id: str, slug: str, base: str, ref: str, label: str
     # Re-discovery on the branch, and the impact comparison against the baseline's prediction.
     tip_snap = rediscovery.snapshot(engagement_id, tip_tree, f"{slug} verifier {label}", out / "scratch", frozen_rows)
     (out / "rediscovery.json").write_text(json.dumps(tip_snap, indent=2, sort_keys=True, default=str), encoding="utf-8")
-    before_items, after_items = rediscovery.work_items(base_snap["model"]), rediscovery.work_items(tip_snap["model"])
+    # Part N, the simple path: a package upgrade is judged against the version the conversion's inputs asked for, not
+    # today's newest release; a release since then is information.
+    tip_model, releases_since, targets_from = tip_snap["model"], [], None
+    if config.get("package_targets_from_inputs"):
+        commit = packages.inputs_commit(root, base_sha, tip_sha)
+        targets = packages.asked_for(root, commit) if commit else []
+        targets_from = {"commit": commit, "targets": len(targets)}
+        tip_model, releases_since = packages.judge(tip_model, targets)
+    before_items, after_items = rediscovery.work_items(base_snap["model"]), rediscovery.work_items(tip_model)
     resolved, not_checked = split_not_checked(sorted(k for k in before_items if k not in after_items), before_items,
                                               set(tip_unparseable))
     remaining = sorted(k for k in before_items if k in after_items)
@@ -553,13 +566,16 @@ def verify(db, *, engagement_id: str, slug: str, base: str, ref: str, label: str
     # Part M: a package at a version newer than the snapshot's answers is upgraded (its work item resolved), and is
     # listed apart, never as unresolved or unknown.
     rd["newerThanSnapshot"] = tip_snap.get("newerThanSnapshot") or []
+    rd["releasesSince"], rd["packageTargets"] = releases_since, targets_from
     detail = (f"{len(resolved)} of {len(before_items)} work item(s) resolved, {len(remaining)} remaining, "
               f"{len(introduced)} introduced"
               + (f", {len(not_checked)} not checked (a place in a configuration file that does not parse)"
                  if not_checked else "")
               + f"; {len(off_target)} project(s) not on {target}"
               + (f"; {len(rd['newerThanSnapshot'])} package(s) newer than snapshot, counted as upgraded"
-                 if rd["newerThanSnapshot"] else ""))
+                 if rd["newerThanSnapshot"] else "")
+              + (f"; {len(releases_since)} package(s) at the version the inputs asked for, with a newer release since "
+                 "(information)" if releases_since else ""))
     checks.append(_check("rediscovery", "Re-discovery", "gap" if remaining or introduced or not_checked or off_target
                          else "pass", detail))
     impact = impact_comparison(base_snap["model"], changes["files"])
@@ -632,6 +648,15 @@ def markdown(r: dict) -> str:
         out += ["**Newer than snapshot** (upgraded; the frozen lookups predate the release): "
                 + ", ".join(f"`{n['package']} {n['version']}` ({n['project']}; snapshot recommended {n['snapshotRecommended']})"
                             for n in rd["newerThanSnapshot"]), ""]
+    if rd.get("packageTargets"):
+        t = rd["packageTargets"]
+        out += [f"Package upgrades are judged against the versions the conversion's inputs asked for: {t['targets']} "
+                f"package place(s), from the inputs commit `{(t['commit'] or 'none found')[:8]}`. Vulnerabilities are judged "
+                "against today's advisories.", ""]
+    if rd.get("releasesSince"):
+        out += ["**Released since the conversion was prepared** (information, never remaining): "
+                + ", ".join(f"`{n['package']} {n['version']}` ({n['project']}; asked for {n['asked']}, newest now {n['newest']})"
+                            for n in rd["releasesSince"]), ""]
     im = r["impact"]
     out += ["## Impact comparison", "",
             f"Predicted files {im['predictedFiles']}, predicted new files {im['predictedCreates']}, changed files {im['changedFiles']}.", ""]

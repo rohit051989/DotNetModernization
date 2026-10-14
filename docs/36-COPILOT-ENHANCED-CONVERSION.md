@@ -524,3 +524,12 @@ test passed:
 - **Not checked**: a work item gone from the branch that had a place in a file that does not parse there is *not
   checked*, never resolved, and is a gap. Discovery cannot read inside that file, so the item's absence proves
   nothing.
+
+**Verifier 1.2.0: package upgrades against what was asked.** On the simple path, re-discovery looks packages up live,
+so it suggests today's newest release. A package-upgrade place (`package-upgrade-safe`, `package-upgrade-breaking`) is
+met when the package is at or above the version the conversion's inputs asked for. Those versions are read back from
+the platform's inputs commit on the branch, made when the conversion was prepared (`app.engine.verifier.packages`). A
+release published since then is listed as information, "released since the conversion was prepared", and is never a
+remaining work item. A package the inputs never named (one the conversion added) has no asked version and is judged
+against today's releases. `package-vulnerable` is always judged against today's advisories, because a new advisory is
+a real finding.

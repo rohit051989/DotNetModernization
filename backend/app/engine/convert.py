@@ -18,7 +18,9 @@ once per repository.
 
 `verify` runs the verifier (app.engine.verifier) on a branch against its baseline. It needs no experiment
 configuration. The baseline, sibling links and canaries come from the branch's conversion record, or from the
-repository's latest one for any other branch (then `--base` is required). Package lookups are answered live.
+repository's latest one for any other branch (then `--base` is required). Package lookups are answered live, and a
+package upgrade is judged against the version the branch's inputs asked for when the conversion was prepared, not
+today's newest release (app.engine.verifier.packages).
 """
 import argparse
 import datetime
@@ -214,7 +216,9 @@ def verify(db, engagement_id: str, slug: str, branch: str, *, base: str | None =
     if not base:
         raise RuntimeError(f"{branch} is not a prepared conversion of {slug}: give its baseline with --base")
     # The repository's facts, as the verifier's configuration: no experiment, no frozen package lookups.
-    config = {"sibling_links": facts.get("siblingLinks") or [], "canaries": facts.get("canaries") or []}
+    config = {"sibling_links": facts.get("siblingLinks") or [], "canaries": facts.get("canaries") or [],
+              # Package upgrades against the versions the branch's inputs asked for, not today's newest release.
+              "package_targets_from_inputs": True}
     return verifier.verify(db, engagement_id=engagement_id, slug=slug, base=base, ref=branch,
                            label=label or branch.replace("/", "-"), config=config, refresh_baseline=refresh_baseline)
 
