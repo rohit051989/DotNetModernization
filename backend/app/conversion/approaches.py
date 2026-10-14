@@ -191,7 +191,12 @@ class PackageUpgradeSafe:
                     "Made by a deterministic conversion, not an AI.")
         lines = "\n".join(f"- {b['package_id']} {b['from']} -> {b['to']} ({b['declaration']['file']}, "
                           f"{b['declaration']['kind']} {b['declaration']['name']})" for b in bumps)
-        return (f"Bump {', '.join(b['package_id'] for b in bumps)} together\n\n"
+        names = sorted({b["package_id"] for b in bumps}, key=str.lower)
+        if len(names) == 1:
+            return (f"Bump {names[0]} to {bumps[0]['to']} in {len(bumps)} project files\n\n"
+                    f"Every project that references it moves at once, so the solution never mixes two versions.\n{lines}\n"
+                    "Made by a deterministic conversion, not an AI.")
+        return (f"Bump {', '.join(names)} together\n\n"
                 f"They only resolve together: {target.get('group_reason', '')}\n{lines}\n"
                 "Made by a deterministic conversion, not an AI.")
 

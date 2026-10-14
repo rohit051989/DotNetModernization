@@ -355,17 +355,20 @@ def _occurrences(db: Session, repository_id, exclusions: list[dict], drift: list
         entry = packages.setdefault(package_id.lower(), {"package_id": package_id, "from": current, "to": recommended,
                                                          "outcome": outcome, "occurrences": []})
         if (entry["from"], entry["to"]) != (current, recommended):
+            # Version drift. With one recommended version each project's own declaration moves from its own current
+            # version (an occurrence carries it; a shared declaration cannot drift), and the move's `from` is the
+            # lowest. Two recommendations are a conflict, consolidated before a plan.
             if drift is not None:
                 drift.append(f"{package_id}: {entry['from']} in one project, {current} in {project}; both move to "
                              f"{recommended or entry['to']}")
-                if frameworks.parse_version(current or "0") < frameworks.parse_version(entry["from"] or "0"):
-                    entry["from"] = current
-            else:
+            elif recommended != entry["to"]:
                 raise ValueError(f"{package_id}: {entry['from']} -> {entry['to']} in one project, {current} -> {recommended} "
                                  f"in {project}: version drift is consolidated before a conversion plan")
+            if frameworks.parse_version(current or "0") < frameworks.parse_version(entry["from"] or "0"):
+                entry["from"] = current
         if outcome == "upgrade_breaking":
             entry["outcome"] = outcome
-        entry["occurrences"].append([None, project])
+        entry["occurrences"].append([None, project, current])
 
     # The occurrence ids item-detection gave them: package-upgrade-safe's value
     # names the package; package-upgrade-breaking's evidence does.
@@ -528,12 +531,13 @@ def create(db: Session, slug: str, exclusions: list[dict], layout: str = "in_pla
 
     def bump(key: str, project: str) -> dict:
         p = packages[key]
+        own = next((o[2] for o in p["occurrences"] if o[1] == project), p["from"])   # this project's version (drift)
         d = msbuild.version_declaration(root, project, p["package_id"])
         shared = {packages[k]["package_id"]: packages[k]["to"] for k in packages if
                   any(dk == d.key for dk in packages[k]["declarations"])}
         for other in d.shared_with:
             shared.setdefault(other, "not in this plan")
-        return {"package_id": p["package_id"], "from": p["from"], "to": p["to"], "project": project,
+        return {"package_id": p["package_id"], "from": own, "to": p["to"], "project": project,
                 "declaration": {"file": d.file, "kind": d.kind, "name": d.name, "shared_with": d.shared_with},
                 "shared_recommendations": shared}
 
@@ -547,9 +551,13 @@ def create(db: Session, slug: str, exclusions: list[dict], layout: str = "in_pla
         n_declarations = len({dk for k in ids for dk in packages[k]["declarations"]})
         occurrence_ids = [o[0] for k in ids for o in packages[k]["occurrences"] if o[0]]
         if breaking or n_declarations > 1:
-            bumps = [bump(k, packages[k]["occurrences"][0][1]) for k in ids]
-            title = ", ".join(f"{b['package_id']} {b['from']} -> {b['to']}" for b in bumps)
-            target = {"bumps": bumps, "group_reason": "; ".join(move.reasons) or "they share a declaration",
+            # Every project of every package: a package declared in several project files moves in all of them at
+            # once, so the solution never mixes two of its versions.
+            bumps = [bump(k, o[1]) for k in ids for o in sorted(packages[k]["occurrences"], key=lambda o: o[1])]
+            title = ", ".join(f"{b['package_id']} {b['from']} -> {b['to']} ({b['project']})" for b in bumps)
+            one_package = len({b["package_id"].lower() for b in bumps}) == 1
+            target = {"bumps": bumps, "group_reason": "; ".join(move.reasons) or (
+                          f"declared in {len(bumps)} project files" if one_package else "they share a declaration"),
                       "title": (f"Together: {title}" if len(bumps) > 1 else title)}
             if breaking:
                 target["breaking"] = breaking
@@ -563,8 +571,9 @@ def create(db: Session, slug: str, exclusions: list[dict], layout: str = "in_pla
         occurrences = sorted(((packages[k]["package_id"], o[1], o[0], k) for k in ids for o in packages[k]["occurrences"]),
                              key=lambda o: (o[0].lower(), o[1]))
         for package_id, project, occurrence_id, k in occurrences:
-            target = {**bump(k, project), "occurrence_id": occurrence_id,
-                      "title": f"{package_id} {packages[k]['from']} -> {packages[k]['to']} ({project})"}
+            moved = bump(k, project)
+            target = {**moved, "occurrence_id": occurrence_id,
+                      "title": f"{package_id} {moved['from']} -> {moved['to']} ({project})"}
             own = list(depends_on)
             if key in first_unit:
                 own = [{"sequence": first_unit[key], "reason": f"shares {target['declaration']['file']} "
