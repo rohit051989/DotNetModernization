@@ -479,3 +479,48 @@ counts them apart.
 **The verifier.** An engine run looks up live feeds and may take a release newer than the frozen snapshot. Such a
 package is upgraded (dependency-assessment 1.4.3, outcome current), its work item resolved, and it is listed apart as
 "newer than snapshot" in the verification and the report, never as unresolved or unknown.
+
+## Part N — One conversion at a time (2026-10-14)
+
+The work moves from comparing arms to converting one application at a time. The goal is a converted application that
+builds, passes its tests and starts, verified independently. The experiment machinery (Parts F, J, L, M:
+`app.experiment`) stays in place, unused.
+
+**Prepare.** `python -m app.engine.convert prepare --engagement <e> --repository <r>` makes the next conversion: branch
+`conversion/<n>` from the baseline, in the worktree `<RUNS_DIR>/<engagement>/<repository>/conversions/<n>/wt`, with
+the generated inputs committed as the platform (`gitops.platform_commit`). It writes `RUNBOOK.md` and
+`conversion.json` beside the worktree. It records the platform commit it ran at and pins nothing. There are no arms,
+generations or frozen lookups. The baseline, goal, sibling links and canaries are given once and default to the previous
+conversion's. If the latest conversion has not been run (its branch is the baseline plus the inputs commit, and its
+worktree is clean), preparing again refreshes its inputs in place. Otherwise it makes the next conversion. So fixing an
+instruction and preparing again needs nothing more.
+
+**The runbook** is one page, from `backend/app/engine/templates/conversion-runbook.md`. It covers: open the
+worktree; send the opening message; the standard replies; the stuck-terminal step; when the agent reports done, commit;
+then verify.
+
+**The opening message** carries everything the agent needs, including what done means. Before it reports done, the
+agent builds the solution with 0 errors and runs every test, and every test passes (none weakened, skipped or deleted;
+a test file changed only where the code it tests moved, each change listed with its reason). It confirms every JSON and
+XML configuration file parses. It starts the application without blocking the terminal, waits until it listens or
+fails, then stops it. A failure only for want of a secret, vault or external service is reported, not worked around in
+code. Anything that fails is fixed and all four checks repeated, at most three times; then the agent reports what still
+fails. Each result is given with its command and a summary of the output. The global instructions add two rules: several
+changes to one configuration file are made in a single edit, and a JSON or XML configuration file is re-read and
+confirmed to parse after every edit. They no longer offer skipping a failing test.
+
+**Verify.** `python -m app.engine.convert verify --engagement <e> --repository <r> --branch <b>` runs the verifier on a
+branch against its baseline, with no experiment configuration. The baseline, sibling links and canaries come from the
+branch's conversion record, or from the repository's latest record for any other branch (then `--base` is needed).
+Package lookups are answered live.
+
+**Verifier 1.1.0.** Two corrections, both found by the pilot, whose `appsettings.json` was left unparseable while every
+test passed:
+
+- **Configuration files parse**: every JSON and XML configuration file on the branch is parsed (JSON as .NET
+  configuration reads it, comments and trailing commas allowed: `app.engine.configfiles`), and each failure is named
+  with its line, never its text. A file that parsed at the base commit (or is new) and does not on the branch caps the
+  verdict at NOT PROVEN. One that did not parse at the base commit either is a gap.
+- **Not checked**: a work item gone from the branch that had a place in a file that does not parse there is *not
+  checked*, never resolved, and is a gap. Discovery cannot read inside that file, so the item's absence proves
+  nothing.

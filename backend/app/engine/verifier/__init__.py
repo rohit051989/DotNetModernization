@@ -20,13 +20,18 @@ The checks, and what fails or caps the verdict:
 | Baseline diff | Plugin `baseline_diff` | a regression, a new failure, a test that stopped running | |
 | Tests kept | Plugin `uplift_checks` | | a removed test file, or more than 25% of test files changed |
 | Deltas covered | Plugin `uplift_checks` | | a Behavioral-silent delta whose site no test names |
+| Configuration files parse | Platform | a JSON or XML configuration file the conversion made unparseable | one that did not parse at the base commit either |
 | Canary | Plugin method | a deliberate break that no test catches | no canary could be run |
 | Equivalence | Plugin `compare` | | (no cases: not applicable) |
-| Re-discovery | Platform | | a work item remains or is introduced; a project not on the target framework |
+| Re-discovery | Platform | | a work item remains, is introduced or is not checked; a project not on the target framework |
 | Impact comparison | Platform | reported, never judged | reported, never judged |
 
 Engine state under `.github/upgrades/` and the generated inputs are excluded from the diff, the impact
 comparison and re-discovery (app.engine.paths).
+
+A work item with a place at the base commit in a configuration file that does not parse on the branch is **not
+checked**, never resolved: discovery cannot see inside a file it cannot read, so the item's absence proves nothing
+(Part N).
 """
 import argparse
 import datetime
@@ -42,22 +47,26 @@ import yaml
 from app import models
 from app.conversion import dotnet, gitops, planner
 from app.conversion.runner import fingerprint
-from app.engine import paths, siblings
+from app.engine import configfiles, paths, siblings
 from app.engine.inputs.collect import SILENT_ITEMS
 from app.engine.verifier import plugin, rediscovery
 from app.experiment import instrument, lookups
 
-VERIFIER_VERSION = "1.0.0"
+VERIFIER_VERSION = "1.1.0"
 RUNS = planner.RUNS          # the same runs folder as the conversion runner, whatever the working directory
 
 RULES = [
     "NOT PROVEN when any check fails: nothing converted; the build fails; a test project fails to run or no test "
-    "executes; a regression, a new failure or a baseline test that no longer runs; a deliberate break (canary) "
+    "executes; a regression, a new failure or a baseline test that no longer runs; a JSON or XML configuration "
+    "file that parsed at the base commit, or is new, and does not parse on the branch; a deliberate break (canary) "
     "that no test catches.",
     "Otherwise PARTLY PROVEN when any check has a gap: the baseline is not measured from result files; a test "
     "file was removed or more than 25% of test files changed; a Behavioral-silent delta's site is named by no "
-    "test; no canary could be run; an equivalence case is missing or differs without approval; a work item "
-    "remains or was introduced; a project does not target the engagement's framework.",
+    "test; a configuration file that did not parse at the base commit still does not; no canary could be run; an "
+    "equivalence case is missing or differs without approval; a work item remains, was introduced or could not be "
+    "checked; a project does not target the engagement's framework.",
+    "A work item with a place in a configuration file that does not parse on the branch is not checked, never "
+    "resolved: discovery cannot read inside that file.",
     "Otherwise PROVEN.",
     "The impact comparison and the diff size are reported, never judged.",
     "Engine state under .github/upgrades/ and the generated inputs are excluded from the diff, the impact "
@@ -142,6 +151,43 @@ def impact_comparison(predicted_model: dict, changed: list[dict]) -> dict:
         "predictedUntouchedByItem": {p: sorted(predicted[p]) for p in untouched},
         "createsMade": len(created), "reviewTouched": sorted(p for p in review if p in actual),
     }
+
+
+# ---------------------------------------------------------------- configuration files (Part N)
+
+def config_check(base_unparseable: dict[str, str], tip_unparseable: dict[str, str], files_read: int) -> dict:
+    """Fails for a file the conversion made unparseable: it parsed at the base commit, or is new. A file that did
+    not parse at the base commit either is a gap: the conversion left it as it found it."""
+    made = {p: w for p, w in tip_unparseable.items() if p not in base_unparseable}
+    already = {p: w for p, w in tip_unparseable.items() if p in base_unparseable}
+    named = lambda found: "; ".join(f"{p} ({w})" for p, w in sorted(found.items()))
+    if made:
+        detail = f"{len(made)} made unparseable by the conversion: {named(made)}"
+        if already:
+            detail += f"; {len(already)} did not parse at the base commit either: {named(already)}"
+        return _check("config", "Configuration files parse", "fail", detail, unparseable=tip_unparseable)
+    if already:
+        return _check("config", "Configuration files parse", "gap",
+                      f"{len(already)} did not parse at the base commit and still do not: {named(already)}",
+                      unparseable=tip_unparseable)
+    return _check("config", "Configuration files parse", "pass",
+                  f"all {files_read} JSON and XML configuration file(s) parse")
+
+
+def _place_file(place: str) -> str:
+    """The file of a work item's place, "file:line" or "file"."""
+    head, sep, tail = place.rpartition(":")
+    return head if sep and tail.isdigit() else place
+
+
+def split_not_checked(resolved: list[tuple[str, str]], before_items: dict, unparseable: set[str]) -> tuple[list, list]:
+    """(resolved, not checked): a work item that is gone from the branch, but had a place in a file that does not
+    parse there, is not checked — discovery could not read that file, so its absence proves nothing."""
+    kept, not_checked = [], []
+    for key in resolved:
+        files = {_place_file(p) for p in before_items[key]["places"]}
+        (not_checked if files & unparseable else kept).append(key)
+    return kept, not_checked
 
 
 # ---------------------------------------------------------------- the delta catalog the plugin reads
@@ -375,6 +421,10 @@ def verify(db, *, engagement_id: str, slug: str, base: str, ref: str, label: str
             gitops._rmtree(target)
         elif target.is_file():
             target.unlink()
+    # Read before anything is built: whether every configuration file parses, on the branch and at the base commit.
+    tip_unparseable = configfiles.unparseable(tip_tree)
+    base_unparseable = configfiles.unparseable(base_tree, exclude=paths.EXCLUDED_FROM_COMPARISON)
+    config_files_read = configfiles.counted(tip_tree)
 
     checks: list[dict] = []
     person: list[str] = []
@@ -455,6 +505,8 @@ def verify(db, *, engagement_id: str, slug: str, base: str, ref: str, label: str
         deltas = plugin.proof_pack.check_deltas(dc, person)
         checks.append(_check("deltas", "Deltas covered", deltas["state"], deltas["detail"]))
 
+    checks.append(config_check(base_unparseable, tip_unparseable, config_files_read))
+
     # Canary: a deliberate break in the converted code must make a test fail.
     canaries = config.get("canaries") or []
     if not clean["built"] or not clean["trx"]:
@@ -487,23 +539,29 @@ def verify(db, *, engagement_id: str, slug: str, base: str, ref: str, label: str
     tip_snap = rediscovery.snapshot(engagement_id, tip_tree, f"{slug} verifier {label}", out / "scratch", frozen_rows)
     (out / "rediscovery.json").write_text(json.dumps(tip_snap, indent=2, sort_keys=True, default=str), encoding="utf-8")
     before_items, after_items = rediscovery.work_items(base_snap["model"]), rediscovery.work_items(tip_snap["model"])
-    resolved = sorted(k for k in before_items if k not in after_items)
+    resolved, not_checked = split_not_checked(sorted(k for k in before_items if k not in after_items), before_items,
+                                              set(tip_unparseable))
     remaining = sorted(k for k in before_items if k in after_items)
     introduced = sorted(k for k in after_items if k not in before_items)
     target = engagement.target_framework
     off_target = sorted(p["path"] for p in tip_snap["model"]["projects"] if p["framework"] and p["framework"] != target)
     rd = {"before": len(before_items), "resolved": [list(k) for k in resolved], "remaining": [list(k) for k in remaining],
-          "introduced": [list(k) for k in introduced], "offTarget": off_target,
+          "introduced": [list(k) for k in introduced], "notChecked": [list(k) for k in not_checked], "offTarget": off_target,
+          "notCheckedPlaces": {f"{p} {i}": before_items[(p, i)]["places"][:10] for p, i in not_checked},
           "remainingPlaces": {f"{p} {i}": after_items[(p, i)]["places"][:10] for p, i in remaining},
           "introducedPlaces": {f"{p} {i}": after_items[(p, i)]["places"][:10] for p, i in introduced}}
     # Part M: a package at a version newer than the snapshot's answers is upgraded (its work item resolved), and is
     # listed apart, never as unresolved or unknown.
     rd["newerThanSnapshot"] = tip_snap.get("newerThanSnapshot") or []
     detail = (f"{len(resolved)} of {len(before_items)} work item(s) resolved, {len(remaining)} remaining, "
-              f"{len(introduced)} introduced; {len(off_target)} project(s) not on {target}"
+              f"{len(introduced)} introduced"
+              + (f", {len(not_checked)} not checked (a place in a configuration file that does not parse)"
+                 if not_checked else "")
+              + f"; {len(off_target)} project(s) not on {target}"
               + (f"; {len(rd['newerThanSnapshot'])} package(s) newer than snapshot, counted as upgraded"
                  if rd["newerThanSnapshot"] else ""))
-    checks.append(_check("rediscovery", "Re-discovery", "gap" if remaining or introduced or off_target else "pass", detail))
+    checks.append(_check("rediscovery", "Re-discovery", "gap" if remaining or introduced or not_checked or off_target
+                         else "pass", detail))
     impact = impact_comparison(base_snap["model"], changes["files"])
     checks.append(_check("impact", "Impact comparison", "info",
                          f"{len(impact['unpredicted'])} changed file(s) not predicted; "
@@ -559,10 +617,15 @@ def markdown(r: dict) -> str:
     out += [f"| {c['label']} | {c['state']} | {c['detail'].replace('|', '/')} |" for c in r["checks"]]
     rd = r["rediscovery"]
     out += ["", "## Work items", "",
-            f"Before: {rd['before']}. Resolved: {len(rd['resolved'])}. Remaining: {len(rd['remaining'])}. Introduced: {len(rd['introduced'])}.", ""]
-    for name, rows in (("Resolved", rd["resolved"]), ("Remaining", rd["remaining"]), ("Introduced", rd["introduced"])):
+            f"Before: {rd['before']}. Resolved: {len(rd['resolved'])}. Remaining: {len(rd['remaining'])}. Introduced: {len(rd['introduced'])}."
+            + (f" Not checked: {len(rd['notChecked'])}." if rd.get("notChecked") else ""), ""]
+    for name, rows in (("Resolved", rd["resolved"]), ("Remaining", rd["remaining"]), ("Introduced", rd["introduced"]),
+                       ("Not checked", rd.get("notChecked") or [])):
         if rows:
             out += [f"**{name}:** " + ", ".join(f"`{i}` ({p})" for p, i in rows), ""]
+    if rd.get("notChecked"):
+        out += ["Not checked: gone from the branch, but with a place in a configuration file that does not parse there. "
+                "Discovery cannot read inside that file, so the item is never counted as resolved.", ""]
     if rd["offTarget"]:
         out += ["**Not on the target framework:** " + ", ".join(f"`{p}`" for p in rd["offTarget"]), ""]
     if rd.get("newerThanSnapshot"):

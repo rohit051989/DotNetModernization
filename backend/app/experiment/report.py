@@ -36,7 +36,8 @@ def scorecard(verification: dict | None, record: dict | None) -> dict:
         "builds": "yes" if clean["built"] else "no",
         "tests": f"{passed} of {base_total} passed ({executed} executed)" if clean["built"] else "not run",
         "testsKept": kept.get("detail", ""),
-        "workItems": f"{len(rd['resolved'])} resolved, {len(rd['remaining'])} remaining, {len(rd['introduced'])} introduced (of {rd['before']})",
+        "workItems": f"{len(rd['resolved'])} resolved, {len(rd['remaining'])} remaining, {len(rd['introduced'])} introduced"
+                     + (f", {len(rd['notChecked'])} not checked" if rd.get("notChecked") else "") + f" (of {rd['before']})",
         "offTarget": len(rd["offTarget"]),
         "newerThanSnapshot": rd.get("newerThanSnapshot") or [],
         "outsidePrediction": len(im["unpredicted"]), "predictedUntouched": len(im["predictedUntouched"]),

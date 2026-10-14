@@ -21,6 +21,14 @@ execution. They are this project's rules for the upgrade and override any genera
 - Where an instruction says **leave unchanged**, leave those places exactly as they are and record them as
   left unchanged. Do not choose another approach yourself.
 
+## Configuration files
+
+- When several changes touch the same configuration file, make them **in a single edit** of that file, not one
+  edit after another.
+- After editing any JSON or XML configuration file (`appsettings*.json`, `web.config`, `app.config`, any other
+  `.json`, `.config` or `.xml` file), **re-read it and confirm it parses** before moving on. A file the application
+  cannot parse stops it at startup, and no test may notice.
+
 ## Report only what you ran
 
 - Report a project or the solution as **built only from a build you actually ran in this session**, and
@@ -37,10 +45,11 @@ execution. They are this project's rules for the upgrade and override any genera
 
 ## Tests are evidence; keep them as they are
 
-- **Never edit a test to make it pass.** If a test fails because of a genuine, intended change of
-  behaviour, disable it with the framework's own skip attribute and a reason naming the change (xUnit
-  `[Fact(Skip = "...")]`, MSTest `[Ignore("...")]`), and record it as a gap. Never delete a test file
-  or a test.
+- **Never edit a test to make it pass.** Never skip, disable or delete a test or a test file. A test that
+  still fails after your fixes is reported as failing, with its name and the error; that is a valid result,
+  a skipped test is not.
+- A test file may change only where the code it tests moved (a renamed namespace or type, for instance).
+  Keep each such change minimal and list it with its reason.
 - **Never weaken an assertion**: no loosened tolerance, no removed check, no expected value changed to
   match a new result.
 
