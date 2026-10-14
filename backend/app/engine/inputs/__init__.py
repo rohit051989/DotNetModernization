@@ -114,7 +114,16 @@ def without_applied(model: dict, applied: list[dict]) -> dict:
             items.append({**item, "occurrences": left})
     packages = [p for p in model.get("packages", [])
                 if any((project, p["package"].lower()) not in bumped for project in p["projects"])]
-    return {**model, "items": items, "packages": packages}
+    # The retarget, when the platform made it, and each framework delta it fixed at a file.
+    if any(a["item"] == "target-framework-retarget" for a in applied):
+        items = [i for i in items if i["id"] != "target-framework-retarget"]
+    fixed = {(a["package"], a["project"]) for a in applied if a["item"] == "framework-delta"}
+    deltas = []
+    for d in model.get("deltas", []):
+        sites = {f: c for f, c in d["sites"].items() if (d["id"], f) not in fixed}
+        if sites:
+            deltas.append({**d, "sites": sites})
+    return {**model, "items": items, "packages": packages, "deltas": deltas}
 
 
 def model_for(db, engagement_id: str, slug: str, applied: list[dict] | None = None):

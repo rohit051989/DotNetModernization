@@ -1515,6 +1515,14 @@ items:
         target_description: "Kubernetes Secret -> environment variable -> IConfiguration"
         consumer_impact: none
         effort: medium
+      # Chosen, without a decision, when the repository's deployment files already deliver the secrets
+      # (app.engine.deployment_assets): a working mechanism is kept, never replaced (Part N).
+      - id: keep-existing-vault-delivery
+        name: "Keep the repository's existing vault delivery"
+        description: "The deployment files already deliver the vault secrets on OpenShift: an init container, the Vault Agent injector, a CSI secrets store or an external-secrets sync. Keep it as it is, and make sure every reference is delivered by it."
+        target_description: "The repository's own vault delivery, unchanged"
+        consumer_impact: none
+        effort: low
 
   - id: unparseable-config-file
     name: "Configuration file that cannot be parsed"
@@ -1576,13 +1584,21 @@ items:
         signal: CUSTOM_FILE_LOGGER_PROVIDER
         group_by: source_path_and_value
     resolutions:
-      - id: remove-file-logger-provider
-        name: "Remove the provider; log to standard output"
-        description: "Remove the provider, its registration and its configuration; the console provider writes to standard output."
-        target_description: "Console logging only, collected from standard output"
+      # The default keeps the class: its tests use it, and no instruction may conflict with "never delete a test"
+      # (36-COPILOT-ENHANCED-CONVERSION Part N, conversion 2 of AccountsApi.Net10).
+      - id: unregister-file-logger-provider
+        name: "Unregister the provider; keep the class and its tests"
+        description: "Remove the provider's registration, so nothing writes log files and the console provider writes to standard output. The class and its tests stay, unchanged."
+        target_description: "Console logging only, collected from standard output; the provider class unused"
         consumer_impact: none
         effort: low
         is_default: true
+      - id: remove-file-logger-provider
+        name: "Remove the provider and its tests; log to standard output"
+        description: "Remove the provider, its registration, its configuration and the tests that use it; the console provider writes to standard output. Removes tests, so only a decision chooses it, naming them."
+        target_description: "Console logging only, collected from standard output"
+        consumer_impact: none
+        effort: low
       - id: file-logger-to-stdout
         name: "Keep the provider, writing to standard output"
         description: "Keep the provider's format, and write each line to standard output instead of a file."
@@ -1609,7 +1625,7 @@ items:
     resolutions:
       - id: linux-build-pipeline
         name: "Build on Linux agents"
-        description: "Replace batch scripts with shell scripts or plain dotnet commands, run CI on Linux agents, and build the container image in the pipeline."
+        description: "Add a shell script beside each batch script and Linux jobs beside the Windows ones, and build the container image in the pipeline. The Windows scripts and jobs stay until cutover: only a decision removes them."
         target_description: "dotnet CLI on Linux agents; container image built by the pipeline"
         consumer_impact: none
         effort: medium

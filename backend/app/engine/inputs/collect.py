@@ -8,9 +8,11 @@ and notes are never read here, so they cannot reach a generated file; an item's 
 ordering rules, which become prerequisites written by the renderer. Discovery already follows the secrets rules (29-ENTRY-POINT-AND-OUTBOUND-
 INVENTORIES C5, 21-APPLICATION-FINGERPRINTING Part G): a connection string is a name, a sensitive key is a
 key path. Nothing here opens a configuration file; the generator's secret check reads them only to prove
-their values did not leak (app.engine.inputs.secrets).
+their values did not leak (app.engine.inputs.secrets). The repository's YAML files are read for the deployment
+mechanisms it already has (app.engine.deployment_assets), and only their file names and kinds are kept.
 """
 import re
+from pathlib import Path
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -49,6 +51,9 @@ def _lines(evidence: list | None) -> list[dict]:
         out.append({"line": e["line_start"], "value": e.get("value"), "member": e.get("member"),
                     "type": e.get("declaring_type"), "certainty": e.get("certainty")})
     return sorted(out, key=lambda x: (x["line"], x["value"] or ""))
+
+
+KEEP_VAULT_DELIVERY = "keep-existing-vault-delivery"
 
 
 def _repository_files(repository: models.Repository) -> list[str]:
@@ -93,6 +98,17 @@ def collect(db: Session, repository: models.Repository) -> dict:
             "proposed": proposed, "certainty": certainty,
             "reasons": sorted({(x.get("reason") if isinstance(x, dict) else str(x)) or "" for x in reasons or []})})
 
+    # Part N: the repository's own deployment mechanisms (kept, never replaced, unless a decision says so) and the
+    # tests that exercise each source file (named in every instruction that touches it).
+    files = _repository_files(repository)
+    from app.engine import deployment_assets
+    vault = deployment_assets.vault_delivery(
+        deployment_assets.read_commit(Path(repository.local_path), repository.ingest_commit_sha or "HEAD", files))
+    test_mappings = [dict(source_file=s, production_type=pt, test_file=tf, test_class=tc, test_methods=sorted(tm or []))
+                     for s, pt, tf, tc, tm in db.execute(text("""
+        SELECT source_file, production_type, test_file, test_class, test_methods FROM test_mappings
+        WHERE repository_id = :r ORDER BY source_file, test_file, test_class"""), {"r": r})]
+
     items = []
     for item_id in sorted(occurrences):
         item = db.get(models.CatalogItem, item_id)
@@ -101,6 +117,9 @@ def collect(db: Session, repository: models.Repository) -> dict:
         default = next((x for x in resolutions if x.is_default), None)
         decided = decisions.get(item_id)
         chosen = next((x for x in resolutions if x.id == decided), None) if decided else default
+        if not decided and item_id == "enterprise-vault-secret-reference" and vault:
+            # A working vault delivery is kept, never replaced, unless a decision says so.
+            chosen = next((x for x in resolutions if x.id == KEEP_VAULT_DELIVERY), chosen)
         items.append({
             "id": item_id, "name": item.name, "category": item.category, "scope": item.scope,
             "guidance": item.engine_guidance, "ordering": _ordering(item.description),
@@ -165,7 +184,9 @@ def collect(db: Session, repository: models.Repository) -> dict:
     return {
         # Every file in the repository at the discovered commit: each instruction names the existing files it concerns
         # (render.concerned_files), so the engine opens them by path and never searches for them or recreates one.
-        "files": _repository_files(repository),
+        "files": files,
+        "vault_delivery": [{"file": v.file, "kind": v.kind, "description": v.description} for v in vault],
+        "test_mappings": test_mappings,
         "engagement": {"id": engagement.id, "target_framework": to_tfm, "target_platform": engagement.target_platform,
                        "posture": engagement.default_posture},
         "repository": {"slug": repository.slug, "commit": repository.ingest_commit_sha},

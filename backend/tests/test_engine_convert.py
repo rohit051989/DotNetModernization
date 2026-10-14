@@ -3,6 +3,7 @@ corrected rules, the opening message, the runbook and the prepare decisions. Wit
 
 Run: python -m unittest tests.test_engine_convert
 """
+import re
 import subprocess
 import tempfile
 import unittest
@@ -10,8 +11,8 @@ from pathlib import Path
 
 from app import engine  # noqa: F401
 from app.conversion import gitops
-from app.conversion import approaches, msbuild
-from app.engine import configfiles, convert, inputs, verifier
+from app.conversion import approaches, batch, msbuild, planner
+from app.engine import configfiles, convert, deployment_assets, inputs, verifier
 from app.engine.inputs import selfcontained
 from app.engine.inputs import render
 from app.engine.verifier import deployment, packages, rediscovery
@@ -84,8 +85,11 @@ class OpeningMessage(unittest.TestCase):
                          "Every test must pass", "Do not weaken, skip or delete any test", "list each change with its reason",
                          "every JSON and XML configuration file", "without blocking the terminal", "listening",
                          "do not change code to work around it", "at most 3 times", "the command you ran",
-                         "single line", "Commit after each change", "decision-sheet.md", ".github/upgrades/skills"):
+                         "single line", "decision-sheet.md", ".github/upgrades/skills",
+                         "Every result you report must be from the final state of the code",
+                         "run all four checks again, and report only the results of that last run"):
             self.assertIn(expected, m)
+        self.assertNotIn("Commit after each change", m)      # conversion 2: the agent never did; one commit is fine
 
     def test_the_target_framework_is_named_as_the_agent_names_it(self):
         self.assertEqual(convert.framework_name("net10.0"), ".NET 10")
@@ -104,7 +108,11 @@ class Runbook(unittest.TestCase):
         self.assertLess(len(text.splitlines()), 100)
         headings = [line for line in text.splitlines() if line.startswith("## ")]
         self.assertEqual(headings, ["## 1. Open the worktree", "## 2. Send the opening message", "## 3. Standard replies",
-                                    "## 4. A stuck terminal", "## 5. When the agent reports done", "## 6. Verify"])
+                                    "## 4. A stuck terminal", "## 5. When the agent stops",
+                                    "## 6. When the agent reports done", "## 7. Verify"])
+        self.assertIn("If the agent stops without its done report (the four results from the opening message), send "
+                      "`Continue.`", text)
+        self.assertIn("One commit at the end is fine.", text)
         self.assertIn(convert.opening_message("Make it ready for OpenShift.", "AccountsApi.sln"), text)
         self.assertIn("python -m app.engine.convert verify --engagement test-client-a --repository accountsapi-net10 "
                       "--branch conversion/1", text)
@@ -318,7 +326,8 @@ class FromConversionOne(unittest.TestCase):
     def test_a_settings_file_named_like_a_java_integration_test_is_not_a_test_file(self):
         projects = ["tests/Api.UnitTests/Api.UnitTests.csproj"]
         self.assertFalse(verifier.is_test_file("src/Api/appsettings.SIT.json", projects))
-        self.assertTrue(verifier.is_test_file("tests/Api.UnitTests/appsettings.json", projects))
+        self.assertFalse(verifier.is_test_file("tests/Api.UnitTests/appsettings.json", projects))      # configuration
+        self.assertFalse(verifier.is_test_file("tests/Api.UnitTests/Api.UnitTests.csproj", projects))  # configuration
         self.assertTrue(verifier.is_test_file("src/Api/ServiceTests.cs", projects))
 
     def test_tests_kept_counts_and_lists_dotnet_test_files_only(self):
@@ -331,6 +340,7 @@ class FromConversionOne(unittest.TestCase):
                     (root / rel).write_text(text + "\n")
             tc = verifier.tests_changed(base, tip, ["tests/Api.UnitTests/Api.UnitTests.csproj"])
         self.assertEqual((tc["legacyTests"], [c["path"] for c in tc["changed"]]), (2, ["tests/Api.UnitTests/ApiTests.cs"]))
+        self.assertEqual(tc["configuration"], [{"path": "src/Api/appsettings.SIT.json", "change": "changed"}])
         md = verifier.markdown({"label": "x", "verdict": "PROVEN", "repository": "r", "base": "b" * 8, "ref": "r",
                                 "tip": "t" * 8, "verifiedAt": "now", "verifier": {"version": "v", "plugin": "p"},
                                 "reasons": [], "checks": [], "rules": [], "forAPerson": [],
@@ -453,6 +463,193 @@ class PackagesBeforeTheAgent(unittest.TestCase):
             self.assertEqual(packages.inputs_commit(repo, base, "HEAD"), inputs_sha)
             self.assertEqual([(t["project"], t["package"], t["asked"]) for t in packages.applied_by_platform(repo, base, "HEAD")],
                              [("t/T.csproj", "Moq", "4.21.0")])
+
+
+
+TEMPLATE = """apiVersion: apps/v1
+kind: Deployment
+spec:
+  template:
+    spec:
+      initContainers:
+        - name: vault-init
+          image: ${VAULT_INIT_IMAGE}
+---
+kind: ConfigMap
+data:
+  secret-mapping.json: |
+    {"token-signing-key": "secret/accounts-api/auth/token-signing-key"}
+"""
+
+
+class FromConversionTwo(unittest.TestCase):
+    """What conversion 2 of AccountsApi.Net10 found (36-COPILOT-ENHANCED-CONVERSION Part N)."""
+
+    def test_an_existing_vault_delivery_is_recognised_and_names_what_it_delivers(self):
+        found = deployment_assets.vault_delivery({"deploy/openshift/deployment-template.yaml": TEMPLATE,
+                                                  "src/Api/appsettings.json": '{"A": "vault:x"}',
+                                                  "deploy/other.yaml": "kind: Service\n"})
+        self.assertEqual([(f.file, f.kind) for f in found], [("deploy/openshift/deployment-template.yaml", "vault-init-container")])
+        self.assertTrue(found[0].delivers("token-signing-key"))
+        self.assertFalse(found[0].delivers("signing-key"))
+        agent = deployment_assets.vault_delivery({"d.yaml": "vault.hashicorp.com/agent-inject: 'true'\n"})
+        self.assertEqual([f.kind for f in agent], ["vault-agent-injector"])
+
+    def test_a_vault_reference_the_existing_mechanism_delivers_is_carried(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for rel, text in {"deploy/openshift/deployment-template.yaml": TEMPLATE,
+                              "src/Api/appsettings.json": '{\n  "SigningKey": "vault:token-signing-key"\n}\n'}.items():
+                (root / rel).parent.mkdir(parents=True, exist_ok=True)
+                (root / rel).write_text(text)
+            model = {"items": [{"id": "enterprise-vault-secret-reference", "occurrences": [
+                {"project": "src/Api/Api.csproj", "file": "src/Api/appsettings.json", "lines": [{"line": 2, "value": "SigningKey"}]}]}]}
+            left, carried = deployment.carried(model, root)
+        self.assertEqual(left["items"], [])
+        self.assertEqual(carried[0]["file"], "deploy/openshift/deployment-template.yaml")
+
+    def test_an_instruction_names_the_tests_of_the_code_it_touches_and_the_mechanism_it_keeps(self):
+        model = {"engagement": {"target_framework": "net10.0"}, "repository": {"commit": "e89bc6a"},
+                 "files": ["deploy/openshift/deployment-template.yaml", "src/Api/Logging/FileLoggerProvider.cs", "src/Api/Api.csproj"],
+                 "vault_delivery": [{"file": "deploy/openshift/deployment-template.yaml", "kind": "vault-init-container",
+                                     "description": "an init container that writes the vault secrets before the application starts"}],
+                 "test_mappings": [{"source_file": "src/Api/Logging/FileLoggerProvider.cs",
+                                    "production_type": "Api.Logging.FileLoggerProvider", "test_file": "tests/Api.Tests/HostTests.cs",
+                                    "test_class": "Api.Tests.HostComponentTests",
+                                    "test_methods": ["FileLogger_UnwritablePath_DoesNotThrow", "FileLogger_WritesDailyFileUnderConfiguredPath"]}]}
+        logger = {"id": "custom-file-logger-provider", "name": "Custom logging provider", "guidance": "g", "decided": False,
+                  "ordering": [],
+                  "resolution": {"id": "unregister-file-logger-provider", "name": "Unregister", "guidance": "Unregister it."},
+                  "occurrences": [{"project": "src/Api/Api.csproj", "file": "src/Api/Logging/FileLoggerProvider.cs",
+                                   "value": None, "certainty": "confirmed", "lines": [{"line": 9}]}], "impact": []}
+        text = render._instruction(model, logger, {"custom-file-logger-provider"}, {"custom-file-logger-provider": logger})
+        self.assertIn("## Tests that use this code", text)
+        self.assertIn("- `tests/Api.Tests/HostTests.cs`, `HostComponentTests`: `FileLogger_UnwritablePath_DoesNotThrow`, "
+                      "`FileLogger_WritesDailyFileUnderConfiguredPath` (uses `FileLoggerProvider`)", text)
+        vault = {"id": "enterprise-vault-secret-reference", "name": "Vault reference", "guidance": "g", "decided": False,
+                 "ordering": [],
+                 "resolution": {"id": "keep-existing-vault-delivery", "name": "Keep", "guidance": "Keep it."},
+                 "occurrences": [{"project": "src/Api/Api.csproj", "file": "src/Api/appsettings.json", "value": "SigningKey",
+                                  "certainty": "confirmed", "lines": [{"line": 2}]}], "impact": []}
+        text = render._instruction(model, vault, {"enterprise-vault-secret-reference"}, {"enterprise-vault-secret-reference": vault})
+        self.assertIn("## The existing vault delivery", text)
+        self.assertIn("- `deploy/openshift/deployment-template.yaml`: an init container", text)
+        self.assertIn("never replace, remove or rewrite a mechanism they hold", text)
+
+    def test_the_catalog_keeps_the_logger_class_and_its_tests_by_default(self):
+        import yaml
+        items = yaml.safe_load((Path(render.__file__).resolve().parents[2] / "seed" / "data" / "catalog_items.yaml")
+                               .read_text(encoding="utf-8"))["items"]
+        by_id = {i["id"]: i for i in items}
+        defaults = lambda i: [r["id"] for r in by_id[i]["resolutions"] if r.get("is_default")]   # noqa: E731
+        self.assertEqual(defaults("custom-file-logger-provider"), ["unregister-file-logger-provider"])
+        self.assertIn("keep-existing-vault-delivery", [r["id"] for r in by_id["enterprise-vault-secret-reference"]["resolutions"]])
+        guidance = yaml.safe_load((Path(render.__file__).resolve().parents[2] / "seed" / "data" / "engine_guidance.yaml")
+                                  .read_text(encoding="utf-8"))
+        linux = guidance["items"]["windows-build-pipeline"]["resolutions"]["linux-build-pipeline"]
+        self.assertIn("Never delete,\n   rename or empty one", linux)
+        self.assertIn("`*.sh text eol=lf`", linux)
+        self.assertIn("git add --chmod=+x", linux)
+
+    def test_a_retarget_and_a_fixed_delta_are_left_out_of_the_inputs(self):
+        model = {"items": [{"id": "target-framework-retarget", "occurrences": [{"project": "a.csproj", "value": "net8.0 -> net10.0"}]}],
+                 "packages": [], "deltas": [{"id": "d1", "sites": {"src/Program.cs": ["x"], "src/Other.cs": ["y"]}}]}
+        left = inputs.without_applied(model, [
+            {"item": "target-framework-retarget", "project": "*", "package": "", "to": "net10.0"},
+            {"item": "framework-delta", "project": "src/Program.cs", "package": "d1", "to": None}])
+        self.assertEqual(left["items"], [])
+        self.assertEqual(left["deltas"], [{"id": "d1", "sites": {"src/Other.cs": ["y"]}}])
+
+
+class FastPackageStep(unittest.TestCase):
+    def test_a_batch_commit_lists_every_change_in_the_form_the_verifier_reads_back(self):
+        class U:
+            def __init__(self, approach_id, target):
+                self.approach_id, self.target = approach_id, target
+        lines = batch.change_line(U("package-upgrade-safe", {"bumps": [
+            {"package_id": "Moq", "from": "4.20.72", "to": "4.21.0", "project": "tests/A/A.csproj"},
+            {"package_id": "Moq", "from": "4.20.72", "to": "4.21.0", "project": "tests/B/B.csproj"}]}))
+        lines += batch.change_line(U("remove-package-reference", {"package_id": "System.Text.Json", "version": "10.0.9",
+                                                                  "project": "src/U/U.csproj", "provided_by": "Microsoft.NETCore.App net10.0"}))
+        self.assertEqual(lines, ["- Moq 4.20.72 -> 4.21.0 (tests/A/A.csproj)", "- Moq 4.20.72 -> 4.21.0 (tests/B/B.csproj)",
+                                 "- Remove System.Text.Json 10.0.9 (src/U/U.csproj): provided by Microsoft.NETCore.App net10.0"])
+        read = [packages.BUMP_LINE.match(x) for x in lines]
+        self.assertEqual([(m["package"], m["asked"], m["where"]) for m in read if m],
+                         [("Moq", "4.21.0", "tests/A/A.csproj"), ("Moq", "4.21.0", "tests/B/B.csproj")])
+        message = "Package changes that need no code (2)\n\n" + "\n".join(lines) + f"\nBuilt and tested together.\n{batch.MESSAGE_END}"
+        self.assertEqual(selfcontained.check_commit_message(message, None), [])
+
+    def test_a_data_row_test_is_rerun_by_its_method(self):
+        from app.conversion import dotnet
+        self.assertEqual(dotnet.method_name('InvalidField_FailsValidationForThatField ("BranchCode","12")'),
+                         "InvalidField_FailsValidationForThatField")
+
+
+class VerifierFromConversionTwo(unittest.TestCase):
+    def test_an_approved_removal_is_recorded_and_an_unapproved_one_is_not(self):
+        approvals = [{"test": "FileLogger_UnwritablePath_DoesNotThrow", "reason": "provider removed by decision",
+                      "approvedBy": "R. Khanna", "at": "2026-10-15T10:00:00+00:00"}]
+        approved, rest = verifier.approved_removals(
+            ["FileLogger_UnwritablePath_DoesNotThrow", "FileLogger_WritesDailyFileUnderConfiguredPath"], approvals)
+        self.assertEqual([a["test"] for a in approved], ["FileLogger_UnwritablePath_DoesNotThrow"])
+        self.assertEqual(rest, ["FileLogger_WritesDailyFileUnderConfiguredPath"])
+
+    def test_approvals_are_kept_per_branch_with_reason_and_person(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            old = planner.RUNS
+            planner.RUNS = Path(tmp)
+            try:
+                (Path(tmp) / "e" / "r").mkdir(parents=True)
+                convert.approve_removal("e", "r", "conversion/2", ["T1", "T2"], "removed with the provider", "R. Khanna")
+                convert.approve_removal("e", "r", "conversion/2", ["T2"], "again", "R. Khanna")
+                got = convert.approvals_for("e", "r", "conversion/2")
+                self.assertEqual([(a["test"], a["reason"]) for a in got], [("T1", "removed with the provider"), ("T2", "again")])
+                self.assertEqual(convert.approvals_for("e", "r", "conversion/3"), [])
+                with self.assertRaises(ValueError):
+                    convert.approve_removal("e", "r", "conversion/2", ["T3"], " ", "R. Khanna")
+            finally:
+                planner.RUNS = old
+
+    def test_changed_files_are_attributed_to_the_instructions_that_name_them(self):
+        named = {"applying-linux-build-pipeline.md": ["Build/package.bat", "Build/validate-config.bat", ".github/workflows/ci.yml"],
+                 "applying-vault-agent-files.md": ["deploy/openshift/deployment-template.yaml"],
+                 "applying-console-json-only.md": ["src/Api/appsettings.json"]}
+        a = verifier.attribution(named, [".github/workflows/ci.yml", "Build/package.sh", "src/Api/appsettings.json"])
+        self.assertEqual([(x["instruction"], x["state"]) for x in a["instructions"]], [
+            ("applying-console-json-only.md", "changed"), ("applying-linux-build-pipeline.md", "partly"),
+            ("applying-vault-agent-files.md", "untouched")])
+        self.assertEqual(a["unnamed"], ["Build/package.sh"])
+
+    def test_the_files_section_is_read_back_from_an_instruction(self):
+        text = ("# x\n\n## Files\n\nThese files exist in this repository and concern this change.\n\n"
+                "- `Build/package.bat`\n- `deploy/docker/Dockerfile`\n\nThe deployment and build files listed ...\n")
+        m = verifier.FILES_SECTION.search(text)
+        self.assertEqual(re.findall(r"^- `([^`]+)`", m.group(1), re.MULTILINE), ["Build/package.bat", "deploy/docker/Dockerfile"])
+
+    def test_a_shell_script_needs_lf_the_executable_bit_and_an_eol_rule(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            _git(repo, "init", "-q")
+            _git(repo, "config", "core.autocrlf", "false")
+            (repo / "a.txt").write_text("a")
+            _git(repo, "add", "-A")
+            _git(repo, "commit", "-qm", "base")
+            (repo / ".gitattributes").write_bytes(b"*.sh text eol=lf\n")
+            (repo / "good.sh").write_bytes(b"#!/bin/sh\necho ok\n")
+            (repo / "bad.sh").write_bytes(b"#!/bin/sh\r\necho no\r\n")
+            _git(repo, "add", ".gitattributes", "good.sh")
+            _git(repo, "add", "--chmod=+x", "good.sh")
+            (repo / ".gitattributes").write_bytes(b"*.sh text eol=lf\n")
+            subprocess.run(["git", "-C", str(repo), "-c", "core.autocrlf=false", "-c", "core.safecrlf=false", "add",
+                            "--renormalize", "bad.sh"], capture_output=True)
+            _git(repo, "update-index", "--add", "--cacheinfo", "100644,"
+                 + subprocess.run(["git", "-C", str(repo), "hash-object", "-w", "--no-filters", "bad.sh"],
+                                  capture_output=True, text=True).stdout.strip() + ",bad.sh")
+            _git(repo, "commit", "-qm", "scripts")
+            got = verifier.shell_scripts(repo, repo, "HEAD", [{"path": "good.sh", "change": "A"}, {"path": "bad.sh", "change": "A"},
+                                                             {"path": "a.txt", "change": "M"}])
+        self.assertEqual([(s["path"], s["lf"], s["executable"], s["attribute"]) for s in got],
+                         [("good.sh", True, True, True), ("bad.sh", False, False, True)])
 
 
 if __name__ == "__main__":

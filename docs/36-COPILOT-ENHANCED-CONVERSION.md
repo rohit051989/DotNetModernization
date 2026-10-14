@@ -576,3 +576,47 @@ refuses and says to run discovery again. The versions checked are recorded in `c
   occurrence is resolved when a Vault Agent `agent-inject-secret-<name>` annotation delivers the secret its reference
   names. VERIFICATION.md lists each with the file that carries it.
 
+**What conversion 2 found (2026-10-15).**
+
+- *A fast package step, inside prepare* (`app.conversion.batch`). The plan's deterministic units (safe upgrades, each
+  also fixing its package's vulnerability; framework-provided removals; and, where the framework changes, the
+  retarget and the framework-delta fixes) are applied together in one working copy, then built and tested once.
+  Green: one commit, listing every change, one line each (`- P a -> b (project)`, read back by the verifier as a
+  requested version). Red: the working copy is reset with git to the branch's tip and the units are split in halves,
+  each settled the same way, until each failing unit is alone. What passes is committed, and each failing unit is
+  recorded with its error. Conversion 2's unit loop took 20 cycles for 20 changes; the batch takes one when all are
+  green. `conversion.json` records the step's duration, its build-and-test cycles and its flaky tests.
+- *Flaky tests.* A test that passed at the baseline and fails is rerun once, alone (`dotnet.rerun`). If it passes, it
+  is flaky: reported by prepare and in VERIFICATION.md, never counted as a failure, and never silent. The verifier
+  applies the same rule. `NormalizedKeys_RoundTripThroughEnterpriseEncryptor`, run 50 times at AccountsApi.Net10's
+  baseline, failed 2 times (4%), both with an RSA parameter-length `CryptographicException` from
+  `Enterprise.Cryptography`.
+- *No instruction conflicts with the global rules.* Every instruction names the tests that exercise the code it
+  touches (test-coverage-assessment's mapping), under **Tests that use this code**: keep them, and the code they
+  use. The default resolution of `custom-file-logger-provider` is now `unregister-file-logger-provider`: unregister
+  the provider, keep the class and its tests. `remove-file-logger-provider` removes them, and only a decision
+  chooses it.
+- *Existing deployment assets are kept* (`app.engine.deployment_assets`). An existing vault delivery mechanism is
+  detected in the repository's YAML: an init container, Vault Agent annotations, a CSI secrets store or an
+  external-secrets sync. When one exists, the vault item's resolution is `keep-existing-vault-delivery`, unless a
+  decision chose another, and the instruction names the mechanism. The verifier counts a vault reference as carried
+  when any such mechanism on the branch names its secret. The global instructions, the opening message and every
+  instruction that lists deployment or build files say: change existing mechanisms in place or add beside them;
+  never replace or remove one unless a decision says so.
+- *Windows build files stay.* `linux-build-pipeline` adds a shell script beside each batch script, and Linux jobs
+  beside the Windows ones; it never deletes a Windows script. Every new shell script has LF line endings, enforced
+  by a `*.sh text eol=lf` rule in `.gitattributes`, and the executable bit set in git.
+- *The opening message.* "Done" means every check passed on the final state: when anything changes after a check,
+  all the checks are run again, and only the final results are reported. The agent is no longer asked to commit
+  after each change; one commit is fine. The runbook adds: if the agent stops without its done report, send
+  `Continue.`
+- *Verifier 1.4.0.*
+  - It attributes each changed file to the instructions whose Files section names it, and reports each instruction
+    as changed, partly changed or untouched, plus the changed files no instruction names.
+  - It checks that every new or changed shell script has LF line endings, the executable bit and an `eol=lf` rule.
+    Any that fails makes the verdict NOT PROVEN.
+  - A person may approve a removed test, with a reason (`python -m app.engine.convert approve-removal`). The
+    approval is recorded in the verification and does not fail the verdict; an unapproved removal still does.
+  - Tests kept counts source code only. A test project's `.csproj` or settings file, or a name ending in `IT`, is
+    configuration, and is listed apart.
+

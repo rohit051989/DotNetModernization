@@ -44,15 +44,20 @@ resolutions:
   container_ready: true
   deleted: false
   derivations: []
-  description: Replace batch scripts with shell scripts or plain dotnet commands, run CI on Linux agents, and build the container image in the pipeline.
+  description: 'Add a shell script beside each batch script and Linux jobs beside the Windows ones, and build the container image in the pipeline. The Windows scripts and jobs stay until cutover: only a decision removes them.'
   effort: medium
   engine_guidance: |-
-    1. For each batch script the pipeline runs, add an equivalent shell script (or plain `dotnet` commands
-       in the pipeline) that does the same steps with the .NET CLI.
-    2. Change each CI workflow and Jenkinsfile to run on a Linux agent, calling those instead of the batch
-       scripts, and keep their stages, order and outputs the same.
-    3. Build the container image in the pipeline from the repository's Dockerfile.
-    4. Keep the batch scripts only if a person still runs them by hand on Windows; otherwise remove them.
+    1. For each batch script the pipeline runs, add a shell script beside it, same folder and name with
+       `.sh`, that does the same steps with the .NET CLI. Keep every `.bat` and `.cmd` script and every
+       Windows job or step exactly as it is: the existing pipeline runs them until cutover. Never delete,
+       rename or empty one.
+    2. Every new shell script starts with `#!/bin/sh` (or `#!/usr/bin/env bash`), has LF line endings and
+       is executable in git: add the rule `*.sh text eol=lf` to the repository's `.gitattributes` (create
+       it at the root if there is none), and run `git add --chmod=+x <script>` for each script.
+    3. Add Linux jobs or stages beside the Windows ones in each CI workflow and Jenkinsfile, calling the
+       shell scripts, with the same stages, order and outputs. Point only at scripts that exist: a batch
+       script listed below, or a shell script you add in the same change.
+    4. Build the container image in the Linux job from the repository's existing Dockerfile.
   id: linux-build-pipeline
   is_default: true
   linux_compatible: true

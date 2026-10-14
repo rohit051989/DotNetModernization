@@ -376,6 +376,15 @@ items:
            `/vault/secrets`, so each referenced name is a file there, and set
            `ENTERPRISE_VAULT_SECRETS_DIR=/vault/secrets` in the container.
         3. Never write a secret value anywhere.
+      keep-existing-vault-delivery: |-
+        1. This repository already delivers its vault secrets on OpenShift; the mechanism and its files are
+           named below. Keep it exactly as it is: do not replace, remove, rewrite or duplicate it, and add no
+           other delivery mechanism (no Vault Agent annotations, no Secret volume).
+        2. Keep every `vault:` reference and the `AddEnterpriseVaultSecrets()` call as they are.
+        3. Check that every reference listed below is delivered by that mechanism: its name appears in the
+           mechanism's mapping. Where one is missing, add it there in the same form as the others; never
+           a value.
+        4. Never write a secret value anywhere.
       environment-secrets: |-
         1. Replace each `vault:` reference with nothing: remove the value from the configuration file and
            keep the code reading the setting under the same key.
@@ -405,11 +414,18 @@ items:
       This class is a custom logging provider (`ILoggerProvider`) that writes log files. In a container the
       files are lost with the pod and nothing collects them; on OpenShift, logs belong on standard output.
     resolutions:
+      unregister-file-logger-provider: |-
+        1. Remove the provider's registration (`AddProvider`, or the extension method that adds it), so
+           nothing writes log files.
+        2. Keep the provider class, its settings class and every test that uses them, exactly as they are:
+           the tests create the provider themselves and still build and pass. Do not delete or edit them.
+        3. Make sure console logging stays enabled, so every log event goes to standard output.
       remove-file-logger-provider: |-
         1. Remove the provider's registration (`AddProvider`, or the extension method that adds it) and the
            provider class itself.
         2. Remove its configuration section and the settings class bound to it.
-        3. Make sure console logging stays enabled, so every log event goes to standard output.
+        3. Remove the tests listed below with it, and only those: a decision chose this, naming them.
+        4. Make sure console logging stays enabled, so every log event goes to standard output.
       file-logger-to-stdout: |-
         Keep the provider and its line format, but write each line to standard output (`Console.Out`)
         instead of a file, and remove its directory setting and any file handling.
@@ -422,12 +438,17 @@ items:
       pipeline that runs on Linux.
     resolutions:
       linux-build-pipeline: |-
-        1. For each batch script the pipeline runs, add an equivalent shell script (or plain `dotnet` commands
-           in the pipeline) that does the same steps with the .NET CLI.
-        2. Change each CI workflow and Jenkinsfile to run on a Linux agent, calling those instead of the batch
-           scripts, and keep their stages, order and outputs the same.
-        3. Build the container image in the pipeline from the repository's Dockerfile.
-        4. Keep the batch scripts only if a person still runs them by hand on Windows; otherwise remove them.
+        1. For each batch script the pipeline runs, add a shell script beside it, same folder and name with
+           `.sh`, that does the same steps with the .NET CLI. Keep every `.bat` and `.cmd` script and every
+           Windows job or step exactly as it is: the existing pipeline runs them until cutover. Never delete,
+           rename or empty one.
+        2. Every new shell script starts with `#!/bin/sh` (or `#!/usr/bin/env bash`), has LF line endings and
+           is executable in git: add the rule `*.sh text eol=lf` to the repository's `.gitattributes` (create
+           it at the root if there is none), and run `git add --chmod=+x <script>` for each script.
+        3. Add Linux jobs or stages beside the Windows ones in each CI workflow and Jenkinsfile, calling the
+           shell scripts, with the same stages, order and outputs. Point only at scripts that exist: a batch
+           script listed below, or a shell script you add in the same change.
+        4. Build the container image in the Linux job from the repository's existing Dockerfile.
       keep-windows-build-agents: |-
         Keep the Windows agents and batch scripts. Make the publish step target `linux-x64`, and build the
         container image with a Linux builder the pipeline calls, not on the Windows agent.

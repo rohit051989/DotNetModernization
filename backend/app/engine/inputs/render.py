@@ -257,6 +257,14 @@ def concerned_files(model: dict, item: dict) -> list[str]:
     return sorted(f for f in wanted & existing if not paths.is_under(f, paths.GENERATED_INPUT_PATHS))
 
 
+def tests_of(model: dict, item: dict) -> list[dict]:
+    """The tests that exercise the code this item's instruction touches (test-coverage-assessment's mapping): every
+    mapping from a file of its places or impact. Named in the instruction, so that no instruction conflicts with the
+    rule never to delete or edit a test (Part N: conversion 2 removed FileLoggerProvider and its two tests)."""
+    touched = {o["file"] for o in item["occurrences"] if o.get("file")} | {e["file"] for e in item["impact"] if e.get("file")}
+    return [m for m in model.get("test_mappings") or [] if m["source_file"] in touched]
+
+
 def _instruction(model: dict, item: dict, present: set[str], by_id: dict) -> str:
     res = item["resolution"]
     eng = model["engagement"]
@@ -327,6 +335,21 @@ def _instruction(model: dict, item: dict, present: set[str], by_id: dict) -> str
         for occ in plan["unresolved"]:
             out.append(f"- {_site(occ, (occ['lines'] or [None])[0])} `{_md(occ.get('value'))}`: {occ['why']}")
 
+    if res["id"] == "keep-existing-vault-delivery" and model.get("vault_delivery"):
+        out += ["", "## The existing vault delivery", "",
+                "These deployment files already deliver the vault secrets. Keep them as they are:", ""]
+        out += [f"- `{v['file']}`: {v['description']}" for v in model["vault_delivery"]]
+
+    tests = tests_of(model, item)
+    if tests:
+        out += ["", "## Tests that use this code", "",
+                "These tests exercise the code this change touches. Keep every one of them, unchanged and passing. "
+                "If the change would leave a test without code it uses, keep that code: the instruction never asks "
+                "you to delete or edit a test unless it says a decision chose that.", ""]
+        out += [f"- `{m['test_file']}`, `{m['test_class'].rsplit('.', 1)[-1]}`: "
+                + ", ".join(f"`{x}`" for x in m["test_methods"]) + f" (uses `{m['production_type'].rsplit('.', 1)[-1]}`)"
+                for m in tests[:MAX_LIST]]
+
     files = concerned_files(model, item)
     if files:
         out += ["", "## Files", "",
@@ -336,6 +359,11 @@ def _instruction(model: dict, item: dict, present: set[str], by_id: dict) -> str
         out += [f"- `{f}`" for f in files[:MAX_LIST]]
         if len(files) > MAX_LIST:
             out.append(f"- ... and {len(files) - MAX_LIST} more")
+        if any(FILE_KINDS["deployment"].search(f) or FILE_KINDS["build"].search(f) for f in files):
+            out += ["", "The deployment and build files listed are the application's working deployment and pipeline. "
+                    "Change them in place and add beside them; never replace, remove or rewrite a mechanism they hold "
+                    "(an init container, a ConfigMap, a script, a job) unless this instruction says a decision chose "
+                    "that."]
 
     if item["impact"]:
         out += ["", "## Files this changes", "", "| Action | File | Project | Certainty |", "|---|---|---|---|"]

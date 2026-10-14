@@ -6,9 +6,10 @@ instead. The verifier counts such an occurrence as resolved:
 - `console-batch-job`: the console application is run by a CronJob. Some YAML file on the branch declares
   `kind: CronJob` and names the project: its project or assembly name, with dots, dashes or underscores, in any case
   (`Accounts.EncryptionUtility`, `accounts-encryptionutility`).
-- `enterprise-vault-secret-reference`: the vault secret is delivered by the Vault Agent injector. Some file on the
-  branch carries the annotation `vault.hashicorp.com/agent-inject-secret-<name>` for the secret the reference names
-  (`vault:<name>`, read from the occurrence's line on the branch).
+- `enterprise-vault-secret-reference`: the vault secret is delivered on the branch: by a Vault Agent annotation
+  `vault.hashicorp.com/agent-inject-secret-<name>`, or by any vault delivery mechanism
+  (app.engine.deployment_assets: an init container and its mapping, a CSI secrets store, an external-secrets sync)
+  whose file names the secret the reference names (`vault:<name>`, read from the occurrence's line on the branch).
 
 Each occurrence removed this way is listed as "carried by a deployment file", with the file, in the verification.
 """
@@ -69,8 +70,11 @@ def _vault_name(root: Path, occurrence: dict, line: dict | None) -> str | None:
 
 def carried(model: dict, root: Path) -> tuple[dict, list[dict]]:
     """(the model without the occurrences a deployment file on the branch carries, [{item, project, place, file}])."""
+    from app.engine import deployment_assets
+
     jobs = cronjobs(root)
     secrets = injected_secrets(root)
+    mechanisms = deployment_assets.vault_delivery(deployment_assets.read_tree(root))
     items, found = [], []
     for item in model["items"]:
         if item["id"] not in ("console-batch-job", "enterprise-vault-secret-reference"):
@@ -89,9 +93,11 @@ def carried(model: dict, root: Path) -> tuple[dict, list[dict]]:
             lines_left = []
             for line in occ["lines"] or []:
                 name = _vault_name(root, occ, line)
-                if name and name in secrets:
+                by = secrets.get(name) if name else None
+                by = by or next((m.file for m in mechanisms if name and m.delivers(name)), None)
+                if by:
                     found.append({"item": item["id"], "project": occ["project"], "place": f"{occ['file']}:{line['line']}",
-                                  "secret": name, "file": secrets[name]})
+                                  "secret": name, "file": by})
                 else:
                     lines_left.append(line)
             if lines_left or not occ["lines"]:

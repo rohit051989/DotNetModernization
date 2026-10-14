@@ -52,7 +52,7 @@ def inputs_commit(root: Path, base: str, tip: str) -> str | None:
 
 # A package commit's message (app.conversion.approaches.PackageUpgradeSafe.message): "Bump P a -> b" and "used by
 # project.", or one "- P a -> b (file, ...)" line per package of a group.
-BUMP_LINE = re.compile(r"^(?:Bump |- )(?P<package>\S+) (?P<current>\S+) -> (?P<asked>[^\s,]+)")
+BUMP_LINE = re.compile(r"^(?:Bump |- )(?P<package>\S+) (?P<current>\S+) -> (?P<asked>[^\s,]+)(?: \((?P<where>[^,)]+))?")
 USED_BY = re.compile(r"; used by (?P<project>\S+?)\.(?:\s|$)")
 
 
@@ -66,7 +66,9 @@ def applied_by_platform(root: Path, base: str, tip: str) -> list[dict]:
         for line in message.splitlines():
             m = BUMP_LINE.match(line.strip())
             if m:
-                out.append({"project": used["project"] if used and line.startswith("Bump ") else "",
+                # A batch commit's line names its project: "- P a -> b (src/A/A.csproj)" (app.conversion.batch).
+                where = m["where"] if m["where"] and m["where"].endswith("proj") else ""
+                out.append({"project": used["project"] if used and line.startswith("Bump ") else where,
                             "package": m["package"], "current": m["current"], "asked": m["asked"], "instruction": None})
     return out
 

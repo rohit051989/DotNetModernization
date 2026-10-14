@@ -31,6 +31,14 @@ execution. They are this project's rules for the upgrade and override any genera
 - Refer only to files that exist: a script, workflow or manifest you point at must be one an instruction lists or
   one you create in the same change.
 
+## Keep what works
+
+- Keep every test and the code it uses. An instruction that touches code names the tests that use it; never delete
+  or edit one of them unless the instruction says a decision chose that.
+- Keep the application's existing deployment and build mechanisms (init containers, ConfigMaps, manifests,
+  scripts, pipeline jobs): change them in place or add beside them. Never replace or remove one unless an
+  instruction says a decision chose that.
+
 ## Never hide a warning or an error
 
 - Never suppress a warning or an error to make a check pass: no `-nowarn`, `<NoWarn>`, `#pragma warning disable`,

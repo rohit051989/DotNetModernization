@@ -43,6 +43,7 @@ import argparse
 import datetime
 import hashlib
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -58,7 +59,7 @@ from app.engine.inputs.collect import SILENT_ITEMS
 from app.engine.verifier import deployment, packages, plugin, rediscovery
 from app.experiment import instrument, lookups
 
-VERIFIER_VERSION = "1.3.0"
+VERIFIER_VERSION = "1.4.0"
 RUNS = planner.RUNS          # the same runs folder as the conversion runner, whatever the working directory
 
 RULES = [
@@ -77,7 +78,10 @@ RULES = [
     "release published since is information, never remaining. Vulnerabilities are judged against today's advisories.",
     "An occurrence a deployment file on the branch carries is resolved: a console application a CronJob manifest "
     "names, a vault reference whose secret a Vault Agent inject-secret annotation delivers.",
-    "A test file is a .NET test file: in a test project's folder, or source code the plugin calls a test.",
+    "A test file is .NET source code the plugin calls a test; a test project's .csproj or settings is configuration.",
+    "A failing test is rerun once, alone: passing then, it is flaky, reported and not counted. A removed test a "
+    "person approved, with a reason, is recorded and not counted.",
+    "Every new or changed shell script has LF line endings, the executable bit and an eol=lf rule; else NOT PROVEN.",
     "Otherwise PROVEN.",
     "The impact comparison and the diff size are reported, never judged.",
     "Engine state under .github/upgrades/ and the generated inputs are excluded from the diff, the impact "
@@ -206,22 +210,31 @@ def split_not_checked(resolved: list[tuple[str, str]], before_items: dict, unpar
 CODE_EXTENSIONS = (".cs", ".vb", ".fs")
 
 
-def is_test_file(rel: str, test_projects: list[str]) -> bool:
-    """Of the files the plugin calls tests (trace_rules.file_kind, by folder or name), the ones that are .NET test files:
-    under a test project's folder, or source code. The plugin's name rule includes Java's integration-test suffix
-    `IT.<ext>`, which `appsettings.SIT.json` matches; a settings file outside a test project is not a test."""
-    folders = {p.rsplit("/", 1)[0] + "/" for p in test_projects if "/" in p}
-    return any(rel.startswith(f) for f in folders) or rel.lower().endswith(CODE_EXTENSIONS)
+def is_test_file(rel: str, test_projects: list[str] | None = None) -> bool:
+    """Of the files the plugin calls tests (trace_rules.file_kind, by folder or name), the .NET test files: source
+    code. The plugin's name rule includes Java's integration-test suffix `IT.<ext>`, which `appsettings.SIT.json`
+    matches, and its folder rule takes in a test project's .csproj and settings files: configuration, whose change
+    (a package version) weakens no test. They are listed apart, as configuration."""
+    return rel.lower().endswith(CODE_EXTENSIONS)
 
 
 def tests_changed(base_tree: Path, tip_tree: Path, test_projects: list[str]) -> dict:
     """The plugin's uplift_checks.tests_changed, over the .NET test files only (is_test_file), in the same shape
     proof_pack.check_tests_kept reads. Every list is complete, for VERIFICATION.md."""
     u = plugin.uplift_checks
-    old, cut_a, _ = u.walk_tests(str(base_tree))
-    new, cut_b, _ = u.walk_tests(str(tip_tree))
-    old = {r: p for r, p in old.items() if is_test_file(r, test_projects)}
-    new = {r: p for r, p in new.items() if is_test_file(r, test_projects)}
+    old_all, cut_a, _ = u.walk_tests(str(base_tree))
+    new_all, cut_b, _ = u.walk_tests(str(tip_tree))
+    old = {r: p for r, p in old_all.items() if is_test_file(r, test_projects)}
+    new = {r: p for r, p in new_all.items() if is_test_file(r, test_projects)}
+    # What the plugin alone would have counted: configuration it calls tests, changed, added or removed.
+    configuration, budget = [], u.DIFF_BUDGET
+    for rel in sorted((set(old_all) | set(new_all)) - set(old) - set(new)):
+        if rel not in old_all or rel not in new_all:
+            configuration.append({"path": rel, "change": "added" if rel not in old_all else "removed"})
+            continue
+        got, budget = u.compare_files(old_all[rel], new_all[rel], budget)
+        if got is not None:
+            configuration.append({"path": rel, "change": "changed"})
     removed, added = sorted(set(old) - set(new)), sorted(set(new) - set(old))
     changed, budget = [], u.DIFF_BUDGET
     for rel in sorted(set(old) & set(new)):
@@ -235,8 +248,77 @@ def tests_changed(base_tree: Path, tip_tree: Path, test_projects: list[str]) -> 
             "counts": {"added": len(added), "removed": len(removed), "changed": len(changed)},
             "added": [{"path": r, "lines": u.count_lines(new[r])} for r in added],
             "removed": [{"path": r, "lines": u.count_lines(old[r])} for r in removed],
-            "changed": changed, "share": share,
+            "changed": changed, "share": share, "configuration": configuration,
             "gap": bool(removed) or not old or len(changed) > u.SHARE_LIMIT * len(old)}
+
+
+# ---------------------------------------------------------------- flaky tests, approvals (Part N)
+
+def rerun_failing(tip_tree: Path, projects: list[str], failing: list[str], out: Path) -> tuple[list[str], list[str]]:
+    """(flaky, still failing): each failing test rerun once, alone, in every unit test project. One that passes on its
+    rerun is flaky: reported apart, never a failure, never silent. The same rule as the package step's."""
+    passed: set[str] = set()
+    for project in projects:
+        got, _ = dotnet.rerun(tip_tree, project, failing, out / f"{Path(project).stem}.trx")
+        passed |= set(got)
+    return sorted(passed), sorted(t for t in failing if t not in passed)
+
+
+def approved_removals(missing: list[str], approvals: list[dict]) -> tuple[list[dict], list[str]]:
+    """(approved, not approved) of the baseline tests that no longer run. A person approves a removed test, with a
+    reason (python -m app.engine.convert approve-removal); an approval names the test, or its test file."""
+    named = {a["test"]: a for a in approvals}
+    approved, rest = [], []
+    for test in missing:
+        a = named.get(test) or named.get(dotnet.method_name(test))
+        (approved.append({**a, "test": test}) if a else rest.append(test))
+    return approved, rest
+
+
+# ---------------------------------------------------------------- instructions and their files (Part N)
+
+FILES_SECTION = re.compile(r"^## Files\n\n[^\n]*\n\n((?:- `[^`]+`\n?)+)", re.MULTILINE)
+
+
+def instruction_files(root: Path, commit: str) -> dict[str, list[str]]:
+    """{instruction file name: the files its Files section names}, from the instructions in `commit`."""
+    names = gitops.git(root, "ls-tree", "-r", "--name-only", commit, "--", paths.UPGRADE_SKILLS_DIR).splitlines()
+    out = {}
+    for name in names:
+        text = gitops.git(root, "show", f"{commit}:{name}").replace("\r\n", "\n")
+        m = FILES_SECTION.search(text)
+        out[Path(name).name] = re.findall(r"^- `([^`]+)`", m.group(1), re.MULTILINE) if m else []
+    return out
+
+
+def attribution(named: dict[str, list[str]], changed: list[str]) -> dict:
+    """Each instruction: the files it names that the branch changed, and whether that is all of them (changed),
+    some (partly) or none (untouched); and the changed files no instruction names."""
+    changed_set = set(changed)
+    rows = []
+    for instruction, files in sorted(named.items()):
+        hit = sorted(f for f in files if f in changed_set)
+        state = "untouched" if not hit else ("changed" if len(hit) == len(files) else "partly")
+        rows.append({"instruction": instruction, "state": state, "named": len(files), "changed": hit})
+    claimed = {f for files in named.values() for f in files}
+    return {"instructions": rows, "unnamed": sorted(f for f in changed if f not in claimed)}
+
+
+SHELL_SUFFIXES = (".sh", ".bash")
+
+
+def shell_scripts(root: Path, tip_tree: Path, tip: str, changed: list[dict]) -> list[dict]:
+    """Every shell script the branch added or changed: [{path, lf, executable, attribute}] — LF line endings in the
+    committed text, the executable bit in git (mode 100755), and an `eol=lf` rule from .gitattributes for it."""
+    out = []
+    for c in changed:
+        if c["change"] == "D" or not c["path"].lower().endswith(SHELL_SUFFIXES):
+            continue
+        blob = subprocess.run(["git", "-C", str(root), "show", f"{tip}:{c['path']}"], capture_output=True).stdout
+        mode = gitops.git(root, "ls-tree", tip, "--", c["path"]).split(" ", 1)[0]
+        attr = gitops.git(tip_tree, "check-attr", "eol", "--", c["path"]).rsplit(": ", 1)[-1].strip()
+        out.append({"path": c["path"], "lf": b"\r\n" not in blob, "executable": mode == "100755", "attribute": attr == "lf"})
+    return out
 
 
 # ---------------------------------------------------------------- the delta catalog the plugin reads
@@ -522,25 +604,54 @@ def verify(db, *, engagement_id: str, slug: str, base: str, ref: str, label: str
         else:
             checks.append(_check("baseline", "Measured baseline", "gap",
                                  f"baseline is {assessment['kind']}" + (f", {assessment['disagree']} disagreement(s)" if assessment["disagree"] else "")))
+        # Part N: a failing test is rerun once, alone; passing then, it is flaky, reported and not counted.
+        failing = [r["id"] for r in base_report["regressions"]] + list(base_report["newFailures"])
+        if failing and clean["built"]:
+            flaky, still = rerun_failing(tip_tree, projects, failing, out / "rerun")
+            base_report["regressions"] = [r for r in base_report["regressions"] if r["id"] not in flaky]
+            base_report["newFailures"] = [n for n in base_report["newFailures"] if n not in flaky]
+            base_report["regressionsCount"], base_report["newFailuresCount"] = len(base_report["regressions"]), len(base_report["newFailures"])
+            base_report["rerunFlaky"] = flaky
+        # Part N: a removed test a person approved, with a reason, is recorded and not counted.
+        approved, unapproved = approved_removals(base_report["missing"], config.get("approved_test_removals") or [])
+        unlisted = base_report["missingCount"] - len(base_report["missing"])     # cut from the list: never approved
+        base_report["approvedRemovals"] = approved
         problems = []
         if base_report["regressionsCount"]:
             problems.append(f"{base_report['regressionsCount']} regression(s): " + ", ".join(r["id"] for r in base_report["regressions"][:5]))
         if base_report["newFailuresCount"]:
             problems.append(f"{base_report['newFailuresCount']} new failure(s): " + ", ".join(base_report["newFailures"][:5]))
-        if base_report["missingCount"] or base_report["executedDrop"] or base_report["missingModulesCount"]:
-            problems.append(f"{base_report['missingCount']} baseline test(s) no longer run" +
-                            (f"; executed {base_report['executedDrop']['now']} of {base_report['executedDrop']['before']}" if base_report["executedDrop"] else ""))
+        drop = base_report["executedDrop"]
+        unexplained_drop = drop and (drop["before"] - drop["now"]) > len(approved)
+        if unapproved or unlisted or unexplained_drop or base_report["missingModulesCount"]:
+            problems.append(f"{len(unapproved) + unlisted} baseline test(s) no longer run, not approved" +
+                            (f": {', '.join(unapproved[:5])}" if unapproved else "") +
+                            (f"; executed {drop['now']} of {drop['before']}" if drop else ""))
         fresh = base_report["fresh"]["counts"]
         summary = f"{fresh['pass']} of {base_report['baseline']['counts']['executed'] if base_report['baseline']['counts'] else '?'} baseline tests pass now ({fresh['executed']} executed)"
+        if approved:
+            summary += f"; {len(approved)} removed test(s) approved: " + ", ".join(
+                f"{a['test']} ({a['reason']}, {a['approvedBy']})" for a in approved[:5])
+        if base_report.get("rerunFlaky"):
+            summary += f"; {len(base_report['rerunFlaky'])} flaky (failed, passed on rerun)"
         checks.append(_check("diff", "Baseline diff", "fail" if problems else "pass",
                              "; ".join(problems) if problems else summary))
+        if base_report.get("rerunFlaky"):
+            checks.append(_check("flaky", "Flaky tests", "info",
+                                 f"{len(base_report['rerunFlaky'])} test(s) failed and passed on a rerun: "
+                                 + ", ".join(base_report["rerunFlaky"][:10])))
         (out / "baseline-diff.json").write_text(json.dumps(base_report, indent=2, default=str), encoding="utf-8")
     elif clean["built"]:
         checks.append(_check("diff", "Baseline diff", "fail", "no result file from the clean re-run to compare"))
 
     # Tests kept and deltas covered: the plugin's own checks, in its own words.
     tc = tests_changed(base_tree, tip_tree, base_snap["unit_test_projects"])
-    kept = plugin.proof_pack.check_tests_kept(tc, person)
+    approved_files = {a["test"] for a in config.get("approved_test_removals") or []}
+    tc_for_plugin = dict(tc)
+    if approved_files:
+        tc_for_plugin["removed"] = [r for r in tc["removed"] if r["path"] not in approved_files]
+        tc_for_plugin["counts"] = {**tc["counts"], "removed": len(tc_for_plugin["removed"])}
+    kept = plugin.proof_pack.check_tests_kept(tc_for_plugin, person)
     checks.append(_check("kept", "Tests kept", kept["state"], kept["detail"]))
     catalog = delta_catalog(base_snap["model"])
     (workspace / "analysis" / slug / "DELTA_CATALOG.md").write_text(catalog, encoding="utf-8")
@@ -632,6 +743,18 @@ def verify(db, *, engagement_id: str, slug: str, base: str, ref: str, label: str
                          f"{len(impact['predictedUntouched'])} of {impact['predictedFiles']} predicted file(s) untouched; "
                          f"{impact['createsMade']} of {impact['predictedCreates']} predicted new file(s) made"))
 
+    # Part N: every new or changed shell script has LF line endings, the executable bit, and an eol=lf rule.
+    scripts = shell_scripts(root, tip_tree, tip_sha, changes["files"])
+    if scripts:
+        bad = [s for s in scripts if not (s["lf"] and s["executable"] and s["attribute"])]
+        detail = "; ".join(f"{s['path']}: " + ", ".join(w for w, ok in (("CRLF line endings", s["lf"]), ("not executable", s["executable"]),
+                                                                          ("no eol=lf rule", s["attribute"])) if not ok) for s in bad)
+        checks.append(_check("scripts", "Shell scripts", "fail" if bad else "pass",
+                             detail if bad else f"{len(scripts)} new or changed script(s): LF, executable, eol=lf"))
+    # Part N: which instructions' files the branch changed, by each instruction's Files section.
+    commit = packages.inputs_commit(root, base_sha, tip_sha)
+    attributed = attribution(instruction_files(root, commit), [c["path"] for c in changes["files"]]) if commit else None
+
     after = fingerprint(root)
     checkout_untouched = before == after
     if not checkout_untouched:
@@ -651,7 +774,10 @@ def verify(db, *, engagement_id: str, slug: str, base: str, ref: str, label: str
         "forAPerson": person, "baseline": baseline_info, "baselineSnapshot": {"commit": base_snap["commit"], "at": base_snap["at"]},
         "cleanRun": clean, "diff": {k: v for k, v in changes.items() if k not in ("files", "excluded")},
         "excludedPaths": [e["path"] for e in changes["excluded"]], "rediscovery": rd, "impact": impact,
-        "testFiles": {k: tc[k] for k in ("changed", "added", "removed")},
+        "testFiles": {k: tc[k] for k in ("changed", "added", "removed", "configuration")},
+        "flaky": (base_report or {}).get("rerunFlaky") or [],
+        "approvedRemovals": (base_report or {}).get("approvedRemovals") or [],
+        "shellScripts": scripts, "attribution": attributed,
         "checkoutUntouched": checkout_untouched,
     }
     (out / "verification.json").write_text(json.dumps(report, indent=2, default=str), encoding="utf-8")
@@ -728,6 +854,29 @@ def markdown(r: dict) -> str:
                     "| Change | File | Lines |", "|---|---|---|"] + [f"| {c} | `{p}` | {n} |" for c, p, n in rows] + [""]
         else:
             out += ["No test file was changed, added or removed.", ""]
+        if tf.get("configuration"):
+            out += ["Not counted as test files: configuration the plugin's rules call tests (a test project's .csproj "
+                    "or settings, a name ending in IT):", ""] + [f"- {c['change']} `{c['path']}`" for c in tf["configuration"]] + [""]
+    if r.get("approvedRemovals"):
+        out += ["## Approved test removals", "", "| Test | Reason | Approved by | When |", "|---|---|---|---|"]
+        out += [f"| `{a['test']}` | {a['reason'].replace('|', '/')} | {a['approvedBy']} | {a.get('at', '')[:10]} |"
+                for a in r["approvedRemovals"]] + [""]
+    if r.get("flaky"):
+        out += ["## Flaky tests", "", "Failed, then passed when rerun once, alone. Not counted as failures:", ""]
+        out += [f"- `{t}`" for t in r["flaky"]] + [""]
+    if r.get("shellScripts"):
+        out += ["## Shell scripts", "", "| Script | LF | Executable | eol=lf rule |", "|---|---|---|---|"]
+        out += [f"| `{s['path']}` | {'yes' if s['lf'] else 'NO'} | {'yes' if s['executable'] else 'NO'} | "
+                f"{'yes' if s['attribute'] else 'NO'} |" for s in r["shellScripts"]] + [""]
+    if r.get("attribution"):
+        a = r["attribution"]
+        out += ["## Instructions and the files they name", "",
+                "Each instruction's Files section, against the files the branch changed. Reported, never judged.", "",
+                "| Instruction | Files named | Changed | State |", "|---|---|---|---|"]
+        out += [f"| `{x['instruction']}` | {x['named']} | {len(x['changed'])} | {x['state']} |" for x in a["instructions"]]
+        if a["unnamed"]:
+            out += ["", "Changed, named by no instruction: " + ", ".join(f"`{f}`" for f in a["unnamed"])]
+        out += [""]
     d = r["diff"]
     out += ["## Diff", "", f"{d['filesTouched']} file(s), +{d['linesAdded']} -{d['linesDeleted']}, {d['commits']} commit(s). "
             f"Excluded as engine state or generated inputs: {len(r['excludedPaths'])} file(s).", ""]

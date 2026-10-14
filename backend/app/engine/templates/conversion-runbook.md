@@ -24,7 +24,7 @@ ${opening}
 | If the agent asks | Reply |
 |---|---|
 | Target framework | `${target}` |
-| Branch, Git strategy, commits | `Work on the current branch and do not create another branch. Commit after each change.` |
+| Branch, Git strategy, commits | `Work on the current branch and do not create another branch. One commit at the end is fine.` |
 | Automatic or guided flow | `Guided.` |
 | Upgrade options | `Use the answers in .github/platform-inputs/decision-sheet.md. Where it gives none, continue with your recommended option.` |
 | Whether to plan, or to execute the plan | `Proceed.` |
@@ -41,7 +41,11 @@ If a terminal shows `>>` (PowerShell is waiting for the rest of a command), or a
 with no output, press **Ctrl+C** in that terminal. If Ctrl+C does not clear `>>`, close the Copilot terminal: it
 reopens and retries the command. If the agent then stops, send `Continue.`
 
-## 5. When the agent reports done
+## 5. When the agent stops
+
+If the agent stops without its done report (the four results from the opening message), send `Continue.`
+
+## 6. When the agent reports done
 
 Check that its report gives all four results from the opening message (build, tests, configuration files, start),
 each with the command it ran. If one is missing, send
@@ -53,7 +57,7 @@ Then send `Commit all remaining changes on the current branch.` and wait until i
 git -C "${worktree}" status --porcelain
 ```
 
-## 6. Verify
+## 7. Verify
 
 From the platform repository:
 

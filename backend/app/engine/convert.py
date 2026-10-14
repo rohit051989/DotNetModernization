@@ -5,6 +5,8 @@
         [--canary-file F --canary-find X --canary-replace Y --canary-why W]
     python -m app.engine.convert verify --engagement test-client-a --repository accountsapi-net10 --branch conversion/1
         [--base e89bc6a] [--label L] [--refresh-baseline]
+    python -m app.engine.convert approve-removal --engagement test-client-a --repository accountsapi-net10
+        --branch conversion/2 --test <test name or test file> [--test ...] --reason "..." --by "<person>"
 
 `prepare` makes the next conversion of a repository: a branch `conversion/<n>` from its baseline, in a worktree at
 `<RUNS_DIR>/<engagement>/<repository>/conversions/<n>/wt`. First the platform applies the package changes that need no
@@ -69,8 +71,9 @@ def opening_message(goal: str, solution: str | None) -> str:
         "- Never suppress a warning or an error to make a check pass: no -nowarn, NoWarn, #pragma warning disable, "
         "lowered warning level or skipped analyzer.",
         "- Keep every terminal command on a single line.",
-        "- Work on the current branch and do not create another branch. Commit after each change, with a message "
-        "naming the change.",
+        "- Work on the current branch and do not create another branch.",
+        "- Keep every test, and the code it uses, unless an instruction says a decision chose otherwise; keep every "
+        "existing deployment and build mechanism, adding beside it.",
         "- Use the custom upgrade instructions in .github/upgrades/skills and the skills in .github/skills, and follow "
         ".github/copilot-instructions.md. Read .github/platform-inputs/assessment-addendum.md and "
         ".github/platform-inputs/decision-sheet.md, and follow them.",
@@ -85,6 +88,8 @@ def opening_message(goal: str, solution: str | None) -> str:
         "this machine, report that, and do not change code to work around it.",
         f"If any of these fails, fix it and run all four again, at most {MAX_ROUNDS} times; then report what still "
         "fails.",
+        "Every result you report must be from the final state of the code. If you change anything after a check, "
+        "run all four checks again, and report only the results of that last run.",
         "Report each result with the command you ran and a summary of its output.",
     ])
 
@@ -181,6 +186,10 @@ def applied_changes(units) -> list[dict]:
         elif u.approach_id == "remove-package-reference":
             out.append({"item": "package-provided-by-framework", "project": u.target["project"],
                         "package": u.target["package_id"], "to": None})
+        elif u.approach_id == "retarget-tfm":
+            out.append({"item": "target-framework-retarget", "project": "*", "package": "", "to": u.target["to"]})
+        elif u.target.get("delta_id"):
+            out.append({"item": "framework-delta", "project": u.target["file"], "package": u.target["delta_id"], "to": None})
     return out
 
 
@@ -189,11 +198,14 @@ def _unit_record(u) -> dict:
             "automation": u.automation_class, "status": u.status, "reason": u.status_reason, "commit": u.commit_sha}
 
 
-def run_packages(db, plan, sibling_links: list[str]) -> list:
-    from app.conversion import runner
+def run_packages(db, plan, sibling_links: list[str]) -> tuple[list, dict]:
+    """(the plan's units, settled; the step's report: seconds, build-and-test cycles, flaky tests): the batch unit
+    loop (app.conversion.batch), all of a group at once, by halves when red."""
+    from app.conversion import batch
 
-    runner.Run(db, plan, sibling_links).run()
-    return db.query(models.ConversionUnit).filter_by(plan_id=plan.id).order_by(models.ConversionUnit.sequence).all()
+    step = batch.Batch(db, plan, sibling_links).run()
+    units = db.query(models.ConversionUnit).filter_by(plan_id=plan.id).order_by(models.ConversionUnit.sequence).all()
+    return units, step
 
 
 # ---------------------------------------------------------------- advisories
@@ -285,9 +297,9 @@ def prepare(db, engagement_id: str, slug: str, *, baseline: str | None = None, g
         action = "prepared"
     siblings.link(worktree, root, sibling_links)
     if reuse:
-        changes, applied = latest["packageChanges"], latest["applied"]
+        changes, applied, step = latest["packageChanges"], latest["applied"], latest.get("packageStep") or {}
     else:
-        units = run_packages(db, plan, sibling_links)
+        units, step = run_packages(db, plan, sibling_links)
         changes, applied = [_unit_record(u) for u in units], applied_changes(units)
     packages_head = gitops.head(worktree)
     _commit_inputs(db, engagement_id, slug, worktree, applied)
@@ -305,6 +317,9 @@ def prepare(db, engagement_id: str, slug: str, *, baseline: str | None = None, g
                                    for c in checked],
         # The package changes the platform applied before the agent: each unit, committed or why not.
         "plannedPackageChanges": planned, "packageChanges": changes, "applied": applied, "packagesHead": packages_head,
+        # How long the package step took, its build-and-test cycles, and the tests that failed once and passed on
+        # their rerun: flaky, reported, never a failure.
+        "packageStep": step,
         "leftForAgent": left_for_agent(db, engagement_id, slug, applied, changes),
     }
     _write_record(record)
@@ -344,6 +359,32 @@ def render_runbook(record: dict) -> str:
                         f"--repository {record['repository']}")
 
 
+# ---------------------------------------------------------------- approved test removals
+
+def approvals_path(engagement_id: str, slug: str) -> Path:
+    return planner.RUNS / engagement_id / slug / "approvals.json"
+
+
+def approvals_for(engagement_id: str, slug: str, branch: str) -> list[dict]:
+    path = approvals_path(engagement_id, slug)
+    return (json.loads(path.read_text(encoding="utf-8")).get(branch) or []) if path.exists() else []
+
+
+def approve_removal(engagement_id: str, slug: str, branch: str, tests: list[str], reason: str, by: str) -> list[dict]:
+    """A person approves the removal of tests (a test's name, or a test file's path) from a branch, with a reason
+    (Part N). The verifier records each approval and does not count the removal against the verdict; an unapproved
+    removal still fails it. Engagement data, under RUNS_DIR."""
+    if not reason.strip() or not by.strip():
+        raise ValueError("an approval needs a reason and the name of the person approving")
+    path = approvals_path(engagement_id, slug)
+    data = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    at = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
+    kept = [a for a in data.get(branch, []) if a["test"] not in tests]
+    data[branch] = kept + [{"test": t, "reason": reason.strip(), "approvedBy": by.strip(), "at": at} for t in tests]
+    path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
+    return data[branch]
+
+
 # ---------------------------------------------------------------- verify
 
 def verify(db, engagement_id: str, slug: str, branch: str, *, base: str | None = None, label: str | None = None,
@@ -359,7 +400,9 @@ def verify(db, engagement_id: str, slug: str, branch: str, *, base: str | None =
     # The repository's facts, as the verifier's configuration: no experiment, no frozen package lookups.
     config = {"sibling_links": facts.get("siblingLinks") or [], "canaries": facts.get("canaries") or [],
               # Package upgrades against the versions the branch's inputs asked for, not today's newest release.
-              "package_targets_from_inputs": True}
+              "package_targets_from_inputs": True,
+              # Removed tests a person approved, with a reason: recorded, not counted (approve_removal).
+              "approved_test_removals": approvals_for(engagement_id, slug, branch)}
     return verifier.verify(db, engagement_id=engagement_id, slug=slug, base=base, ref=branch,
                            label=label or branch.replace("/", "-"), config=config, refresh_baseline=refresh_baseline)
 
@@ -390,6 +433,13 @@ def main(argv: list[str] | None = None) -> int:
     v.add_argument("--base", help="the baseline commit (default: the conversion record's)")
     v.add_argument("--label", help="names the verification folder (default: the branch, '/' as '-')")
     v.add_argument("--refresh-baseline", action="store_true", help="re-run discovery on the base commit")
+    a = sub.add_parser("approve-removal", help="approve, with a reason, the removal of tests from a branch")
+    a.add_argument("--engagement", required=True)
+    a.add_argument("--repository", required=True, help="repository slug")
+    a.add_argument("--branch", required=True)
+    a.add_argument("--test", action="append", required=True, dest="tests", help="a test's name or a test file (repeatable)")
+    a.add_argument("--reason", required=True)
+    a.add_argument("--by", required=True, help="the person approving")
     args = parser.parse_args(argv)
 
     db = SessionLocal()
@@ -408,6 +458,10 @@ def main(argv: list[str] | None = None) -> int:
             for c in r["packageChanges"]:
                 print(f"  package {c['sequence']:>3} {c['status']:<14} {(c['commit'] or '')[:8]:<8} {c['title']}"
                       + (f"  ({c['reason']})" if c["status"] not in SATISFIED and c["reason"] else ""))
+            step = r.get("packageStep") or {}
+            print(f"package step: {step.get('seconds', 0)} s, {step.get('cycles', 0)} build-and-test cycle(s)")
+            for f in step.get("flaky") or []:
+                print(f"  flaky: {f['test']} ({f['project']}) failed once in {f['where']} and passed on its rerun")
             left = r["leftForAgent"]
             print(f"left for the agent: {len(left['items'])} instruction item(s); "
                   f"{len(left['packageChangesNotGreen'])} package change(s) not green; {len(left['assisted'])} assisted")
@@ -415,6 +469,9 @@ def main(argv: list[str] | None = None) -> int:
             oldest = min((c["fetchedAt"] for c in checked if c["fetchedAt"]), default=None)
             print(f"package versions asked for: {len(checked)}, none with a known advisory"
                   + (f" (lookups from {oldest[:16]} UTC or later)" if oldest else ""))
+        elif args.command == "approve-removal":
+            for x in approve_removal(args.engagement, args.repository, args.branch, args.tests, args.reason, args.by):
+                print(f"approved: {x['test']} ({x['reason']}; {x['approvedBy']}, {x['at']})")
         else:
             report = verify(db, args.engagement, args.repository, args.branch, base=args.base, label=args.label,
                             refresh_baseline=args.refresh_baseline)

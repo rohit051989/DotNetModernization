@@ -45,19 +45,39 @@ resolutions:
   container_ready: true
   deleted: false
   derivations: []
-  description: Remove the provider, its registration and its configuration; the console provider writes to standard output.
+  description: Remove the provider, its registration, its configuration and the tests that use it; the console provider writes to standard output. Removes tests, so only a decision chooses it, naming them.
   effort: low
   engine_guidance: |-
     1. Remove the provider's registration (`AddProvider`, or the extension method that adds it) and the
        provider class itself.
     2. Remove its configuration section and the settings class bound to it.
-    3. Make sure console logging stays enabled, so every log event goes to standard output.
+    3. Remove the tests listed below with it, and only those: a decision chose this, naming them.
+    4. Make sure console logging stays enabled, so every log event goes to standard output.
   id: remove-file-logger-provider
-  is_default: true
+  is_default: false
   linux_compatible: true
-  name: Remove the provider; log to standard output
+  name: Remove the provider and its tests; log to standard output
   notes: null
   status: active
   target_description: Console logging only, collected from standard output
+- consumer_impact: none
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: Remove the provider's registration, so nothing writes log files and the console provider writes to standard output. The class and its tests stay, unchanged.
+  effort: low
+  engine_guidance: |-
+    1. Remove the provider's registration (`AddProvider`, or the extension method that adds it), so
+       nothing writes log files.
+    2. Keep the provider class, its settings class and every test that uses them, exactly as they are:
+       the tests create the provider themselves and still build and pass. Do not delete or edit them.
+    3. Make sure console logging stays enabled, so every log event goes to standard output.
+  id: unregister-file-logger-provider
+  is_default: true
+  linux_compatible: true
+  name: Unregister the provider; keep the class and its tests
+  notes: null
+  status: active
+  target_description: Console logging only, collected from standard output; the provider class unused
 scope: occurrence
 status: active
