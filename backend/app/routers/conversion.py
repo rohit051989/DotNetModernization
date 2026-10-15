@@ -295,6 +295,57 @@ class LaunchedOut(BaseModel):
     job_execution_id: str
 
 
+class PlanRefOut(BaseModel):
+    id: str
+    status: str
+    created_at: str
+
+
+class ConversionEntryOut(BaseModel):
+    """One conversion of the repository, as the Conversion section lists it."""
+    number: int
+    branch: str
+    state: str                          # prepared, run or verified
+    baseline: str                       # the commit it starts from
+    baseline_from: str | None = None    # "the commit discovery scanned", "the --baseline given", ...
+    scanned_at: str | None = None
+    head: str | None = None
+    commits_beyond_inputs: int = 0
+    uncommitted: list[str] = []
+    worktree: str
+    prepared_at: str | None = None
+    runbook_path: str
+    runbook: str | None = None
+    opening_message: str | None = None
+    package_step: dict = {}
+    left_for_agent: dict = {}
+    verify_refusal: str | None = None
+    verification: VerificationOut | None = None
+    verifying: bool = False             # a verification job of this conversion is running
+    plan: PlanRefOut | None = None      # the package step's plan whose units this conversion reports
+    superseded_plans: list[PlanRefOut] = []   # plans of earlier preparations of this conversion, since refreshed
+
+
+class NextConversionOut(BaseModel):
+    """What "Start the next conversion" would do: discovery scans the repository's current commit, and the new
+    conversion starts from that commit."""
+    number: int
+    branch: str
+    starts_from: str | None = None      # the checkout's HEAD now: what discovery will scan
+    starts_from_subject: str | None = None
+    last_scanned: str | None = None     # the commit the last discovery scanned
+    last_scanned_at: str | None = None
+
+
+class ConversionsOut(BaseModel):
+    conversions: list[ConversionEntryOut]   # newest first
+    next: NextConversionOut
+    last_prepare: PrepareAttemptOut | None = None
+    discovery_job: JobRefOut | None = None
+    verification_job: JobRefOut | None = None
+    other_plans: list[PlanRefOut] = []       # package-step plans not tied to a conversion (experiments)
+
+
 def _job_ref(db: Session, job_name: str, repository_id: uuid.UUID) -> JobRefOut | None:
     from app.workflow.runtime import service as runtime_service
 
@@ -364,6 +415,80 @@ def get_current_conversion(repository_id: uuid.UUID, db: Session = Depends(get_d
                                            tip=v["tip"], markdown=md.read_text(encoding="utf-8") if md.exists() else "",
                                            current=s["verificationIsCurrent"])
     return out
+
+
+def _verification_out(rec: dict, s: dict) -> VerificationOut | None:
+    from app.engine import convert
+
+    v = s["verification"]
+    if not v:
+        return None
+    md = convert.planner.RUNS / rec["engagement"] / rec["repository"] / "verification" / v["label"] / "VERIFICATION.md"
+    return VerificationOut(verdict=v["verdict"], reasons=v["reasons"], verifiedAt=v["verifiedAt"], tip=v["tip"],
+                           markdown=md.read_text(encoding="utf-8") if md.exists() else "",
+                           current=s["verificationIsCurrent"])
+
+
+@router.get(
+    "/repositories/{repository_id}/conversions",
+    response_model=ConversionsOut,
+    summary="Every conversion of the repository, newest first, and where the next one would start",
+    operation_id="list_conversions",
+    responses={404: {"model": ErrorResponse, "description": "Repository not found."}},
+)
+def list_conversions(repository_id: uuid.UUID, db: Session = Depends(get_db)):
+    from app.conversion import gitops
+    from app.engine import convert
+    from app.steps.conversion_preparation import LAST_PREPARE
+    from app.workflow.runtime import service as runtime_service
+
+    repo = _repository(db, repository_id)
+    records = convert.records(repo.engagement_id, repo.slug)
+    plans = (db.query(models.ConversionPlan).filter_by(repository_id=repository_id)
+             .order_by(models.ConversionPlan.created_at.desc()).all())
+    ref = lambda p: PlanRefOut(id=str(p.id), status=p.status, created_at=p.created_at.isoformat())  # noqa: E731
+    verifying = None
+    latest_verification = runtime_service.list_executions(db, job_name=_VERIFICATION_JOB,
+                                                          repository_id=str(repository_id), limit=1)
+    if latest_verification and latest_verification[0].batch_status in ("STARTING", "STARTED"):
+        verifying = str((db.get(models.WfJobInstance, latest_verification[0].job_instance_id).parameters or {})
+                        .get("conversion"))
+
+    entries, tied = [], set()
+    for rec in reversed(records):
+        s = convert.status(rec)
+        mine = [p for p in plans if p.branch == rec["branch"]]
+        current = next((p for p in mine if str(p.id) == rec.get("planId")), None) if rec.get("planId") else (mine[0] if mine else None)
+        tied.update(str(p.id) for p in mine)
+        runbook = Path(rec["runbook"])
+        entries.append(ConversionEntryOut(
+            number=rec["number"], branch=rec["branch"], state=s["state"], baseline=rec["baseline"],
+            baseline_from=rec.get("baselineFrom"), scanned_at=rec.get("scannedAt"), head=s["head"],
+            commits_beyond_inputs=s["commitsBeyondInputs"], uncommitted=s["uncommitted"], worktree=rec["worktree"],
+            prepared_at=rec.get("preparedAt"), runbook_path=str(runbook),
+            runbook=runbook.read_text(encoding="utf-8") if runbook.exists() else None,
+            opening_message=convert.opening_message(rec["goal"], rec.get("solution")),
+            package_step=rec.get("packageStep") or {}, left_for_agent=rec.get("leftForAgent") or {},
+            verify_refusal=convert.verify_refusal(rec), verification=_verification_out(rec, s),
+            verifying=verifying == str(rec["number"]),
+            plan=ref(current) if current else None,
+            superseded_plans=[ref(p) for p in mine if p is not current]))
+
+    root = Path(repo.local_path)
+    head = gitops.git(root, "rev-parse", "HEAD", check=False).strip() if root.exists() else ""
+    subject = gitops.git(root, "log", "-1", "--format=%s", check=False).strip() if head else ""
+    number = (records[-1]["number"] + 1) if records else 1
+    last = convert.conversions_dir(repo.engagement_id, repo.slug) / LAST_PREPARE
+    return ConversionsOut(
+        conversions=entries,
+        next=NextConversionOut(number=number, branch=f"conversion/{number}", starts_from=head or None,
+                               starts_from_subject=subject or None, last_scanned=repo.ingest_commit_sha,
+                               last_scanned_at=repo.last_scanned_at.isoformat() if repo.last_scanned_at else None),
+        last_prepare=PrepareAttemptOut(**{k: v for k, v in json.loads(last.read_text(encoding="utf-8")).items()
+                                          if k in PrepareAttemptOut.model_fields}) if last.exists() else None,
+        discovery_job=_job_ref(db, _DISCOVERY_JOB, repository_id),
+        verification_job=_job_ref(db, _VERIFICATION_JOB, repository_id),
+        other_plans=[ref(p) for p in plans if str(p.id) not in tied])
 
 
 @router.post(

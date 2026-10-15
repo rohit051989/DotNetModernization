@@ -1,5 +1,5 @@
 import { api, apiUrl } from './client'
-import type { CurrentConversion, RepositoryConversion } from '../types/conversion'
+import type { Conversions, RepositoryConversion } from '../types/conversion'
 
 /** The repository's conversion plan (the newest, or `planId`), its units in
  * order, and the test results before and after. 409 until a plan exists. */
@@ -13,9 +13,9 @@ export function evidenceHref(url: string) {
   return apiUrl(url)
 }
 
-/** The repository's current conversion: status, worktree, branch, runbook, opening message and verification. */
-export function getCurrentConversion(repositoryId: string) {
-  return api.get<CurrentConversion>(`/api/repositories/${encodeURIComponent(repositoryId)}/conversions/current`)
+/** Every conversion of the repository, newest first, and where the next one would start. */
+export function listConversions(repositoryId: string) {
+  return api.get<Conversions>(`/api/repositories/${encodeURIComponent(repositoryId)}/conversions`)
 }
 
 /** Starts the next conversion: discovery runs, then prepares a new conversion. */

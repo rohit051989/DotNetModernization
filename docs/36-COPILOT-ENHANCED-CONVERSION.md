@@ -625,9 +625,14 @@ refuses and says to run discovery again. The versions checked are recorded in `c
 - *Prepared after discovery.* Preparation is the last step of the per-repository discovery job, `conversion-preparation`
   (17-LIFECYCLE-STEPS v2.4). Registering or rescanning a repository runs discovery, then prepares a conversion: the
   branch and worktree, the package step, the inputs under `.github`, and the runbook. Nobody runs a command.
-  - **A rescan** refreshes a conversion not run yet, in place. A conversion counts as run once its branch has commits
-    beyond its inputs; then the rescan leaves it, and a person starts the next one from the UI ("Start the next
-    conversion", which runs discovery with `new_conversion`).
+  - **A conversion starts from the commit discovery scanned** (`repositories.ingest_commit_sha`), so its package
+    step, instructions and runbook are about the code that was analysed. Never from an earlier conversion's
+    baseline: when the repository gains commits, the next conversion starts from the newest one scanned. Its record
+    says so (`baseline`, `baselineFrom`, `scannedAt`).
+  - **A rescan** refreshes a conversion not run yet, in place, moving it onto the commit just scanned. A conversion
+    counts as run once its branch has commits beyond its inputs; then the rescan leaves it, and a person starts the
+    next one from the UI ("Start the next conversion", which runs discovery with `new_conversion`). That always
+    prepares a new conversion on a new branch, and changes no existing one; no engine runs.
   - **A failed baseline**, or a repository the planner cannot plan, still gets a conversion. The package step is
     skipped, the reason recorded, and the package changes go to the engine as instructions.
   - **Preparation never fails a discovery run.** What happened is in `conversions/last-prepare.json`, shown in the
@@ -635,12 +640,20 @@ refuses and says to run discovery again. The versions checked are recorded in `c
   - **Package lookups** older than their limit are refreshed, never refused: a stand-alone `prepare` runs discovery
     first.
   - **Sibling folders** a repository's `nuget.config` reaches by relative path are detected (`siblings.detect`).
-- *The Conversion section* of the repository page shows the current conversion:
-  - its status (prepared, run or verified), the worktree and branch;
-  - the runbook, and the opening message with a copy button;
-  - what the package step did, and what is left for the engine.
+- *The Conversion section* of the repository page lists every conversion, newest first (`GET
+  /api/repositories/{id}/conversions`): number, branch, status (prepared, run or verified), and the verdict once
+  verified. Each entry has:
+  - the commit it starts from, the worktree, the runbook, and the opening message with a copy button;
+  - what the package step did, what is left for the engine, and the package step's plan with its units and tests.
+    Plans of earlier preparations of the same conversion, replaced by a refresh, are marked superseded and hidden
+    until asked for;
+  - **Verify**, on any conversion that has been run, and its verification with VERIFICATION.md.
+
+  "Start the next conversion" asks for confirmation first. It names the new branch and the commit it will start
+  from, and says it prepares fresh package changes, instructions and a runbook, changes no existing conversion, and
+  runs no engine.
 - *Verify* runs the verifier as the job `conversion-verification` (step `independent-verification`). It refuses, saying
   why, when the worktree has uncommitted changes or the branch has nothing beyond its inputs. For the second it reads
   "NOT PROVEN, nothing converted": the verifier's fixed rules fail an unconverted branch, so the verdict is known
-  without a run. Otherwise the section then shows the verdict, its reasons and the full VERIFICATION.md.
+  without a run. Otherwise the conversion's entry then shows the verdict, its reasons and the full VERIFICATION.md.
 

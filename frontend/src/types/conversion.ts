@@ -158,3 +158,52 @@ export interface CurrentConversion {
   last_prepare: PrepareAttempt | null
   discovery_job: JobRef | null
 }
+
+export interface PlanRef {
+  id: string
+  status: PlanStatus
+  created_at: string
+}
+
+/** One conversion of the repository, as the Conversion section lists it. */
+export interface ConversionEntry {
+  number: number
+  branch: string
+  state: ConversionState
+  baseline: string
+  baseline_from: string | null
+  scanned_at: string | null
+  head: string | null
+  commits_beyond_inputs: number
+  uncommitted: string[]
+  worktree: string
+  prepared_at: string | null
+  runbook_path: string
+  runbook: string | null
+  opening_message: string | null
+  package_step: CurrentConversion['package_step']
+  left_for_agent: CurrentConversion['left_for_agent']
+  verify_refusal: string | null
+  verification: ConversionVerification | null
+  verifying: boolean
+  plan: PlanRef | null
+  superseded_plans: PlanRef[]
+}
+
+export interface NextConversion {
+  number: number
+  branch: string
+  starts_from: string | null
+  starts_from_subject: string | null
+  last_scanned: string | null
+  last_scanned_at: string | null
+}
+
+export interface Conversions {
+  conversions: ConversionEntry[]
+  next: NextConversion
+  last_prepare: PrepareAttempt | null
+  discovery_job: JobRef | null
+  verification_job: JobRef | null
+  other_plans: PlanRef[]
+}

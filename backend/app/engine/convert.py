@@ -320,23 +320,30 @@ class LookupsStale(RuntimeError):
 def prepare(db, engagement_id: str, slug: str, *, baseline: str | None = None, goal: str | None = None,
             sibling_links: list[str] | None = None, canaries: list[dict] | None = None, when_run: str = "new",
             lookups_from_discovery: bool = False) -> dict:
-    """Prepares the repository's conversion. `when_run`: what to do when the latest conversion has been run (its branch
-    has commits beyond its inputs) — "new" starts the next one, "keep" leaves it and prepares nothing (a rescan:
-    a person starts the next conversion from the UI). An unrun conversion is refreshed in place either way.
+    """Prepares the repository's conversion. `when_run`:
+    - "keep" (a rescan): refreshes an unrun latest conversion in place; leaves one that has been run (its branch has
+      commits beyond its inputs) and prepares nothing — a person starts the next conversion from the UI;
+    - "new" (the command line): refreshes an unrun latest conversion, else starts the next one;
+    - "next" (the UI's "Start the next conversion"): always a new conversion; no existing one is changed.
+
+    The conversion starts from the commit discovery scanned (`repository.ingest_commit_sha`), so its package step,
+    instructions and runbook are about the code that was analysed — never from an earlier conversion's baseline.
+    `baseline` overrides it (the command line's --baseline). Refreshing an unrun conversion moves it onto that commit.
     `lookups_from_discovery`: the discovery run this prepare ends has just answered the package lookups, so their age
     is not checked again; otherwise lookups older than their limit raise LookupsStale."""
     repository = _repository(db, engagement_id, slug)
     engagement = db.get(models.Engagement, engagement_id)
     root = Path(repository.local_path)
     latest = (records(engagement_id, slug) or [None])[-1]
-    base = gitops.git(root, "rev-parse", baseline or (latest or {}).get("baseline") or "HEAD").strip()
+    base = gitops.git(root, "rev-parse", baseline or repository.ingest_commit_sha or "HEAD").strip()
     goal = goal or (latest or {}).get("goal") or DEFAULT_GOAL
     if sibling_links is None:
         sibling_links = (latest or {}).get("siblingLinks") if latest and latest.get("siblingLinks") is not None else siblings.detect(root)
     canaries = canaries if canaries is not None else (latest or {}).get("canaries") or []
 
-    refresh = latest is not None and latest["baseline"] == base and unrun(Path(latest["worktree"]), base)
-    if latest is not None and not refresh and when_run == "keep":
+    latest_unrun = latest is not None and unrun(Path(latest["worktree"]), latest["baseline"])
+    refresh = latest_unrun and when_run != "next"
+    if latest is not None and not latest_unrun and when_run == "keep":
         return {**latest, "action": "kept",
                 "reason": f"conversion {latest['number']} has been run: a rescan does not start another (start the next "
                           "conversion from the UI)"}
@@ -369,10 +376,16 @@ def prepare(db, engagement_id: str, slug: str, *, baseline: str | None = None, g
     checked = check_advisories(db, fresh, targets=unit_targets(units), check_age=not lookups_from_discovery)
 
     planned = [u.target.get("title") for u in units]
-    reuse = bool(refresh and latest.get("packagesHead") and latest.get("plannedPackageChanges") == planned)
+    reuse = bool(refresh and latest["baseline"] == base and latest.get("packagesHead")
+                 and latest.get("plannedPackageChanges") == planned)
+    if reuse and plan is not None:
+        # The package commits on the branch stand, so this plan is not run: the record keeps the plan that made them.
+        db.query(models.ConversionUnit).filter_by(plan_id=plan.id).delete()
+        db.delete(plan)
+        db.commit()
     if refresh:
-        # Not run, so nothing is lost: back to the package commits when the same changes are planned, else to the
-        # baseline, and everything again.
+        # Not run, so nothing is lost: back to the package commits when the same changes are planned on the same
+        # commit, else to the new baseline (the commit discovery scanned), and everything again.
         gitops.git(worktree, "reset", "--hard", "-q", latest["packagesHead"] if reuse else base)
         action = "refreshed"
     else:
@@ -392,6 +405,12 @@ def prepare(db, engagement_id: str, slug: str, *, baseline: str | None = None, g
     solutions = sorted(p.name for p in worktree.glob("*.sln"))
     record = {
         "number": number, "engagement": engagement_id, "repository": slug, "baseline": base, "branch": branch,
+        # Where the baseline came from: the commit discovery scanned, or the command line's --baseline.
+        "baselineFrom": "the --baseline given" if baseline else "the commit discovery scanned"
+                        if repository.ingest_commit_sha else "the checkout's HEAD",
+        "scannedAt": repository.last_scanned_at.isoformat(timespec="seconds") if repository.last_scanned_at else None,
+        # The package step's plan whose units this record reports (a refresh that reuses the commits keeps its plan).
+        "planId": (latest.get("planId") if reuse else str(plan.id) if plan is not None else None),
         "folder": str(folder), "worktree": str(worktree), "runbook": str(folder / "RUNBOOK.md"),
         "head": gitops.head(worktree), "platform": instrument.platform_state(),
         "preparedAt": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),

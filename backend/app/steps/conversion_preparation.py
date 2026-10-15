@@ -2,9 +2,10 @@
 per-repository discovery job. It prepares the repository's conversion for an engine with no command run by hand:
 the branch and worktree, the package step, the engine's inputs under .github, and the runbook (app.engine.convert).
 
-- A rescan refreshes a conversion that has not been run yet (no commits beyond its inputs), in place. A conversion
-  that has been run is left as it is; a person starts the next one from the UI, which runs this job with
-  `new_conversion`.
+- A conversion starts from the commit this discovery run scanned.
+- A rescan refreshes a conversion that has not been run yet (no commits beyond its inputs), in place, onto that
+  commit. A conversion that has been run is left as it is; a person starts the next one from the UI, which runs this
+  job with `new_conversion`: always a new conversion, no existing one changed.
 - A baseline that does not build or pass its tests still gets a conversion: the package step is skipped, the reason
   recorded, and the package changes go to the engine as instructions.
 - Package lookups were answered by this run's dependency-assessment, so their age is not checked again.
@@ -59,12 +60,13 @@ def run(context: StepContext) -> StepResult:
         if repository is None:
             return StepResult(exit_status="NOOP", exit_message=f"repository '{repository_id}' does not exist")
         result = convert.prepare(db, repository.engagement_id, repository.slug,
-                                 when_run="new" if params.get("new_conversion") in (True, "true", "True", 1) else "keep",
+                                 when_run="next" if params.get("new_conversion") in (True, "true", "True", 1) else "keep",
                                  lookups_from_discovery=True)
         step = result.get("packageStep") or {}
         attempt.update(status=result["action"], number=result.get("number"), branch=result.get("branch"),
                        message=result.get("reason") or (
-                           f"conversion {result['number']} {result['action']}: {result['branch']} at {result['head'][:8]}"
+                           f"conversion {result['number']} {result['action']}: {result['branch']} from "
+                           f"{result['baseline'][:8]} ({result['baselineFrom']}) at {result['head'][:8]}"
                            + (f"; package step skipped: {step['skipped']}" if step.get("skipped") else
                               f"; package step {step.get('cycles', 0)} cycle(s)" if result["action"] != "kept" else "")))
         record_attempt(repository.engagement_id, repository.slug, attempt)

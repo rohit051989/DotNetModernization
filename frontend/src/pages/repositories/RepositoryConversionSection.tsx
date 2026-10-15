@@ -144,13 +144,12 @@ function UnitRow({ unit, open, onToggle }: { unit: ConversionUnit; open: boolean
   )
 }
 
-/** The repository's conversion (34-CONVERSION-ARCHITECTURE C4, Part E): the
- * plan, its units in order with status, commit, failure reason and evidence,
- * and the unit tests before and after. */
-export function RepositoryConversionSection({ repositoryId, refreshToken }: { repositoryId: string; refreshToken: number }) {
+/** One package-step plan (34-CONVERSION-ARCHITECTURE C4, Part E): its units in
+ * order with status, commit, failure reason and evidence, and the unit tests
+ * before and after. Shown inside its conversion's entry (ConversionsPanel). */
+export function RepositoryConversionSection({ repositoryId, planId, refreshToken }: { repositoryId: string; planId?: string; refreshToken: number }) {
   const [data, setData] = useState<RepositoryConversion | null>(null)
   const [state, setState] = useState<'loading' | 'ready' | 'no_plan' | 'error'>('loading')
-  const [planId, setPlanId] = useState<string | undefined>(undefined)
   const [open, setOpen] = useState<Set<number>>(new Set())
 
   useEffect(() => {
@@ -171,7 +170,7 @@ export function RepositoryConversionSection({ repositoryId, refreshToken }: { re
   }, [repositoryId, planId, refreshToken])
 
   if (state === 'loading') return <div className="h-16 animate-pulse rounded bg-neutral-100" />
-  if (state === 'no_plan') return <p className="text-sm text-neutral-400">No conversion plan for this repository yet.</p>
+  if (state === 'no_plan') return <p className="text-sm text-neutral-400">No package-step plan yet.</p>
   if (state === 'error' || !data) return <p className="text-sm text-red-600">Could not load the conversion.</p>
 
   const { plan } = data
@@ -211,22 +210,6 @@ export function RepositoryConversionSection({ repositoryId, refreshToken }: { re
             {Object.entries(data.automation).map(([cls, n]) => `${n} ${cls}`).join(', ')}
           </span>
         </div>
-        {data.plans.length > 1 && (
-          <label className="flex items-center gap-1 text-xs text-neutral-500">
-            Plan
-            <select
-              value={plan.id}
-              onChange={(e) => setPlanId(e.target.value)}
-              className="rounded border border-neutral-200 bg-white px-1 py-0.5 text-xs"
-            >
-              {data.plans.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.id.slice(0, 8)} · {new Date(p.created_at).toLocaleString()} · {p.status}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
         {plan.exclusions.length > 0 && (
           <p className="text-[11px] text-neutral-500">
             Left out of the plan: {plan.exclusions.map((e) => `${e.package_id} (${e.reason})`).join('; ')}

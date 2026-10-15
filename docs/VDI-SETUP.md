@@ -549,7 +549,7 @@ In the UI, on the repository's page:
 | Work list | the catalog items found, where, and how each is to be resolved |
 | Tests | test projects and what they cover |
 | Impact | files each change touches |
-| **Conversion** | the prepared conversion: status, worktree and branch, the runbook, the opening message for GitHub Copilot (with a copy button), what the package step changed, and **Verify** |
+| **Conversion** | every conversion, newest first: number, branch, status (prepared, run, verified) and verdict. Each one's entry has the commit it starts from, its worktree, the runbook, the opening message for GitHub Copilot (with a copy button), its package-step plan, **Verify** once it has been run, and its VERIFICATION.md once verified |
 
 On disk, under `RUNS_DIR\<engagement>\<repository>\`:
 
@@ -562,9 +562,15 @@ On disk, under `RUNS_DIR\<engagement>\<repository>\`:
 | `conversions\last-prepare.json` | what the last preparation did, or why it skipped its package step |
 | `verification\conversion-<n>\VERIFICATION.md` | the verdict and its reasons, after **Verify** |
 
-Run the conversion as `RUNBOOK.md` says, commit on the branch, then press **Verify** in the Conversion section.
-A rescan (**Rescan** on the repository's page) refreshes a conversion that has not been run yet; once one has
-been run, **Start the next conversion** starts another.
+Run the conversion as `RUNBOOK.md` says, commit on the branch, then press **Verify** in its entry in the
+Conversion section.
+
+A conversion always starts from the commit discovery scanned. When the client repository gets new commits:
+- pull them into the clone;
+- **Rescan** (on the repository's page) moves a conversion that has not been run yet onto the new commit;
+- once a conversion has been run, **Start the next conversion** prepares a new one, on a new branch, from the
+  new commit. It asks first, naming the branch and the commit; it changes no existing conversion and runs no
+  engine.
 
 ---
 
