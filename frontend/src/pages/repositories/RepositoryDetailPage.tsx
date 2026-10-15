@@ -28,6 +28,7 @@ import { RepositorySurfaceSection } from './RepositorySurfaceSection'
 import { RepositoryImpactSection } from './RepositoryImpactSection'
 import { RepositoryTestsSection } from './RepositoryTestsSection'
 import { RepositoryConversionSection } from './RepositoryConversionSection'
+import { CurrentConversionPanel } from './CurrentConversionPanel'
 import { useLatestArtifacts, type LatestArtifact } from './useLatestArtifacts'
 
 interface RepositoryDetailPageProps {
@@ -471,8 +472,12 @@ export function RepositoryDetailPage({
 
       {!editing && (
         <CollapsibleSection id="repo:conversion" anchorId="repo-conversion" title="Conversion">
-          <div className="p-4">
-            <RepositoryConversionSection repositoryId={repo.id} refreshToken={localRefresh} />
+          <div className="space-y-4 p-4">
+            <CurrentConversionPanel repositoryId={repo.id} refreshToken={localRefresh} />
+            <div className="space-y-2 border-t border-neutral-100 pt-3">
+              <p className="text-xs font-medium text-neutral-600">Package step — the conversion plan</p>
+              <RepositoryConversionSection repositoryId={repo.id} refreshToken={localRefresh} />
+            </div>
           </div>
         </CollapsibleSection>
       )}

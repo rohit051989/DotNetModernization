@@ -1,0 +1,26 @@
+job_name: conversion-verification
+version: 1
+description: "Verifies a conversion that has been run: the conversion verifier, independent of the engine (17-LIFECYCLE-STEPS.md independent-verification; 36-COPILOT-ENHANCED-CONVERSION.md Part N)."
+
+parameters:
+  - name: engagement_id
+    type: string
+    required: true
+    description: "The engagement this run belongs to."
+  - name: repository_id
+    type: string
+    required: true
+    description: "UUID of the registered repository whose conversion is verified."
+  - name: conversion
+    type: string
+    required: true
+    description: "The conversion's number."
+  - name: run_token
+    type: string
+    required: true
+    description: "UUID per verification, so each is a distinct job instance."
+
+stub_policy: continue
+
+flow:
+  - step: independent-verification

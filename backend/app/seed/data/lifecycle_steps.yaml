@@ -1,6 +1,6 @@
-# The 37 lifecycle steps, transcribed verbatim from 17-LIFECYCLE-STEPS.md
-# v2.3 (v2.0 plus dependency-assessment inserted at 6 in v2.1, and
-# impact-analysis inserted at 9 in v2.3; later steps moved up, slugs unchanged) — the source of truth for step_name, lifecycle_step_no, display_name,
+# The 38 lifecycle steps, transcribed verbatim from 17-LIFECYCLE-STEPS.md
+# v2.4 (v2.0 plus dependency-assessment inserted at 6 in v2.1,
+# impact-analysis inserted at 9 in v2.3 and conversion-preparation at 11 in v2.4; later steps moved up, slugs unchanged) — the source of truth for step_name, lifecycle_step_no, display_name,
 # owner_code and viewpoint. Do not re-derive or rename step_name; see that
 # file's "Renumbering and slug stability" and "Registration rules" before
 # editing an existing entry.
@@ -12,7 +12,7 @@
 # refreshed.
 #
 # `viewpoint` is transcribed from the v2.0 register. The spec writes "—" for
-# the three pure gate steps (19, 26, 36); that is stored as NONE ("gate steps
+# the three pure gate steps (20, 27, 37); that is stored as NONE ("gate steps
 # carry no viewpoint — they are governance, not analysis").
 #
 # Steps that left the lifecycle in v2.0 are NOT listed here. Their
@@ -72,144 +72,149 @@ steps:
     display_name: "Risk scoring & review tier assignment"
     owner_code: "P"
     viewpoint: DEVELOPMENT
+  - step_name: conversion-preparation
+    lifecycle_step_no: 11
+    display_name: "Conversion preparation"
+    owner_code: "P"
+    viewpoint: DEVELOPMENT
 
   # ---- Phase 0b — Estate consolidation (job phase0-estate-consolidation) ----
   - step_name: unclaimed-signal-report
-    lifecycle_step_no: 11
+    lifecycle_step_no: 12
     display_name: "Unclaimed signal report"
     owner_code: "P"
     viewpoint: DEVELOPMENT
   - step_name: dependency-and-context-map
-    lifecycle_step_no: 12
+    lifecycle_step_no: 13
     display_name: "Dependency graph, context map & external endpoint register"
     owner_code: "P"
     viewpoint: CONTEXT
   - step_name: migration-wave-planning
-    lifecycle_step_no: 13
+    lifecycle_step_no: 14
     display_name: "Migration wave planning"
     owner_code: "P + H"
     viewpoint: DEVELOPMENT
 
   # ---- Track A — Dev track, per application (job trackA-application, deferred) ----
   - step_name: branch-baseline-record
-    lifecycle_step_no: 14
+    lifecycle_step_no: 15
     display_name: "Branch creation & baseline SHA"
     owner_code: "P"
     viewpoint: DEVELOPMENT
   - step_name: baseline-verification
-    lifecycle_step_no: 15
+    lifecycle_step_no: 16
     display_name: "Baseline verification"
     owner_code: "P"
     viewpoint: DEVELOPMENT
   - step_name: contract-snapshot
-    lifecycle_step_no: 16
+    lifecycle_step_no: 17
     display_name: "Contract snapshot"
     owner_code: "P"
     viewpoint: FUNCTIONAL
   - step_name: characterization-test-generation
-    lifecycle_step_no: 17
+    lifecycle_step_no: 18
     display_name: "Characterization test generation"
     owner_code: "S"
     viewpoint: FUNCTIONAL
   - step_name: work-list-assembly
-    lifecycle_step_no: 18
+    lifecycle_step_no: 19
     display_name: "Work list assembly & dry run"
     owner_code: "P"
     viewpoint: DEVELOPMENT
   - step_name: plan-approval-gate
-    lifecycle_step_no: 19
+    lifecycle_step_no: 20
     display_name: "Plan approval gate"
     owner_code: "H"
     viewpoint: NONE
   - step_name: application-scope-conversion
-    lifecycle_step_no: 20
+    lifecycle_step_no: 21
     display_name: "Application-scope conversions"
     owner_code: "P"
     viewpoint: DEVELOPMENT
   - step_name: occurrence-scope-conversion
-    lifecycle_step_no: 21
+    lifecycle_step_no: 22
     display_name: "Occurrence-scope conversions"
     owner_code: "P"
     viewpoint: DEVELOPMENT
   - step_name: independent-verification
-    lifecycle_step_no: 22
+    lifecycle_step_no: 23
     display_name: "Independent build, test & scan verification"
     owner_code: "P"
     viewpoint: DEVELOPMENT
   - step_name: contract-parity-verification
-    lifecycle_step_no: 23
+    lifecycle_step_no: 24
     display_name: "Contract parity verification"
     owner_code: "P"
     viewpoint: FUNCTIONAL
   - step_name: evidence-bundle-assembly
-    lifecycle_step_no: 24
+    lifecycle_step_no: 25
     display_name: "Evidence bundle assembly"
     owner_code: "P + S"
     viewpoint: DEVELOPMENT
   - step_name: pr-creation
-    lifecycle_step_no: 25
+    lifecycle_step_no: 26
     display_name: "PR creation"
     owner_code: "P + S"
     viewpoint: DEVELOPMENT
   - step_name: code-review
-    lifecycle_step_no: 26
+    lifecycle_step_no: 27
     display_name: "Code review"
     owner_code: "H"
     viewpoint: NONE
   - step_name: feedback-capture
-    lifecycle_step_no: 27
+    lifecycle_step_no: 28
     display_name: "Feedback capture"
     owner_code: "P"
     viewpoint: DEVELOPMENT
   - step_name: merge-version-record
-    lifecycle_step_no: 28
+    lifecycle_step_no: 29
     display_name: "Merge, version record, dashboard update"
     owner_code: "P"
     viewpoint: DEVELOPMENT
 
   # ---- Track B — DevOps track, per wave (job trackB-wave, deferred) ----
   - step_name: wave-readiness-check
-    lifecycle_step_no: 29
+    lifecycle_step_no: 30
     display_name: "Wave readiness check"
     owner_code: "P"
     viewpoint: DEPLOYMENT
   - step_name: container-image-build-push
-    lifecycle_step_no: 30
+    lifecycle_step_no: 31
     display_name: "Image build & registry push"
     owner_code: "P"
     viewpoint: DEPLOYMENT
   - step_name: container-smoke-test
-    lifecycle_step_no: 31
+    lifecycle_step_no: 32
     display_name: "Container smoke test"
     owner_code: "P"
     viewpoint: DEPLOYMENT
   - step_name: deploy-non-production-ocp4
-    lifecycle_step_no: 32
+    lifecycle_step_no: 33
     display_name: "Deploy to non-production OCP4"
     owner_code: "P"
     viewpoint: DEPLOYMENT
   - step_name: cross-application-integration-testing
-    lifecycle_step_no: 33
+    lifecycle_step_no: 34
     display_name: "Cross-application integration testing"
     owner_code: "P"
     viewpoint: OPERATIONAL
   - step_name: consumer-regression-verification
-    lifecycle_step_no: 34
+    lifecycle_step_no: 35
     display_name: "Consumer regression verification"
     owner_code: "P"
     viewpoint: FUNCTIONAL
   - step_name: performance-resource-baseline
-    lifecycle_step_no: 35
+    lifecycle_step_no: 36
     display_name: "Performance & resource baseline"
     owner_code: "P"
     viewpoint: OPERATIONAL
   - step_name: release-approval
-    lifecycle_step_no: 36
+    lifecycle_step_no: 37
     display_name: "Release approval"
     owner_code: "H"
     viewpoint: NONE
   - step_name: production-cutover
-    lifecycle_step_no: 37
+    lifecycle_step_no: 38
     display_name: "Production cutover, parallel run & rollback"
     owner_code: "P + H"
     viewpoint: OPERATIONAL

@@ -109,3 +109,52 @@ export interface RepositoryConversion {
   /** Every plan for this repository, newest first. */
   plans: ConversionPlanSummary[]
 }
+
+/** The repository's current conversion (36-COPILOT-ENHANCED-CONVERSION Part N). */
+export type ConversionState = 'prepared' | 'run' | 'verified'
+
+export interface JobRef {
+  job_execution_id: string
+  batch_status: string
+  exit_status: string | null
+  exit_message: string | null
+}
+
+export interface PrepareAttempt {
+  at: string | null
+  status: string | null
+  message: string | null
+  number: number | null
+  jobExecutionId: string | null
+}
+
+export interface ConversionVerification {
+  verdict: string
+  reasons: string[]
+  verifiedAt: string
+  tip: string
+  markdown: string
+  current: boolean
+}
+
+export interface CurrentConversion {
+  number: number | null
+  state: ConversionState | null
+  branch: string | null
+  worktree: string | null
+  baseline: string | null
+  head: string | null
+  commits_beyond_inputs: number
+  uncommitted: string[]
+  runbook_path: string | null
+  runbook: string | null
+  opening_message: string | null
+  prepared_at: string | null
+  package_step: { seconds?: number; cycles?: number; skipped?: string; flaky?: { test: string; project: string }[] }
+  left_for_agent: { items?: { item: string; resolution: string | null; places: number }[] }
+  verify_refusal: string | null
+  verification: ConversionVerification | null
+  verification_job: JobRef | null
+  last_prepare: PrepareAttempt | null
+  discovery_job: JobRef | null
+}

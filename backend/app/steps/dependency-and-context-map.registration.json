@@ -1,6 +1,6 @@
 {
   "step_name": "dependency-and-context-map",
-  "lifecycle_step_no": 12,
+  "lifecycle_step_no": 13,
   "display_name": "Dependency graph, context map & external endpoint register",
   "owner_code": "P",
   "version": "1.8.0",

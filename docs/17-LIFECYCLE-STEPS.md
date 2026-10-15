@@ -5,7 +5,8 @@ names, numbers, owners and viewpoints.** Register steps from here, not from memo
 
 | Version | Change |
 |---|---|
-| **2.3** | Inserts `impact-analysis` as step 9 (`33-IMPACT-ANALYSIS.md`). Steps 9–36 of v2.2 became 10–37, slugs unchanged; 37 steps. Cross-references in step notes corrected |
+| **2.4** | Inserts `conversion-preparation` as step 11, the last step of the per-repository discovery job (`36-COPILOT-ENHANCED-CONVERSION.md` Part N). Steps 11–37 of v2.3 became 12–38, slugs unchanged; 38 steps. `independent-verification` is implemented by the conversion verifier, in its own job `conversion-verification` |
+| 2.3 | Inserts `impact-analysis` as step 9 (`33-IMPACT-ANALYSIS.md`). Steps 9–36 of v2.2 became 10–37, slugs unchanged; 37 steps. Cross-references in step notes corrected |
 | 2.2 | Documentation revision. **No change to steps, numbers or slugs.** Corrects stale cross-references, updates descriptions to what was built, adds implementation status and spec pointers, and rewrites the mapping table as v1 → v2.2 directly |
 | 2.1 | Inserts `dependency-assessment` as step 6. Steps 6–35 of v2.0 became 7–36, slugs unchanged |
 | 2.0 | 35 steps, revised from 51. Track A's transformation steps collapse into two generic conversion steps; target-state governance and accelerator binding move out of the lifecycle |
@@ -23,11 +24,12 @@ snapshot for orientation and will drift; check the registry when it matters.
 
 | Status | Steps |
 |---|---|
-| **Implemented** | 1, 2, 3, 4, 5, 6, 7, 8 (phase 1 of 3), 9 (deterministic; the LLM residue is deferred), 12 |
-| **Stub** | 10, 11, 13, and all of Track A (14–28) and Track B (29–37) |
+| **Implemented** | 1, 2, 3, 4, 5, 6, 7, 8 (phase 1 of 3), 9 (deterministic; the LLM residue is deferred), 11, 13, 23 (the conversion verifier: build, tests, canary and re-discovery; no security scan yet) |
+| **Stub** | 10, 12, 14, and the rest of Track A (15–29) and all of Track B (30–38) |
 
 The per-repository discovery job runs real work through `impact-analysis`. `risk-scoring-tier-assignment` is a stub within
-it, completing as `NOT_IMPLEMENTED` under `stub_policy: continue`.
+it, completing as `NOT_IMPLEMENTED` under `stub_policy: continue`. Its last step, `conversion-preparation`, prepares the
+repository's conversion, and never fails the run.
 
 ### Spec for each implemented or specified step
 
@@ -42,9 +44,11 @@ it, completing as `NOT_IMPLEMENTED` under `stub_policy: continue`.
 | 7 | `28-ITEM-AND-CONVERSION-MODEL.md` Parts C–G |
 | 8 | `32-TEST-COVERAGE-ASSESSMENT.md` |
 | 9 | `33-IMPACT-ANALYSIS.md` |
-| 12 | `31-DEPENDENCY-AND-CONTEXT-MAP.md` (written when this step was 11; the file keeps its name) |
-| 20, 21 | `28-ITEM-AND-CONVERSION-MODEL.md` Parts I–O |
-| 19, 26, 36 | Gate machinery: the `validation_queue` from `27-PATTERN-VALIDATION.md` Parts A–B. That step was retired; its queue survived as shared gate infrastructure |
+| 11 | `36-COPILOT-ENHANCED-CONVERSION.md` Part N |
+| 13 | `31-DEPENDENCY-AND-CONTEXT-MAP.md` (written when this step was 11; the file keeps its name) |
+| 21, 22 | `28-ITEM-AND-CONVERSION-MODEL.md` Parts I–O |
+| 23 | `36-COPILOT-ENHANCED-CONVERSION.md` Parts E and N (the verifier) |
+| 20, 27, 37 | Gate machinery: the `validation_queue` from `27-PATTERN-VALIDATION.md` Parts A–B. That step was retired; its queue survived as shared gate infrastructure |
 
 ---
 
@@ -70,10 +74,11 @@ combined string verbatim in `wf_step_registrations.owner_code`.
 
 | Job | Steps | Scope | Status |
 |---|---|---|---|
-| `phase0-repository-discovery` | 1 – 10 | Per repository | **Defined, active** |
-| `phase0-estate-consolidation` | 11 – 13 | Per engagement | **Defined, active** |
-| `trackA-application` | 14 – 28 | Per application | Deferred |
-| `trackB-wave` | 29 – 37 | Per wave | Deferred |
+| `phase0-repository-discovery` | 1 – 11 | Per repository | **Defined, active** |
+| `phase0-estate-consolidation` | 12 – 14 | Per engagement | **Defined, active** |
+| `conversion-verification` | 23 | Per conversion | **Defined, active**: a person starts it from the repository's Conversion section |
+| `trackA-application` | 15 – 29 | Per application | Deferred |
+| `trackB-wave` | 30 – 38 | Per wave | Deferred |
 
 The two Phase 0 jobs answer different questions. The per-repository job asks *what is in
 this repository*; the estate job asks *what is in the estate* — things no single repository
@@ -82,7 +87,7 @@ partial estate and reports its own coverage.
 
 ---
 
-## Phase 0 — Repository discovery (steps 1–10, per repository)
+## Phase 0 — Repository discovery (steps 1–11, per repository)
 
 | # | step_name | Display name | Owner | Viewpoint | Notes |
 |---|---|---|---|---|---|
@@ -96,6 +101,7 @@ partial estate and reports its own coverage.
 | 8 | `test-coverage-assessment` | Test coverage & CI maturity | `P` | DEVELOPMENT | Test discovery and classification, source-to-test mapping, three buckets per source file, existing coverage reports, CI maturity. Unknown coverage carries a reason and is never 0%. Its mapping supplies `impact-analysis`'s impacted test files. Gates `characterization-test-generation` |
 | 9 | `impact-analysis` | Impact analysis | `P` | DEVELOPMENT | Per work item, every file its conversion touches and what happens to each — update, rewrite, delete, create, review — from per-resolution impact rules in the catalog, with certainty and a traversal path per file. The default resolution always, and the chosen one where decided; hotspots and conflicts across work items. Structural only: client impact is added by `dependency-and-context-map` |
 | 10 | `risk-scoring-tier-assignment` | Risk scoring & review tier assignment | `P` | DEVELOPMENT | Deterministic rules over coverage, LOC, `impact-analysis`'s blast radius, shared-library fan-out, **request** entry-point count, external consumers, occurrence count and criticality. Lifecycle hooks must not inflate the count. **A hosted or Windows service with zero request entry points must not read as low risk** — a poll-loop worker has exactly that shape |
+| 11 | `conversion-preparation` | Conversion preparation | `P` | DEVELOPMENT | The repository's next conversion, ready for an engine: a branch and worktree from the baseline, the package changes that need no code applied and committed (each building and passing the baseline's tests), the engine's inputs under `.github`, and the runbook. A rescan refreshes a conversion not run yet; one that has been run is left, and a person starts the next. A baseline that does not build or pass its tests skips the package step, which goes to the engine as instructions. **Never fails the discovery run**: what went wrong is recorded on the conversion |
 
 `entry-point-inventory` and `outbound-invocation-inventory` are deliberately separate from `application-fingerprinting`. Fingerprinting detects *presence*
 — "this project has controllers". These produce an *inventory* — "`GET
@@ -108,35 +114,35 @@ list.
 
 ---
 
-## Phase 0b — Estate consolidation (steps 11–13, per engagement)
+## Phase 0b — Estate consolidation (steps 12–14, per engagement)
 
 | # | step_name | Display name | Owner | Viewpoint | Notes |
 |---|---|---|---|---|---|
-| 11 | `unclaimed-signal-report` | Unclaimed signal report | `P` | DEVELOPMENT | Signals observed across the estate that no catalog item references, grouped by recurring shape. A report for catalog authors, not a gate |
-| 12 | `dependency-and-context-map` | Dependency graph, context map & external endpoint register | `P` | CONTEXT | Four outputs. **The external endpoint register is the deliverable**: `outbound-invocation-inventory`'s invocations grouped by host, with `requires_backend_change` marking calls only the endpoint's owner can fix, and annotations that turn it into a conversation tracker. Also the package estate view, the cross-repository dependency graph with shared libraries and cycles, and a C4 context map. Reconciles `entry-point-inventory`'s per-repository origin decisions without rewriting its rows. Adds `impact-analysis`'s **client** impact at the end of each run, from its integration edges |
-| 13 | `migration-wave-planning` | Migration wave planning | `P + H` | DEVELOPMENT | Topological grouping from `dependency-and-context-map`'s dependency graph; shared libraries first, cycles as single units. Human confirms boundaries. Emits a C4 container view |
+| 12 | `unclaimed-signal-report` | Unclaimed signal report | `P` | DEVELOPMENT | Signals observed across the estate that no catalog item references, grouped by recurring shape. A report for catalog authors, not a gate |
+| 13 | `dependency-and-context-map` | Dependency graph, context map & external endpoint register | `P` | CONTEXT | Four outputs. **The external endpoint register is the deliverable**: `outbound-invocation-inventory`'s invocations grouped by host, with `requires_backend_change` marking calls only the endpoint's owner can fix, and annotations that turn it into a conversation tracker. Also the package estate view, the cross-repository dependency graph with shared libraries and cycles, and a C4 context map. Reconciles `entry-point-inventory`'s per-repository origin decisions without rewriting its rows. Adds `impact-analysis`'s **client** impact at the end of each run, from its integration edges |
+| 14 | `migration-wave-planning` | Migration wave planning | `P + H` | DEVELOPMENT | Topological grouping from `dependency-and-context-map`'s dependency graph; shared libraries first, cycles as single units. Human confirms boundaries. Emits a C4 container view |
 
 ---
 
-## Track A — Dev track (steps 14–28, per application)
+## Track A — Dev track (steps 15–29, per application)
 
 | # | step_name | Display name | Owner | Viewpoint | Notes |
 |---|---|---|---|---|---|
-| 14 | `branch-baseline-record` | Branch creation & baseline SHA | `P` | DEVELOPMENT | |
-| 15 | `baseline-verification` | Baseline verification | `P` | DEVELOPMENT | Build and test in a clean container **before** any change. Establishes attributability |
-| 16 | `contract-snapshot` | Contract snapshot | `P` | FUNCTIONAL | OpenAPI for REST, WSDL for SOAP, from `entry-point-inventory`. The parity baseline for `contract-parity-verification` |
-| 17 | `characterization-test-generation` | Characterization test generation | `S` | FUNCTIONAL | Conditional on `test-coverage-assessment` coverage falling below threshold. Targets request entry points only — never lifecycle hooks |
-| 18 | `work-list-assembly` | Work list assembly & dry run | `P` | DEVELOPMENT | Join occurrences to engagement decisions to conversion approaches. Dry-run every approach to produce diffs. Flags `awaiting_decision` and `awaiting_approach` rows. This is the migration plan |
-| 19 | `plan-approval-gate` | Plan approval gate | `H` | — | Tier-conditional. The dry-run work list **is** the plan |
-| 20 | `application-scope-conversion` | Application-scope conversions | `P` | DEVELOPMENT | Runs first. One invocation per project per item. Includes containerization, OCP4 manifests and CI/CD pipeline changes — anything creating files in the repository |
-| 21 | `occurrence-scope-conversion` | Occurrence-scope conversions | `P` | DEVELOPMENT | Per occurrence or batched per the approach's `batching` declaration. Includes package upgrades and their call-site fixes from `dependency-assessment` |
-| 22 | `independent-verification` | Independent build, test & scan verification | `P` | DEVELOPMENT | Clean CI. Build, unit and integration tests, characterization replay, Linux compatibility, security and vulnerability scans. **The engine reporting its own success is not verification** |
-| 23 | `contract-parity-verification` | Contract parity verification | `P` | FUNCTIONAL | Diff post-migration OpenAPI or WSDL against `contract-snapshot`, with breaking/non-breaking classification. Separate from `independent-verification` because it is the headline consumer-impact evidence |
-| 24 | `evidence-bundle-assembly` | Evidence bundle assembly | `P + S` | DEVELOPMENT | Platform assembles the facts; skill writes the narrative only |
-| 25 | `pr-creation` | PR creation | `P + S` | DEVELOPMENT | One commit per conversion execution, so the PR reads as named remediations |
-| 26 | `code-review` | Code review | `H` | — | Tier-routed |
-| 27 | `feedback-capture` | Feedback capture | `P` | DEVELOPMENT | Tag corrections by item, approach and error category |
-| 28 | `merge-version-record` | Merge, version record, dashboard update | `P` | DEVELOPMENT | Record approach versions used per application |
+| 15 | `branch-baseline-record` | Branch creation & baseline SHA | `P` | DEVELOPMENT | |
+| 16 | `baseline-verification` | Baseline verification | `P` | DEVELOPMENT | Build and test in a clean container **before** any change. Establishes attributability |
+| 17 | `contract-snapshot` | Contract snapshot | `P` | FUNCTIONAL | OpenAPI for REST, WSDL for SOAP, from `entry-point-inventory`. The parity baseline for `contract-parity-verification` |
+| 18 | `characterization-test-generation` | Characterization test generation | `S` | FUNCTIONAL | Conditional on `test-coverage-assessment` coverage falling below threshold. Targets request entry points only — never lifecycle hooks |
+| 19 | `work-list-assembly` | Work list assembly & dry run | `P` | DEVELOPMENT | Join occurrences to engagement decisions to conversion approaches. Dry-run every approach to produce diffs. Flags `awaiting_decision` and `awaiting_approach` rows. This is the migration plan |
+| 20 | `plan-approval-gate` | Plan approval gate | `H` | — | Tier-conditional. The dry-run work list **is** the plan |
+| 21 | `application-scope-conversion` | Application-scope conversions | `P` | DEVELOPMENT | Runs first. One invocation per project per item. Includes containerization, OCP4 manifests and CI/CD pipeline changes — anything creating files in the repository |
+| 22 | `occurrence-scope-conversion` | Occurrence-scope conversions | `P` | DEVELOPMENT | Per occurrence or batched per the approach's `batching` declaration. Includes package upgrades and their call-site fixes from `dependency-assessment` |
+| 23 | `independent-verification` | Independent build, test & scan verification | `P` | DEVELOPMENT | Clean CI. Build, unit and integration tests, characterization replay, Linux compatibility, security and vulnerability scans. **The engine reporting its own success is not verification** |
+| 24 | `contract-parity-verification` | Contract parity verification | `P` | FUNCTIONAL | Diff post-migration OpenAPI or WSDL against `contract-snapshot`, with breaking/non-breaking classification. Separate from `independent-verification` because it is the headline consumer-impact evidence |
+| 25 | `evidence-bundle-assembly` | Evidence bundle assembly | `P + S` | DEVELOPMENT | Platform assembles the facts; skill writes the narrative only |
+| 26 | `pr-creation` | PR creation | `P + S` | DEVELOPMENT | One commit per conversion execution, so the PR reads as named remediations |
+| 27 | `code-review` | Code review | `H` | — | Tier-routed |
+| 28 | `feedback-capture` | Feedback capture | `P` | DEVELOPMENT | Tag corrections by item, approach and error category |
+| 29 | `merge-version-record` | Merge, version record, dashboard update | `P` | DEVELOPMENT | Record approach versions used per application |
 
 ### Two engine requirements before Track A
 
@@ -152,19 +158,19 @@ writes to a repository is built:
 
 ---
 
-## Track B — DevOps track (steps 29–37, per wave)
+## Track B — DevOps track (steps 30–38, per wave)
 
 | # | step_name | Display name | Owner | Viewpoint | Notes |
 |---|---|---|---|---|---|
-| 29 | `wave-readiness-check` | Wave readiness check | `P` | DEPLOYMENT | |
-| 30 | `container-image-build-push` | Image build & registry push | `P` | DEPLOYMENT | Build files were generated in `application-scope-conversion` |
-| 31 | `container-smoke-test` | Container smoke test | `P` | DEPLOYMENT | Startup, health endpoints, one representative call |
-| 32 | `deploy-non-production-ocp4` | Deploy to non-production OCP4 | `P` | DEPLOYMENT | Whole wave together so inter-application dependencies resolve |
-| 33 | `cross-application-integration-testing` | Cross-application integration testing | `P` | OPERATIONAL | The verification impossible per application |
-| 34 | `consumer-regression-verification` | Consumer regression verification | `P` | FUNCTIONAL | Consumers exercised against pre-migration contracts |
-| 35 | `performance-resource-baseline` | Performance & resource baseline | `P` | OPERATIONAL | Sets OCP4 requests and limits |
-| 36 | `release-approval` | Release approval | `H` | — | Wave-level go/no-go on accumulated evidence |
-| 37 | `production-cutover` | Production cutover, parallel run & rollback | `P + H` | OPERATIONAL | |
+| 30 | `wave-readiness-check` | Wave readiness check | `P` | DEPLOYMENT | |
+| 31 | `container-image-build-push` | Image build & registry push | `P` | DEPLOYMENT | Build files were generated in `application-scope-conversion` |
+| 32 | `container-smoke-test` | Container smoke test | `P` | DEPLOYMENT | Startup, health endpoints, one representative call |
+| 33 | `deploy-non-production-ocp4` | Deploy to non-production OCP4 | `P` | DEPLOYMENT | Whole wave together so inter-application dependencies resolve |
+| 34 | `cross-application-integration-testing` | Cross-application integration testing | `P` | OPERATIONAL | The verification impossible per application |
+| 35 | `consumer-regression-verification` | Consumer regression verification | `P` | FUNCTIONAL | Consumers exercised against pre-migration contracts |
+| 36 | `performance-resource-baseline` | Performance & resource baseline | `P` | OPERATIONAL | Sets OCP4 requests and limits |
+| 37 | `release-approval` | Release approval | `H` | — | Wave-level go/no-go on accumulated evidence |
+| 38 | `production-cutover` | Production cutover, parallel run & rollback | `P + H` | OPERATIONAL | |
 
 ---
 
@@ -186,7 +192,7 @@ executions stay resolvable.
 New job definitions cannot reference a retired step; validation fails with
 `STEP_RETIRED`, naming the successor.
 
-### v1 → v2.3 mapping
+### v1 → v2.4 mapping
 
 Direct from the original 51 steps to today's numbering.
 
@@ -196,46 +202,46 @@ Direct from the original 51 steps to today's numbering.
 | 2 | solution discovery | 2 |
 | 3 | application fingerprinting | 3 |
 | 4 | pattern classification | 7 |
-| 5, 6 | pattern discovery, pattern validation | 11 |
-| 7 | dependency graph construction | 12 |
+| 5, 6 | pattern discovery, pattern validation | 12 |
+| 7 | dependency graph construction | 13 |
 | 8 | impact map generation | *retired* |
 | 9 | test coverage assessment | 8 |
 | 10 | risk scoring | 10 |
 | 11 | inventory dashboard population | *retired* |
-| 12 | migration wave planning | 13 |
+| 12 | migration wave planning | 14 |
 | 13, 14, 15 | target state governance | *retired* |
 | 16 | accelerator binding | *retired* |
-| 17 | branch & baseline | 14 |
-| 18 | baseline verification | 15 |
-| 19 | API contract snapshot | 16 |
-| 20 | characterization test generation | 17 |
+| 17 | branch & baseline | 15 |
+| 18 | baseline verification | 16 |
+| 19 | API contract snapshot | 17 |
+| 20 | characterization test generation | 18 |
 | 21 | guardrail playbook generation | *retired* |
-| 22, 24 | plan approval gate, plan validation | 19 |
-| 23 | engine assessment | 20 or 21 |
-| 25 | framework retarget & package upgrade | 20 or 21 — package discovery is now step 6 |
-| 26, 27 | build-fix loop, breaking-change remediation | 20 or 21 |
-| 28, 29, 30 | Windows-to-Linux, config externalisation, logging & health | 21 |
-| 31, 33, 34 | independent verification, characterization execution, Linux & security scan | 22 |
-| 32 | contract parity verification | 23 |
-| 35 | container build file generation | 20 |
-| 36 | evidence bundle | 24 |
-| 37 | PR creation | 25 |
-| 38 | code review | 26 |
-| 39 | feedback capture | 27 |
-| 40 | merge & version record | 28 |
-| 41 | wave readiness | 29 |
-| 42 | OCP4 manifest generation | 20 |
-| 43 | image build & push | 30 |
-| 44 | container smoke test | 31 |
-| 45 | CI/CD pipeline update | 20 |
-| 46 – 51 | non-prod deploy through production cutover | 32 – 37 |
+| 22, 24 | plan approval gate, plan validation | 20 |
+| 23 | engine assessment | 21 or 22 |
+| 25 | framework retarget & package upgrade | 21 or 22 — package discovery is now step 6 |
+| 26, 27 | build-fix loop, breaking-change remediation | 21 or 22 |
+| 28, 29, 30 | Windows-to-Linux, config externalisation, logging & health | 22 |
+| 31, 33, 34 | independent verification, characterization execution, Linux & security scan | 23 |
+| 32 | contract parity verification | 24 |
+| 35 | container build file generation | 21 |
+| 36 | evidence bundle | 25 |
+| 37 | PR creation | 26 |
+| 38 | code review | 27 |
+| 39 | feedback capture | 28 |
+| 40 | merge & version record | 29 |
+| 41 | wave readiness | 30 |
+| 42 | OCP4 manifest generation | 21 |
+| 43 | image build & push | 31 |
+| 44 | container smoke test | 32 |
+| 45 | CI/CD pipeline update | 21 |
+| 46 – 51 | non-prod deploy through production cutover | 33 – 38 |
 
 **New since v1:** `entry-point-inventory`, `outbound-invocation-inventory` and `work-list-assembly`
-in v2.0; `dependency-assessment` in v2.1; `impact-analysis` in v2.3 — not v1's
+in v2.0; `dependency-assessment` in v2.1; `impact-analysis` in v2.3; `conversion-preparation` in v2.4 — not v1's
 retired impact map revived, but impact per work item and resolution, which the work list
 alone does not give.
 
-"20 or 21" is the point of the collapse: the same kind of work runs in whichever conversion
+"21 or 22" is the point of the collapse: the same kind of work runs in whichever conversion
 step matches its item's scope.
 
 ---
@@ -258,13 +264,13 @@ Not deleted — moved somewhere better. Numbers below are **v1**.
 
 | Owner | Count | Steps |
 |---|---|---|
-| `P` | 29 | 1–12, 14, 15, 16, 18, 20, 21, 22, 23, 27, 28, 29–35 |
-| `H` | 3 | 19, 26, 36 |
-| `P + H` | 2 | 13, 37 |
-| `P + S` | 2 | 24, 25 |
-| `S` | 1 | 17 |
+| `P` | 30 | 1–13, 15, 16, 17, 19, 21, 22, 23, 24, 28, 29, 30–36 |
+| `H` | 3 | 20, 27, 37 |
+| `P + H` | 2 | 14, 38 |
+| `P + S` | 2 | 25, 26 |
+| `S` | 1 | 18 |
 
-Totals to 37. `dependency-assessment` is `P`; its optional advisory explanation of breaking changes is an
+Totals to 38. `dependency-assessment` is `P`; its optional advisory explanation of breaking changes is an
 `S` sub-task inside the step, not a separate step.
 
 **No step is owned by an external engine.** Engine choice is a property of a
@@ -300,7 +306,7 @@ shared with the platform.
     (`app/seed/platform.py`). A missing row or stub is registered, and a newer file upgrades
     the row. A machine ahead of the repository is never downgraded but is reported, and a
     same-version difference is reported as a conflict and left as is.
-  - **Proving it.** `python -m app.seed.reproduce` creates a scratch database and
+  - **Proving it.** `python -m app.seed.reproduce` creates a scratch schema in the same database and
     bootstraps it as a new environment: migrate, then `python -m app.seed`, which takes the
     catalog from the committed export (01-ENVIRONMENT-SETUP.md section 9). It then compares
     it with this machine:

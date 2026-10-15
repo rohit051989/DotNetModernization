@@ -1,6 +1,6 @@
 job_name: phase0-repository-discovery
-version: 16
-description: "Per-repository discovery and analysis, repository-ingest through risk-scoring-tier-assignment (17-LIFECYCLE-STEPS.md)."
+version: 17
+description: "Per-repository discovery and analysis, repository-ingest through risk-scoring-tier-assignment, then conversion-preparation (17-LIFECYCLE-STEPS.md)."
 
 parameters:
   - name: engagement_id
@@ -23,6 +23,18 @@ parameters:
     required: false
     default: false
     description: "Answer package lookups from the lookup cache only, whatever their age; a package it does not hold is reported as not answered, never looked up live."
+  # v17: conversion-preparation is the job's last step (36-COPILOT-ENHANCED-CONVERSION Part N). The verifier's
+  # isolated re-discovery turns it off; a person starting the next conversion from the UI sets new_conversion.
+  - name: prepare_conversion
+    type: boolean
+    required: false
+    default: true
+    description: "Prepare the repository's conversion after discovery: branch, worktree, package step, engine inputs, runbook."
+  - name: new_conversion
+    type: boolean
+    required: false
+    default: false
+    description: "Start the next conversion even when the latest has been run. Off on a rescan, which refreshes only a conversion not run yet."
 
 stub_policy: continue
 
@@ -65,7 +77,8 @@ flow:
       solution-project-inventory: "${artifacts.solution-project-inventory}"
       application-fingerprint: "${artifacts.application-fingerprint}"
     config:
-      compare_public_feed: true
+      # v17: from configuration (COMPARE_PUBLIC_NUGET_FEED): off where nuget.org is unreachable.
+      compare_public_feed: "${settings.compare_public_nuget_feed}"
       lookup_cache_ttl_hours: 24
       force_refresh: false
       lookup_offline: "${params.lookup_offline}"
@@ -111,3 +124,5 @@ flow:
       test-coverage: "${artifacts.test-coverage}"
       outbound-invocation-inventory: "${artifacts.outbound-invocation-inventory}"
   - step: risk-scoring-tier-assignment
+  # v17: conversion-preparation. Reads the database the steps above wrote; never fails the run.
+  - step: conversion-preparation

@@ -47,6 +47,10 @@ ENGINE_VERSION = "0.1.0"
 _INPUT_REF_RE = re.compile(r"^\$\{([a-zA-Z_][\w.\-]*)\}$")
 _PARAM_TOKEN_RE = re.compile(r"^\$\{params\.([\w-]+)\}$")
 _PARAM_INLINE_RE = re.compile(r"\$\{params\.([\w-]+)\}")
+# ${settings.x}: a platform setting a job's step config may read, from configuration (01-ENVIRONMENT-SETUP.md section
+# 10). Only these: a setting holding a credential or a path is never handed to a step this way.
+_SETTING_TOKEN_RE = re.compile(r"^\$\{settings\.([a-z_]+)\}$")
+STEP_READABLE_SETTINGS = ("compare_public_nuget_feed",)
 _TIER_CONDITION_RE = re.compile(r"^\s*(\w+)\s*(>=|<=|==|!=|>|<)\s*(.+?)\s*$")
 
 
@@ -99,8 +103,13 @@ def _run_base_dir(
 
 
 def _resolve_config(value, parameters: dict):
-    """Substitutes ${params.x} tokens in a step's `config` block."""
+    """Substitutes ${params.x} and ${settings.x} tokens in a step's `config` block."""
     if isinstance(value, str):
+        setting = _SETTING_TOKEN_RE.match(value.strip())
+        if setting:
+            if setting.group(1) not in STEP_READABLE_SETTINGS:
+                raise ValueError(f"${{settings.{setting.group(1)}}} is not a setting a step may read")
+            return getattr(settings, setting.group(1))
         full = _PARAM_TOKEN_RE.match(value.strip())
         if full:
             return parameters.get(full.group(1))

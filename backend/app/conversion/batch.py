@@ -51,6 +51,7 @@ class Batch(Run):
         self.work = self.dir / "scratch" / "work"
         self.cycles = 0
         self.flaky: list[dict] = []
+        self.skipped: str | None = None
 
     # ---------- one build and test of the working copy ----------
 
@@ -232,4 +233,8 @@ class Batch(Run):
             evidence.write(self.evidence / f"checkout-after-{_now():%Y%m%dT%H%M%S}.json", json.dumps(after, indent=2))
             if after != before:
                 self.stop(f"the repository's checked-out working tree changed during the run: {before} -> {after}")
-        return {"seconds": round(time.monotonic() - started), "cycles": self.cycles, "flaky": self.flaky}
+        if not (self.plan.baseline or {}).get("passed"):
+            # Part N: a baseline that does not build or pass its tests applies nothing; the changes go to the agent.
+            self.skipped = f"the baseline did not pass: {(self.plan.baseline or {}).get('failure') or self.plan.status_reason}"
+        return {"seconds": round(time.monotonic() - started), "cycles": self.cycles, "flaky": self.flaky,
+                **({"skipped": self.skipped} if self.skipped else {})}

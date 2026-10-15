@@ -115,6 +115,60 @@ def records(engagement_id: str, slug: str) -> list[dict]:
     return sorted(found, key=lambda r: r["number"])
 
 
+def record(engagement_id: str, slug: str, number: int) -> dict | None:
+    """Conversion `number`'s record, or None."""
+    path = conversions_dir(engagement_id, slug) / str(number) / RECORD
+    return json.loads(path.read_text(encoding="utf-8")) if path.exists() else None
+
+
+def commits_beyond_inputs(rec: dict) -> int:
+    """How many commits the conversion's branch has beyond what prepare left (its inputs commit): the engine's work.
+    A conversion counts as run once there is one (Part N)."""
+    worktree = Path(rec["worktree"])
+    if not worktree.exists():
+        return 0
+    return int(gitops.git(worktree, "rev-list", "--count", f"{rec['head']}..HEAD", check=False).strip() or 0)
+
+
+def uncommitted(rec: dict) -> list[str]:
+    worktree = Path(rec["worktree"])
+    return gitops.changed_files(worktree) if worktree.exists() else []
+
+
+def verification_of(rec: dict) -> dict | None:
+    """The verification of this conversion's branch (label conversion-<n>), when one was made."""
+    path = planner.RUNS / rec["engagement"] / rec["repository"] / "verification" / rec["branch"].replace("/", "-") / "verification.json"
+    return json.loads(path.read_text(encoding="utf-8")) if path.exists() else None
+
+
+def status(rec: dict) -> dict:
+    """prepared (nothing beyond its inputs), run (commits beyond them) or verified (a verification of the branch's
+    current head exists), with what each is read from."""
+    beyond = commits_beyond_inputs(rec)
+    worktree = Path(rec["worktree"])
+    head = gitops.head(worktree) if worktree.exists() else None
+    v = verification_of(rec)
+    verified = bool(v and head and v.get("tip") == head)
+    return {"state": "verified" if verified else ("run" if beyond else "prepared"), "head": head,
+            "commitsBeyondInputs": beyond, "uncommitted": uncommitted(rec), "verification": v,
+            "verificationIsCurrent": verified}
+
+
+def verify_refusal(rec: dict) -> str | None:
+    """Why this conversion cannot be verified now, or None: its worktree has uncommitted changes, or its branch has
+    nothing beyond its inputs."""
+    worktree = Path(rec["worktree"])
+    if not worktree.exists():
+        return f"the worktree {worktree} does not exist"
+    changed = uncommitted(rec)
+    if changed:
+        return (f"the worktree has {len(changed)} uncommitted change(s) ({', '.join(changed[:3])}"
+                + (" ..." if len(changed) > 3 else "") + "): commit them on the branch first")
+    if not commits_beyond_inputs(rec):
+        return f"{rec['branch']} has nothing beyond its inputs: the conversion has not been run"
+    return None
+
+
 def _write_record(record: dict) -> None:
     path = Path(record["folder"]) / RECORD
     path.write_text(json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
@@ -218,7 +272,7 @@ class AdvisoryFound(RuntimeError):
 
 
 def check_advisories(db, files: dict[str, str] | None = None, now: datetime.datetime | None = None,
-                     targets: list[dict] | None = None) -> list[dict]:
+                     targets: list[dict] | None = None, check_age: bool = True) -> list[dict]:
     """Every package version the generated instructions (`files`) and the package commits (`targets`) ask for,
     checked against the package lookups: [{project, package, asked, advisories, fetchedAt}]. Refuses (AdvisoryFound)
     when one has a known advisory, is unknown to the lookups, or was answered by lookups older than a day: "today's
@@ -228,7 +282,7 @@ def check_advisories(db, files: dict[str, str] | None = None, now: datetime.date
     from app.engine.inputs import render
 
     now = now or datetime.datetime.now(datetime.timezone.utc)
-    checked, problems = [], []
+    checked, problems, stale = [], [], []
     for t in (targets or []) + render.package_targets(files or {}):
         rows = db.execute(text("SELECT metadata, fetched_at FROM package_lookup_cache WHERE package_id = :p"),
                           {"p": t["package"].lower()}).all()
@@ -242,8 +296,12 @@ def check_advisories(db, files: dict[str, str] | None = None, now: datetime.date
             problems.append(f"{where}: no package lookup knows this version")
         elif entry["advisories"]:
             problems.append(f"{where}: known advisories {', '.join(entry['advisories'])}")
-        elif now - entry["fetchedAt"] > LOOKUP_TTL:
-            problems.append(f"{where}: looked up {entry['fetchedAt']:%Y-%m-%d %H:%M} UTC, more than a day ago")
+        elif check_age and now - entry["fetchedAt"] > LOOKUP_TTL:
+            stale.append(f"{where}: looked up {entry['fetchedAt']:%Y-%m-%d %H:%M} UTC, more than a day ago")
+    if stale and not problems:
+        # Part N: old lookups are refreshed, never refused. The caller runs discovery, which answers them again and
+        # ends by preparing the conversion.
+        raise LookupsStale(f"{len(stale)} package lookup(s) older than a day; the first: {stale[0]}")
     if problems:
         raise AdvisoryFound("the inputs ask for package versions that cannot be confirmed free of known advisories "
                             "today. Run discovery again (python -m app.repositories.cli discover) so the lookups are "
@@ -253,18 +311,33 @@ def check_advisories(db, files: dict[str, str] | None = None, now: datetime.date
 
 # ---------------------------------------------------------------- prepare
 
+class LookupsStale(RuntimeError):
+    """The package lookups are older than their limit: discovery answers them again before prepare runs."""
+
+
 def prepare(db, engagement_id: str, slug: str, *, baseline: str | None = None, goal: str | None = None,
-            sibling_links: list[str] | None = None, canaries: list[dict] | None = None) -> dict:
+            sibling_links: list[str] | None = None, canaries: list[dict] | None = None, when_run: str = "new",
+            lookups_from_discovery: bool = False) -> dict:
+    """Prepares the repository's conversion. `when_run`: what to do when the latest conversion has been run (its branch
+    has commits beyond its inputs) — "new" starts the next one, "keep" leaves it and prepares nothing (a rescan:
+    a person starts the next conversion from the UI). An unrun conversion is refreshed in place either way.
+    `lookups_from_discovery`: the discovery run this prepare ends has just answered the package lookups, so their age
+    is not checked again; otherwise lookups older than their limit raise LookupsStale."""
     repository = _repository(db, engagement_id, slug)
     engagement = db.get(models.Engagement, engagement_id)
     root = Path(repository.local_path)
     latest = (records(engagement_id, slug) or [None])[-1]
     base = gitops.git(root, "rev-parse", baseline or (latest or {}).get("baseline") or "HEAD").strip()
     goal = goal or (latest or {}).get("goal") or DEFAULT_GOAL
-    sibling_links = sibling_links if sibling_links is not None else (latest or {}).get("siblingLinks") or []
+    if sibling_links is None:
+        sibling_links = (latest or {}).get("siblingLinks") if latest and latest.get("siblingLinks") is not None else siblings.detect(root)
     canaries = canaries if canaries is not None else (latest or {}).get("canaries") or []
 
     refresh = latest is not None and latest["baseline"] == base and unrun(Path(latest["worktree"]), base)
+    if latest is not None and not refresh and when_run == "keep":
+        return {**latest, "action": "kept",
+                "reason": f"conversion {latest['number']} has been run: a rescan does not start another (start the next "
+                          "conversion from the UI)"}
     number = latest["number"] if refresh else (latest["number"] + 1 if latest else 1)
     folder = conversions_dir(engagement_id, slug) / str(number)
     worktree = folder / "wt"
@@ -278,12 +351,20 @@ def prepare(db, engagement_id: str, slug: str, *, baseline: str | None = None, g
         if gitops.git(root, "rev-parse", "--verify", "--quiet", f"refs/heads/{branch}", check=False).strip():
             raise RuntimeError(f"branch {branch} exists without its conversion record: resolve it by hand")
 
+    # The package step's plan. A repository the planner cannot plan (no unit test project, two target frameworks)
+    # gets no package step: its package changes go to the agent as instructions, and the reason is recorded.
+    try:
+        plan, units = plan_packages(db, slug, base, branch, worktree)
+        not_planned = None
+    except (LookupError, ValueError) as error:
+        db.rollback()
+        plan, units, not_planned = None, [], f"no package step: {error}"
+
     # Nothing is changed unless no version the package commits or the inputs would ask for has a known advisory
     # today. The inputs are generated aside first, whole: a superset of what they will ask for.
-    plan, units = plan_packages(db, slug, base, branch, worktree)
     with tempfile.TemporaryDirectory() as tmp:
         fresh = generate(db, engagement_id, slug, Path(tmp))
-    checked = check_advisories(db, fresh, targets=unit_targets(units))
+    checked = check_advisories(db, fresh, targets=unit_targets(units), check_age=not lookups_from_discovery)
 
     planned = [u.target.get("title") for u in units]
     reuse = bool(refresh and latest.get("packagesHead") and latest.get("plannedPackageChanges") == planned)
@@ -298,6 +379,8 @@ def prepare(db, engagement_id: str, slug: str, *, baseline: str | None = None, g
     siblings.link(worktree, root, sibling_links)
     if reuse:
         changes, applied, step = latest["packageChanges"], latest["applied"], latest.get("packageStep") or {}
+    elif plan is None:
+        changes, applied, step = [], [], {"seconds": 0, "cycles": 0, "flaky": [], "skipped": not_planned}
     else:
         units, step = run_packages(db, plan, sibling_links)
         changes, applied = [_unit_record(u) for u in units], applied_changes(units)
@@ -318,7 +401,7 @@ def prepare(db, engagement_id: str, slug: str, *, baseline: str | None = None, g
         # The package changes the platform applied before the agent: each unit, committed or why not.
         "plannedPackageChanges": planned, "packageChanges": changes, "applied": applied, "packagesHead": packages_head,
         # How long the package step took, its build-and-test cycles, and the tests that failed once and passed on
-        # their rerun: flaky, reported, never a failure.
+        # their rerun: flaky, reported, never a failure. `skipped`: why no package change was applied.
         "packageStep": step,
         "leftForAgent": left_for_agent(db, engagement_id, slug, applied, changes),
     }
@@ -450,8 +533,20 @@ def main(argv: list[str] | None = None) -> int:
                 parser.error("a canary needs all four: --canary-file, --canary-find, --canary-replace, --canary-why")
             canaries = ([{"file": canary[0], "find": canary[1], "replace": canary[2], "why": canary[3]}]
                         if all(canary) else None)
-            r = prepare(db, args.engagement, args.repository, baseline=args.baseline, goal=args.goal,
-                        sibling_links=args.sibling_links, canaries=canaries)
+            options = dict(baseline=args.baseline, goal=args.goal, sibling_links=args.sibling_links, canaries=canaries)
+            try:
+                r = prepare(db, args.engagement, args.repository, **options)
+            except LookupsStale as stale:
+                # Part N: refreshed, never refused. Discovery answers the lookups again (its own prepare step off,
+                # so these options are kept), then prepare runs on what it answered.
+                from app.repositories import cli as repositories_cli
+
+                print(f"{stale}: running discovery to refresh them")
+                execution = repositories_cli.discover(db, _repository(db, args.engagement, args.repository),
+                                                      prepare_conversion=False)
+                if execution.batch_status != "COMPLETED":
+                    raise SystemExit(f"discovery ended {execution.batch_status}: nothing prepared")
+                r = prepare(db, args.engagement, args.repository, lookups_from_discovery=True, **options)
             print(f"{r['action']} {args.repository} {r['branch']} at {r['head'][:8]} (baseline {r['baseline'][:8]})")
             print(f"worktree: {r['worktree']}")
             print(f"runbook:  {r['runbook']}")

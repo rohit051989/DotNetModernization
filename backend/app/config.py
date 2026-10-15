@@ -129,5 +129,25 @@ def apply_credentials(s: "Settings") -> None:
         os.environ["PGPASSWORD"] = s.db_password.get_secret_value()
 
 
+# The .NET SDK the platform runs (builds, tests, the step programs) contacts nothing of its own accord: no usage
+# telemetry, no workload update check, and no first-run ASP.NET development certificate, which would be written to
+# the user's certificate store (CLAUDE.md rule 14). Set for this process and every process it starts; an explicit
+# value in the environment wins. The only destinations left are the database and the package feeds
+# (01-ENVIRONMENT-SETUP.md section 10).
+QUIET_DOTNET = {
+    "DOTNET_CLI_TELEMETRY_OPTOUT": "1",
+    "DOTNET_NOLOGO": "1",
+    "DOTNET_CLI_WORKLOAD_UPDATE_NOTIFY_DISABLE": "1",
+    "DOTNET_SKIP_FIRST_TIME_EXPERIENCE": "1",
+    "DOTNET_GENERATE_ASPNET_CERTIFICATE": "false",
+}
+
+
+def quiet_dotnet() -> None:
+    for name, value in QUIET_DOTNET.items():
+        os.environ.setdefault(name, value)
+
+
 settings = Settings()
 apply_credentials(settings)
+quiet_dotnet()

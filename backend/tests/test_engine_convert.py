@@ -283,8 +283,12 @@ class Advisories(unittest.TestCase):
     def test_a_version_with_an_advisory_or_stale_lookups_is_refused(self):
         with self.assertRaisesRegex(convert.AdvisoryFound, "System.Security.Cryptography.Xml 10.0.13 .*GHSA-x"):
             convert.check_advisories(self._db(xml_advisory=True), self.FILES, now=self.NOW)
-        with self.assertRaisesRegex(convert.AdvisoryFound, "more than a day ago"):
+        # Part N: old lookups are refreshed, never refused: the caller runs discovery, which answers them again.
+        with self.assertRaisesRegex(convert.LookupsStale, "more than a day ago"):
             convert.check_advisories(self._db(fetched_hours_ago=30), self.FILES, now=self.NOW)
+        # Within the discovery run that answered them, their age is not checked again.
+        self.assertEqual(len(convert.check_advisories(self._db(fetched_hours_ago=30), self.FILES, now=self.NOW,
+                                                      check_age=False)), 2)
         with self.assertRaisesRegex(convert.AdvisoryFound, "no package lookup knows this version"):
             convert.check_advisories(_Db({}), self.FILES, now=self.NOW)
 

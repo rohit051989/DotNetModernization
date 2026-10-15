@@ -30,7 +30,8 @@ def _report(db, execution: models.WfJobExecution) -> int:
     return 0 if execution.batch_status == "COMPLETED" else 1
 
 
-def discover(db, repository: models.Repository, lookup_offline: bool = False) -> models.WfJobExecution:
+def discover(db, repository: models.Repository, lookup_offline: bool = False, prepare_conversion: bool = True,
+             new_conversion: bool = False) -> models.WfJobExecution:
     """`lookup_offline`: dependency-assessment answers package lookups from the lookup cache only, contacting no feed
     (36-COPILOT-ENHANCED-CONVERSION Part L): rediscovering an experiment's repository against the answers its frozen
     snapshot holds, so no release published since changes them."""
@@ -39,6 +40,10 @@ def discover(db, repository: models.Repository, lookup_offline: bool = False) ->
     parameters = {"engagement_id": repository.engagement_id, "repository_id": str(repository.id), "ingest_token": token}
     if lookup_offline:
         parameters["lookup_offline"] = True
+    # The job's last step, conversion-preparation: off when a caller prepares by itself; new_conversion starts the
+    # next conversion even when the latest has been run (36-COPILOT-ENHANCED-CONVERSION Part N).
+    parameters["prepare_conversion"] = prepare_conversion
+    parameters["new_conversion"] = new_conversion
     execution = runtime.launch_job(db, DISCOVERY, parameters, triggered_by="manual")
     db.commit()
     return execution

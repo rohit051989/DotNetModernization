@@ -115,10 +115,12 @@ try {
         }
         New-Item -ItemType Directory -Force -Path $target | Out-Null
 
-        # Container, user and database from docker\docker-compose.yml's catalog-db service.
+        # Container, user and database from docker\docker-compose.yml's catalog-db service; only the configured
+        # schema (DB_SCHEMA) is dumped, as only it is reset.
         $container = 'modernization-catalog-db'
+        $schema = (& $python -c "from app.config import settings; print(settings.db_schema)").Trim()
         $file = "pre-reset-$(Get-Date -Format 'yyyyMMdd-HHmmss').dump"
-        docker exec $container pg_dump -U catalog -d modernization_catalog -Fc -f "/tmp/$file"
+        docker exec $container pg_dump -U catalog -d modernization_catalog -n $schema -Fc -f "/tmp/$file"
         if ($LASTEXITCODE -ne 0) { throw "pg_dump failed in container $container; nothing was reset. Use -NoBackup to skip the backup." }
         docker cp "${container}:/tmp/$file" (Join-Path $target $file) | Out-Null
         if ($LASTEXITCODE -ne 0) { throw "Copying the dump out of $container failed; nothing was reset." }

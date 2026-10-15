@@ -373,6 +373,22 @@ def validate_job_definition(
                 )
             continue
 
+        if ref.kind == "settings":
+            # A platform setting a step's config may read (executor.STEP_READABLE_SETTINGS; 01-ENVIRONMENT-SETUP.md
+            # section 10). Any other setting is refused: one holding a credential or a path is never handed out.
+            from app.workflow.runtime.executor import STEP_READABLE_SETTINGS
+
+            name = ref.parts[1] if len(ref.parts) > 1 else ""
+            if len(ref.parts) != 2 or name not in STEP_READABLE_SETTINGS:
+                errors.append(
+                    ValidationErrorItem(
+                        code="UNRESOLVED_REFERENCE",
+                        step=ref.step_name,
+                        detail=f"'${{{ref.raw}}}' is not a setting a step may read ({', '.join(STEP_READABLE_SETTINGS)})",
+                    )
+                )
+            continue
+
         if ref.kind == "external":
             name = ref.parts[1] if len(ref.parts) > 1 else ""
             if name not in declared_external_names:

@@ -1,0 +1,16 @@
+{
+  "step_name": "independent-verification",
+  "lifecycle_step_no": 23,
+  "display_name": "Independent build, test & scan verification",
+  "owner_code": "P",
+  "version": "1.0.0",
+  "owner_team": "platform",
+  "viewpoint": "DEVELOPMENT",
+  "implementation_status": "implemented",
+  "consumes": [],
+  "produces": [],
+  "adapter_type": "python",
+  "adapter_config": {
+    "entrypoint": "app.steps.independent_verification:run"
+  }
+}

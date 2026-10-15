@@ -9,12 +9,13 @@ plan records, and only while the file still has the recorded hash — a link is
 never more than the evidence it points at.
 """
 
+import json
 import mimetypes
 import uuid
 from pathlib import Path
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, Query
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -236,3 +237,173 @@ def get_conversion_evidence(plan_id: uuid.UUID, path: str = Query(..., min_lengt
         file.suffix.lower()) or mimetypes.guess_type(file.name)[0] or "application/octet-stream"
     return FileResponse(file, media_type=f"{media}; charset=utf-8" if media.startswith("text/") else media,
                         headers={"Content-Disposition": f'inline; filename="{file.name}"'})
+
+
+# ---------------------------------------------------------------- the current conversion (36-COPILOT Part N)
+
+_DISCOVERY_JOB = "phase0-repository-discovery"
+_VERIFICATION_JOB = "conversion-verification"
+
+
+class PrepareAttemptOut(BaseModel):
+    at: str | None = None
+    status: str | None = None          # prepared, refreshed, kept, failed
+    message: str | None = None
+    number: int | None = None
+    jobExecutionId: str | None = None
+
+
+class VerificationOut(BaseModel):
+    verdict: str
+    reasons: list[str]
+    verifiedAt: str
+    tip: str
+    markdown: str
+    current: bool                       # made of the branch's current head
+
+
+class JobRefOut(BaseModel):
+    job_execution_id: str
+    batch_status: str
+    exit_status: str | None = None
+    exit_message: str | None = None
+
+
+class CurrentConversionOut(BaseModel):
+    number: int | None = None
+    state: str | None = None            # prepared, run or verified
+    branch: str | None = None
+    worktree: str | None = None
+    baseline: str | None = None
+    head: str | None = None
+    commits_beyond_inputs: int = 0
+    uncommitted: list[str] = []
+    runbook_path: str | None = None
+    runbook: str | None = None
+    opening_message: str | None = None
+    prepared_at: str | None = None
+    package_step: dict = {}
+    left_for_agent: dict = {}
+    verify_refusal: str | None = None
+    verification: VerificationOut | None = None
+    verification_job: JobRefOut | None = None
+    last_prepare: PrepareAttemptOut | None = None
+    discovery_job: JobRefOut | None = None
+
+
+class LaunchedOut(BaseModel):
+    job_execution_id: str
+
+
+def _job_ref(db: Session, job_name: str, repository_id: uuid.UUID) -> JobRefOut | None:
+    from app.workflow.runtime import service as runtime_service
+
+    latest = runtime_service.list_executions(db, job_name=job_name, repository_id=str(repository_id), limit=1)
+    if not latest:
+        return None
+    e = latest[0]
+    return JobRefOut(job_execution_id=str(e.id), batch_status=e.batch_status, exit_status=e.exit_status,
+                     exit_message=e.exit_message)
+
+
+def _launch(db: Session, background_tasks: BackgroundTasks, job_name: str, parameters: dict) -> str:
+    """Synchronous creation, asynchronous execution (15-REPOSITORY-INGEST-UI.md Part E): the execution is created and
+    committed before the response, and runs after it, in the background."""
+    from app.workflow.runtime import service as runtime_service
+
+    try:
+        job_execution, instance, definition = runtime_service.create_execution(db, job_name, parameters, triggered_by="api")
+    except LookupError as exc:
+        raise error(500, str(exc), code="JOB_DEFINITION_NOT_ACTIVE") from exc
+    except runtime_service.PreconditionError as exc:
+        raise error(422, str(exc), code="PRECONDITION_FAILED") from exc
+    db.commit()
+    background_tasks.add_task(runtime_service.run_execution_in_background, job_execution.id, instance.id,
+                              definition.model_dump(mode="json"))
+    return str(job_execution.id)
+
+
+@router.get(
+    "/repositories/{repository_id}/conversions/current",
+    response_model=CurrentConversionOut,
+    summary="The repository's current conversion: status, worktree, branch, runbook, opening message and verification",
+    operation_id="get_current_conversion",
+    responses={404: {"model": ErrorResponse, "description": "Repository not found."}},
+)
+def get_current_conversion(repository_id: uuid.UUID, db: Session = Depends(get_db)):
+    from app.engine import convert
+    from app.steps.conversion_preparation import LAST_PREPARE
+
+    repo = _repository(db, repository_id)
+    home = convert.conversions_dir(repo.engagement_id, repo.slug)
+    last = home / LAST_PREPARE
+    out = CurrentConversionOut(
+        last_prepare=PrepareAttemptOut(**{k: v for k, v in json.loads(last.read_text(encoding="utf-8")).items()
+                                          if k in PrepareAttemptOut.model_fields}) if last.exists() else None,
+        discovery_job=_job_ref(db, _DISCOVERY_JOB, repository_id),
+        verification_job=_job_ref(db, _VERIFICATION_JOB, repository_id))
+    records = convert.records(repo.engagement_id, repo.slug)
+    if not records:
+        return out
+    rec = records[-1]
+    s = convert.status(rec)
+    runbook = Path(rec["runbook"])
+    v = s["verification"]
+    out.number, out.state, out.branch = rec["number"], s["state"], rec["branch"]
+    out.worktree, out.baseline, out.head = rec["worktree"], rec["baseline"], s["head"]
+    out.commits_beyond_inputs, out.uncommitted = s["commitsBeyondInputs"], s["uncommitted"]
+    out.runbook_path = str(runbook)
+    out.runbook = runbook.read_text(encoding="utf-8") if runbook.exists() else None
+    out.opening_message = convert.opening_message(rec["goal"], rec.get("solution"))
+    out.prepared_at = rec.get("preparedAt")
+    out.package_step, out.left_for_agent = rec.get("packageStep") or {}, rec.get("leftForAgent") or {}
+    out.verify_refusal = convert.verify_refusal(rec)
+    if v:
+        md = convert.planner.RUNS / rec["engagement"] / rec["repository"] / "verification" / v["label"] / "VERIFICATION.md"
+        out.verification = VerificationOut(verdict=v["verdict"], reasons=v["reasons"], verifiedAt=v["verifiedAt"],
+                                           tip=v["tip"], markdown=md.read_text(encoding="utf-8") if md.exists() else "",
+                                           current=s["verificationIsCurrent"])
+    return out
+
+
+@router.post(
+    "/repositories/{repository_id}/conversions",
+    response_model=LaunchedOut,
+    status_code=202,
+    summary="Start the repository's next conversion: discovery, then a new conversion prepared",
+    operation_id="start_next_conversion",
+    responses={404: {"model": ErrorResponse, "description": "Repository not found."}},
+)
+def start_next_conversion(repository_id: uuid.UUID, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+    from app.repositories import service as repositories
+
+    repo = _repository(db, repository_id)
+    token = repositories.start_rescan(repo)
+    return LaunchedOut(job_execution_id=_launch(db, background_tasks, _DISCOVERY_JOB, {
+        "engagement_id": repo.engagement_id, "repository_id": str(repo.id), "ingest_token": token,
+        "prepare_conversion": True, "new_conversion": True}))
+
+
+@router.post(
+    "/repositories/{repository_id}/conversions/{number}/verify",
+    response_model=LaunchedOut,
+    status_code=202,
+    summary="Verify a conversion that has been run, as a workflow job",
+    operation_id="verify_conversion",
+    responses={404: {"model": ErrorResponse, "description": "Repository or conversion not found."},
+               409: {"model": ErrorResponse,
+                     "description": "Refused: the worktree has uncommitted changes, or the branch has nothing beyond its inputs."}},
+)
+def verify_conversion(repository_id: uuid.UUID, number: int, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+    from app.engine import convert
+
+    repo = _repository(db, repository_id)
+    rec = convert.record(repo.engagement_id, repo.slug, number)
+    if rec is None:
+        raise error(404, f"{repo.slug} has no conversion {number}", code="NOT_FOUND")
+    refusal = convert.verify_refusal(rec)
+    if refusal:
+        raise error(409, f"Not verified: {refusal}.", code="VERIFY_REFUSED")
+    return LaunchedOut(job_execution_id=_launch(db, background_tasks, _VERIFICATION_JOB, {
+        "engagement_id": repo.engagement_id, "repository_id": str(repo.id), "conversion": str(number),
+        "run_token": str(uuid.uuid4())}))

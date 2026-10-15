@@ -131,6 +131,7 @@ def _worker(engagement_id: str, worktree: Path, name: str, out: Path, offline: b
                       "ingest_token": repository.ingest_token or str(uuid.uuid4())}
         if offline:
             parameters["lookup_offline"] = True      # dependency-assessment: the frozen snapshot only, no feed
+        parameters["prepare_conversion"] = False     # discovery only: a verification prepares no conversion
         execution = runtime.launch_job(db, JOB, parameters, triggered_by="manual")
         db.commit()
         steps = {s.step_name: s.exit_status for s in runtime.get_step_executions(db, execution.id)}
