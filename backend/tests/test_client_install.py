@@ -151,31 +151,44 @@ class PreflightVersions(unittest.TestCase):
         def fake_run(*args):
             return outputs.get(Path(args[0]).stem.lower() if args[0] else "", (-1, ""))
 
+        # The runtime check reads the real file system; PreflightDotnetRuntime covers it.
         with mock.patch.object(pf, "run", side_effect=fake_run), mock.patch.object(pf.shutil, "which", return_value="npm"), \
-                mock.patch.object(pf.sys, "version_info", python), mock.patch("builtins.print"):
+                mock.patch.object(pf.sys, "version_info", python), mock.patch.object(pf, "dotnet_runtime"), \
+                mock.patch("builtins.print"):
             pf.tools()
         return {what: (ok, detail) for ok, what, detail in pf.results}
 
     CURRENT = {"node": (0, "v22.12.0"), "npm": (0, "10.9.0"), "git": (0, "git version 2.17.0.windows.1"),
-               "dotnet": (0, "10.0.302 [C:\\Program Files\\dotnet\\sdk]")}
+               "dotnet": (0, "10.0.100 [C:\\Program Files\\dotnet\\sdk]")}
 
     def test_the_minimums_pass(self):
         results = self.run_tools(self.CURRENT, python=(3, 11, 0))
         self.assertTrue(all(ok for ok, _ in results.values()), results)
 
+    def test_the_client_toolchain_passes(self):
+        results = self.run_tools({**self.CURRENT, "dotnet": (0, "10.0.203 [C:\\Users\\u\\dotnet\\sdk]")}, python=(3, 14, 8))
+        self.assertTrue(all(ok for ok, _ in results.values()), results)
+        self.assertEqual(results[".NET SDK"][1], "10.0.203 (any .NET 10 SDK from 10.0.100 needed, steps\\step-003-fingerprinting\\global.json)")
+
+    def test_any_net10_feature_band_fits_and_nothing_else(self):
+        pf = _preflight()
+        for installed, ok in [("10.0.100", True), ("10.0.203", True), ("10.0.302", True), ("10.0.400", True),
+                              ("9.0.316", False), ("11.0.100", False), ("10.0.100-rc.2.25502.107", False)]:
+            self.assertEqual(pf.sdk_fits(installed, "10.0.100", "latestFeature"), ok, installed)
+
     def test_anything_older_fails_clearly(self):
         older = {"node": (0, "v20.18.1"), "npm": (0, "6.14.18"), "git": (0, "git version 2.16.2"),
-                 "dotnet": (0, "10.0.301 [x]\n10.0.200 [x]\n9.0.316 [x]")}
+                 "dotnet": (0, "9.0.316 [x]\n10.0.100-rc.2.25502.107 [x]")}
         results = self.run_tools(older, python=(3, 10, 11))
-        for what, needed in [("Python", "3.11.0 to 3.13.x needed"), ("Node.js", "20.19.0 or a later 20.x, or 22.12.0 or later"),
-                             ("npm", "7.0.0 or later"), ("git", "2.17.0 or later"), (".NET SDK", "10.0.302 or a later 10.0.3xx patch")]:
+        for what, needed in [("Python", "3.11.0 to 3.14.x needed"), ("Node.js", "20.19.0 or a later 20.x, or 22.12.0 or later"),
+                             ("npm", "7.0.0 or later"), ("git", "2.17.0 or later"), (".NET SDK", "any .NET 10 SDK from 10.0.100 needed")]:
             ok, detail = results[what]
             self.assertFalse(ok, what)
             self.assertIn(needed, detail, what)
         self.assertIn("too old", results["Node.js"][1])
 
-    def test_node_21_and_python_314_are_refused(self):
-        results = self.run_tools({**self.CURRENT, "node": (0, "v21.7.3")}, python=(3, 14, 0))
+    def test_node_21_and_python_315_are_refused(self):
+        results = self.run_tools({**self.CURRENT, "node": (0, "v21.7.3")}, python=(3, 15, 0))
         self.assertFalse(results["Node.js"][0])
         self.assertFalse(results["Python"][0])
         self.assertIn("too new", results["Python"][1])
@@ -183,6 +196,33 @@ class PreflightVersions(unittest.TestCase):
     def test_a_missing_tool_says_not_found(self):
         results = self.run_tools({k: v for k, v in self.CURRENT.items() if k != "git"})
         self.assertEqual(results["git"], (False, "not found (2.17.0 or later needed)"))
+
+
+class PreflightDotnetRuntime(unittest.TestCase):
+    """A per-user SDK's runtime is found by the step programs only through DOTNET_ROOT."""
+
+    def run_check(self, dotnet_folder: Path, dotnet_root: str | None):
+        from unittest import mock
+
+        pf = _preflight()
+        env = {k: v for k, v in os.environ.items() if k != "DOTNET_ROOT"}
+        if dotnet_root is not None:
+            env["DOTNET_ROOT"] = dotnet_root
+        with mock.patch.object(pf.shutil, "which", return_value=str(dotnet_folder / "dotnet.exe")), \
+                mock.patch.dict(pf.os.environ, env, clear=True), mock.patch("builtins.print"):
+            pf.dotnet_runtime("10.0.100")
+        return pf.results[-1]
+
+    def test_a_per_user_sdk_needs_dotnet_root(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp)
+            (folder / "shared" / "Microsoft.NETCore.App" / "10.0.7").mkdir(parents=True)
+            ok, _, detail = self.run_check(folder, None)
+            self.assertFalse(ok)
+            self.assertIn(f"Set DOTNET_ROOT to {folder.resolve()}", detail)
+            ok, _, detail = self.run_check(folder, str(folder))
+            self.assertTrue(ok, detail)
+            self.assertIn("10.0.7", detail)
 
 
 if __name__ == "__main__":

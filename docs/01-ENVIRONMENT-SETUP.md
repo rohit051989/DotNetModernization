@@ -222,13 +222,16 @@ building and running that step directly does.
 dotnet --list-sdks
 ```
 
-Requires **.NET SDK 10.0.302** (or later within the same feature band — see
-`steps/step-003-fingerprinting/global.json`, which pins the exact version with
-`rollForward: latestPatch`). An older SDK, or only the .NET 9 SDK, is not enough —
-the step targets `net10.0` and its Microsoft.Build.\* / Microsoft.CodeAnalysis.\*
-packages are pinned to versions built against .NET 10's bundled MSBuild (18.9.x) and
-Roslyn (5.9.x). If `dotnet --list-sdks` does not list `10.0.302` or later, stop and
-tell the user to install it rather than attempting the install.
+Requires **any .NET 10 SDK from 10.0.100** — `steps/step-003-fingerprinting/global.json`
+asks for `10.0.100` with `rollForward: latestFeature`, so every .NET 10 feature band
+(1xx, 2xx, 3xx, …) is accepted and the newest installed one is used. Built, published
+and tested on 10.0.203 and 10.0.302. Only the .NET 9 SDK is not enough — the step
+targets `net10.0`. The Microsoft.Build.\* packages (18.9.x) are compile-time references
+only (`ExcludeAssets="runtime"`): at run time MSBuildLocator loads the MSBuild of
+whichever SDK it finds, so a 10.0.1xx or 2xx SDK runs the steps with its own MSBuild;
+Microsoft.CodeAnalysis (5.9.x) ships with the step programs and does not depend on
+the SDK. If `dotnet --list-sdks` lists no 10.0 SDK, stop and tell the user to install
+one rather than attempting the install.
 
 ### Build and publish
 
@@ -381,13 +384,14 @@ everything up.
 
    | Tool | Required | Why this version | Tested with |
    |---|---|---|---|
-   | Python | 3.11.0 to 3.13.x | The code is 3.11 syntax. The pinned dependencies (pydantic 2.9, psycopg 3.2) publish builds up to 3.13, so 3.14 is refused | 3.13.14 |
+   | Python | 3.11.0 to 3.14.x | The code is 3.11 syntax. Every pinned dependency installs from a wheel up to 3.14 (`backend\requirements.txt`: pydantic 2.12, psycopg 3.2.10, PyYAML 6.0.3 are the oldest with 3.14 wheels), so nothing compiles on the VDI; 3.15 is refused | 3.13.14 and 3.14.8 |
    | Node.js | 20.19.0 or a later 20.x, or 22.12.0 or later | Vite's own requirement (`^20.19.0 \|\| >=22.12.0`); 21.x is refused | 24.13.0 |
    | npm | 7.0.0 or later | The frontend's lockfile is version 3. Every Node.js above ships a newer npm | 11.12.0 |
-   | .NET SDK | 10.0.302, or a later 10.0.3xx patch | `steps\step-003-fingerprinting\global.json` pins it, with `rollForward: latestPatch` | 10.0.302 |
+   | .NET SDK | Any .NET 10 SDK from 10.0.100 | `steps\step-003-fingerprinting\global.json`: `10.0.100` with `rollForward: latestFeature`, so any feature band; preflight also checks the step programs can find its runtime | 10.0.203 and 10.0.302 |
    | git | 2.17.0 or later | `git worktree remove`, the newest git command the platform runs | 2.55.0 |
 
-   Also Visual Studio with GitHub Copilot, for running conversions.
+   Also Visual Studio with GitHub Copilot, for running conversions. Python and the .NET SDK can be installed per
+   user, without administrator rights (below).
 4. **Short paths.** Install into a short folder, such as `C:\ModernizationPlatform\code`, and set a short
    `RUNS_DIR`, such as `C:\ModernizationPlatform\runs`.
    - The repository's longest file path is 159 characters. Without git's `core.longpaths`, git cannot write a
@@ -426,6 +430,51 @@ The platform contacts only these:
 - **Nothing else.** Repositories are registered by local path, and the platform clones nothing.
 - **The engine is separate.** GitHub Copilot, run by a person in Visual Studio, talks to GitHub as the company's
   account. That is the engine's traffic, not the platform's.
+
+### Python and the .NET SDK per user, without administrator rights
+
+Both install into folders the account owns, and neither needs administrator rights.
+
+**Python**, for example 3.14 into `C:\Users\<you>\Tools\Python314`:
+- Where it will be the only Python, the python.org installer runs per user:
+
+  ```powershell
+  .\python-3.14.8-amd64.exe /quiet InstallAllUsers=0 PrependPath=0 Include_launcher=0 TargetDir=C:\Users\<you>\Tools\Python314
+  ```
+
+- Where another Python must stay the default, unpack the `python` package from nuget.org instead. It is the
+  same CPython, files only, and is registered nowhere, so `py` and `python` keep resolving as before. The
+  `tools\` folder inside the `.nupkg` (a zip) is the installation.
+- Either way, give bootstrap its full path. Stage 2 builds `backend\.venv` with it:
+
+  ```powershell
+  .\scripts\bootstrap.ps1 -Python C:\Users\<you>\Tools\Python314\python.exe
+  ```
+
+**The .NET SDK**, for example 10.0.203, with Microsoft's install script, into its own folder:
+
+```powershell
+.\dotnet-install.ps1 -Version 10.0.203 -InstallDir $env:USERPROFILE\Tools\dotnet -NoPath
+```
+
+The step programs are framework-dependent `.exe` files. A per-user .NET is found only through `DOTNET_ROOT`, and
+the platform runs `dotnet` for builds and restores, so the account needs both settings. Set them in the
+account's environment; that needs no administrator rights:
+
+```powershell
+[Environment]::SetEnvironmentVariable('DOTNET_ROOT', "$env:USERPROFILE\Tools\dotnet", 'User')
+```
+
+```powershell
+[Environment]::SetEnvironmentVariable('Path', "$env:USERPROFILE\Tools\dotnet;" + [Environment]::GetEnvironmentVariable('Path', 'User'), 'User')
+```
+
+Open a new terminal afterwards, for the backend too. Windows puts the machine's `Path` before the user's, so a
+machine-wide `C:\Program Files\dotnet`, if there is one, still comes first. Preflight names the `dotnet` it found,
+and reports MISSING when the step programs could not find its runtime.
+
+No step needs a particular feature band. Built, published and tested with 10.0.203 (feature band 2xx) and
+10.0.302 (3xx), discovery and conversion preparation run end to end on 10.0.203.
 
 ### NuGet feeds for scanned repositories
 

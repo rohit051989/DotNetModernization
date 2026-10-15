@@ -73,9 +73,9 @@ PostgreSQL runs in a container, exactly as on the development machine.
 | 1 | **Git for Windows** | 2.45 or later (dev machine: 2.55.0) | https://git-scm.com/download/win | Defaults are fine. The backend calls `git` directly |
 | 2 | **WSL 2** | Latest | `wsl --install --no-distribution` (admin PowerShell), then reboot | Required by Docker Desktop |
 | 3 | **Docker Desktop** | 4.x, Engine 27+ and Compose v2 (dev machine: Engine 29.7.2, Compose v5.4.0) | https://www.docker.com/products/docker-desktop/ | Choose the WSL 2 backend. Start it once and wait for "Engine running" |
-| 4 | **Python** | **3.13.x** (minimum 3.11; dev machine: 3.13.14) | https://www.python.org/downloads/windows/ | Tick **"Add python.exe to PATH"** |
+| 4 | **Python** | **3.11 to 3.14** (tested: 3.13.14 and 3.14.8) | https://www.python.org/downloads/windows/ | Tick **"Add python.exe to PATH"**, or install per user (`01-ENVIRONMENT-SETUP.md` section 10) |
 | 5 | **Node.js LTS** | **24.x** (minimum 22.12; dev machine: 24.13.0, npm 11.12.0) | https://nodejs.org/en/download | npm is included |
-| 6 | **.NET SDK** | **10.0.302**, or a later 10.0.3xx patch | https://dotnet.microsoft.com/download/dotnet/10.0 | The .NET 9 SDK alone is **not** enough (Part 8) |
+| 6 | **.NET SDK** | Any **.NET 10** SDK from **10.0.100** (tested: 10.0.203 and 10.0.302) | https://dotnet.microsoft.com/download/dotnet/10.0 | The .NET 9 SDK alone is **not** enough (Part 8). Per user: `01-ENVIRONMENT-SETUP.md` section 10 |
 
 PostgreSQL 16 itself is **not** installed on Windows in this path: Docker pulls the
 `postgres:16` image.
@@ -88,7 +88,7 @@ Open a **new** PowerShell window, so the updated PATH is picked up:
 git --version; docker --version; docker compose version; python --version; node --version; npm --version; dotnet --list-sdks
 ```
 
-`dotnet --list-sdks` must show `10.0.302` or a later `10.0.3xx`.
+`dotnet --list-sdks` must show a .NET 10 SDK, `10.0.100` or later (any feature band).
 
 ### A3. Start the database
 
@@ -116,9 +116,9 @@ exactly as in Path A; only how the database runs, and one script, differ.
 |---|---|---|---|---|
 | 1 | **Git for Windows** | 2.45 or later (dev machine: 2.55.0) | https://git-scm.com/download/win | Defaults are fine |
 | 2 | **PostgreSQL** | **16.x**, latest patch (same major version as the `postgres:16` image) | https://www.postgresql.org/download/windows/ (EDB installer) | See B2 for the installer choices |
-| 3 | **Python** | **3.13.x** (minimum 3.11) | https://www.python.org/downloads/windows/ | Tick **"Add python.exe to PATH"** |
+| 3 | **Python** | **3.11 to 3.14** | https://www.python.org/downloads/windows/ | Tick **"Add python.exe to PATH"** |
 | 4 | **Node.js LTS** | **24.x** (minimum 22.12) | https://nodejs.org/en/download | npm is included |
-| 5 | **.NET SDK** | **10.0.302**, or a later 10.0.3xx patch | https://dotnet.microsoft.com/download/dotnet/10.0 | |
+| 5 | **.NET SDK** | Any **.NET 10** SDK from **10.0.100** | https://dotnet.microsoft.com/download/dotnet/10.0 | |
 
 No Docker and no WSL.
 
@@ -207,7 +207,7 @@ Steps 4.2–4.6 create them.
 ### 4.2 Backend
 
 Create the virtual environment and install the Python packages (FastAPI 0.115,
-SQLAlchemy 2.0, Alembic 1.14, psycopg 3.2, Pydantic 2.9):
+SQLAlchemy 2.0, Alembic 1.14, psycopg 3.2, Pydantic 2.12):
 
 ```powershell
 cd backend; python -m venv .venv; .\.venv\Scripts\Activate.ps1; python -m pip install --upgrade pip; pip install -r requirements.txt
@@ -361,7 +361,7 @@ configure each tool:
 
 ## 7. Final checklist
 
-- [ ] Versions confirmed: Git 2.45+, Python 3.13, Node 24, .NET SDK 10.0.302+ (plus Docker on Path A, `psql` 16 on Path B)
+- [ ] Versions confirmed: Git 2.45+, Python 3.11 to 3.14, Node 24, a .NET 10 SDK (10.0.100+) (plus Docker on Path A, `psql` 16 on Path B)
 - [ ] Database reachable on `localhost:5433` as `catalog` / `modernization_catalog`
 - [ ] `backend\.env` created from `.env.example`
 - [ ] `alembic upgrade head` and `python -m app.seed` completed without errors
@@ -379,7 +379,8 @@ configure each tool:
 |---|---|---|
 | Docker Desktop: "WSL 2 installation is incomplete" or "Virtualization support not detected" | No nested virtualization on the VDI | Use **Path B** |
 | `.\.venv\Scripts\Activate.ps1` cannot be loaded | Execution policy | `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` |
-| `dotnet publish` fails with a `global.json` SDK error | Only the .NET 9 SDK, or a 10.0.1xx/2xx SDK, is installed | Install .NET SDK **10.0.302** or a later 10.0.3xx |
+| `dotnet publish` fails with a `global.json` SDK error | Only the .NET 9 SDK is installed | Install any .NET 10 SDK, 10.0.100 or later |
+| A step fails at once, "You must install .NET to run this application" | The .NET SDK is installed per user, and `DOTNET_ROOT` is not set | Set `DOTNET_ROOT` to the SDK's folder for the account (`01-ENVIRONMENT-SETUP.md` section 10); preflight checks it |
 | Backend starts but uses the wrong database or run folder | Started from the repository root instead of `backend\` | `.env` and `RUNS_DIR` are relative: always start from `backend\` |
 | UI loads but every request fails | Missing `frontend\.env`, or the frontend is not on port 5174 (CORS) | Create `frontend\.env` (4.3); start with `--port 5174 --strictPort` |
 | `connection refused` on port 5433 | Database not running, or Path B installed on port 5432 | Path A: `docker compose ps`. Path B: check the service, and the port in `C:\Program Files\PostgreSQL\16\data\postgresql.conf` |

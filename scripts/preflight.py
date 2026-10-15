@@ -6,8 +6,9 @@
 
 Reports, in plain language, each prerequisite as PRESENT or MISSING, and exits 1 when anything is missing:
 
-- Python 3.11.0 to 3.13.x; Node.js 20.19.0 or a later 20.x, or 22.12.0 or later, with npm 7.0.0 or later; the .NET
-  SDK the step programs pin (10.0.302 or a later 10.0.3xx patch); git 2.17.0 or later. Anything older is MISSING;
+- Python 3.11.0 to 3.14.x; Node.js 20.19.0 or a later 20.x, or 22.12.0 or later, with npm 7.0.0 or later; any
+  .NET 10 SDK from 10.0.100 (steps/step-003-fingerprinting/global.json), and a .NET 10 runtime the step programs can
+  find (DOTNET_ROOT for a per-user SDK); git 2.17.0 or later. Anything older is MISSING;
 - whether Windows long-path support and git's core.longpaths are on (reported, never failed);
 - the database: a connection with DB_USER and DB_PASSWORD, and the right to create the configured schema (or to
   create tables in it, when it exists already); never the right to create a database or a superuser;
@@ -36,11 +37,12 @@ DEFAULT_SOURCES = {"PIP_INDEX_URL": "https://pypi.org/simple/", "NPM_REGISTRY": 
                    "NUGET_SOURCES": "https://api.nuget.org/v3/index.json"}
 results: list[tuple[bool, str, str]] = []
 
-# The required versions (01-ENVIRONMENT-SETUP.md section 10). Python: the code is 3.11 syntax and its pinned
-# dependencies (pydantic 2.9, psycopg 3.2) publish builds up to 3.13. Node.js: Vite's own requirement. npm: the
-# lockfile is version 3. git: `git worktree remove`, the newest command the platform runs, is in 2.17.
-MIN_PYTHON, MAX_PYTHON_EXCLUSIVE = (3, 11, 0), (3, 14, 0)
-PYTHON_REQUIRED = "3.11.0 to 3.13.x needed"
+# The required versions (01-ENVIRONMENT-SETUP.md section 10). Python: the code is 3.11 syntax, the suite passes on
+# 3.13 and 3.14, and every pinned dependency installs from a wheel up to 3.14 (backend/requirements.txt). Node.js:
+# Vite's own requirement. npm: the lockfile is version 3. git: `git worktree remove`, the newest command the platform
+# runs, is in 2.17. The .NET SDK: steps/step-003-fingerprinting/global.json.
+MIN_PYTHON, MAX_PYTHON_EXCLUSIVE = (3, 11, 0), (3, 15, 0)
+PYTHON_REQUIRED = "3.11.0 to 3.14.x needed"
 NODE_REQUIRED = "20.19.0 or a later 20.x, or 22.12.0 or later, needed"
 MIN_NPM, NPM_REQUIRED = (7, 0, 0), "7.0.0 or later needed"
 MIN_GIT, GIT_REQUIRED = (2, 17, 0), "2.17.0 or later needed"
@@ -85,6 +87,45 @@ def node_fits(v: tuple[int, ...]) -> bool:
     return (v[:1] == (20,) and v >= (20, 19, 0)) or v >= (22, 12, 0)
 
 
+def sdk_fits(installed: str, pinned: str, roll_forward: str) -> bool:
+    """global.json's rule. latestFeature: the same major.minor (.NET 10), at or above the pinned version, any feature
+    band. latestPatch: the same feature band (10.0.3xx), at or above the pinned patch."""
+    if version(installed)[:2] != version(pinned)[:2] or version(installed) < version(pinned) or "-" in installed:
+        return False
+    return roll_forward != "latestPatch" or installed.split(".")[2][:1] == pinned.split(".")[2][:1]
+
+
+def sdk_required(pinned: str, roll_forward: str) -> str:
+    major_minor = pinned.rsplit(".", 1)[0]
+    if roll_forward == "latestPatch":
+        return f"{pinned} or a later {major_minor}.{pinned.split('.')[2][0]}xx patch needed"
+    return f"any .NET {major_minor.split('.')[0]} SDK from {pinned} needed"
+
+
+def dotnet_runtime(pinned: str) -> None:
+    """The step programs are framework-dependent .exe files: they find the .NET runtime through DOTNET_ROOT, else the
+    machine-wide C:\\Program Files\\dotnet. A per-user SDK (dotnet-install) is found only through DOTNET_ROOT."""
+    found = shutil.which("dotnet")
+    if not found:
+        return
+    folder = Path(found).resolve().parent
+    machine = Path(os.environ.get("ProgramFiles", r"C:\Program Files")) / "dotnet"
+    root = os.environ.get("DOTNET_ROOT", "")
+    major = pinned.split(".")[0]
+    runtimes = sorted(p.name for p in (folder / "shared" / "Microsoft.NETCore.App").glob(f"{major}.*")) \
+        if (folder / "shared" / "Microsoft.NETCore.App").is_dir() else []
+    if folder == machine.resolve():
+        check(bool(runtimes), ".NET runtime for the step programs",
+              f"{', '.join(runtimes) or 'none'} in {folder} (machine-wide; .NET {major} needed)")
+    elif root and Path(root).resolve() == folder:
+        check(bool(runtimes), ".NET runtime for the step programs",
+              f"{', '.join(runtimes) or 'none'} in {folder}, which DOTNET_ROOT names (per-user; .NET {major} needed)")
+    else:
+        check(False, ".NET runtime for the step programs",
+              f"dotnet comes from {folder}, but DOTNET_ROOT is {'not set' if not root else root}: the step programs "
+              f"would not find this runtime. Set DOTNET_ROOT to {folder} for this account")
+
+
 def tools() -> None:
     print("Tools")
     py = sys.version_info[:3]
@@ -99,15 +140,14 @@ def tools() -> None:
     code, out = run(npm, "--version") if npm else (-1, "")
     v = version(out) if code == 0 else ()
     check(bool(v) and v >= MIN_NPM, "npm", f"{out if code == 0 else 'not found'} ({NPM_REQUIRED}){': too old' if v and v < MIN_NPM else ''}")
-    pinned = json.loads((ROOT / "steps" / "step-003-fingerprinting" / "global.json").read_text(encoding="utf-8"))["sdk"]["version"]
+    sdk = json.loads((ROOT / "steps" / "step-003-fingerprinting" / "global.json").read_text(encoding="utf-8"))["sdk"]
     code, out = run("dotnet", "--list-sdks")
     sdks = [line.split()[0] for line in out.splitlines() if line.strip() and line[0].isdigit()] if code == 0 else []
-    # rollForward latestPatch: the same feature band (10.0.3xx), at or above the pinned patch.
-    fits = [s for s in sdks if version(s)[:2] == version(pinned)[:2] and s.split(".")[2][:1] == pinned.split(".")[2][:1]
-            and version(s) >= version(pinned)]
-    band = f"{pinned.rsplit('.', 1)[0]}.{pinned.split('.')[2][0]}xx"
+    fits = [s for s in sdks if sdk_fits(s, sdk["version"], sdk.get("rollForward", "latestPatch"))]
     check(bool(fits), ".NET SDK", f"{', '.join(fits) if fits else 'none of ' + (', '.join(sdks) or 'none installed')} "
-                                  f"({pinned} or a later {band} patch needed, steps\\step-003-fingerprinting\\global.json)")
+                                  f"({sdk_required(sdk['version'], sdk.get('rollForward', 'latestPatch'))}, "
+                                  f"steps\\step-003-fingerprinting\\global.json)")
+    dotnet_runtime(sdk["version"])
     code, out = run("git", "--version")
     v = version(out) if code == 0 else ()
     check(bool(v) and v >= MIN_GIT, "git", f"{out if code == 0 else 'not found'} ({GIT_REQUIRED}){': too old' if v and v < MIN_GIT else ''}")
