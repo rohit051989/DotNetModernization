@@ -9,7 +9,7 @@
       2. The Python virtual environment, backend\.venv
       3. Python dependencies, from PIP_INDEX_URL when set
       4. Preflight: the database (connection, the right to create the schema)
-      5. Frontend dependencies, from NPM_REGISTRY when set
+      5. Frontend dependencies, from NPM_REGISTRY when set; frontend\.env pointing at the backend
       6. The C# step programs, built and published, restoring from NUGET_SOURCES when set
       7. Migration: every table in DB_SCHEMA
       8. Seed: platform configuration, and the catalog from the committed export
@@ -85,6 +85,13 @@ Stage 4 'Preflight: the database'
 if ($LASTEXITCODE -ne 0) { Fail 4 'the database is not reachable, or this login cannot create the schema (listed above as MISSING).' }
 
 Stage 5 'Frontend dependencies'
+$frontendEnv = Join-Path $frontend '.env'
+if (-not (Test-Path $frontendEnv)) {
+    $apiHost = if (EnvValue 'API_HOST') { EnvValue 'API_HOST' } else { '127.0.0.1' }
+    $apiPort = if (EnvValue 'API_PORT') { EnvValue 'API_PORT' } else { '8001' }
+    Set-Content -Path $frontendEnv -Value "VITE_API_BASE_URL=http://${apiHost}:${apiPort}" -Encoding ascii
+    Write-Host "wrote frontend\.env: the backend at http://${apiHost}:${apiPort}"
+}
 Push-Location $frontend
 try {
     $npmArgs = @('ci', '--no-audit', '--no-fund')
