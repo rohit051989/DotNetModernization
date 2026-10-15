@@ -620,3 +620,26 @@ refuses and says to run discovery again. The versions checked are recorded in `c
   - Tests kept counts source code only. A test project's `.csproj` or settings file, or a name ending in `IT`, is
     configuration, and is listed apart.
 
+**Automatic preparation and verification from the UI (2026-10-15).**
+
+- *Prepared after discovery.* Preparation is the last step of the per-repository discovery job, `conversion-preparation`
+  (17-LIFECYCLE-STEPS v2.4). Registering or rescanning a repository runs discovery, then prepares a conversion: the
+  branch and worktree, the package step, the inputs under `.github`, and the runbook. Nobody runs a command.
+  - **A rescan** refreshes a conversion not run yet, in place. A conversion counts as run once its branch has commits
+    beyond its inputs; then the rescan leaves it, and a person starts the next one from the UI ("Start the next
+    conversion", which runs discovery with `new_conversion`).
+  - **A failed baseline**, or a repository the planner cannot plan, still gets a conversion. The package step is
+    skipped, the reason recorded, and the package changes go to the engine as instructions.
+  - **Preparation never fails a discovery run.** What happened is in `conversions/last-prepare.json`, shown in the
+    Conversion section.
+  - **Package lookups** older than their limit are refreshed, never refused: a stand-alone `prepare` runs discovery
+    first.
+  - **Sibling folders** a repository's `nuget.config` reaches by relative path are detected (`siblings.detect`).
+- *The Conversion section* of the repository page shows the current conversion:
+  - its status (prepared, run or verified), the worktree and branch;
+  - the runbook, and the opening message with a copy button;
+  - what the package step did, and what is left for the engine.
+- *Verify* runs the verifier as the job `conversion-verification` (step `independent-verification`). It refuses, saying
+  why, when the worktree has uncommitted changes or the branch has nothing beyond its inputs. The section then shows
+  the verdict, its reasons and the full VERIFICATION.md.
+

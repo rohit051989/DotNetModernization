@@ -52,7 +52,7 @@ Create `docker/docker-compose.yml`:
 ```yaml
 services:
   catalog-db:
-    image: postgres:16
+    image: postgres:17
     container_name: modernization-catalog-db
     restart: unless-stopped
     environment:
@@ -62,7 +62,7 @@ services:
     ports:
       - "5433:5432"
     volumes:
-      - catalog_pgdata:/var/lib/postgresql/data
+      - catalog_pgdata17:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U catalog -d modernization_catalog"]
       interval: 5s
@@ -70,11 +70,12 @@ services:
       retries: 10
 
 volumes:
-  catalog_pgdata:
+  catalog_pgdata17:
 ```
 
-Port **5433** is deliberate — it avoids colliding with any local Postgres already on
-5432. The credentials are development-only and are fine to commit in this file.
+PostgreSQL 17, the version the client runs. Port **5433** is deliberate — it avoids colliding with any local Postgres already on
+5432. The credentials are development-only and are fine to commit in this file: they create the local
+container's login. The platform itself reads its login only from `DB_USER` and `DB_PASSWORD` (section 3).
 
 Start it and confirm health:
 
@@ -122,21 +123,30 @@ Install:
 pip install -r requirements.txt
 ```
 
-Create `backend/.env.example` (committed) and `backend/.env` (gitignored, same
-contents for local dev):
+Copy `backend/.env.example` (committed) to `backend/.env` (gitignored) and fill it in:
 
 ```
-DATABASE_URL=postgresql+psycopg://catalog:catalog_dev_pw@localhost:5433/modernization_catalog
+DB_HOST=localhost
+DB_PORT=5433
+DB_NAME=modernization_catalog
+DB_SCHEMA=public
+DB_USER=catalog
+DB_PASSWORD=catalog_dev_pw
+RUNS_DIR=D:\ModernizationData\runs
 API_HOST=127.0.0.1
 API_PORT=8001
 CORS_ORIGINS=http://localhost:5174
 ```
 
+Where the database is (`DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_SCHEMA`) is configuration. Who connects (`DB_USER`,
+`DB_PASSWORD`) comes only from the environment, which this gitignored file may supply. It is never written
+anywhere else, never logged, and a connection error never echoes it (section 10). `DATABASE_URL` is no longer
+read and is refused.
+
 ## 4. Alembic
 
-Initialise Alembic inside `backend/`, configure it to read `DATABASE_URL` from the
-environment rather than hardcoding it in `alembic.ini`, and point its target
-metadata at the SQLAlchemy models.
+Alembic reads the connection from the platform's settings (`alembic/env.py`), never from `alembic.ini`. Every
+table, sequence and its own `alembic_version` table go into `DB_SCHEMA`, which it creates when missing.
 
 ```powershell
 alembic init alembic
@@ -320,9 +330,8 @@ export.** The factory defaults in `catalog_items.yaml` apply only when there is 
 
 6. **Put run output outside the repository.** Everything a client's work produces — discovery
    runs, verifications, conversion worktrees, experiments
-   (`<RUNS_DIR>/<engagement>/experiments/<name>/`) — is written under `RUNS_DIR`. The default,
-   `./runs` resolved against `backend/`, suits a demo; it is ignored by git, but it still sits
-   inside the clone. A client deployment sets an absolute folder outside the repository in
+   (`<RUNS_DIR>/<engagement>/experiments/<name>/`) — is written under `RUNS_DIR`. It is required,
+   and **a folder inside the repository is refused**: set an absolute folder outside it in
    `backend\.env`, so the repository holds the platform only and can be updated or re-cloned
    without touching client data:
 
@@ -343,3 +352,126 @@ commands bring catalog changes from the repository in, both through the seed bas
 no UI edit is overwritten:
 - `python -m app.items.catalog_export import` merges an export;
 - `python -m app.items.catalog_seed` applies changed factory defaults.
+
+## 10. Installing on the client VDI
+
+The platform runs on one machine (CLAUDE.md, "Operating model"), here the client's virtual desktop. It reaches the
+client's PostgreSQL 17 server with an ordinary login and the client's package mirrors, and nothing else. Two
+commands carry the install: `scripts\preflight.py` reports what the machine has, and `scripts\bootstrap.ps1` sets
+everything up.
+
+### What the client provides
+
+1. **A PostgreSQL 17 database and a login for the platform.** Not a superuser, unable to create databases, with
+   `CREATE` on that one database: that lets it create the platform's schema and the throwaway schemas verification
+   uses, and nothing else. A database administrator runs, for example:
+
+   ```sql
+   CREATE ROLE modplatform LOGIN PASSWORD '<chosen by the administrator>' NOSUPERUSER NOCREATEDB NOCREATEROLE;
+   CREATE DATABASE modernization OWNER postgres;
+   GRANT CONNECT, CREATE, TEMPORARY ON DATABASE modernization TO modplatform;
+   ```
+
+   **No extension needs installing.** The migrations create none. `gen_random_uuid()` is built into PostgreSQL 13
+   and later, and the triggers are PL/pgSQL, which every database has and any user may use.
+2. **Package sources** the VDI can reach: a PyPI mirror, an npm registry, and NuGet feeds for building the step
+   programs. The repositories it scans bring their own `nuget.config` feeds.
+3. **Tools on the VDI:** Python 3.11 or later, Node.js 18 or later with npm, the .NET SDK the step programs pin
+   (`steps\step-003-fingerprinting\global.json`, 10.0.302 or a later patch), git, and Visual Studio with GitHub
+   Copilot for running conversions.
+
+### Network destinations
+
+The platform contacts only these:
+
+| Destination | Who | When |
+|---|---|---|
+| The PostgreSQL server (`DB_HOST`:`DB_PORT`) | backend, step programs | always |
+| `PIP_INDEX_URL`, `NPM_REGISTRY`, `NUGET_SOURCES` | `bootstrap.ps1` | installing |
+| The NuGet feeds in each scanned repository's `nuget.config` | `dependency-assessment` (version lookups, package downloads for API diffs); `dotnet restore` in the package step and the verifier | discovery, preparation, verification |
+| nuget.org | `dependency-assessment` | only where a repository names no feed of its own, and for the public comparison, which `COMPARE_PUBLIC_NUGET_FEED=false` switches off |
+
+- **Unreachable feeds fail nothing.** A lookup that cannot be answered is recorded as "unknown", never a failure.
+- **No telemetry or first-run activity.** The .NET SDK the platform runs sends no usage telemetry, checks for no
+  workload update and creates no development certificate (`app.config.QUIET_DOTNET`).
+- **The frontend loads nothing external.** It talks only to the backend.
+- **Nothing else.** Repositories are registered by local path, and the platform clones nothing.
+- **The engine is separate.** GitHub Copilot, run by a person in Visual Studio, talks to GitHub as the company's
+  account. That is the engine's traffic, not the platform's.
+
+### Steps
+
+1. **Clone the repository** into an empty folder, for example `C:\ModernizationPlatform\code`.
+2. **Write `backend\.env`** from `backend\.env.example`:
+
+   ```
+   DB_HOST=<server>
+   DB_PORT=5432
+   DB_NAME=modernization
+   DB_SCHEMA=modplatform
+   RUNS_DIR=C:\ModernizationPlatform\runs
+   PIP_INDEX_URL=<the PyPI mirror>
+   NPM_REGISTRY=<the npm registry>
+   NUGET_SOURCES=<NuGet feed URLs, comma-separated>
+   COMPARE_PUBLIC_NUGET_FEED=false
+   DEPLOYMENT=client
+   ```
+
+   Set `DB_USER` and `DB_PASSWORD` in the environment of the account that runs the platform, or in this same
+   gitignored file.
+3. **Run preflight** and fix whatever it reports as MISSING:
+
+   ```powershell
+   python scripts\preflight.py
+   ```
+
+   Before bootstrap it reports the database driver as missing; bootstrap installs it and checks the database
+   itself.
+4. **Run bootstrap:**
+
+   ```powershell
+   .\scripts\bootstrap.ps1
+   ```
+
+   It runs eight stages, and each stops with a plain message if it fails:
+   1. preflight;
+   2. the virtual environment;
+   3. Python dependencies;
+   4. the database checks;
+   5. frontend dependencies;
+   6. the six step programs, built and published;
+   7. migration into `DB_SCHEMA`;
+   8. the seed: platform configuration, and the catalog from the committed export.
+
+   Run it again after an update: each stage brings the machine up to date.
+5. **Start the platform**, each in its own terminal:
+
+   ```powershell
+   cd backend; .venv\Scripts\Activate.ps1; uvicorn app.main:app --reload --port 8001
+   ```
+
+   ```powershell
+   cd frontend; npm run dev
+   ```
+
+6. **Register a repository** in the UI. Discovery runs, and its last step, `conversion-preparation`, prepares the
+   repository's conversion. The repository's Conversion section then shows:
+   - the worktree and branch;
+   - the runbook;
+   - the opening message, to copy into GitHub Copilot.
+
+   After the conversion has been run and committed, **Verify** in the same section verifies it.
+
+### What stays inside the schema
+
+Everything the platform writes is in `DB_SCHEMA`:
+- **Its own tables**, through the connection's `search_path`.
+- **Scratch work.** The verifier's isolated re-discovery and `python -m app.seed.reproduce` each create a
+  throwaway schema in the same database and drop it afterwards. No code creates a database.
+- **Resets.** The demo reset (`scripts\reset-demo.ps1`) clears tables only inside the configured schema, and it
+  refuses unless `DEPLOYMENT=demo`.
+
+No SQL the platform runs names `public` explicitly. The one exception is the downgrade of an old, already-applied
+migration (`e8b3c61f0a94`), which recreates dropped tables as `public.<table>`. It is never run in a forward
+install, and applied migrations are never edited (CLAUDE.md rule 4).
+
