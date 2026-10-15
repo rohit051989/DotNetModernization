@@ -1,6 +1,6 @@
 # Python 3.11 to 3.14. Every package installs from a wheel on 64-bit Windows, 3.14 included
 # (pip install --only-binary=:all:): pydantic 2.12.0 is the oldest whose pydantic-core has a cp314 wheel,
-# psycopg 3.2.10 the oldest 3.2.x, PyYAML 6.0.3 the oldest 6.0.x (01-ENVIRONMENT-SETUP.md section 10).
+# psycopg 3.2.10 the oldest 3.2.x, PyYAML 6.0.3 the oldest 6.0.x (docs/VDI-SETUP.md section A).
 fastapi==0.115.*
 uvicorn[standard]==0.32.*
 sqlalchemy==2.0.*

@@ -79,7 +79,7 @@ class Settings(BaseSettings):
                 r"(?m)^\s*DATABASE_URL\s*=", ENV_FILE.read_text(encoding="utf-8", errors="replace"))):
             raise ValueError("DATABASE_URL is no longer read: set DB_HOST, DB_PORT, DB_NAME and DB_SCHEMA in "
                              "backend/.env, and DB_USER and DB_PASSWORD in the environment or backend/.env "
-                             "(01-ENVIRONMENT-SETUP.md section 10)")
+                             "(docs/VDI-SETUP.md section F)")
         return self
 
     @property

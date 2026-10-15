@@ -198,6 +198,29 @@ class PreflightVersions(unittest.TestCase):
         self.assertEqual(results["git"], (False, "not found (2.17.0 or later needed)"))
 
 
+class PreflightPackageSources(unittest.TestCase):
+    """An empty .env key means the tool's own configuration (pip.ini, .npmrc, NuGet.Config), not the public default."""
+
+    def test_the_tools_own_configuration_is_checked_when_the_key_is_empty(self):
+        from unittest import mock
+
+        pf = _preflight()
+
+        def fake_run(*args):
+            if "pip" in args:
+                return 0, "https://mirror.example/api/pypi/pypi/simple"
+            if "nuget" in args:
+                return 0, "E https://mirror.example/api/nuget/v3/nuget-remote/index.json\nD https://api.nuget.org/v3/index.json"
+            return 1, ""
+
+        with mock.patch.object(pf, "run", side_effect=fake_run):
+            self.assertEqual(pf.tool_sources("PIP_INDEX_URL"), (["https://mirror.example/api/pypi/pypi/simple"], "pip configuration"))
+            self.assertEqual(pf.tool_sources("NUGET_SOURCES"),
+                             (["https://mirror.example/api/nuget/v3/nuget-remote/index.json"], "NuGet configuration"))
+        with mock.patch.object(pf, "run", return_value=(1, "")), mock.patch.object(pf.shutil, "which", return_value=None):
+            self.assertEqual(pf.tool_sources("NPM_REGISTRY"), (["https://registry.npmjs.org/"], "default"))
+
+
 class PreflightDotnetRuntime(unittest.TestCase):
     """A per-user SDK's runtime is found by the step programs only through DOTNET_ROOT."""
 

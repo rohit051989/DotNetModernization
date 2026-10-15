@@ -1,7 +1,7 @@
 <#
 .SYNOPSIS
     Writes a git bundle of a release tag, and its SHA-256, for installing on a machine with no access to this
-    repository (01-ENVIRONMENT-SETUP.md section 10, "Installing from a release bundle").
+    repository (docs\VDI-SETUP.md, sections B and M).
 
 .DESCRIPTION
     Writes two files into OutDir:

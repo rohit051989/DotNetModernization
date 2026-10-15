@@ -1,4 +1,4 @@
-"""Preflight: is this machine ready for the platform? (01-ENVIRONMENT-SETUP.md section 10.)
+"""Preflight: is this machine ready for the platform? (docs/VDI-SETUP.md section G.)
 
     python scripts\\preflight.py               every check; the database ones once the virtual environment exists
     python scripts\\preflight.py --database    the database checks only (bootstrap runs this after installing)
@@ -37,7 +37,7 @@ DEFAULT_SOURCES = {"PIP_INDEX_URL": "https://pypi.org/simple/", "NPM_REGISTRY": 
                    "NUGET_SOURCES": "https://api.nuget.org/v3/index.json"}
 results: list[tuple[bool, str, str]] = []
 
-# The required versions (01-ENVIRONMENT-SETUP.md section 10). Python: the code is 3.11 syntax, the suite passes on
+# The required versions (docs/VDI-SETUP.md section A). Python: the code is 3.11 syntax, the suite passes on
 # 3.13 and 3.14, and every pinned dependency installs from a wheel up to 3.14 (backend/requirements.txt). Node.js:
 # Vite's own requirement. npm: the lockfile is version 3. git: `git worktree remove`, the newest command the platform
 # runs, is in 2.17. The .NET SDK: steps/step-003-fingerprinting/global.json.
@@ -198,13 +198,39 @@ def reachable(url: str) -> tuple[bool, str]:
         return False, f"unreachable ({getattr(error, 'reason', error)})"
 
 
+def tool_sources(key: str) -> tuple[list[str], str]:
+    """Where pip, npm or dotnet would install from when the .env key is empty: the tool's own configuration (pip.ini,
+    .npmrc, the account's NuGet.Config, which is where a mirror that needs a login is usually set), else the public
+    default."""
+    if key == "PIP_INDEX_URL":
+        code, out = run(sys.executable, "-m", "pip", "config", "get", "global.index-url")
+        if code == 0 and out.strip().startswith("http"):
+            return [out.strip()], "pip configuration"
+    elif key == "NPM_REGISTRY":
+        npm = shutil.which("npm") or shutil.which("npm.cmd")
+        code, out = run(npm, "config", "get", "registry") if npm else (-1, "")
+        if code == 0 and out.strip().startswith("http"):
+            return [out.strip()], "npm configuration"
+    else:
+        code, out = run("dotnet", "nuget", "list", "source", "--format", "short")
+        enabled = [line.split(None, 1)[1].strip() for line in out.splitlines()
+                   if code == 0 and line[:1] == "E" and len(line.split(None, 1)) == 2]
+        if enabled:
+            return enabled, "NuGet configuration"
+    return [DEFAULT_SOURCES[key]], "default"
+
+
 def sources(cfg: dict[str, str]) -> None:
     print("Package sources")
     for key in ("PIP_INDEX_URL", "NPM_REGISTRY", "NUGET_SOURCES"):
         configured = cfg.get(key, "").strip()
-        for url in [u.strip() for u in (configured or DEFAULT_SOURCES[key]).split(",") if u.strip()]:
+        urls, origin = ([u.strip() for u in configured.split(",") if u.strip()], "backend\\.env") if configured \
+            else tool_sources(key)
+        for url in urls:
             ok, detail = reachable(url)
-            check(ok, f"{key} {url}{'' if configured else ' (default)'}", detail)
+            if ok and detail == "HTTP 401":
+                detail += ": reachable; it needs a login, which the tool's own configuration must supply"
+            check(ok, f"{key} {url} (from {origin})", detail)
 
 
 def runs_dir(cfg: dict[str, str]) -> None:

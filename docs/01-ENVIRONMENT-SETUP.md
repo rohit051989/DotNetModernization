@@ -358,59 +358,13 @@ no UI edit is overwritten:
 
 ## 10. Installing on the client VDI
 
-The platform runs on one machine (CLAUDE.md, "Operating model"), here the client's virtual desktop. It reaches the
-client's PostgreSQL 17 server with an ordinary login and the client's package mirrors, and nothing else. Two
-commands carry the install: `scripts\preflight.py` reports what the machine has, and `scripts\bootstrap.ps1` sets
-everything up.
+**The installation guide is [`VDI-SETUP.md`](VDI-SETUP.md).** It is complete and in order: the required versions
+and access, placing the code, account settings without administrator rights, package sources, the database,
+`backend\.env`, preflight, bootstrap stage by stage, starting the platform, the engagement, registering a client
+repository, troubleshooting, and installing a later release. Follow it rather than this section.
 
-### What the client provides
-
-1. **A PostgreSQL 17 database and a login for the platform.** Not a superuser, unable to create databases, with
-   `CREATE` on that one database: that lets it create the platform's schema and the throwaway schemas verification
-   uses, and nothing else. A database administrator runs, for example:
-
-   ```sql
-   CREATE ROLE modplatform LOGIN PASSWORD '<chosen by the administrator>' NOSUPERUSER NOCREATEDB NOCREATEROLE;
-   CREATE DATABASE modernization OWNER postgres;
-   GRANT CONNECT, CREATE, TEMPORARY ON DATABASE modernization TO modplatform;
-   ```
-
-   **No extension needs installing.** The migrations create none. `gen_random_uuid()` is built into PostgreSQL 13
-   and later, and the triggers are PL/pgSQL, which every database has and any user may use.
-2. **Package sources** the VDI can reach: a PyPI mirror, an npm registry, and NuGet feeds for building the step
-   programs. The repositories it scans find their NuGet feeds as dotnet does (see "NuGet feeds for scanned
-   repositories" below).
-3. **Tools on the VDI**, at these versions. Preflight reports anything older as MISSING, with the version needed:
-
-   | Tool | Required | Why this version | Tested with |
-   |---|---|---|---|
-   | Python | 3.11.0 to 3.14.x | The code is 3.11 syntax. Every pinned dependency installs from a wheel up to 3.14 (`backend\requirements.txt`: pydantic 2.12, psycopg 3.2.10, PyYAML 6.0.3 are the oldest with 3.14 wheels), so nothing compiles on the VDI; 3.15 is refused | 3.13.14 and 3.14.8 |
-   | Node.js | 20.19.0 or a later 20.x, or 22.12.0 or later | Vite's own requirement (`^20.19.0 \|\| >=22.12.0`); 21.x is refused | 24.13.0 |
-   | npm | 7.0.0 or later | The frontend's lockfile is version 3. Every Node.js above ships a newer npm | 11.12.0 |
-   | .NET SDK | Any .NET 10 SDK from 10.0.100 | `steps\step-003-fingerprinting\global.json`: `10.0.100` with `rollForward: latestFeature`, so any feature band; preflight also checks the step programs can find its runtime | 10.0.203 and 10.0.302 |
-   | git | 2.17.0 or later | `git worktree remove`, the newest git command the platform runs | 2.55.0 |
-
-   Also Visual Studio with GitHub Copilot, for running conversions. Python and the .NET SDK can be installed per
-   user, without administrator rights (below).
-4. **Short paths.** Install into a short folder, such as `C:\ModernizationPlatform\code`, and set a short
-   `RUNS_DIR`, such as `C:\ModernizationPlatform\runs`.
-   - The repository's longest file path is 159 characters. Without git's `core.longpaths`, git cannot write a
-     full path over 259 characters, so an install folder over 99 characters fails at clone time with
-     "Filename too long". The clone commands below set `core.longpaths` for that clone, so it cannot happen
-     there.
-   - The client repositories are another matter. The platform puts each conversion's worktree several folders
-     deep under `RUNS_DIR`, beneath the client repository's own deepest path, and Windows tools still trip over
-     paths longer than 260 characters.
-
-   Preflight prints this checkout's longest path. It also reports, without failing, two settings that lift the
-   limit:
-   - **Windows long-path support** (`LongPathsEnabled` under
-     `HKLM\SYSTEM\CurrentControlSet\Control\FileSystem`, or the group policy "Enable Win32 long paths"). Only an
-     administrator can turn it on.
-   - **git's `core.longpaths`.** The account that runs the platform turns it on with
-     `git config --global core.longpaths true`.
-
-   Turn both on where the client allows it. Keep the paths short either way.
+This section keeps the reference material behind it: what the platform contacts on the network, how a scanned
+repository's NuGet feeds resolve, and what stays inside the platform's database schema.
 
 ### Network destinations
 
@@ -430,51 +384,6 @@ The platform contacts only these:
 - **Nothing else.** Repositories are registered by local path, and the platform clones nothing.
 - **The engine is separate.** GitHub Copilot, run by a person in Visual Studio, talks to GitHub as the company's
   account. That is the engine's traffic, not the platform's.
-
-### Python and the .NET SDK per user, without administrator rights
-
-Both install into folders the account owns, and neither needs administrator rights.
-
-**Python**, for example 3.14 into `C:\Users\<you>\Tools\Python314`:
-- Where it will be the only Python, the python.org installer runs per user:
-
-  ```powershell
-  .\python-3.14.8-amd64.exe /quiet InstallAllUsers=0 PrependPath=0 Include_launcher=0 TargetDir=C:\Users\<you>\Tools\Python314
-  ```
-
-- Where another Python must stay the default, unpack the `python` package from nuget.org instead. It is the
-  same CPython, files only, and is registered nowhere, so `py` and `python` keep resolving as before. The
-  `tools\` folder inside the `.nupkg` (a zip) is the installation.
-- Either way, give bootstrap its full path. Stage 2 builds `backend\.venv` with it:
-
-  ```powershell
-  .\scripts\bootstrap.ps1 -Python C:\Users\<you>\Tools\Python314\python.exe
-  ```
-
-**The .NET SDK**, for example 10.0.203, with Microsoft's install script, into its own folder:
-
-```powershell
-.\dotnet-install.ps1 -Version 10.0.203 -InstallDir $env:USERPROFILE\Tools\dotnet -NoPath
-```
-
-The step programs are framework-dependent `.exe` files. A per-user .NET is found only through `DOTNET_ROOT`, and
-the platform runs `dotnet` for builds and restores, so the account needs both settings. Set them in the
-account's environment; that needs no administrator rights:
-
-```powershell
-[Environment]::SetEnvironmentVariable('DOTNET_ROOT', "$env:USERPROFILE\Tools\dotnet", 'User')
-```
-
-```powershell
-[Environment]::SetEnvironmentVariable('Path', "$env:USERPROFILE\Tools\dotnet;" + [Environment]::GetEnvironmentVariable('Path', 'User'), 'User')
-```
-
-Open a new terminal afterwards, for the backend too. Windows puts the machine's `Path` before the user's, so a
-machine-wide `C:\Program Files\dotnet`, if there is one, still comes first. Preflight names the `dotnet` it found,
-and reports MISSING when the step programs could not find its runtime.
-
-No step needs a particular feature band. Built, published and tested with 10.0.203 (feature band 2xx) and
-10.0.302 (3xx), discovery and conversion preparation run end to end on 10.0.203.
 
 ### NuGet feeds for scanned repositories
 
@@ -507,159 +416,6 @@ from:
 
 A feed that answers 401 is recorded per package as "unknown", with the reason; discovery still completes.
 
-### Steps
-
-1. **Clone the repository** into an empty, short folder:
-
-   ```powershell
-   git clone -c core.longpaths=true <repository URL> C:\ModernizationPlatform\code
-   ```
-
-   On a VDI that cannot reach the repository, clone from the release bundle instead (below).
-2. **Write `backend\.env`** from `backend\.env.example`:
-
-   ```
-   DB_HOST=<server>
-   DB_PORT=5432
-   DB_NAME=modernization
-   DB_SCHEMA=modplatform
-   RUNS_DIR=C:\ModernizationPlatform\runs
-   PIP_INDEX_URL=<the PyPI mirror>
-   NPM_REGISTRY=<the npm registry>
-   NUGET_SOURCES=<NuGet feed URLs, comma-separated>
-   COMPARE_PUBLIC_NUGET_FEED=false
-   DEPLOYMENT=client
-   ```
-
-   Set `DB_USER` and `DB_PASSWORD` in the environment of the account that runs the platform, or in this same
-   gitignored file.
-3. **Run preflight** and fix whatever it reports as MISSING:
-
-   ```powershell
-   python scripts\preflight.py
-   ```
-
-   Before bootstrap it reports the database driver as missing; bootstrap installs it and checks the database
-   itself.
-4. **Run bootstrap:**
-
-   ```powershell
-   .\scripts\bootstrap.ps1
-   ```
-
-   It runs eight stages, and each stops with a plain message if it fails:
-   1. preflight;
-   2. the virtual environment;
-   3. Python dependencies;
-   4. the database checks;
-   5. frontend dependencies;
-   6. the six step programs, built and published;
-   7. migration into `DB_SCHEMA`;
-   8. the seed: platform configuration, and the catalog from the committed export.
-
-   Run it again after an update: each stage brings the machine up to date.
-5. **Start the platform**, each in its own terminal:
-
-   ```powershell
-   cd backend; .venv\Scripts\Activate.ps1; uvicorn app.main:app --reload --port 8001
-   ```
-
-   ```powershell
-   cd frontend; npm run dev
-   ```
-
-6. **Create the engagement**, either in the UI with **+ New engagement** beside the View selector, or from the
-   command line:
-
-   ```powershell
-   cd backend; .venv\Scripts\Activate.ps1
-   python -m app.engagements.cli create --name "Client A" --target-framework net10.0
-   ```
-
-   - `--name` is the client name the UI shows.
-   - `--target-framework` is the .NET version the estate moves to, such as `net8.0` or `net10.0`. Every package
-     is checked against it.
-   - `--id` sets the engagement's id; it defaults to one made from the name (`client-a`).
-   - `--target-platform` and `--description` are optional.
-   - `python -m app.engagements.cli list` lists the engagements.
-
-   The command checks exactly what the UI checks, and the backend need not be running.
-7. **Register a repository** in the UI, under that engagement. The clone URL can be any of:
-   - https (`https://host/org/repo.git`);
-   - SSH (`git@host:org/repo.git` or `ssh://[user@]host[:port]/org/repo.git`).
-
-   All forms of one repository are the same identity, and the URL is verified against the folder's `origin`
-   remote.
-
-   A repository with no remote at all registers without a URL. The form says so plainly, and so does a
-   repository whose remote is named something other than `origin`, or is a local folder.
-
-   Discovery runs, and its last step, `conversion-preparation`, prepares the repository's conversion. The
-   repository's Conversion section then shows:
-   - the worktree and branch;
-   - the runbook;
-   - the opening message, to copy into GitHub Copilot.
-
-   After the conversion has been run and committed, **Verify** in the same section verifies it.
-
-### Installing from a release bundle
-
-A VDI that cannot reach this repository installs from a git bundle: one file holding a release tag and the full
-history behind it.
-
-1. **On a machine with the repository**, write the bundle and its SHA-256:
-
-   ```powershell
-   .\scripts\release-bundle.ps1 -Tag rbc-release-1
-   ```
-
-   This writes `rbc-release-1.bundle` and `rbc-release-1.bundle.sha256` into a `release` folder beside the
-   repository. `-OutDir` chooses another folder.
-2. **Copy both files to the VDI** by whatever route the client approves.
-3. **Check the hash on the VDI.** The two values must be identical:
-
-   ```powershell
-   (Get-FileHash -Algorithm SHA256 .\rbc-release-1.bundle).Hash.ToLower()
-   ```
-
-   ```powershell
-   Get-Content .\rbc-release-1.bundle.sha256
-   ```
-
-4. **Check the bundle and clone it.** First list the bundle's contents. It must name `refs/tags/rbc-release-1`.
-   (`git bundle verify` needs an existing repository, so it cannot be run before this first clone.)
-
-   ```powershell
-   git bundle list-heads .\rbc-release-1.bundle
-   ```
-
-   Then clone it:
-
-   ```powershell
-   git clone -c core.longpaths=true --branch rbc-release-1 .\rbc-release-1.bundle C:\ModernizationPlatform\code
-   ```
-
-   git warns that `refs/tags/rbc-release-1` "is not a commit". That is expected for an annotated tag: the clone
-   still checks out the tagged commit. The clone is at the tag, with a detached HEAD. To work on a branch there:
-
-   ```powershell
-   git -C C:\ModernizationPlatform\code switch -c rbc-release-1-vdi
-   ```
-
-5. Continue from step 2 above: `backend\.env`, preflight, bootstrap.
-
-A later release arrives as a new bundle. Fetch its tag into the existing clone, then check it out:
-
-```powershell
-git -C C:\ModernizationPlatform\code fetch <path>\rbc-release-2.bundle "refs/tags/rbc-release-2:refs/tags/rbc-release-2"
-```
-
-```powershell
-git -C C:\ModernizationPlatform\code checkout rbc-release-2
-```
-
-Then run bootstrap again.
-
 ### What stays inside the schema
 
 Everything the platform writes is in `DB_SCHEMA`:
@@ -672,4 +428,3 @@ Everything the platform writes is in `DB_SCHEMA`:
 No SQL the platform runs names `public` explicitly. The one exception is the downgrade of an old, already-applied
 migration (`e8b3c61f0a94`), which recreates dropped tables as `public.<table>`. It is never run in a forward
 install, and applied migrations are never edited (CLAUDE.md rule 4).
-
