@@ -6,12 +6,6 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["--prefix", "frontend", "run", "dev", "--", "--port", "5174", "--strictPort"],
       "port": 5174
-    },
-    {
-      "name": "client-sim-frontend",
-      "runtimeExecutable": "npm",
-      "runtimeArgs": ["--prefix", "../client-sim/code/frontend", "run", "dev", "--", "--port", "5175", "--strictPort"],
-      "port": 5175
     }
   ]
 }
