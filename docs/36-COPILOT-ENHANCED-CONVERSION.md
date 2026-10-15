@@ -640,6 +640,7 @@ refuses and says to run discovery again. The versions checked are recorded in `c
   - the runbook, and the opening message with a copy button;
   - what the package step did, and what is left for the engine.
 - *Verify* runs the verifier as the job `conversion-verification` (step `independent-verification`). It refuses, saying
-  why, when the worktree has uncommitted changes or the branch has nothing beyond its inputs. The section then shows
-  the verdict, its reasons and the full VERIFICATION.md.
+  why, when the worktree has uncommitted changes or the branch has nothing beyond its inputs. For the second it reads
+  "NOT PROVEN, nothing converted": the verifier's fixed rules fail an unconverted branch, so the verdict is known
+  without a run. Otherwise the section then shows the verdict, its reasons and the full VERIFICATION.md.
 

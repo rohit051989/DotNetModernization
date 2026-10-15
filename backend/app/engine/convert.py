@@ -165,7 +165,9 @@ def verify_refusal(rec: dict) -> str | None:
         return (f"the worktree has {len(changed)} uncommitted change(s) ({', '.join(changed[:3])}"
                 + (" ..." if len(changed) > 3 else "") + "): commit them on the branch first")
     if not commits_beyond_inputs(rec):
-        return f"{rec['branch']} has nothing beyond its inputs: the conversion has not been run"
+        # The verifier's fixed rules make "nothing converted" a failed check, so the verdict is known without a run.
+        return (f"NOT PROVEN, nothing converted: {rec['branch']} has nothing beyond its inputs, so the conversion "
+                "has not been run. Run it, commit on the branch, then verify")
     return None
 
 
