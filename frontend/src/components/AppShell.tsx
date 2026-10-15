@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { getHealth } from '../api/catalog'
 import type { Engagement } from '../types/catalog'
+import { NewEngagementDrawer } from './NewEngagementDrawer'
 import { TabBar, type TabKey } from './TabBar'
 
 const HEALTH_POLL_INTERVAL_MS = 30_000
@@ -12,6 +13,8 @@ interface AppShellProps {
   /** null selects the Master Catalog view. */
   selectedEngagementId: string | null
   onSelectEngagement: (engagementId: string | null) => void
+  /** A new engagement was created: add it to the list and select it. */
+  onEngagementCreated: (engagement: Engagement) => void
   activeTab: TabKey
   onSelectTab: (tab: TabKey) => void
 }
@@ -21,10 +24,12 @@ export function AppShell({
   engagements,
   selectedEngagementId,
   onSelectEngagement,
+  onEngagementCreated,
   activeTab,
   onSelectTab,
 }: AppShellProps) {
   const [healthy, setHealthy] = useState<boolean | null>(null)
+  const [creating, setCreating] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -79,12 +84,30 @@ export function AppShell({
               ))}
             </select>
           </label>
+          {/* TODO: gate creating an engagement behind an admin check once auth exists
+              (04-FRONTEND-SPEC.md, "Future: access control"). */}
+          <button
+            type="button"
+            onClick={() => setCreating(true)}
+            className="whitespace-nowrap rounded border border-neutral-300 px-2 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50"
+          >
+            + New engagement
+          </button>
         </div>
       </header>
       <TabBar activeTab={activeTab} onSelectTab={onSelectTab} isMaster={isMaster} />
       {/* The one page scroller: bounded, so a page's sticky bars and its
           panes' own scrollers (h-full + overflow-y-auto) work as designed. */}
       <main className="min-h-0 flex-1 overflow-auto">{children}</main>
+      {creating && (
+        <NewEngagementDrawer
+          onClose={() => setCreating(false)}
+          onCreated={(engagement) => {
+            setCreating(false)
+            onEngagementCreated(engagement)
+          }}
+        />
+      )}
     </div>
   )
 }

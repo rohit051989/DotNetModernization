@@ -124,7 +124,7 @@ public static class CallSiteCertainty
 public sealed record DependencyAssessmentArtifact
 {
     public string ArtifactType { get; init; } = "dependency-assessment";
-    public string ArtifactVersion { get; init; } = "1.5.0";
+    public string ArtifactVersion { get; init; } = "1.6.0";
     public required string ScannerVersion { get; init; }
     public required Guid RepositoryId { get; init; }
     public required string RepositorySlug { get; init; }
@@ -205,10 +205,11 @@ public sealed record FeedRecord
 
     /// <summary><c>client_feed</c> (an authority), <c>nuget_org</c> (the
     /// fallback, or the public comparison), or <c>ignored</c> (a tooling
-    /// folder declared only at user or machine level).</summary>
+    /// folder declared only at machine level).</summary>
     public required string Role { get; init; }
 
-    /// <summary><c>repository</c>, <c>user</c> or <c>machine</c> — where the
+    /// <summary><c>repository</c>, <c>parent</c> (a NuGet.config in a folder
+    /// above the repository), <c>user</c> or <c>machine</c> — where the
     /// source is declared; <c>default</c> for the nuget.org fallback.</summary>
     public required string DeclaredIn { get; init; }
 }

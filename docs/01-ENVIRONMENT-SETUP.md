@@ -375,10 +375,30 @@ everything up.
    **No extension needs installing.** The migrations create none. `gen_random_uuid()` is built into PostgreSQL 13
    and later, and the triggers are PL/pgSQL, which every database has and any user may use.
 2. **Package sources** the VDI can reach: a PyPI mirror, an npm registry, and NuGet feeds for building the step
-   programs. The repositories it scans bring their own `nuget.config` feeds.
-3. **Tools on the VDI:** Python 3.11 or later, Node.js 18 or later with npm, the .NET SDK the step programs pin
-   (`steps\step-003-fingerprinting\global.json`, 10.0.302 or a later patch), git, and Visual Studio with GitHub
-   Copilot for running conversions.
+   programs. The repositories it scans find their NuGet feeds as dotnet does (see "NuGet feeds for scanned
+   repositories" below).
+3. **Tools on the VDI**, at these versions. Preflight reports anything older as MISSING, with the version needed:
+
+   | Tool | Required | Why this version | Tested with |
+   |---|---|---|---|
+   | Python | 3.11.0 to 3.13.x | The code is 3.11 syntax. The pinned dependencies (pydantic 2.9, psycopg 3.2) publish builds up to 3.13, so 3.14 is refused | 3.13.14 |
+   | Node.js | 20.19.0 or a later 20.x, or 22.12.0 or later | Vite's own requirement (`^20.19.0 \|\| >=22.12.0`); 21.x is refused | 24.13.0 |
+   | npm | 7.0.0 or later | The frontend's lockfile is version 3. Every Node.js above ships a newer npm | 11.12.0 |
+   | .NET SDK | 10.0.302, or a later 10.0.3xx patch | `steps\step-003-fingerprinting\global.json` pins it, with `rollForward: latestPatch` | 10.0.302 |
+   | git | 2.17.0 or later | `git worktree remove`, the newest git command the platform runs | 2.55.0 |
+
+   Also Visual Studio with GitHub Copilot, for running conversions.
+4. **Short paths.** Install into a short folder, such as `C:\ModernizationPlatform\code`, and set a short
+   `RUNS_DIR`, such as `C:\ModernizationPlatform\runs`. The platform puts each conversion's worktree several
+   folders deep under `RUNS_DIR`, beneath the client repository's own deepest path. Windows tools still trip
+   over paths longer than 260 characters. Preflight reports, without failing, two settings that lift the limit:
+   - **Windows long-path support** (`LongPathsEnabled` under
+     `HKLM\SYSTEM\CurrentControlSet\Control\FileSystem`, or the group policy "Enable Win32 long paths"). Only an
+     administrator can turn it on.
+   - **git's `core.longpaths`.** The account that runs the platform turns it on with
+     `git config --global core.longpaths true`.
+
+   Turn both on where the client allows it. Keep the paths short either way.
 
 ### Network destinations
 
@@ -388,8 +408,8 @@ The platform contacts only these:
 |---|---|---|
 | The PostgreSQL server (`DB_HOST`:`DB_PORT`) | backend, step programs | always |
 | `PIP_INDEX_URL`, `NPM_REGISTRY`, `NUGET_SOURCES` | `bootstrap.ps1` | installing |
-| The NuGet feeds in each scanned repository's `nuget.config` | `dependency-assessment` (version lookups, package downloads for API diffs); `dotnet restore` in the package step and the verifier | discovery, preparation, verification |
-| nuget.org | `dependency-assessment` | only where a repository names no feed of its own, and for the public comparison, which `COMPARE_PUBLIC_NUGET_FEED=false` switches off |
+| The NuGet feeds each scanned repository resolves (below) | `dependency-assessment` (version lookups, package downloads for API diffs); `dotnet restore` in the package step and the verifier | discovery, preparation, verification |
+| nuget.org | `dependency-assessment` | only where no NuGet configuration names a feed, and for the public comparison, which `COMPARE_PUBLIC_NUGET_FEED=false` switches off |
 
 - **Unreachable feeds fail nothing.** A lookup that cannot be answered is recorded as "unknown", never a failure.
 - **No telemetry or first-run activity.** The .NET SDK the platform runs sends no usage telemetry, checks for no
@@ -399,9 +419,41 @@ The platform contacts only these:
 - **The engine is separate.** GitHub Copilot, run by a person in Visual Studio, talks to GitHub as the company's
   account. That is the engine's traffic, not the platform's.
 
+### NuGet feeds for scanned repositories
+
+A scanned repository's package sources resolve exactly as `dotnet restore` resolves them. That is because
+`dependency-assessment` uses NuGet's own configuration loader, and the package step and the verifier run
+`dotnet restore` itself. The search order is:
+1. every `NuGet.config` from the project's folder up to the repository root;
+2. then the folders above the repository, up to the drive root (recorded as declared in `parent`);
+3. then the user's `%APPDATA%\NuGet\NuGet.Config` and `%APPDATA%\NuGet\config\*.config`;
+4. then the machine-wide files.
+
+`<clear/>` and disabled sources are honoured. Only when none of these names a feed does nuget.org answer, as the
+fallback. A local folder declared only machine-wide (Visual Studio's offline packages) is tooling, and is
+ignored.
+
+So a repository with no `nuget.config` of its own works when the VDI account's user-level NuGet configuration, or
+a `NuGet.config` in a folder above the repositories, names the client's feeds.
+
+**Authenticated feeds** use whatever standard NuGet configuration supplies. The platform never asks for,
+stores, logs or records a credential, and a feed URL is recorded without user information. Credentials can come
+from:
+- `packageSourceCredentials` in a NuGet configuration file, normally the user-level one, written with
+  `dotnet nuget update source <name> --username <u> --password <p>`. Add `--store-password-in-clear-text` only
+  where the encrypted form cannot be used.
+- The environment variable `NuGetPackageSourceCredentials_<source name>`, set to
+  `Username=<u>;Password=<p>`.
+- A NuGet credential provider, such as the Azure Artifacts Credential Provider or an Artifactory plugin. Install it
+  for the account that runs the platform, and sign in once interactively. A step cannot prompt, so it uses
+  providers non-interactively.
+
+A feed that answers 401 is recorded per package as "unknown", with the reason; discovery still completes.
+
 ### Steps
 
-1. **Clone the repository** into an empty folder, for example `C:\ModernizationPlatform\code`.
+1. **Clone the repository** into an empty folder, for example `C:\ModernizationPlatform\code`. On a VDI that
+   cannot reach the repository, clone from the release bundle instead (below).
 2. **Write `backend\.env`** from `backend\.env.example`:
 
    ```
@@ -454,13 +506,93 @@ The platform contacts only these:
    cd frontend; npm run dev
    ```
 
-6. **Register a repository** in the UI. Discovery runs, and its last step, `conversion-preparation`, prepares the
-   repository's conversion. The repository's Conversion section then shows:
+6. **Create the engagement**, either in the UI with **+ New engagement** beside the View selector, or from the
+   command line:
+
+   ```powershell
+   cd backend; .venv\Scripts\Activate.ps1
+   python -m app.engagements.cli create --name "Client A" --target-framework net10.0
+   ```
+
+   - `--name` is the client name the UI shows.
+   - `--target-framework` is the .NET version the estate moves to, such as `net8.0` or `net10.0`. Every package
+     is checked against it.
+   - `--id` sets the engagement's id; it defaults to one made from the name (`client-a`).
+   - `--target-platform` and `--description` are optional.
+   - `python -m app.engagements.cli list` lists the engagements.
+
+   The command checks exactly what the UI checks, and the backend need not be running.
+7. **Register a repository** in the UI, under that engagement. The clone URL can be any of:
+   - https (`https://host/org/repo.git`);
+   - SSH (`git@host:org/repo.git` or `ssh://[user@]host[:port]/org/repo.git`).
+
+   All forms of one repository are the same identity, and the URL is verified against the folder's `origin`
+   remote.
+
+   A repository with no remote at all registers without a URL. The form says so plainly, and so does a
+   repository whose remote is named something other than `origin`, or is a local folder.
+
+   Discovery runs, and its last step, `conversion-preparation`, prepares the repository's conversion. The
+   repository's Conversion section then shows:
    - the worktree and branch;
    - the runbook;
    - the opening message, to copy into GitHub Copilot.
 
    After the conversion has been run and committed, **Verify** in the same section verifies it.
+
+### Installing from a release bundle
+
+A VDI that cannot reach this repository installs from a git bundle: one file holding a release tag and the full
+history behind it.
+
+1. **On a machine with the repository**, write the bundle and its SHA-256:
+
+   ```powershell
+   .\scripts\release-bundle.ps1 -Tag rbc-release-1
+   ```
+
+   This writes `rbc-release-1.bundle` and `rbc-release-1.bundle.sha256` into a `release` folder beside the
+   repository. `-OutDir` chooses another folder.
+2. **Copy both files to the VDI** by whatever route the client approves.
+3. **Check the hash on the VDI.** The two values must be identical:
+
+   ```powershell
+   (Get-FileHash -Algorithm SHA256 .\rbc-release-1.bundle).Hash.ToLower()
+   ```
+
+   ```powershell
+   Get-Content .\rbc-release-1.bundle.sha256
+   ```
+
+4. **Check the bundle and clone it:**
+
+   ```powershell
+   git bundle verify .\rbc-release-1.bundle
+   ```
+
+   ```powershell
+   git clone --branch rbc-release-1 .\rbc-release-1.bundle C:\ModernizationPlatform\code
+   ```
+
+   The clone is at the tag, with a detached HEAD. To work on a branch there:
+
+   ```powershell
+   git -C C:\ModernizationPlatform\code switch -c rbc-release-1-vdi
+   ```
+
+5. Continue from step 2 above: `backend\.env`, preflight, bootstrap.
+
+A later release arrives as a new bundle. Fetch its tag into the existing clone, then check it out:
+
+```powershell
+git -C C:\ModernizationPlatform\code fetch <path>\rbc-release-2.bundle "refs/tags/rbc-release-2:refs/tags/rbc-release-2"
+```
+
+```powershell
+git -C C:\ModernizationPlatform\code checkout rbc-release-2
+```
+
+Then run bootstrap again.
 
 ### What stays inside the schema
 

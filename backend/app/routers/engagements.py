@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app import models, schemas
 from app.db import get_db
+from app.engagements import service as engagement_service
 from app.errors import ErrorResponse, error
 from app.workflow import registration
 from app.workflow.runtime import service as runtime_service
@@ -41,21 +42,19 @@ def list_engagements(
     summary="Create an engagement",
     response_description="The newly created engagement.",
     operation_id="create_engagement",
-    responses={409: {"model": ErrorResponse, "description": "An engagement with this id already exists."}},
+    responses={
+        409: {"model": ErrorResponse, "description": "An engagement with this id already exists."},
+        422: {"model": ErrorResponse, "description": "The id, client name or target framework is not valid."},
+    },
 )
 def create_engagement(payload: schemas.EngagementCreate, db: Session = Depends(get_db)):
-    if db.get(models.Engagement, payload.id) is not None:
-        raise error(409, f"Engagement '{payload.id}' already exists", field="id", code="DUPLICATE_ID")
-
-    engagement = models.Engagement(
-        id=payload.id,
-        client_name=payload.client_name,
-        description=payload.description,
-        target_platform=payload.target_platform,
-        default_posture=payload.default_posture,
-        target_framework=payload.target_framework,
-    )
-    db.add(engagement)
+    try:
+        engagement = engagement_service.create(
+            db, payload.id, payload.client_name, payload.target_framework, description=payload.description,
+            target_platform=payload.target_platform, default_posture=payload.default_posture,
+        )
+    except engagement_service.EngagementError as e:
+        raise error(e.status_code, str(e), field=e.field, code=e.code)
     db.commit()
     db.refresh(engagement)
     return engagement

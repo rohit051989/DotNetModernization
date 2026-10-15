@@ -6,7 +6,9 @@
 
 Reports, in plain language, each prerequisite as PRESENT or MISSING, and exits 1 when anything is missing:
 
-- Python 3.11 or later, Node.js 18 or later with npm, the .NET SDK the step programs pin, git;
+- Python 3.11.0 to 3.13.x; Node.js 20.19.0 or a later 20.x, or 22.12.0 or later, with npm 7.0.0 or later; the .NET
+  SDK the step programs pin (10.0.302 or a later 10.0.3xx patch); git 2.17.0 or later. Anything older is MISSING;
+- whether Windows long-path support and git's core.longpaths are on (reported, never failed);
 - the database: a connection with DB_USER and DB_PASSWORD, and the right to create the configured schema (or to
   create tables in it, when it exists already); never the right to create a database or a superuser;
 - each configured package source reachable: PIP_INDEX_URL, NPM_REGISTRY and each of NUGET_SOURCES (the public
@@ -33,6 +35,15 @@ BACKEND = ROOT / "backend"
 DEFAULT_SOURCES = {"PIP_INDEX_URL": "https://pypi.org/simple/", "NPM_REGISTRY": "https://registry.npmjs.org/",
                    "NUGET_SOURCES": "https://api.nuget.org/v3/index.json"}
 results: list[tuple[bool, str, str]] = []
+
+# The required versions (01-ENVIRONMENT-SETUP.md section 10). Python: the code is 3.11 syntax and its pinned
+# dependencies (pydantic 2.9, psycopg 3.2) publish builds up to 3.13. Node.js: Vite's own requirement. npm: the
+# lockfile is version 3. git: `git worktree remove`, the newest command the platform runs, is in 2.17.
+MIN_PYTHON, MAX_PYTHON_EXCLUSIVE = (3, 11, 0), (3, 14, 0)
+PYTHON_REQUIRED = "3.11.0 to 3.13.x needed"
+NODE_REQUIRED = "20.19.0 or a later 20.x, or 22.12.0 or later, needed"
+MIN_NPM, NPM_REQUIRED = (7, 0, 0), "7.0.0 or later needed"
+MIN_GIT, GIT_REQUIRED = (2, 17, 0), "2.17.0 or later needed"
 
 
 def check(ok: bool, what: str, detail: str) -> bool:
@@ -68,22 +79,65 @@ def version(text: str) -> tuple[int, ...]:
     return tuple(int(x) for x in m.groups() if x is not None) if m else ()
 
 
+def node_fits(v: tuple[int, ...]) -> bool:
+    """Vite's requirement: ^20.19.0 || >=22.12.0."""
+    return (v[:1] == (20,) and v >= (20, 19, 0)) or v >= (22, 12, 0)
+
+
 def tools() -> None:
     print("Tools")
-    check(sys.version_info >= (3, 11), "Python", f"{sys.version.split()[0]} (3.11 or later needed)")
+    py = sys.version_info[:3]
+    check(MIN_PYTHON <= py < MAX_PYTHON_EXCLUSIVE, "Python",
+          f"{sys.version.split()[0]} ({PYTHON_REQUIRED}){'' if py >= MIN_PYTHON else ': too old'}"
+          f"{': too new, the pinned dependencies have no build for it' if py >= MAX_PYTHON_EXCLUSIVE else ''}")
     code, out = run("node", "--version")
-    check(code == 0 and version(out) >= (18,), "Node.js", f"{out or 'not found'} (18 or later needed)")
+    v = version(out) if code == 0 else ()
+    check(bool(v) and node_fits(v), "Node.js",
+          f"{out if code == 0 else 'not found'} ({NODE_REQUIRED}){': too old' if v and not node_fits(v) else ''}")
     npm = shutil.which("npm") or shutil.which("npm.cmd")
     code, out = run(npm, "--version") if npm else (-1, "")
-    check(code == 0, "npm", out or "not found")
+    v = version(out) if code == 0 else ()
+    check(bool(v) and v >= MIN_NPM, "npm", f"{out if code == 0 else 'not found'} ({NPM_REQUIRED}){': too old' if v and v < MIN_NPM else ''}")
     pinned = json.loads((ROOT / "steps" / "step-003-fingerprinting" / "global.json").read_text(encoding="utf-8"))["sdk"]["version"]
     code, out = run("dotnet", "--list-sdks")
     sdks = [line.split()[0] for line in out.splitlines() if line.strip() and line[0].isdigit()] if code == 0 else []
+    # rollForward latestPatch: the same feature band (10.0.3xx), at or above the pinned patch.
     fits = [s for s in sdks if version(s)[:2] == version(pinned)[:2] and s.split(".")[2][:1] == pinned.split(".")[2][:1]
             and version(s) >= version(pinned)]
-    check(bool(fits), ".NET SDK", f"{', '.join(fits) if fits else 'none'} (the step programs pin {pinned}, latest patch)")
+    band = f"{pinned.rsplit('.', 1)[0]}.{pinned.split('.')[2][0]}xx"
+    check(bool(fits), ".NET SDK", f"{', '.join(fits) if fits else 'none of ' + (', '.join(sdks) or 'none installed')} "
+                                  f"({pinned} or a later {band} patch needed, steps\\step-003-fingerprinting\\global.json)")
     code, out = run("git", "--version")
-    check(code == 0, "git", out or "not found")
+    v = version(out) if code == 0 else ()
+    check(bool(v) and v >= MIN_GIT, "git", f"{out if code == 0 else 'not found'} ({GIT_REQUIRED}){': too old' if v and v < MIN_GIT else ''}")
+
+
+def long_paths() -> None:
+    """Reported, never failed: on, or off with what turning it on takes. Changing either is the machine owner's call
+    (CLAUDE.md rule 14), so preflight only reads them."""
+    print("Long paths (recommended on; reported only)")
+    enabled = None
+    if sys.platform == "win32":
+        try:
+            import winreg
+            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SYSTEM\CurrentControlSet\Control\FileSystem") as key:
+                enabled = winreg.QueryValueEx(key, "LongPathsEnabled")[0] == 1
+        except OSError:
+            enabled = False
+        note("Windows long-path support", "on" if enabled else
+             "off: paths over 260 characters fail in some tools. An administrator turns it on with the group policy "
+             "'Enable Win32 long paths' or LongPathsEnabled=1 under HKLM\\SYSTEM\\CurrentControlSet\\Control\\FileSystem")
+    code, out = run("git", "config", "--get", "core.longpaths")
+    on = code == 0 and out.strip().lower() in ("true", "1", "yes", "on")
+    note("git core.longpaths", "on" if on else
+         "off: git cannot check out a file whose path is over 260 characters. Turn it on with: "
+         "git config --global core.longpaths true")
+    print(f"           A short install folder and a short RUNS_DIR keep paths well under the limit "
+          f"(this repository: {len(str(ROOT))} characters).")
+
+
+def note(what: str, detail: str) -> None:
+    print(f"  {'ON     ' if detail == 'on' else 'OFF    '}  {what}: {detail}", flush=True)
 
 
 def reachable(url: str) -> tuple[bool, str]:
@@ -183,6 +237,7 @@ def main() -> int:
         tools()
         sources(cfg)
         runs_dir(cfg)
+        long_paths()
     if not args.no_database:
         database(cfg)
     missing = [what for ok, what, _ in results if not ok]

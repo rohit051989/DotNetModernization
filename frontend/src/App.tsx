@@ -145,6 +145,10 @@ function App() {
         engagements={engagements}
         selectedEngagementId={selectedEngagementId}
         onSelectEngagement={handleSelectEngagement}
+        onEngagementCreated={(engagement) => {
+          setEngagements((current) => [...current, engagement].sort((a, b) => a.id.localeCompare(b.id)))
+          handleSelectEngagement(engagement.id)
+        }}
         activeTab={activeTab}
         onSelectTab={handleSelectTab}
       >

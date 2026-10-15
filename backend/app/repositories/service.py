@@ -31,7 +31,10 @@ _SYSTEM_LOCATIONS = {
     r"c:\programdata",
 }
 _DRIVE_ROOT_RE = re.compile(r"^[a-zA-Z]:\\?$")
-_SSH_CLONE_RE = re.compile(r"^git@[^:]+:.+$")
+# SSH remotes, in git's two spellings: scp-like git@host:org/repo.git, and ssh://[user@]host[:port]/org/repo.git.
+_SSH_CLONE_RE = re.compile(r"^git@[^:/]+:.+$")
+_SSH_URL_CLONE_RE = re.compile(r"^ssh://(?:[^@/:]+@)?[^@/:]+(?::\d+)?/.+$")
+_ACCEPTED_FORMS = "an https URL, git@host:org/repo.git or ssh://host/org/repo.git"
 _MATCH_LABELS = {"clone_url": "clone URL", "root_folder_name": "root folder name", "local_path": "local path"}
 
 
@@ -130,21 +133,29 @@ def validate_local_path_for_registration(raw_path: str) -> list[dict]:
 
 
 def validate_clone_url(raw_url: str) -> list[dict]:
-    """Part E rules for `clone_url`: must parse as https or git@host:org/repo,
-    and must not embed credentials."""
+    """Part E rules for `clone_url`: must be https, git@host:org/repo or
+    ssh://host/org/repo, and must not embed credentials."""
     url = raw_url.strip()
     parsed = urlparse(url)
     is_https = parsed.scheme == "https" and bool(parsed.netloc)
-    is_ssh = bool(_SSH_CLONE_RE.match(url))
+    is_ssh = bool(_SSH_CLONE_RE.match(url) or _SSH_URL_CLONE_RE.match(url))
 
-    if not (is_https or is_ssh):
+    if parsed.scheme == "ssh" and parsed.password:
         return [
             {
                 "field": "clone_url",
-                "message": f"'{url}' must be an https URL or match git@host:org/repo.",
-                "code": "INVALID_CLONE_URL",
+                "message": "Embedded credentials are not allowed in a clone URL. SSH authenticates with your SSH key.",
+                "code": "EMBEDDED_CREDENTIALS",
             }
         ]
+
+    if not (is_https or is_ssh):
+        looks_local = bool(re.match(r"^([a-zA-Z]:[\\/]|\\\\|/|file:)", url))
+        message = (
+            f"'{url}' is a local folder, not a URL: enter the repository's canonical URL ({_ACCEPTED_FORMS})."
+            if looks_local else f"'{url}' must be {_ACCEPTED_FORMS}."
+        )
+        return [{"field": "clone_url", "message": message, "code": "INVALID_CLONE_URL"}]
 
     if is_https and (parsed.username or parsed.password):
         return [
@@ -251,6 +262,22 @@ def _unique_slug(db: Session, engagement_id: str, base_slug: str) -> str:
 # ---------- Path inspection ----------
 
 
+def _no_origin_message(path: Path) -> str:
+    """Why a git repository has no origin URL to detect: no remote at all, or remotes under other names."""
+    remotes = (repository_ingest.run_git(path, "remote") or "").split()
+    if not remotes:
+        return (
+            "This repository has no git remote at all, so there is no clone URL to detect or verify against. "
+            "Leave the clone URL empty, or enter the repository's canonical URL if it has one: it will be recorded "
+            "unverified."
+        )
+    return (
+        f"This repository has no remote named origin (it has {', '.join(remotes)}), so its clone URL is not "
+        "detected. Enter the repository's canonical URL: it will be recorded unverified."
+    )
+
+
+
 def _scan_folder(path: Path) -> dict:
     """Bounded traversal for inspect-path: sampled file count/size estimates
     plus solution/project file counts, skipping the same directories step 1
@@ -332,6 +359,13 @@ def inspect_path(db: Session, engagement_id: str, raw_local_path: str) -> Inspec
     warnings: list[str] = []
     if not has_git:
         warnings.append("No .git directory found, so the clone URL cannot be verified.")
+    elif detected_clone_url is None:
+        warnings.append(_no_origin_message(path))
+    elif validate_clone_url(detected_clone_url):
+        warnings.append(
+            f"The origin remote is {detected_clone_url}, which is not a URL the platform accepts: enter the "
+            f"repository's canonical URL ({_ACCEPTED_FORMS})."
+        )
     if scan["file_count"] == 0:
         warnings.append("Folder appears empty.")
     if scan["solution_count"] == 0 and scan["project_count"] == 0:
@@ -394,13 +428,16 @@ def register_local_path(
     problems = validate_local_path_for_registration(payload.local_path)
     if clone_url_raw:
         problems += validate_clone_url(clone_url_raw)
-    if has_git and not clone_url_raw:
+    # A repository with an origin remote needs its clone URL, to verify against it. One with no remote at all has
+    # nothing to verify against: it registers without one (clone_url_verification not_applicable).
+    has_origin = has_git and repository_ingest.run_git(path, "config", "--get", "remote.origin.url") is not None
+    if has_origin and not clone_url_raw:
         problems.append(
             {
                 "field": "clone_url",
                 "message": (
-                    "This folder has a .git directory — a clone URL is required so it can be "
-                    "verified against the remote."
+                    "This repository has an origin remote: a clone URL is required so it can be "
+                    "verified against it."
                 ),
                 "code": "CLONE_URL_REQUIRED_FOR_GIT",
             }
@@ -455,7 +492,8 @@ def register_local_path(
         # attempted because there's no URL at all".
         clone_url_verification = "unverifiable" if clone_url_raw else "not_applicable"
     elif detected_clone_url is None:
-        clone_url_verification = "unverifiable"
+        # No origin remote: a URL given is recorded unverified; none given, there is nothing to verify.
+        clone_url_verification = "unverifiable" if clone_url_raw else "not_applicable"
     elif repository_ingest.normalize_clone_url(detected_clone_url) == clone_url_normalised:
         clone_url_verification = "verified"
     else:
@@ -474,7 +512,8 @@ def register_local_path(
         clone_url_normalised=clone_url_normalised,
         detected_clone_url=detected_clone_url,
         clone_url_verification=clone_url_verification,
-        source_control_status="GIT" if has_git else "NONE",
+        # GIT only with a clone URL (ck_repositories_clone_url_required_for_git), as repository-ingest records it.
+        source_control_status="GIT" if has_git and clone_url_raw else "NONE",
         source_type="local_path",
         provider=derive_provider(clone_url_raw),
         default_branch=payload.default_branch,

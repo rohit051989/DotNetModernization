@@ -213,8 +213,8 @@ Three partial unique indexes, all `WHERE deleted_at IS NULL`:
 Normalisation, applied on write:
 
 - **Clone URL** — lowercase host, strip trailing `.git`, strip trailing slash, strip
-  embedded credentials, and treat `git@host:org/repo` as equivalent to
-  `https://host/org/repo`.
+  embedded credentials, and treat an SSH remote — `git@host:org/repo` or
+  `ssh://[user@]host[:port]/org/repo` — as equivalent to `https://host/org/repo`.
 - **Local path** — resolve to absolute, normalise separators, uppercase the Windows
   drive letter consistently, strip trailing separator.
 
@@ -346,9 +346,12 @@ POST /api/engagements/{eid}/repositories/register
 }
 ```
 
-`local_path` is always mandatory. `clone_url` is mandatory only when the folder has
-a `.git` directory — omitting it (or sending `null`) for a git folder returns 422,
-`code: CLONE_URL_REQUIRED_FOR_GIT`, naming the `clone_url` field. `name` defaults to
+`local_path` is always mandatory. `clone_url` is mandatory only when the folder is a
+git repository with an `origin` remote to verify it against — omitting it (or sending
+`null`) then returns 422, `code: CLONE_URL_REQUIRED_FOR_GIT`, naming the `clone_url`
+field. A git repository with no remote at all registers without one
+(`clone_url_verification` `not_applicable`, `source_control_status` `NONE`), and
+inspect-path says so in plain words. `name` defaults to
 `root_folder_name`. `criticality` defaults to `medium`, `retirement_status` to
 `active`.
 
@@ -429,10 +432,12 @@ prevent mistakes, not attacks.
   `C:\Program Files (x86)`, `C:\ProgramData`, and any bare drive root such as `C:\`.
   Registering a drive root would attempt to scan the whole disk.
 - Reject a path containing no files at all.
-- Clone URL, when supplied, must parse as an `https` URL or match the
-  `git@host:org/repo` SSH form. Reject embedded credentials (`https://user:token@…`)
-  with a message pointing at environment variables. Not supplying one at all is
-  valid — see Part C — unless the folder has `.git`, in which case it is required.
+- Clone URL, when supplied, must parse as an `https` URL or one of git's SSH forms,
+  `git@host:org/repo.git` or `ssh://[user@]host[:port]/org/repo.git`. A local folder
+  path is rejected as "a local folder, not a URL". Reject embedded credentials
+  (`https://user:token@…`, `ssh://user:password@…`). Not supplying one at all is
+  valid — see Part C — unless the folder is a git repository with an `origin`
+  remote, in which case it is required.
 - Warn but allow when no `.sln` or `.csproj` is present — the folder may still be in
   scope, and pattern discovery may surface something unanticipated.
 
@@ -601,8 +606,10 @@ producing step is still a stub. Do not fabricate zeros.
 - [ ] Registering a folder with no `.git` and no `clone_url` succeeds — this is the
       case docs/15 originally made unsatisfiable: a legacy folder that was never
       under source control
-- [ ] Registering a folder with `.git` and no `clone_url` returns 422,
-      `code: CLONE_URL_REQUIRED_FOR_GIT`, naming the `clone_url` field
+- [ ] Registering a folder with `.git`, an `origin` remote and no `clone_url` returns
+      422, `code: CLONE_URL_REQUIRED_FOR_GIT`, naming the `clone_url` field
+- [ ] Registering a git repository with no remote at all and no `clone_url` succeeds,
+      and inspect-path warns that it has no git remote at all
 - [ ] Registering a valid path creates the row and launches discovery, returning 202
       with a resolvable `job_execution_id`
 - [ ] Registering the same clone URL again returns 409 naming the existing repository

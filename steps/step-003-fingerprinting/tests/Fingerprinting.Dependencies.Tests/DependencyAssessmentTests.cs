@@ -196,6 +196,44 @@ public sealed class DependencyAssessmentTests : IDisposable
     }
 
     [Fact]
+    public async Task With_no_nuget_config_in_the_repository_a_parent_folders_feed_is_the_client_feed()
+    {
+        // 1.6.0: the repository has no NuGet.config; the folder above it does, as dotnet restore finds it.
+        var parentFeed = Path.Combine(_root, "parentfeed");
+        Directory.CreateDirectory(parentFeed);
+        File.WriteAllText(Path.Combine(_root, "NuGet.config"), """
+            <?xml version="1.0" encoding="utf-8"?>
+            <configuration>
+              <packageSources>
+                <add key="team-feed" value="parentfeed" />
+              </packageSources>
+            </configuration>
+            """);
+        Package(parentFeed, "Acme.Json", "1.0.0", "net8.0", JsonV1);
+        Package(parentFeed, "Acme.Json", "1.1.0", "net8.0", JsonV11);
+        Package(_publicFeed, "Acme.Json", "1.2.0", "net8.0", JsonV12);
+        Project("""    <PackageReference Include="Acme.Json" Version="1.0.0" />""", "class P { }");
+
+        var artifact = await Run([new InputPackage("Acme.Json", "1.0.0", "packagereference")]);
+        var json = Package(artifact, "Acme.Json");
+        Assert.Equal((FeedSources.ClientFeed, "team-feed", "1.1.0"), (json.FeedSource, json.FeedName, json.RecommendedVersion));
+        var feed = Assert.Single(artifact.Projects.Single().Feeds, f => f.Name == "team-feed");
+        Assert.Equal(("client_feed", "parent"), (feed.Role, feed.DeclaredIn));
+        Assert.StartsWith("file:", feed.Url);
+    }
+
+    [Theory]
+    [InlineData(@"C:\work\repo\NuGet.config", "repository")]
+    [InlineData(@"C:\work\repo\src\App\nuget.config", "repository")]
+    [InlineData(@"C:\work\NuGet.config", "parent")]
+    [InlineData(@"C:\NuGet.Config", "parent")]
+    [InlineData(@"C:\Users\u\AppData\Roaming\NuGet\NuGet.Config", "user")]
+    [InlineData(@"C:\Users\u\AppData\Roaming\NuGet\config\team.config", "user")]
+    [InlineData(@"C:\Program Files (x86)\NuGet\Config\Microsoft.VisualStudio.Offline.config", "machine")]
+    public void A_config_files_origin_is_where_it_sits(string file, string origin) =>
+        Assert.Equal(origin, FeedResolver.Origin(file, @"C:\work\repo\", @"C:\Users\u\AppData\Roaming\NuGet\", @"C:\Program Files (x86)\NuGet\Config\"));
+
+    [Fact]
     public async Task An_unreachable_feed_is_unknown_with_its_reason_never_a_substituted_answer_and_no_credential_survives()
     {
         File.WriteAllText(Path.Combine(_repo, "NuGet.config"), """
@@ -408,7 +446,7 @@ public sealed class DependencyAssessmentTests : IDisposable
     /// fixture's "public" feed is a local folder, which the feed enum rightly refuses.</summary>
     private static ArtifactSchemaValidator PackageSchema()
     {
-        var schema = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "schemas", "dependency-assessment-1.5.0.schema.json")))!;
+        var schema = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "schemas", "dependency-assessment-1.6.0.schema.json")))!;
         var wrapper = new System.Text.Json.Nodes.JsonObject
         {
             ["$schema"] = schema["$schema"]!.DeepClone(),
@@ -754,7 +792,7 @@ public sealed class DependencyAssessmentTests : IDisposable
 
         var artifact = await Run([new InputPackage("Acme.Json", "1.0.0", "packagereference")], cache);
         var json = Package(artifact, "Acme.Json");
-        Assert.Equal("1.5.0", artifact.ArtifactVersion);
+        Assert.Equal("1.6.0", artifact.ArtifactVersion);
         Assert.Equal(scope, json.Deprecated!.Scope);
         Assert.Equal(scope == "version" ? "1.1.0" : null, json.Deprecated.NewestNotDeprecated);
         Assert.Equal(signalValue, Assert.Single(artifact.Projects.Single().Signals, s => s.Name == "PACKAGE_DEPRECATED").Value);

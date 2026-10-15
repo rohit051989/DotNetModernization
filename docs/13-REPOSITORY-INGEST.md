@@ -130,7 +130,8 @@ The user **asserts** `clone_url` at registration; this step **verifies** it agai
 | No `.git`, or no `origin` remote configured | `unverifiable` | Proceed |
 
 Normalisation (lowercase host, strip trailing `.git`, strip trailing slash, strip
-embedded credentials, treat `git@host:org/repo` as `https://host/org/repo`) is the
+embedded credentials, treat `git@host:org/repo` and `ssh://[user@]host[:port]/org/repo`
+as `https://host/org/repo`) is the
 same rule given in `15-REPOSITORY-INGEST-UI.md` Part C, applied to both sides before
 comparing. A mismatch is a warning, not a rejection — see that document for why.
 

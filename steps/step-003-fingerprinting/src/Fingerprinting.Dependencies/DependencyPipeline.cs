@@ -38,8 +38,11 @@ public sealed class DependencyPipeline(PackageLookup lookup, DependencyOptions o
     /// (FeedResolver.NormaliseUrl). 1.4.3: a version newer than the lookup answers is current
     /// (<see cref="NewerThanLookups"/>). 1.5.0 (artifact 1.5.0): the recommended version never carries a known
     /// advisory (<see cref="WithoutAdvisoryAsync"/>); a vulnerability names the version that fixes it, or says there
-    /// is none yet; a retired package's replacement is given a version (<see cref="ReplacementVersionAsync"/>).</summary>
-    public const string ScannerVersion = "1.5.0";
+    /// is none yet; a retired package's replacement is given a version (<see cref="ReplacementVersionAsync"/>).
+    /// 1.6.0 (artifact 1.6.0): feeds resolve as dotnet resolves them — a NuGet.config in a folder above the
+    /// repository is recorded as declared in <c>parent</c>, and a local folder declared at user level is a client
+    /// feed (<see cref="FeedResolver"/>).</summary>
+    public const string ScannerVersion = "1.6.0";
 
     /// <summary>1.5.0: the PACKAGE_VULNERABLE value's ending when no release without a known advisory supports the
     /// target.</summary>

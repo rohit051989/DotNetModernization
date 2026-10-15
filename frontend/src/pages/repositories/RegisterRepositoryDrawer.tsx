@@ -70,10 +70,21 @@ export function RegisterRepositoryDrawer({ engagementId, onClose, onRegistered }
       }
       return { tone: 'text-neutral-400', text: 'Cannot be verified — no git remote found in this folder. It will be recorded unverified.' }
     }
-    if (!cloneUrl.trim()) return null
     const detected = inspection.detected_clone_url
-    if (!detected) return { tone: 'text-neutral-400', text: 'Cannot be verified — no git remote found in this folder' }
-    const normalize = (u: string) => u.trim().replace(/\.git\/?$/, '').replace(/\/$/, '').toLowerCase()
+    if (!cloneUrl.trim()) {
+      return detected ? null : { tone: 'text-neutral-400', text: 'No origin remote — nothing to verify against. Leave this blank, or enter the canonical URL to record it unverified.' }
+    }
+    if (!detected) return { tone: 'text-neutral-400', text: 'Cannot be verified — this repository has no origin remote. It will be recorded unverified.' }
+    // As the backend's normalize_clone_url: an SSH remote (git@host:org/repo or ssh://[user@]host[:port]/org/repo)
+    // is the same repository as https://host/org/repo.
+    const normalize = (u: string) => {
+      let s = u.trim()
+      const scp = /^git@([^:/]+):(.+)$/.exec(s)
+      if (scp) s = `https://${scp[1]}/${scp[2]}`
+      const ssh = /^ssh:\/\/(?:[^@/]+@)?([^/:]+)(?::\d+)?(\/.*)$/.exec(s)
+      if (ssh) s = `https://${ssh[1]}${ssh[2]}`
+      return s.replace(/\/$/, '').replace(/\.git$/, '').replace(/\/$/, '').toLowerCase()
+    }
     if (normalize(detected) === normalize(cloneUrl)) {
       return { tone: 'text-emerald-600', text: "Verified against the folder's git remote" }
     }
@@ -123,12 +134,13 @@ export function RegisterRepositoryDrawer({ engagementId, onClose, onRegistered }
 
   const hint = cloneUrlVerificationHint()
   const blockingConflict = inspection?.duplicate_conflict ?? null
-  // Required only when the folder has a .git directory — a folder that was
-  // never under source control has no canonical URL to assert
-  // (15-REPOSITORY-INGEST-UI.md Part C). Not yet inspected is treated as
-  // "not required" so the button isn't blocked before inspection has had a
-  // chance to run; the backend still validates this regardless.
-  const cloneUrlRequired = inspection?.has_git === true
+  // Required only when the repository has an origin remote to verify it
+  // against — a folder never under source control, or a repository with no
+  // remote at all, has no canonical URL to check (15-REPOSITORY-INGEST-UI.md
+  // Part C). Not yet inspected is treated as "not required" so the button
+  // isn't blocked before inspection has had a chance to run; the backend
+  // still validates this regardless.
+  const cloneUrlRequired = inspection?.has_git === true && !!inspection.detected_clone_url
   const canSubmit =
     source === 'local_path' &&
     localPath.trim() &&
@@ -213,7 +225,7 @@ export function RegisterRepositoryDrawer({ engagementId, onClose, onRegistered }
                 type="text"
                 value={cloneUrl}
                 onChange={(event) => setCloneUrl(event.target.value)}
-                placeholder="https://github.com/example/order-management.git"
+                placeholder="https://… , git@host:org/repo.git or ssh://host/org/repo.git"
                 className={inputClass(!!fieldErrors.clone_url)}
               />
               {cloneUrlRequired && (

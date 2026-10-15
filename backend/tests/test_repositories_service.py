@@ -98,11 +98,12 @@ class GitRegistrationStillRequiresCloneUrlTests(RepositoryRegistrationTestCase):
     """The fix must not weaken the existing rule for a folder that *is*
     under git — only lift it for folders that aren't."""
 
-    def test_git_folder_without_clone_url_is_rejected(self):
+    def test_git_folder_with_an_origin_but_no_clone_url_is_rejected(self):
         local_path = self._folder("git-no-url")
         import subprocess
 
         subprocess.run(["git", "-C", str(local_path), "init", "-q"], check=True)
+        subprocess.run(["git", "-C", str(local_path), "remote", "add", "origin", "git@github.com:example/git-no-url.git"], check=True)
 
         with self.assertRaises(repositories_service.RegistrationError) as ctx:
             self._register(local_path)
@@ -110,6 +111,43 @@ class GitRegistrationStillRequiresCloneUrlTests(RepositoryRegistrationTestCase):
         self.assertEqual(ctx.exception.status_code, 422)
         codes = [e["code"] for e in ctx.exception.errors]
         self.assertIn("CLONE_URL_REQUIRED_FOR_GIT", codes)
+
+    def test_git_folder_with_no_remote_at_all_registers_without_a_url_and_inspection_says_why(self):
+        local_path = self._folder("git-no-remote")
+        import subprocess
+
+        subprocess.run(["git", "-C", str(local_path), "init", "-q"], check=True)
+        inspection = repositories_service.inspect_path(self.db, self.engagement.id, str(local_path))
+        self.assertTrue(any("no git remote at all" in w for w in inspection.warnings), inspection.warnings)
+
+        repo = self._register(local_path)
+        self.assertEqual((repo.clone_url, repo.source_control_status, repo.clone_url_verification),
+                         (None, "NONE", "not_applicable"))
+        self.assertTrue(repo.has_git_history)
+
+    def test_an_origin_under_another_name_is_named(self):
+        local_path = self._folder("git-upstream-only")
+        import subprocess
+
+        subprocess.run(["git", "-C", str(local_path), "init", "-q"], check=True)
+        subprocess.run(["git", "-C", str(local_path), "remote", "add", "upstream", "https://github.com/example/x.git"], check=True)
+        inspection = repositories_service.inspect_path(self.db, self.engagement.id, str(local_path))
+        self.assertTrue(any("no remote named origin (it has upstream)" in w for w in inspection.warnings), inspection.warnings)
+
+    def test_ssh_remotes_register_and_verify_against_the_same_repository(self):
+        import subprocess
+
+        for name, remote, given in [
+            ("scp", "git@github.com:example/scp.git", "git@github.com:example/scp.git"),
+            ("ssh", "ssh://git@github.com:22/example/ssh.git", "ssh://git@github.com/example/ssh.git"),
+            ("mixed", "git@github.com:example/mixed.git", "https://github.com/example/mixed"),
+        ]:
+            local_path = self._folder(f"git-{name}")
+            subprocess.run(["git", "-C", str(local_path), "init", "-q"], check=True)
+            subprocess.run(["git", "-C", str(local_path), "remote", "add", "origin", remote], check=True)
+            repo = self._register(local_path, clone_url=given)
+            self.assertEqual((repo.clone_url_verification, repo.clone_url_normalised, repo.source_control_status),
+                             ("verified", f"https://github.com/example/{name}", "GIT"), name)
 
     def test_git_folder_with_clone_url_still_registers_normally(self):
         local_path = self._folder("git-with-url")
@@ -121,6 +159,35 @@ class GitRegistrationStillRequiresCloneUrlTests(RepositoryRegistrationTestCase):
 
         self.assertEqual(repo.source_control_status, "GIT")
         self.assertEqual(repo.clone_url, "https://github.com/example/git-with-url.git")
+
+
+class CloneUrlValidationTests(unittest.TestCase):
+    def test_accepted_forms(self):
+        for url in ["https://github.com/example/repo.git", "git@github.com:example/repo.git",
+                    "ssh://git@github.com/example/repo.git", "ssh://github.com:7999/scm/proj/repo.git",
+                    "git@ssh.dev.azure.com:v3/org/project/repo"]:
+            self.assertEqual(repositories_service.validate_clone_url(url), [], url)
+
+    def test_rejected_forms_say_why(self):
+        cases = {
+            "http://github.com/example/repo.git": "must be an https URL, git@host:org/repo.git or ssh://host/org/repo.git",
+            r"D:\repos\AccountsApi": "is a local folder, not a URL",
+            "file:///D:/repos/AccountsApi": "is a local folder, not a URL",
+            "https://user:secret@github.com/example/repo.git": "Embedded credentials",
+            "ssh://user:secret@github.com/example/repo.git": "Embedded credentials",
+        }
+        for url, expected in cases.items():
+            problems = repositories_service.validate_clone_url(url)
+            self.assertEqual(len(problems), 1, url)
+            self.assertIn(expected, problems[0]["message"], url)
+
+    def test_ssh_and_https_normalise_to_one_identity(self):
+        from app.steps.repository_ingest import normalize_clone_url
+
+        expected = "https://github.com/example/repo"
+        for url in ["https://github.com/example/repo.git", "git@github.com:example/repo.git",
+                    "ssh://git@GitHub.com:22/example/repo.git", "ssh://github.com/example/repo/"]:
+            self.assertEqual(normalize_clone_url(url), expected, url)
 
 
 if __name__ == "__main__":

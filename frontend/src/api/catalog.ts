@@ -12,3 +12,15 @@ export function getHealth() {
 export function listEngagements() {
   return api.get<Engagement[]>('/api/engagements')
 }
+
+export interface EngagementCreate {
+  id: string
+  client_name: string
+  target_framework: string
+  target_platform?: string | null
+  description?: string | null
+}
+
+export function createEngagement(body: EngagementCreate) {
+  return api.post<Engagement>('/api/engagements', body)
+}

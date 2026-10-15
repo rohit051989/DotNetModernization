@@ -25,19 +25,23 @@ public sealed record FeedSet(IReadOnlyList<Feed> All, IReadOnlyList<Feed> Author
 
 /// <summary>
 /// Part B2: resolve NuGet.config the way the NuGet client does — the
-/// repository's files from the project directory upwards, then the user's,
-/// then the machine's, honouring <c>&lt;clear/&gt;</c> and disabled sources —
+/// NuGet.config files from the project directory upwards, inside the
+/// repository and then in its parent folders, then the user's
+/// (%APPDATA%\NuGet\NuGet.Config and %APPDATA%\NuGet\config\*.config), then
+/// the machine's, honouring <c>&lt;clear/&gt;</c> and disabled sources —
 /// using NuGet's own <see cref="Settings"/> and <see cref="PackageSourceProvider"/>,
 /// which also carry <c>packageSourceCredentials</c> and environment-variable
 /// credentials into each <see cref="PackageSource"/>, in memory only.
 ///
-/// Which resolved sources are <b>client feeds</b>: any source declared in a
-/// NuGet.config inside the repository, and any http(s) feed declared at user
-/// or machine level — other than nuget.org itself. A local folder declared
-/// only at user or machine level is tooling, not an approved feed (Visual
-/// Studio's machine-wide "Microsoft Visual Studio Offline Packages"), and is
-/// ignored. When client feeds exist they are the authority and nuget.org is
-/// never the answer; when none exist, nuget.org is the fallback.
+/// Which resolved sources are <b>client feeds</b>: every source other than
+/// nuget.org itself, wherever it is declared (repository, parent folder,
+/// user), except a local folder declared only at machine level — that is
+/// tooling, not an approved feed (Visual Studio's machine-wide "Microsoft
+/// Visual Studio Offline Packages"), and is ignored. When client feeds exist
+/// they are the authority and nuget.org is never the answer; when none exist,
+/// nuget.org is the fallback. 1.6.0: a parent folder's NuGet.config is
+/// recorded as declared in <c>parent</c>, and a local folder declared at user
+/// level is a client feed, as it is to dotnet restore.
 /// </summary>
 public static class FeedResolver
 {
@@ -58,28 +62,27 @@ public static class FeedResolver
         var provider = new PackageSourceProvider(settings);
         var root = Path.GetFullPath(repositoryRoot).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
 
-        // Which config file declares each source key: the repository's files
-        // decide "client feed" for local folders.
+        // Which config file declares each source key, nearest first: a key the
+        // repository declares is the repository's, even if the user's file has it too.
         var configFiles = settings.GetConfigFilePaths().ToList();
-        var repositoryKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var machineKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var machineRoot = NuGetEnvironment.GetFolderPath(NuGetFolderPath.MachineWideConfigDirectory);
+        var origins = new[] { "repository", "parent", "user", "machine" };
+        var keysByOrigin = origins.ToDictionary(o => o, _ => new HashSet<string>(StringComparer.OrdinalIgnoreCase));
+        var machineRoot = Folder(NuGetEnvironment.GetFolderPath(NuGetFolderPath.MachineWideConfigDirectory));
+        var userRoot = Folder(NuGetEnvironment.GetFolderPath(NuGetFolderPath.UserSettingsDirectory));
         foreach (var file in configFiles)
         {
-            var keys = DeclaredSourceKeys(file);
-            if (Path.GetFullPath(file).StartsWith(root, StringComparison.OrdinalIgnoreCase)) repositoryKeys.UnionWith(keys);
-            else if (Path.GetFullPath(file).StartsWith(machineRoot, StringComparison.OrdinalIgnoreCase)) machineKeys.UnionWith(keys);
+            keysByOrigin[Origin(Path.GetFullPath(file), root, userRoot, machineRoot)].UnionWith(DeclaredSourceKeys(file));
         }
 
         var all = new List<Feed>();
         foreach (var source in provider.LoadPackageSources().Where(s => s.IsEnabled))
         {
-            var declaredIn = repositoryKeys.Contains(source.Name) ? "repository" : machineKeys.Contains(source.Name) ? "machine" : "user";
+            var declaredIn = origins.FirstOrDefault(o => keysByOrigin[o].Contains(source.Name)) ?? "user";
             var role = IsNuGetOrg(source.Source)
                 ? Feed.RoleNuGetOrg
-                : declaredIn == "repository" || source.IsHttp
-                    ? Feed.RoleClient
-                    : Feed.RoleIgnored;
+                : declaredIn == "machine" && !source.IsHttp
+                    ? Feed.RoleIgnored
+                    : Feed.RoleClient;
             all.Add(new Feed(source.Name, source, NormaliseUrl(source.Source, root), role, declaredIn));
         }
 
@@ -103,6 +106,19 @@ public static class FeedResolver
         if (!all.Contains(nugetOrg)) all.Add(nugetOrg);
         return new FeedSet(all, [nugetOrg], UsingClientFeeds: false, Public: null);
     }
+
+    /// <summary>Where a NuGet.config file sits: inside the repository, in the machine-wide or the user's NuGet
+    /// folder, or else in a folder above the repository (NuGet reads every NuGet.config from the project
+    /// directory up to the drive root).</summary>
+    public static string Origin(string file, string repositoryRoot, string userRoot, string machineRoot)
+    {
+        if (file.StartsWith(repositoryRoot, StringComparison.OrdinalIgnoreCase)) return "repository";
+        if (file.StartsWith(machineRoot, StringComparison.OrdinalIgnoreCase)) return "machine";
+        if (file.StartsWith(userRoot, StringComparison.OrdinalIgnoreCase)) return "user";
+        return "parent";
+    }
+
+    private static string Folder(string path) => Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
 
     private static Feed NuGetOrg(string source, string root, string declaredIn) =>
         new("nuget.org", new PackageSource(source, "nuget.org"), NormaliseUrl(source, root), Feed.RoleNuGetOrg, declaredIn);

@@ -299,7 +299,7 @@ public static class DependencyAssessmentCli
         ?? throw new InvalidOperationException("application-fingerprint deserialized to null");
 
     private static readonly Lazy<ArtifactSchemaValidator> SchemaValidator = new(() =>
-        ArtifactSchemaValidator.Load(Path.Combine(AppContext.BaseDirectory, "schemas", "dependency-assessment-1.5.0.schema.json")));
+        ArtifactSchemaValidator.Load(Path.Combine(AppContext.BaseDirectory, "schemas", "dependency-assessment-1.6.0.schema.json")));
 
     public static async Task<string> WriteArtifactAsync(DependencyAssessmentArtifact artifact, string outDir)
     {

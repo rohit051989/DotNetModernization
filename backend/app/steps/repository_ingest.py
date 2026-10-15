@@ -64,7 +64,9 @@ _SSH_URL_RE = re.compile(r"^git@([^:]+):(.+?)(?:\.git)?/?$")
 def normalize_clone_url(url: str) -> str:
     """Clone URL normalisation per 15-REPOSITORY-INGEST-UI.md Part C:
     lowercase host, strip trailing .git, strip trailing slash, strip embedded
-    credentials, and treat git@host:org/repo as https://host/org/repo."""
+    credentials, and treat an SSH remote — git@host:org/repo or
+    ssh://[user@]host[:port]/org/repo — as https://host/org/repo, so the same
+    repository has one identity however it was cloned."""
     url = url.strip()
     ssh_match = _SSH_URL_RE.match(url)
     if ssh_match:
@@ -77,7 +79,8 @@ def normalize_clone_url(url: str) -> str:
     if path.endswith(".git"):
         path = path[: -len(".git")]
     path = path.rstrip("/")
-    return f"{parsed.scheme}://{host}{path}"
+    scheme = "https" if parsed.scheme == "ssh" else parsed.scheme
+    return f"{scheme}://{host}{path}"
 
 
 def derive_organization(clone_url: str | None) -> str | None:
@@ -233,7 +236,7 @@ def run(context: StepContext) -> StepResult:
         if not has_git_history:
             clone_url_verification = "unverifiable" if clone_url else "not_applicable"
         elif detected_clone_url is None:
-            clone_url_verification = "unverifiable"
+            clone_url_verification = "unverifiable" if clone_url else "not_applicable"
         elif clone_url and normalize_clone_url(detected_clone_url) == normalize_clone_url(clone_url):
             clone_url_verification = "verified"
         else:

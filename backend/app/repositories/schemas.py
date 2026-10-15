@@ -126,10 +126,11 @@ class RegisterLocalPathRequest(BaseModel):
     clone_url: str | None = Field(
         default=None,
         description=(
-            "The repository's canonical URL, asserted by the operator and verified against the folder's git "
-            "remote where present. Required when the folder has a .git directory; optional otherwise — a "
-            "folder that was never under source control has no canonical URL. May still be supplied on a "
-            "non-git folder (e.g. one being migrated into source control); it is recorded unverified."
+            "The repository's canonical URL — https, git@host:org/repo.git or ssh://[user@]host[:port]/org/repo.git "
+            "— asserted by the operator and verified against the folder's origin remote. Required when the folder "
+            "is a git repository with an origin remote; optional otherwise — a folder never under source control, "
+            "or a repository with no remote at all, has nothing to verify against. May still be supplied there; "
+            "it is recorded unverified."
         ),
     )
     description: str | None = Field(default=None, description="What this repository contains.")

@@ -373,11 +373,18 @@ in the test, their assemblies compiled with Roslyn. NuGet's own libraries do the
 
 **Which feed is the client's (B2).** NuGet resolves the sources for each project
 (`Settings.LoadDefaultSettings` from the project directory, so `<clear/>` and the declared
-order are NuGet's own). A source is a **client feed** when it is not nuget.org and is
-declared in a repository-level `NuGet.config`, or is an http(s) source declared at user or
-machine level. A *local folder* declared only at user or machine level is tooling, not a
+order are NuGet's own): the `NuGet.config` files inside the repository, then those in the
+folders above it up to the drive root, then the user's (`%APPDATA%\NuGet\NuGet.Config` and
+`%APPDATA%\NuGet\config\*.config`), then the machine's — what `dotnet restore` reads. Each
+feed records where it is declared: `repository`, `parent`, `user` or `machine` (`parent`
+from 1.6.0). A source is a **client feed** when it is not nuget.org — wherever it is
+declared — except a *local folder* declared only at machine level: that is tooling, not a
 client feed — Visual Studio's machine-wide "Microsoft Visual Studio Offline Packages" is the
-case on every developer machine — and is recorded with role `ignored`. With client feeds,
+case on every developer machine — and is recorded with role `ignored`. (Before 1.6.0 a
+local folder declared at user level was ignored too; dotnet restore uses it, so it is a
+client feed now.) Credentials are NuGet's: `packageSourceCredentials`, the
+`NuGetPackageSourceCredentials_<name>` environment variable, or a credential provider, held
+in memory for the run and never recorded. With client feeds,
 every one must answer: an unreachable one makes the package `unknown` (B7), and nuget.org is
 consulted for the B3 comparison only. With none, nuget.org answers as
 `nuget_org_fallback`.
