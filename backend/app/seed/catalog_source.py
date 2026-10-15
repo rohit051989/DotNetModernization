@@ -66,8 +66,16 @@ def seed_from_export_or_database() -> dict | None:
         if source == "factory":
             return None
         report = {"source": source, "dir": str(export_dir()), "baseline": baseline.new_report()}
+        files = catalog_export.read_files(export_dir())
         if source == "export":
-            report["baseline"] = catalog_export.import_files(db, catalog_export.read_files(export_dir()))
+            report["baseline"] = catalog_export.import_files(db, files)
+        # A catalog identical to the committed export, with no export recorded (a fresh install imported it): record
+        # it, so staleness reads "current", not "not in git".
+        if (export_dir().resolve() == catalog_export.DEFAULT_DIR.resolve()
+                and db.query(models.CatalogExport).first() is None
+                and catalog_export.export_files(db) == files):
+            catalog_export.record_export(db, export_dir(), catalog_export.item_states(db))
+            report["recorded_export"] = True
         report["engagement"] = _engagement_data(db)
         db.commit()
         return report
