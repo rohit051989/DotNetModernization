@@ -1,12 +1,11 @@
 from logging.config import fileConfig
 
-from sqlalchemy import engine_from_config
-from sqlalchemy import pool
+from sqlalchemy import pool, text
 
 from alembic import context
 
 from app.config import settings
-from app.db import Base
+from app.db import Base, make_engine
 from app import models  # noqa: F401  (registers models on Base.metadata)
 
 # this is the Alembic Config object, which provides
@@ -18,7 +17,11 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-config.set_main_option("sqlalchemy.url", settings.database_url)
+# The URL carries no credentials (PGUSER and PGPASSWORD do, app.config); `%` is escaped for the ini parser.
+config.set_main_option("sqlalchemy.url", settings.database_url.replace("%", "%%"))
+# Every table, sequence and the version table live in the configured schema (DB_SCHEMA): the connection's
+# search_path puts the migrations' unqualified names there, and alembic_version goes there too.
+SCHEMA = settings.db_schema
 
 target_metadata = Base.metadata
 
@@ -46,6 +49,7 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
+        version_table_schema=SCHEMA,
     )
 
     with context.begin_transaction():
@@ -59,15 +63,17 @@ def run_migrations_online() -> None:
     and associate a connection with the context.
 
     """
-    connectable = engine_from_config(
-        config.get_section(config.config_ini_section, {}),
-        prefix="sqlalchemy.",
-        poolclass=pool.NullPool,
-    )
+    connectable = make_engine(settings.database_url, poolclass=pool.NullPool)
 
     with connectable.connect() as connection:
+        # The schema exists already, or is created: that needs CREATE on the database, nothing more.
+        if connection.execute(text("SELECT 1 FROM pg_namespace WHERE nspname = :s"), {"s": SCHEMA}).first() is None:
+            connection.execute(text(f'CREATE SCHEMA "{SCHEMA}"'))
+        # Always ends the transaction the check began: Alembic runs the migrations in its own, and inside an open
+        # one it would commit nothing.
+        connection.commit()
         context.configure(
-            connection=connection, target_metadata=target_metadata
+            connection=connection, target_metadata=target_metadata, version_table_schema=SCHEMA
         )
 
         with context.begin_transaction():

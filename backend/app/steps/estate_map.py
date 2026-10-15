@@ -28,10 +28,11 @@ import datetime
 import json
 from pathlib import Path
 
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
 from sqlalchemy.orm import Session, sessionmaker
 
 from app import models
+from app.db import make_engine
 from app.estate import analysis, soap_compatibility, wcf_matrix
 from app.impact import client as client_impact
 from app.impact import conflicts as impact_conflicts
@@ -59,7 +60,7 @@ SOURCE_STEPS = ("solution-discovery", "entry-point-inventory", "outbound-invocat
 
 
 def _open_session(database_url: str):
-    engine = create_engine(database_url)
+    engine = make_engine(database_url)
     return sessionmaker(bind=engine)(), engine
 
 

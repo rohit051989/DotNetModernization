@@ -142,7 +142,7 @@ class Isolation(unittest.TestCase):
                                "--engagement", "x", "--path", "x", "--name", "x", "--out", "x"],
                               cwd=backend, capture_output=True, text=True, timeout=120)
         self.assertEqual(done.returncode, 2)
-        self.assertIn("runs only in a verifier scratch database", done.stderr)
+        self.assertIn("runs only in a verifier scratch schema", done.stderr)
 
     def test_the_engagement_rows_copied_are_the_engagements_own(self):
         self.assertEqual([t for t, column in rediscovery.ENGAGEMENT_ROWS if column is None], ["package_lookup_cache"])

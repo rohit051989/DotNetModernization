@@ -1,11 +1,12 @@
 """Does the platform reproduce from the repository alone?
 
-Bootstraps a scratch database exactly as a new environment is stood up
+Bootstraps a scratch schema exactly as a new environment is stood up
 (28-ITEM Part W, "Standing up a new environment"): migrate to head, then
 `python -m app.seed` — platform configuration (steps, jobs, signal registry,
 extractors) from the seed's files, and the item catalog from the committed
 export in catalog/items/ (the factory YAML only when no export exists). Then
-compares it with the live database (the one DATABASE_URL names) and drops it.
+compares it with the platform's own schema (DB_SCHEMA in DB_NAME) and drops it. The scratch schema is in the
+same database: creating it needs CREATE on the database, never the right to create a database.
 
     python -m app.seed.reproduce                            # the check
     python -m app.seed.reproduce --verbose                  # also the seed output, row counts and history
@@ -40,9 +41,12 @@ import tempfile
 import uuid
 from pathlib import Path
 
-from sqlalchemy import create_engine, inspect, text
-from sqlalchemy.engine import Engine, URL, make_url
+from sqlalchemy import inspect, text
+from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
+
+from app.config import settings
+from app.db import make_engine
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]
 
@@ -63,33 +67,37 @@ TABLES: dict[str, tuple[tuple[str, ...], str | None, tuple[str, ...]]] = {
 }
 
 
-# ---------- scratch databases ----------
+# ---------- scratch schemas ----------
 
 
 class Scratch:
-    """A database created for one run and always dropped."""
+    """A throwaway schema in the platform's own database, created for one run and always dropped (01-ENVIRONMENT-SETUP
+    section 10). The same at the client as here: creating a schema needs CREATE on the database, never the right to
+    create databases. Its name starts with `label`, so a worker can tell a scratch schema from the platform's own."""
 
-    def __init__(self, source: URL, label: str):
+    def __init__(self, label: str):
+        from app.config import database_url
+
         self.name = f"{label}_{uuid.uuid4().hex[:8]}"
-        self.url = source.set(database=self.name)
-        self._admin = create_engine(source.set(database="postgres"), isolation_level="AUTOCOMMIT")
+        self.url = database_url(self.name)
+        self._admin = make_engine(settings.database_url, isolation_level="AUTOCOMMIT")
         self.engine: Engine | None = None
 
     def __enter__(self) -> "Scratch":
         with self._admin.connect() as connection:
-            connection.execute(text(f'CREATE DATABASE "{self.name}"'))
+            connection.execute(text(f'CREATE SCHEMA "{self.name}"'))
         return self
 
     def __exit__(self, *exc) -> None:
         if self.engine is not None:
             self.engine.dispose()
         with self._admin.connect() as connection:
-            connection.execute(text(f'DROP DATABASE IF EXISTS "{self.name}" WITH (FORCE)'))
+            connection.execute(text(f'DROP SCHEMA IF EXISTS "{self.name}" CASCADE'))
         self._admin.dispose()
 
     def bootstrap(self, extra_env: dict | None = None) -> str:
-        """Stands the database up as a new environment; returns the seed's output."""
-        env = {**os.environ, "DATABASE_URL": self.url.render_as_string(hide_password=False), **(extra_env or {})}
+        """Stands the schema up as a new environment; returns the seed's output."""
+        env = {**os.environ, "DB_SCHEMA": self.name, **(extra_env or {})}
         output = []
         for command in (["-m", "alembic", "upgrade", "head"], ["-m", "app.seed"]):
             result = subprocess.run([sys.executable, *command], cwd=BACKEND_DIR, env=env, capture_output=True, text=True)
@@ -97,7 +105,7 @@ class Scratch:
                 raise SystemExit(f"Bootstrapping {self.name} failed at {' '.join(command[1:])}:\n"
                                  f"{result.stdout[-3000:]}\n{result.stderr[-3000:]}")
             output.append(result.stdout)
-        self.engine = create_engine(self.url)
+        self.engine = make_engine(self.url)
         return "".join(output)
 
 
@@ -180,18 +188,17 @@ def check(verbose: bool) -> int:
     from app.config import settings
     from app.seed import catalog_source
 
-    source = make_url(settings.database_url)
     catalog_from = (f"the export in {catalog_source.export_dir()}" if catalog_source.export_exists()
                     else "the factory defaults (no export in the repository)")
-    live = create_engine(source)
+    live = make_engine(settings.database_url)
     try:
-        with Scratch(source, "platform_reproduce") as fresh:
+        with Scratch("platform_reproduce") as fresh:
             output = fresh.bootstrap()
             report = compare(live, fresh.engine)
     finally:
         live.dispose()
 
-    print(f"Bootstrapped a fresh database from the repository: platform configuration from the seed, catalog from {catalog_from}.")
+    print(f"Bootstrapped a fresh schema from the repository: platform configuration from the seed, catalog from {catalog_from}.")
     if verbose:
         for line in output.splitlines():
             print(f"    {line}")
@@ -227,11 +234,10 @@ def prove_export_bootstrap() -> int:
     from app.routers import catalog_items
     from app.seed.seed_data import authored_item
 
-    source = make_url(settings.database_url)
     factory = authored_item(PROOF_ITEM)["description"]
     export_dir = Path(tempfile.mkdtemp(prefix="catalog-export-proof-"))
     try:
-        with Scratch(source, "bootstrap_proof_a") as a:
+        with Scratch("bootstrap_proof_a") as a:
             a.bootstrap()
             with Session(a.engine) as db:
                 item = db.get(catalog_items.models.CatalogItem, PROOF_ITEM)
@@ -244,7 +250,7 @@ def prove_export_bootstrap() -> int:
                 exported_a = catalog_export.export_files(db)
             print(f"A: bootstrapped, '{PROOF_ITEM}' edited in the UI path, exported ({len(exported_a)} files)")
 
-            with Scratch(source, "bootstrap_proof_b") as b:
+            with Scratch("bootstrap_proof_b") as b:
                 b.bootstrap({"CATALOG_EXPORT_DIR": str(export_dir)})
                 with Session(b.engine) as db:
                     exported_b = catalog_export.export_files(db)

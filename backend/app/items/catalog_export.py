@@ -45,13 +45,11 @@ import os
 import subprocess
 import sys
 import threading
-import uuid
 import zipfile
 from pathlib import Path
 
 import yaml
-from sqlalchemy import create_engine, text
-from sqlalchemy.engine import make_url
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app import models
@@ -348,47 +346,34 @@ def import_files(db: Session, files: dict[str, str]) -> dict:
 
 
 def roundtrip() -> bool:
-    """Export the configured database, import into a fresh database (created,
-    migrated, signal registry seeded, then dropped), export again, compare
-    byte for byte. Returns whether the two exports are identical."""
-    from app.config import settings
-    from app.db import SessionLocal
+    """Export the platform's schema, import into a fresh scratch schema in the same database (created, migrated,
+    signal registry seeded, then dropped), export again, compare byte for byte. Returns whether the two exports
+    are identical."""
+    from app.db import SessionLocal, make_engine
     from app.items import registry
+    from app.seed.reproduce import Scratch
     from app.seed.seed_data import _load
 
     with SessionLocal() as db:
         first = export_files(db)
 
-    source = make_url(settings.database_url)
-    scratch_name = f"catalog_roundtrip_{uuid.uuid4().hex[:8]}"
-    scratch_url = source.set(database=scratch_name)
-    admin = create_engine(source.set(database="postgres"), isolation_level="AUTOCOMMIT")
-    with admin.connect() as connection:
-        connection.execute(text(f'CREATE DATABASE "{scratch_name}"'))
-    print(f"Fresh database {scratch_name} created")
-    engine = None
-    try:
-        env = {**os.environ, "DATABASE_URL": scratch_url.render_as_string(hide_password=False)}
+    with Scratch("catalog_roundtrip") as scratch:
+        print(f"Fresh schema {scratch.name} created")
+        env = {**os.environ, "DB_SCHEMA": scratch.name}
         subprocess.run([sys.executable, "-m", "alembic", "upgrade", "head"], cwd=Path(__file__).resolve().parents[2],
                        env=env, check=True, capture_output=True)
         print("  migrated to head")
-        engine = create_engine(scratch_url)
-        with Session(engine) as db:
+        scratch.engine = make_engine(scratch.url)
+        with Session(scratch.engine) as db:
             registry.sync_from_registry_files(db, _load("extractors.yaml")["extractors"], _load("anticipated_signals.yaml")["signals"])
             db.commit()
             print("  signal registry seeded (no catalog rows)")
             report = import_files(db, first)
             db.commit()
             print(f"  imported, {report['mode']}: {baseline.summary(report)}")
-        with Session(engine) as db:
+        with Session(scratch.engine) as db:
             second = export_files(db)
-    finally:
-        if engine is not None:
-            engine.dispose()
-        with admin.connect() as connection:
-            connection.execute(text(f'DROP DATABASE IF EXISTS "{scratch_name}"'))
-        admin.dispose()
-        print(f"Fresh database {scratch_name} dropped")
+    print(f"Fresh schema {scratch.name} dropped")
 
     identical = first == second
     print(f"First export: {len(first)} files, {sum(len(t.encode()) for t in first.values())} bytes; "

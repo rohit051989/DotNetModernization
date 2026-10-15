@@ -1,6 +1,9 @@
+# The local development database (01-ENVIRONMENT-SETUP.md section 2). PostgreSQL 17, the version the client runs.
+# The credentials here are for this local container only; the platform reads DB_USER and DB_PASSWORD from its own
+# environment (backend/.env, gitignored), never from this file.
 services:
   catalog-db:
-    image: postgres:16
+    image: postgres:17
     container_name: modernization-catalog-db
     restart: unless-stopped
     environment:
@@ -10,7 +13,7 @@ services:
     ports:
       - "5433:5432"
     volumes:
-      - catalog_pgdata:/var/lib/postgresql/data
+      - catalog_pgdata17:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U catalog -d modernization_catalog"]
       interval: 5s
@@ -18,4 +21,6 @@ services:
       retries: 10
 
 volumes:
-  catalog_pgdata:
+  # PostgreSQL 17. The PostgreSQL 16 volume, catalog_pgdata, is no longer used: it was kept, untouched, as the
+  # backup of the move to 17 (2026-10-15).
+  catalog_pgdata17:

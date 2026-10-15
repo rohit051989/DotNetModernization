@@ -1,19 +1,21 @@
 """Re-discovery (36-COPILOT-ENHANCED-CONVERSION Part E), isolated: the platform's own per-repository discovery run
-on a scratch worktree of a branch, in a scratch database, leaving no record in any engagement.
+on a scratch worktree of a branch, in a scratch schema, leaving no record in any engagement.
 
-The client database is only read. A scratch database is created and bootstrapped as a new environment from the
+The platform's own schema is only read. A scratch schema in the same database is created and bootstrapped as a
+new environment from the
 repository (migrate, seed: platform configuration and the catalog from the committed export — the same bootstrap
 as `python -m app.seed.reproduce`, which proves it equals this machine's catalog). Into it are copied the few rows
 discovery reads for one engagement: the engagement itself, its item decisions and scope, its probe evidence and
 matrix confirmations, and the package lookup cache: an experiment's frozen snapshot when it has one (Part L), and
 then discovery runs with `lookup_offline`, so no lookup reaches a live feed; otherwise the shared cache, so dependency
 assessment answers as it does here. A
-worker process pointed at the scratch database (DATABASE_URL) and a scratch runs folder (RUNS_DIR) registers the
-worktree, runs phase0-repository-discovery through impact-analysis, and writes what it found to a file. The
-database is then dropped and the runs folder deleted: nothing is left behind, soft-deleted or otherwise.
+worker process pointed at the scratch schema (DB_SCHEMA) and a scratch runs folder (RUNS_DIR) registers the
+worktree, runs phase0-repository-discovery through impact-analysis, without conversion-preparation, and writes what
+it found to a file. The schema is then dropped and the runs folder deleted: nothing is left behind, soft-deleted or
+otherwise.
 
     python -m app.engine.verifier.rediscovery --worker --engagement E --path <worktree> --name N --out snap.json
-    (the worker, run by `snapshot`; it refuses to run against anything but a verifier scratch database)
+    (the worker, run by `snapshot`; it refuses to run against anything but a verifier scratch schema)
 """
 import argparse
 import json
@@ -24,12 +26,12 @@ import sys
 import uuid
 from pathlib import Path
 
-from sqlalchemy import MetaData, Table, create_engine, select
-from sqlalchemy.engine import make_url
+from sqlalchemy import MetaData, Table, select
 from sqlalchemy.orm import Session
 
 from app import models
 from app.config import settings
+from app.db import make_engine
 
 JOB = "phase0-repository-discovery"
 BACKEND = Path(__file__).resolve().parents[3]
@@ -53,7 +55,7 @@ class RediscoveryFailed(RuntimeError):
 def _copy(source_url: str, target_url: str, engagement_id: str, lookups: list[dict] | None = None) -> dict[str, int]:
     """Copies the engagement's rows. With `lookups` (a frozen snapshot), the package lookup cache is the snapshot's
     rows and nothing of the live cache."""
-    source, target = create_engine(source_url), create_engine(target_url)
+    source, target = make_engine(source_url), make_engine(target_url)
     counts = {}
     try:
         with source.connect() as read, target.begin() as write:
@@ -80,7 +82,7 @@ def _copy(source_url: str, target_url: str, engagement_id: str, lookups: list[di
 
 
 def snapshot(engagement_id: str, worktree: Path, name: str, scratch_dir: Path, lookups: list[dict] | None = None) -> dict:
-    """Discovery of `worktree` as `engagement_id` sees it, run in a scratch database that is dropped afterwards. With
+    """Discovery of `worktree` as `engagement_id` sees it, run in a scratch schema that is dropped afterwards. With
     `lookups`, package lookups are answered from that frozen snapshot only, offline."""
     from app.seed.reproduce import Scratch
 
@@ -88,11 +90,10 @@ def snapshot(engagement_id: str, worktree: Path, name: str, scratch_dir: Path, l
     runs = scratch_dir / "runs"
     out = scratch_dir / f"snapshot-{uuid.uuid4().hex[:8]}.json"
     try:
-        with Scratch(make_url(settings.database_url), "verifier") as scratch:
+        with Scratch("verifier") as scratch:
             scratch.bootstrap()
-            url = scratch.url.render_as_string(hide_password=False)
-            copied = _copy(settings.database_url, url, engagement_id, lookups)
-            env = {**os.environ, "DATABASE_URL": url, "RUNS_DIR": str(runs)}
+            copied = _copy(settings.database_url, scratch.url, engagement_id, lookups)
+            env = {**os.environ, "DB_SCHEMA": scratch.name, "RUNS_DIR": str(runs)}
             done = subprocess.run([sys.executable, "-m", "app.engine.verifier.rediscovery", "--worker",
                                    "--engagement", engagement_id, "--path", str(worktree), "--name", name, "--out", str(out)]
                                   + (["--offline"] if lookups is not None else []),
@@ -100,7 +101,7 @@ def snapshot(engagement_id: str, worktree: Path, name: str, scratch_dir: Path, l
             if done.returncode != 0 or not out.exists():
                 raise RediscoveryFailed(f"isolated discovery of {worktree} failed:\n{done.stdout[-3000:]}\n{done.stderr[-3000:]}")
             snap = json.loads(out.read_text(encoding="utf-8"))
-            snap["isolation"] = {"scratch_database": scratch.name, "copied": copied, "dropped": True}
+            snap["isolation"] = {"scratch_schema": scratch.name, "copied": copied, "dropped": True}
             return snap
     finally:
         out.unlink(missing_ok=True)
@@ -109,7 +110,7 @@ def snapshot(engagement_id: str, worktree: Path, name: str, scratch_dir: Path, l
 
 
 def _worker(engagement_id: str, worktree: Path, name: str, out: Path, offline: bool = False) -> int:
-    """Runs inside the scratch database only. Refuses to run against any other database."""
+    """Runs inside a verifier scratch schema only. Refuses to run against any other schema."""
     from app.conversion import planner
     from app.db import SessionLocal
     from app.engine.inputs.collect import collect
@@ -117,8 +118,8 @@ def _worker(engagement_id: str, worktree: Path, name: str, out: Path, offline: b
     from app.repositories.schemas import RegisterLocalPathRequest
     from app.workflow.runtime import service as runtime
 
-    if not (make_url(settings.database_url).database or "").startswith("verifier_"):
-        print("refused: the re-discovery worker runs only in a verifier scratch database", file=sys.stderr)
+    if not settings.db_schema.startswith("verifier_"):
+        print("refused: the re-discovery worker runs only in a verifier scratch schema", file=sys.stderr)
         return 2
     db: Session = SessionLocal()
     try:

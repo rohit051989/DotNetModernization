@@ -50,10 +50,11 @@ import json
 import sys
 from pathlib import Path
 
-from sqlalchemy import create_engine
+
 from sqlalchemy.orm import Session, sessionmaker
 
 from app import models
+from app.db import make_engine
 from app.items import evaluation, roles
 from app.items.detection import referenced_signal_names
 from app.items.registry import version_key
@@ -66,7 +67,7 @@ ARTIFACT_VERSION = "1.1.0"
 
 
 def _open_session(database_url: str):
-    engine = create_engine(database_url)
+    engine = make_engine(database_url)
     return sessionmaker(bind=engine)(), engine
 
 

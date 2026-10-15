@@ -150,12 +150,18 @@ class Runs(unittest.TestCase):
         self.assertTrue(all(re.fullmatch(r"[0-9a-f]{64}", e["sha256"]) for e in got))
 
 
+DATABASE_LOGIN = {"db_user", "db_password"}
+
+
 class NoCredentialAnywhere(unittest.TestCase):
     """No field, setting or file accepts an engine credential."""
 
     def test_no_setting_takes_a_credential(self):
+        # The platform's own database login is the one credential a setting holds, from the environment only
+        # (01-ENVIRONMENT-SETUP.md section 10); no setting takes an engine's.
         named = [f for f in Settings.model_fields if CREDENTIAL_NAME.search(f)]
-        self.assertEqual(named, [])
+        self.assertEqual([f for f in named if f not in DATABASE_LOGIN], [])
+        self.assertTrue(set(named) <= DATABASE_LOGIN)
 
     def test_no_engine_column_takes_a_credential(self):
         for table in (models.EngineRun.__table__, models.Engagement.__table__):

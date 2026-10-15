@@ -21,10 +21,11 @@ import sys
 from pathlib import Path
 from urllib.parse import urlparse
 
-from sqlalchemy import create_engine
+
 from sqlalchemy.orm import sessionmaker
 
 from app import models
+from app.db import make_engine
 from app.workflow.adapters.base import compute_checksum
 from app.workflow.contract import StepContext, StepOutput, StepResult
 
@@ -154,7 +155,7 @@ def _open_session(database_url: str):
     to run standalone (see the __main__ entry) as well as in-process, so it
     does not assume `app.db`'s global engine is available or appropriate.
     Disposed by the caller alongside closing the session."""
-    engine = create_engine(database_url)
+    engine = make_engine(database_url)
     return sessionmaker(bind=engine)(), engine
 
 
