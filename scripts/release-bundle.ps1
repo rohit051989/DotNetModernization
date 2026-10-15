@@ -59,4 +59,5 @@ Write-Host "Written  $hashFile"
 Write-Host ''
 Write-Host 'On the VDI, after copying both files:'
 Write-Host "  (Get-FileHash -Algorithm SHA256 $Tag.bundle).Hash.ToLower()   # must equal the line in $Tag.bundle.sha256"
-Write-Host "  git clone --branch $Tag $Tag.bundle C:\ModernizationPlatform\code"
+Write-Host "  git bundle list-heads $Tag.bundle                                # must name refs/tags/$Tag"
+Write-Host "  git clone -c core.longpaths=true --branch $Tag $Tag.bundle C:\ModernizationPlatform\code"

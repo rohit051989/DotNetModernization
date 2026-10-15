@@ -44,6 +44,7 @@ PYTHON_REQUIRED = "3.11.0 to 3.13.x needed"
 NODE_REQUIRED = "20.19.0 or a later 20.x, or 22.12.0 or later, needed"
 MIN_NPM, NPM_REQUIRED = (7, 0, 0), "7.0.0 or later needed"
 MIN_GIT, GIT_REQUIRED = (2, 17, 0), "2.17.0 or later needed"
+MAX_PATH = 259  # Windows' MAX_PATH, 260, less the terminating NUL: the longest full path git writes without core.longpaths
 
 
 def check(ok: bool, what: str, detail: str) -> bool:
@@ -130,10 +131,14 @@ def long_paths() -> None:
     code, out = run("git", "config", "--get", "core.longpaths")
     on = code == 0 and out.strip().lower() in ("true", "1", "yes", "on")
     note("git core.longpaths", "on" if on else
-         "off: git cannot check out a file whose path is over 260 characters. Turn it on with: "
+         f"off: git cannot check out a file whose full path is over {MAX_PATH} characters. Turn it on with: "
          "git config --global core.longpaths true")
-    print(f"           A short install folder and a short RUNS_DIR keep paths well under the limit "
-          f"(this repository: {len(str(ROOT))} characters).")
+    code, out = run("git", "-C", str(ROOT), "ls-files")
+    longest = max((len(line) for line in out.splitlines()), default=0) if code == 0 else 0
+    total = len(str(ROOT)) + 1 + longest
+    print(f"           Longest path in this checkout: {total} characters (this folder, {len(str(ROOT))}, plus its longest "
+          f"file, {longest}). Without git core.longpaths, git cannot write a path over {MAX_PATH} characters, so an "
+          f"install folder over {MAX_PATH - 1 - longest} characters fails. Keep the install folder and RUNS_DIR short.")
 
 
 def note(what: str, detail: str) -> None:

@@ -389,9 +389,17 @@ everything up.
 
    Also Visual Studio with GitHub Copilot, for running conversions.
 4. **Short paths.** Install into a short folder, such as `C:\ModernizationPlatform\code`, and set a short
-   `RUNS_DIR`, such as `C:\ModernizationPlatform\runs`. The platform puts each conversion's worktree several
-   folders deep under `RUNS_DIR`, beneath the client repository's own deepest path. Windows tools still trip
-   over paths longer than 260 characters. Preflight reports, without failing, two settings that lift the limit:
+   `RUNS_DIR`, such as `C:\ModernizationPlatform\runs`.
+   - The repository's longest file path is 159 characters. Without git's `core.longpaths`, git cannot write a
+     full path over 259 characters, so an install folder over 99 characters fails at clone time with
+     "Filename too long". The clone commands below set `core.longpaths` for that clone, so it cannot happen
+     there.
+   - The client repositories are another matter. The platform puts each conversion's worktree several folders
+     deep under `RUNS_DIR`, beneath the client repository's own deepest path, and Windows tools still trip over
+     paths longer than 260 characters.
+
+   Preflight prints this checkout's longest path. It also reports, without failing, two settings that lift the
+   limit:
    - **Windows long-path support** (`LongPathsEnabled` under
      `HKLM\SYSTEM\CurrentControlSet\Control\FileSystem`, or the group policy "Enable Win32 long paths"). Only an
      administrator can turn it on.
@@ -452,8 +460,13 @@ A feed that answers 401 is recorded per package as "unknown", with the reason; d
 
 ### Steps
 
-1. **Clone the repository** into an empty folder, for example `C:\ModernizationPlatform\code`. On a VDI that
-   cannot reach the repository, clone from the release bundle instead (below).
+1. **Clone the repository** into an empty, short folder:
+
+   ```powershell
+   git clone -c core.longpaths=true <repository URL> C:\ModernizationPlatform\code
+   ```
+
+   On a VDI that cannot reach the repository, clone from the release bundle instead (below).
 2. **Write `backend\.env`** from `backend\.env.example`:
 
    ```
@@ -564,17 +577,21 @@ history behind it.
    Get-Content .\rbc-release-1.bundle.sha256
    ```
 
-4. **Check the bundle and clone it:**
+4. **Check the bundle and clone it.** First list the bundle's contents. It must name `refs/tags/rbc-release-1`.
+   (`git bundle verify` needs an existing repository, so it cannot be run before this first clone.)
 
    ```powershell
-   git bundle verify .\rbc-release-1.bundle
+   git bundle list-heads .\rbc-release-1.bundle
    ```
+
+   Then clone it:
 
    ```powershell
-   git clone --branch rbc-release-1 .\rbc-release-1.bundle C:\ModernizationPlatform\code
+   git clone -c core.longpaths=true --branch rbc-release-1 .\rbc-release-1.bundle C:\ModernizationPlatform\code
    ```
 
-   The clone is at the tag, with a detached HEAD. To work on a branch there:
+   git warns that `refs/tags/rbc-release-1` "is not a commit". That is expected for an annotated tag: the clone
+   still checks out the tagged commit. The clone is at the tag, with a detached HEAD. To work on a branch there:
 
    ```powershell
    git -C C:\ModernizationPlatform\code switch -c rbc-release-1-vdi
