@@ -58,6 +58,15 @@ class Settings(BaseSettings):
     nuget_sources: str = ""              # comma-separated: feed URLs or local folders for the step programs' restore
     compare_public_nuget_feed: bool = True
 
+    # A .NET installed per user (docs/VDI-SETUP.md section C). When set, this folder goes first on PATH and becomes
+    # DOTNET_ROOT for this process and so for every process it starts: the step programs (which find their runtime
+    # through DOTNET_ROOT), the package step's and the verifier's dotnet builds and tests. Unset: the dotnet on PATH,
+    # with the runtime found as usual.
+    dotnet_root: str = ""
+    # The Python interpreter bootstrap and preflight use (scripts/bootstrap.ps1, scripts/preflight.py); the backend
+    # itself always runs in backend/.venv. Unset: python on PATH.
+    python: str = ""
+
     # The single machine this platform runs on (CLAUDE.md's operating model).
     # A relative `command` or `cwd` in a process-adapter step's adapter_config
     # is resolved against this, never against the backend process's own
@@ -148,6 +157,22 @@ def quiet_dotnet() -> None:
         os.environ.setdefault(name, value)
 
 
+def apply_dotnet_root(s: "Settings") -> None:
+    """DOTNET_ROOT, when set, for this process and every process it starts: the folder first on PATH, so `dotnet`
+    is that SDK's, and DOTNET_ROOT, so the framework-dependent step programs find that runtime. Refuses a folder
+    without dotnet.exe, rather than letting builds quietly use another SDK."""
+    if not s.dotnet_root:
+        return
+    root = Path(s.dotnet_root)
+    if not (root / ("dotnet.exe" if os.name == "nt" else "dotnet")).is_file():
+        raise ValueError(f"DOTNET_ROOT {root} has no dotnet executable: set it to the folder the .NET SDK was installed "
+                         "into (docs/VDI-SETUP.md section C), or leave it empty")
+    os.environ["DOTNET_ROOT"] = str(root)
+    path = [p for p in os.environ.get("PATH", "").split(os.pathsep) if p and Path(p) != root]
+    os.environ["PATH"] = os.pathsep.join([str(root), *path])
+
+
 settings = Settings()
 apply_credentials(settings)
 quiet_dotnet()
+apply_dotnet_root(settings)

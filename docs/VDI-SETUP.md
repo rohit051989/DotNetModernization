@@ -156,37 +156,31 @@ If the client provides Python, skip this. Otherwise, for example Python 3.14 int
 .\python-3.14.8-amd64.exe /quiet InstallAllUsers=0 PrependPath=0 Include_launcher=0 TargetDir=C:\MP\tools\python314
 ```
 
-Nothing else is needed: you give bootstrap this Python's full path (section H).
+Then name it in `backend\.env` as `PYTHON=C:\MP\tools\python314\python.exe` (section F): bootstrap and preflight
+use it. Left empty, they use `python` on `PATH`.
 
-### .NET installed per user: DOTNET_ROOT and PATH
+### .NET installed per user
 
-If the client provides the .NET SDK machine-wide (in `C:\Program Files\dotnet`), skip this. Otherwise install it
-with Microsoft's script into its own folder, for example 10.0.203:
+If the client provides the .NET SDK machine-wide (in `C:\Program Files\dotnet`), skip this, and leave
+`DOTNET_ROOT` empty in `backend\.env`. Otherwise install it with Microsoft's script into its own folder, for
+example 10.0.203:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\dotnet-install.ps1 -Version 10.0.203 -InstallDir C:\MP\tools\dotnet -NoPath
 ```
 
-Then set two account settings. The platform's step programs find a per-user .NET **only** through `DOTNET_ROOT`;
-without it every discovery step fails at once with "You must install .NET to run this application". And the
-platform runs `dotnet` itself, so it must be on `PATH`:
+Then name that folder in `backend\.env` as `DOTNET_ROOT=C:\MP\tools\dotnet` (section F). That is all the platform
+needs. The backend, bootstrap and preflight put that folder first on `PATH` and set `DOTNET_ROOT` for every
+process they start: the step programs (which find a per-user .NET **only** through `DOTNET_ROOT`, and otherwise
+fail at once with "You must install .NET to run this application"), and the package step's and the verifier's
+builds and tests. Each build log then starts with the SDK it used, for example
+`# .NET SDK 10.0.203, C:\MP\tools\dotnet\dotnet.exe`.
 
-```powershell
-[Environment]::SetEnvironmentVariable('DOTNET_ROOT', 'C:\MP\tools\dotnet', 'User')
-```
+To use that `dotnet` in your own terminals as well (not needed for the platform), add it for your account:
 
 ```powershell
 [Environment]::SetEnvironmentVariable('Path', 'C:\MP\tools\dotnet;' + [Environment]::GetEnvironmentVariable('Path', 'User'), 'User')
 ```
-
-Open a new window and check:
-
-```powershell
-dotnet --list-sdks
-```
-
-It lists `10.0.203 [C:\MP\tools\dotnet\sdk]`. If it lists only SDKs in `C:\Program Files\dotnet`, a machine-wide
-.NET comes first on the machine's `PATH`; that is fine as long as it is a .NET 10 SDK, and preflight will say so.
 
 ---
 
@@ -329,6 +323,8 @@ notepad C:\MP\code\backend\.env
 | `NPM_REGISTRY` | Section D; empty to use npm's own configuration | `https://artifactory.client.com/artifactory/api/npm/npm-remote/` | no |
 | `NUGET_SOURCES` | Section D; feed addresses or folders for building the step programs, comma-separated; empty to use the account's NuGet configuration | `https://artifactory.client.com/artifactory/api/nuget/v3/nuget-remote/index.json` | no |
 | `COMPARE_PUBLIC_NUGET_FEED` | Whether dependency assessment also asks nuget.org which versions exist publicly. `false` where nuget.org is unreachable | `false` | no |
+| `PYTHON` | The Python bootstrap and preflight use, as a full path. Empty: `python` on `PATH`. (The backend itself always runs in `backend\.venv`, which bootstrap builds with this Python) | `C:\MP\tools\python314\python.exe` | no |
+| `DOTNET_ROOT` | **Only when .NET is installed per user** (section C): the folder it was installed into. The platform puts it first on `PATH` and sets `DOTNET_ROOT` for every process it starts. **Leave it empty** when the client installed .NET machine-wide | `C:\MP\tools\dotnet` | no |
 
 `DB_USER` and `DB_PASSWORD` may instead be set as account environment variables, and then left out of the file.
 The platform never writes them anywhere else, never logs them, and removes them from any error message. Do not
@@ -352,19 +348,25 @@ PIP_INDEX_URL=
 NPM_REGISTRY=
 NUGET_SOURCES=
 COMPARE_PUBLIC_NUGET_FEED=false
+PYTHON=C:\MP\tools\python314\python.exe
+DOTNET_ROOT=
 ```
+
+(`DOTNET_ROOT` stays empty here because this client provides .NET machine-wide; with a per-user .NET it would be
+`DOTNET_ROOT=C:\MP\tools\dotnet`.)
 
 ---
 
 ## G. Preflight
 
-Preflight checks everything this guide has set up and changes nothing. Run it with the Python you will use:
+Preflight checks everything this guide has set up and changes nothing. Run it with any Python: it checks the one
+`PYTHON` names in `backend\.env` (else `python` on `PATH`), and the .NET that `DOTNET_ROOT` names (else `dotnet` on
+`PATH`):
 
 ```powershell
 cd C:\MP\code; C:\MP\tools\python314\python.exe scripts\preflight.py
 ```
 
-(`py -3 scripts\preflight.py` if Python is installed with the launcher.)
 
 ### Reading it
 
@@ -372,8 +374,8 @@ Each line is `PRESENT` or `MISSING`, with what was found and what is needed. The
 
 ```
 Tools
-  PRESENT  Python: 3.14.8 (3.11.0 to 3.14.x needed)
-  PRESENT  .NET SDK: 10.0.203 (any .NET 10 SDK from 10.0.100 needed, steps\step-003-fingerprinting\global.json)
+  PRESENT  Python: 3.14.8 (C:\MP\tools\python314\python.exe, PYTHON in backend\.env; 3.11.0 to 3.14.x needed)
+  PRESENT  .NET SDK: 10.0.203 used, from C:\MP\tools\dotnet; installed: 10.0.203 (any .NET 10 SDK from 10.0.100 needed, ...)
   MISSING  .NET runtime for the step programs: dotnet comes from C:\MP\tools\dotnet, but DOTNET_ROOT is not set ...
 ...
 9 present, 1 missing: .NET runtime for the step programs
@@ -386,11 +388,11 @@ database driver as missing: that is expected, bootstrap installs it.
 
 | MISSING | Fix |
 |---|---|
-| Python ... too old / too new | Install a Python 3.11 to 3.14 (section C), and run preflight and bootstrap with its full path |
+| Python ... too old / too new, or not found | Install a Python 3.11 to 3.14 (section C), and name it as `PYTHON` in `backend\.env` |
 | Node.js ... too old | Install Node.js 22.12 or later (or 20.19+) |
 | npm ... too old | Comes with Node.js: update Node.js |
 | .NET SDK: none of ... | Install a .NET 10 SDK (section C). A .NET 9 or a preview SDK does not count |
-| .NET runtime for the step programs ... DOTNET_ROOT is not set | Set `DOTNET_ROOT` to the folder it names (section C), open a new window |
+| .NET runtime for the step programs ... DOTNET_ROOT is not set | .NET is installed per user: set `DOTNET_ROOT` in `backend\.env` to the folder it names (sections C and F) |
 | git ... too old / not found | Install git 2.17 or later, and open a new window |
 | PIP_INDEX_URL / NPM_REGISTRY / NUGET_SOURCES ... unreachable | This machine cannot reach that address: find one it can (section D) |
 | ... HTTP 404 | The address is wrong (often a missing `/simple` for pip, or `/index.json` for NuGet) |
@@ -405,19 +407,21 @@ database driver as missing: that is expected, bootstrap installs it.
 
 ## H. Bootstrap
 
-Bootstrap installs and sets up everything, in eight stages. Run it with the Python you chose:
+Bootstrap installs and sets up everything, in eight stages. It uses the Python `PYTHON` names in `backend\.env`
+(else `python` on `PATH`) and the .NET `DOTNET_ROOT` names (else `dotnet` on `PATH`):
 
 ```powershell
-cd C:\MP\code; powershell -ExecutionPolicy Bypass -File .\scripts\bootstrap.ps1 -Python C:\MP\tools\python314\python.exe
+cd C:\MP\code; powershell -ExecutionPolicy Bypass -File .\scripts\bootstrap.ps1
 ```
 
-(Without `-Python` it uses `py -3`, else `python`.)
+It prints the Python and, when set, the `DOTNET_ROOT` it uses. `-Python <full path>` overrides `PYTHON` for one
+run.
 
 **It is safe to run again at any time.** Each stage skips work already done: a second run takes seconds. To run
 one stage only, add `-Stage <n>`; to make a stage redo its work even when it looks up to date, add `-Force`:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\bootstrap.ps1 -Python C:\MP\tools\python314\python.exe -Stage 6 -Force
+powershell -ExecutionPolicy Bypass -File .\scripts\bootstrap.ps1 -Stage 6 -Force
 ```
 
 When a stage fails, bootstrap prints `Stage <n> failed: <reason>` in red, does nothing after it, and names the
@@ -572,7 +576,7 @@ been run, **Start the next conversion** starts another.
 | A feed answers **403** | The login is known but has no right to that feed | Ask the feed's owner for read access for that account; the address and the login are right |
 | Stage 3: "No matching distribution found" or "Could not find a version that satisfies the requirement" | The mirror has no wheel of that package for this Python (bootstrap never compiles) | Use a Python 3.11 to 3.14 that the mirror has wheels for (3.13 is the safest), or ask for the mirror to include wheels for `cp314-win_amd64`. Never install a compiler for this |
 | git: **"Filename too long"** | The path is over 259 characters and `core.longpaths` is off | `git config --global core.longpaths true` (section C), use shorter folders (section A), then clone again |
-| A discovery step fails at once: **"You must install .NET to run this application"** | .NET is installed per user and `DOTNET_ROOT` is not set for the account the backend runs as | Set `DOTNET_ROOT` (section C), open a new window, restart the backend |
+| A discovery step fails at once: **"You must install .NET to run this application"** | .NET is installed per user and `DOTNET_ROOT` is not set in `backend\.env` | Set `DOTNET_ROOT` (sections C and F), restart the backend |
 | The backend: **"[Errno 10048] ... only one usage of each socket address"**; the frontend: **"Port 5174 is already in use"** | Something already listens on that port, often an earlier window still running | Find it: `Get-NetTCPConnection -LocalPort 8001 -State Listen | Select-Object OwningProcess`, then `Get-Process -Id <id>`. Close that window. To use another port instead, change `API_PORT` (and rerun bootstrap with `-Stage 5` after deleting `frontend\.env`) or the frontend's `--port` and `CORS_ORIGINS` together |
 | Conversion section: **"package step skipped: the baseline did not pass: ..."** | The repository does not build, or its tests fail, before any change | Nothing is lost: the conversion is prepared, and its package changes go to the agent as instructions in the runbook. Fix the build in the client repository if it should pass, then **Rescan** |
 | **"package step skipped: no package step: test-coverage-assessment found no unit test project"** | The repository has no unit tests, so package upgrades cannot be checked by running them | As above: the package changes are left to the agent, with instructions |

@@ -5,9 +5,11 @@ server left running holds files in the scratch worktree open, and Windows
 then refuses to delete it.
 
 Tests write TRX; the counts and the failing tests' names come from the TRX
-file, which is kept as evidence.
+file, which is kept as evidence. Every build log starts with the SDK it ran
+on (`sdk`).
 """
 
+import shutil
 import subprocess
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
@@ -24,10 +26,19 @@ class Run:
     log: str
 
 
+def sdk(worktree: Path) -> str:
+    """The SDK `dotnet` resolves to in `worktree` (its global.json applies), and the dotnet that was run — what
+    this process actually builds with, DOTNET_ROOT included (app.config.apply_dotnet_root)."""
+    done = subprocess.run(["dotnet", "--version"], cwd=worktree, capture_output=True, text=True)
+    version = done.stdout.strip() if done.returncode == 0 else f"unknown ({(done.stdout + done.stderr).strip()[:200]})"
+    return f"# .NET SDK {version}, {shutil.which('dotnet') or 'dotnet not on PATH'}"
+
+
 def build(worktree: Path, solution: str, timeout: int = 1800) -> Run:
     args = ["dotnet", "build", solution, "-nologo", "-v", "minimal", *NO_SERVERS]
+    header = sdk(worktree)
     done = subprocess.run(args, cwd=worktree, capture_output=True, text=True, timeout=timeout)
-    return Run(done.returncode == 0, done.returncode, f"$ {' '.join(args)}\n{done.stdout}{done.stderr}")
+    return Run(done.returncode == 0, done.returncode, f"{header}\n$ {' '.join(args)}\n{done.stdout}{done.stderr}")
 
 
 @dataclass

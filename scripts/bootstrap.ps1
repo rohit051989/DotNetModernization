@@ -26,8 +26,8 @@
     environment instead; they are never printed.
 
 .PARAMETER Python
-    The Python 3.11 to 3.14 to create the virtual environment with: a full path, or a command. Default: py -3, else
-    python.
+    The Python 3.11 to 3.14 to create the virtual environment with: a full path, or a command. Default: PYTHON in
+    backend\.env, else python on PATH. When backend\.env sets DOTNET_ROOT, that .NET is used for every stage.
 
 .PARAMETER Stage
     Run only this stage (1 to 8). Stages 3, 4, 7 and 8 need the virtual environment from stage 2.
@@ -39,7 +39,7 @@
 .EXAMPLE
     .\scripts\bootstrap.ps1
 .EXAMPLE
-    .\scripts\bootstrap.ps1 -Python C:\Users\me\Tools\Python314\python.exe
+    .\scripts\bootstrap.ps1 -Python C:\MP\tools\python314\python.exe
 .EXAMPLE
     .\scripts\bootstrap.ps1 -Stage 6 -Force
 #>
@@ -108,8 +108,19 @@ if (-not (Test-Path (Join-Path $backend '.env'))) {
     Write-Host 'backend\.env does not exist. Copy backend\.env.example to backend\.env and fill it in (docs\VDI-SETUP.md, section F).' -ForegroundColor Red
     exit 9
 }
-if (-not $Python) {
-    if (Get-Command py -ErrorAction SilentlyContinue) { $Python = 'py -3' } else { $Python = 'python' }
+if (-not $Python) { $Python = EnvValue 'PYTHON' }
+if (-not $Python) { $Python = 'python' }
+Write-Host "Python: $Python"
+$dotnetRoot = EnvValue 'DOTNET_ROOT'
+if ($dotnetRoot) {
+    if (-not (Test-Path (Join-Path $dotnetRoot 'dotnet.exe'))) {
+        Write-Host "DOTNET_ROOT $dotnetRoot has no dotnet.exe. Set it to the folder .NET was installed into, or leave it empty (docs\VDI-SETUP.md section C)." -ForegroundColor Red
+        exit 9
+    }
+    # As the backend does (app.config.apply_dotnet_root): this SDK first on PATH, its runtime through DOTNET_ROOT.
+    $env:DOTNET_ROOT = $dotnetRoot
+    $env:PATH = "$dotnetRoot;$env:PATH"
+    Write-Host ".NET: DOTNET_ROOT $dotnetRoot"
 }
 if (Test-Path -LiteralPath $Python) { $pythonExe = $Python; $pythonArgs = @() }
 else {

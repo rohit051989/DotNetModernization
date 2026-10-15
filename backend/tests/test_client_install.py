@@ -143,32 +143,54 @@ def _preflight():
 class PreflightVersions(unittest.TestCase):
     """Each tool older than the stated requirement is MISSING, with the requirement in the message."""
 
-    def run_tools(self, outputs: dict[str, tuple[int, str]], python=(3, 13, 1)):
+    def run_tools(self, outputs: dict[str, tuple[int, str]], python=(3, 13, 1), cfg: dict | None = None):
         from unittest import mock
 
         pf = _preflight()
+        seen = []
 
         def fake_run(*args):
-            return outputs.get(Path(args[0]).stem.lower() if args[0] else "", (-1, ""))
+            seen.append(args)
+            name = Path(args[0]).stem.lower() if args[0] else ""
+            if name == "dotnet" and args[1:] == ("--version",):
+                return outputs.get("dotnet --version", (-1, ""))
+            if args[1:2] == ("-c",):       # the interpreter bootstrap uses
+                return (0, f"{'.'.join(map(str, python))}\n{args[0]}") if python else (-1, "")
+            return outputs.get(name, (-1, ""))
 
+        where = {"npm": "npm", "dotnet": "C:\\Users\\u\\dotnet\\dotnet.exe"}
         # The runtime check reads the real file system; PreflightDotnetRuntime covers it.
-        with mock.patch.object(pf, "run", side_effect=fake_run), mock.patch.object(pf.shutil, "which", return_value="npm"), \
-                mock.patch.object(pf.sys, "version_info", python), mock.patch.object(pf, "dotnet_runtime"), \
-                mock.patch("builtins.print"):
-            pf.tools()
+        with mock.patch.object(pf, "run", side_effect=fake_run), mock.patch.object(pf.shutil, "which", side_effect=where.get), \
+                mock.patch.object(pf, "dotnet_runtime"), mock.patch("builtins.print"):
+            pf.tools(cfg or {})
+        self.interpreters = [a[0] for a in seen if a[1:2] == ("-c",)]
         return {what: (ok, detail) for ok, what, detail in pf.results}
 
     CURRENT = {"node": (0, "v22.12.0"), "npm": (0, "10.9.0"), "git": (0, "git version 2.17.0.windows.1"),
-               "dotnet": (0, "10.0.100 [C:\\Program Files\\dotnet\\sdk]")}
+               "dotnet": (0, "10.0.100 [C:\\Program Files\\dotnet\\sdk]"), "dotnet --version": (0, "10.0.100")}
 
     def test_the_minimums_pass(self):
         results = self.run_tools(self.CURRENT, python=(3, 11, 0))
         self.assertTrue(all(ok for ok, _ in results.values()), results)
 
     def test_the_client_toolchain_passes(self):
-        results = self.run_tools({**self.CURRENT, "dotnet": (0, "10.0.203 [C:\\Users\\u\\dotnet\\sdk]")}, python=(3, 14, 8))
+        toolchain = {**self.CURRENT, "dotnet": (0, "10.0.203 [C:\\Users\\u\\dotnet\\sdk]"), "dotnet --version": (0, "10.0.203")}
+        results = self.run_tools(toolchain, python=(3, 14, 8), cfg={"PYTHON": "C:\\MP\\tools\\python314\\python.exe"})
         self.assertTrue(all(ok for ok, _ in results.values()), results)
-        self.assertEqual(results[".NET SDK"][1], "10.0.203 (any .NET 10 SDK from 10.0.100 needed, steps\\step-003-fingerprinting\\global.json)")
+        self.assertEqual(results[".NET SDK"][1], "10.0.203 used, from C:\\Users\\u\\dotnet; installed: 10.0.203 "
+                                                 "(any .NET 10 SDK from 10.0.100 needed, steps\\step-003-fingerprinting\\global.json)")
+        self.assertEqual(results["Python"][1], "3.14.8 (C:\\MP\\tools\\python314\\python.exe, PYTHON in backend\\.env; "
+                                               "3.11.0 to 3.14.x needed)")
+
+    def test_python_on_path_when_python_is_unset(self):
+        results = self.run_tools(self.CURRENT, python=(3, 13, 1))
+        self.assertEqual(self.interpreters, ["python"])
+        self.assertIn("python on PATH", results["Python"][1])
+
+    def test_a_missing_python_says_not_found(self):
+        results = self.run_tools(self.CURRENT, python=None)
+        self.assertEqual(results["Python"][0], False)
+        self.assertIn("python not found", results["Python"][1])
 
     def test_any_net10_feature_band_fits_and_nothing_else(self):
         pf = _preflight()
@@ -196,6 +218,38 @@ class PreflightVersions(unittest.TestCase):
     def test_a_missing_tool_says_not_found(self):
         results = self.run_tools({k: v for k, v in self.CURRENT.items() if k != "git"})
         self.assertEqual(results["git"], (False, "not found (2.17.0 or later needed)"))
+
+
+class DotnetRootSetting(unittest.TestCase):
+    """DOTNET_ROOT in backend/.env: first on PATH and DOTNET_ROOT for this process and every process it starts."""
+
+    def test_it_is_applied_to_this_process_and_inherited_by_what_it_starts(self):
+        from unittest import mock
+
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "dotnet.exe").write_bytes(b"")
+            with mock.patch.dict(os.environ, {"PATH": f"C:\\elsewhere{os.pathsep}{tmp}", "DOTNET_ROOT": ""}):
+                config.apply_dotnet_root(Settings(dotnet_root=tmp))
+                self.assertEqual(os.environ["DOTNET_ROOT"], tmp)
+                self.assertEqual(os.environ["PATH"].split(os.pathsep), [tmp, "C:\\elsewhere"])
+                seen = subprocess.run(["cmd", "/c", "echo %DOTNET_ROOT%"], capture_output=True, text=True).stdout.strip()
+                self.assertEqual(seen, tmp)
+
+    def test_a_folder_without_dotnet_is_refused_and_unset_changes_nothing(self):
+        from unittest import mock
+
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.dict(os.environ, {"PATH": "C:\\x"}):
+            with self.assertRaisesRegex(ValueError, "has no dotnet executable"):
+                config.apply_dotnet_root(Settings(dotnet_root=tmp))
+            config.apply_dotnet_root(Settings(dotnet_root=""))
+            self.assertEqual(os.environ["PATH"], "C:\\x")
+
+    def test_a_build_log_names_its_sdk(self):
+        from app.conversion import dotnet
+
+        with tempfile.TemporaryDirectory() as tmp:
+            header = dotnet.sdk(Path(tmp))
+        self.assertRegex(header, r"(?i)^# \.NET SDK \d+\.\d+\.\d+, .*dotnet(\.exe)?$")
 
 
 class PreflightPackageSources(unittest.TestCase):
@@ -242,7 +296,7 @@ class PreflightDotnetRuntime(unittest.TestCase):
             (folder / "shared" / "Microsoft.NETCore.App" / "10.0.7").mkdir(parents=True)
             ok, _, detail = self.run_check(folder, None)
             self.assertFalse(ok)
-            self.assertIn(f"Set DOTNET_ROOT to {folder.resolve()}", detail)
+            self.assertIn(f"Set DOTNET_ROOT={folder.resolve()} in backend\\.env", detail)
             ok, _, detail = self.run_check(folder, str(folder))
             self.assertTrue(ok, detail)
             self.assertIn("10.0.7", detail)

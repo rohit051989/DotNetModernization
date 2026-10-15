@@ -6,7 +6,8 @@
 
 Reports, in plain language, each prerequisite as PRESENT or MISSING, and exits 1 when anything is missing:
 
-- Python 3.11.0 to 3.14.x; Node.js 20.19.0 or a later 20.x, or 22.12.0 or later, with npm 7.0.0 or later; any
+- Python 3.11.0 to 3.14.x (the interpreter PYTHON names in backend/.env, else python on PATH: the one bootstrap
+  uses); with DOTNET_ROOT set in backend/.env, that .NET first, as the backend applies it; Node.js 20.19.0 or a later 20.x, or 22.12.0 or later, with npm 7.0.0 or later; any
   .NET 10 SDK from 10.0.100 (steps/step-003-fingerprinting/global.json), and a .NET 10 runtime the step programs can
   find (DOTNET_ROOT for a per-user SDK); git 2.17.0 or later. Anything older is MISSING;
 - whether Windows long-path support and git's core.longpaths are on (reported, never failed);
@@ -123,15 +124,36 @@ def dotnet_runtime(pinned: str) -> None:
     else:
         check(False, ".NET runtime for the step programs",
               f"dotnet comes from {folder}, but DOTNET_ROOT is {'not set' if not root else root}: the step programs "
-              f"would not find this runtime. Set DOTNET_ROOT to {folder} for this account")
+              f"would not find this runtime. Set DOTNET_ROOT={folder} in backend\\.env")
 
 
-def tools() -> None:
+def python_check(cfg: dict[str, str]) -> None:
+    """The interpreter bootstrap uses: PYTHON in backend/.env, else python on PATH."""
+    named = cfg.get("PYTHON", "").strip()
+    interpreter = named or "python"
+    code, out = run(interpreter, "-c", "import sys; print('.'.join(map(str, sys.version_info[:3]))); print(sys.executable)")
+    lines = out.splitlines() if code == 0 else []
+    py = version(lines[0]) if lines else ()
+    where = f"{lines[1]}, " if len(lines) > 1 else ""
+    origin = "PYTHON in backend\\.env" if named else "python on PATH"
+    check(bool(py) and MIN_PYTHON <= py < MAX_PYTHON_EXCLUSIVE, "Python",
+          f"{lines[0] if py else interpreter + ' not found'} ({where}{origin}; {PYTHON_REQUIRED})"
+          f"{': too old' if py and py < MIN_PYTHON else ''}"
+          f"{': too new, the pinned dependencies have no build for it' if py and py >= MAX_PYTHON_EXCLUSIVE else ''}")
+
+
+def apply_dotnet_root(cfg: dict[str, str]) -> None:
+    """DOTNET_ROOT in backend/.env, as the backend applies it (app.config.apply_dotnet_root): that folder first on
+    PATH, and DOTNET_ROOT set, for the checks below and everything preflight starts."""
+    root = cfg.get("DOTNET_ROOT", "").strip()
+    if root:
+        os.environ["DOTNET_ROOT"] = root
+        os.environ["PATH"] = root + os.pathsep + os.environ.get("PATH", "")
+
+
+def tools(cfg: dict[str, str] | None = None) -> None:
     print("Tools")
-    py = sys.version_info[:3]
-    check(MIN_PYTHON <= py < MAX_PYTHON_EXCLUSIVE, "Python",
-          f"{sys.version.split()[0]} ({PYTHON_REQUIRED}){'' if py >= MIN_PYTHON else ': too old'}"
-          f"{': too new, the pinned dependencies have no build for it' if py >= MAX_PYTHON_EXCLUSIVE else ''}")
+    python_check(cfg or {})
     code, out = run("node", "--version")
     v = version(out) if code == 0 else ()
     check(bool(v) and node_fits(v), "Node.js",
@@ -144,7 +166,11 @@ def tools() -> None:
     code, out = run("dotnet", "--list-sdks")
     sdks = [line.split()[0] for line in out.splitlines() if line.strip() and line[0].isdigit()] if code == 0 else []
     fits = [s for s in sdks if sdk_fits(s, sdk["version"], sdk.get("rollForward", "latestPatch"))]
-    check(bool(fits), ".NET SDK", f"{', '.join(fits) if fits else 'none of ' + (', '.join(sdks) or 'none installed')} "
+    # The SDK this dotnet uses (global.json's latestFeature picks the newest installed .NET 10 SDK the same way).
+    code, used = run("dotnet", "--version") if fits else (-1, "")
+    found = shutil.which("dotnet")
+    used_text = f"{used.strip()} used, from {Path(found).parent}; " if code == 0 and used.strip() and found else ""
+    check(bool(fits), ".NET SDK", f"{used_text}{'installed: ' + ', '.join(fits) if fits else 'none of ' + (', '.join(sdks) or 'none installed')} "
                                   f"({sdk_required(sdk['version'], sdk.get('rollForward', 'latestPatch'))}, "
                                   f"steps\\step-003-fingerprinting\\global.json)")
     dotnet_runtime(sdk["version"])
@@ -257,6 +283,17 @@ def database(cfg: dict[str, str]) -> None:
     try:
         import psycopg
     except ImportError:
+        venv_python = BACKEND / ".venv" / "Scripts" / "python.exe"
+        if venv_python.exists() and Path(sys.executable).resolve() != venv_python.resolve():
+            # Installed already: the driver is in backend/.venv. Run these checks there and take its findings.
+            code, out = run(str(venv_python), str(Path(__file__).resolve()), "--database")
+            for line in out.splitlines():
+                m = re.match(r"^  (PRESENT|MISSING)  ([^:]+): (.*)$", line)
+                if m:
+                    check(m.group(1) == "PRESENT", m.group(2), m.group(3))
+                elif line.startswith("           "):
+                    print(line)
+            return
         check(False, "database driver", "psycopg is not installed yet: bootstrap installs it, then runs these checks")
         return
     missing = [k for k in ("DB_NAME", "DB_USER", "DB_PASSWORD") if not cfg.get(k)]
@@ -303,9 +340,10 @@ def main() -> int:
     parser.add_argument("--no-database", action="store_true", help="everything but the database (bootstrap's first stage)")
     args = parser.parse_args()
     cfg = configuration()
+    apply_dotnet_root(cfg)
     print(f"Preflight for {ROOT}")
     if not args.database:
-        tools()
+        tools(cfg)
         sources(cfg)
         runs_dir(cfg)
         long_paths()
