@@ -448,10 +448,16 @@
         }
       ],
       "confirmation": {
-        "status": "unconfirmed",
-        "by": null,
-        "on": null,
-        "note": null
+        "status": "confirmed",
+        "by": "Rohit Khanna",
+        "on": "2026-10-17",
+        "decision": "RK-2026-10-17-a",
+        "note": "In the probes, server trust was established by pinning the server certificate's thumbprint. In production, the container must trust the services' issuing certificate authority.",
+        "evidence": [
+          "steps/step-003-fingerprinting/probes/evidence/20261013T160559Z-basicHttps-Transport-Certificate-linux.json",
+          "steps/step-003-fingerprinting/probes/evidence/20261016T180000Z-basicHttps-Transport-Certificate-linux-container-no-client-certificate.json",
+          "steps/step-003-fingerprinting/probes/evidence/20261016T180000Z-basicHttps-Transport-Certificate-linux.json"
+        ]
       }
     },
     {
@@ -497,10 +503,14 @@
         }
       ],
       "confirmation": {
-        "status": "unconfirmed",
-        "by": null,
-        "on": null,
-        "note": null
+        "status": "confirmed",
+        "by": "Rohit Khanna",
+        "on": "2026-10-17",
+        "decision": "RK-2026-10-17-a",
+        "note": "In the probes, server trust was established by pinning the server certificate's thumbprint. In production, the container must trust the services' issuing certificate authority.",
+        "evidence": [
+          "steps/step-003-fingerprinting/probes/evidence/20261013T160559Z-basicHttps-Transport-None-linux.json"
+        ]
       }
     },
     {
@@ -1544,7 +1554,9 @@
       "changes": [
         "net10.0/linux/basicHttpsBinding/Transport/None: new, compatible, with its probe (2026-10-13); unconfirmed",
         "net10.0/linux/basicHttpsBinding/Transport/Certificate: new, compatible, with its probe (2026-10-13), and the rerun with its no-client-certificate control as a matched pair; unconfirmed",
-        "net10.0/linux/basicHttpsBinding/*/*: its two probes move to those specific entries; it stays unknown (unprobed) for every other security mode and credential"
+        "net10.0/linux/basicHttpsBinding/*/*: its two probes move to those specific entries; it stays unknown (unprobed) for every other security mode and credential",
+        "net10.0/linux/basicHttpsBinding/Transport/None: confirmed by Rohit Khanna, decision RK-2026-10-17-a",
+        "net10.0/linux/basicHttpsBinding/Transport/Certificate: confirmed by Rohit Khanna, decision RK-2026-10-17-a"
       ]
     }
   ],
@@ -1567,6 +1579,20 @@
         "net10.0/linux/netTcpBinding/Transport/None": "confirmed on its probe evidence: a .NET 10 WCF client in a Linux container passed against a real service",
         "net10.0/linux/netTcpBinding/Transport/Certificate": "confirmed on its probe evidence: a .NET 10 WCF client in a Linux container passed against a real service",
         "net10.0/linux/wsHttpBinding/TransportWithMessageCredential/Certificate": "confirmed on its probe evidence: fails on Linux in message-level certificate signing; the same binary passes on Windows"
+      }
+    },
+    {
+      "id": "RK-2026-10-17-a",
+      "by": "Rohit Khanna",
+      "on": "2026-10-17",
+      "instruction": "Confirm both basicHttpsBinding Linux entries, reviewer Rohit Khanna. Record this note on both: \"In the probes, server trust was established by pinning the server certificate's thumbprint. In production, the container must trust the services' issuing certificate authority.\"",
+      "entries": [
+        "net10.0/linux/basicHttpsBinding/Transport/None",
+        "net10.0/linux/basicHttpsBinding/Transport/Certificate"
+      ],
+      "notes": {
+        "net10.0/linux/basicHttpsBinding/Transport/None": "In the probes, server trust was established by pinning the server certificate's thumbprint. In production, the container must trust the services' issuing certificate authority.",
+        "net10.0/linux/basicHttpsBinding/Transport/Certificate": "In the probes, server trust was established by pinning the server certificate's thumbprint. In production, the container must trust the services' issuing certificate authority."
       }
     }
   ]

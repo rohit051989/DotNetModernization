@@ -847,7 +847,9 @@ names. Run them in one PowerShell window, in order.
 - the UI: a **Reason** column in Dependencies, a **Why** beside each SOAP verdict (also in the CSV export, as
   `runtime_why` and `platform_why`), and what **Confirmed** means wherever it is shown;
 - platform matrix 1.2.0 adds specific Linux entries for basicHttpsBinding Transport/None and Transport/Certificate,
-  unconfirmed. Repositories scanned before the upgrade keep their verdicts until they are rescanned: the SOAP
+  confirmed by Rohit Khanna (decision RK-2026-10-17-a). Their note: in the probes the server was trusted by pinning
+  its certificate's thumbprint; in production the container must trust the services' issuing certificate
+  authority. Repositories scanned before the upgrade keep their verdicts until they are rescanned: the SOAP
   report then says the run used an older matrix than the newest. **Rescan** each repository with SOAP calls.
 
 **What rbc-release-2 changes on an rbc-release-1 installation:**

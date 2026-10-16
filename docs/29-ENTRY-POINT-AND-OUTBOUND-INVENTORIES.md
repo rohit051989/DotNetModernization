@@ -1211,7 +1211,7 @@ basicHttpsBinding, same image, OS, .NET and WCF client:
 
 **Platform matrix 1.2.0** (support stays 1.1.0). The two basicHttps rows above as specific
 `compatible` entries, carrying the probes the wildcard held, and the 2026-10-16 matched pair.
-Both are **unconfirmed**: a person confirms them with a named decision (`record_decision`).
+Both were confirmed by Rohit Khanna on 2026-10-17, decision `RK-2026-10-17-a`, with this note on each: "In the probes, server trust was established by pinning the server certificate's thumbprint. In production, the container must trust the services' issuing certificate authority."
 `basicHttpsBinding/*/*` stays `unknown`, unprobed, for every other mode and credential. A run
 scanned with 1.1.0 keeps citing the wildcard until the repository is rescanned; the SOAP report
 says so (an older matrix than the newest: rescan).

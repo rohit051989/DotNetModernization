@@ -204,9 +204,9 @@ public class SoapRuntimeVerdictTests
     }
 
     [Fact]
-    public void BasicHttps_transport_with_no_credential_or_a_certificate_has_specific_unconfirmed_entries_and_the_rest_stays_unprobed()
+    public void BasicHttps_transport_with_no_credential_or_a_certificate_has_specific_confirmed_entries_and_the_rest_stays_unprobed()
     {
-        // Platform matrix 1.2.0: specific entries from the probe evidence, left unconfirmed for a person to confirm.
+        // Platform matrix 1.2.0: specific entries from the probe evidence, confirmed by Rohit Khanna (RK-2026-10-17-a).
         var security = (string mode, string credential) => new EnvironmentSoapSecurity
         {
             Binding = "basicHttpsBinding", SecurityMode = mode, ClientCredentialType = credential, SecuritySource = "declared",
@@ -215,7 +215,7 @@ public class SoapRuntimeVerdictTests
         {
             var (verdict, reasons, entry) = LinuxVerdicts.SoapPlatform(security("Transport", credential), TestMatrices.Soap);
             Assert.Equal((Verdicts.Compatible, $"net10.0/linux/basicHttpsBinding/Transport/{credential}"), (verdict, entry));
-            Assert.Contains($"matrix entry net10.0/linux/basicHttpsBinding/Transport/{credential} not yet confirmed by a person", reasons);
+            Assert.DoesNotContain(reasons, r => r.Contains("not yet confirmed by a person"));
         }
 
         var (basic, _, basicEntry) = LinuxVerdicts.SoapPlatform(security("Transport", "Basic"), TestMatrices.Soap);

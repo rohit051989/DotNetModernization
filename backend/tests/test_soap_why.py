@@ -42,11 +42,14 @@ class SoapWhyTests(unittest.TestCase):
             "unqualified hostname 'appsrv0341': use the fully qualified name"], "net10.0/linux/basicHttpBinding/None/None")
         self.assertIn("The verdict is requires change, not the entry's compatible, because: unqualified hostname 'appsrv0341'", text)
 
-    def test_the_new_basic_https_entries_are_specific_and_unconfirmed(self):
+    def test_the_new_basic_https_entries_are_specific_and_confirmed_by_a_named_decision(self):
         for credential in ("None", "Certificate"):
             entry = PLATFORM[f"net10.0/linux/basicHttpsBinding/Transport/{credential}"]
             self.assertEqual(entry["verdict"], "compatible")
-            self.assertEqual(entry["confirmation"]["status"], "unconfirmed")
+            confirmation = entry["confirmation"]
+            self.assertEqual((confirmation["status"], confirmation["by"], confirmation["decision"]),
+                             ("confirmed", "Rohit Khanna", "RK-2026-10-17-a"))
+            self.assertIn("the container must trust the services' issuing certificate authority", confirmation["note"])
             self.assertTrue(all(p["outcome"] == "passed" for p in entry["probes"]))
         pair = PLATFORM["net10.0/linux/basicHttpsBinding/Transport/Certificate"]["probes"][-1]
         control = pair["controls"][0]
