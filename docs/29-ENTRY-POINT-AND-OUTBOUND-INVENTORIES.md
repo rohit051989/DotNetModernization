@@ -1096,16 +1096,19 @@ python -m app.estate.wcf_probe --plan runs\probes\probe-plan.json --make-certifi
 - **Certificates are files, never a certificate store.** `--make-certificates` has
   `WcfClientProbe make-certificates` write `server.pfx`/`server.cer` (CN=localhost),
   `client.pfx`/`client.cer` and `pfx.password` to the plan's scratch folder
-  (`backend/runs/probes/certs`, gitignored). The client pins the server by the thumbprint of
+  (`<RUNS_DIR>\probes\certs-<date>`, outside the repository). The client pins the server by the thumbprint of
   `server.cer`, and the services pin the client by `client.cer`. Nothing is imported into, or
   read from, CurrentUser or LocalMachine. Keys loaded from a `.pfx` live in a temporary key
   container that goes away with the process. No trust setting, http.sys binding or URL
   reservation is made, and no admin rights are needed.
-- **The plan** (`probes/probe-plan.example.json`, copied to `backend/runs/probes/`) names each
+- **The plan** (`probes/probe-plan.example.json`, copied to `<RUNS_DIR>\probes\`) names each
   scenario's service address, whether it pins the server certificate, and whether it presents
   the client certificate.
 - **The services** are the WCF sample's and wcf-backend's, run from copies under
-  `backend/runs/probes/wcf-sample`, never the registered repositories:
+  `<RUNS_DIR>\probes\wcf-sample`, never the registered repositories. Every working file of the probe — its
+  build, the plan, the certificates, the services — lives under `RUNS_DIR`, outside the repository
+  (`wcf_probe.WORK_DIR`); evidence names that folder `<RUNS_DIR>`, and carries no key, password or certificate
+  file:
   - FundsTransferWS under IIS Express (`Start-FundsTransferWS.ps1`): plain HTTP, no
     certificate;
   - `probes/Start-ProbeServices.ps1` builds and runs `probes/ProbeServices`. On .NET Framework,
@@ -1116,8 +1119,9 @@ python -m app.estate.wcf_probe --plan runs\probes\probe-plan.json --make-certifi
     HTTPS UtilityService through the `BasicHttpsBinding` client type: Transport/None on 44301, and
     Transport/Certificate on 44302, a second TLS terminator that requires a client certificate
     and accepts only the pinned `client.cer`, as IIS does with client certificates required.
-    Both bear on the runtime entries `net10.0/basicHttpsBinding/Transport/None|Certificate` and
-    the platform matrix's one basicHttps entry, the wildcard `net10.0/linux/basicHttpsBinding/*/*`.
+    They bear on the runtime entries `net10.0/basicHttpsBinding/Transport/None|Certificate` and,
+    since platform matrix 1.2.0, the specific platform entries
+    `net10.0/linux/basicHttpsBinding/Transport/None|Certificate`.
   - **HTTPS without a store.** .NET Framework WCF serves HTTP only through http.sys, which
     takes its certificate from LocalMachine, and WCF's hosted activation under IIS Express
     needs full IIS. So the HTTP services listen on plain `http://localhost:8601`, behind a
@@ -1144,6 +1148,15 @@ python -m app.estate.wcf_probe --plan runs\probes\probe-plan.json --make-certifi
 
   A Linux failure that passes on Windows is `attribution: platform`. It contradicts the
   platform entry, not the runtime one.
+- **Negative controls, as a matched pair.** A scenario may carry a `negativeControl`, run in the
+  same session and from the same image whatever the probe's outcome. `basicHttps-Transport-Certificate`
+  has one: the same endpoint (44302) called by the Transport/None client, with no client
+  certificate and no certificate folder mounted, which must fail. Recorded as a control with
+  `where: linux-container-no-client-certificate`, `expected: failed`, `asExpected` and `why`.
+  The control was observed on 2026-10-13 but not recorded then; the pair recorded on 2026-10-16
+  is the evidence: the probe passed, and the control was refused by the server
+  (`sslv3 alert certificate unknown`; the terminator logged that no valid client certificate
+  was presented), so the pass rests on the client certificate.
 - **Contradictions are under review.** Where an entry's latest probe for a scenario disagrees
   with its verdict (a failure where it says the call works, a pass where it says it does not),
   the entry is under review until a reviewer revises it. Every verdict resting on it reads
@@ -1188,6 +1201,20 @@ with the client certificate throws `UriFormatException` inside XML canonicalizat
 System.Security.Cryptography.Xml 10.0.12 and 8.0.10. The first run contradicted 1.0.0's
 `net10.0/linux/wsHttpBinding/*/*` (compatible); the reviewer's revision is matrices 1.1.0's
 specific `incompatible` entry (C10).
+
+basicHttpsBinding, same image, OS, .NET and WCF client:
+
+| Entry (runtime / platform 1.2.0) | Scenario and service | Result |
+|---|---|---|
+| `net10.0/basicHttpsBinding/Transport/None` / `…/linux/basicHttpsBinding/Transport/None` | `basicHttps-Transport-None`, UtilityService over HTTPS (44301), 2026-10-13 | passed |
+| `net10.0/basicHttpsBinding/Transport/Certificate` / `…/linux/basicHttpsBinding/Transport/Certificate` | `basicHttps-Transport-Certificate`, UtilityService over HTTPS requiring and pinning a client certificate (44302), 2026-10-13 and 2026-10-16 | passed; its negative control without a client certificate (2026-10-16) was refused, as expected |
+
+**Platform matrix 1.2.0** (support stays 1.1.0). The two basicHttps rows above as specific
+`compatible` entries, carrying the probes the wildcard held, and the 2026-10-16 matched pair.
+Both are **unconfirmed**: a person confirms them with a named decision (`record_decision`).
+`basicHttpsBinding/*/*` stays `unknown`, unprobed, for every other mode and credential. A run
+scanned with 1.1.0 keeps citing the wildcard until the repository is rescanned; the SOAP report
+says so (an older matrix than the newest: rescan).
 
 ---
 

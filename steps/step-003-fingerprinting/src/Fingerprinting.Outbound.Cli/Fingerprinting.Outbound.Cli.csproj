@@ -30,8 +30,8 @@
       <Link>schemas\wcf-client-support-1.1.0.json</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="..\..\schemas\wcf-client-platform-1.1.0.json">
-      <Link>schemas\wcf-client-platform-1.1.0.json</Link>
+    <Content Include="..\..\schemas\wcf-client-platform-1.2.0.json">
+      <Link>schemas\wcf-client-platform-1.2.0.json</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>

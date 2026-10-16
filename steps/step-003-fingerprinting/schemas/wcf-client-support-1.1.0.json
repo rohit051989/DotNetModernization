@@ -644,6 +644,53 @@
           "source": "platform-sample",
           "evidence": "steps/step-003-fingerprinting/probes/evidence/20261013T160559Z-basicHttps-Transport-Certificate-linux.json",
           "sha256": "574ff7c42f3773673f2dc737da51c79d219eaf316fd66d15a140011369df9eed"
+        },
+        {
+          "probedOn": "2026-10-16",
+          "scenario": "basicHttps-Transport-Certificate",
+          "where": "linux-container",
+          "outcome": "passed",
+          "summary": "IUtilityService.Ping returned 'pong'",
+          "errorType": null,
+          "service": "WCF sample UtilityService, Hosting.Iis binding (ProbeServices, TLS from a certificate file, client certificate required and pinned)",
+          "address": "https://localhost:44302/Utility.svc",
+          "covers": {
+            "wcfClient": "8.1.2",
+            "runtime": "10.0.12",
+            "os": "linux"
+          },
+          "client": {
+            "image": "mcr.microsoft.com/dotnet/runtime@sha256:b89586dc17781f25531909993658aa8161205ae38b8cec8847df4a8221a403d5",
+            "os": "Ubuntu 24.04.5 LTS",
+            "framework": ".NET 10.0.12",
+            "wcfClient": "8.1.2+a47960f931a813617a061adc2ba9cabe1816a551",
+            "cryptographyXml": "10.0.12+95017c711e6afc1085133d440e42b4bd78155701"
+          },
+          "certificates": "files (make-certificates); no certificate store",
+          "source": "platform-sample",
+          "evidence": "steps/step-003-fingerprinting/probes/evidence/20261016T180000Z-basicHttps-Transport-Certificate-linux.json",
+          "sha256": "5c8680ad7a5eefdec9910865f286c45e74301eb3132e64a220c548a2c0b4c690",
+          "controls": [
+            {
+              "where": "linux-container-no-client-certificate",
+              "outcome": "failed",
+              "summary": "System.ServiceModel.CommunicationException: An error occurred while sending the request.",
+              "errorType": "System.ServiceModel.CommunicationException",
+              "os": "Ubuntu 24.04.5 LTS",
+              "cryptographyXml": "10.0.12+95017c711e6afc1085133d440e42b4bd78155701",
+              "covers": {
+                "wcfClient": "8.1.2",
+                "runtime": "10.0.12",
+                "os": "linux"
+              },
+              "evidence": "steps/step-003-fingerprinting/probes/evidence/20261016T180000Z-basicHttps-Transport-Certificate-linux-container-no-client-certificate.json",
+              "sha256": "d3b80c906ecddbe486f0c98d1f48dd07e74eb88cec3375f6783748b3a9bdaf4e",
+              "clientScenario": "basicHttps-Transport-None",
+              "expected": "failed",
+              "asExpected": true,
+              "why": "the same endpoint, called with no client certificate, must refuse the call: the probe's pass then rests on the client certificate"
+            }
+          ]
         }
       ],
       "confirmation": {

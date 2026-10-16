@@ -204,6 +204,25 @@ public class SoapRuntimeVerdictTests
     }
 
     [Fact]
+    public void BasicHttps_transport_with_no_credential_or_a_certificate_has_specific_unconfirmed_entries_and_the_rest_stays_unprobed()
+    {
+        // Platform matrix 1.2.0: specific entries from the probe evidence, left unconfirmed for a person to confirm.
+        var security = (string mode, string credential) => new EnvironmentSoapSecurity
+        {
+            Binding = "basicHttpsBinding", SecurityMode = mode, ClientCredentialType = credential, SecuritySource = "declared",
+        };
+        foreach (var credential in new[] { "None", "Certificate" })
+        {
+            var (verdict, reasons, entry) = LinuxVerdicts.SoapPlatform(security("Transport", credential), TestMatrices.Soap);
+            Assert.Equal((Verdicts.Compatible, $"net10.0/linux/basicHttpsBinding/Transport/{credential}"), (verdict, entry));
+            Assert.Contains($"matrix entry net10.0/linux/basicHttpsBinding/Transport/{credential} not yet confirmed by a person", reasons);
+        }
+
+        var (basic, _, basicEntry) = LinuxVerdicts.SoapPlatform(security("Transport", "Basic"), TestMatrices.Soap);
+        Assert.Equal((Verdicts.Unknown, "net10.0/linux/basicHttpsBinding/*/*"), (basic, basicEntry));
+    }
+
+    [Fact]
     public void WsHttp_message_level_certificate_signing_is_incompatible_on_Linux_on_probe_evidence_and_the_rest_unprobed()
     {
         var security = (string mode, string credential) => new EnvironmentSoapSecurity
@@ -227,7 +246,7 @@ public class SoapRuntimeVerdictTests
     /// change, or is unprobed.</summary>
     [Theory]
     [InlineData("wcf-client-support-1.1.0.json", new[] { "supported", "supported_with_caveat" })]
-    [InlineData("wcf-client-platform-1.1.0.json", new[] { "compatible" })]
+    [InlineData("wcf-client-platform-1.2.0.json", new[] { "compatible" })]
     public void No_wildcard_entry_asserts_that_a_call_works(string file, string[] works)
     {
         using var document = JsonDocument.Parse(File.ReadAllBytes(TestMatrices.Schemas(file)));

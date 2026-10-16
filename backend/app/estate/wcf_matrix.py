@@ -199,9 +199,79 @@ def confirmation_violations(matrix: dict) -> list[str]:
 
 UNDER_REVIEW = "under_review"
 
+# The scan's reasons when no entry could be chosen (LinuxVerdicts.SoapPlatform, RuntimeVerdicts.Judge).
+_UNRESOLVED = (("binding unresolved", "the binding was not resolved from configuration"),
+               ("security mode unresolved", "the security mode was not resolved from configuration"),
+               ("client credential type unresolved", "the client credential type was not resolved from configuration"))
+
+
+def is_wildcard(entry_id: str) -> bool:
+    return "*" in entry_id.split("/")
+
+
+def _where(probe: dict) -> str:
+    where = probe.get("where") or ""
+    return "on Linux" if where.startswith("linux") else "on Windows" if where.startswith("windows") else where
+
+
+def _probe_text(probe: dict) -> str:
+    if probe.get("outcome") == "not_probed":
+        return f"not probed: {probe.get('reason')}"
+    said = f"probe {probe.get('scenario')} {probe.get('outcome')} {_where(probe)} on {probe.get('probedOn')}"
+    if probe.get("outcome") == "passed":
+        said += f" ({probe.get('summary')})"
+    else:
+        said += f": {probe.get('summary') or probe.get('errorType')}"
+    for control in probe.get("controls") or []:
+        expected = control.get("expected")
+        said += (f"; control {control.get('where')} {control.get('outcome')}"
+                 + (f", as expected ({control.get('summary')})" if expected and expected == control.get("outcome")
+                    else f" ({control.get('summary')})"))
+    return said
+
+
+def latest_probes(entry: dict) -> list[dict]:
+    """The newest probe per scenario (or the newest not-probed record): what decides now."""
+    latest: dict[str, dict] = {}
+    for probe in entry.get("probes", []):
+        key = probe.get("scenario") or probe.get("outcome") or ""
+        if key not in latest or (probe.get("probedOn") or "") >= (latest[key].get("probedOn") or ""):
+            latest[key] = probe
+    return list(latest.values())
+
+
+def why(kind: str, verdict: str | None, reasons: list[str] | None, entry_id: str | None, entry: dict | None) -> str:
+    """In plain words, what decided one verdict: the matrix entry and its evidence, or why no entry could. For an
+    unknown verdict, which of the three it is: not resolved from configuration, no entry covering the combination, or
+    only an unprobed wildcard entry."""
+    reasons = reasons or []
+    if not entry_id or entry is None:
+        for marker, plain in _UNRESOLVED:
+            if any(marker in r for r in reasons):
+                return f"Unknown: {plain}, so no matrix entry can be chosen."
+        if any("no entry in the WCF client" in r or "has no entries for" in r for r in reasons):
+            return f"Unknown: no matrix entry covers this combination ({'; '.join(reasons)})."
+        return "; ".join(reasons) or "No matrix entry was recorded by the last scan: rescan the repository."
+    probes = latest_probes(entry)
+    tested = [p for p in probes if p.get("outcome") in ("passed", "failed", "error")]
+    label = f"{'wildcard ' if is_wildcard(entry_id) else ''}matrix entry {entry_id} ({entry.get('verdict')})"
+    if verdict == UNDER_REVIEW:
+        return f"Under review: a probe contradicts {label}. " + "; ".join(_probe_text(p) for p in tested)
+    if entry.get("verdict") == "unknown" and is_wildcard(entry_id):
+        return (f"Unknown: only the unprobed {label} covers this combination; no specific entry has been "
+                f"probed for it. {entry.get('basis')}")
+    evidence = "; ".join(_probe_text(p) for p in probes) if probes else f"no probe; basis: {entry.get('basis')}"
+    said = f"Decided by {label}. Evidence: {evidence}."
+    if verdict and verdict != entry.get("verdict"):
+        # The scan worsened the entry's verdict for something beyond the matrix, such as an unqualified hostname.
+        beyond = [r for r in reasons[1:] if not r.startswith(("change:", "caveat:", "matrix entry "))]
+        said += (f" The verdict is {verdict.replace('_', ' ')}, not the entry's {entry.get('verdict')}"
+                 + (f", because: {'; '.join(beyond)}." if beyond else "."))
+    return said
+
 
 def live_verdict(kind: str, verdict: str | None, entry_id: str | None, target_wcf_client: str | None,
-                 entries_of_kind: dict[str, dict] | None = None) -> dict:
+                 entries_of_kind: dict[str, dict] | None = None, reasons: list[str] | None = None) -> dict:
     """One verdict as a scan recorded it, with what is live in the newest
     matrix: the entry's confirmation and the decision behind it, the probe
     evidence and what it covers, and — when a probe contradicts the entry —
@@ -211,8 +281,10 @@ def live_verdict(kind: str, verdict: str | None, entry_id: str | None, target_wc
     entry = (entries_of_kind if entries_of_kind is not None else entries(kind)).get(entry_id or "")
     confirmation = (entry or {}).get("confirmation") or {}
     contradictions = probe_contradictions(kind, entry) if entry else []
+    shown = UNDER_REVIEW if contradictions else verdict
     return {
-        "verdict": UNDER_REVIEW if contradictions else verdict,
+        "verdict": shown,
+        "why": why(kind, shown, reasons, entry_id, entry),
         "unrevisedVerdict": verdict if contradictions else None,
         "matrixEntry": entry_id,
         "matrixConfirmed": confirmation.get("status") == "confirmed" if entry else None,

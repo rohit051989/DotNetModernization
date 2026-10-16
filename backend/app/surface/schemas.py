@@ -281,6 +281,8 @@ class SoapVerdictLiveOut(BaseModel):
 
     verdict: str | None = Field(description="'under_review' when a probe contradicts the entry: never its unrevised verdict.")
     unrevisedVerdict: str | None = Field(description="The entry's own verdict while it is under review, for the reviewer.")
+    why: str | None = Field(default=None, description="In plain words: the matrix entry that decided the verdict and its "
+                                                      "evidence, or why it is unknown (wcf_matrix.why).")
     matrixEntry: str | None
     matrixConfirmed: bool | None = Field(description="Has a person confirmed the entry? Null when no entry matched.")
     confirmedBy: str | None

@@ -454,9 +454,9 @@ def get_repository_soap_compatibility(repository_id: uuid.UUID, db: Session = De
                 "credentialType": "None" if security.get("securityMode") == "None" else security.get("clientCredentialType"),
                 "securitySource": security.get("securitySource"),
                 "runtime": wcf_matrix.live_verdict("support", b.get("runtimeVerdict") or "not_assessed", b.get("runtimeMatrixEntry"),
-                                                   target_wcf, live["support"]),
+                                                   target_wcf, live["support"], b.get("runtimeReasons")),
                 "platform": wcf_matrix.live_verdict("platform", b.get("linuxVerdict") or row.linux_verdict, b.get("platformMatrixEntry"),
-                                                    target_wcf, live["platform"]),
+                                                    target_wcf, live["platform"], b.get("linuxReasons")),
             })
         calls.append({
             "invocationId": row.id, "projectPath": projects.get(str(row.project_id), ""),

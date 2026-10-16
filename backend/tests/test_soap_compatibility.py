@@ -141,8 +141,10 @@ def probe(scenario, outcome, evidence, attribution=None):
 
 
 class ConfirmationTests(unittest.TestCase):
-    def report(self, matrix, platform=None, target_wcf_client_version=None, run_version="1.1.0"):
-        artifact = {"matrixVersion": run_version, "platformMatrixVersion": run_version,
+    def report(self, matrix, platform=None, target_wcf_client_version=None, run_version=None):
+        # A run on the newest matrices of each kind unless a test says otherwise (support 1.1.0, platform 1.2.0).
+        newest = {kind: (wcf_matrix.load(kind) or {}).get("matrixVersion") for kind in wcf_matrix.KINDS}
+        artifact = {"matrixVersion": run_version or newest["support"], "platformMatrixVersion": run_version or newest["platform"],
                     "hosts": soap_compatibility.build(copy.deepcopy(REGISTER))["hosts"]}
         platform = platform or wcf_matrix.load("platform")
         engagement = SimpleNamespace(target_framework="net10.0", target_wcf_client_version=target_wcf_client_version)

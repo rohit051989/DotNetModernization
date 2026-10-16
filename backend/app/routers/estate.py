@@ -211,14 +211,16 @@ def _soap_report(report: dict, annotations: list, engagement: models.Engagement,
     def contradictions(entry_id: str) -> list[str]:
         return wcf_matrix.probe_contradictions(kinds[entry_id], entries[entry_id])
 
-    def overlay(verdict: dict) -> dict:
+    def overlay(verdict: dict, kind: str) -> dict:
         entry = entries.get(verdict.get("matrixEntry") or "")
         confirmation = (entry or {}).get("confirmation") or {}
         if entry:
             used.add(entry["id"])
             if confirmation.get("status") != "confirmed":
                 unconfirmed.add(entry["id"])
-        return {**verdict, "matrixConfirmed": confirmation.get("status") == "confirmed" if entry else None,
+        shown = wcf_matrix.UNDER_REVIEW if entry and contradictions(entry["id"]) else verdict.get("verdict")
+        return {**verdict, "why": wcf_matrix.why(kind, shown, verdict.get("reasons"), verdict.get("matrixEntry"), entry),
+                "matrixConfirmed": confirmation.get("status") == "confirmed" if entry else None,
                 "confirmedBy": confirmation.get("by"), "confirmedOn": confirmation.get("on"),
                 "sources": (entry or {}).get("sources", []), "probes": (entry or {}).get("probes", []),
                 "probeContradictions": contradictions(entry["id"]) if entry else [],
@@ -229,7 +231,7 @@ def _soap_report(report: dict, annotations: list, engagement: models.Engagement,
 
     hosts = []
     for host in report.get("hosts", []):
-        callers = [{**caller, "environments": [{**env, "runtime": overlay(env["runtime"]), "platform": overlay(env["platform"])}
+        callers = [{**caller, "environments": [{**env, "runtime": overlay(env["runtime"], "support"), "platform": overlay(env["platform"], "platform")}
                                                for env in caller["environments"]]}
                    for caller in host["callers"]]
         hosts.append({**host, "owningTeam": owners.get(host["host"]), "callers": callers})
@@ -371,13 +373,14 @@ def put_annotation(engagement_id: str, host: str, payload: AnnotationIn, db: Ses
 SOAP_CSV_COLUMNS = (
     "backend_host", "backend_owner", "owning_team", "served_by", "calling_application", "project", "contract", "environment",
     "address", "binding", "security_mode", "credential_type", "security_source", "runtime_verdict", "runtime_reasons",
-    "matrix_entry", "matrix_entry_confirmed", "platform_verdict", "platform_reasons", "platform_matrix_entry",
-    "platform_matrix_entry_confirmed", "probe_results", "probe_contradictions", "evidence_covers", "evidence_predates_target",
+    "matrix_entry", "matrix_entry_confirmed", "runtime_why", "platform_verdict", "platform_reasons", "platform_matrix_entry",
+    "platform_matrix_entry_confirmed", "platform_why", "probe_results", "probe_contradictions", "evidence_covers", "evidence_predates_target",
     "what_must_change", "who_changes_it",
     "target_framework", "matrix_version", "matrix_source",
 )
 WHO = {"we": "this migration (calling application)", "backend_owner": "backend owner",
        "we_or_backend_owner": "this migration or the backend owner (not yet known which)"}
+# Confirmed: a named person reviewed the matrix entry's evidence and accepted it. Unconfirmed: nobody has yet.
 CONFIRMED = {True: "yes", False: "NO - awaiting confirmation", None: ""}
 
 
@@ -448,9 +451,9 @@ def soap_csv(report: dict, target_framework: str | None) -> str:
                     caller["projectPath"], caller.get("contract") or "", env["environment"], env.get("address") or "",
                     env.get("binding") or "", env.get("securityMode") or "", env.get("credentialType") or "",
                     env.get("securitySource") or "", _verdict_text(env["runtime"]["verdict"]), " | ".join(env["runtime"]["reasons"]),
-                    env["runtime"].get("matrixEntry") or "", _confirmed_text(env["runtime"]),
+                    env["runtime"].get("matrixEntry") or "", _confirmed_text(env["runtime"]), env["runtime"].get("why") or "",
                     _verdict_text(env["platform"]["verdict"]), " | ".join(env["platform"]["reasons"]),
-                    env["platform"].get("matrixEntry") or "", _confirmed_text(env["platform"]),
+                    env["platform"].get("matrixEntry") or "", _confirmed_text(env["platform"]), env["platform"].get("why") or "",
                     _probe_results(env),
                     " | ".join(env["runtime"].get("probeContradictions", []) + env["platform"].get("probeContradictions", [])),
                     _covers_text(env),

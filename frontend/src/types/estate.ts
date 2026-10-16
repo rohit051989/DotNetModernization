@@ -341,6 +341,8 @@ export interface MatrixProbe {
 interface MatrixEntryLive {
   matrixEntry: string | null
   /** Has a person confirmed the matrix entry? null when no entry matched. */
+  /** In plain words: the matrix entry that decided the verdict and its evidence, or why it is unknown. */
+  why?: string | null
   matrixConfirmed: boolean | null
   confirmedBy: string | null
   confirmedOn: string | null
@@ -467,3 +469,8 @@ export interface EstateView {
   annotations: EndpointAnnotation[]
   settings: EstateSettings
 }
+
+/** What "confirmed" means wherever it is shown (the column under each verdict, the CSV's *_confirmed columns). */
+export const CONFIRMED_HELP =
+  'Confirmed: a named person reviewed the evidence of the matrix entry behind this verdict and accepted it. ' +
+  'Unconfirmed: nobody has reviewed that entry yet, so the verdict is a draft. Confirming is a person\'s decision, never automatic.'

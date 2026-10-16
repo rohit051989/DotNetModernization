@@ -23,12 +23,16 @@
   certificates.
 
 .EXAMPLE
-  .\Start-ProbeServices.ps1 -ServicesBin ..\..\..\backend\runs\probes\wcf-sample\WCF\src\Hosting.Iis\bin -Certs ..\..\..\backend\runs\probes\certs
+  .\Start-ProbeServices.ps1 -ServicesBin C:\MP\runs\probes\wcf-sample\bin -Certs C:\MP\runs\probes\certs-2026-10-16 -Output C:\MP\runs\probes\ProbeServices
+
+  Every working file lives under RUNS_DIR\probes, outside the repository. -ServicesBin holds
+  WcfCatalog.Contracts.dll and WcfCatalog.Services.dll, built from a copy of the sample:
+  dotnet build <copy>\WCF\src\Catalog.Services\Catalog.Services.csproj -c Release -o <RUNS_DIR>\probes\wcf-sample\bin
 #>
 param(
     [Parameter(Mandatory)] [string] $ServicesBin,
     [Parameter(Mandatory)] [string] $Certs,
-    [string] $Output = (Join-Path $PSScriptRoot '..\..\..\backend\runs\probes\ProbeServices')
+    [Parameter(Mandatory)] [string] $Output
 )
 $ErrorActionPreference = 'Stop'
 dotnet build (Join-Path $PSScriptRoot 'ProbeServices\ProbeServices.csproj') -c Release -o $Output --nologo -v quiet

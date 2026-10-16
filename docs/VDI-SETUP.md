@@ -659,7 +659,8 @@ In the UI, on the repository's page:
 | Overview | size, projects, entry points, items found |
 | Surface | what can call the repository, and what it calls |
 | Structure & fingerprint | solutions, projects, frameworks |
-| Dependencies | every package: current, recommended version, outcome, deprecated or vulnerable |
+| Dependencies | every package: the version in use, the recommended version, its outcome and flags, and a **Reason** in plain words for each (the advisory, its severity and the version that fixes it; why an upgrade is safe; which shared framework provides it; the publisher's named successor; why a lookup did not answer, such as a feed returning 401). "Vulnerable" always refers to the version in use |
+| Surface (SOAP compatibility) | each SOAP call per environment: the Runtime and Platform verdicts, a **Why** beside each (the matrix entry that decided it and its probe evidence, or why it is unknown), and whether a named person has **confirmed** that entry (reviewed its evidence and accepted it) |
 | Work list | the catalog items found, where, and how each is to be resolved |
 | Tests | test projects and what they cover |
 | Impact | files each change touches |
@@ -838,6 +839,16 @@ names. Run them in one PowerShell window, in order.
 
    It updates only what the release changed and skips the rest. It ends with `Bootstrap complete`.
 8. **Start the platform** (section I). Your engagements, repositories, conversions and verifications are all there.
+
+**What rbc-release-3 changes on an rbc-release-2 installation** (upgrade with the commands above, with
+`rbc-release-3` in place of `rbc-release-2`). Nothing in the database changes, and no setting is added:
+- **stage 6** republishes the step programs: `outbound-invocation-inventory` now reads WCF client platform matrix
+  1.2.0;
+- the UI: a **Reason** column in Dependencies, a **Why** beside each SOAP verdict (also in the CSV export, as
+  `runtime_why` and `platform_why`), and what **Confirmed** means wherever it is shown;
+- platform matrix 1.2.0 adds specific Linux entries for basicHttpsBinding Transport/None and Transport/Certificate,
+  unconfirmed. Repositories scanned before the upgrade keep their verdicts until they are rescanned: the SOAP
+  report then says the run used an older matrix than the newest. **Rescan** each repository with SOAP calls.
 
 **What rbc-release-2 changes on an rbc-release-1 installation:**
 - **stage 3** installs the exact versions in `backend\requirements.lock`; packages may move to the locked versions;

@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useState } from 'react'
 import { soapCompatibilityCsvUrl } from '../api/estate'
 import type { MatrixProbe, RuntimeVerdict, SoapBackendHost, SoapCompatibilityArtifact, SoapEnvironment } from '../types/estate'
-import { UNDER_REVIEW, UNDER_REVIEW_LABEL } from '../types/estate'
+import { CONFIRMED_HELP, UNDER_REVIEW, UNDER_REVIEW_LABEL } from '../types/estate'
 
 // The Estate tab's SOAP backend compatibility report — 31-DEPENDENCY-AND-CONTEXT-MAP.md
 // Part J. Per backend host, each calling application per environment: binding,
@@ -34,12 +34,17 @@ function verdictLabel(verdict: string): string {
   return verdict === UNDER_REVIEW ? UNDER_REVIEW_LABEL : verdict.replaceAll('_', ' ')
 }
 
-/** Under each verdict: unconfirmed, contradicted, or evidence older than the targeted WCF client. */
+/** Under each verdict: confirmed or not (see CONFIRMED_HELP), evidence missing, or evidence older than the targeted WCF client. */
 function EntryFlags({ live, target }: { live: SoapEnvironment['runtime'] | SoapEnvironment['platform']; target: string | null }) {
   return (
     <>
       {live.matrixConfirmed === false && live.verdict !== UNDER_REVIEW && (
-        <span className="mt-0.5 block text-[10px] font-medium text-amber-700">matrix entry unconfirmed</span>
+        <span className="mt-0.5 block text-[10px] font-medium text-amber-700" title={CONFIRMED_HELP}>unconfirmed: not reviewed yet</span>
+      )}
+      {live.matrixConfirmed === true && (
+        <span className="mt-0.5 block text-[10px] text-teal-700" title={CONFIRMED_HELP}>
+          confirmed by {live.confirmedBy ?? '?'}{live.confirmedOn ? ` on ${live.confirmedOn}` : ''}
+        </span>
       )}
       {live.evidenceMissing && <span className="mt-0.5 block text-[10px] font-semibold text-red-700">evidence missing</span>}
       {live.evidencePredatesTarget && (
@@ -152,10 +157,11 @@ function HostTable({ host, target, highlight }: { host: SoapBackendHost; target:
   const [open, setOpen] = useState<string | null>(null)
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[1000px] text-left text-xs">
+      <table className="w-full min-w-[1400px] text-left text-xs">
         <thead className="text-neutral-400">
           <tr>
-            {['Calling application', 'Environment', 'Binding', 'Security mode', 'Credential', 'Runtime', 'Platform', 'What must change', 'Who'].map((h) => (
+            {['Calling application', 'Environment', 'Binding', 'Security mode', 'Credential', 'Runtime', 'Why (runtime)', 'Platform',
+              'Why (platform)', 'What must change', 'Who'].map((h) => (
               <th key={h} className="py-1 pr-3 font-medium">{h}</th>
             ))}
           </tr>
@@ -196,10 +202,12 @@ function HostTable({ host, target, highlight }: { host: SoapBackendHost; target:
                       <Chip className={RUNTIME_STYLE[env.runtime.verdict]}>{verdictLabel(env.runtime.verdict)}</Chip>
                       <EntryFlags live={env.runtime} target={target} />
                     </td>
+                    <td className="max-w-[18rem] py-1 pr-3 text-[11px] text-neutral-600">{env.runtime.why}</td>
                     <td className="py-1 pr-3">
                       {env.platform.verdict && <Chip className={PLATFORM_STYLE[env.platform.verdict] ?? PLATFORM_STYLE.unknown}>{verdictLabel(env.platform.verdict)}</Chip>}
                       <EntryFlags live={env.platform} target={target} />
                     </td>
+                    <td className="max-w-[18rem] py-1 pr-3 text-[11px] text-neutral-600">{env.platform.why}</td>
                     <td className="py-1 pr-3 text-neutral-700">
                       {env.changes.length === 0 ? (
                         env.underReview && env.underReview.length > 0
@@ -216,7 +224,7 @@ function HostTable({ host, target, highlight }: { host: SoapBackendHost; target:
                   {open === key && (
                     <tr className="bg-neutral-50/60 text-[11px]">
                       <td />
-                      <td colSpan={8} className="space-y-1 py-2 pr-2">
+                      <td colSpan={10} className="space-y-1 py-2 pr-2">
                         <p><span className="text-neutral-400">Runtime: </span>{env.runtime.reasons.join(' · ')}</p>
                         <MatrixEntry label="Runtime" live={env.runtime} />
                         <p><span className="text-neutral-400">Platform: </span>{env.platform.reasons.join(' · ')}</p>
@@ -300,6 +308,11 @@ export function SoapCompatibilityView({
           )}
         </div>
       )}
+      <p className="text-xs text-neutral-500">
+        <span className="font-medium text-neutral-700">Why</span> names the matrix entry that decided each verdict and its
+        evidence, such as a probe that passed on Linux or the error it failed with; for an unknown verdict, why it is unknown.{' '}
+        <span className="font-medium text-neutral-700">Confirmed</span> (under each verdict): {CONFIRMED_HELP.replace('Confirmed: ', '')}
+      </p>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-xs text-neutral-500">
           {data.summary.hosts} SOAP backend(s) · {data.summary.runtimeUnsupported} with a call the target's WCF client does not support ·{' '}

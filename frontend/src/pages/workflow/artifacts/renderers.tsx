@@ -442,6 +442,104 @@ function OutcomeBadge({ pkg }: { pkg: Json }) {
   )
 }
 
+/** An advisory's name: its GHSA or CVE id from the URL, else the URL itself. */
+function advisoryName(url: string | null): string {
+  if (!url) return 'an advisory'
+  const id = /(GHSA-[\w-]+|CVE-\d{4}-\d+)/i.exec(url)
+  return id ? id[1] : url
+}
+
+/**
+ * Why a package has its status, in plain words: one line for its outcome and one for each flag. Built only from the
+ * dependency-assessment artifact's own fields. "Vulnerable" is always about the version in use; the recommended
+ * version is the newest that supports the target framework and has no known advisory.
+ */
+function packageReasons(pkg: Json, targetFramework: string | null): string[] {
+  const reasons: string[] = []
+  const outcome = str(pkg.outcome)
+  const reason = str(pkg.outcomeReason) ?? ''
+  const current = str(pkg.currentVersion) ?? '?'
+  const recommended = str(pkg.recommendedVersion)
+  const target = targetFramework ?? 'the target framework'
+  const method = str(pkg.classificationMethod)
+  const semver = str(pkg.semverChange)
+  switch (outcome) {
+    case 'upgrade_safe':
+      if (method === 'api_diff') {
+        reasons.push(`Safe upgrade to ${recommended}: it supports ${target}, and the API diff found no breaking change in anything the code calls.`)
+      } else if (method === 'package_kind') {
+        reasons.push(`Safe upgrade to ${recommended}: it supports ${target}, and it is a ${str(pkg.packageKind) ?? 'non-runtime'} package with no assemblies the code compiles against.`)
+      } else {
+        reasons.push(`Safe upgrade to ${recommended}: it supports ${target}; not compared by API diff — a ${semver ?? 'minor'} version change is presumed safe.`)
+      }
+      break
+    case 'upgrade_breaking':
+      reasons.push(
+        str(pkg.breakingEvidence) === 'semver_presumed'
+          ? `Breaking upgrade to ${recommended}: it supports ${target}, but a major version change is presumed breaking (no API diff was possible).`
+          : `Breaking upgrade to ${recommended}: it supports ${target}, but members the code calls changed (${reason}).`,
+      )
+      break
+    case 'framework_provided': {
+      const provider = /provided by the (\S+) shared framework/.exec(reason)
+      reasons.push(`Provided by the framework: the ${provider ? provider[1] : 'shared'} shared framework includes it on ${target}, so the reference is removed rather than upgraded.`)
+      break
+    }
+    case 'no_compatible_version':
+      reasons.push(`No compatible version: ${reason || `no version supports ${target}`}.`)
+      break
+    case 'current':
+      reasons.push(reason ? `Current: ${current} is ${reason}.` : `Current: ${current} is already the newest version that supports ${target}.`)
+      break
+    case 'unknown': {
+      const status = /\b(401|403|404|407)\b/.exec(reason)
+      const said: Record<string, string> = {
+        '401': 'the feed returned 401 (Unauthorized): it needs a login',
+        '403': 'the feed returned 403 (Forbidden): the login has no access',
+        '404': 'the feed returned 404 (Not Found)',
+        '407': 'the proxy returned 407: it needs a login',
+      }
+      reasons.push(`Unknown: the lookup did not answer — ${status ? `${said[status[1]]}. ` : ''}${reason || 'no reason recorded'}.`)
+      break
+    }
+  }
+  const vulnerable = pkg.vulnerable ? obj(pkg.vulnerable) : null
+  if (vulnerable) {
+    const advisories = list(vulnerable.advisories)
+    const named = advisories.map((a) => `${advisoryName(str(a.url))} (${str(a.severity)})`).join(', ')
+    // fixedIn since dependency-assessment 1.5.0; before it, only resolvedByUpgrade says whether the recommended version is clean.
+    const fixed = str(vulnerable.fixedIn) ?? (vulnerable.resolvedByUpgrade === true ? recommended : null)
+    const fix = fixed
+      ? `Fixed in ${fixed}, which has no known advisory.`
+      : vulnerable.resolvedByUpgrade === false
+        ? `The recommended version, ${recommended}, still has a known advisory: no release without one yet.`
+        : 'fixedIn' in vulnerable
+          ? 'No release without a known advisory yet.'
+          : 'No newer release to compare with.'
+    reasons.push(
+      `Vulnerable — the version in use, ${current}: ${advisories.length} advisor${advisories.length === 1 ? 'y' : 'ies'}, highest severity ${str(vulnerable.maxSeverity)}: ${named}. ${fix}`,
+    )
+  }
+  const deprecated = pkg.deprecated ? obj(pkg.deprecated) : null
+  if (deprecated) {
+    const why = list<string>(deprecated.reasons).join(', ') || str(deprecated.message) || 'no reason given'
+    if (str(deprecated.scope) === 'package') {
+      const successor = str(deprecated.replacementId)
+      reasons.push(
+        `Replacement required: deprecated by its publisher (${why})` +
+          (successor ? `; its named successor is ${successor}${str(deprecated.replacementVersion) ? ` ${str(deprecated.replacementVersion)}` : ''}.` : '; the publisher names no successor.'),
+      )
+    } else {
+      reasons.push(`This version is deprecated by its publisher (${why}); ${str(deprecated.newestNotDeprecated) ?? 'a newer version'} is not.`)
+    }
+  }
+  const gap = pkg.notInClientFeed ? obj(pkg.notInClientFeed) : null
+  if (gap) {
+    reasons.push(`Not in the client feed: ${str(gap.clientFeedName)} has ${str(gap.latestInClientFeed) ?? 'no compatible version'}, nuget.org has ${str(gap.latestPublicVersion)}.`)
+  }
+  return reasons
+}
+
 export function DependenciesView({ data, localPath }: ArtifactRendererProps) {
   const [showCurrent, setShowCurrent] = useState(false)
   const [open, setOpen] = useState<Record<string, boolean>>({})
@@ -545,13 +643,19 @@ export function DependenciesView({ data, localPath }: ArtifactRendererProps) {
       {visible.length === 0 ? (
         <p className="text-xs text-neutral-400">No packages to show.</p>
       ) : (
-        <Table head={['Package', 'Projects', 'Current', 'Recommended', 'Outcome', 'Flags', 'Feed']} minWidth={900}>
+        <>
+        <p className="text-[11px] text-neutral-500">
+          <span className="font-medium text-neutral-700">Version in use</span> is what the project references now;{' '}
+          <span className="font-medium text-neutral-700">Recommended version</span> is the newest that supports {str(data.targetFramework)} and has no
+          known advisory. <span className="font-medium text-neutral-700">Vulnerable</span> always refers to the version in use.
+        </p>
+        <Table head={['Package', 'Projects', 'Version in use', 'Recommended version', 'Outcome', 'Flags', 'Reason', 'Feed']} minWidth={1200}>
           {visible.map((group) => (
             <Fragment key={group.packageId}>
               {group.drift && (
                 <tr className="border-b border-neutral-100 bg-amber-50/40 align-top">
                   <td className="py-1.5 pr-3 font-medium text-neutral-800">{group.packageId}</td>
-                  <td colSpan={6} className="py-1.5 pr-3">
+                  <td colSpan={7} className="py-1.5 pr-3">
                     <Chip tone="amber" title="One package at different versions across projects. Consolidating first is usually the sensible order before upgrading.">
                       version drift: {group.versions.length} versions across {new Set(group.versions.flatMap((v) => v.uses.map((u) => u.project))).size} projects
                     </Chip>
@@ -566,6 +670,7 @@ export function DependenciesView({ data, localPath }: ArtifactRendererProps) {
                     group={group}
                     version={version}
                     localPath={localPath}
+                    targetFramework={str(data.targetFramework)}
                     expanded={!!open[key]}
                     onToggle={() => toggle(key)}
                   />
@@ -574,6 +679,7 @@ export function DependenciesView({ data, localPath }: ArtifactRendererProps) {
             </Fragment>
           ))}
         </Table>
+        </>
       )}
     </div>
   )
@@ -586,12 +692,14 @@ function VersionRowView({
   group,
   version,
   localPath,
+  targetFramework,
   expanded,
   onToggle,
 }: {
   group: PackageGroup
   version: VersionGroup
   localPath: string | null
+  targetFramework: string | null
   expanded: boolean
   onToggle: () => void
 }) {
@@ -660,7 +768,6 @@ function VersionRowView({
                 str(pkg.classificationMethod)}
             </span>
           )}
-          {str(pkg.outcome) === 'unknown' && <span className="block max-w-[16rem] text-[11px] text-neutral-500">{str(pkg.outcomeReason)}</span>}
         </td>
         <td className="py-1.5 pr-3">
           <div className="flex flex-wrap gap-1">
@@ -669,7 +776,7 @@ function VersionRowView({
                 tone="red"
                 title={`${list(vulnerable.advisories).length} advisory(ies)${vulnerable.resolvedByUpgrade === true ? '; the recommended version resolves them' : vulnerable.resolvedByUpgrade === false ? '; the recommended version does not resolve them' : ''}`}
               >
-                vulnerable: {str(vulnerable.maxSeverity)}
+                vulnerable (in use): {str(vulnerable.maxSeverity)}
               </Chip>
             )}
             {deprecated && (
@@ -684,6 +791,11 @@ function VersionRowView({
               </Chip>
             )}
           </div>
+        </td>
+        <td className="max-w-[22rem] py-1.5 pr-3 text-[11px] text-neutral-700">
+          {packageReasons(pkg, targetFramework).map((line) => (
+            <span key={line} className="block">{line}</span>
+          ))}
         </td>
         <td className="py-1.5 pr-3 text-[11px]">
           {str(pkg.feedSource) ? (
@@ -702,7 +814,7 @@ function VersionRowView({
       </tr>
       {expanded && (
         <tr className="border-b border-neutral-100 bg-neutral-50/60">
-          <td colSpan={7} className="space-y-2 px-6 py-2">
+          <td colSpan={8} className="space-y-2 px-6 py-2">
             {version.uses.map((use) => (
               <ProjectUseDetail key={use.project} use={use} localPath={localPath} />
             ))}

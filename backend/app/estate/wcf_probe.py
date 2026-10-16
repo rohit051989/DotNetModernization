@@ -19,10 +19,19 @@ System.Security.Cryptography.Xml WCF brings by itself (the probe pins a newer
 one), and the same client binary on the Windows host. A failure that passes on
 Windows is the platform's, not the runtime's.
 
+A scenario may also carry a negative control, run in the same session and from
+the same image whatever the probe's outcome, so the two are recorded as a
+matched pair: basicHttps Transport/Certificate is called again without a client
+certificate, against the same endpoint, and must fail. Its pass then shows the
+certificate was what let it in, not a server that would have taken any caller.
+
 Certificates are files in a scratch folder (the plan's ``certificates``),
 written by ``WcfClientProbe make-certificates`` (``--make-certificates``). The
 client pins the server's certificate by the thumbprint of server.cer and
-presents client.pfx; nothing is read from or written to a certificate store.
+presents client.pfx; nothing is read from or written to a certificate store,
+and no key material, password or certificate file goes into the evidence. The
+probe's working files — its build, the plan, the certificates, the services'
+copies — live under RUNS_DIR/probes, outside the repository.
 
 What cannot be probed here is recorded as such, never guessed: Windows
 credentials on NetTcp negotiate Kerberos, and no Kerberos environment is
@@ -47,7 +56,7 @@ Services are not started here — Start-ProbeServices.ps1 and the plan's notes.
 If no Linux container runtime is available, the probe stops and says so; it
 never simulates one.
 
-    python -m app.estate.wcf_probe --plan runs\\probes\\probe-plan.json [--make-certificates]
+    python -m app.estate.wcf_probe --plan <RUNS_DIR>\\probes\\probe-plan.json [--make-certificates]
 """
 
 import argparse
@@ -63,28 +72,35 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from app import models
+from app.config import settings
 from app.estate import engagement_matrix, wcf_matrix
 
 REPO = Path(__file__).resolve().parents[3]
 PROBE_PROJECT = REPO / "steps" / "step-003-fingerprinting" / "probes" / "WcfClientProbe"
 EVIDENCE_DIR = REPO / "steps" / "step-003-fingerprinting" / "probes" / "evidence"
-WORK_DIR = REPO / "backend" / "runs" / "probes"
+WORK_DIR = settings.runs_path / "probes"   # outside the repository: builds, plans, certificates, service copies
 
 PLATFORM_SAMPLE = "platform-sample"
 
-# Each scenario, and the entries it bears on: the specific entries of matrices 1.1.0.
+# Each scenario, and the entries it bears on: the specific entries of the newest matrices (support 1.1.0,
+# platform 1.2.0).
 SCENARIOS = [
     {"scenario": "basicHttp-None-None",
      "support": "net10.0/basicHttpBinding/None/None", "platform": "net10.0/linux/basicHttpBinding/None/None"},
     {"scenario": "basicHttp-Transport-None",
      "support": "net10.0/basicHttpBinding/Transport/None", "platform": "net10.0/linux/basicHttpBinding/Transport/None"},
     # basicHttpsBinding: the same HTTPS service, called through the BasicHttpsBinding client type; with a
-    # client certificate, against a TLS endpoint that requires and pins one. Both bear on the platform
-    # matrix's one basicHttps entry, a wildcard.
+    # client certificate, against a TLS endpoint that requires and pins one. Its negative control calls that
+    # endpoint again with no client certificate (the Transport/None client), and must be refused.
     {"scenario": "basicHttps-Transport-None",
-     "support": "net10.0/basicHttpsBinding/Transport/None", "platform": "net10.0/linux/basicHttpsBinding/*/*"},
+     "support": "net10.0/basicHttpsBinding/Transport/None", "platform": "net10.0/linux/basicHttpsBinding/Transport/None"},
     {"scenario": "basicHttps-Transport-Certificate",
-     "support": "net10.0/basicHttpsBinding/Transport/Certificate", "platform": "net10.0/linux/basicHttpsBinding/*/*"},
+     "support": "net10.0/basicHttpsBinding/Transport/Certificate",
+     "platform": "net10.0/linux/basicHttpsBinding/Transport/Certificate",
+     "negativeControl": {"where": "linux-container-no-client-certificate", "scenario": "basicHttps-Transport-None",
+                         "expected": "failed",
+                         "why": "the same endpoint, called with no client certificate, must refuse the call: the "
+                                "probe's pass then rests on the client certificate"}},
     {"scenario": "netTcp-Transport-None",
      "support": "net10.0/netTcpBinding/Transport/None", "platform": "net10.0/linux/netTcpBinding/Transport/None"},
     {"scenario": "netTcp-Transport-Certificate",
@@ -247,7 +263,7 @@ def write_evidence(stamp: str, scenario: str, where: str, record: dict) -> tuple
     EVIDENCE_DIR.mkdir(parents=True, exist_ok=True)
     path = EVIDENCE_DIR / f"{stamp}-{scenario}-{where}.json"
     text = json.dumps({**record, "source": PLATFORM_SAMPLE}, indent=2, sort_keys=True, ensure_ascii=False) + "\n"
-    text = text.replace(json.dumps(str(REPO))[1:-1], "<repo>")
+    text = text.replace(json.dumps(str(REPO))[1:-1], "<repo>").replace(json.dumps(str(settings.runs_path))[1:-1], "<RUNS_DIR>")
     path.write_text(text, encoding="utf-8", newline="\n")
     return path.relative_to(REPO).as_posix(), hashlib.sha256(text.encode("utf-8")).hexdigest()
 
@@ -363,18 +379,34 @@ def main() -> None:
                 # Linux fails, Windows passes with the same binary: the platform's failure, not the runtime's.
                 windows = next(c for w, _, c in controls if w == "windows-host")
                 attribution = "platform" if windows.get("outcome") == "passed" else "undetermined"
+            negative = scenario.get("negativeControl")
+            if negative:
+                # The matched pair: the same session, the same image, the same endpoint, no client certificate.
+                bare = {k: v for k, v in target.items() if k != "clientCertificate"}
+                control_command, control = run_linux(build, image, negative["scenario"], bare, certs)
+                print(f"  negative control {negative['where']}: {control.get('outcome')} (expected {negative['expected']}) "
+                      f"— {_summary(control)}")
+                controls.append((negative["where"], control_command, control))
             ref, sha = evidence.write(name, "linux", document, result, entries, package, attribution)
             control_records = []
             for where, control_command, control in controls:
-                control_ref, control_sha = evidence.write(
-                    name, where, {"scenario": name, "where": where, "image": image if where.startswith("linux") else None,
-                                  "service": target.get("service"), "command": control_command, "result": control},
-                    control, entries, package, control_of=f"{stamp}-{name}-linux")
-                control_records.append({"where": where, "outcome": control.get("outcome"), "summary": _summary(control),
-                                        "errorType": _error_type(control), "os": control.get("os"),
-                                        "cryptographyXml": control.get("cryptographyXml"),
-                                        "covers": covers(control, package, "windows" if where == "windows-host" else "linux"),
-                                        "evidence": control_ref, "sha256": control_sha})
+                expectation = negative if negative and where == negative["where"] else None
+                control_document = {"scenario": name, "where": where, "image": image if where.startswith("linux") else None,
+                                    "service": target.get("service"), "command": control_command, "result": control}
+                if expectation:
+                    control_document.update(clientScenario=expectation["scenario"], expected=expectation["expected"],
+                                            why=expectation["why"])
+                control_ref, control_sha = evidence.write(name, where, control_document, control, entries, package,
+                                                          control_of=f"{stamp}-{name}-linux")
+                control_record = {"where": where, "outcome": control.get("outcome"), "summary": _summary(control),
+                                  "errorType": _error_type(control), "os": control.get("os"),
+                                  "cryptographyXml": control.get("cryptographyXml"),
+                                  "covers": covers(control, package, "windows" if where == "windows-host" else "linux"),
+                                  "evidence": control_ref, "sha256": control_sha}
+                if expectation:
+                    control_record.update(clientScenario=expectation["scenario"], expected=expectation["expected"],
+                                          asExpected=control.get("outcome") == expectation["expected"], why=expectation["why"])
+                control_records.append(control_record)
             if engagement:
                 continue  # the engagement's rows are the record: nothing goes into a matrix file
             record = {
@@ -387,7 +419,9 @@ def main() -> None:
                 "source": PLATFORM_SAMPLE, "evidence": ref, "sha256": sha,
             }
             if control_records:
-                record["controls"], record["attribution"] = control_records, attribution
+                record["controls"] = control_records
+                if attribution:
+                    record["attribution"] = attribution
             additions["support"].setdefault(scenario["support"], []).append(record)
             additions["platform"].setdefault(scenario["platform"], []).append(record)
         done = True

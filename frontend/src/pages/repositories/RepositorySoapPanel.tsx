@@ -2,7 +2,7 @@ import { Fragment, useEffect, useState } from 'react'
 import { ApiError } from '../../api/client'
 import { getRepositorySoapCompatibility } from '../../api/surface'
 import type { RepositorySoap, SoapVerdictLive } from '../../types/surface'
-import { UNDER_REVIEW, UNDER_REVIEW_LABEL } from '../../types/estate'
+import { CONFIRMED_HELP, UNDER_REVIEW, UNDER_REVIEW_LABEL } from '../../types/estate'
 
 // The repository's own view of the SOAP backend compatibility report
 // (31-DEPENDENCY-AND-CONTEXT-MAP.md Part J): each used SOAP client, per
@@ -39,11 +39,11 @@ function Verdict({ live }: { live: SoapVerdictLive }) {
       ? 'no matrix entry'
       : live.matrixConfirmed
         ? `confirmed by ${live.confirmedBy ?? '?'} (${live.decision ?? 'no decision'}${live.confirmationSource === 'engagement' ? ', this engagement' : ''})`
-        : 'unconfirmed'
+        : 'unconfirmed: not reviewed yet'
   return (
     <div title={live.matrixEntry ?? undefined}>
       <span className={`whitespace-nowrap rounded border px-1.5 py-0.5 text-[11px] ${STYLE[verdict] ?? STYLE.unknown}`}>{label}</span>
-      <span className={`mt-0.5 block text-[10px] ${live.evidenceMissing ? 'font-semibold text-red-700' : live.matrixConfirmed ? 'text-neutral-500' : 'font-medium text-amber-700'}`}>{confirmation}</span>
+      <span title={CONFIRMED_HELP} className={`mt-0.5 block text-[10px] ${live.evidenceMissing ? 'font-semibold text-red-700' : live.matrixConfirmed ? 'text-neutral-500' : 'font-medium text-amber-700'}`}>{confirmation}</span>
       {live.unrevisedVerdict && <span className="block text-[10px] text-violet-800">entry says {live.unrevisedVerdict.replaceAll('_', ' ')}</span>}
       {live.evidencePredatesTarget && <span className="block text-[10px] font-medium text-amber-700">evidence older than the targeted WCF client</span>}
     </div>
@@ -92,12 +92,16 @@ export function RepositorySoapPanel({ repositoryId, refreshToken, onOpenEstateSo
             {data.scanned_at ? ` (${new Date(data.scanned_at).toLocaleString()})` : ''}; matrix confirmations read live. Target WCF client{' '}
             {data.target_wcf_client_version ?? '?'}.
             {data.unused_count > 0 && ` ${data.unused_count} unused client${data.unused_count === 1 ? '' : 's'} not listed.`}
+            <span className="block">
+              Why: the matrix entry that decided each verdict and its evidence, or why it is unknown. Under each verdict,{' '}
+              {CONFIRMED_HELP.charAt(0).toLowerCase() + CONFIRMED_HELP.slice(1)}
+            </span>
           </p>
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[860px] text-left">
+            <table className="w-full min-w-[1200px] text-left">
               <thead className="text-neutral-400">
                 <tr>
-                  {['SOAP call', 'Environment', 'Binding', 'Security', 'Credential', 'Runtime', 'Platform (Linux)', 'Estate report'].map((h) => (
+                  {['SOAP call', 'Environment', 'Binding', 'Security', 'Credential', 'Runtime', 'Why (runtime)', 'Platform (Linux)', 'Why (platform)', 'Estate report'].map((h) => (
                     <th key={h} className="py-1 pr-3 font-medium">{h}</th>
                   ))}
                 </tr>
@@ -127,7 +131,9 @@ export function RepositorySoapPanel({ repositoryId, refreshToken, onOpenEstateSo
                         </td>
                         <td className="py-1 pr-3">{env.credentialType}</td>
                         <td className="py-1 pr-3"><Verdict live={env.runtime} /></td>
+                        <td className="max-w-[16rem] py-1 pr-3 text-[11px] text-neutral-600">{env.runtime.why}</td>
                         <td className="py-1 pr-3"><Verdict live={env.platform} /></td>
+                        <td className="max-w-[16rem] py-1 pr-3 text-[11px] text-neutral-600">{env.platform.why}</td>
                         <td className="py-1">
                           {index === 0 &&
                             (call.estateHost && onOpenEstateSoap ? (

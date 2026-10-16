@@ -1,0 +1,39 @@
+{
+  "clientScenario": "basicHttps-Transport-None",
+  "command": [
+    "docker",
+    "run",
+    "--rm",
+    "-v",
+    "<RUNS_DIR>\\probes\\WcfClientProbe:/probe:ro",
+    "mcr.microsoft.com/dotnet/runtime@sha256:b89586dc17781f25531909993658aa8161205ae38b8cec8847df4a8221a403d5",
+    "dotnet",
+    "/probe/WcfClientProbe.dll",
+    "basicHttps-Transport-None",
+    "https://localhost:44302/Utility.svc",
+    "--server-thumbprint",
+    "FD2B8BC17F0D55CF0942DC12DBD05E8534B92AD4",
+    "--relay",
+    "44302"
+  ],
+  "expected": "failed",
+  "image": "mcr.microsoft.com/dotnet/runtime@sha256:b89586dc17781f25531909993658aa8161205ae38b8cec8847df4a8221a403d5",
+  "result": {
+    "address": "https://localhost:44302/Utility.svc",
+    "cryptographyXml": "10.0.12+95017c711e6afc1085133d440e42b4bd78155701",
+    "detail": "System.ServiceModel.CommunicationException: An error occurred while sending the request.\n ---> System.Net.Http.HttpRequestException: An error occurred while sending the request.\n ---> System.IO.IOException: The decryption operation failed, see inner exception.\n ---> Interop+OpenSsl+SslException: Decrypt failed with OpenSSL error - SSL_ERROR_SSL.\n ---> Interop+Crypto+OpenSslCryptographicException: error:0A000416:SSL routines::sslv3 alert certificate unknown\n   --- End of inner exception stack trace ---\n   at Interop.OpenSsl.Decrypt(SafeSslHandle context, Span`1 buffer, SslErrorCode& errorCode)\n   at System.Net.Security.SslStreamPal.DecryptMessage(SafeDeleteSslContext securityContext, Span`1 buffer, Int32& offset, Int32& count)\n   --- End of inner exception stack trace ---\n   at System.Net.Security.SslStream.ReadAsyncInternal[TIOAdapter](Memory`1 buffer, CancellationToken cancellationToken)\n   at System.Runtime.CompilerServices.PoolingAsyncValueTaskMethodBuilder`1.StateMachineBox`1.System.Threading.Tasks.Sources.IValueTaskSource<TResult>.GetResult(Int16 token)\n   at System.Net.Http.HttpConnection.InitialFillAsync(Boolean async)\n   at System.Net.Http.HttpConnection.SendAsync(HttpRequestMessage request, Boolean async, CancellationToken cancellationToken)\n   --- End of inner exception stack trace ---\n   at System.Net.Http.HttpConnection.SendAsync(HttpRequestMessage request, Boolean async, CancellationToken cancellationToken)\n   at System.Net.Http.HttpConnectionPool.SendWithVersionDetectionAndRetryAsync(HttpRequestMessage request, Boolean async, Boolean doRequestAuth, CancellationToken cancellationToken)\n   at System.Net.Http.RedirectHandler.SendAsync(HttpRequestMessage request, Boolean async, CancellationToken cancellationToken)\n   at System.Net.Http.DecompressionHandler.SendAsync(HttpRequestMessage request, Boolean async, CancellationToken cancellationToken)\n   at System.Net.Http.SocketsHttpHandler.<SendAsync>g__CreateHandlerAndSendAsync|115_0(HttpRequestMessage request, CancellationToken cancellationToken)\n   at System.Net.Http.HttpClient.<SendAsync>g__Core|83_0(HttpRequestMessage request, HttpCompletionOption completionOption, CancellationTokenSource cts, Boolean disposeCts, CancellationTokenSource pendingRequestsCts, CancellationToken originalCancellationToken)\n   at System.ServiceModel.Channels.HttpChannelFactory`1.HttpClientRequestChannel.HttpClientChannelAsyncRequest.SendRequestAsync(Message message, TimeoutHelper timeoutHelper)\n   --- End of inner exception stack trace ---\n   at System.ServiceModel.Channels.HttpChannelUtilities.ProcessGetResponseWebException(HttpRequestException requestException, HttpRequestMessage request, HttpAbortReason abortReason)\n   at System.ServiceModel.Channels.HttpChannelFactory`1.HttpClientRequestChannel.HttpClientChannelAsyncRequest.SendRequestAsync(Message message, TimeoutHelper timeoutHelper)\n   at System.ServiceModel.Channels.RequestChannel.RequestAsync(Message message, TimeSpan timeout)\n   at System.ServiceModel.Channels.RequestChannel.RequestAsyncInternal(Message message, TimeSpan timeout)\n   at System.Runtime.TaskHelpers.WaitForCompletionNoSpin[TResult](Task`1 task)\n   at System.ServiceModel.Channels.RequestChannel.Request(Message message, TimeSpan timeout)\n   at System.ServiceModel.Dispatcher.RequestChannelBinder.Request(Message message, TimeSpan timeout)\n   at System.ServiceModel.Channels.ServiceChannel.Call(String action, Boolean oneway, ProxyOperationRuntime operation, Object[] ins, Object[] outs, TimeSpan timeout)\n   at System.ServiceModel.Channels.ServiceChannel.Call(String action, Boolean oneway, ProxyOperationRuntime operation, Object[] ins, Object[] outs)\n   at System.ServiceModel.Channels.ServiceChannelProxy.InvokeService(MethodCall methodCall, ProxyOperationRuntime operation)\n   at System.ServiceModel.Channels.ServiceChannelProxy.Invoke(MethodInfo targetMethod, Object[] args)\n   at generatedProxy_1.Ping()\n   at Scenarios.Run(Args a) in <repo>\\steps\\step-003-fingerprinting\\probes\\WcfClientProbe\\Program.cs:line 102\n   at Program.<Main>$(String[] args) in <repo>\\steps\\step-003-fingerprinting\\probes\\WcfClientProbe\\Program.cs:line 53",
+    "durationMs": 522,
+    "error": "System.ServiceModel.CommunicationException: An error occurred while sending the request.",
+    "framework": ".NET 10.0.12",
+    "inner": "System.Net.Http.HttpRequestException: An error occurred while sending the request.",
+    "os": "Ubuntu 24.04.5 LTS",
+    "outcome": "failed",
+    "scenario": "basicHttps-Transport-None",
+    "wcfClient": "8.1.2+a47960f931a813617a061adc2ba9cabe1816a551"
+  },
+  "scenario": "basicHttps-Transport-Certificate",
+  "service": "WCF sample UtilityService, Hosting.Iis binding (ProbeServices, TLS from a certificate file, client certificate required and pinned)",
+  "source": "platform-sample",
+  "where": "linux-container-no-client-certificate",
+  "why": "the same endpoint, called with no client certificate, must refuse the call: the probe's pass then rests on the client certificate"
+}

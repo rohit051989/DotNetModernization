@@ -53,7 +53,7 @@ class CheckCatchesTests(unittest.TestCase):
         return wcf_probe.evidence_boundary_violations(self.matrices, self.evidence)
 
     def entry(self, entry_id="net10.0/linux/netTcpBinding/*/Windows"):
-        return next(e for e in self.matrices["wcf-client-platform-1.1.0.json"]["entries"] if e["id"] == entry_id)
+        return next(e for e in self.matrices["wcf-client-platform-1.2.0.json"]["entries"] if e["id"] == entry_id)
 
     def test_a_client_probe_in_a_matrix_even_as_a_reference(self):
         self.entry().setdefault("probes", []).append({"probedOn": "2026-11-02", "scenario": "s", "outcome": "passed",

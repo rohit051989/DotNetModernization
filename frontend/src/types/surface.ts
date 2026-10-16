@@ -358,6 +358,8 @@ export interface SoapVerdictLive {
   unrevisedVerdict: string | null
   matrixEntry: string | null
   /** Null when no matrix entry matched. */
+  /** In plain words: the matrix entry that decided the verdict and its evidence, or why it is unknown. */
+  why?: string | null
   matrixConfirmed: boolean | null
   confirmedBy: string | null
   confirmedOn: string | null
