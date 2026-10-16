@@ -295,20 +295,27 @@ class Heartbeat(unittest.TestCase):
                                                   "started_at": self.now, "beat_at": self.now, **k})
 
     def test_a_fresh_heartbeat_of_another_person_refuses_and_says_what_to_do(self):
-        reason = self.hb.refusal(self.row(), self.mine, self.now + datetime.timedelta(seconds=30), alive=lambda pid: True)
+        reason = self.hb.refusal(self.row(), self.mine, datetime.timedelta(seconds=30), alive=lambda pid: True)
         self.assertIn("by asmith on VDI-2", reason)
         self.assertIn("Each person needs their own schema", reason)
+        # How long until it expires, and how to clear one known to be stale.
+        self.assertIn("expires 90 s after its last beat", reason)
+        self.assertIn("start again in 61 s", reason)
+        self.assertIn("-m app.heartbeat clear", reason)
 
     def test_a_second_platform_on_this_machine_refuses_while_the_first_runs(self):
         row = self.row(host="VDI-1", os_user="jdoe")
-        self.assertIsNotNone(self.hb.refusal(row, self.mine, self.now, alive=lambda pid: True))
-        # A restart (or --reload's new worker): the recorded process is gone, so the schema is taken over.
-        self.assertIsNone(self.hb.refusal(row, self.mine, self.now, alive=lambda pid: False))
+        fresh = datetime.timedelta(seconds=5)
+        self.assertIsNotNone(self.hb.refusal(row, self.mine, fresh, alive=lambda pid: True))
+        # A restart, a killed process, or --reload's new worker: the recorded process is gone, so it is taken over.
+        self.assertIsNone(self.hb.refusal(row, self.mine, fresh, alive=lambda pid: False))
 
     def test_a_stale_heartbeat_and_no_heartbeat_are_taken_over(self):
-        self.assertIsNone(self.hb.refusal(None, self.mine, self.now))
-        stale = self.row(beat_at=self.now - self.hb.STALE - datetime.timedelta(seconds=1))
-        self.assertIsNone(self.hb.refusal(stale, self.mine, self.now, alive=lambda pid: True))
+        self.assertIsNone(self.hb.refusal(None, self.mine, None))
+        # Another machine's platform that stopped without shutting down (its VDI session closed): it expires.
+        expired = self.hb.STALE + datetime.timedelta(seconds=1)
+        self.assertIsNone(self.hb.refusal(self.row(), self.mine, expired, alive=lambda pid: True))
+        self.assertIsNotNone(self.hb.refusal(self.row(), self.mine, self.hb.STALE, alive=lambda pid: True))
 
     def test_this_process_is_alive_and_a_finished_one_is_not(self):
         self.assertTrue(self.hb.pid_alive(os.getpid()))

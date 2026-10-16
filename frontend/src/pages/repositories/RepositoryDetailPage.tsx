@@ -146,6 +146,14 @@ export function RepositoryDetailPage({
     setLocalRefresh((token) => token + 1)
   }
 
+  // While git clones or fetches, follow its progress.
+  const cloning = repo?.ingest_status === 'cloning'
+  useEffect(() => {
+    if (!cloning) return
+    const timer = setTimeout(() => setLocalRefresh((token) => token + 1), 3000)
+    return () => clearTimeout(timer)
+  }, [cloning, localRefresh])
+
   async function handleRescan() {
     setBusy(true)
     try {
@@ -233,6 +241,12 @@ export function RepositoryDetailPage({
         <div className="min-w-0">
           <h2 className="text-xl font-semibold text-neutral-900">{repo.name}</h2>
           <p className="break-all font-mono text-xs text-neutral-400">{repo.local_path}</p>
+          {repo.source_type === 'git_clone' && repo.clone_url && (
+            <p className="break-all text-xs text-neutral-400">
+              Cloned from <span className="font-mono">{repo.clone_url}</span>
+              {repo.default_branch && <> ({repo.default_branch})</>}; Rescan fetches and fast-forwards it first.
+            </p>
+          )}
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <IngestStatusBadge status={repo.ingest_status} />
             <CriticalityBadge criticality={repo.criticality} />
@@ -294,6 +308,21 @@ export function RepositoryDetailPage({
       {repo.deleted_at && (
         <p className="rounded bg-neutral-100 px-3 py-2 text-sm text-neutral-600">Soft-deleted at {new Date(repo.deleted_at).toLocaleString()}.</p>
       )}
+      {repo.ingest_status === 'cloning' && (
+        <p className="rounded border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-800">
+          git is working: <span className="font-mono text-xs">{repo.clone_progress ?? 'starting'}</span>
+        </p>
+      )}
+      {repo.ingest_status === 'scan_failed' && repo.ingest_error && (
+        <p className="whitespace-pre-wrap rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+          {repo.ingest_error}
+        </p>
+      )}
+      {repo.warnings.map((warning) => (
+        <p key={warning} className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          {warning}
+        </p>
+      ))}
       {repo.ingest_status === 'path_missing' && (
         <p className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
           The registered folder is currently missing at <code className="font-mono">{repo.local_path}</code>.

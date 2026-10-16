@@ -118,14 +118,26 @@ Behaviour:
 there. Track A will later create a working branch; that is separate. Enforce this in
 the implementation and verify it with `git status` during testing.
 
-### `git_clone` — accepted shape, not implemented
+### `git_clone` — registering by git URL (the main path)
 
-The user supplies an HTTPS clone URL and a parent directory. The platform clones into
-`{parent_directory}/{repo-name}`, then proceeds exactly as `local_path` — cloning is
-a preceding action, not a different analysis path.
+The person gives the repository's git URL (https, `git@host:org/repo`, `ssh://...`, or `file:///` for a repository
+in a folder or on a share), optionally a branch, and optionally a target folder. The default target is
+`<REPOS_DIR>\<engagement>\<repository>`; with `REPOS_DIR` unset the target folder is required. Registration clones
+nothing: `repository-ingest` does, as the first action of the repository's discovery job, so its progress
+(`ingest_status = 'cloning'`, `clone_progress`) and its errors show in the job and the UI. Then it proceeds exactly
+as `local_path` — cloning is a preceding action, not a different analysis path. `app/repositories/git_source.py`:
 
-Return `NOT_IMPLEMENTED`. Implement the route and validation now so the UI is wired
-against a real endpoint; only the handler body changes later.
+- a full clone with `core.longpaths=true`, of the given branch or the remote's default;
+- the target folder must not exist or be empty, unless it is already a clone of the same URL, which is used as it
+  is; a folder inside the platform or `RUNS_DIR` is refused;
+- git runs with the person's own credentials (Git Credential Manager, SSH keys), every prompt off: a host that
+  needs a sign-in fails at once with how to sign in once outside the platform. The platform never asks for, stores
+  or logs a credential, and a URL carrying one is refused;
+- a rescan first fetches and fast-forwards the registered branch, refusing (and changing nothing) when the clone has
+  local changes, is on another branch, or has diverged; discovery scans the commit it reaches.
+
+Read-only preview for the form: `POST /api/engagements/{eid}/repositories/inspect-url`. Command line:
+`python -m app.repositories.cli register-url`. Operator guide: `VDI-SETUP.md` section K.
 
 Bulk registration from a manifest is a future addition, out of scope.
 
@@ -380,22 +392,21 @@ POST /api/engagements/{eid}/repositories/register
 }
 ```
 
-### Clone registration — 501 for now
+### Clone registration
 
 ```
 POST /api/engagements/{eid}/repositories/register
 {
   "source_type": "git_clone",
-  "clone_url": "https://github.com/example/order-management.git",
-  "parent_directory": "D:\\repos",
+  "clone_url": "https://git.client.com/team/order-management.git",
+  "branch": "main",
+  "target_folder": null,
   "name": "Order Management"
 }
 
-→ 501
-{
-  "detail": "Clone-from-URL registration is not yet available. Clone the repository manually and register its local path.",
-  "supported_source_types": ["local_path"]
-}
+→ 202, as for local_path; the discovery job clones it first.
+→ 409 TARGET_FOLDER_NOT_EMPTY, DUPLICATE_*, CHECKOUT_IN_OTHER_ENGAGEMENT, NESTED_PATH
+→ 422 INVALID_CLONE_URL, EMBEDDED_CREDENTIALS, INVALID_TARGET_FOLDER (including "REPOS_DIR is not set")
 ```
 
 ### Supporting endpoints

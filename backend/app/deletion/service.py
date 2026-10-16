@@ -8,7 +8,9 @@ What goes:
 - its folders under RUNS_DIR: <engagement>/<repository>/ (and the engagement's experiments of it), or <engagement>/;
 - in the registered checkout, the worktrees the platform made under that folder, and the branches the platform
   created there — the ones its records name (conversion records, package-step plans, engine runs, experiments).
-  Never the checkout itself, never a branch no record names.
+  Never the repository itself, however it was registered: a clone the platform made from a URL stays exactly as a
+  checkout registered by its path does. Never a branch no record names, nor one another registration of the same
+  checkout also records.
 
 What stays: the catalog, the package lookup cache, every other repository and engagement, and the engagement's estate
 view, which still counts a deleted repository until the estate is consolidated again.
@@ -188,20 +190,48 @@ def _worktrees(checkout: Path) -> list[dict]:
     return [w for w in out[1:]]
 
 
-def _checkout_plan(db: Session, repo: models.Repository, scope_folder: Path) -> dict:
+def _sharing(db: Session, repo: models.Repository, deleting: set) -> list[models.Repository]:
+    """Other registrations, not being deleted, of this same checkout (the same git directory). Refused since
+    rbc-release-2, but an installation upgraded from rbc-release-1 may have them (CLAUDE.md rule 15)."""
+    from app.repositories.service import git_common_dir
+
+    mine = git_common_dir(Path(repo.local_path))
+    if mine is None:
+        return []
+    out = []
+    for other in db.query(models.Repository).filter(models.Repository.id.notin_(deleting)):
+        theirs = git_common_dir(Path(other.local_path)) if (Path(other.local_path) / ".git").exists() else None
+        if theirs and theirs.lower() == mine.lower():
+            out.append(other)
+    return out
+
+
+def _checkout_plan(db: Session, repo: models.Repository, scope_folder: Path, deleting: set) -> dict:
     """For one repository: the worktrees to remove, the branches to delete (and the recorded ones kept, why), and the
-    run conversions whose agent work lives only on their branch."""
+    run conversions whose agent work lives only on their branch. A branch another registration of the same checkout
+    also records is kept: it may be that registration's work."""
     from app.engine import convert
 
     checkout = Path(repo.local_path)
+    if repo.source_type == "git_clone":
+        stays = (f"The clone at {checkout} stays where it is. The platform cloned it from {repo.clone_url}, but it is "
+                 "your copy of the repository: only the worktrees and conversion branches the platform made in it go.")
+    else:
+        stays = (f"Your checkout at {checkout} stays where it is: only the worktrees and conversion branches the "
+                 "platform made in it go.")
     if not (checkout / ".git").exists():
-        return {"checkout": str(checkout), "available": False, "worktrees": [], "branches": [], "kept": [], "run": []}
+        return {"checkout": str(checkout), "stays": stays, "available": False, "worktrees": [], "branches": [],
+                "kept": [], "run": []}
     worktrees = [w for w in _worktrees(checkout) if _inside(Path(w["path"]), scope_folder)]
     remaining = {w["branch"] for w in _worktrees(checkout) if not _inside(Path(w["path"]), scope_folder)}
     head = _git(checkout, "symbolic-ref", "--short", "-q", "HEAD").stdout.strip()
     remaining.add(head)
     existing = set(_git(checkout, "for-each-ref", "refs/heads", "--format=%(refname:short)").stdout.split())
     recorded = _recorded_branches(db, repo)
+    shared = {}
+    for other in _sharing(db, repo, deleting):
+        for name in _recorded_branches(db, other):
+            shared.setdefault(name, f"also recorded by {other.engagement_id}/{other.slug}, registered on the same checkout")
     others = sorted(existing - set(recorded))
     branches, kept = [], []
     for name, source in sorted(recorded.items()):
@@ -209,6 +239,9 @@ def _checkout_plan(db: Session, repo: models.Repository, scope_folder: Path) -> 
             continue
         if name in remaining:
             kept.append({"branch": name, "source": source, "why": "checked out outside the platform's folders"})
+            continue
+        if name in shared:
+            kept.append({"branch": name, "source": source, "why": shared[name]})
             continue
         only_here = _git(checkout, "rev-list", "--count", name, "--not", *others).stdout.strip() if others else ""
         branches.append({"branch": name, "source": source, "commits_only_here": int(only_here or 0)})
@@ -219,8 +252,8 @@ def _checkout_plan(db: Session, repo: models.Repository, scope_folder: Path) -> 
             if beyond:
                 run.append({"repository": repo.slug, "number": rec["number"], "branch": rec["branch"],
                             "agent_commits": beyond})
-    return {"checkout": str(checkout), "available": True, "worktrees": worktrees, "branches": branches,
-            "kept": kept, "run": run}
+    return {"checkout": str(checkout), "stays": stays, "available": True, "worktrees": worktrees,
+            "branches": branches, "kept": kept, "run": run}
 
 
 def _folder_facts(path: Path) -> dict:
@@ -278,7 +311,7 @@ def repository_plan(db: Session, repo: models.Repository) -> dict:
     folders = [f for f in [folder, *_experiment_folders(repo.engagement_id, repo.slug)] if f.exists()]
     return {"kind": "repository", "engagement": repo.engagement_id, "repository": repo.slug, "repository_id": str(repo.id),
             "name": repo.name, "confirm": repo.name, "rows": row_counts(db, scope),
-            "folders": [_folder_facts(f) for f in folders], "checkouts": [_checkout_plan(db, repo, folder)],
+            "folders": [_folder_facts(f) for f in folders], "checkouts": [_checkout_plan(db, repo, folder, {repo.id})],
             "running": _running(db, scope), "_scope": scope, "_folders": [str(f) for f in folders],
             "kept_shared": "the catalog, the package lookup cache, every other repository and engagement",
             "estate_note": "the engagement's estate view still counts this repository until the estate is consolidated again"}
@@ -291,7 +324,7 @@ def engagement_plan(db: Session, engagement: models.Engagement) -> dict:
     return {"kind": "engagement", "engagement": engagement.id, "name": engagement.client_name,
             "confirm": engagement.client_name, "repositories": [r.slug for r in repositories],
             "rows": row_counts(db, scope), "folders": [_folder_facts(folder)] if folder.exists() else [],
-            "checkouts": [_checkout_plan(db, r, folder) for r in repositories], "running": _running(db, scope),
+            "checkouts": [_checkout_plan(db, r, folder, {x.id for x in repositories}) for r in repositories], "running": _running(db, scope),
             "_scope": scope, "_folders": [str(folder)] if folder.exists() else [],
             "kept_shared": "the catalog, the package lookup cache, every other engagement"}
 

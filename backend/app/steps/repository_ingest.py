@@ -1,15 +1,11 @@
 """Lifecycle step 1 — repository estate ingest & inventory creation. See
 13-REPOSITORY-INGEST.md and 15-REPOSITORY-INGEST-UI.md Parts B and C.
 
-`local_path` is the only implemented source: the repository already exists on
-disk, at the path recorded on its `repositories` row (never from step
-`config` — that row is authoritative, set once at registration). A row whose
-`source_type` is anything else is out of scope for this implementation and
-returns `NOT_IMPLEMENTED` rather than guessing.
-
-Phase 0 is read-only against the registered folder: this module only ever
-opens files under `local_path` for reading, and writes exclusively under
-`output_dir`.
+Two sources: `local_path`, a repository already on disk at the path recorded on its `repositories` row (never from
+step `config` — that row is authoritative, set once at registration); and `git_clone`, a repository registered by its
+git URL, which this step first clones into that path, or, on a rescan, fetches and fast-forwards
+(docs/VDI-SETUP.md section K). Apart from that clone or update, this step is read-only against the registered
+folder: it only ever opens files under `local_path` for reading, and writes exclusively under `output_dir`.
 """
 
 import datetime
@@ -166,6 +162,53 @@ def _iso_utc(dt: datetime.datetime) -> str:
     return dt.astimezone(datetime.timezone.utc).isoformat().replace("+00:00", "Z")
 
 
+def _bring_clone_up_to_date(db, repo) -> tuple[str | None, str | None]:
+    """For a repository registered by its git URL (app/repositories/git_source.py): clones it when its folder does
+    not exist or is empty; on its first ingest uses an existing clone of the same URL as it is; on every later one
+    fetches and fast-forwards its branch, refusing when the clone has local changes. Returns (what happened, None) or
+    (None, why it failed). git's progress goes to repositories.clone_progress while it runs."""
+    from app.repositories import git_source
+
+    folder = Path(repo.local_path)
+    action, why = git_source.target_state(folder, repo.clone_url)
+    try:
+        if action == "refuse":
+            return None, why
+        if action == "clone":
+            repo.ingest_status, repo.clone_progress = "cloning", f"Cloning {repo.clone_url}"
+            db.commit()
+
+            def progress(line: str) -> None:
+                repo.clone_progress = line[:300]
+                db.commit()
+
+            git_source.clone(repo.clone_url, repo.default_branch, folder, progress)
+            branch = run_git(folder, "rev-parse", "--abbrev-ref", "HEAD")
+            repo.default_branch = repo.default_branch or branch
+            note = f"cloned {repo.clone_url} ({branch}) into {folder}"
+        elif repo.last_scanned_at is None:
+            branch = run_git(folder, "rev-parse", "--abbrev-ref", "HEAD")
+            if repo.default_branch and branch != repo.default_branch:
+                return None, (f"The existing clone at '{folder}' is on {branch}, not {repo.default_branch}. Switch it "
+                              f"(git -C \"{folder}\" switch {repo.default_branch}) and Rescan, or register again "
+                              "without a branch.")
+            repo.default_branch = repo.default_branch or branch
+            note = f"used the existing clone of {repo.clone_url} at {folder} as it is"
+        else:
+            repo.ingest_status, repo.clone_progress = "cloning", f"Fetching {repo.clone_url}"
+            db.commit()
+            branch = repo.default_branch or run_git(folder, "rev-parse", "--abbrev-ref", "HEAD")
+            note = git_source.update(folder, repo.clone_url, branch)
+            repo.default_branch = branch
+    except git_source.GitSourceError as exc:
+        return None, str(exc)
+    except OSError as exc:
+        return None, f"git could not run: {exc}"
+    repo.clone_progress = None
+    db.commit()
+    return note, None
+
+
 def run(context: StepContext) -> StepResult:
     repository_id = context.parameters.get("repository_id")
     if not repository_id:
@@ -184,17 +227,25 @@ def run(context: StepContext) -> StepResult:
                 exit_status="FAILED", exit_message=f"repository '{repository_id}' does not exist"
             )
 
-        if repo.source_type != "local_path":
+        if repo.source_type not in ("local_path", "git_clone"):
             return StepResult(
                 exit_status="NOT_IMPLEMENTED",
-                exit_message=(
-                    f"source_type '{repo.source_type}' is not implemented; only "
-                    "'local_path' is supported"
-                ),
+                exit_message=f"source_type '{repo.source_type}' is not implemented",
             )
 
         local_path = Path(repo.local_path)
         now = datetime.datetime.now(datetime.timezone.utc)
+
+        source_note = None
+        if repo.source_type == "git_clone":
+            source_note, failure = _bring_clone_up_to_date(db, repo)
+            if failure:
+                repo.ingest_status = "scan_failed"
+                repo.ingest_error = failure
+                repo.clone_progress = None
+                repo.last_scanned_at = now
+                db.commit()
+                return StepResult(exit_status="FAILED", exit_message=failure)
 
         if not local_path.is_dir():
             repo.ingest_status = "path_missing"
@@ -313,7 +364,8 @@ def run(context: StepContext) -> StepResult:
 
         return StepResult(
             exit_status="COMPLETED",
-            exit_message=f"Ingested repository '{repo.slug}' (clone URL {clone_url_verification})",
+            exit_message=f"Ingested repository '{repo.slug}' (clone URL {clone_url_verification})"
+            + (f"; {source_note}" if source_note else ""),
             metrics={"read_count": 1, "write_count": 1, "skip_count": 0, "commit_count": 1},
             outputs=[
                 StepOutput(

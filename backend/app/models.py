@@ -93,7 +93,7 @@ CLONE_URL_VERIFICATION = ("verified", "mismatch", "unverifiable", "not_applicabl
 SOURCE_TYPE = ("local_path", "git_clone")
 CRITICALITY = ("low", "medium", "high", "critical")
 RETIREMENT_STATUS = ("active", "slated_for_retirement", "decommissioned")
-INGEST_STATUS = ("registered", "scanned", "scan_failed", "path_missing")
+INGEST_STATUS = ("registered", "cloning", "scanned", "scan_failed", "path_missing")
 SOURCE_STATUS = ("active", "archived", "disabled", "inaccessible")
 # Whether the registered folder is under git at all — distinct from
 # source_status above (a provider-side lifecycle status, only ever knowable
@@ -848,6 +848,8 @@ class Repository(Base):
     ingest_status: Mapped[str] = mapped_column(Text, nullable=False)
     ingest_error: Mapped[str | None] = mapped_column(Text)
     ingest_token: Mapped[str | None] = mapped_column(Text)
+    # git's latest progress line while a repository registered by URL is cloned or fetched (ingest_status 'cloning').
+    clone_progress: Mapped[str | None] = mapped_column(Text)
 
     # docs/19 Part A — step 1 amendments feeding step 2's requirements.
     organization: Mapped[str | None] = mapped_column(Text)

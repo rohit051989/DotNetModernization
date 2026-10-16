@@ -10,6 +10,8 @@ export interface DeletionPlan {
   folders: { path: string; files: number; bytes: number }[]
   checkouts: {
     checkout: string
+    /** The repository itself is never deleted: said plainly, for this checkout or clone. */
+    stays: string
     available: boolean
     worktrees: { path: string; branch: string | null }[]
     branches: { branch: string; source: string; commits_only_here: number }[]

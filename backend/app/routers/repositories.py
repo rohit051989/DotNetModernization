@@ -10,6 +10,8 @@ from app.repositories import service as repositories_service
 from app.repositories.schemas import (
     InspectPathRequest,
     InspectPathResponse,
+    InspectUrlRequest,
+    InspectUrlResponse,
     RegisterGitCloneRequest,
     RegisterLocalPathRequest,
     RegisterRepositoryRequest,
@@ -105,7 +107,6 @@ def _repository_out(db: Session, repo: models.Repository, detail: bool = False):
         tags=repo.tags,
         notes=repo.notes,
         ingest_commit_sha=repo.ingest_commit_sha,
-        ingest_error=repo.ingest_error,
         ingest_token=repo.ingest_token,
         first_registered_at=repo.first_registered_at,
         created_at=repo.created_at,
@@ -116,7 +117,21 @@ def _repository_out(db: Session, repo: models.Repository, detail: bool = False):
         primary_languages=repo.primary_languages,
         source_status=repo.source_status,
         latest_execution=latest_execution,
+        warnings=_existing_data_warnings(db, repo),
     )
+
+
+def _existing_data_warnings(db: Session, repo: models.Repository) -> list[str]:
+    """Data from before a rule existed, reported rather than refused or changed (CLAUDE.md rule 15)."""
+    if repo.deleted_at is not None:
+        return []
+    other = repositories_service.find_checkout_in_other_engagement(db, repo.engagement_id, repo.local_path)
+    if other is None:
+        return []
+    return [f"This checkout is also registered in engagement '{other.engagement_id}' as \"{other.slug}\", from before "
+            "rbc-release-2 refused that. Both keep working, but conversions of the two share branch names in the "
+            "checkout's git: run conversions in one engagement only, or clone the repository again for one of them "
+            "(docs/VDI-SETUP.md section N)."]
 
 
 @router.post(
@@ -141,6 +156,20 @@ def inspect_path(engagement_id: str, payload: InspectPathRequest, db: Session = 
 
 
 @router.post(
+    "/engagements/{engagement_id}/repositories/inspect-url",
+    response_model=InspectUrlResponse,
+    summary="Inspect a git URL and its target folder before registering it",
+    operation_id="inspect_repository_url",
+    responses={404: {"model": ErrorResponse, "description": "No engagement exists with this id."}},
+)
+def inspect_url(engagement_id: str, payload: InspectUrlRequest, db: Session = Depends(get_db)):
+    """Read-only, and contacts no git host: where the repository would be cloned, whether that folder is new, empty
+    or already a clone of this URL, and any duplicate in this engagement."""
+    _get_engagement(db, engagement_id)
+    return repositories_service.inspect_url(db, engagement_id, payload.clone_url, payload.target_folder)
+
+
+@router.post(
     "/engagements/{engagement_id}/repositories/register",
     response_model=RegisterRepositoryResponse,
     status_code=202,
@@ -157,7 +186,6 @@ def inspect_path(engagement_id: str, payload: InspectPathRequest, db: Session = 
             "model": ErrorResponse,
             "description": "The path is relative, doesn't exist, is a system location, or is empty; or the clone URL is malformed or embeds credentials.",
         },
-        501: {"model": ErrorResponse, "description": "source_type git_clone is not yet implemented."},
     },
 )
 def register_repository(
@@ -167,12 +195,18 @@ def register_repository(
     db: Session = Depends(get_db),
 ):
     """
-    Registers an existing repository folder and immediately launches
-    `phase0-repository-discovery` for it.
+    Registers a repository and immediately launches
+    `phase0-repository-discovery` for it. Two sources:
 
-    The folder is read **in place** and never copied or modified. The clone
-    URL you supply is verified against the folder's git remote where
-    present; a mismatch is reported but does not block registration.
+    - `git_clone` (the main one): the repository's git URL. Its discovery job
+      clones it — into `target_folder`, or `<REPOS_DIR>/<engagement>/<repository>`
+      — with the person's own git credentials, then scans it. An existing clone
+      of the same URL in that folder is used as it is (docs/VDI-SETUP.md
+      section K).
+    - `local_path`: an existing folder, read **in place** and never copied or
+      modified. The clone URL you supply is verified against the folder's git
+      remote where present; a mismatch is reported but does not block
+      registration.
 
     Returns 202 rather than 201 because discovery runs asynchronously — the
     repository row and the first job execution are created and committed
@@ -182,17 +216,12 @@ def register_repository(
     """
     engagement = _get_engagement(db, engagement_id)
 
-    if isinstance(payload, RegisterGitCloneRequest):
-        raise error(
-            501,
-            "Clone-from-URL registration is not yet available. Clone the repository "
-            "manually and register its local path. Supported source types: local_path.",
-            code="NOT_IMPLEMENTED",
-        )
-
-    assert isinstance(payload, RegisterLocalPathRequest)
     try:
-        repo = repositories_service.register_local_path(db, engagement, payload)
+        if isinstance(payload, RegisterGitCloneRequest):
+            repo = repositories_service.register_git_clone(db, engagement, payload)
+        else:
+            assert isinstance(payload, RegisterLocalPathRequest)
+            repo = repositories_service.register_local_path(db, engagement, payload)
     except RegistrationError as exc:
         raise errors(exc.status_code, exc.errors) from exc
 

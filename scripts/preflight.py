@@ -21,7 +21,11 @@ Reports, in plain language, each prerequisite as PRESENT or MISSING, and exits 1
   own configuration;
 - the proxy settings it sees (HTTPS_PROXY, HTTP_PROXY, NO_PROXY, the tools' own) and, for each source, whether it
   goes through the proxy or direct (reported, never failed);
-- RUNS_DIR set, outside the repository, and writable.
+- RUNS_DIR set, outside the repository, and writable; REPOS_DIR, when set, absolute, outside the repository and
+  RUNS_DIR, and writable;
+- with the schema in place: whether a platform holds it (its heartbeat: live, or expired, and how to clear one known
+  to be stale), and existing data a later rule would refuse, reported as WARNING and never changed (a checkout
+  registered in two engagements before rbc-release-2).
 
 Standard library only, so it runs before anything is installed. It reads backend/.env and the environment, and never
 prints a username or a password.
@@ -252,7 +256,8 @@ def long_paths() -> None:
 
 
 def note(what: str, detail: str) -> None:
-    print(f"  {'ON     ' if detail == 'on' else 'OFF    '}  {what}: {detail}", flush=True)
+    label = "ON     " if detail == "on" else "OFF    " if detail.startswith("off") else "NOTE   "
+    print(f"  {label}  {what}: {detail}", flush=True)
 
 
 def masked(url: str) -> str:
@@ -440,6 +445,31 @@ def runs_dir(cfg: dict[str, str]) -> None:
         check(True, "RUNS_DIR", f"{path}, outside the repository, writable")
     except OSError as error:
         check(False, "RUNS_DIR", f"{path} is not writable ({error.strerror})")
+    repos_dir(cfg, path)
+
+
+def repos_dir(cfg: dict[str, str], runs: Path) -> None:
+    """REPOS_DIR is optional: unset, the registration form asks where to clone."""
+    value = cfg.get("REPOS_DIR", "").strip()
+    if not value:
+        note("REPOS_DIR", "not set (optional): registering by git URL asks for the target folder")
+        return
+    path = Path(value)
+    if not path.is_absolute():
+        check(False, "REPOS_DIR", f"{value} is not an absolute path")
+    elif path.resolve().is_relative_to(ROOT.resolve()):
+        check(False, "REPOS_DIR", f"{path} is inside the platform's folder: clone client repositories outside it")
+    elif path.resolve().is_relative_to(runs.resolve()):
+        check(False, "REPOS_DIR", f"{path} is inside RUNS_DIR: keep the clones apart from the run output")
+    else:
+        try:
+            path.mkdir(parents=True, exist_ok=True)
+            with tempfile.NamedTemporaryFile(dir=path, delete=True):
+                pass
+            check(True, "REPOS_DIR", f"{path}, outside the platform and RUNS_DIR, writable: repositories registered "
+                                     "by URL are cloned under it")
+        except OSError as error:
+            check(False, "REPOS_DIR", f"{path} is not writable ({error.strerror})")
 
 
 def database(cfg: dict[str, str]) -> None:
@@ -452,9 +482,13 @@ def database(cfg: dict[str, str]) -> None:
             # Installed already: the driver is in backend/.venv. Run these checks there and take its findings.
             code, out = run(str(venv_python), str(Path(__file__).resolve()), "--database")
             for line in out.splitlines():
-                m = re.match(r"^  (PRESENT|MISSING)  ([^:]+): (.*)$", line)
-                if m:
+                m = re.match(r"^  (PRESENT|MISSING|WARNING)  ([^:]+): (.*)$", line)
+                if m and m.group(1) == "WARNING":
+                    warn(m.group(2), m.group(3))
+                elif m:
                     check(m.group(1) == "PRESENT", m.group(2), m.group(3))
+                elif line.startswith("  NOTE"):
+                    print(line)
                 elif line.startswith("           "):
                     print(line)
             return
@@ -494,8 +528,55 @@ def database(cfg: dict[str, str]) -> None:
             role = c.execute("SELECT rolsuper, rolcreatedb FROM pg_roles WHERE rolname = current_user").fetchone()
             print(f"           (superuser: {'yes' if role[0] else 'no'}, may create databases: {'yes' if role[1] else 'no'};"
                   " neither is needed)")
+            if exists:
+                platform_state(c, schema)
     except psycopg.Error as error:
         check(False, "connection", clean(str(error)).splitlines()[0])
+
+
+HEARTBEAT_STALE_SECONDS = 90   # app.heartbeat.STALE
+CLEAR = r"cd backend; .venv\Scripts\python.exe -m app.heartbeat clear"
+
+
+def _table(c, schema: str, table: str) -> bool:
+    return c.execute("SELECT to_regclass(%s) IS NOT NULL", (f'"{schema}".{table}',)).fetchone()[0]
+
+
+def platform_state(c, schema: str) -> None:
+    """Who holds the schema, and existing data a later rule would refuse. Reported, never failed or changed."""
+    if _table(c, schema, "platform_heartbeat"):
+        row = c.execute(f'SELECT os_user, host, pid, platform_root, api_port, EXTRACT(EPOCH FROM now() - beat_at) '
+                        f'FROM "{schema}".platform_heartbeat WHERE id = 1').fetchone()
+        if row is None:
+            note("platform", "no platform holds this schema now")
+        else:
+            user, host, pid, root, port, age = row
+            age = int(age)
+            if age > HEARTBEAT_STALE_SECONDS:
+                note("platform", f"the last platform here ({user} on {host}, process {pid}) stopped without shutting "
+                                 f"down {age} s ago; its heartbeat has expired, so the next start takes the schema over")
+            else:
+                warn("platform", f"a platform holds this schema: {user} on {host}, process {pid}, {root}, port {port}, "
+                                 f"last heartbeat {age} s ago. A second one will not start on it. If you know that "
+                                 f"platform has stopped (its VDI session closed, its machine restarted), its heartbeat "
+                                 f"expires {HEARTBEAT_STALE_SECONDS} s after its last beat, or clear it now: {CLEAR}")
+    if _table(c, schema, "repositories"):
+        groups: dict[str, list[tuple[str, str, str]]] = {}
+        for engagement, slug, path, normalised in c.execute(
+                f'SELECT engagement_id, slug, local_path, local_path_normalised FROM "{schema}".repositories '
+                'WHERE deleted_at IS NULL ORDER BY engagement_id, slug'):
+            key = normalised.lower()
+            if Path(path, ".git").exists():
+                code, common = run("git", "-C", path, "rev-parse", "--git-common-dir")
+                if code == 0 and common:
+                    key = str((Path(path) / common.splitlines()[-1]).resolve()).lower()
+            groups.setdefault(key, []).append((engagement, slug, path))
+        for group in groups.values():
+            if len({g[0] for g in group}) > 1:
+                warn("existing data", f"one checkout is registered in several engagements ("
+                                      f"{', '.join(f'{e}/{s}' for e, s, _ in group)}, {group[0][2]}), from before "
+                                      "rbc-release-2 refused it. Left working and unchanged; see docs/VDI-SETUP.md "
+                                      "section N")
 
 
 def main() -> int:

@@ -81,6 +81,19 @@ def _reconcile_orphaned_executions() -> None:
         db.close()
 
 
+def _report_existing_data() -> None:
+    """Existing data a later rule would refuse is reported, never changed (CLAUDE.md rule 15)."""
+    from app.db import SessionLocal
+    from app.repositories.service import shared_checkout_message, shared_checkouts
+
+    try:
+        with SessionLocal() as db:
+            for group in shared_checkouts(db):
+                logging.getLogger("app.upgrade").warning(shared_checkout_message(group))
+    except Exception:
+        logging.getLogger("app.upgrade").exception("could not check existing data")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # One platform per schema (app.heartbeat): checked before anything else, because the reconciliation below fails
@@ -92,6 +105,7 @@ async def lifespan(app: FastAPI):
         logging.getLogger("app.heartbeat").error(str(refused))
         raise
     _reconcile_orphaned_executions()
+    _report_existing_data()
     try:
         yield
     finally:

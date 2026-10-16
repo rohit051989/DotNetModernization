@@ -5,7 +5,7 @@ export type { JobExecution }
 export type Criticality = 'low' | 'medium' | 'high' | 'critical'
 export type RetirementStatus = 'active' | 'slated_for_retirement' | 'decommissioned'
 export type CloneUrlVerification = 'verified' | 'mismatch' | 'unverifiable' | 'not_applicable'
-export type IngestStatus = 'registered' | 'scanned' | 'scan_failed' | 'path_missing'
+export type IngestStatus = 'registered' | 'cloning' | 'scanned' | 'scan_failed' | 'path_missing'
 export type SourceType = 'local_path' | 'git_clone'
 export type SourceStatus = 'active' | 'archived' | 'disabled' | 'inaccessible'
 export type SourceControlStatus = 'GIT' | 'NONE'
@@ -33,6 +33,9 @@ export interface RepositorySummary {
   file_count: number | null
   last_scanned_at: string | null
   deleted_at: string | null
+  /** git's latest progress line while the repository is cloned or fetched (ingest_status 'cloning'). */
+  clone_progress: string | null
+  ingest_error: string | null
 }
 
 export interface RepositoryDetail extends RepositorySummary {
@@ -46,7 +49,6 @@ export interface RepositoryDetail extends RepositorySummary {
   tags: string[]
   notes: string | null
   ingest_commit_sha: string | null
-  ingest_error: string | null
   ingest_token: string | null
   first_registered_at: string | null
   created_at: string
@@ -57,6 +59,8 @@ export interface RepositoryDetail extends RepositorySummary {
   primary_languages: PrimaryLanguage[] | null
   source_status: SourceStatus | null
   latest_execution: JobExecution | null
+  /** Existing data a later rule would refuse, reported and left working. */
+  warnings: string[]
 }
 
 export interface DuplicateConflict {
@@ -98,6 +102,31 @@ export interface RegisterLocalPathInput {
   default_branch?: string | null
   tags: string[]
   notes?: string | null
+}
+
+/** Registering by git URL: the discovery job clones it (docs/VDI-SETUP.md section K). */
+export interface RegisterGitCloneInput {
+  source_type: 'git_clone'
+  clone_url: string
+  branch?: string | null
+  target_folder?: string | null
+  name?: string | null
+  description?: string | null
+  technical_owner?: string | null
+  criticality: Criticality
+  retirement_status: RetirementStatus
+  tags: string[]
+  notes?: string | null
+}
+
+export interface InspectUrlResult {
+  problems: string[]
+  suggested_name: string | null
+  repos_dir: string | null
+  target_folder: string | null
+  target_action: 'clone' | 'reuse' | 'refuse' | null
+  target_message: string | null
+  duplicate_conflict: DuplicateConflict | null
 }
 
 export interface RegisterRepositoryResult {

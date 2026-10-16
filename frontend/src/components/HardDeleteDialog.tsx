@@ -69,6 +69,13 @@ export function HardDeleteDialog({ title, loadPlan, onDelete, onClose, onDeleted
                   <span className="font-mono text-xs">{plan.repositories?.join(', ') || 'none'}</span>
                 </p>
               )}
+              <div className="rounded border border-emerald-300 bg-emerald-50 px-2 py-1 text-xs text-emerald-900">
+                {plan.checkouts.length === 0 ? (
+                  <p>No repository folder is touched.</p>
+                ) : (
+                  plan.checkouts.map((c) => <p key={c.checkout}>{c.stays}</p>)
+                )}
+              </div>
               {blocked && (
                 <p className="rounded border border-amber-300 bg-amber-50 px-2 py-1 text-xs text-amber-900">
                   Refused while these run: {plan.running.map((r) => `${r.job} (${r.status})`).join(', ')}. Wait for them
@@ -120,7 +127,7 @@ export function HardDeleteDialog({ title, loadPlan, onDelete, onClose, onDeleted
               {plan.checkouts.map((c) => (
                 <div key={c.checkout} className="text-xs">
                   <p className="font-medium text-neutral-700">
-                    In the checkout <span className="break-all font-mono font-normal">{c.checkout}</span> — the checkout itself is kept
+                    What goes in <span className="break-all font-mono font-normal">{c.checkout}</span>
                   </p>
                   {!c.available && <p className="text-neutral-500">Not a git checkout here any more: nothing to remove in it.</p>}
                   {c.worktrees.length > 0 && <p className="text-neutral-600">{c.worktrees.length} worktree(s) the platform made</p>}

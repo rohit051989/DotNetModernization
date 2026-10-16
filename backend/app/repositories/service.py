@@ -14,9 +14,13 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app import models
+from app.config import settings
+from app.repositories import git_source
 from app.repositories.schemas import (
     DuplicateConflict,
     InspectPathResponse,
+    InspectUrlResponse,
+    RegisterGitCloneRequest,
     RegisterLocalPathRequest,
     RepositoryUpdate,
 )
@@ -132,11 +136,15 @@ def validate_local_path_for_registration(raw_path: str) -> list[dict]:
     return []
 
 
-def validate_clone_url(raw_url: str) -> list[dict]:
+def validate_clone_url(raw_url: str, allow_file: bool = False) -> list[dict]:
     """Part E rules for `clone_url`: must be https, git@host:org/repo or
-    ssh://host/org/repo, and must not embed credentials."""
+    ssh://host/org/repo, and must not embed credentials. `allow_file`: a
+    repository registered by URL may also come from a folder or a share, as
+    file:///D:/mirror/repo.git."""
     url = raw_url.strip()
     parsed = urlparse(url)
+    if allow_file and parsed.scheme == "file" and len(url) > len("file:///"):
+        return []
     is_https = parsed.scheme == "https" and bool(parsed.netloc)
     is_ssh = bool(_SSH_CLONE_RE.match(url) or _SSH_URL_CLONE_RE.match(url))
 
@@ -579,6 +587,173 @@ def register_local_path(
     db.add(repo)
     db.flush()
     return repo
+
+
+# ---------- Registration by git URL (docs/VDI-SETUP.md section K) ----------
+
+
+def name_from_url(clone_url: str) -> str:
+    """The repository's name in its URL: the last path segment, without .git."""
+    tail = re.split(r"[/:\\]", clone_url.strip().rstrip("/\\"))[-1]
+    return tail[: -len(".git")] if tail.lower().endswith(".git") else tail or "repository"
+
+
+def default_clone_folder(engagement_id: str, clone_url: str) -> Path | None:
+    """<REPOS_DIR>\\<engagement>\\<repository>, or None when REPOS_DIR is not set."""
+    base = settings.repos_path
+    return None if base is None else base / engagement_id / name_from_url(clone_url)
+
+
+def _target_folder_problems(folder: Path) -> list[str]:
+    if not folder.is_absolute():
+        return [f"'{folder}' is not an absolute path."]
+    text = str(folder).rstrip("\\/").lower()
+    if _DRIVE_ROOT_RE.match(str(folder)) or text in _SYSTEM_LOCATIONS:
+        return [f"'{folder}' is a system location: choose a folder of your own."]
+    resolved = folder.resolve()
+    if resolved.is_relative_to(Path(settings.platform_root).resolve()):
+        return [f"'{folder}' is inside the platform's own folder: clone client repositories outside it."]
+    if resolved.is_relative_to(settings.runs_path.resolve()):
+        return [f"'{folder}' is inside RUNS_DIR, the platform's run output: clone client repositories outside it."]
+    return []
+
+
+def _resolve_target(engagement_id: str, clone_url: str, target_folder: str | None) -> tuple[Path | None, list[str]]:
+    if target_folder and target_folder.strip():
+        folder = Path(target_folder.strip())
+        return folder, _target_folder_problems(folder)
+    try:
+        folder = default_clone_folder(engagement_id, clone_url)
+    except ValueError as exc:
+        return None, [str(exc)]
+    if folder is None:
+        return None, ["REPOS_DIR is not set, so there is no default folder: give the target folder to clone into."]
+    return folder, _target_folder_problems(folder)
+
+
+def inspect_url(db: Session, engagement_id: str, clone_url: str, target_folder: str | None) -> InspectUrlResponse:
+    """Read-only: what registering this URL would do. Drives the registration form."""
+    url = clone_url.strip()
+    problems = [p["message"] for p in validate_clone_url(url, allow_file=True)] if url else ["Enter the git URL."]
+    try:
+        repos_dir = settings.repos_path
+    except ValueError as exc:
+        repos_dir, problems = None, problems + [str(exc)]
+    folder, folder_problems = _resolve_target(engagement_id, url, target_folder) if url else (None, [])
+    problems += folder_problems
+    action, message, duplicate = None, None, None
+    if folder is not None and not folder_problems and not problems:
+        action, why = git_source.target_state(folder, url)
+        message = {"clone": f"It will be cloned into {folder}.",
+                   "reuse": f"{folder} is already a clone of this URL: it will be used as it is."}.get(action, why)
+        if action == "refuse":
+            problems.append(why)
+        match = find_duplicate_conflict(db, engagement_id, repository_ingest.normalize_clone_url(url), folder.name,
+                                        normalize_local_path(str(folder)))
+        if match is not None:
+            matched_on, existing = match
+            duplicate = DuplicateConflict(matched_on=matched_on, repository_id=str(existing.id), slug=existing.slug,
+                                          message=duplicate_conflict_message(db, engagement_id, existing, matched_on))
+        if action == "reuse":
+            elsewhere = find_checkout_in_other_engagement(db, engagement_id, str(folder))
+            if elsewhere is not None:
+                problems.append(checkout_in_other_engagement_message(elsewhere))
+    return InspectUrlResponse(problems=problems, suggested_name=name_from_url(url) if url else None,
+                              repos_dir=str(repos_dir) if repos_dir else None,
+                              target_folder=str(folder) if folder else None, target_action=action,
+                              target_message=message, duplicate_conflict=duplicate)
+
+
+def register_git_clone(db: Session, engagement: models.Engagement, payload: RegisterGitCloneRequest) -> models.Repository:
+    """Registers a repository by its git URL. Nothing is cloned here: the repository's ingest job clones it (or uses
+    an existing clone of the same URL), so the clone's progress and errors show in the job."""
+    url = payload.clone_url.strip()
+    problems = validate_clone_url(url, allow_file=True)
+    if problems:
+        raise RegistrationError(422, problems)
+    folder, folder_problems = _resolve_target(engagement.id, url, payload.target_folder)
+    if folder_problems:
+        raise RegistrationError(422, [{"field": "target_folder", "message": m, "code": "INVALID_TARGET_FOLDER"}
+                                      for m in folder_problems])
+    action, why = git_source.target_state(folder, url)
+    if action == "refuse":
+        raise RegistrationError(409, [{"field": "target_folder", "message": why, "code": "TARGET_FOLDER_NOT_EMPTY"}])
+
+    clone_url_normalised = repository_ingest.normalize_clone_url(url)
+    local_path_normalised = normalize_local_path(str(folder))
+    conflict = find_duplicate_conflict(db, engagement.id, clone_url_normalised, folder.name, local_path_normalised)
+    if conflict is not None:
+        matched_on, existing = conflict
+        raise RegistrationError(409, [{"field": None, "code": f"DUPLICATE_{matched_on.upper()}",
+                                       "message": duplicate_conflict_message(db, engagement.id, existing, matched_on)}])
+    elsewhere = find_checkout_in_other_engagement(db, engagement.id, str(folder))
+    if elsewhere is not None:
+        raise RegistrationError(409, [{"field": "target_folder", "code": "CHECKOUT_IN_OTHER_ENGAGEMENT",
+                                       "message": checkout_in_other_engagement_message(elsewhere)}])
+    nesting = find_nesting_conflict(db, engagement.id, local_path_normalised)
+    if nesting is not None:
+        raise RegistrationError(409, [{"field": "target_folder", "code": "NESTED_PATH",
+                                       "message": f"'{folder}' is a parent or descendant of already-registered "
+                                                  f'repository "{nesting.slug}" ({nesting.local_path}).'}])
+
+    now = datetime.datetime.now(datetime.timezone.utc)
+    repo = models.Repository(
+        id=uuid.uuid4(),
+        engagement_id=engagement.id,
+        name=payload.name or name_from_url(url),
+        root_folder_name=folder.name,
+        slug=_unique_slug(db, engagement.id, slugify(folder.name)),
+        local_path=str(folder),
+        local_path_normalised=local_path_normalised,
+        clone_url=url,
+        clone_url_normalised=clone_url_normalised,
+        detected_clone_url=None,
+        # Verified by repository-ingest once the clone exists: its origin is this URL.
+        clone_url_verification="unverifiable",
+        source_control_status="NONE",
+        source_type="git_clone",
+        provider=derive_provider(url) if not url.startswith("file:") else "other",
+        default_branch=(payload.branch or "").strip() or None,
+        description=payload.description,
+        technical_owner=payload.technical_owner,
+        criticality=payload.criticality,
+        retirement_status=payload.retirement_status,
+        tags=payload.tags,
+        notes=payload.notes,
+        has_git_history=False,
+        ingest_status="registered",
+        ingest_token=str(uuid.uuid4()),
+        first_registered_at=now,
+    )
+    db.add(repo)
+    db.flush()
+    return repo
+
+
+# ---------- Existing data a later rule would refuse (CLAUDE.md rule 15) ----------
+
+
+def shared_checkouts(db: Session) -> list[list[models.Repository]]:
+    """Checkouts registered in more than one engagement: refused since rbc-release-2, but an installation upgraded
+    from rbc-release-1 may already have them. Reported, never changed: each registration keeps working as it did."""
+    groups: dict[str, list[models.Repository]] = {}
+    for repo in db.query(models.Repository).filter(models.Repository.deleted_at.is_(None)).order_by(
+            models.Repository.engagement_id, models.Repository.slug):
+        path = Path(repo.local_path)
+        key = repo.local_path_normalised.lower()
+        if (path / ".git").exists():
+            key = (git_common_dir(path) or key).lower()
+        groups.setdefault(key, []).append(repo)
+    return [g for g in groups.values() if len({r.engagement_id for r in g}) > 1]
+
+
+def shared_checkout_message(group: list[models.Repository]) -> str:
+    named = ", ".join(f"{r.engagement_id}/{r.slug}" for r in group)
+    return (f"One checkout is registered in {len({r.engagement_id for r in group})} engagements ({named}, "
+            f"{group[0].local_path}). Registered before rbc-release-2 refused it, so it is left working. Their "
+            "conversion branches share names in that checkout's git, so run conversions in one engagement only, or "
+            "clone the repository again for the other engagement, register the new clone there, and delete the old "
+            "registration (docs/VDI-SETUP.md section N).")
 
 
 # ---------- Lifecycle operations ----------

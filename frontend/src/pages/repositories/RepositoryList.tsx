@@ -277,6 +277,16 @@ export function RepositoryList({
                     </td>
                     <td className="px-3 py-2">
                       <IngestStatusBadge status={repo.ingest_status} />
+                      {repo.ingest_status === 'cloning' && repo.clone_progress && (
+                        <div className="mt-0.5 max-w-[16rem] truncate text-xs text-sky-700" title={repo.clone_progress}>
+                          {repo.clone_progress}
+                        </div>
+                      )}
+                      {repo.ingest_status === 'scan_failed' && repo.ingest_error && (
+                        <div className="mt-0.5 max-w-[16rem] truncate text-xs text-red-600" title={repo.ingest_error}>
+                          {repo.ingest_error}
+                        </div>
+                      )}
                     </td>
                     <td className="px-3 py-2">
                       <CloneUrlVerificationBadge verification={repo.clone_url_verification} />

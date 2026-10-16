@@ -6,20 +6,30 @@ person, or the same person twice — would fail the first one's running jobs at 
 other's work. So a running platform keeps one heartbeat row in its schema, and a platform that finds another's fresh
 heartbeat refuses to start, before it touches anything.
 
-The row is taken over when it is stale (no beat for STALE), or when it was written on this machine by a process that
-no longer exists (a restart, or `--reload` replacing its worker). Command-line tools (bootstrap, the seed, the
-repositories and engagements commands) take no heartbeat: they do not run the job engine's startup.
+A heartbeat expires STALE (90 s) after its last beat, so a platform that stopped without shutting down — its VDI
+session closed, its process killed, its machine restarted — blocks the next start for at most that long. It is
+taken over at once when it was written on this machine by a process that no longer exists (a restart, a killed
+process, or `--reload` replacing its worker). Its age is measured on the database's clock alone, so machines whose
+clocks disagree cannot keep it alive. One known to be stale can be cleared at once:
+
+    python -m app.heartbeat show
+    python -m app.heartbeat clear
+
+Command-line tools (bootstrap, the seed, the repositories and engagements commands) take no heartbeat: they do not
+run the job engine's startup.
 """
+import argparse
 import datetime
 import getpass
 import logging
 import os
 import socket
+import sys
 import threading
 import uuid
 from dataclasses import dataclass
 
-from sqlalchemy import text
+from sqlalchemy import func, text
 
 from app import models
 from app.config import settings
@@ -73,33 +83,45 @@ def pid_alive(pid: int) -> bool:
         return True
 
 
-def refusal(row, mine: Me, now: datetime.datetime, alive=pid_alive) -> str | None:
-    """Why this platform must not start while `row` (the schema's heartbeat) stands, or None."""
+CLEAR_COMMAND = r"cd backend; .venv\Scripts\python.exe -m app.heartbeat clear"
+
+
+def refusal(row, mine: Me, age: datetime.timedelta | None, alive=pid_alive) -> str | None:
+    """Why this platform must not start while `row` (the schema's heartbeat), last renewed `age` ago by the
+    database's clock, stands; or None."""
     if row is None or row.instance_id == mine.instance_id:
         return None
-    age = now - row.beat_at
-    if age > STALE:
+    if age is None or age > STALE:
         return None
     if row.host == mine.host and not alive(row.pid):
         return None
     where = f"{settings.db_name}, schema {settings.db_schema}"
+    left = int((STALE - age).total_seconds()) + 1
     return (f"Another Modernization Platform is already running on {where}: started "
             f"{row.started_at:%Y-%m-%d %H:%M} UTC by {row.os_user} on {row.host} (process {row.pid}, "
             f"{row.platform_root}, port {row.api_port}), last seen {int(age.total_seconds())} s ago. Two platforms on "
             "one schema would fail each other's running jobs and run each other's work, so this one does not start. "
             "Each person needs their own schema: give this one its own DB_SCHEMA and RUNS_DIR in backend\\.env "
-            "(docs/VDI-SETUP.md section N). If the other platform has stopped without saying so, its claim lapses "
-            f"{int(STALE.total_seconds())} s after its last beat.")
+            f"(docs/VDI-SETUP.md section N). A heartbeat expires {int(STALE.total_seconds())} s after its last beat: "
+            f"if that platform has stopped without shutting down (its VDI session closed, its machine restarted), "
+            f"start again in {left} s, or, if you know it has stopped, clear it now: {CLEAR_COMMAND}")
+
+
+def _current(db):
+    """The heartbeat row and its age by the database's clock, or (None, None)."""
+    found = db.execute(text("SELECT now() - beat_at FROM platform_heartbeat WHERE id = 1")).first()
+    if found is None:
+        return None, None
+    return db.get(models.PlatformHeartbeat, 1), found[0]
 
 
 def claim(mine: Me) -> None:
     """Takes this schema's heartbeat, or raises AnotherPlatform. The table is locked for the check, so two platforms
     starting at once cannot both take it."""
-    now = datetime.datetime.now(datetime.timezone.utc)
     with SessionLocal() as db:
         db.execute(text("LOCK TABLE platform_heartbeat IN EXCLUSIVE MODE"))
-        row = db.get(models.PlatformHeartbeat, 1)
-        reason = refusal(row, mine, now)
+        row, age = _current(db)
+        reason = refusal(row, mine, age)
         if reason:
             db.rollback()
             raise AnotherPlatform(reason)
@@ -107,7 +129,8 @@ def claim(mine: Me) -> None:
             row = models.PlatformHeartbeat(id=1)
             db.add(row)
         row.instance_id, row.host, row.os_user, row.pid = mine.instance_id, mine.host, mine.os_user, mine.pid
-        row.platform_root, row.api_port, row.started_at, row.beat_at = mine.platform_root, mine.api_port, now, now
+        row.platform_root, row.api_port = mine.platform_root, mine.api_port
+        row.started_at, row.beat_at = func.now(), func.now()
         db.commit()
 
 
@@ -154,3 +177,47 @@ class Heartbeat:
             release(self.mine)
         except Exception:
             log.exception("could not release the heartbeat")
+
+
+def describe(row, age: datetime.timedelta | None) -> str:
+    if row is None:
+        return "No platform holds this schema."
+    state = (f"expired ({int(age.total_seconds())} s since its last beat; a heartbeat expires after "
+             f"{int(STALE.total_seconds())} s)" if age > STALE
+             else f"live: last beat {int(age.total_seconds())} s ago")
+    return (f"Held by {row.os_user} on {row.host}, process {row.pid}, {row.platform_root}, port {row.api_port}, "
+            f"started {row.started_at:%Y-%m-%d %H:%M} UTC: {state}.")
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="python -m app.heartbeat",
+                                     description="Show or clear the heartbeat of the platform holding this schema.")
+    sub = parser.add_subparsers(dest="command", required=True)
+    sub.add_parser("show")
+    clear = sub.add_parser("clear", help="remove a heartbeat known to be stale, so the platform can start at once")
+    clear.add_argument("--yes", action="store_true", help="do not ask")
+    args = parser.parse_args(argv)
+    print(f"{settings.db_name}, schema {settings.db_schema}")
+    with SessionLocal() as db:
+        row, age = _current(db)
+        print(describe(row, age))
+        if args.command == "show" or row is None:
+            return 0
+        if row.host == socket.gethostname() and pid_alive(row.pid) and age <= STALE:
+            print(f"Process {row.pid} is still running on this machine: stop that platform (Ctrl+C in its window) "
+                  "instead. Nothing cleared.")
+            return 1
+        if not args.yes and age <= STALE:
+            answer = input(f"Only clear it if you know that platform has stopped: two platforms on one schema fail "
+                           "each other's jobs. Type clear to remove it: ")
+            if answer.strip() != "clear":
+                print("Nothing cleared.")
+                return 1
+        db.execute(text("DELETE FROM platform_heartbeat WHERE id = 1"))
+        db.commit()
+        print("Cleared: a platform can start on this schema now.")
+        return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

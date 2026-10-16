@@ -1,11 +1,15 @@
 """Register repositories and run discovery from the command line — the same service calls the API makes
 (app/routers/repositories.py), run synchronously in this process, so the backend does not need to be running.
 
+    python -m app.repositories.cli register-url --engagement test-client-a --url https://git.client.com/team/OrderService.git [--branch main] [--target D:\\repos\\OrderService]
     python -m app.repositories.cli register --engagement test-client-a --path D:\\...\\AccountsApi.Net10 --clone-url https://...
     python -m app.repositories.cli discover --engagement test-client-a --repository accountsapi-net10
     python -m app.repositories.cli consolidate --engagement test-client-a
 
-`register` registers the folder and runs phase0-repository-discovery on it, as registering through the API does.
+`register-url` registers a repository by its git URL, as the UI's main path does: its discovery job clones it (into
+--target, or REPOS_DIR/<engagement>/<repository>) with your own git credentials, then scans it. A rescan (`discover`)
+of it first fetches and fast-forwards its branch.
+`register` registers an existing folder and runs phase0-repository-discovery on it, as registering through the API does.
 `discover` is a rescan: a new ingest token, so a new job instance. `consolidate` runs phase0-estate-consolidation
 over the engagement's repositories.
 """
@@ -15,7 +19,7 @@ import uuid
 
 from app import models
 from app.repositories import service
-from app.repositories.schemas import RegisterLocalPathRequest
+from app.repositories.schemas import RegisterGitCloneRequest, RegisterLocalPathRequest
 from app.workflow.runtime import service as runtime
 
 DISCOVERY = "phase0-repository-discovery"
@@ -59,6 +63,12 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--path", required=True)
     r.add_argument("--clone-url")
     r.add_argument("--name")
+    u = sub.add_parser("register-url", help="register by git URL: the discovery job clones it")
+    u.add_argument("--engagement", required=True)
+    u.add_argument("--url", required=True)
+    u.add_argument("--branch", help="default: the remote's default branch")
+    u.add_argument("--target", help="the folder to clone into; default REPOS_DIR/<engagement>/<repository>")
+    u.add_argument("--name")
     d = sub.add_parser("discover")
     d.add_argument("--engagement", required=True)
     d.add_argument("--repository", required=True, help="repository slug")
@@ -84,6 +94,21 @@ def main(argv: list[str] | None = None) -> int:
             db.commit()
             print(f"registered {repository.slug} ({repository.id})")
             return _report(db, discover(db, repository))
+        if args.command == "register-url":
+            try:
+                repository = service.register_git_clone(db, engagement, RegisterGitCloneRequest(
+                    source_type="git_clone", clone_url=args.url, branch=args.branch, target_folder=args.target,
+                    name=args.name))
+            except service.RegistrationError as err:
+                print(f"refused: {err}", file=sys.stderr)
+                return 1
+            db.commit()
+            print(f"registered {repository.slug} ({repository.id}): cloning into {repository.local_path}")
+            code = _report(db, discover(db, repository))
+            db.refresh(repository)
+            if repository.ingest_error:
+                print(repository.ingest_error, file=sys.stderr)
+            return code
         if args.command == "discover":
             repository = (db.query(models.Repository).filter_by(engagement_id=engagement.id, slug=args.repository)
                           .filter(models.Repository.deleted_at.is_(None)).one())

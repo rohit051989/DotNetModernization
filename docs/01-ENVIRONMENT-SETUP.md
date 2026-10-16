@@ -376,12 +376,15 @@ The platform contacts only these:
 | `PIP_INDEX_URL`, `NPM_REGISTRY`, `NUGET_SOURCES` | `bootstrap.ps1` | installing |
 | The NuGet feeds each scanned repository resolves (below) | `dependency-assessment` (version lookups, package downloads for API diffs); `dotnet restore` in the package step and the verifier | discovery, preparation, verification |
 | nuget.org | `dependency-assessment` | only where no NuGet configuration names a feed, and for the public comparison, which `COMPARE_PUBLIC_NUGET_FEED=false` switches off |
+| The git host of each repository registered by its URL (https or SSH) | `repository-ingest`, running git as the person, with their own Git Credential Manager sign-in or SSH key | registration (the clone) and every rescan (a fetch) |
 
 - **Unreachable feeds fail nothing.** A lookup that cannot be answered is recorded as "unknown", never a failure.
 - **No telemetry or first-run activity.** The .NET SDK the platform runs sends no usage telemetry, checks for no
   workload update and creates no development certificate (`app.config.QUIET_DOTNET`).
 - **The frontend loads nothing external.** It talks only to the backend.
-- **Nothing else.** Repositories are registered by local path, and the platform clones nothing.
+- **Nothing else.** A repository registered by local path is never fetched; only one registered by URL is cloned
+  and fetched, from that URL alone. git never prompts there (`app/repositories/git_source.py`): a host that needs a
+  sign-in fails at once, and the platform never asks for, stores or logs a credential.
 - **The engine is separate.** GitHub Copilot, run by a person in Visual Studio, talks to GitHub as the company's
   account. That is the engine's traffic, not the platform's.
 

@@ -44,6 +44,10 @@ class Settings(BaseSettings):
     # the repository's. It must be outside the repository (01-ENVIRONMENT-SETUP.md section 9): a relative value is
     # resolved against backend/, and one that lands inside the repository is refused. Read it through runs_path.
     runs_dir: str
+    # Where repositories registered by their git URL are cloned by default: <REPOS_DIR>\<engagement>\<repository>.
+    # Optional: unset, the registration form asks for the target folder. A short absolute path, outside the
+    # repository and outside RUNS_DIR (docs/VDI-SETUP.md section K). Read it through repos_path.
+    repos_dir: str = ""
     # What this deployment is. The platform ships to each client as code and that client's data
     # lives only in its database, so the default is a client deployment. Only an explicit
     # DEPLOYMENT=demo lets the demo reset (app.seed.reset_demo) clear engagements and repositories.
@@ -99,6 +103,23 @@ class Settings(BaseSettings):
         if path.resolve().is_relative_to(Path(self.platform_root).resolve()):
             raise ValueError(f"RUNS_DIR {path} is inside the repository: engagement data must live outside it "
                              "(set RUNS_DIR in backend/.env; 01-ENVIRONMENT-SETUP.md section 9)")
+        return path
+
+    @property
+    def repos_path(self) -> Path | None:
+        """repos_dir as an absolute path, or None when unset. Refused inside the repository or inside RUNS_DIR: the
+        clones are the client's repositories, kept apart from the platform's code and its run output."""
+        if not self.repos_dir.strip():
+            return None
+        path = Path(self.repos_dir.strip())
+        if not path.is_absolute():
+            raise ValueError(f"REPOS_DIR {path} is not an absolute path (docs/VDI-SETUP.md section F)")
+        if path.resolve().is_relative_to(Path(self.platform_root).resolve()):
+            raise ValueError(f"REPOS_DIR {path} is inside the platform's folder: clone the client's repositories "
+                             "outside it (docs/VDI-SETUP.md section F)")
+        if path.resolve().is_relative_to(self.runs_path.resolve()):
+            raise ValueError(f"REPOS_DIR {path} is inside RUNS_DIR: keep the clones apart from the run output "
+                             "(docs/VDI-SETUP.md section F)")
         return path
 
     @property

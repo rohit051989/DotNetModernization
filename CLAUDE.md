@@ -175,6 +175,15 @@ modernization-platform/
     `WcfClientProbe make-certificates`, `ProbeServices`). If a task truly needs
     a machine change, ask first, saying exactly what changes and how to undo it.
 
+15. **Every release upgrades an existing installation in place, keeping all its data.** Migrations keep
+    existing data intact: they add or extend, never drop or rewrite what a client's schema holds (rule 4 still
+    applies). Every new setting is optional with a default, so an upgrade never requires editing `.env`.
+    Existing data a new rule would refuse (one checkout registered in two engagements before rbc-release-2) is
+    reported — in preflight, the backend's startup log and the UI — and left working, never broken or deleted;
+    code that acts on such data, a hard delete included, must not damage the other side of it. A release that
+    cannot upgrade in place says so explicitly, with the reason. `docs/VDI-SETUP.md` section M holds the exact
+    upgrade commands; prove a release by upgrading an installation of the previous one with them.
+
 ## Domain vocabulary
 
 Use these terms exactly and consistently in code, APIs, and UI copy.

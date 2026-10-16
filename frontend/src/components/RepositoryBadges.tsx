@@ -2,6 +2,7 @@ import type { CloneUrlVerification, Criticality, IngestStatus } from '../types/r
 
 const INGEST_STATUS_TONE: Record<IngestStatus, string> = {
   registered: 'bg-neutral-100 text-neutral-600',
+  cloning: 'bg-sky-100 text-sky-700',
   scanned: 'bg-teal-100 text-teal-700',
   scan_failed: 'bg-red-100 text-red-700',
   path_missing: 'bg-amber-100 text-amber-700',

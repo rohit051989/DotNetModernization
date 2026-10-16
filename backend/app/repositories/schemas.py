@@ -9,7 +9,7 @@ from app.workflow.runtime.schemas import JobExecutionOut
 Criticality = Literal["low", "medium", "high", "critical"]
 RetirementStatus = Literal["active", "slated_for_retirement", "decommissioned"]
 CloneUrlVerification = Literal["verified", "mismatch", "unverifiable", "not_applicable"]
-IngestStatus = Literal["registered", "scanned", "scan_failed", "path_missing"]
+IngestStatus = Literal["registered", "cloning", "scanned", "scan_failed", "path_missing"]
 SourceStatus = Literal["active", "archived", "disabled", "inaccessible"]
 SourceControlStatus = Literal["GIT", "NONE"]
 
@@ -153,18 +153,55 @@ class RegisterGitCloneRequest(BaseModel):
             "examples": [
                 {
                     "source_type": "git_clone",
-                    "clone_url": "https://github.com/example/order-management.git",
-                    "parent_directory": "D:\\repos",
+                    "clone_url": "https://git.client.com/team/order-management.git",
+                    "branch": "main",
+                    "target_folder": None,
                     "name": "Order Management",
                 }
             ]
         }
     )
 
-    source_type: Literal["git_clone"] = Field(description="Accepted as a shape; registration returns 501 for it.")
-    clone_url: str = Field(description="HTTPS clone URL to clone from.")
-    parent_directory: str = Field(description="Directory the platform would clone into.")
-    name: str | None = Field(default=None, description="Display name.")
+    source_type: Literal["git_clone"] = Field(description="Register by the repository's git URL: the platform clones it.")
+    clone_url: str = Field(
+        description=(
+            "The repository's git URL: https, git@host:org/repo.git, ssh://[user@]host[:port]/org/repo.git, or "
+            "file:/// for a repository in a folder or on a share. Never with a credential in it: git signs in as you, "
+            "with Git Credential Manager or your SSH key."
+        )
+    )
+    branch: str | None = Field(default=None, description="The branch to clone and track. Default: the remote's default branch.")
+    target_folder: str | None = Field(
+        default=None,
+        description=(
+            "Where to clone it: an absolute folder that does not exist or is empty, or an existing clone of the same "
+            "URL, which is used as it is. Default: <REPOS_DIR>/<engagement>/<repository>; required when REPOS_DIR is not set."
+        ),
+    )
+    name: str | None = Field(default=None, description="Display name. Defaults to the repository's name in the URL.")
+    description: str | None = Field(default=None, description="What this repository contains.")
+    technical_owner: str | None = Field(default=None, description="Who to ask about this repository.")
+    criticality: Criticality = Field(default="medium", description="Business criticality.")
+    retirement_status: RetirementStatus = Field(default="active", description="Retirement status.")
+    tags: list[str] = Field(default_factory=list, description="Free-form labels for filtering.")
+    notes: str | None = Field(default=None, description="Free text.")
+
+
+class InspectUrlRequest(BaseModel):
+    clone_url: str = Field(description="The git URL to register.")
+    target_folder: str | None = Field(default=None, description="The folder to clone into, when not the default.")
+
+
+class InspectUrlResponse(BaseModel):
+    problems: list[str] = Field(description="Why this URL or target folder cannot be registered. Empty when it can.")
+    suggested_name: str | None = Field(description="The repository's name, from the URL.")
+    repos_dir: str | None = Field(description="REPOS_DIR, or null when it is not set (the target folder must then be given).")
+    target_folder: str | None = Field(description="Where it would be cloned: the folder given, or the default under REPOS_DIR.")
+    target_action: Literal["clone", "reuse", "refuse"] | None = Field(
+        description="clone: the folder does not exist or is empty. reuse: it is already a clone of this URL, used as it is."
+    )
+    target_message: str | None = Field(description="What will happen to the target folder, in words.")
+    duplicate_conflict: DuplicateConflict | None = Field(description="Set when this URL or folder is already registered in this engagement.")
 
 
 RegisterRepositoryRequest = Annotated[
@@ -220,6 +257,8 @@ class RepositorySummary(BaseModel):
     file_count: int | None = Field(description="Total file count at the last scan, same exclusions.")
     last_scanned_at: datetime.datetime | None = Field(description="When step 1 last ran against this repository.")
     deleted_at: datetime.datetime | None = Field(description="When this repository was soft-deleted, or null if live.")
+    clone_progress: str | None = Field(default=None, description="git's latest progress line while the repository is cloned (ingest_status 'cloning').")
+    ingest_error: str | None = Field(default=None, description="Why the last discovery's ingest failed, if it did: a clone or fetch error says how to fix it.")
 
 
 class RepositoryDetail(RepositorySummary):
@@ -249,7 +288,6 @@ class RepositoryDetail(RepositorySummary):
     tags: list[str] = Field(description="Free-form labels.")
     notes: str | None = Field(description="Free text.")
     ingest_commit_sha: str | None = Field(description="HEAD SHA at the last scan. Null when has_git_history is false.")
-    ingest_error: str | None = Field(description="Error detail from the last failed scan, if any.")
     ingest_token: str | None = Field(description="Most recent token; correlates to the current job instance.")
     first_registered_at: datetime.datetime | None = Field(description="Set once, at registration.")
     created_at: datetime.datetime = Field(description="Row creation time.")
@@ -257,6 +295,10 @@ class RepositoryDetail(RepositorySummary):
     deleted_by: str | None = Field(description="Free-text identity that soft-deleted this repository, if any.")
     latest_execution: JobExecutionOut | None = Field(
         default=None, description="The most recent phase0-repository-discovery execution for this repository, if any."
+    )
+    warnings: list[str] = Field(
+        default_factory=list,
+        description="Existing data a later rule would refuse, reported and left working: for example this checkout also registered in another engagement.",
     )
 
 

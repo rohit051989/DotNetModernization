@@ -1,6 +1,8 @@
 import { api } from './client'
 import type {
   InspectPathResult,
+  InspectUrlResult,
+  RegisterGitCloneInput,
   JobExecution,
   RegisterLocalPathInput,
   RegisterRepositoryResult,
@@ -19,7 +21,14 @@ export function inspectPath(engagementId: string, localPath: string) {
   )
 }
 
-export function registerRepository(engagementId: string, payload: RegisterLocalPathInput) {
+export function inspectUrl(engagementId: string, cloneUrl: string, targetFolder: string | null) {
+  return api.post<InspectUrlResult>(
+    `/api/engagements/${encodeURIComponent(engagementId)}/repositories/inspect-url`,
+    { clone_url: cloneUrl, target_folder: targetFolder },
+  )
+}
+
+export function registerRepository(engagementId: string, payload: RegisterLocalPathInput | RegisterGitCloneInput) {
   return api.post<RegisterRepositoryResult>(
     `/api/engagements/${encodeURIComponent(engagementId)}/repositories/register`,
     payload,

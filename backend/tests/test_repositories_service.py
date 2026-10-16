@@ -228,6 +228,30 @@ class OneCheckoutOneEngagementTests(RepositoryRegistrationTestCase):
         self.db.commit()
         self.assertEqual(repo.engagement_id, self.other.id)
 
+    def test_a_checkout_shared_before_the_rule_is_reported_and_left_working(self):
+        """CLAUDE.md rule 15: an installation upgraded from rbc-release-1 may already have one checkout in two
+        engagements. It is reported, and nothing refuses or changes the existing registrations."""
+        import subprocess
+
+        from app.routers.repositories import _existing_data_warnings
+
+        path = self._git_repo("shared-before")
+        first = self._register(path)
+        # What rbc-release-1 allowed: the same folder in a second engagement, written as it wrote it.
+        second = models.Repository(**{c.name: getattr(first, c.name) for c in models.Repository.__table__.columns
+                                      if c.name not in ("id", "engagement_id", "created_at", "updated_at")},
+                                   id=uuid.uuid4(), engagement_id=self.other.id)
+        self.db.add(second)
+        self.db.commit()
+        groups = [g for g in repositories_service.shared_checkouts(self.db) if first.id in {r.id for r in g}]
+        self.assertEqual(len(groups), 1)
+        self.assertEqual({r.engagement_id for r in groups[0]}, {self.engagement.id, self.other.id})
+        self.assertIn("left working", repositories_service.shared_checkout_message(groups[0]))
+        self.assertIn(f"also registered in engagement '{self.engagement.id}'",
+                      _existing_data_warnings(self.db, second)[0])
+        self.assertEqual(subprocess.run(["git", "-C", str(path), "status", "--porcelain"], capture_output=True,
+                                        text=True).stdout, "")
+
 
 class CloneUrlValidationTests(unittest.TestCase):
     def test_accepted_forms(self):

@@ -23,10 +23,10 @@ schema.
 | [H. Bootstrap](#h-bootstrap) | stage by stage |
 | [I. Starting the platform](#i-starting-the-backend-and-the-frontend) | commands, ports |
 | [J. Creating the engagement](#j-creating-the-engagement) | UI or command |
-| [K. Registering a client repository](#k-cloning-and-registering-a-client-repository) | what discovery produces |
+| [K. Registering a client repository](#k-registering-a-client-repository) | by git URL; signing in to the git host once; what discovery produces |
 | [L. Troubleshooting](#l-troubleshooting) | |
-| [M. Stopping, restarting, a later release](#m-stopping-restarting-and-installing-a-later-release) | upgrading rbc-release-1 to rbc-release-2 |
-| [N. More than one person](#n-more-than-one-person) | one platform per schema, one checkout per engagement |
+| [M. Stopping, restarting, a later release](#m-stopping-restarting-and-installing-a-later-release) | upgrading in place from a release bundle, keeping all data |
+| [N. More than one person](#n-more-than-one-person) | one platform per schema, a stale heartbeat, one checkout per engagement |
 | [O. Deleting a repository or an engagement](#o-deleting-a-repository-or-an-engagement) | hard delete, the audit |
 
 ---
@@ -58,8 +58,8 @@ Ask for these before you start:
   gives them the exact request.
 - **Package mirrors the VDI can reach:** one each for Python (pip), npm and NuGet, or direct access to pypi.org,
   registry.npmjs.org and nuget.org. Section D shows how to find what works.
-- **Read access to the client's git server**, to clone the repositories you will scan, and the NuGet feeds those
-  repositories use.
+- **Read access to the client's git server**, for your own account, to clone the repositories you will scan
+  (section K signs in to it once), and the NuGet feeds those repositories use.
 
 ### Why paths must be short
 
@@ -72,7 +72,7 @@ under the run folder, beneath the repository's own deepest path. Keep both short
 |---|---|---|
 | Platform folder | `C:\MP\code` | `C:\Users\firstname.lastname\Documents\Projects\Client\Modernization Platform\code` |
 | Run folder (`RUNS_DIR`) | `C:\MP\runs` | anything inside the platform folder (refused) |
-| Client repositories | `C:\MP\repos\OrderService` | a deep project-share path |
+| Client repositories (`REPOS_DIR`) | `C:\MP\repos`, so a clone lands in `C:\MP\repos\client-a\OrderService` | a deep project-share path; anything inside the platform folder or `RUNS_DIR` (refused) |
 
 Section C turns `core.longpaths` on for your account as well.
 
@@ -340,6 +340,7 @@ notepad C:\MP\code\backend\.env
 | `DB_USER` | The login from section E | `modplatform` | **yes** |
 | `DB_PASSWORD` | Its password | (from the administrator) | **yes** |
 | `RUNS_DIR` | Where all run output, worktrees, conversions and verifications go. Absolute, short, **outside** the platform folder | `C:\MP\runs` | no |
+| `REPOS_DIR` | Optional. Where repositories registered by their git URL are cloned: `<REPOS_DIR>\<engagement>\<repository>`. Absolute, short, outside the platform folder and outside `RUNS_DIR`. Empty: the registration form asks for the folder each time (section K) | `C:\MP\repos` | no |
 | `API_HOST` | The address the backend listens on | `127.0.0.1` | no |
 | `API_PORT` | Its port. Bootstrap writes the frontend's link to the backend from this | `8001` | no |
 | `CORS_ORIGINS` | The frontend's address(es), comma-separated | `http://localhost:5174,http://127.0.0.1:5174` | no |
@@ -350,6 +351,9 @@ notepad C:\MP\code\backend\.env
 | `COMPARE_PUBLIC_NUGET_FEED` | Whether dependency assessment also asks nuget.org which versions exist publicly. `false` where nuget.org is unreachable | `false` | no |
 | `PYTHON` | The Python bootstrap and preflight use, as a full path. Empty: `python` on `PATH`. (The backend itself always runs in `backend\.venv`, which bootstrap builds with this Python) | `C:\MP\tools\python314\python.exe` | no |
 | `DOTNET_ROOT` | **Only when .NET is installed per user** (section C): the folder it was installed into. The platform puts it first on `PATH` and sets `DOTNET_ROOT` for every process it starts. **Leave it empty** when the client installed .NET machine-wide | `C:\MP\tools\dotnet` | no |
+
+Every key added by a later release is optional and has a default, so an upgrade never requires editing this file
+(section M).
 
 `DB_USER` and `DB_PASSWORD` may instead be set as account environment variables, and then left out of the file.
 The platform never writes them anywhere else, never logs them, and removes them from any error message. Do not
@@ -365,6 +369,7 @@ DB_SCHEMA=modplatform
 DB_USER=modplatform
 DB_PASSWORD=<from the administrator>
 RUNS_DIR=C:\MP\runs
+REPOS_DIR=C:\MP\repos
 API_HOST=127.0.0.1
 API_PORT=8001
 CORS_ORIGINS=http://localhost:5174,http://127.0.0.1:5174
@@ -414,7 +419,12 @@ Besides `PRESENT` and `MISSING`:
 - Each **package source** line says where its address came from (`backend\.env`, or the tool's own
   configuration), whether it goes **through the proxy** or **direct**, and what the tool did. For example,
   "pip ... downloaded the pyyaml==6.0.3 wheel", or the tool's own error.
-- The "Long paths" lines are `ON` or `OFF`, and never fail.
+- The "Long paths" lines are `ON` or `OFF`, and never fail. `NOTE` lines are information only.
+- Once the schema exists, the **platform** line says whether a platform holds it: `WARNING ... a platform holds this
+  schema` while one runs (yours too: stop it before an upgrade), or a `NOTE` that the last one stopped without
+  shutting down and its heartbeat has expired. Section N, "A stale heartbeat".
+- **existing data** lines report data an older release allowed and a newer rule would refuse, such as one checkout
+  registered in two engagements. They are left working and never changed (section M).
 
 Before bootstrap, the database section reports the database driver as missing: that is expected, bootstrap
 installs it.
@@ -437,6 +447,7 @@ installs it.
 | ... failed: "404", "Not Found", "could not find a version" | The address is wrong, often a missing `/simple` for pip or `/index.json` for NuGet, or the mirror lacks the package |
 | If preflight's own run is blocked even though the tools work | Section L, "When preflight's own check is blocked" |
 | RUNS_DIR: not set / inside the repository / not writable | Set an absolute folder outside `C:\MP\code` that you can write to (section F) |
+| REPOS_DIR: not an absolute path / inside the platform's folder / inside RUNS_DIR / not writable | Set it to a short folder of its own, such as `C:\MP\repos`, or leave it empty (section F) |
 | connection: ... | Check `DB_HOST`, `DB_PORT`, `DB_NAME`; a "password authentication failed" means `DB_USER` / `DB_PASSWORD`; a timeout means the VDI cannot reach the server (a firewall) |
 | connection: ... (17 needed) | The server is not PostgreSQL 17: ask the administrator |
 | schema ...: this login cannot create a schema | The login lacks `CREATE` on the database (section E) |
@@ -550,27 +561,90 @@ An engagement is one client program. Create it once, either way:
 
 ---
 
-## K. Cloning and registering a client repository
+## K. Registering a client repository
 
-### Clone to a short path
+The main way: give the platform the repository's git URL. Its discovery job clones the repository, then scans it,
+and a later **Rescan** fetches the newest commits first. A repository you already cloned yourself can still be
+registered by its folder (the end of this section).
+
+### Signing in to the client's git host, once
+
+The platform runs git as you, with your own credentials: Git Credential Manager (installed with Git for Windows)
+for an https URL, your SSH key for an SSH one. It never asks for, stores or logs a credential. It cannot answer a
+sign-in prompt either, so a clone that needs a sign-in fails at once and says so. Sign in once, outside the
+platform, in your own PowerShell window:
+
+```powershell
+git ls-remote https://git.client.com/team/OrderService.git
+```
+
+- **https:** Git Credential Manager opens its sign-in window (the client's single sign-on, or a personal access
+  token if the git host asks for one). It remembers the sign-in for your account, so every later clone and fetch,
+  including the platform's, uses it. The command then lists the repository's branches.
+- **SSH** (`git@git.client.com:team/OrderService.git`): the first time, answer `yes` to the host's key. A key with a
+  passphrase must be loaded into the ssh-agent (`ssh-add`), because the platform cannot type a passphrase.
+
+When a clone fails with "needs a sign-in the platform cannot give", do this, then press **Rescan** on the
+repository's page (or register again).
+
+### Register it
+
+In the UI, choose the engagement in **View**, then **Repositories** → **+ Register Repository**. **Git URL** is
+selected:
+
+1. **Git URL:** `https://git.client.com/team/OrderService.git` (or `git@...`, `ssh://...`; a URL must not contain a
+   user name or password, and one that does is refused). A repository in a folder or on a share can be given as
+   `file:///C:/mirror/OrderService.git`.
+2. **Branch** (optional): the branch to clone and follow. Empty: the repository's default branch.
+3. **Target folder** (optional when `REPOS_DIR` is set): where to clone it. Empty: `<REPOS_DIR>\<engagement>\<repository>`,
+   for example `C:\MP\repos\client-a\OrderService`. The form says what will happen when you leave the field: a new or
+   empty folder is cloned into; **an existing clone of the same URL is used as it is**; any other folder that is not
+   empty is refused, as is a folder inside the platform's or `RUNS_DIR`.
+4. **Register, clone & launch discovery.**
+
+From the command line (the backend need not be running):
+
+```powershell
+cd C:\MP\code\backend; .venv\Scripts\python.exe -m app.repositories.cli register-url --engagement client-a --url https://git.client.com/team/OrderService.git
+```
+
+`--branch` and `--target C:\MP\repos\client-a\OrderService` are optional, as in the form.
+
+**While it clones**, the repository's row and page show `cloning` and git's progress ("Receiving objects: 45%").
+The clone is full (every branch and its history, not shallow) with `core.longpaths=true`. A failure shows git's own
+message and what to do, for example how to sign in. Discovery and preparation then follow, exactly as for a
+folder.
+
+If the repository's `nuget.config` names a feed by a relative folder (for example `..\EnterprisePackages\feed`),
+place that folder beside the clone, exactly where the path points.
+
+### Rescan of a cloned repository
+
+**Rescan** on the repository's page first fetches from its URL and fast-forwards its branch, then scans the commit
+it reaches. A conversion that has not been run yet moves onto that commit; once one has been run, **Start the next
+conversion** prepares a new one from it (below). The fetch refuses, changing nothing, when:
+- the clone has local changes (edited files, even uncommitted ones): commit, stash or discard them outside the
+  platform;
+- the clone is on another branch than the one registered: switch it back;
+- the branch has commits the remote does not have: resolve that outside the platform.
+
+The conversions themselves live in worktrees under `RUNS_DIR`, on their own branches, so they never count as local
+changes of the clone.
+
+### Registering a folder you cloned yourself
+
+Choose **Local folder path** in the form instead:
 
 ```powershell
 git clone -c core.longpaths=true https://git.client.com/team/OrderService.git C:\MP\repos\OrderService
 ```
 
-If the repository's `nuget.config` names a feed by a relative folder (for example `..\EnterprisePackages\feed`),
-place that folder beside it as well, exactly where the path points.
-
-If git reports "dubious ownership" for a repository you copied rather than cloned, see section B.
-
-### Register it
-
-In the UI, choose the engagement in **View**, then **Repositories** → **+ Register Repository**:
-
 1. **Local folder path:** `C:\MP\repos\OrderService`, then leave the field. The form inspects the folder and fills
-   in the clone URL from its `origin` remote. https and SSH (`git@host:org/repo.git`, `ssh://...`) are both fine.
-   A repository with no remote at all registers without one; the form says so.
+   in the clone URL from its `origin` remote. A repository with no remote at all registers without one.
 2. **Register & launch discovery.**
+
+A folder registered this way is never fetched by the platform: pull new commits into it yourself before **Rescan**.
+If git reports "dubious ownership" for a repository you copied rather than cloned, see section B.
 
 ### What discovery and preparation produce
 
@@ -606,7 +680,7 @@ Run the conversion as `RUNBOOK.md` says, commit on the branch, then press **Veri
 Conversion section.
 
 A conversion always starts from the commit discovery scanned. When the client repository gets new commits:
-- pull them into the clone;
+- a repository registered by URL: **Rescan** fetches them; a folder registered by path: pull them into it first;
 - **Rescan** (on the repository's page) moves a conversion that has not been run yet onto the new commit;
 - once a conversion has been run, **Start the next conversion** prepares a new one, on a new branch, from the
   new commit. It asks first, naming the branch and the commit; it changes no existing conversion and runs no
@@ -630,7 +704,10 @@ A conversion always starts from the commit discovery scanned. When the client re
 | The UI loads, but every request fails | `frontend\.env` points at another port, or the frontend is not on 5174 (`CORS_ORIGINS`) | Start the frontend exactly as in section I |
 | A job shows **"orphaned by engine restart"** | The backend was stopped while it ran | Rescan the repository (or Verify again) |
 | Preflight: **"Python: 3.14.0b2 ... is a pre-release"** | Software Center (or a download) gave an alpha, beta or release candidate | Replace it with a final release: "Replacing a pre-release Python", below |
-| The backend does not start: **"Another Modernization Platform is already running on ..."** | Someone else's platform (or a second one of yours) uses the same schema | Each person needs their own schema: section N. If the other platform was simply closed, its claim lapses 90 s after it stopped |
+| The backend does not start: **"Another Modernization Platform is already running on ..."** | Someone else's platform (or a second one of yours) uses the same schema, or one that stopped without shutting down less than 90 s ago | Each person needs their own schema: section N. If that platform has stopped (its VDI session closed, its machine restarted), start again after the seconds the message gives, or clear it: section N, "A stale heartbeat" |
+| Registering by URL: **"... needs a sign-in the platform cannot give"** | git has no stored sign-in for that host, or no SSH key it can use without a passphrase | Sign in once outside the platform (section K, "Signing in to the client's git host, once"), then **Rescan** |
+| Registering by URL: **"... exists and is not empty"** or **"is already a clone of another repository"** | The target folder holds something else | Choose another target folder, or empty it. An existing clone of the same URL is used as it is |
+| Rescan of a cloned repository: **"has local changes"**, **"is on ... but this repository is registered on ..."**, **"cannot be fast-forwarded"** | Someone edited the clone, switched its branch, or committed in it | Commit, stash or discard the change, switch back, or resolve the divergence, outside the platform; then **Rescan** (section K). Nothing was changed |
 | Delete: **"Some files could not be removed, so nothing was deleted from the database"** | A program holds a file under `RUNS_DIR` open, usually Visual Studio with a conversion's worktree | Close it and delete again; it picks up where it stopped (section O) |
 | Registering: **"This checkout is already registered in engagement ..."** | One folder (or a worktree of it) is in another engagement already | Clone the repository again into another folder and register that (section N) |
 
@@ -694,53 +771,91 @@ restart" the next time it starts, and must be started again.
 
 Run the two commands of section I again. Nothing else is needed: the database and `RUNS_DIR` keep everything.
 
-### Installing a later release
+### Installing a later release: upgrading in place
 
-A later release arrives as a git bundle, `rbc-release-<n>.bundle`, with a `.sha256` file beside it. Its data stays:
-the database, `RUNS_DIR`, `backend\.env` and the client repositories are not part of the release. The steps below
-use rbc-release-2, which upgrades an installed rbc-release-1.
+**Every release upgrades an existing installation in place and keeps all its data**: the database schema, `RUNS_DIR`,
+the clones, `backend\.env` and `frontend\.env`. Its migrations only add to the schema or extend it, never drop or
+rewrite what is there, and every new setting is optional with a default, so `backend\.env` needs no edit. Data an
+older release allowed and a newer rule would refuse (such as one checkout registered in two engagements before
+rbc-release-2) is reported by preflight and in the backend's log, and left working, never changed or deleted. A
+release that cannot upgrade in place says so in its release notes, with the reason; none so far.
 
-1. Stop the backend and the frontend. Wait until no discovery or verification is running.
-2. Ask the database administrator for a backup of the platform's schema (`DB_SCHEMA`) before the upgrade. The
-   upgrade only adds to it, but a backup costs little.
-3. Check the bundle arrived intact. The two values must be identical:
+A release arrives as a git bundle, `rbc-release-<n>.bundle`, with `rbc-release-<n>.bundle.sha256` beside it. The
+commands below upgrade `C:\MP\code` to rbc-release-2 from `C:\MP\delivery`; for another release, change the two
+names. Run them in one PowerShell window, in order.
+
+1. **Stop the platform.** Wait until no discovery or verification is running (the **Executions** tab), then press
+   **Ctrl+C** in the backend's window and in the frontend's.
+2. **Back up the schema.** Ask the database administrator for a backup of `DB_SCHEMA` first. The upgrade only adds
+   to it, but a backup costs little.
+3. **Check the bundle arrived intact.** The two lines must be identical:
 
    ```powershell
-   (Get-FileHash -Algorithm SHA256 .\rbc-release-2.bundle).Hash.ToLower()
+   (Get-FileHash -Algorithm SHA256 C:\MP\delivery\rbc-release-2.bundle).Hash.ToLower()
    ```
 
    ```powershell
-   Get-Content .\rbc-release-2.bundle.sha256
+   (Get-Content C:\MP\delivery\rbc-release-2.bundle.sha256).Split(' ')[0]
    ```
 
-4. Bring the release into the platform folder and switch to it. Your `backend\.env`, `frontend\.env`, `.venv`,
-   `node_modules` and published programs are not part of git, so they stay:
+4. **Check the platform folder has nothing of yours in it.** git must print nothing (your `.env` files, `.venv`,
+   `node_modules` and published programs are ignored by git and stay):
 
    ```powershell
-   git -C C:\MP\code fetch C:\path\to\rbc-release-2.bundle "refs/tags/rbc-release-2:refs/tags/rbc-release-2"
+   git -C C:\MP\code status --porcelain --untracked-files=no
+   ```
+
+   If it lists files, they were edited by hand: copy them aside, then `git -C C:\MP\code checkout -- .`.
+5. **Bring the release in and switch to it:**
+
+   ```powershell
+   git -C C:\MP\code fetch C:\MP\delivery\rbc-release-2.bundle "refs/tags/rbc-release-2:refs/tags/rbc-release-2"
    ```
 
    ```powershell
-   git -C C:\MP\code checkout rbc-release-2
+   git -C C:\MP\code -c core.longpaths=true checkout rbc-release-2
    ```
 
-   `git -C C:\MP\code log -1 --format="%h %d"` then shows the release's commit and `tag: rbc-release-2`.
-5. Run preflight (section G). The release adds checks, so read it again: a pre-release Python is now refused,
-   and each package source is tested with the tool itself.
-6. Run bootstrap again (section H). It updates only what the release changed. For rbc-release-2 that is:
-   - **stage 3:** installs the exact versions in `backend\requirements.lock`. Packages may move to the locked
-     versions; nothing is compiled;
-   - **stage 6:** republishes the step programs whose sources changed;
-   - **stage 7:** adds two tables, `platform_heartbeat` (one platform per schema, section N) and `deletion_audit`
-     (section O). Nothing existing changes;
-   - **stage 8:** a reseed, which never overwrites a catalog edit made in the UI.
-7. Start the backend and the frontend (section I). Your engagements, repositories, conversions and verifications are
-   all there. The release's new parts: **Delete engagement…** on the Repositories page, a hard **Delete** on a
-   repository's page (section O), and the refusal to register one checkout in two engagements (section N).
+   ```powershell
+   git -C C:\MP\code log -1 --format="%h %d"
+   ```
 
-If the platform folder was installed without `.git`, copy the new release to a new folder instead, copy
-`backend\.env` into it, run bootstrap there, and start the platform from the new folder. It uses the same database
-schema and `RUNS_DIR`, so the data is the same.
+   The last command shows the release's commit and `tag: rbc-release-2`. git says it is in "detached HEAD" state:
+   that is expected for a release.
+6. **Preflight:**
+
+   ```powershell
+   cd C:\MP\code; C:\MP\tools\python314\python.exe scripts\preflight.py
+   ```
+
+   (your `PYTHON`, as in section G). Fix anything `MISSING` (section G). Read any `WARNING ... existing data` line:
+   it is reported, not a failure.
+7. **Bootstrap:**
+
+   ```powershell
+   cd C:\MP\code; powershell -ExecutionPolicy Bypass -File .\scripts\bootstrap.ps1
+   ```
+
+   It updates only what the release changed and skips the rest. It ends with `Bootstrap complete`.
+8. **Start the platform** (section I). Your engagements, repositories, conversions and verifications are all there.
+
+**What rbc-release-2 changes on an rbc-release-1 installation:**
+- **stage 3** installs the exact versions in `backend\requirements.lock`; packages may move to the locked versions;
+- **stage 6** republishes the step programs whose sources changed;
+- **stage 7** adds the tables `platform_heartbeat` (section N) and `deletion_audit` (section O), and lets a
+  repository's status be `cloning` with a `clone_progress` column (section K). Nothing existing changes;
+- **stage 8** reseeds, which never overwrites a catalog edit made in the UI;
+- new, optional setting `REPOS_DIR` (section F): without it, registering by URL asks for the target folder;
+- new in the UI: **Git URL** registration (section K), **Delete engagement…** and a hard **Delete** on a
+  repository's page (section O); a checkout already registered in two engagements is reported (section N).
+
+If the platform folder was installed without `.git` (step 5 fails with "not a git repository"), clone the release
+into a new folder instead, copy `backend\.env` and `frontend\.env` into it, run steps 6 to 8 there, and start the
+platform from the new folder. It uses the same schema and `RUNS_DIR`, so the data is the same:
+
+```powershell
+git clone -c core.longpaths=true --branch rbc-release-2 C:\MP\delivery\rbc-release-2.bundle C:\MP\code2
+```
 
 ---
 
@@ -752,12 +867,34 @@ stopped. Two platforms on one schema would fail each other's running jobs, then 
 
 - **One platform per schema.** A running platform keeps a heartbeat in its schema. A second platform started on the
   same schema, whether someone else's or a second one of yours, refuses to start before it touches anything. It says
-  who holds the schema, from which machine and folder, and when it was last seen. A platform that stopped without
-  saying so releases the schema 90 seconds after its last heartbeat.
+  who holds the schema, from which machine and folder, and when it was last seen.
 - **One checkout per engagement.** The platform creates its conversion branches (`conversion/1`, ...) and their
   worktrees in the registered checkout's git. So a checkout, or a worktree of it, is registered in one engagement
   only. Registering it in a second is refused, with the engagement that has it. To use the same repository in a
   second engagement, clone it again into another folder and register that.
+
+### A stale heartbeat
+
+A running platform renews its heartbeat every 20 seconds, and **a heartbeat expires 90 seconds after it was last
+renewed**. So a platform that stopped without shutting down (its VDI session closed, its process killed, its
+machine restarted) blocks the next start for at most 90 seconds. On the same machine there is no wait at all: a
+heartbeat whose process no longer exists is taken over at once. The age is measured on the database server's clock,
+so machines whose clocks disagree cannot keep a heartbeat alive.
+
+When the platform refuses to start, its message says who holds the schema and how many seconds are left. Wait that
+long and start again, or, when you know that platform has stopped, clear its heartbeat:
+
+```powershell
+cd C:\MP\code\backend; .venv\Scripts\python.exe -m app.heartbeat show
+```
+
+```powershell
+cd C:\MP\code\backend; .venv\Scripts\python.exe -m app.heartbeat clear
+```
+
+`show` says who holds it and whether it is live or expired. `clear` asks you to type `clear` while the heartbeat
+is still live, and refuses outright when its process is still running on this machine. Preflight reports the
+heartbeat too (section G).
 
 ### A second person on the same VDI or database
 
@@ -808,14 +945,18 @@ Add `--dry-run` to see what would go without deleting anything.
   its records name: `conversion/<n>`, experiment branches).
 
 **What stays:**
-- the checkout itself, and any branch the platform did not create;
+- **the repository itself, however it was registered.** A clone the platform made from a git URL stays exactly where
+  it is, like a folder registered by its path. Registering the same URL again later reuses that clone (section K);
+- any branch the platform did not create, and any branch another registration of the same checkout also records
+  (section N);
 - the folders beside a checkout that a conversion's worktree linked to (`EnterprisePackages`);
 - the catalog, the package lookup cache, and every other repository and engagement.
 
 After a repository is deleted, the engagement's estate view still counts it until the estate is consolidated
 again.
 
-**Before anything goes**, the dialog (or the command) shows exactly what will go. That includes every conversion
+**Before anything goes**, the dialog (or the command) says plainly that the repository's folder stays, and shows
+exactly what will go. That includes every conversion
 that has been run: the agent's work lives only on its branch and goes with it, so push or copy anything you want to
 keep first. You confirm by typing the repository's or engagement's name. A delete is refused while a job of it is
 running.

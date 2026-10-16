@@ -4,8 +4,8 @@ import { Field, inputClass } from '../../components/FormField'
 import { TagInput } from '../../components/TagInput'
 import { useToast } from '../../components/Toast'
 import { ApiError } from '../../api/client'
-import { inspectPath, registerRepository } from '../../api/repositories'
-import type { Criticality, InspectPathResult, RetirementStatus } from '../../types/repositories'
+import { inspectPath, inspectUrl, registerRepository } from '../../api/repositories'
+import type { Criticality, InspectPathResult, InspectUrlResult, RetirementStatus } from '../../types/repositories'
 
 interface RegisterRepositoryDrawerProps {
   engagementId: string
@@ -13,17 +13,22 @@ interface RegisterRepositoryDrawerProps {
   onRegistered: (repositoryId: string) => void
 }
 
-const PROVIDER_OPTIONS = [
-  { key: 'local_path', label: 'Local folder path', enabled: true },
-  { key: 'github', label: 'GitHub', enabled: false },
-  { key: 'bitbucket', label: 'Bitbucket', enabled: false },
-  { key: 'azure_devops', label: 'Azure DevOps', enabled: false },
-  { key: 'other_git', label: 'Other Git URL', enabled: false },
+/** Registering by git URL is the main path: the discovery job clones the repository (docs/VDI-SETUP.md section K).
+ * A folder already on this machine can still be registered by its path. */
+const SOURCE_OPTIONS = [
+  { key: 'git_url', label: 'Git URL' },
+  { key: 'local_path', label: 'Local folder path' },
 ]
 
 export function RegisterRepositoryDrawer({ engagementId, onClose, onRegistered }: RegisterRepositoryDrawerProps) {
   const { showToast } = useToast()
-  const [source, setSource] = useState('local_path')
+  const [source, setSource] = useState('git_url')
+
+  const [gitUrl, setGitUrl] = useState('')
+  const [branch, setBranch] = useState('')
+  const [targetFolder, setTargetFolder] = useState('')
+  const [inspectingUrl, setInspectingUrl] = useState(false)
+  const [urlInspection, setUrlInspection] = useState<InspectUrlResult | null>(null)
 
   const [localPath, setLocalPath] = useState('')
   const [inspecting, setInspecting] = useState(false)
@@ -59,6 +64,23 @@ export function RegisterRepositoryDrawer({ engagementId, onClose, onRegistered }
       setInspection(null)
     } finally {
       setInspecting(false)
+    }
+  }
+
+  async function handleUrlBlur() {
+    if (!gitUrl.trim()) {
+      setUrlInspection(null)
+      return
+    }
+    setInspectingUrl(true)
+    try {
+      const result = await inspectUrl(engagementId, gitUrl.trim(), targetFolder.trim() || null)
+      setUrlInspection(result)
+      if (result.suggested_name && !name) setName(result.suggested_name)
+    } catch {
+      setUrlInspection(null)
+    } finally {
+      setInspectingUrl(false)
     }
   }
 
@@ -100,7 +122,24 @@ export function RegisterRepositoryDrawer({ engagementId, onClose, onRegistered }
     setFieldErrors({})
     setSubmitting(true)
     try {
-      const result = await registerRepository(engagementId, {
+      const details = {
+        name: name.trim() || undefined,
+        description: description.trim() || null,
+        technical_owner: technicalOwner.trim() || null,
+        criticality,
+        retirement_status: retirementStatus,
+        tags,
+        notes: notes.trim() || null,
+      }
+      const result = source === 'git_url'
+        ? await registerRepository(engagementId, {
+            source_type: 'git_clone',
+            clone_url: gitUrl.trim(),
+            branch: branch.trim() || null,
+            target_folder: targetFolder.trim() || null,
+            ...details,
+          })
+        : await registerRepository(engagementId, {
         source_type: 'local_path',
         local_path: localPath.trim(),
         name: name.trim() || undefined,
@@ -113,7 +152,9 @@ export function RegisterRepositoryDrawer({ engagementId, onClose, onRegistered }
         tags,
         notes: notes.trim() || null,
       })
-      showToast('success', `Registered "${result.slug}". Discovery is running.`)
+      showToast('success', source === 'git_url'
+        ? `Registered "${result.slug}". Cloning, then discovery.`
+        : `Registered "${result.slug}". Discovery is running.`)
       onRegistered(result.repository_id)
     } catch (err) {
       if (err instanceof ApiError) {
@@ -141,43 +182,99 @@ export function RegisterRepositoryDrawer({ engagementId, onClose, onRegistered }
   // isn't blocked before inspection has had a chance to run; the backend
   // still validates this regardless.
   const cloneUrlRequired = inspection?.has_git === true && !!inspection.detected_clone_url
+  const urlBlocked = !!urlInspection && (urlInspection.problems.length > 0 || !!urlInspection.duplicate_conflict)
   const canSubmit =
-    source === 'local_path' &&
-    localPath.trim() &&
-    (!cloneUrlRequired || cloneUrl.trim()) &&
-    !blockingConflict &&
-    !submitting
+    !submitting &&
+    (source === 'git_url'
+      ? !!gitUrl.trim() && !urlBlocked
+      : !!localPath.trim() && (!cloneUrlRequired || !!cloneUrl.trim()) && !blockingConflict)
 
   return (
     <Drawer title="Register a repository" onRequestClose={onClose}>
       <div className="mb-5 flex flex-wrap gap-1.5">
-        {PROVIDER_OPTIONS.map((option) => (
+        {SOURCE_OPTIONS.map((option) => (
           <button
             key={option.key}
             type="button"
-            disabled={!option.enabled}
-            title={option.enabled ? undefined : 'Coming soon'}
-            onClick={() => option.enabled && setSource(option.key)}
+            onClick={() => setSource(option.key)}
             className={`rounded-full border px-3 py-1 text-xs font-medium ${
-              !option.enabled
-                ? 'cursor-not-allowed border-neutral-200 bg-neutral-50 text-neutral-350 text-neutral-400'
-                : source === option.key
-                  ? 'border-violet-500 bg-violet-50 text-violet-700'
-                  : 'border-neutral-300 text-neutral-600 hover:bg-neutral-50'
+              source === option.key
+                ? 'border-violet-500 bg-violet-50 text-violet-700'
+                : 'border-neutral-300 text-neutral-600 hover:bg-neutral-50'
             }`}
           >
             {option.label}
-            {!option.enabled && ' — Coming soon'}
           </button>
         ))}
       </div>
 
-      {source !== 'local_path' ? (
-        <p className="rounded border border-neutral-200 bg-neutral-50 p-3 text-sm text-neutral-500">
-          This source isn't available yet. Clone the repository manually and register its local path instead.
-        </p>
-      ) : (
         <form onSubmit={handleSubmit} className="space-y-5">
+          {source === 'git_url' && (
+            <section className="space-y-3">
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-400">Location</h3>
+
+              <Field label="Git URL" error={fieldErrors.clone_url}>
+                <input
+                  type="text"
+                  value={gitUrl}
+                  onChange={(event) => setGitUrl(event.target.value)}
+                  onBlur={handleUrlBlur}
+                  placeholder="https://git.client.com/team/repo.git , git@host:org/repo.git or ssh://host/org/repo.git"
+                  className={inputClass(!!fieldErrors.clone_url)}
+                />
+                <p className="mt-1 text-xs text-neutral-400">
+                  git signs in as you, with Git Credential Manager or your SSH key. The platform never asks for or stores
+                  a credential: a host that needs a sign-in fails at once, saying how to sign in once outside the platform.
+                </p>
+              </Field>
+
+              <Field label="Branch (optional)">
+                <input
+                  type="text"
+                  value={branch}
+                  onChange={(event) => setBranch(event.target.value)}
+                  placeholder="the repository's default branch"
+                  className={inputClass(false)}
+                />
+              </Field>
+
+              <Field
+                label={urlInspection && !urlInspection.repos_dir ? 'Target folder' : 'Target folder (optional)'}
+                error={fieldErrors.target_folder}
+              >
+                <input
+                  type="text"
+                  value={targetFolder}
+                  onChange={(event) => setTargetFolder(event.target.value)}
+                  onBlur={handleUrlBlur}
+                  placeholder={urlInspection?.repos_dir ? `${urlInspection.repos_dir}\\${engagementId}\\<repository>` : 'D:\\repos\\my-repository'}
+                  className={`${inputClass(!!fieldErrors.target_folder)} font-mono`}
+                />
+                <p className="mt-1 text-xs text-neutral-400">
+                  {urlInspection?.repos_dir
+                    ? `Default: under REPOS_DIR (${urlInspection.repos_dir}). A new or empty folder, or an existing clone of this URL, which is used as it is.`
+                    : 'A new or empty folder, or an existing clone of this URL, which is used as it is. Set REPOS_DIR in backend\\.env to clone under one folder by default.'}
+                </p>
+              </Field>
+
+              {inspectingUrl && <p className="text-xs text-neutral-400">Checking…</p>}
+              {urlInspection && !inspectingUrl && (
+                <div className="space-y-1.5 rounded border border-neutral-200 bg-neutral-50 p-3 text-xs text-neutral-600">
+                  {urlInspection.target_message && urlInspection.target_action !== 'refuse' && <p>{urlInspection.target_message}</p>}
+                  {urlInspection.problems.map((problem) => (
+                    <p key={problem} className="text-red-600">
+                      {problem}
+                    </p>
+                  ))}
+                  {urlInspection.duplicate_conflict && (
+                    <p className="font-medium text-red-600">{urlInspection.duplicate_conflict.message}</p>
+                  )}
+                </div>
+              )}
+            </section>
+          )}
+
+          {source === 'local_path' && (
           <section className="space-y-3">
             <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-400">Location</h3>
 
@@ -236,6 +333,7 @@ export function RegisterRepositoryDrawer({ engagementId, onClose, onRegistered }
               {hint && <p className={`mt-1 text-xs ${hint.tone}`}>{hint.text}</p>}
             </Field>
           </section>
+          )}
 
           <section className="space-y-3">
             <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-400">Details</h3>
@@ -298,6 +396,7 @@ export function RegisterRepositoryDrawer({ engagementId, onClose, onRegistered }
               )}
             </Field>
 
+            {source === 'local_path' && (
             <Field label="Default branch">
               <input
                 type="text"
@@ -306,6 +405,7 @@ export function RegisterRepositoryDrawer({ engagementId, onClose, onRegistered }
                 className={inputClass(false)}
               />
             </Field>
+            )}
 
             <TagInput label="Tags" values={tags} onChange={setTags} placeholder="Add a tag…" />
 
@@ -329,11 +429,10 @@ export function RegisterRepositoryDrawer({ engagementId, onClose, onRegistered }
               disabled={!canSubmit}
               className="rounded bg-violet-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {submitting ? 'Registering…' : 'Register & launch discovery'}
+              {submitting ? 'Registering…' : source === 'git_url' ? 'Register, clone & launch discovery' : 'Register & launch discovery'}
             </button>
           </div>
         </form>
-      )}
     </Drawer>
   )
 }

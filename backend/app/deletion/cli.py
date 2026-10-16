@@ -34,7 +34,8 @@ def show(plan: dict) -> None:
     for f in plan["folders"] or [{"path": "(none)", "files": 0, "bytes": 0}]:
         print(f"  {f['path']}  ({f['files']} files, {_mb(f['bytes'])})")
     for c in plan["checkouts"]:
-        print(f"\nIn the checkout {c['checkout']} (the checkout itself is kept):")
+        print(f"\n{c['stays']}")
+        print("What goes in it:")
         if not c["available"]:
             print("  not a git checkout here any more: nothing to remove in it")
             continue
