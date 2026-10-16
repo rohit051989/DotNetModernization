@@ -161,6 +161,74 @@ class GitRegistrationStillRequiresCloneUrlTests(RepositoryRegistrationTestCase):
         self.assertEqual(repo.clone_url, "https://github.com/example/git-with-url.git")
 
 
+class OneCheckoutOneEngagementTests(RepositoryRegistrationTestCase):
+    """A checkout's conversion branches live in its git, so it serves one engagement (docs/VDI-SETUP.md section N)."""
+
+    def setUp(self):
+        super().setUp()
+        from app.engagements import service as engagements
+
+        self.other = engagements.create(self.db, f"test-other-{uuid.uuid4().hex[:8]}", "Other client", "net10.0")
+        self.db.commit()
+
+    def tearDown(self):
+        for repo in self.db.query(models.Repository).filter_by(engagement_id=self.other.id):
+            self.db.delete(repo)
+        self.db.flush()
+        self.db.delete(self.db.get(models.Engagement, self.other.id))
+        self.db.commit()
+        super().tearDown()
+
+    def _git_repo(self, name: str) -> Path:
+        import subprocess
+
+        path = self._folder(name)
+        g = ["git", "-C", str(path), "-c", "user.name=t", "-c", "user.email=t@t"]
+        subprocess.run(g[:3] + ["init", "-q", "-b", "main"], check=True)
+        subprocess.run(g + ["add", "-A"], check=True)
+        subprocess.run(g + ["commit", "-q", "-m", "first"], check=True)
+        return path
+
+    def test_the_same_checkout_in_a_second_engagement_is_refused_and_says_why(self):
+        path = self._git_repo("shared-checkout")
+        self._register(path)
+        with self.assertRaises(repositories_service.RegistrationError) as ctx:
+            repositories_service.register_local_path(self.db, self.other, RegisterLocalPathRequest(
+                source_type="local_path", local_path=str(path)))
+        self.assertEqual(ctx.exception.status_code, 409)
+        problem = ctx.exception.errors[0]
+        self.assertEqual(problem["code"], "CHECKOUT_IN_OTHER_ENGAGEMENT")
+        self.assertIn(f"already registered in engagement '{self.engagement.id}'", problem["message"])
+        self.assertIn("clone it again into another folder", problem["message"])
+        warnings = repositories_service.inspect_path(self.db, self.other.id, str(path)).warnings
+        self.assertTrue(any("already registered in engagement" in w for w in warnings), warnings)
+
+    def test_a_worktree_of_the_same_repository_shares_its_branches_and_is_refused_too(self):
+        import subprocess
+
+        path = self._git_repo("main-checkout")
+        self._register(path)
+        linked = Path(self.tmp.name) / "linked-worktree"
+        subprocess.run(["git", "-C", str(path), "worktree", "add", "-q", "-b", "other", str(linked)], check=True)
+        with self.assertRaises(repositories_service.RegistrationError) as ctx:
+            repositories_service.register_local_path(self.db, self.other, RegisterLocalPathRequest(
+                source_type="local_path", local_path=str(linked)))
+        self.assertEqual(ctx.exception.errors[0]["code"], "CHECKOUT_IN_OTHER_ENGAGEMENT")
+
+    def test_a_separate_clone_registers_in_the_second_engagement(self):
+        import subprocess
+
+        path = self._git_repo("original")
+        self._register(path)
+        clone = Path(self.tmp.name) / "second-clone"
+        subprocess.run(["git", "clone", "-q", str(path), str(clone)], check=True)
+        subprocess.run(["git", "-C", str(clone), "remote", "remove", "origin"], check=True)
+        repo = repositories_service.register_local_path(self.db, self.other, RegisterLocalPathRequest(
+            source_type="local_path", local_path=str(clone)))
+        self.db.commit()
+        self.assertEqual(repo.engagement_id, self.other.id)
+
+
 class CloneUrlValidationTests(unittest.TestCase):
     def test_accepted_forms(self):
         for url in ["https://github.com/example/repo.git", "git@github.com:example/repo.git",

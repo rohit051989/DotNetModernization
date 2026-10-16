@@ -8,7 +8,7 @@
 
       1. Preflight: tools, package sources, RUNS_DIR     always runs (seconds)
       2. The Python virtual environment, backend\.venv   skipped when it exists
-      3. Python dependencies                             skipped when requirements.txt, PIP_INDEX_URL and the
+      3. Python dependencies                             skipped when requirements.lock, PIP_INDEX_URL and the
                                                          Python version are unchanged since the last install
       4. Preflight: the database                         always runs (seconds)
       5. Frontend: frontend\.env and dependencies        .env written only when missing; npm ci skipped when
@@ -152,16 +152,17 @@ if (Run 3) {
     Header 3 'Python dependencies'
     NeedVenv 3
     $index = EnvValue 'PIP_INDEX_URL'
-    $requirements = Join-Path $backend 'requirements.txt'
+    # The exact versions the full suite passed with (scripts\lock_requirements.py), never ranges resolved afresh.
+    $requirements = Join-Path $backend 'requirements.lock'
     $stampFile = Join-Path $venv '.bootstrap-stamp'
     $want = TextHash "$((Get-FileHash -Algorithm SHA256 $requirements).Hash)|$index|$(& $venvPython -c 'import sys; print(sys.version)')"
     if (Stamped $stampFile $want) {
-        Done 'up to date: requirements.txt unchanged since the last install'
+        Done 'up to date: requirements.lock unchanged since the last install'
     } else {
         $pipArgs = @('-m', 'pip', 'install', '--disable-pip-version-check', '-q', '--only-binary=:all:', '-r', $requirements)
         if ($index) { $pipArgs += @('--index-url', $index); Write-Host "from $index" }
         & $venvPython @pipArgs
-        if ($LASTEXITCODE -ne 0) { Fail 3 'pip could not install backend\requirements.txt from wheels (see the message above).' }
+        if ($LASTEXITCODE -ne 0) { Fail 3 'pip could not install backend\requirements.lock from wheels (see the message above).' }
         Stamp $stampFile $want
         Done 'installed'
     }

@@ -25,7 +25,9 @@ schema.
 | [J. Creating the engagement](#j-creating-the-engagement) | UI or command |
 | [K. Registering a client repository](#k-cloning-and-registering-a-client-repository) | what discovery produces |
 | [L. Troubleshooting](#l-troubleshooting) | |
-| [M. Stopping, restarting, a later release](#m-stopping-restarting-and-installing-a-later-release) | |
+| [M. Stopping, restarting, a later release](#m-stopping-restarting-and-installing-a-later-release) | upgrading rbc-release-1 to rbc-release-2 |
+| [N. More than one person](#n-more-than-one-person) | one platform per schema, one checkout per engagement |
+| [O. Deleting a repository or an engagement](#o-deleting-a-repository-or-an-engagement) | hard delete, the audit |
 
 ---
 
@@ -38,7 +40,7 @@ Install these first. None needs administrator rights if installed per user (sect
 
 | Tool | Version needed | Notes |
 |---|---|---|
-| **Python** | **3.11 to 3.14** (tested: 3.13.14 and 3.14.8) | Every dependency installs from a prebuilt wheel, so no compiler is needed. 3.15 is refused |
+| **Python** | **3.11 to 3.14, a final release** (tested: 3.14.8) | Never an alpha, beta or release candidate (such as `3.14.0b2`): preflight refuses one. Bootstrap installs the exact package versions the full suite passed with (`backend\requirements.lock`), all from prebuilt wheels, so no compiler is needed. Preflight warns when the Python is older than the tested 3.14.8. 3.15 is refused |
 | **Node.js** | **20.19.0 or a later 20.x, or 22.12.0 or later** (tested: 24.13.0) | 21.x is refused. npm comes with it |
 | **npm** | **7.0.0 or later** | Every Node.js above ships a newer one |
 | **.NET SDK** | **any .NET 10 SDK, 10.0.100 or later** (tested: 10.0.203 and 10.0.302) | Any feature band (1xx, 2xx, 3xx). The .NET 9 SDK alone is not enough |
@@ -187,8 +189,22 @@ To use that `dotnet` in your own terminals as well (not needed for the platform)
 ## D. Package sources
 
 Bootstrap installs the platform's own dependencies: Python packages with pip, the frontend's with npm, and the
-NuGet packages the step programs are built from. Each tool needs an address it can reach. Find working ones before
-you write `backend\.env`.
+NuGet packages the step programs are built from. First work out which case this machine is in.
+
+### Case 1: the machine reaches the public registries
+
+If this machine reaches pypi.org, registry.npmjs.org and api.nuget.org, **you configure nothing**:
+- leave `PIP_INDEX_URL`, `NPM_REGISTRY` and `NUGET_SOURCES` empty in `backend\.env`;
+- set no pip, npm or NuGet configuration.
+
+That holds whether the connection is direct or through a proxy the client's IT already set for the account (as
+`HTTPS_PROXY`, or the Windows system proxy). To find out, run preflight (section G): it tests each source with
+pip, npm and dotnet themselves, and prints the proxy it sees. If all three are PRESENT, skip to section E.
+
+### Case 2: a private mirror, usually with a login
+
+If the public registries are blocked, the client has its own mirror (Artifactory, Nexus). Only then do you need
+the rest of this section: find the mirror's addresses, and give the tools the login if it asks for one.
 
 ### What the machine already uses
 
@@ -228,12 +244,21 @@ need. A feed of the client's own internal packages is not.
 
 ### Checking an address works
 
-```powershell
-Invoke-WebRequest -UseBasicParsing https://artifactory.client.com/artifactory/api/nuget/v3/nuget-remote/index.json | Select-Object StatusCode
-```
+Put the address in `backend\.env` (below) and run preflight (section G). It tests each source with the tool that
+will use it, the way bootstrap uses it:
+- **pip** downloads one wheel;
+- **npm** asks for one package;
+- **dotnet** restores one package into an empty folder.
 
-`200` means it works. `401` means it works but needs a login (below). An error such as "The remote name could not
-be resolved" or a timeout means this machine cannot reach it: ask for another address.
+Proxies, certificates and logins therefore behave exactly as in the real install. A failure shows the tool's own
+message:
+- "401 (Unauthorized)" means it needs a login (below);
+- "No such host is known", "Failed to resolve" or a timeout means this machine cannot reach it, so ask for another
+  address.
+
+A quick check from PowerShell (`Invoke-WebRequest <address>`) is not the same test. It does not use pip's, npm's or
+NuGet's own proxy, certificate or login settings. On a client VDI it has been reset by the network ("An existing
+connection was forcibly closed", WinError 10054) for an address pip installed from without trouble.
 
 ### Where each one goes
 
@@ -381,21 +406,36 @@ Tools
 9 present, 1 missing: .NET runtime for the step programs
 ```
 
-The "Long paths" lines are `ON` or `OFF` and never fail. Before bootstrap, the database section reports the
-database driver as missing: that is expected, bootstrap installs it.
+Besides `PRESENT` and `MISSING`:
+- `WARNING` lines are worth knowing, but never fail. For example, a Python older than the one the release was tested
+  on, 3.14.8.
+- The **Proxy** lines show `HTTPS_PROXY`, `HTTP_PROXY` and `NO_PROXY`, any proxy set in pip's or npm's own
+  configuration, and the Windows system proxy.
+- Each **package source** line says where its address came from (`backend\.env`, or the tool's own
+  configuration), whether it goes **through the proxy** or **direct**, and what the tool did. For example,
+  "pip ... downloaded the pyyaml==6.0.3 wheel", or the tool's own error.
+- The "Long paths" lines are `ON` or `OFF`, and never fail.
+
+Before bootstrap, the database section reports the database driver as missing: that is expected, bootstrap
+installs it.
 
 ### Fixing each MISSING item
 
 | MISSING | Fix |
 |---|---|
 | Python ... too old / too new, or not found | Install a Python 3.11 to 3.14 (section C), and name it as `PYTHON` in `backend\.env` |
+| Python ... is a pre-release (alpha, beta, release candidate) | Install the final release: section L, "Replacing a pre-release Python" |
 | Node.js ... too old | Install Node.js 22.12 or later (or 20.19+) |
 | npm ... too old | Comes with Node.js: update Node.js |
 | .NET SDK: none of ... | Install a .NET 10 SDK (section C). A .NET 9 or a preview SDK does not count |
 | .NET runtime for the step programs ... DOTNET_ROOT is not set | .NET is installed per user: set `DOTNET_ROOT` in `backend\.env` to the folder it names (sections C and F) |
 | git ... too old / not found | Install git 2.17 or later, and open a new window |
-| PIP_INDEX_URL / NPM_REGISTRY / NUGET_SOURCES ... unreachable | This machine cannot reach that address: find one it can (section D) |
-| ... HTTP 404 | The address is wrong (often a missing `/simple` for pip, or `/index.json` for NuGet) |
+| PIP_INDEX_URL / NPM_REGISTRY / NUGET_SOURCES ... failed: "Failed to resolve", "No such host is known", a timeout, "connection broken" | This machine cannot reach that address, or not through the proxy shown on that line. Find one it can (section D), or ask IT which proxy applies |
+| ... failed: "401", "Unauthorized" | The source needs a login: give it to the tool's own configuration (section D, "Where each one goes") |
+| ... failed: "403", "Forbidden" | The login has no right to that source: ask its owner for read access |
+| ... failed: "certificate verify failed", "unable to get local issuer certificate", "SSL" | A proxy or mirror re-signs connections with the client's own certificate, which the tool does not trust yet. Ask IT for the client's standard pip, npm and NuGet certificate settings; do not turn verification off |
+| ... failed: "404", "Not Found", "could not find a version" | The address is wrong, often a missing `/simple` for pip or `/index.json` for NuGet, or the mirror lacks the package |
+| If preflight's own run is blocked even though the tools work | Section L, "When preflight's own check is blocked" |
 | RUNS_DIR: not set / inside the repository / not writable | Set an absolute folder outside `C:\MP\code` that you can write to (section F) |
 | connection: ... | Check `DB_HOST`, `DB_PORT`, `DB_NAME`; a "password authentication failed" means `DB_USER` / `DB_PASSWORD`; a timeout means the VDI cannot reach the server (a firewall) |
 | connection: ... (17 needed) | The server is not PostgreSQL 17: ask the administrator |
@@ -589,6 +629,56 @@ A conversion always starts from the commit discovery scanned. When the client re
 | A step fails with "executable not found" | The step programs are not published | `bootstrap.ps1 -Stage 6 -Force` |
 | The UI loads, but every request fails | `frontend\.env` points at another port, or the frontend is not on 5174 (`CORS_ORIGINS`) | Start the frontend exactly as in section I |
 | A job shows **"orphaned by engine restart"** | The backend was stopped while it ran | Rescan the repository (or Verify again) |
+| Preflight: **"Python: 3.14.0b2 ... is a pre-release"** | Software Center (or a download) gave an alpha, beta or release candidate | Replace it with a final release: "Replacing a pre-release Python", below |
+| The backend does not start: **"Another Modernization Platform is already running on ..."** | Someone else's platform (or a second one of yours) uses the same schema | Each person needs their own schema: section N. If the other platform was simply closed, its claim lapses 90 s after it stopped |
+| Delete: **"Some files could not be removed, so nothing was deleted from the database"** | A program holds a file under `RUNS_DIR` open, usually Visual Studio with a conversion's worktree | Close it and delete again; it picks up where it stopped (section O) |
+| Registering: **"This checkout is already registered in engagement ..."** | One folder (or a worktree of it) is in another engagement already | Clone the repository again into another folder and register that (section N) |
+
+### Replacing a pre-release Python
+
+A pre-release (`3.14.0b2`, `3.14.0rc1`) is refused by preflight. Packages with compiled parts (pydantic-core,
+psycopg) publish wheels for final releases, and an interpreter that is still changing can break them. On one VDI,
+pydantic failed in bootstrap stage 7 on 3.14.0b2.
+
+1. Install a final release, for example 3.14.8, per user (section C), or ask Software Center for the final release.
+   The pre-release can stay installed: nothing uses it once `PYTHON` names the new one.
+2. Name it in `backend\.env`: `PYTHON=C:\MP\tools\python314\python.exe`.
+3. Delete `backend\.venv` (it was built with the pre-release), then run preflight and bootstrap again. Bootstrap
+   rebuilds the environment with the final release and installs the locked versions into it.
+
+### When preflight's own check is blocked
+
+Preflight runs each check with pip, npm and dotnet themselves, so it sees what bootstrap will see. If preflight
+still cannot complete on a machine where the tools themselves work, run bootstrap's stages one at a time, without
+stage 1, and stop at the first that fails. Stage 1 is preflight; each later stage does its own work and says
+plainly when it fails.
+
+```powershell
+cd C:\MP\code; foreach ($s in 2..8) { powershell -ExecutionPolicy Bypass -File .\scripts\bootstrap.ps1 -Stage $s; if ($LASTEXITCODE -ne 0) { Write-Host "Stopped at stage $s"; break } }
+```
+
+Stage 4 is preflight's database check. If that is the part that is blocked, leave it out:
+
+```powershell
+cd C:\MP\code; foreach ($s in 2, 3, 5, 6, 7, 8) { powershell -ExecutionPolicy Bypass -File .\scripts\bootstrap.ps1 -Stage $s; if ($LASTEXITCODE -ne 0) { Write-Host "Stopped at stage $s"; break } }
+```
+
+Stage 7 (the migration) then shows whether the database works.
+
+### The ".NET Host" compliance warning
+
+On a managed VDI, the client's endpoint security or compliance agent may raise a warning naming **.NET Host**
+(`dotnet.exe`) when the platform runs it, typically when .NET is installed per user (section C) rather than through
+Software Center.
+
+**What it means.** The agent sees an executable it does not manage running from the user's profile. `dotnet.exe` is
+Microsoft's own, signed program: the same .NET that Software Center would install. The platform runs it for every
+build, test and discovery step, so the warning appears whenever those run.
+
+**What to do.** Do not try to silence or work around the agent. Raise it with the client's IT or security team,
+naming the folder (for example `C:\MP\tools\dotnet`) and the version. Ask them either to allow that per-user
+installation, or to install a .NET 10 SDK machine-wide through Software Center. In the second case, leave
+`DOTNET_ROOT` empty in `backend\.env` and run bootstrap again.
 
 ---
 
@@ -606,10 +696,14 @@ Run the two commands of section I again. Nothing else is needed: the database an
 
 ### Installing a later release
 
-A later release arrives as a git bundle, `rbc-release-<n>.bundle`, with a `.sha256` file beside it.
+A later release arrives as a git bundle, `rbc-release-<n>.bundle`, with a `.sha256` file beside it. Its data stays:
+the database, `RUNS_DIR`, `backend\.env` and the client repositories are not part of the release. The steps below
+use rbc-release-2, which upgrades an installed rbc-release-1.
 
-1. Stop the backend and the frontend.
-2. Check the bundle arrived intact. The two values must be identical:
+1. Stop the backend and the frontend. Wait until no discovery or verification is running.
+2. Ask the database administrator for a backup of the platform's schema (`DB_SCHEMA`) before the upgrade. The
+   upgrade only adds to it, but a backup costs little.
+3. Check the bundle arrived intact. The two values must be identical:
 
    ```powershell
    (Get-FileHash -Algorithm SHA256 .\rbc-release-2.bundle).Hash.ToLower()
@@ -619,7 +713,7 @@ A later release arrives as a git bundle, `rbc-release-<n>.bundle`, with a `.sha2
    Get-Content .\rbc-release-2.bundle.sha256
    ```
 
-3. Bring the release into the platform folder and switch to it. Your `backend\.env`, `frontend\.env`, `.venv`,
+4. Bring the release into the platform folder and switch to it. Your `backend\.env`, `frontend\.env`, `.venv`,
    `node_modules` and published programs are not part of git, so they stay:
 
    ```powershell
@@ -630,9 +724,110 @@ A later release arrives as a git bundle, `rbc-release-<n>.bundle`, with a `.sha2
    git -C C:\MP\code checkout rbc-release-2
    ```
 
-4. Run bootstrap again (section H). It updates only what the release changed: new packages, programs whose
-   sources changed, new migrations, new configuration.
-5. Start the backend and the frontend (section I).
+   `git -C C:\MP\code log -1 --format="%h %d"` then shows the release's commit and `tag: rbc-release-2`.
+5. Run preflight (section G). The release adds checks, so read it again: a pre-release Python is now refused,
+   and each package source is tested with the tool itself.
+6. Run bootstrap again (section H). It updates only what the release changed. For rbc-release-2 that is:
+   - **stage 3:** installs the exact versions in `backend\requirements.lock`. Packages may move to the locked
+     versions; nothing is compiled;
+   - **stage 6:** republishes the step programs whose sources changed;
+   - **stage 7:** adds two tables, `platform_heartbeat` (one platform per schema, section N) and `deletion_audit`
+     (section O). Nothing existing changes;
+   - **stage 8:** a reseed, which never overwrites a catalog edit made in the UI.
+7. Start the backend and the frontend (section I). Your engagements, repositories, conversions and verifications are
+   all there. The release's new parts: **Delete engagement…** on the Repositories page, a hard **Delete** on a
+   repository's page (section O), and the refusal to register one checkout in two engagements (section N).
 
 If the platform folder was installed without `.git`, copy the new release to a new folder instead, copy
-`backend\.env` into it, run bootstrap there, and start the platform from the new folder.
+`backend\.env` into it, run bootstrap there, and start the platform from the new folder. It uses the same database
+schema and `RUNS_DIR`, so the data is the same.
+
+---
+
+## N. More than one person
+
+The platform runs for one person, on one machine (`CLAUDE.md`, "Operating model"). It runs its jobs inside its own
+process, and when it starts it fails every job still marked as running, assuming a previous process of its own
+stopped. Two platforms on one schema would fail each other's running jobs, then run each other's work. So:
+
+- **One platform per schema.** A running platform keeps a heartbeat in its schema. A second platform started on the
+  same schema, whether someone else's or a second one of yours, refuses to start before it touches anything. It says
+  who holds the schema, from which machine and folder, and when it was last seen. A platform that stopped without
+  saying so releases the schema 90 seconds after its last heartbeat.
+- **One checkout per engagement.** The platform creates its conversion branches (`conversion/1`, ...) and their
+  worktrees in the registered checkout's git. So a checkout, or a worktree of it, is registered in one engagement
+  only. Registering it in a second is refused, with the engagement that has it. To use the same repository in a
+  second engagement, clone it again into another folder and register that.
+
+### A second person on the same VDI or database
+
+Each person sets up their own platform; nothing is shared but the database server:
+
+1. **Their own copy of the code**, in their own short folder, for example `C:\MP2\code` (section B).
+2. **Their own schema**, in the same database. Ask the database administrator for a second login with the same
+   rights (section E), or use the same login with a second schema name. The schema name follows the rules in
+   section E, for example `modplatform_asmith`. The platform creates the schema on first use.
+3. **Their own `backend\.env`**, copied from the first person's and changed:
+
+   | Key | First person | Second person |
+   |---|---|---|
+   | `DB_SCHEMA` | `modplatform` | `modplatform_asmith` |
+   | `DB_USER`, `DB_PASSWORD` | theirs | theirs, if they have their own login |
+   | `RUNS_DIR` | `C:\MP\runs` | `C:\MP2\runs` (never shared: it holds each person's worktrees and conversions) |
+   | `API_PORT` | `8001` | `8002`, if both run on the same machine at once |
+   | `CORS_ORIGINS` | `http://localhost:5174,...` | `http://localhost:5175,http://127.0.0.1:5175` |
+
+4. **Their own clones of the client repositories** (section K): never the first person's folders.
+5. Preflight and bootstrap as in sections G and H. Then start their frontend on their port:
+   `npm run dev -- --port 5175 --strictPort`.
+
+Each platform then sees only its own engagements; the catalog is seeded into each schema.
+
+---
+
+## O. Deleting a repository or an engagement
+
+**Delete** on a repository's page removes the repository from its engagement. **Delete engagement…** on the
+Repositories page removes the engagement and every repository in it. Both are hard deletes and cannot be undone. The
+same, from the command line:
+
+```powershell
+cd C:\MP\code\backend; .venv\Scripts\python.exe -m app.deletion.cli repository --engagement client-a --repository orderservice
+```
+
+```powershell
+cd C:\MP\code\backend; .venv\Scripts\python.exe -m app.deletion.cli engagement --engagement client-a
+```
+
+Add `--dry-run` to see what would go without deleting anything.
+
+**What goes:**
+- every database row of it;
+- its folders under `RUNS_DIR`;
+- in each registered checkout, the worktrees the platform made and the branches the platform created (the ones
+  its records name: `conversion/<n>`, experiment branches).
+
+**What stays:**
+- the checkout itself, and any branch the platform did not create;
+- the folders beside a checkout that a conversion's worktree linked to (`EnterprisePackages`);
+- the catalog, the package lookup cache, and every other repository and engagement.
+
+After a repository is deleted, the engagement's estate view still counts it until the estate is consolidated
+again.
+
+**Before anything goes**, the dialog (or the command) shows exactly what will go. That includes every conversion
+that has been run: the agent's work lives only on its branch and goes with it, so push or copy anything you want to
+keep first. You confirm by typing the repository's or engagement's name. A delete is refused while a job of it is
+running.
+
+If a program holds a file open (Visual Studio with a worktree, a terminal inside a folder), nothing is deleted from
+the database. Close it and delete again: it carries on from where it stopped.
+
+**Every delete is recorded** (what, by whom, from where, when), apart from the data it removed:
+
+```powershell
+cd C:\MP\code\backend; .venv\Scripts\python.exe -m app.deletion.cli audit
+```
+
+A repository can be registered again after its delete. Discovery and preparation start afresh, with no leftovers
+in the way.

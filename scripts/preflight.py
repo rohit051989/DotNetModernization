@@ -13,8 +13,14 @@ Reports, in plain language, each prerequisite as PRESENT or MISSING, and exits 1
 - whether Windows long-path support and git's core.longpaths are on (reported, never failed);
 - the database: a connection with DB_USER and DB_PASSWORD, and the right to create the configured schema (or to
   create tables in it, when it exists already); never the right to create a database or a superuser;
-- each configured package source reachable: PIP_INDEX_URL, NPM_REGISTRY and each of NUGET_SOURCES (the public
-  defaults when unset);
+- a final Python release, not an alpha, beta or release candidate; its exact patch release, with a warning when it
+  is older than the one the suite passed on (backend/requirements.lock);
+- each package source, tested with the tool bootstrap uses, so proxies, certificates and logins behave as in the real
+  install: pip downloads a locked wheel, npm asks for the locked Vite, dotnet restores a package the step programs use.
+  A failure shows the tool's own message. PIP_INDEX_URL, NPM_REGISTRY and NUGET_SOURCES, or, when empty, the tool's
+  own configuration;
+- the proxy settings it sees (HTTPS_PROXY, HTTP_PROXY, NO_PROXY, the tools' own) and, for each source, whether it
+  goes through the proxy or direct (reported, never failed);
 - RUNS_DIR set, outside the repository, and writable.
 
 Standard library only, so it runs before anything is installed. It reads backend/.env and the environment, and never
@@ -28,8 +34,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
-import urllib.error
-import urllib.request
+import urllib.parse
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -56,6 +61,15 @@ def check(ok: bool, what: str, detail: str) -> bool:
     return ok
 
 
+warnings: list[tuple[str, str]] = []
+
+
+def warn(what: str, detail: str) -> None:
+    """Worth knowing, never a failure."""
+    warnings.append((what, detail))
+    print(f"  WARNING  {what}: {detail}", flush=True)
+
+
 def configuration() -> dict[str, str]:
     """backend/.env, then the environment over it."""
     values = {}
@@ -72,7 +86,7 @@ def configuration() -> dict[str, str]:
 
 def run(*args: str) -> tuple[int, str]:
     try:
-        done = subprocess.run(list(args), capture_output=True, text=True, timeout=60)
+        done = subprocess.run(list(args), capture_output=True, text=True, timeout=300, encoding="utf-8", errors="replace")
         return done.returncode, (done.stdout + done.stderr).strip()
     except (OSError, subprocess.TimeoutExpired) as error:
         return -1, str(error)
@@ -127,19 +141,49 @@ def dotnet_runtime(pinned: str) -> None:
               f"would not find this runtime. Set DOTNET_ROOT={folder} in backend\\.env")
 
 
+def interpreter_of(cfg: dict[str, str]) -> str:
+    """The Python bootstrap uses: PYTHON in backend/.env, else python on PATH."""
+    return cfg.get("PYTHON", "").strip() or "python"
+
+
+def tested_python() -> tuple[int, ...]:
+    """The Python the full suite passed on, from backend/requirements.lock's header."""
+    lock = BACKEND / "requirements.lock"
+    m = re.search(r"(?m)^# tested-python: (\S+)", lock.read_text(encoding="utf-8")) if lock.exists() else None
+    return version(m.group(1)) if m else ()
+
+
+PRERELEASE = {"alpha": "alpha", "beta": "beta", "candidate": "release candidate"}
+
+
 def python_check(cfg: dict[str, str]) -> None:
-    """The interpreter bootstrap uses: PYTHON in backend/.env, else python on PATH."""
+    """The interpreter bootstrap uses: a final release from 3.11 to 3.14, reported to the patch release."""
     named = cfg.get("PYTHON", "").strip()
-    interpreter = named or "python"
-    code, out = run(interpreter, "-c", "import sys; print('.'.join(map(str, sys.version_info[:3]))); print(sys.executable)")
+    interpreter = interpreter_of(cfg)
+    code, out = run(interpreter, "-c", "import sys; v = sys.version_info; print(f'{v.major}.{v.minor}.{v.micro}'); "
+                                       "print(v.releaselevel, v.serial); print(sys.version.split()[0]); print(sys.executable)")
     lines = out.splitlines() if code == 0 else []
     py = version(lines[0]) if lines else ()
-    where = f"{lines[1]}, " if len(lines) > 1 else ""
+    level, serial = (lines[1].split() + ["", ""])[:2] if len(lines) > 1 else ("final", "0")
+    full = lines[2] if len(lines) > 2 else (lines[0] if lines else "")
+    where = f"{lines[3]}, " if len(lines) > 3 else ""
     origin = "PYTHON in backend\\.env" if named else "python on PATH"
-    check(bool(py) and MIN_PYTHON <= py < MAX_PYTHON_EXCLUSIVE, "Python",
-          f"{lines[0] if py else interpreter + ' not found'} ({where}{origin}; {PYTHON_REQUIRED})"
-          f"{': too old' if py and py < MIN_PYTHON else ''}"
-          f"{': too new, the pinned dependencies have no build for it' if py and py >= MAX_PYTHON_EXCLUSIVE else ''}")
+    if py and level != "final":
+        check(False, "Python",
+              f"{full} ({where}{origin}) is a pre-release ({PRERELEASE.get(level, level)} {serial}). The platform needs a "
+              f"final release: packages with compiled parts, such as pydantic-core, publish wheels for final releases, and a "
+              f"pre-release's interpreter can still change under them, so the install fails or the backend breaks when it "
+              f"starts (on 3.14.0b2, pydantic failed in bootstrap stage 7). Install the final {py[0]}.{py[1]}.x release "
+              f"and name it as PYTHON in backend\\.env (docs/VDI-SETUP.md section L)")
+        return
+    ok = bool(py) and MIN_PYTHON <= py < MAX_PYTHON_EXCLUSIVE
+    check(ok, "Python", f"{full if py else interpreter + ' not found'} ({where}{origin}; {PYTHON_REQUIRED})"
+                        f"{': too old' if py and py < MIN_PYTHON else ''}"
+                        f"{': too new, the pinned dependencies have no build for it' if py and py >= MAX_PYTHON_EXCLUSIVE else ''}")
+    tested = tested_python()
+    if ok and tested and py < tested:
+        warn("Python", f"{full} is older than {'.'.join(map(str, tested))}, the release the full suite passed on "
+                       "(backend\\requirements.lock). It is supported; the tested one, or a later patch, is safer")
 
 
 def apply_dotnet_root(cfg: dict[str, str]) -> None:
@@ -211,25 +255,23 @@ def note(what: str, detail: str) -> None:
     print(f"  {'ON     ' if detail == 'on' else 'OFF    '}  {what}: {detail}", flush=True)
 
 
-def reachable(url: str) -> tuple[bool, str]:
-    if not re.match(r"^https?://", url, re.I):
-        path = Path(url)
-        return path.is_dir(), f"folder {'exists' if path.is_dir() else 'does not exist'}"
-    try:
-        with urllib.request.urlopen(urllib.request.Request(url, method="GET"), timeout=15) as response:
-            return response.status < 400, f"HTTP {response.status}"
-    except urllib.error.HTTPError as error:
-        return error.code < 500 and error.code not in (404,), f"HTTP {error.code}"
-    except (urllib.error.URLError, OSError) as error:
-        return False, f"unreachable ({getattr(error, 'reason', error)})"
+def masked(url: str) -> str:
+    """A URL as it may be printed: no user or password."""
+    return re.sub(r"(?<=://)[^/@\s]+@", "***@", url)
 
 
-def tool_sources(key: str) -> tuple[list[str], str]:
+def tail(text: str, lines: int = 3) -> str:
+    """The end of a tool's own message, credentials masked: what it said when it failed."""
+    kept = [masked(l.strip()) for l in text.splitlines() if l.strip()][-lines:]
+    return " | ".join(kept)[:500] or "no message"
+
+
+def tool_sources(key: str, interpreter: str | None = None) -> tuple[list[str], str]:
     """Where pip, npm or dotnet would install from when the .env key is empty: the tool's own configuration (pip.ini,
     .npmrc, the account's NuGet.Config, which is where a mirror that needs a login is usually set), else the public
     default."""
     if key == "PIP_INDEX_URL":
-        code, out = run(sys.executable, "-m", "pip", "config", "get", "global.index-url")
+        code, out = run(interpreter or sys.executable, "-m", "pip", "config", "get", "global.index-url")
         if code == 0 and out.strip().startswith("http"):
             return [out.strip()], "pip configuration"
     elif key == "NPM_REGISTRY":
@@ -246,17 +288,139 @@ def tool_sources(key: str) -> tuple[list[str], str]:
     return [DEFAULT_SOURCES[key]], "default"
 
 
+PROXY_NAMES = ("HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY")
+
+
+def proxy_settings() -> dict[str, str]:
+    """HTTPS_PROXY, HTTP_PROXY and NO_PROXY as the tools see them (either case)."""
+    return {n: os.environ.get(n) or os.environ.get(n.lower()) or "" for n in PROXY_NAMES}
+
+
+def route(url: str, settings: dict[str, str]) -> str:
+    """Whether a request to `url` goes through the proxy or direct, by HTTPS_PROXY / HTTP_PROXY and NO_PROXY."""
+    if not re.match(r"^https?://", url, re.I):
+        return "a folder: no network"
+    host = urllib.parse.urlparse(url).hostname or ""
+    proxy = settings["HTTPS_PROXY"] if url.lower().startswith("https") else settings["HTTP_PROXY"]
+    if not proxy:
+        return "direct (no proxy set)"
+    for entry in [e.strip().lower() for e in settings["NO_PROXY"].split(",") if e.strip()]:
+        if entry == "*" or host.lower() == entry.lstrip(".") or host.lower().endswith("." + entry.lstrip(".")):
+            return f"direct (NO_PROXY {entry})"
+    return f"through the proxy {masked(proxy)}"
+
+
+def proxies(cfg: dict[str, str]) -> None:
+    print("Proxy (reported only)")
+    seen = proxy_settings()
+    for name in PROXY_NAMES:
+        print(f"           {name}: {masked(seen[name]) if seen[name] else 'not set'}")
+    interpreter = interpreter_of(cfg)
+    code, out = run(interpreter, "-m", "pip", "config", "get", "global.proxy")
+    if code == 0 and out.strip():
+        print(f"           pip's own proxy (pip configuration): {masked(out.strip())}")
+    npm = shutil.which("npm") or shutil.which("npm.cmd")
+    for key in ("https-proxy", "proxy"):
+        code, out = run(npm, "config", "get", key) if npm else (-1, "")
+        if code == 0 and out.strip() not in ("", "null", "undefined"):
+            print(f"           npm's own {key} (npm configuration): {masked(out.strip())}")
+    if sys.platform == "win32":
+        try:
+            import winreg
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Internet Settings") as k:
+                enabled = winreg.QueryValueEx(k, "ProxyEnable")[0] == 1
+                server = winreg.QueryValueEx(k, "ProxyServer")[0] if enabled else ""
+            if enabled:
+                print(f"           Windows system proxy: {server} (dotnet uses it when HTTPS_PROXY is not set)")
+        except OSError:
+            pass
+
+
+def _lock_versions() -> dict[str, str]:
+    lock = BACKEND / "requirements.lock"
+    pins = dict(re.findall(r"(?m)^([A-Za-z0-9_.-]+)==(\S+)$", lock.read_text(encoding="utf-8"))) if lock.exists() else {}
+    return {k.lower(): v for k, v in pins.items()}
+
+
+def _npm_version(name: str) -> str | None:
+    lock = ROOT / "frontend" / "package-lock.json"
+    try:
+        return json.loads(lock.read_text(encoding="utf-8"))["packages"][f"node_modules/{name}"]["version"]
+    except (OSError, KeyError, ValueError):
+        return None
+
+
+def pip_source(cfg: dict[str, str], index: str, origin: str, scratch: Path) -> None:
+    """pip itself downloads one locked wheel from the index, as bootstrap stage 3 installs them."""
+    interpreter = interpreter_of(cfg)
+    package = f"pyyaml=={_lock_versions().get('pyyaml', '6.0.3')}"
+    command = [interpreter, "-m", "pip", "download", "--no-deps", "--only-binary=:all:", "--no-cache-dir",
+               "--disable-pip-version-check", "-q", "-d", str(scratch / "pip"), package]
+    if cfg.get("PIP_INDEX_URL", "").strip():
+        command += ["--index-url", index]
+    code, out = run(*command)
+    where = f"{masked(index)} (from {origin}; {route(index, proxy_settings())})"
+    check(code == 0, "PIP_INDEX_URL", f"{where}: pip ({interpreter}) downloaded the {package} wheel" if code == 0
+          else f"{where}: pip ({interpreter}) failed: {tail(out)}")
+
+
+def npm_source(cfg: dict[str, str], registry: str, origin: str) -> None:
+    """npm itself asks the registry for the locked Vite version, as bootstrap stage 5's npm ci does."""
+    npm = shutil.which("npm") or shutil.which("npm.cmd")
+    if not npm:
+        check(False, "NPM_REGISTRY", f"{masked(registry)}: npm not found")
+        return
+    package = f"vite@{_npm_version('vite') or 'latest'}"
+    command = [npm, "view", package, "version", "--prefer-online"]
+    if cfg.get("NPM_REGISTRY", "").strip():
+        command += ["--registry", registry]
+    code, out = run(*command)
+    where = f"{masked(registry)} (from {origin}; {route(registry, proxy_settings())})"
+    check(code == 0, "NPM_REGISTRY", f"{where}: npm view {package} answered {out.strip().splitlines()[-1] if out.strip() else ''}"
+          if code == 0 else f"{where}: npm failed: {tail(out)}")
+
+
+PROBE_PACKAGE = ("Microsoft.Build.Locator", "1.11.2")    # small, and one the step programs restore
+
+
+def nuget_source(cfg: dict[str, str], sources: list[str], label: str, scratch: Path, shown: list[str] | None = None) -> None:
+    """dotnet itself restores one package the step programs use into an empty package folder (so it must come from
+    the source, not a cache), with the sources bootstrap stage 6 uses."""
+    project = scratch / f"nuget-probe-{len(list(scratch.glob('nuget-probe-*')))}"
+    project.mkdir(parents=True)
+    (project / "probe.csproj").write_text(
+        '<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><TargetFramework>net10.0</TargetFramework>'
+        '<NuGetAudit>false</NuGetAudit></PropertyGroup><ItemGroup>'
+        f'<PackageReference Include="{PROBE_PACKAGE[0]}" Version="{PROBE_PACKAGE[1]}" /></ItemGroup></Project>',
+        encoding="utf-8")
+    command = ["dotnet", "restore", str(project / "probe.csproj"), "--packages", str(project / "packages"),
+               "--no-http-cache", "--force", "-nologo"]
+    for s in sources:
+        command += ["--source", s]
+    code, out = run(*command)
+    routes = "; ".join(sorted({route(s, proxy_settings()) for s in (sources or shown or [])}))
+    check(code == 0, "NUGET_SOURCES", f"{label}; {routes}: dotnet restore got {PROBE_PACKAGE[0]} {PROBE_PACKAGE[1]}" if code == 0
+          else f"{label}; {routes}: dotnet restore failed: {tail(out, 4)}")
+
+
 def sources(cfg: dict[str, str]) -> None:
-    print("Package sources")
-    for key in ("PIP_INDEX_URL", "NPM_REGISTRY", "NUGET_SOURCES"):
-        configured = cfg.get(key, "").strip()
-        urls, origin = ([u.strip() for u in configured.split(",") if u.strip()], "backend\\.env") if configured \
-            else tool_sources(key)
-        for url in urls:
-            ok, detail = reachable(url)
-            if ok and detail == "HTTP 401":
-                detail += ": reachable; it needs a login, which the tool's own configuration must supply"
-            check(ok, f"{key} {url} (from {origin})", detail)
+    print("Package sources (each tested with the tool bootstrap uses)")
+    with tempfile.TemporaryDirectory(prefix="preflight-") as tmp:
+        scratch = Path(tmp)
+        interpreter = interpreter_of(cfg)
+        configured = cfg.get("PIP_INDEX_URL", "").strip()
+        urls, origin = ([configured], "backend\\.env") if configured else tool_sources("PIP_INDEX_URL", interpreter)
+        pip_source(cfg, urls[0], origin, scratch)
+        configured = cfg.get("NPM_REGISTRY", "").strip()
+        urls, origin = ([configured], "backend\\.env") if configured else tool_sources("NPM_REGISTRY")
+        npm_source(cfg, urls[0], origin)
+        configured = [u.strip() for u in cfg.get("NUGET_SOURCES", "").split(",") if u.strip()]
+        if configured:
+            for s in configured:
+                nuget_source(cfg, [s], f"{masked(s)} (from backend\\.env)", scratch)
+        else:
+            urls, origin = tool_sources("NUGET_SOURCES")
+            nuget_source(cfg, [], f"{', '.join(masked(u) for u in urls)} (from {origin})", scratch, shown=urls)
 
 
 def runs_dir(cfg: dict[str, str]) -> None:
@@ -344,13 +508,15 @@ def main() -> int:
     print(f"Preflight for {ROOT}")
     if not args.database:
         tools(cfg)
+        proxies(cfg)
         sources(cfg)
         runs_dir(cfg)
         long_paths()
     if not args.no_database:
         database(cfg)
     missing = [what for ok, what, _ in results if not ok]
-    print(f"\n{len(results) - len(missing)} present, {len(missing)} missing" + (f": {', '.join(missing)}" if missing else ""))
+    print(f"\n{len(results) - len(missing)} present, {len(missing)} missing" + (f": {', '.join(missing)}" if missing else "")
+          + (f"; {len(warnings)} warning(s)" if warnings else ""))
     return 1 if missing else 0
 
 

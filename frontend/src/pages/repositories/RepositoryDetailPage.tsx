@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
+import { deleteRepositoryHard, getRepositoryDeletionPlan } from '../../api/deletion'
+import { HardDeleteDialog } from '../../components/HardDeleteDialog'
 import {
-  deleteRepository,
   getRepository,
   listRepositoryExecutions,
   rescanRepository,
@@ -15,7 +16,6 @@ import { getWorkListDecisions } from '../../api/items'
 import { ApiError } from '../../api/client'
 import { CollapsibleSection } from '../../components/CollapsibleSection'
 import { EmptyState } from '../../components/EmptyState'
-import { ConfirmDialog } from '../../components/ConfirmDialog'
 import { Field, inputClass } from '../../components/FormField'
 import { TagInput } from '../../components/TagInput'
 import { useToast } from '../../components/Toast'
@@ -173,19 +173,7 @@ export function RepositoryDetailPage({
     }
   }
 
-  async function handleDelete() {
-    setBusy(true)
-    try {
-      await deleteRepository(repositoryId)
-      showToast('success', 'Repository deleted.')
-      setShowDeleteConfirm(false)
-      onDeleted()
-    } catch {
-      showToast('error', 'Could not delete this repository.')
-    } finally {
-      setBusy(false)
-    }
-  }
+  const loadDeletionPlan = useCallback(() => getRepositoryDeletionPlan(repositoryId), [repositoryId])
 
   async function handleRestore() {
     setBusy(true)
@@ -534,15 +522,19 @@ export function RepositoryDetailPage({
         </div>
       </CollapsibleSection>
 
-      <ConfirmDialog
-        open={showDeleteConfirm}
-        title="Delete repository"
-        message={`Soft-delete "${repo.name}"? It will disappear from lists until restored.`}
-        confirmLabel={busy ? 'Deleting…' : 'Delete'}
-        destructive
-        onConfirm={handleDelete}
-        onCancel={() => setShowDeleteConfirm(false)}
-      />
+      {showDeleteConfirm && (
+        <HardDeleteDialog
+          title={`Delete repository ${repo.name}`}
+          loadPlan={loadDeletionPlan}
+          onDelete={(typed) => deleteRepositoryHard(repositoryId, typed)}
+          onClose={() => setShowDeleteConfirm(false)}
+          onDeleted={() => {
+            showToast('success', `${repo.name} deleted.`)
+            setShowDeleteConfirm(false)
+            onDeleted()
+          }}
+        />
+      )}
     </div>
   )
 }

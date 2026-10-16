@@ -420,8 +420,10 @@ def package_moves(db: Session, repository_id, from_tfm: str, to_tfm: str,
     return packages, moves_in, skipped
 
 
-def create(db: Session, slug: str, exclusions: list[dict], layout: str = "in_place") -> models.ConversionPlan:
-    repository = db.query(models.Repository).filter_by(slug=slug).filter(models.Repository.deleted_at.is_(None)).one()
+def create(db: Session, engagement_id: str, slug: str, exclusions: list[dict], layout: str = "in_place") -> models.ConversionPlan:
+    # A slug is unique within its engagement only: two engagements may each have an "orderservice".
+    repository = (db.query(models.Repository).filter_by(engagement_id=engagement_id, slug=slug)
+                  .filter(models.Repository.deleted_at.is_(None)).one())
     engagement = db.get(models.Engagement, repository.engagement_id)
     root = Path(repository.local_path)
     to_tfm = engagement.target_framework

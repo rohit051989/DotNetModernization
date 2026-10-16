@@ -109,6 +109,12 @@ modernization-platform/
      export, and the UI, until an admin-only `restore` clears `deleted_at`. See
      `02-DATA-MODEL.md`'s "Soft delete vs deprecate" section for the full
      semantics before touching either.
+   - Engagement data is not the catalog: a person can hard delete a
+     repository or a whole engagement on purpose (`app/deletion/`,
+     `docs/VDI-SETUP.md` section O). It shows what will go, needs the name
+     typed, is refused while a job runs, never touches the catalog, the
+     package lookup cache or another engagement, and leaves a
+     `deletion_audit` record. Nothing else hard-deletes.
 8. Prefer boring, readable code over clever code. This will be handed to a
    delivery team.
 9. **Client-scoped operations must never mutate master catalog tables.**

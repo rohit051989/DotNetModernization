@@ -1,4 +1,6 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { deleteEngagementHard, getEngagementDeletionPlan } from '../../api/deletion'
+import { HardDeleteDialog } from '../../components/HardDeleteDialog'
 import { listRepositories } from '../../api/repositories'
 import { getDashboardRepositories } from '../../api/dashboard'
 import type { RepositorySummary } from '../../types/repositories'
@@ -47,6 +49,8 @@ interface RepositoryListProps {
   onNavigateToExecution: (executionId: string) => void
   refreshToken: number
   onChanged: () => void
+  /** The engagement was hard deleted. */
+  onEngagementDeleted: (engagementId: string) => void
 }
 
 export function RepositoryList({
@@ -58,7 +62,10 @@ export function RepositoryList({
   onNavigateToExecution,
   refreshToken,
   onChanged,
+  onEngagementDeleted,
 }: RepositoryListProps) {
+  const [deletingEngagement, setDeletingEngagement] = useState(false)
+  const loadEngagementPlan = useCallback(() => getEngagementDeletionPlan(engagementId), [engagementId])
   const [repositories, setRepositories] = useState<RepositorySummary[]>([])
   const [progressByRepo, setProgressByRepo] = useState<Record<string, DashboardRepositoryRow>>({})
   const [loading, setLoading] = useState(true)
@@ -141,14 +148,36 @@ export function RepositoryList({
     <aside className="flex w-full min-w-0 flex-col bg-white">
       <div className="flex items-center justify-between border-b border-neutral-100 px-4 py-3">
         <h2 className="text-sm font-semibold text-neutral-900">Repositories — {engagementName}</h2>
-        <button
-          type="button"
-          onClick={() => setShowDrawer(true)}
-          className="rounded bg-violet-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-violet-700"
-        >
-          + Register Repository
-        </button>
+        <div className="flex items-center gap-2">
+          {/* TODO: gate behind an admin check once auth exists (04-FRONTEND-SPEC.md, "Future: access control"). */}
+          <button
+            type="button"
+            onClick={() => setDeletingEngagement(true)}
+            className="rounded border border-red-200 px-3 py-1.5 text-sm text-red-700 hover:bg-red-50"
+          >
+            Delete engagement…
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowDrawer(true)}
+            className="rounded bg-violet-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-violet-700"
+          >
+            + Register Repository
+          </button>
+        </div>
       </div>
+      {deletingEngagement && (
+        <HardDeleteDialog
+          title={`Delete engagement ${engagementName}`}
+          loadPlan={loadEngagementPlan}
+          onDelete={(typed) => deleteEngagementHard(engagementId, typed)}
+          onClose={() => setDeletingEngagement(false)}
+          onDeleted={() => {
+            setDeletingEngagement(false)
+            onEngagementDeleted(engagementId)
+          }}
+        />
+      )}
 
       <div className="flex flex-wrap gap-2 border-b border-neutral-100 px-4 py-3">
         <input

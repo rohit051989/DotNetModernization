@@ -1,4 +1,5 @@
 import datetime
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -8,11 +9,13 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError
 
 from app.config import settings
+from app.heartbeat import AnotherPlatform, Heartbeat
 from app.routers import (
     catalog,
     catalog_items,
     conversion,
     dashboard,
+    deletion,
     decisions,
     estate,
     engagement_patterns,
@@ -80,8 +83,19 @@ def _reconcile_orphaned_executions() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # One platform per schema (app.heartbeat): checked before anything else, because the reconciliation below fails
+    # every running job, and another platform's jobs must not be among them.
+    beat = Heartbeat()
+    try:
+        beat.start()
+    except AnotherPlatform as refused:
+        logging.getLogger("app.heartbeat").error(str(refused))
+        raise
     _reconcile_orphaned_executions()
-    yield
+    try:
+        yield
+    finally:
+        beat.stop()
 
 app = FastAPI(
     title="Modernization Platform API",
@@ -324,3 +338,4 @@ app.include_router(estate.router)
 app.include_router(test_coverage.router)
 app.include_router(impact.router)
 app.include_router(conversion.router)
+app.include_router(deletion.router)

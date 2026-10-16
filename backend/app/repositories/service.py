@@ -241,6 +241,43 @@ def find_nesting_conflict(
     return None
 
 
+def git_common_dir(path: Path) -> str | None:
+    """The git directory a checkout's branches live in: shared by a repository and every worktree of it. None for a
+    folder that is not a git checkout."""
+    common = repository_ingest.run_git(path, "rev-parse", "--git-common-dir")
+    if not common:
+        return None
+    return normalize_local_path(str((path / common).resolve() if not Path(common).is_absolute() else Path(common)))
+
+
+def find_checkout_in_other_engagement(db: Session, engagement_id: str, local_path: str) -> models.Repository | None:
+    """A registration of the same checkout — the same folder, or any worktree sharing its git directory — in another
+    engagement. A checkout serves one engagement: the platform creates its conversion and experiment branches, and
+    the worktrees on them, in the checkout's git, under names (conversion/1, ...) that a second engagement would
+    reuse."""
+    path = Path(local_path)
+    normalised = normalize_local_path(local_path).lower()
+    common = git_common_dir(path) if (path / ".git").exists() else None
+    others = db.query(models.Repository).filter(models.Repository.engagement_id != engagement_id,
+                                                models.Repository.deleted_at.is_(None))
+    for other in others:
+        if other.local_path_normalised.lower() == normalised:
+            return other
+        if common and Path(other.local_path).exists() and (Path(other.local_path) / ".git").exists():
+            theirs = git_common_dir(Path(other.local_path))
+            if theirs and theirs.lower() == common.lower():
+                return other
+    return None
+
+
+def checkout_in_other_engagement_message(other: models.Repository) -> str:
+    return (f"This checkout is already registered in engagement '{other.engagement_id}' as \"{other.slug}\" "
+            f"({other.local_path}). A checkout serves one engagement: the platform creates its conversion and "
+            "experiment branches, and their worktrees, in the checkout's git, and a second engagement would reuse the "
+            "same branch names. To use the repository here too, clone it again into another folder and register that "
+            "folder.")
+
+
 def _unique_slug(db: Session, engagement_id: str, base_slug: str) -> str:
     slug = base_slug
     suffix = 2
@@ -372,6 +409,9 @@ def inspect_path(db: Session, engagement_id: str, raw_local_path: str) -> Inspec
         warnings.append("No .sln or .csproj found — the folder may still be in scope.")
     if _looks_like_network_path(path):
         warnings.append("Path is on a network drive, which will make scanning slow.")
+    elsewhere = find_checkout_in_other_engagement(db, engagement_id, raw_local_path)
+    if elsewhere is not None:
+        warnings.append(checkout_in_other_engagement_message(elsewhere))
 
     duplicate_conflict = None
     match = find_duplicate_conflict(
@@ -462,6 +502,14 @@ def register_local_path(
                     "code": f"DUPLICATE_{matched_on.upper()}",
                 }
             ],
+        )
+
+    elsewhere = find_checkout_in_other_engagement(db, engagement.id, payload.local_path)
+    if elsewhere is not None:
+        raise RegistrationError(
+            409,
+            [{"field": "local_path", "message": checkout_in_other_engagement_message(elsewhere),
+              "code": "CHECKOUT_IN_OTHER_ENGAGEMENT"}],
         )
 
     nesting_conflict = find_nesting_conflict(db, engagement.id, local_path_normalised)

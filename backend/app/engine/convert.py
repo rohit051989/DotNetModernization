@@ -209,10 +209,10 @@ def _commit_inputs(db, engagement_id: str, slug: str, worktree: Path, applied: l
 SATISFIED = ("committed", "not_applicable")
 
 
-def plan_packages(db, slug: str, base: str, branch: str, worktree: Path):
+def plan_packages(db, engagement_id: str, slug: str, base: str, branch: str, worktree: Path):
     """A conversion plan (app.conversion.planner) on the conversion's own branch and worktree. Its deterministic units
     are the package changes that need no code; its breaking upgrades stay assisted and are left for the agent."""
-    plan = planner.create(db, slug, [])
+    plan = planner.create(db, engagement_id, slug, [])
     plan.legacy_commit, plan.branch, plan.worktree_path = base, branch, str(worktree)
     db.commit()
     units = db.query(models.ConversionUnit).filter_by(plan_id=plan.id).order_by(models.ConversionUnit.sequence).all()
@@ -363,7 +363,7 @@ def prepare(db, engagement_id: str, slug: str, *, baseline: str | None = None, g
     # The package step's plan. A repository the planner cannot plan (no unit test project, two target frameworks)
     # gets no package step: its package changes go to the agent as instructions, and the reason is recorded.
     try:
-        plan, units = plan_packages(db, slug, base, branch, worktree)
+        plan, units = plan_packages(db, engagement_id, slug, base, branch, worktree)
         not_planned = None
     except (LookupError, ValueError) as error:
         db.rollback()

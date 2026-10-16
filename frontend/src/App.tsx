@@ -171,6 +171,10 @@ function App() {
             selectedRepositoryId={selectedRepositoryId}
             onSelectRepository={handleSelectRepository}
             onNavigateToExecution={handleNavigateToExecution}
+            onEngagementDeleted={(deletedId) => {
+              setEngagements((current) => current.filter((e) => e.id !== deletedId))
+              handleSelectEngagement(null)
+            }}
             onOpenEstateSoap={(invocationId) => {
               setEstateSoapFocus(invocationId)
               handleSelectRepository(null)

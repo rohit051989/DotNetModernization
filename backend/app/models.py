@@ -2889,3 +2889,41 @@ class EngineRun(Base):
         CheckConstraint("role IN ('comparison', 'pilot')", name="ck_engine_runs_role"),
         UniqueConstraint("engagement_id", "label", name="uq_engine_runs_label"),
     )
+
+
+class PlatformHeartbeat(Base):
+    """The one platform running on this schema (app.heartbeat): who, where and when it last beat. A second platform
+    started on the same schema refuses to start while this is fresh (docs/VDI-SETUP.md section N)."""
+
+    __tablename__ = "platform_heartbeat"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    instance_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    host: Mapped[str] = mapped_column(Text, nullable=False)
+    os_user: Mapped[str] = mapped_column(Text, nullable=False)
+    pid: Mapped[int] = mapped_column(Integer, nullable=False)
+    platform_root: Mapped[str] = mapped_column(Text, nullable=False)
+    api_port: Mapped[int | None] = mapped_column(Integer)
+    started_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    beat_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    __table_args__ = (CheckConstraint("id = 1", name="ck_platform_heartbeat_single_row"),)
+
+
+class DeletionAudit(Base):
+    """One hard delete of a repository or an engagement (app.deletion): what, by whom, when. Kept apart from the data
+    it describes — no foreign key — so it survives the deletion."""
+
+    __tablename__ = "deletion_audit"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    deleted_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    deleted_by: Mapped[str] = mapped_column(Text, nullable=False)
+    via: Mapped[str] = mapped_column(Text, nullable=False)          # ui or command line
+    kind: Mapped[str] = mapped_column(Text, nullable=False)         # repository or engagement
+    engagement_id: Mapped[str] = mapped_column(Text, nullable=False)
+    repository_slug: Mapped[str | None] = mapped_column(Text)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    summary: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+
+    __table_args__ = (CheckConstraint("kind IN ('repository', 'engagement')", name="ck_deletion_audit_kind"),)

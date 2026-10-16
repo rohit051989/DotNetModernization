@@ -10,6 +10,8 @@ interface RepositoriesPageProps {
   onSelectRepository: (repositoryId: string | null) => void
   onNavigateToExecution: (executionId: string) => void
   onOpenEstateSoap?: (invocationId: string) => void
+  /** The engagement was hard deleted. */
+  onEngagementDeleted: (engagementId: string) => void
 }
 
 /** Engagement-scoped. Hidden entirely in Master Catalog view — see
@@ -26,6 +28,7 @@ export function RepositoriesPage({
   onSelectRepository,
   onNavigateToExecution,
   onOpenEstateSoap,
+  onEngagementDeleted,
 }: RepositoriesPageProps) {
   const [refreshToken, setRefreshToken] = useState(0)
 
@@ -63,6 +66,7 @@ export function RepositoriesPage({
           onNavigateToExecution={onNavigateToExecution}
           refreshToken={refreshToken}
           onChanged={handleChanged}
+          onEngagementDeleted={onEngagementDeleted}
         />
       </div>
       {selectedRepositoryId && (

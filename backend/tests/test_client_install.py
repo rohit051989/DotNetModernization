@@ -4,10 +4,12 @@ and the conversion's status and Verify refusal. Without .NET.
 
 Run: python -m unittest tests.test_client_install
 """
+import datetime
 import os
 import subprocess
 import tempfile
 import unittest
+import uuid
 from pathlib import Path
 
 from app import config
@@ -154,17 +156,41 @@ class PreflightVersions(unittest.TestCase):
             name = Path(args[0]).stem.lower() if args[0] else ""
             if name == "dotnet" and args[1:] == ("--version",):
                 return outputs.get("dotnet --version", (-1, ""))
-            if args[1:2] == ("-c",):       # the interpreter bootstrap uses
-                return (0, f"{'.'.join(map(str, python))}\n{args[0]}") if python else (-1, "")
+            if args[1:2] == ("-c",):       # the interpreter bootstrap uses: version, release level, sys.version, path
+                if not python:
+                    return (-1, "")
+                release = python[3:5] if len(python) > 3 else ("final", 0)
+                text = ".".join(map(str, python[:3]))
+                return (0, f"{text}\n{release[0]} {release[1]}\n{text}{'' if release[0] == 'final' else 'b2'}\n{args[0]}")
             return outputs.get(name, (-1, ""))
 
         where = {"npm": "npm", "dotnet": "C:\\Users\\u\\dotnet\\dotnet.exe"}
         # The runtime check reads the real file system; PreflightDotnetRuntime covers it.
         with mock.patch.object(pf, "run", side_effect=fake_run), mock.patch.object(pf.shutil, "which", side_effect=where.get), \
-                mock.patch.object(pf, "dotnet_runtime"), mock.patch("builtins.print"):
+                mock.patch.object(pf, "dotnet_runtime"), mock.patch.object(pf, "tested_python", return_value=self.tested), \
+                mock.patch("builtins.print"):
             pf.tools(cfg or {})
         self.interpreters = [a[0] for a in seen if a[1:2] == ("-c",)]
+        self.warnings = dict(pf.warnings)
         return {what: (ok, detail) for ok, what, detail in pf.results}
+
+    tested: tuple = ()
+
+    def test_a_pre_release_python_is_refused_with_the_reason(self):
+        results = self.run_tools(self.CURRENT, python=(3, 14, 0, "beta", 2))
+        ok, detail = results["Python"]
+        self.assertFalse(ok)
+        self.assertIn("3.14.0b2", detail)
+        self.assertIn("is a pre-release (beta 2)", detail)
+        self.assertIn("Install the final 3.14.x release", detail)
+
+    def test_an_older_patch_than_the_tested_one_is_a_warning_not_a_failure(self):
+        self.tested = (3, 14, 8)
+        results = self.run_tools(self.CURRENT, python=(3, 14, 2))
+        self.assertTrue(results["Python"][0])
+        self.assertIn("older than 3.14.8, the release the full suite passed on", self.warnings["Python"])
+        results = self.run_tools(self.CURRENT, python=(3, 14, 8))
+        self.assertEqual(self.warnings, {})
 
     CURRENT = {"node": (0, "v22.12.0"), "npm": (0, "10.9.0"), "git": (0, "git version 2.17.0.windows.1"),
                "dotnet": (0, "10.0.100 [C:\\Program Files\\dotnet\\sdk]"), "dotnet --version": (0, "10.0.100")}
@@ -218,6 +244,95 @@ class PreflightVersions(unittest.TestCase):
     def test_a_missing_tool_says_not_found(self):
         results = self.run_tools({k: v for k, v in self.CURRENT.items() if k != "git"})
         self.assertEqual(results["git"], (False, "not found (2.17.0 or later needed)"))
+
+
+class PreflightProxiesAndLock(unittest.TestCase):
+    def test_a_source_goes_through_the_proxy_unless_no_proxy_names_it(self):
+        pf = _preflight()
+        settings = {"HTTPS_PROXY": "http://jdoe:secret@proxy.client.example:8080", "HTTP_PROXY": "",
+                    "NO_PROXY": "localhost,.client.example"}
+        self.assertEqual(pf.route("https://pypi.org/simple/", settings), "through the proxy http://***@proxy.client.example:8080")
+        self.assertEqual(pf.route("https://artifactory.client.example/api/pypi/simple", settings),
+                         "direct (NO_PROXY .client.example)")
+        self.assertEqual(pf.route("https://pypi.org/simple/", {**settings, "HTTPS_PROXY": ""}), "direct (no proxy set)")
+        self.assertEqual(pf.route(r"C:\feeds\local", settings), "a folder: no network")
+
+    def test_a_tools_message_is_shown_with_credentials_masked(self):
+        pf = _preflight()
+        out = "noise\nERROR: Could not fetch https://jdoe:token@mirror.client.example/simple/pyyaml/\nERROR: 401 Unauthorized"
+        self.assertEqual(pf.tail(out, 2), "ERROR: Could not fetch https://***@mirror.client.example/simple/pyyaml/ | "
+                                          "ERROR: 401 Unauthorized")
+
+    def test_the_lock_pins_every_requirement_within_its_range_and_records_the_tested_python(self):
+        from pip._vendor.packaging.requirements import Requirement
+        from pip._vendor.packaging.utils import canonicalize_name
+
+        text = (BACKEND / "requirements.lock").read_text(encoding="utf-8")
+        pins = {canonicalize_name(n): v for n, v in
+                (l.split("==") for l in text.splitlines() if l and not l.startswith("#"))}
+        for line in (BACKEND / "requirements.txt").read_text(encoding="utf-8").splitlines():
+            if line.strip() and not line.startswith("#"):
+                req = Requirement(line)
+                name = canonicalize_name(req.name)
+                self.assertIn(name, pins, line)
+                self.assertIn(pins[name], req.specifier, f"{name} {pins[name]} not in {req.specifier}")
+        self.assertRegex(text, r"(?m)^# tested-python: 3\.\d+\.\d+$")
+
+
+class Heartbeat(unittest.TestCase):
+    """One platform per schema (app.heartbeat)."""
+
+    def setUp(self):
+        from types import SimpleNamespace
+
+        from app import heartbeat
+
+        self.hb = heartbeat
+        self.now = datetime.datetime(2026, 10, 16, 12, 0, tzinfo=datetime.timezone.utc)
+        self.mine = heartbeat.Me(uuid.uuid4(), "VDI-1", "jdoe", 100, r"C:\MP\code", 8001)
+        self.row = lambda **k: SimpleNamespace(**{"instance_id": uuid.uuid4(), "host": "VDI-2", "os_user": "asmith",
+                                                  "pid": 200, "platform_root": r"C:\MP\code", "api_port": 8001,
+                                                  "started_at": self.now, "beat_at": self.now, **k})
+
+    def test_a_fresh_heartbeat_of_another_person_refuses_and_says_what_to_do(self):
+        reason = self.hb.refusal(self.row(), self.mine, self.now + datetime.timedelta(seconds=30), alive=lambda pid: True)
+        self.assertIn("by asmith on VDI-2", reason)
+        self.assertIn("Each person needs their own schema", reason)
+
+    def test_a_second_platform_on_this_machine_refuses_while_the_first_runs(self):
+        row = self.row(host="VDI-1", os_user="jdoe")
+        self.assertIsNotNone(self.hb.refusal(row, self.mine, self.now, alive=lambda pid: True))
+        # A restart (or --reload's new worker): the recorded process is gone, so the schema is taken over.
+        self.assertIsNone(self.hb.refusal(row, self.mine, self.now, alive=lambda pid: False))
+
+    def test_a_stale_heartbeat_and_no_heartbeat_are_taken_over(self):
+        self.assertIsNone(self.hb.refusal(None, self.mine, self.now))
+        stale = self.row(beat_at=self.now - self.hb.STALE - datetime.timedelta(seconds=1))
+        self.assertIsNone(self.hb.refusal(stale, self.mine, self.now, alive=lambda pid: True))
+
+    def test_this_process_is_alive_and_a_finished_one_is_not(self):
+        self.assertTrue(self.hb.pid_alive(os.getpid()))
+        child = subprocess.Popen(["cmd", "/c", "exit 0"])
+        child.wait()
+        self.assertFalse(self.hb.pid_alive(child.pid))
+
+
+class DeletionNeverFollowsALink(unittest.TestCase):
+    def test_a_junction_inside_a_deleted_folder_is_unlinked_and_its_target_kept(self):
+        from app.deletion.service import remove_tree
+
+        with tempfile.TemporaryDirectory() as tmp:
+            sibling = Path(tmp) / "EnterprisePackages"
+            (sibling / "feed").mkdir(parents=True)
+            (sibling / "feed" / "package.nupkg").write_text("keep me")
+            worktree = Path(tmp) / "runs" / "conversions" / "1" / "wt"
+            worktree.mkdir(parents=True)
+            (worktree / "Program.cs").write_text("x")
+            subprocess.run(["cmd", "/c", "mklink", "/J", str(worktree / "EnterprisePackages"), str(sibling)],
+                           check=True, capture_output=True)
+            remove_tree(Path(tmp) / "runs")
+            self.assertFalse((Path(tmp) / "runs").exists())
+            self.assertEqual((sibling / "feed" / "package.nupkg").read_text(), "keep me")
 
 
 class DotnetRootSetting(unittest.TestCase):
