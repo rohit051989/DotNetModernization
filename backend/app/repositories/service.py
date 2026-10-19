@@ -589,7 +589,7 @@ def register_local_path(
     return repo
 
 
-# ---------- Registration by git URL (docs/VDI-SETUP.md section K) ----------
+# ---------- Registration by git URL (docs/VDI-SETUP.md: Registering a client repository) ----------
 
 
 def name_from_url(clone_url: str) -> str:
@@ -753,7 +753,7 @@ def shared_checkout_message(group: list[models.Repository]) -> str:
             f"{group[0].local_path}). Registered before rbc-release-2 refused it, so it is left working. Their "
             "conversion branches share names in that checkout's git, so run conversions in one engagement only, or "
             "clone the repository again for the other engagement, register the new clone there, and delete the old "
-            "registration (docs/VDI-SETUP.md section N).")
+            "registration (docs/VDI-SETUP.md: More than one person).")
 
 
 # ---------- Lifecycle operations ----------

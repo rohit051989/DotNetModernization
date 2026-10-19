@@ -765,7 +765,8 @@ def verify(db, *, engagement_id: str, slug: str, base: str, ref: str, label: str
     result_verdict, reasons = verdict(checks)
     report = {
         "verifier": {"version": VERIFIER_VERSION, "plugin": "third_party/code-modernization @ f359d43"},
-        # The platform commit the verification ran at, and whether its tree was clean (app.experiment.instrument).
+        # The platform commit the verification ran at, whether its tree was clean, and, when the platform is a subfolder of
+        # a host repository, our source commit from PLATFORM_SOURCE.json beside the host's commit (app.experiment.instrument).
         "platform": instrument.platform_state(),
         # Where package lookups were answered from: the experiment's frozen snapshot (by sha256), or live feeds.
         "packageLookups": answered,
@@ -786,9 +787,10 @@ def verify(db, *, engagement_id: str, slug: str, base: str, ref: str, label: str
 
 
 def _platform_line(state: dict | None) -> str:
+    """Our source commit (and tag), and the host repository's commit when the platform is a subfolder of one."""
     if not state:
         return "Platform commit: not recorded."
-    return f"Platform commit `{state['commit'][:12]}`" + (" with uncommitted changes." if state.get("dirty") else ".")
+    return f"Platform: {instrument.describe(state)}."
 
 
 def _lookups_line(answered: dict | None) -> str:

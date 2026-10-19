@@ -4,7 +4,7 @@
 Two sources: `local_path`, a repository already on disk at the path recorded on its `repositories` row (never from
 step `config` — that row is authoritative, set once at registration); and `git_clone`, a repository registered by its
 git URL, which this step first clones into that path, or, on a rescan, fetches and fast-forwards
-(docs/VDI-SETUP.md section K). Apart from that clone or update, this step is read-only against the registered
+(docs/VDI-SETUP.md: Registering a client repository). Apart from that clone or update, this step is read-only against the registered
 folder: it only ever opens files under `local_path` for reading, and writes exclusively under `output_dir`.
 """
 

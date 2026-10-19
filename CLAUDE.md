@@ -111,7 +111,7 @@ modernization-platform/
      semantics before touching either.
    - Engagement data is not the catalog: a person can hard delete a
      repository or a whole engagement on purpose (`app/deletion/`,
-     `docs/VDI-SETUP.md` section O). It shows what will go, needs the name
+     `docs/VDI-SETUP.md` "Deleting a repository or an engagement"). It shows what will go, needs the name
      typed, is refused while a job runs, never touches the catalog, the
      package lookup cache or another engagement, and leaves a
      `deletion_audit` record. Nothing else hard-deletes.
@@ -181,8 +181,16 @@ modernization-platform/
     Existing data a new rule would refuse (one checkout registered in two engagements before rbc-release-2) is
     reported — in preflight, the backend's startup log and the UI — and left working, never broken or deleted;
     code that acts on such data, a hard delete included, must not damage the other side of it. A release that
-    cannot upgrade in place says so explicitly, with the reason. `docs/VDI-SETUP.md` section M holds the exact
+    cannot upgrade in place says so explicitly, with the reason. `docs/VDI-SETUP.md` "Appendix: upgrading from a release bundle" holds the exact
     upgrade commands; prove a release by upgrading an installation of the previous one with them.
+
+16. **The platform may run in a folder of someone else's repository.** A client keeps it in a subfolder of a
+    shared repository, without our `.git`, on the operator's own branch (`docs/VDI-SETUP.md`, Part 1). Every git
+    check the platform makes of itself looks only at its own folder, from the host repository's real root
+    (`git -C <top> status -- <folder>`), never at the rest of the host repository. Its identity is our source
+    commit from `PLATFORM_SOURCE.json`, recorded beside the host repository's commit (`app.experiment.instrument`).
+    Nothing the platform or its scripts do commits outside its folder or to another branch:
+    `scripts/update-platform.ps1` stages and commits with `-- <folder>` only.
 
 ## Domain vocabulary
 

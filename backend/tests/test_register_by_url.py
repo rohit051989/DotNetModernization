@@ -1,4 +1,4 @@
-"""Registering a repository by its git URL (docs/VDI-SETUP.md section K; app/repositories/git_source.py): the clone,
+"""Registering a repository by its git URL (docs/VDI-SETUP.md: Registering a client repository; app/repositories/git_source.py): the clone,
 the target folder rules, a sign-in failing at once instead of waiting, and the fetch and fast-forward before a rescan.
 
 Uses stdlib unittest, as the other tests do. The "remote" is a bare repository in a temporary folder, cloned through a

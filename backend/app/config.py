@@ -46,7 +46,7 @@ class Settings(BaseSettings):
     runs_dir: str
     # Where repositories registered by their git URL are cloned by default: <REPOS_DIR>\<engagement>\<repository>.
     # Optional: unset, the registration form asks for the target folder. A short absolute path, outside the
-    # repository and outside RUNS_DIR (docs/VDI-SETUP.md section K). Read it through repos_path.
+    # repository and outside RUNS_DIR (docs/VDI-SETUP.md: Registering a client repository). Read it through repos_path.
     repos_dir: str = ""
     # What this deployment is. The platform ships to each client as code and that client's data
     # lives only in its database, so the default is a client deployment. Only an explicit
@@ -62,7 +62,7 @@ class Settings(BaseSettings):
     nuget_sources: str = ""              # comma-separated: feed URLs or local folders for the step programs' restore
     compare_public_nuget_feed: bool = True
 
-    # A .NET installed per user (docs/VDI-SETUP.md section C). When set, this folder goes first on PATH and becomes
+    # A .NET installed per user (docs/VDI-SETUP.md: Account settings). When set, this folder goes first on PATH and becomes
     # DOTNET_ROOT for this process and so for every process it starts: the step programs (which find their runtime
     # through DOTNET_ROOT), the package step's and the verifier's dotnet builds and tests. Unset: the dotnet on PATH,
     # with the runtime found as usual.
@@ -92,7 +92,7 @@ class Settings(BaseSettings):
                 r"(?m)^\s*DATABASE_URL\s*=", ENV_FILE.read_text(encoding="utf-8", errors="replace"))):
             raise ValueError("DATABASE_URL is no longer read: set DB_HOST, DB_PORT, DB_NAME and DB_SCHEMA in "
                              "backend/.env, and DB_USER and DB_PASSWORD in the environment or backend/.env "
-                             "(docs/VDI-SETUP.md section F)")
+                             "(docs/VDI-SETUP.md: backend\\.env)")
         return self
 
     @property
@@ -113,13 +113,13 @@ class Settings(BaseSettings):
             return None
         path = Path(self.repos_dir.strip())
         if not path.is_absolute():
-            raise ValueError(f"REPOS_DIR {path} is not an absolute path (docs/VDI-SETUP.md section F)")
+            raise ValueError(f"REPOS_DIR {path} is not an absolute path (docs/VDI-SETUP.md: backend\\.env)")
         if path.resolve().is_relative_to(Path(self.platform_root).resolve()):
             raise ValueError(f"REPOS_DIR {path} is inside the platform's folder: clone the client's repositories "
-                             "outside it (docs/VDI-SETUP.md section F)")
+                             "outside it (docs/VDI-SETUP.md: backend\\.env)")
         if path.resolve().is_relative_to(self.runs_path.resolve()):
             raise ValueError(f"REPOS_DIR {path} is inside RUNS_DIR: keep the clones apart from the run output "
-                             "(docs/VDI-SETUP.md section F)")
+                             "(docs/VDI-SETUP.md: backend\\.env)")
         return path
 
     @property
@@ -187,7 +187,7 @@ def apply_dotnet_root(s: "Settings") -> None:
     root = Path(s.dotnet_root)
     if not (root / ("dotnet.exe" if os.name == "nt" else "dotnet")).is_file():
         raise ValueError(f"DOTNET_ROOT {root} has no dotnet executable: set it to the folder the .NET SDK was installed "
-                         "into (docs/VDI-SETUP.md section C), or leave it empty")
+                         "into (docs/VDI-SETUP.md: Account settings), or leave it empty")
     os.environ["DOTNET_ROOT"] = str(root)
     path = [p for p in os.environ.get("PATH", "").split(os.pathsep) if p and Path(p) != root]
     os.environ["PATH"] = os.pathsep.join([str(root), *path])

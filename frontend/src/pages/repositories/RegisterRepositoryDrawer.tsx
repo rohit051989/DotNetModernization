@@ -13,7 +13,7 @@ interface RegisterRepositoryDrawerProps {
   onRegistered: (repositoryId: string) => void
 }
 
-/** Registering by git URL is the main path: the discovery job clones the repository (docs/VDI-SETUP.md section K).
+/** Registering by git URL is the main path: the discovery job clones the repository (docs/VDI-SETUP.md: Registering a client repository).
  * A folder already on this machine can still be registered by its path. */
 const SOURCE_OPTIONS = [
   { key: 'git_url', label: 'Git URL' },

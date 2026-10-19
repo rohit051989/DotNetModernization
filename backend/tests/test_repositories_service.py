@@ -162,7 +162,7 @@ class GitRegistrationStillRequiresCloneUrlTests(RepositoryRegistrationTestCase):
 
 
 class OneCheckoutOneEngagementTests(RepositoryRegistrationTestCase):
-    """A checkout's conversion branches live in its git, so it serves one engagement (docs/VDI-SETUP.md section N)."""
+    """A checkout's conversion branches live in its git, so it serves one engagement (docs/VDI-SETUP.md: More than one person)."""
 
     def setUp(self):
         super().setUp()

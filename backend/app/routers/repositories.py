@@ -131,7 +131,7 @@ def _existing_data_warnings(db: Session, repo: models.Repository) -> list[str]:
     return [f"This checkout is also registered in engagement '{other.engagement_id}' as \"{other.slug}\", from before "
             "rbc-release-2 refused that. Both keep working, but conversions of the two share branch names in the "
             "checkout's git: run conversions in one engagement only, or clone the repository again for one of them "
-            "(docs/VDI-SETUP.md section N)."]
+            "(docs/VDI-SETUP.md: More than one person)."]
 
 
 @router.post(
@@ -202,7 +202,7 @@ def register_repository(
       clones it — into `target_folder`, or `<REPOS_DIR>/<engagement>/<repository>`
       — with the person's own git credentials, then scans it. An existing clone
       of the same URL in that folder is used as it is (docs/VDI-SETUP.md
-      section K).
+      Registering a client repository).
     - `local_path`: an existing folder, read **in place** and never copied or
       modified. The clone URL you supply is verified against the folder's git
       remote where present; a mismatch is reported but does not block

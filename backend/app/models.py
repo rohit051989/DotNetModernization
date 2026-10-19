@@ -2895,7 +2895,7 @@ class EngineRun(Base):
 
 class PlatformHeartbeat(Base):
     """The one platform running on this schema (app.heartbeat): who, where and when it last beat. A second platform
-    started on the same schema refuses to start while this is fresh (docs/VDI-SETUP.md section N)."""
+    started on the same schema refuses to start while this is fresh (docs/VDI-SETUP.md: More than one person)."""
 
     __tablename__ = "platform_heartbeat"
 

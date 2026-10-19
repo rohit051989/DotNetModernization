@@ -3,7 +3,7 @@
 > Written by `python -m app.engine.convert prepare` from `backend/app/engine/templates/conversion-runbook.md`.
 > Do not edit it: change the template or the inputs, and prepare again.
 
-Worktree `${worktree}`, branch `${branch}`, from baseline `${base}`. Prepared at platform commit `${platform}`.
+Worktree `${worktree}`, branch `${branch}`, from baseline `${base}`. Prepared with ${platform}.
 
 ## 1. Open the worktree
 

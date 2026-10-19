@@ -1,4 +1,4 @@
-"""Preflight: is this machine ready for the platform? (docs/VDI-SETUP.md section G.)
+"""Preflight: is this machine ready for the platform? (docs/VDI-SETUP.md: Preflight.)
 
     python scripts\\preflight.py               every check; the database ones once the virtual environment exists
     python scripts\\preflight.py --database    the database checks only (bootstrap runs this after installing)
@@ -21,6 +21,9 @@ Reports, in plain language, each prerequisite as PRESENT or MISSING, and exits 1
   own configuration;
 - the proxy settings it sees (HTTPS_PROXY, HTTP_PROXY, NO_PROXY, the tools' own) and, for each source, whether it
   goes through the proxy or direct (reported, never failed);
+- where the platform runs: its own repository, or a subfolder of a host repository (a client's shared one), and the
+  source commit it was copied from (PLATFORM_SOURCE.json); RUNS_DIR and REPOS_DIR outside the host repository
+  (reported);
 - RUNS_DIR set, outside the repository, and writable; REPOS_DIR, when set, absolute, outside the repository and
   RUNS_DIR, and writable;
 - with the schema in place: whether a platform holds it (its heartbeat: live, or expired, and how to clear one known
@@ -47,7 +50,7 @@ DEFAULT_SOURCES = {"PIP_INDEX_URL": "https://pypi.org/simple/", "NPM_REGISTRY": 
                    "NUGET_SOURCES": "https://api.nuget.org/v3/index.json"}
 results: list[tuple[bool, str, str]] = []
 
-# The required versions (docs/VDI-SETUP.md section A). Python: the code is 3.11 syntax, the suite passes on
+# The required versions (docs/VDI-SETUP.md: Before starting). Python: the code is 3.11 syntax, the suite passes on
 # 3.13 and 3.14, and every pinned dependency installs from a wheel up to 3.14 (backend/requirements.txt). Node.js:
 # Vite's own requirement. npm: the lockfile is version 3. git: `git worktree remove`, the newest command the platform
 # runs, is in 2.17. The .NET SDK: steps/step-003-fingerprinting/global.json.
@@ -178,7 +181,7 @@ def python_check(cfg: dict[str, str]) -> None:
               f"final release: packages with compiled parts, such as pydantic-core, publish wheels for final releases, and a "
               f"pre-release's interpreter can still change under them, so the install fails or the backend breaks when it "
               f"starts (on 3.14.0b2, pydantic failed in bootstrap stage 7). Install the final {py[0]}.{py[1]}.x release "
-              f"and name it as PYTHON in backend\\.env (docs/VDI-SETUP.md section L)")
+              f"and name it as PYTHON in backend\\.env (docs/VDI-SETUP.md: Troubleshooting)")
         return
     ok = bool(py) and MIN_PYTHON <= py < MAX_PYTHON_EXCLUSIVE
     check(ok, "Python", f"{full if py else interpreter + ' not found'} ({where}{origin}; {PYTHON_REQUIRED})"
@@ -225,6 +228,44 @@ def tools(cfg: dict[str, str] | None = None) -> None:
     code, out = run("git", "--version")
     v = version(out) if code == 0 else ()
     check(bool(v) and v >= MIN_GIT, "git", f"{out if code == 0 else 'not found'} ({GIT_REQUIRED}){': too old' if v and v < MIN_GIT else ''}")
+
+
+def _git_top(path: Path) -> Path | None:
+    code, out = run("git", "-C", str(path), "rev-parse", "--show-toplevel")
+    return Path(out.splitlines()[-1]).resolve() if code == 0 and out else None
+
+
+def platform_location(cfg: dict[str, str]) -> None:
+    """Where the platform runs, and which of our commits it is. Reported, never failed."""
+    print("Platform")
+    top = _git_top(ROOT)
+    source = None
+    record = ROOT / "PLATFORM_SOURCE.json"
+    if record.exists():
+        try:
+            source = json.loads(record.read_text(encoding="utf-8-sig"))
+        except ValueError:
+            source = None
+    if top is None:
+        note("location", f"{ROOT}, not in a git repository")
+    elif top == ROOT.resolve():
+        code, head = run("git", "-C", str(ROOT), "describe", "--tags", "--always", "HEAD")
+        note("location", f"{ROOT}, its own repository, at {head.strip()}")
+    else:
+        folder = ROOT.resolve().relative_to(top).as_posix()
+        code, branch = run("git", "-C", str(top), "rev-parse", "--abbrev-ref", "HEAD")
+        note("location", f"folder {folder} of the host repository {top}, on branch {branch.strip()}")
+        if source is None:
+            warn("platform source", "no PLATFORM_SOURCE.json in the platform folder: records cannot name our source "
+                                    "commit. scripts\\update-platform.ps1 writes it (docs/VDI-SETUP.md Part 2)")
+        for key in ("RUNS_DIR", "REPOS_DIR"):
+            value = cfg.get(key, "").strip()
+            if value and Path(value).is_absolute() and Path(value).resolve().is_relative_to(top):
+                warn(key, f"{value} is inside the host repository {top}: everything written there shows as changes in "
+                          "other people's repository. Put it outside, for example C:\\MP\\runs (docs/VDI-SETUP.md Part 1)")
+    if source:
+        note("platform source", f"{source.get('commit', '?')[:12]}"
+                                f"{' (' + source['tag'] + ')' if source.get('tag') else ''}, copied {source.get('date', '?')}")
 
 
 def long_paths() -> None:
@@ -473,7 +514,7 @@ def repos_dir(cfg: dict[str, str], runs: Path) -> None:
 
 
 def database(cfg: dict[str, str]) -> None:
-    print("Database")
+    print(Database)
     try:
         import psycopg
     except ImportError:
@@ -576,7 +617,7 @@ def platform_state(c, schema: str) -> None:
                 warn("existing data", f"one checkout is registered in several engagements ("
                                       f"{', '.join(f'{e}/{s}' for e, s, _ in group)}, {group[0][2]}), from before "
                                       "rbc-release-2 refused it. Left working and unchanged; see docs/VDI-SETUP.md "
-                                      "section N")
+                                      "More than one person")
 
 
 def main() -> int:
@@ -591,6 +632,7 @@ def main() -> int:
         tools(cfg)
         proxies(cfg)
         sources(cfg)
+        platform_location(cfg)
         runs_dir(cfg)
         long_paths()
     if not args.no_database:

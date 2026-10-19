@@ -1,4 +1,4 @@
-"""One platform per schema (docs/VDI-SETUP.md section N).
+"""One platform per schema (docs/VDI-SETUP.md: More than one person).
 
 The platform runs its jobs in its own process (BackgroundTasks) and, when it starts, fails every job it finds still
 running: a previous process of its own must have died. A second platform started on the same schema — a second
@@ -102,7 +102,7 @@ def refusal(row, mine: Me, age: datetime.timedelta | None, alive=pid_alive) -> s
             f"{row.platform_root}, port {row.api_port}), last seen {int(age.total_seconds())} s ago. Two platforms on "
             "one schema would fail each other's running jobs and run each other's work, so this one does not start. "
             "Each person needs their own schema: give this one its own DB_SCHEMA and RUNS_DIR in backend\\.env "
-            f"(docs/VDI-SETUP.md section N). A heartbeat expires {int(STALE.total_seconds())} s after its last beat: "
+            f"(docs/VDI-SETUP.md: More than one person). A heartbeat expires {int(STALE.total_seconds())} s after its last beat: "
             f"if that platform has stopped without shutting down (its VDI session closed, its machine restarted), "
             f"start again in {left} s, or, if you know it has stopped, clear it now: {CLEAR_COMMAND}")
 
@@ -167,7 +167,7 @@ class Heartbeat:
             try:
                 if not beat(self.mine):
                     log.error("This platform's heartbeat was taken over by another platform on schema %s: stop one "
-                              "of them (docs/VDI-SETUP.md section N).", settings.db_schema)
+                              "of them (docs/VDI-SETUP.md: More than one person).", settings.db_schema)
             except Exception:        # a database blip must not stop the platform; the next beat retries
                 log.exception("heartbeat failed")
 

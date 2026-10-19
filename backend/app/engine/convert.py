@@ -455,7 +455,7 @@ def render_runbook(record: dict) -> str:
     return template.substitute(
         repository=record["repository"], branch=record["branch"], worktree=record["worktree"],
         solution=record["solution"] or "<solution>.sln", base=record["baseline"][:8],
-        platform=record["platform"]["commit"][:12] + (" (with uncommitted changes)" if record["platform"]["dirty"] else ""),
+        platform=instrument.describe(record["platform"]),
         opening=opening_message(record["goal"], record["solution"]),
         target=framework_name(record["targetFramework"]), stuck_minutes=STUCK_MINUTES,
         verify_command=verify_command(record),

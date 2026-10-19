@@ -1,4 +1,4 @@
-"""Repositories registered by their git URL (docs/VDI-SETUP.md section K): cloning them, and bringing a clone up to
+"""Repositories registered by their git URL (docs/VDI-SETUP.md: Registering a client repository): cloning them, and bringing a clone up to
 date before a rescan. repository-ingest calls this, so a clone's progress and errors show in the repository's job.
 
 git runs as the person, with their own credentials: Git Credential Manager or their SSH keys. The platform never

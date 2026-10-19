@@ -1,4 +1,4 @@
-"""Hard delete of a repository from its engagement, or of a whole engagement (docs/VDI-SETUP.md section O).
+"""Hard delete of a repository from its engagement, or of a whole engagement (docs/VDI-SETUP.md: Deleting a repository or an engagement).
 
 Engagement data, never the catalog: CLAUDE.md rule 7's "never hard-delete" is the catalog's rule, and stays so.
 

@@ -104,7 +104,7 @@ export interface RegisterLocalPathInput {
   notes?: string | null
 }
 
-/** Registering by git URL: the discovery job clones it (docs/VDI-SETUP.md section K). */
+/** Registering by git URL: the discovery job clones it (docs/VDI-SETUP.md: Registering a client repository). */
 export interface RegisterGitCloneInput {
   source_type: 'git_clone'
   clone_url: string

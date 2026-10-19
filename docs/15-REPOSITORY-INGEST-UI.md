@@ -137,7 +137,7 @@ as `local_path` — cloning is a preceding action, not a different analysis path
   local changes, is on another branch, or has diverged; discovery scans the commit it reaches.
 
 Read-only preview for the form: `POST /api/engagements/{eid}/repositories/inspect-url`. Command line:
-`python -m app.repositories.cli register-url`. Operator guide: `VDI-SETUP.md` section K.
+`python -m app.repositories.cli register-url`. Operator guide: `VDI-SETUP.md` "Registering a client repository".
 
 Bulk registration from a manifest is a future addition, out of scope.
 

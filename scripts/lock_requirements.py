@@ -5,7 +5,7 @@ backend suite has passed in backend/.venv, and commit the lock with the release:
     backend\\.venv\\Scripts\\python.exe scripts\\lock_requirements.py --tests "479 passed"
 
 The header records the Python the suite passed on; preflight warns when the VDI's is older (docs/VDI-SETUP.md
-section A). requirements.txt stays the source of the ranges; the lock must satisfy it (tests/test_client_install.py).
+Before starting). requirements.txt stays the source of the ranges; the lock must satisfy it (tests/test_client_install.py).
 """
 import argparse
 import datetime

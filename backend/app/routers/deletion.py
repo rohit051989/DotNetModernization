@@ -1,4 +1,4 @@
-"""Hard delete of a repository or an engagement (app.deletion.service; docs/VDI-SETUP.md section O).
+"""Hard delete of a repository or an engagement (app.deletion.service; docs/VDI-SETUP.md: Deleting a repository or an engagement).
 
 GET shows exactly what would go. POST deletes it, given the name typed to confirm; the plan is made again at that
 moment, never taken from the request. Refused (409) while a job of it runs, or when the typed name does not match;

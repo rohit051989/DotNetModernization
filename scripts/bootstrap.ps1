@@ -105,7 +105,7 @@ function NeedVenv([int]$n) {
 }
 
 if (-not (Test-Path (Join-Path $backend '.env'))) {
-    Write-Host 'backend\.env does not exist. Copy backend\.env.example to backend\.env and fill it in (docs\VDI-SETUP.md, section F).' -ForegroundColor Red
+    Write-Host 'backend\.env does not exist. Copy backend\.env.example to backend\.env and fill it in (docs\VDI-SETUP.md: backend\.env).' -ForegroundColor Red
     exit 9
 }
 if (-not $Python) { $Python = EnvValue 'PYTHON' }
@@ -114,7 +114,7 @@ Write-Host "Python: $Python"
 $dotnetRoot = EnvValue 'DOTNET_ROOT'
 if ($dotnetRoot) {
     if (-not (Test-Path (Join-Path $dotnetRoot 'dotnet.exe'))) {
-        Write-Host "DOTNET_ROOT $dotnetRoot has no dotnet.exe. Set it to the folder .NET was installed into, or leave it empty (docs\VDI-SETUP.md section C)." -ForegroundColor Red
+        Write-Host "DOTNET_ROOT $dotnetRoot has no dotnet.exe. Set it to the folder .NET was installed into, or leave it empty (docs\VDI-SETUP.md: Account settings)." -ForegroundColor Red
         exit 9
     }
     # As the backend does (app.config.apply_dotnet_root): this SDK first on PATH, its runtime through DOTNET_ROOT.
