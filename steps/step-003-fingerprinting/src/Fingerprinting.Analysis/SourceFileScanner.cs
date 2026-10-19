@@ -34,7 +34,7 @@ public static class SourceFileScanner
         var files = new List<SourceFile>();
         var truncated = false;
 
-        foreach (var absolutePath in FileSystemWalk.EnumerateFiles(projectDirectory, cancellationToken))
+        foreach (var absolutePath in FileSystemWalk.EnumerateProjectFiles(projectDirectory, cancellationToken))
         {
             if (!absolutePath.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
             {

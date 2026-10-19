@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using System.Text.Json;
+using Fingerprinting.Analysis;
 using Fingerprinting.Domain;
 using Fingerprinting.StepHost;
 
@@ -64,6 +65,8 @@ public static class OutboundInventoryCli
                 case "--entry-points" when index + 1 < args.Length: entryPoints = Path.GetFullPath(args[++index]); break;
                 // 1.4.0, optional: the target framework the SOAP runtime verdicts are for.
                 case "--target" when index + 1 < args.Length: Target = args[++index]; break;
+                // rbc-release-5, optional: a checkpoint folder, so a rerun continues from the last completed project.
+                case "--checkpoints" when index + 1 < args.Length: Checkpoints = Path.GetFullPath(args[++index]); break;
                 case "--deploy-globs" when index + 1 < args.Length:
                     globs = args[++index].Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
                     break;
@@ -93,6 +96,9 @@ public static class OutboundInventoryCli
 
     /// <summary>Standalone mode's --target (1.4.0).</summary>
     private static string? Target;
+
+    /// <summary>Standalone mode's --checkpoints (rbc-release-5).</summary>
+    private static string? Checkpoints;
 
     /// <summary>The WCF client support matrix (1.4.0), published beside the schemas.</summary>
     public const string WcfClientSupportFile = "wcf-client-support-1.1.0.json";
@@ -126,8 +132,20 @@ public static class OutboundInventoryCli
                 WcfClientPlatform = LoadWcfClientPlatform(),
             };
 
-            var artifact = await new OutboundPipeline().RunAsync(input, repoPath, CancellationToken.None);
+            using var progress = new StepProgress(outDir, error);
+            var checkpoints = ProjectCheckpoints.Open(Checkpoints, ProjectCheckpoints.Key(
+                ArtifactType, OutboundPipeline.ScannerVersion, ArtifactUri.Sha256File(inventoryPath), ArtifactUri.Sha256File(fingerprintPath),
+                entryPointsPath is null ? null : ArtifactUri.Sha256File(entryPointsPath), Target, string.Join(",", globs)));
+            var artifact = await new OutboundPipeline().RunAsync(input, repoPath, CancellationToken.None, progress, WorkLimits.Default, checkpoints);
+            progress.Phase("write");
             var outputPath = await WriteArtifactAsync(artifact, outDir);
+            if (checkpoints.Reused > 0)
+            {
+                error.WriteLine($"Resumed: {checkpoints.Reused} project(s) taken from the unfinished run before.");
+            }
+
+            checkpoints.Complete();
+            progress.Finish();
             error.WriteLine($"Wrote {outputPath}");
             error.WriteLine($"{artifact.Summary.InvocationCount} invocation(s): " +
                             string.Join(", ", artifact.Summary.CountByVerdict.Select(kv => $"{kv.Value} {kv.Key}")));
@@ -225,12 +243,26 @@ public static class OutboundInventoryCli
             };
         }
 
-        var artifact = await new OutboundPipeline().RunAsync(input, repositoryRoot, CancellationToken.None);
+        // rbc-release-5: progress and a timing profile throughout; each project's load and analysis within its own
+        // limit; and what is finished kept, so a rerun after a time limit, a stall or a crash continues from there.
+        using var progress = new StepProgress(context.OutputDir, Console.Error);
+        var (projectLimit, fileLimit) = StepLimits.Within(context);
+        var limits = WorkLimits.From(projectLimit, fileLimit);
+        var checkpoints = ProjectCheckpoints.Open(StepLimits.CheckpointDirectory(context), ProjectCheckpoints.Key(
+            ArtifactType, OutboundPipeline.ScannerVersion, inventoryRef.Checksum, fingerprintRef.Checksum, entryPointsRef?.Checksum,
+            input.TargetFramework, input.WcfClientSupport?.Sha256, input.WcfClientPlatform?.Sha256, string.Join(",", input.DeployParameterGlobs),
+            limits.ProjectLoad.TotalSeconds.ToString(CultureInfo.InvariantCulture)));
+        var artifact = await new OutboundPipeline().RunAsync(input, repositoryRoot, CancellationToken.None, progress, limits, checkpoints);
+        progress.Phase("write");
         var outputPath = await WriteArtifactAsync(artifact, context.OutputDir);
         var checksum = ArtifactUri.Sha256File(outputPath);
 
+        progress.Phase("database");
         await new OutboundDatabase(connectionString).ReplaceAllAsync(
             artifact, StepEnvelopeRunner.TryParseGuid(context.StepExecutionId), CancellationToken.None);
+        var resumed = checkpoints.Reused;
+        checkpoints.Complete();
+        progress.Finish();
 
         var generatedAt = DateTimeOffset.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.ffffffZ", CultureInfo.InvariantCulture);
         var summary = artifact.Summary;
@@ -240,7 +272,9 @@ public static class OutboundInventoryCli
             ExitMessage = $"Inventoried {summary.InvocationCount} outbound invocation(s) across {summary.ProjectsScanned} project(s) " +
                           $"in '{artifact.RepositorySlug}' ({summary.ProjectsSkipped} skipped, {summary.ProjectsFailed} failed); " +
                           $"{summary.CountByVerdict.GetValueOrDefault(Verdicts.Incompatible)} incompatible with Linux" +
-                          (summary.UnusedCount > 0 ? $"; {summary.UnusedCount} unused client(s) not counted." : "."),
+                          (summary.UnusedCount > 0 ? $"; {summary.UnusedCount} unused client(s) not counted." : ".") +
+                          (resumed > 0 ? $" Resumed: {resumed} project(s) taken from the unfinished run before." : "") +
+                          (progress.NotCheckedItems.Count > 0 ? $" {progress.NotCheckedItems.Count} item(s) not checked within their time limit (see the warnings)." : ""),
             Metrics = new Dictionary<string, long>
             {
                 ["read_count"] = inventory.Projects.Count,

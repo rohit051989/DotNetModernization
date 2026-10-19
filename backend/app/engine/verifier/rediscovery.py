@@ -21,7 +21,6 @@ import argparse
 import json
 import os
 import shutil
-import subprocess
 import sys
 import uuid
 from pathlib import Path
@@ -32,6 +31,7 @@ from sqlalchemy.orm import Session
 from app import models
 from app.config import settings
 from app.db import make_engine
+from app.workflow import processes
 
 JOB = "phase0-repository-discovery"
 BACKEND = Path(__file__).resolve().parents[3]
@@ -94,11 +94,13 @@ def snapshot(engagement_id: str, worktree: Path, name: str, scratch_dir: Path, l
             scratch.bootstrap()
             copied = _copy(settings.database_url, scratch.url, engagement_id, lookups)
             env = {**os.environ, "DB_SCHEMA": scratch.name, "RUNS_DIR": str(runs)}
-            done = subprocess.run([sys.executable, "-m", "app.engine.verifier.rediscovery", "--worker",
-                                   "--engagement", engagement_id, "--path", str(worktree), "--name", name, "--out", str(out)]
-                                  + (["--offline"] if lookups is not None else []),
-                                  cwd=BACKEND, env=env, capture_output=True, text=True, timeout=7200)
-            if done.returncode != 0 or not out.exists():
+            # processes.run: the worker and every step program it starts end together on the time limit or a
+            # stop (rbc-release-5).
+            done = processes.run([sys.executable, "-m", "app.engine.verifier.rediscovery", "--worker",
+                                  "--engagement", engagement_id, "--path", str(worktree), "--name", name, "--out", str(out)]
+                                 + (["--offline"] if lookups is not None else []),
+                                 cwd=BACKEND, env=env, timeout=7200)
+            if done.timed_out or done.stopped_why or done.returncode != 0 or not out.exists():
                 raise RediscoveryFailed(f"isolated discovery of {worktree} failed:\n{done.stdout[-3000:]}\n{done.stderr[-3000:]}")
             snap = json.loads(out.read_text(encoding="utf-8"))
             snap["isolation"] = {"scratch_schema": scratch.name, "copied": copied, "dropped": True}

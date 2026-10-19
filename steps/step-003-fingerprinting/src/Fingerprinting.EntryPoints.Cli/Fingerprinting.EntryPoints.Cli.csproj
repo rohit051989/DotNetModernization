@@ -27,8 +27,8 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
     <!-- The capability manifest ships beside the exe: what this build can see. -->
-    <Content Include="..\..\schemas\entry-point-capabilities-1.3.0.json">
-      <Link>schemas\entry-point-capabilities-1.3.0.json</Link>
+    <Content Include="..\..\schemas\entry-point-capabilities-1.4.0.json">
+      <Link>schemas\entry-point-capabilities-1.4.0.json</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>

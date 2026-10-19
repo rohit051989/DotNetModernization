@@ -24,6 +24,7 @@ that wants one transaction, such as a test) the engine only flushes.
 """
 
 import datetime
+import time
 import re
 from collections.abc import Callable
 from pathlib import Path
@@ -33,7 +34,7 @@ from sqlalchemy.orm import Session
 
 from app import models
 from app.config import settings
-from app.workflow import semver
+from app.workflow import progress, semver, time_limits
 from app.workflow.adapters import create_adapter
 from app.workflow.adapters.base import local_path_from_uri
 from app.workflow.contract import ArtifactRef, StepContext, StepResult
@@ -309,8 +310,11 @@ def _resolve_batch_status(exit_status: str, stub_policy: str, on_failure: str) -
         return ("COMPLETED", False) if stub_policy == "continue" else ("FAILED", True)
     if exit_status == "AWAITING_APPROVAL":
         return "STOPPED", True
-    if exit_status == "FAILED":
+    # TIMED_OUT and STALLED (rbc-release-5): failures, told apart so the job page can say which, and why.
+    if exit_status in ("FAILED", "TIMED_OUT", "STALLED"):
         return "FAILED", on_failure != "continue"
+    if exit_status == "STOPPED":           # an operator stopped the job while this step ran
+        return "STOPPED", True
     # Any other (custom) token is a decider outcome — deciders are deferred
     # to E8, so seeing one here on a plain step is unexpected. Fail loudly
     # (11-STEP-CONTRACT.md's obligations) rather than guess at intent.
@@ -549,6 +553,18 @@ def _max_attempt(db: Session, instance_id, step_name: str) -> int:
     return result or 0
 
 
+def _throttled(sink, seconds: float = 2.0):
+    """Progress written at most every `seconds`, except a change of phase, which is written at once."""
+    last = {"at": 0.0, "phase": None}
+
+    def write(value: dict) -> None:
+        now = time.monotonic()
+        if value.get("phase") != last["phase"] or now - last["at"] >= seconds:
+            last["at"], last["phase"] = now, value.get("phase")
+            sink(value)
+    return write
+
+
 def _invoke_step(
     db: Session,
     job_execution: models.WfJobExecution,
@@ -601,19 +617,26 @@ def _invoke_step(
         config=_resolve_config(node.config, instance.parameters),
         inputs=inputs,
         job_context=job_execution.execution_context or {},
-        step_context={},
+        # The time and stall limits in effect, and a folder that outlives this execution, where a step keeps what it
+        # has finished so a rerun after a time-out, stall or crash continues from there (rbc-release-5).
+        step_context={"time_limits": time_limits.effective(db, node.step, (instance.parameters or {}).get("repository_id")),
+                      "checkpoint_dir": str(run_base.parent / "checkpoints" / node.step)},
         working_dir=str(run_root),
         output_dir=str(output_dir),
         database_url=settings.database_url,
     )
 
     adapter = create_adapter(registration.adapter_type, registration.adapter_config, session=db)
+    adapter.progress_sink = _throttled(progress.database_sink(str(step_execution.id)))
+    progress.running(str(step_execution.id), str(job_execution.id))
     try:
         result = adapter.run(context)
     except Exception as exc:
         result = StepResult(
             exit_status="FAILED", exit_message=f"adapter raised {type(exc).__name__}: {exc}"
         )
+    finally:
+        progress.running(None, None)
 
     batch_status, should_halt = _resolve_batch_status(
         result.exit_status, definition.stub_policy, node.on_failure

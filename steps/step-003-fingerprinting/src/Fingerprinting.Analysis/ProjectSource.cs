@@ -65,13 +65,40 @@ public sealed class ProjectSource
     /// directory, with their text.</summary>
     public required IReadOnlyList<(string RelativePath, string Text)> AuxiliaryFiles { get; init; }
 
+    /// <summary>Files not read within the per-file time limit (rbc-release-5), with the reason: recorded as "not
+    /// checked", never silently dropped.</summary>
+    public IReadOnlyList<(string RelativePath, string Reason)> NotChecked { get; init; } = [];
+
     private IReadOnlyList<DeclaredType>? _types;
     private ILookup<string, DeclaredType>? _typesByName;
 
-    public IReadOnlyList<DeclaredType> Types => _types ??= IndexTypes();
+    // Built once, on first use, even when projects are analysed in parallel.
+    public IReadOnlyList<DeclaredType> Types => LazyInitializer.EnsureInitialized(ref _types, IndexTypes);
 
     public ILookup<string, DeclaredType> TypesByName =>
-        _typesByName ??= Types.ToLookup(t => t.Name, StringComparer.Ordinal);
+        LazyInitializer.EnsureInitialized(ref _typesByName, () => Types.ToLookup(t => t.Name, StringComparer.Ordinal));
+
+    private ILookup<string, (ParsedFile File, InvocationExpressionSyntax Call)>? _invocationsByName;
+
+    /// <summary>
+    /// Every call in the project, by the simple name of what it invokes (<c>Foo</c> for <c>x.Foo(...)</c>,
+    /// <c>Foo&lt;T&gt;(...)</c>, <c>Foo(...)</c>), built once on first use (rbc-release-5). Finding a method's callers
+    /// is then a lookup, not a walk of every file — a walk that, once per call site, re-read a large generated proxy.
+    /// </summary>
+    public ILookup<string, (ParsedFile File, InvocationExpressionSyntax Call)> InvocationsByName =>
+        LazyInitializer.EnsureInitialized(ref _invocationsByName, () => Files
+            .SelectMany(f => f.Root.DescendantNodes().OfType<InvocationExpressionSyntax>().Select(call => (File: f, Call: call)))
+            .Select(x => (x.File, x.Call, Name: InvokedSimpleName(x.Call)))
+            .Where(x => x.Name is not null)
+            .ToLookup(x => x.Name!, x => (x.File, x.Call), StringComparer.Ordinal));
+
+    /// <summary>The simple name a call invokes, as <see cref="InvocationsByName"/> keys it.</summary>
+    public static string? InvokedSimpleName(InvocationExpressionSyntax call) => call.Expression switch
+    {
+        SimpleNameSyntax name => name.Identifier.Text,
+        MemberAccessExpressionSyntax { Name: var name } => name.Identifier.Text,
+        _ => null,
+    };
 
     /// <param name="includeGenerated">Load generated files too, flagged
     /// <see cref="ParsedFile.IsGenerated"/>. Off unless a step reads
@@ -82,7 +109,9 @@ public sealed class ProjectSource
         IReadOnlyList<string> packageNames,
         IAuxiliaryFiles auxiliaryFiles,
         CancellationToken cancellationToken,
-        bool includeGenerated = false)
+        bool includeGenerated = false,
+        Action<string, TimeSpan>? fileTimed = null,
+        TimeSpan? fileLimit = null)
     {
         var projectDirectoryAbsolute = Path.GetDirectoryName(
             Path.Combine(repositoryRoot, projectPath.Replace('/', Path.DirectorySeparatorChar)))!;
@@ -94,14 +123,31 @@ public sealed class ProjectSource
 
         var scan = SourceFileScanner.EnumerateCSharpFiles(repositoryRoot, projectDirectoryAbsolute, cancellationToken, includeGenerated);
         var files = new List<ParsedFile>();
+        var notChecked = new List<(string, string)>();
         foreach (var file in scan.Files.OrderBy(f => f.RelativePath, StringComparer.Ordinal))
         {
-            var root = await SourceFileScanner.ParseAsync(file.AbsolutePath, cancellationToken);
-            files.Add(new ParsedFile(file.RelativePath, (CompilationUnitSyntax)root, file.IsGenerated));
+            var started = System.Diagnostics.Stopwatch.GetTimestamp();
+            using var limit = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            if (fileLimit is { } most)
+            {
+                limit.CancelAfter(most);
+            }
+
+            try
+            {
+                var root = await SourceFileScanner.ParseAsync(file.AbsolutePath, limit.Token);
+                files.Add(new ParsedFile(file.RelativePath, (CompilationUnitSyntax)root, file.IsGenerated));
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                notChecked.Add((file.RelativePath, $"not checked: reading and parsing it took longer than {fileLimit!.Value.TotalSeconds:0} s"));
+            }
+
+            fileTimed?.Invoke(file.RelativePath, System.Diagnostics.Stopwatch.GetElapsedTime(started));
         }
 
         var auxiliary = new List<(string, string)>();
-        foreach (var path in FileSystemWalk.EnumerateFiles(projectDirectoryAbsolute, cancellationToken))
+        foreach (var path in FileSystemWalk.EnumerateProjectFiles(projectDirectoryAbsolute, cancellationToken))
         {
             if (!auxiliaryFiles.IsCandidate(path))
             {
@@ -124,6 +170,7 @@ public sealed class ProjectSource
             PackageNames = packageNames,
             Truncated = scan.Truncated,
             AuxiliaryFiles = auxiliary.OrderBy(a => a.Item1, StringComparer.Ordinal).ToList(),
+            NotChecked = notChecked,
         };
     }
 
@@ -218,12 +265,14 @@ public sealed class ProjectSource
         }
     }
 
-    private List<DeclaredType> IndexTypes()
+    private IReadOnlyList<DeclaredType> IndexTypes()
     {
         var types = new List<DeclaredType>();
         foreach (var file in Files)
         {
-            foreach (var declaration in file.Root.DescendantNodes().OfType<TypeDeclarationSyntax>())
+            // Types are declared only in namespaces and other types: the walk never enters a member's body, so a large
+            // generated proxy costs what its declarations do, not what its code does (rbc-release-5).
+            foreach (var declaration in file.Root.DescendantNodes(DeclarationsOnly).OfType<TypeDeclarationSyntax>())
             {
                 var baseNames = declaration.BaseList?.Types
                     .Select(b => SyntaxHelpers.RightmostTypeName(b.Type))
@@ -235,4 +284,7 @@ public sealed class ProjectSource
 
         return types;
     }
+
+    private static bool DeclarationsOnly(SyntaxNode node) =>
+        node is CompilationUnitSyntax or BaseNamespaceDeclarationSyntax or TypeDeclarationSyntax;
 }

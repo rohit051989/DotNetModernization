@@ -1,6 +1,7 @@
 using Fingerprinting.Analysis;
 using Fingerprinting.Domain;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 
 namespace Fingerprinting.TestCoverage;
 
@@ -29,8 +30,11 @@ public static class TestCoveragePipeline
     private const string NotInReportReason = "not measured — this file is in no coverage report";
     private const string NothingToTestReason = "not measured — no testable logic";
 
-    public static async Task<TestCoverageArtifact> RunAsync(TestCoverageInput input, string repositoryRoot, CancellationToken ct)
+    public static async Task<TestCoverageArtifact> RunAsync(TestCoverageInput input, string repositoryRoot, CancellationToken ct,
+        StepProgress? progress = null, WorkLimits? limits = null)
     {
+        progress ??= StepProgress.Silent();
+        limits ??= WorkLimits.Default;
         var warnings = new List<Warning>(input.Warnings);
         var projects = input.Projects.Where(p => p.ProjectPath.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase))
             .OrderBy(p => p.ProjectPath, StringComparer.Ordinal).ToList();
@@ -38,8 +42,10 @@ public static class TestCoveragePipeline
         // Each source file belongs to the deepest project directory holding it.
         var directories = projects.ToDictionary(p => p.ProjectPath, p => DirectoryOf(p.ProjectPath));
         var filesByProject = projects.ToDictionary(p => p.ProjectPath, _ => new List<SourceFileScanner.SourceFile>());
+        progress.Phase("scan", projects.Count);
         foreach (var project in projects)
         {
+            using var item = progress.Item(project.ProjectPath);
             var scan = SourceFileScanner.EnumerateCSharpFiles(repositoryRoot, Path.Combine(repositoryRoot, directories[project.ProjectPath]), ct);
             if (scan.Truncated)
             {
@@ -54,11 +60,30 @@ public static class TestCoveragePipeline
             }
         }
 
+        // Each file within its own time limit (rbc-release-5): one over it is analysed as empty, recorded as not
+        // checked with the reason, and the step carries on.
         var roots = new Dictionary<string, SyntaxNode>(StringComparer.Ordinal);
-        foreach (var file in filesByProject.Values.SelectMany(f => f))
+        var allFiles = filesByProject.Values.SelectMany(f => f).ToList();
+        progress.Phase("parse", allFiles.Count);
+        foreach (var file in allFiles)
         {
-            roots[file.RelativePath] = await SourceFileScanner.ParseAsync(file.AbsolutePath, ct);
+            using var item = progress.Item(file.RelativePath, "file");
+            using var limit = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            limit.CancelAfter(limits.File);
+            try
+            {
+                roots[file.RelativePath] = await SourceFileScanner.ParseAsync(file.AbsolutePath, limit.Token);
+            }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+            {
+                var reason = $"not checked: reading and parsing it took longer than {limits.File.TotalSeconds:0} s";
+                progress.RecordNotChecked(file.RelativePath, "file", reason);
+                warnings.Add(new Warning { Code = WarningCodes.NotChecked, Message = $"{file.RelativePath}: {reason}", Severity = WarningSeverities.Warning });
+                roots[file.RelativePath] = CSharpSyntaxTree.ParseText("").GetRoot();
+            }
         }
+
+        progress.Phase("analyse");
 
         // B1: which projects are test projects.
         var testReasons = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -89,8 +114,10 @@ public static class TestCoveragePipeline
         var testClasses = new List<TestClassInfo>();
         var mappings = new List<TestMapping>();
         var testProjects = new List<TestProjectInfo>();
+        progress.Phase("tests", testReasons.Count);
         foreach (var project in projects.Where(p => testReasons.ContainsKey(p.ProjectPath)))
         {
+            using var item = progress.Item(project.ProjectPath);
             var projectEvidence = new List<ClassificationEvidence>();
             if (TestDiscovery.ProjectNameType(project.ProjectPath) is { } named)
             {
@@ -123,10 +150,12 @@ public static class TestCoveragePipeline
         }
 
         // E: existing reports.
+        progress.Phase("reports");
         var productionFiles = analyses.Keys.Order(StringComparer.Ordinal).ToList();
         var (reports, unitLines, integrationLines, combinedLines) = ReadReports(repositoryRoot, input.CoverageLocations, productionFiles, testClasses, directories, testReasons, warnings, ct);
 
         // D: buckets, and per-file coverage.
+        progress.Phase("coverage");
         var mappingsByFile = mappings.GroupBy(m => m.SourceFile).ToDictionary(g => g.Key, g => g.ToList(), StringComparer.Ordinal);
         var sourceFiles = new List<SourceFileCoverage>();
         foreach (var (projectPath, files) in filesByProject.Where(p => !testReasons.ContainsKey(p.Key)))
@@ -310,7 +339,7 @@ public static class TestCoveragePipeline
     // ---------- helpers ----------
 
     private static IEnumerable<string> ConfigTexts(string projectDirectory, CancellationToken ct) =>
-        FileSystemWalk.EnumerateFiles(projectDirectory, ct)
+        FileSystemWalk.EnumerateProjectFiles(projectDirectory, ct)
             .Where(p => Path.GetFileName(p) is var n && (n.Equals("app.config", StringComparison.OrdinalIgnoreCase)
                                                           || (n.StartsWith("appsettings", StringComparison.OrdinalIgnoreCase) && n.EndsWith(".json", StringComparison.OrdinalIgnoreCase))))
             .Order(StringComparer.Ordinal)

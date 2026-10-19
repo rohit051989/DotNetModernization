@@ -72,8 +72,29 @@ public sealed class TransitiveResolver(string scratchRoot, string packagesDirect
             using var process = Process.Start(start)!;
             using var timer = CancellationTokenSource.CreateLinkedTokenSource(ct);
             timer.CancelAfter(timeout);
-            var output = process.StandardOutput.ReadToEndAsync(timer.Token);
-            await process.WaitForExitAsync(timer.Token);
+            // Both pipes are read, so a chatty restore never blocks on a full one; over the time limit, or when the
+            // step is stopped, the restore and everything it started end (rbc-release-5).
+            var output = process.StandardOutput.ReadToEndAsync(CancellationToken.None);
+            var errors = process.StandardError.ReadToEndAsync(CancellationToken.None);
+            try
+            {
+                await process.WaitForExitAsync(timer.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                try
+                {
+                    process.Kill(entireProcessTree: true);
+                }
+                catch (InvalidOperationException)
+                {
+                    // Already exited.
+                }
+
+                throw;
+            }
+
+            await Task.WhenAll(output, errors);
             if (process.ExitCode != 0)
             {
                 var text = (await output).Split('\n').FirstOrDefault(l => l.Contains("error", StringComparison.OrdinalIgnoreCase))?.Trim();

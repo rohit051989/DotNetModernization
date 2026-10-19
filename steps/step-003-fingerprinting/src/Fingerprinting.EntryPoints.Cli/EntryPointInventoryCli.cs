@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using System.Text.Json;
+using Fingerprinting.Analysis;
 using Fingerprinting.Domain;
 using Fingerprinting.StepHost;
 
@@ -91,7 +92,9 @@ public static class EntryPointInventoryCli
                 fingerprintIds is null ? StandaloneIds.ProjectId(inventory.RepositoryId, path)
                 : fingerprintIds.TryGetValue(path, out var id) ? id : null);
 
-            var artifact = await new EntryPointPipeline().RunAsync(input, repoPath, CancellationToken.None);
+            using var progress = new StepProgress(outDir, error);
+            var artifact = await new EntryPointPipeline().RunAsync(input, repoPath, CancellationToken.None, progress);
+            progress.Finish();
             var outputPath = await WriteArtifactAsync(artifact, outDir);
             error.WriteLine($"Wrote {outputPath}");
             error.WriteLine($"{artifact.Summary.EntryPointCount} entry point(s), {artifact.Summary.NoDeclaredAuthenticationCount} with no declared authentication.");
@@ -150,7 +153,12 @@ public static class EntryPointInventoryCli
         var projectIds = await platform.ResolveProjectIdsAsync(inventory.RepositoryId, CancellationToken.None);
         var input = BuildInput(inventory, fingerprint, path => projectIds.TryGetValue(path, out var id) ? id : null);
 
-        var artifact = await new EntryPointPipeline().RunAsync(input, repositoryRoot, CancellationToken.None);
+        // rbc-release-5: progress and a timing profile; each project's load within its own time limit.
+        using var progress = new StepProgress(context.OutputDir, Console.Error);
+        var (projectLimit, fileLimit) = StepLimits.Within(context);
+        var artifact = await new EntryPointPipeline().RunAsync(input, repositoryRoot, CancellationToken.None, progress,
+            WorkLimits.From(projectLimit, fileLimit));
+        progress.Phase("write");
         var outputPath = await WriteArtifactAsync(artifact, context.OutputDir);
         var checksum = ArtifactUri.Sha256File(outputPath);
 
@@ -159,13 +167,15 @@ public static class EntryPointInventoryCli
 
         var generatedAt = DateTimeOffset.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.ffffffZ", CultureInfo.InvariantCulture);
         var summary = artifact.Summary;
+        progress.Finish();
         return new StepResult
         {
             ExitStatus = ExitStatuses.Completed,
             ExitMessage = $"Inventoried {summary.RequestEntryPointCount} request entry point(s) and {summary.LifecycleHookCount} lifecycle hook(s) " +
                           $"across {summary.ProjectsScanned} project(s) " +
                           $"in '{artifact.RepositorySlug}' ({summary.ProjectsSkipped} skipped, {summary.ProjectsFailed} failed); " +
-                          $"{summary.NoDeclaredAuthenticationCount} with no declared authentication.",
+                          $"{summary.NoDeclaredAuthenticationCount} with no declared authentication." +
+                          (progress.NotCheckedItems.Count > 0 ? $" {progress.NotCheckedItems.Count} item(s) not checked (see timing-profile.json)." : ""),
             Metrics = new Dictionary<string, long>
             {
                 ["read_count"] = inventory.Projects.Count,

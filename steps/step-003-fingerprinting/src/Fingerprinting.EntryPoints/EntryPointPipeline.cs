@@ -30,8 +30,10 @@ public sealed record InventoryInput(
 /// </summary>
 public sealed class EntryPointPipeline
 {
-    /// <summary>Matches the entry-point-inventory step registration version.</summary>
-    public const string ScannerVersion = "2.3.0";
+    /// <summary>Matches the entry-point-inventory step registration version. 2.4.0 (rbc-release-5): each project's own
+    /// files only (a nested project's are its own); projects loaded in parallel, bounded, each within a time limit,
+    /// over which it is recorded NOT_CHECKED with the reason; progress and a timing profile. Artifact unchanged.</summary>
+    public const string ScannerVersion = "2.4.0";
 
     private static readonly IReadOnlyList<IEntryPointDetector> Detectors =
     [
@@ -59,23 +61,32 @@ public sealed class EntryPointPipeline
     private static readonly ConsoleMainDetector ConsoleMain = new();
 
     public async Task<EntryPointInventoryArtifact> RunAsync(
-        InventoryInput input, string repositoryRoot, CancellationToken cancellationToken)
+        InventoryInput input, string repositoryRoot, CancellationToken cancellationToken, StepProgress? progress = null,
+        WorkLimits? limits = null)
     {
-        var loaded = new List<(InputProject Input, ProjectSource Source)>();
-        var results = new List<ProjectEntryPoints>();
+        progress ??= StepProgress.Silent();
+        limits ??= WorkLimits.Default;
+        var loadedByPath = new System.Collections.Concurrent.ConcurrentDictionary<string, (InputProject Input, ProjectSource Source)>(StringComparer.Ordinal);
+        var other = new System.Collections.Concurrent.ConcurrentBag<ProjectEntryPoints>();
 
-        foreach (var project in input.Projects.OrderBy(p => p.RelativePath, StringComparer.Ordinal))
+        // rbc-release-5: each project read once, in parallel (bounded), within its own time limit.
+        progress.Phase("load", input.Projects.Count);
+        await Parallel.ForEachAsync(input.Projects, new ParallelOptions
         {
+            MaxDegreeOfParallelism = Math.Clamp(Environment.ProcessorCount - 1, 1, 8), CancellationToken = cancellationToken,
+        }, async (project, ct) =>
+        {
+            using var item = progress.Item(project.RelativePath);
             if (project.SkipReason is not null)
             {
-                results.Add(Empty(project, ProjectScanStatuses.Skipped, project.SkipReason, []));
-                continue;
+                other.Add(Empty(project, ProjectScanStatuses.Skipped, project.SkipReason, []));
+                return;
             }
 
             var directory = Path.GetDirectoryName(Path.Combine(repositoryRoot, project.RelativePath.Replace('/', Path.DirectorySeparatorChar)))!;
             if (!Directory.Exists(directory))
             {
-                results.Add(Empty(project, ProjectScanStatuses.Failed, null,
+                other.Add(Empty(project, ProjectScanStatuses.Failed, null,
                 [
                     new Warning
                     {
@@ -84,12 +95,29 @@ public sealed class EntryPointPipeline
                         Severity = WarningSeverities.Warning,
                     },
                 ]));
-                continue;
+                return;
             }
 
-            loaded.Add((project, await ProjectSource.LoadAsync(
-                repositoryRoot, project.RelativePath, project.Packages, EntryPointAuxiliaryFiles.Instance, cancellationToken)));
-        }
+            using var limit = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            limit.CancelAfter(limits.ProjectLoad);
+            try
+            {
+                loadedByPath[project.RelativePath] = (project, await ProjectSource.LoadAsync(
+                    repositoryRoot, project.RelativePath, project.Packages, EntryPointAuxiliaryFiles.Instance, limit.Token,
+                    fileTimed: (path, took) => progress.Timed(path, "file", took), fileLimit: limits.File));
+            }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+            {
+                var reason = $"not checked: loading the project took longer than {limits.ProjectLoad.TotalSeconds:0} s";
+                progress.RecordNotChecked(project.RelativePath, "project", reason);
+                other.Add(Empty(project, ProjectScanStatuses.Failed, null,
+                    [new Warning { Code = WarningCodes.NotChecked, Message = reason, Severity = WarningSeverities.Warning }]));
+            }
+        });
+
+        var loaded = loadedByPath.Values.OrderBy(l => l.Input.RelativePath, StringComparer.Ordinal).ToList();
+        var results = other.ToList();
+        progress.Phase("index");
 
         // Contracts, implementations and hosts can sit in different
         // projects — or, for an IIS folder of .svc files, in none — so the
@@ -104,10 +132,14 @@ public sealed class EntryPointPipeline
             .Select(t => t.Namespace is null ? t.Name : $"{t.Namespace}.{t.Name}")
             .ToHashSet(StringComparer.Ordinal);
 
+        progress.Phase("detect", loaded.Count);
         foreach (var (project, source) in loaded)
         {
+            using var item = progress.Item(project.RelativePath);
             results.Add(Detect(input.RepositoryId, project, source, wcf, repository, repositoryTypes));
         }
+
+        progress.Phase("architecture");
 
         // 2.2.0: what each project exposes or hosts, across projects.
         var signals = ArchitectureSignals.Build(results, input.Projects.Select(p => p.RelativePath).ToList());

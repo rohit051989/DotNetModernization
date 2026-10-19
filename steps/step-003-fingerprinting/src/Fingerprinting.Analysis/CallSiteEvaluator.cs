@@ -198,9 +198,11 @@ public static class CallSiteEvaluator
         var parameters = method.ParameterList.Parameters.Select(p => p.Identifier.Text).ToList();
         var sites = new List<(ParsedFile, InvocationExpressionSyntax, Env)>();
 
-        foreach (var file in project.Files)
+        // The project's calls by invoked name, indexed once (ProjectSource.InvocationsByName), in file and source order.
+        foreach (var group in project.InvocationsByName[name].GroupBy(x => x.File))
         {
-            foreach (var call in file.Root.DescendantNodes().OfType<InvocationExpressionSyntax>())
+            var file = group.Key;
+            foreach (var call in group.Select(x => x.Call))
             {
                 var callee = call.Expression switch
                 {

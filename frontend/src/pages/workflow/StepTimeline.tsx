@@ -35,6 +35,52 @@ function markerClass(step: StepExecution): string {
   return MARKER_CLASS[step.batch_status] ?? 'bg-neutral-200'
 }
 
+/** hh:mm:ss, or mm:ss under an hour. */
+function formatElapsed(seconds: number): string {
+  const s = Math.max(0, Math.floor(seconds))
+  const two = (n: number) => String(n).padStart(2, '0')
+  const h = Math.floor(s / 3600)
+  return h > 0 ? `${h}:${two(Math.floor((s % 3600) / 60))}:${two(s % 60)}` : `${two(Math.floor(s / 60))}:${two(s % 60)}`
+}
+
+/** A running step's progress (rbc-release-5): the phase, items done out of the total, the current item, and the
+ * time since the step started, ticking every second between polls. Once the step has ended without completing — a
+ * time limit, a stall, a stop — where it was when it ended. */
+function StepProgressLine({ step }: { step: StepExecution }) {
+  const running = step.batch_status === 'STARTED' || step.batch_status === 'STARTING'
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    if (!running) return
+    const timer = window.setInterval(() => setNow(Date.now()), 1000)
+    return () => window.clearInterval(timer)
+  }, [running])
+
+  const progress = step.progress
+  if (!running && (!progress || step.exit_status === 'COMPLETED' || step.exit_status === 'SKIPPED')) return null
+  const count = progress && (progress.total ? `${progress.done} of ${progress.total}` : progress.done > 0 ? `${progress.done} done` : null)
+  const lastHeard = step.progress_at ? Math.round((now - new Date(step.progress_at).getTime()) / 1000) : null
+  return (
+    <div className={`mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs ${running ? 'text-amber-800' : 'text-red-700'}`}>
+      {running && step.started_at && <span className="font-mono">{formatElapsed((now - new Date(step.started_at).getTime()) / 1000)}</span>}
+      {!running && <span className="font-medium">stopped at</span>}
+      {progress ? (
+        <>
+          <span className="font-medium">{progress.phase}</span>
+          {count && <span>{count}</span>}
+          {progress.item && (
+            <span className="max-w-md truncate font-mono text-neutral-500" title={progress.item}>
+              {progress.item}
+            </span>
+          )}
+          {running && lastHeard !== null && lastHeard > 30 && <span className="text-neutral-500">last progress {formatElapsed(lastHeard)} ago</span>}
+        </>
+      ) : (
+        running && <span className="text-neutral-500">no progress reported yet</span>
+      )}
+    </div>
+  )
+}
+
 /** Which step produced an input: from this execution's artifacts, or — for
  * an input carried from an earlier execution — looked up on demand. */
 function ProducedBy({ artifactId, known, displayNames }: { artifactId: string; known: ArtifactSummary | undefined; displayNames: Record<string, string> }) {
@@ -130,6 +176,7 @@ export function StepTimeline({ steps, artifactsById, localPath, onViewArtifact }
               </span>
               <span className="ml-auto text-xs text-neutral-300">{isExpanded(step) ? '▲' : '▼'}</span>
             </button>
+            <StepProgressLine step={step} />
 
             {isExpanded(step) && (
               <div className="mt-3 space-y-3 border-t border-neutral-100 pt-3 text-xs">

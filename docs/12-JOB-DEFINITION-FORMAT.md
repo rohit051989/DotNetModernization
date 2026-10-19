@@ -237,8 +237,11 @@ with `NOOP` — this is how Tier 0 and 1 auto-pass while Tier 2 and 3 require si
       allow_start_if_complete: true
       start_limit: 5
     on_failure: continue           # default: halt
-    timeout_seconds: 900
 ```
+
+A step's time limit is not set here: it comes from the settings and the per-step and per-repository overrides
+(`11-STEP-CONTRACT.md`, "Time limits, progress and stopping"). A `timeout_seconds` written here is accepted and not
+read.
 
 `on_failure: continue` records the failure and proceeds. Use sparingly and never for
 verification steps that gate correctness.

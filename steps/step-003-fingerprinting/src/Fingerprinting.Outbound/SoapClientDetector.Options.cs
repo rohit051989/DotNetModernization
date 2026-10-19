@@ -392,9 +392,7 @@ public static partial class SoapClientDetector
     /// <c>public string BindingMode { get; set; } = "Transport";</c>.</summary>
     private static string? CodeDefault(DetectionContext context, string property)
     {
-        var values = context.Repository.SelectMany(p => p.Files).Where(f => !f.IsGenerated)
-            .SelectMany(f => f.Root.DescendantNodes().OfType<PropertyDeclarationSyntax>())
-            .Where(p => p.Identifier.Text == property && p.Initializer is not null)
+        var values = context.Index.InitializedProperties[property]
             .Select(p => SyntaxHelpers.StringValue(p.Initializer!.Value) ?? (p.Initializer.Value as MemberAccessExpressionSyntax)?.Name.Identifier.Text)
             .Distinct(StringComparer.Ordinal)
             .ToList();

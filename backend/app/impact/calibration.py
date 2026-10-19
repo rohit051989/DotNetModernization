@@ -42,7 +42,6 @@ tests/test_impact_calibration.py makes it a regression test.
 
 import argparse
 import json
-import subprocess
 import tempfile
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -50,7 +49,9 @@ from pathlib import Path
 
 import yaml
 
+from app.config import settings
 from app.impact import client as client_impact
+from app.workflow import processes
 
 CODE = Path(__file__).resolve().parents[3]
 FIXTURES = CODE / "backend" / "tests" / "fixtures" / "impact_oracle"
@@ -195,8 +196,8 @@ def run(oracle_path: Path = DEFAULT_ORACLE, transform_catalog=None) -> Result:
                 "--occurrences", str(inputs / "item-occurrences.json"), "--entry-points", str(inputs / "entry-point-inventory.json"),
                 "--test-coverage", str(inputs / "test-coverage.json"), "--outbound", str(inputs / "outbound-invocation-inventory.json"),
                 "--catalog", str(tmp / "catalog.json"), "--decisions", str(tmp / "decisions.json"), "--out", str(tmp / "out")]
-        done = subprocess.run(args, capture_output=True, text=True)
-        if done.returncode != 0:
+        done = processes.run(args, timeout=settings.step_timeout_seconds)
+        if done.timed_out or done.returncode != 0:
             raise RuntimeError(f"impact-analysis standalone run failed:\n{done.stderr}")
         artifact = json.loads((tmp / "out" / "impact-analysis.json").read_text(encoding="utf-8"))
     edges = json.loads((inputs / "integration-edges.json").read_text(encoding="utf-8"))

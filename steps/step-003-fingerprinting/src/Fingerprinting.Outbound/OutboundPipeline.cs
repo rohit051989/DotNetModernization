@@ -52,26 +52,45 @@ public sealed class OutboundPipeline
     /// <summary>Matches the outbound-invocation-inventory step registration version. 1.5.1: the WCF client
     /// matrices 1.1.0 (the wildcard rule; reviewer decisions); artifact 1.5.0 unchanged. 1.6.0: a SOAP client built by
     /// a custom helper from options-bound configuration (WCFClientHelper.CreateClient&lt;T&gt;(name)) — call sites followed
-    /// up through generic callers, binding, mode, credential and address read per environment; artifact unchanged.</summary>
-    public const string ScannerVersion = "1.6.0";
+    /// up through generic callers, binding, mode, credential and address read per environment; artifact unchanged.
+    /// 1.7.0 (rbc-release-5): each project's own files only (a nested project's are its own); one repository index
+    /// shared by every project instead of a walk of the repository per project, and call sites found from an index
+    /// of invocations instead of a walk of the project per call site; projects in parallel, bounded, each within a
+    /// time limit, and each file within its own, over which it is recorded NOT_CHECKED with the reason; every
+    /// unresolved operation names its reason; progress, a timing profile, and finished projects kept so a rerun
+    /// continues from there. Artifact unchanged.</summary>
+    public const string ScannerVersion = "1.7.0";
 
-    public async Task<OutboundInventoryArtifact> RunAsync(OutboundInput input, string repositoryRoot, CancellationToken cancellationToken)
+    /// <summary>Projects loaded and analysed at once: bounded, leaving a core for the rest of the machine.</summary>
+    public static int Parallelism { get; } = Math.Clamp(Environment.ProcessorCount - 1, 1, 8);
+
+    public async Task<OutboundInventoryArtifact> RunAsync(
+        OutboundInput input, string repositoryRoot, CancellationToken cancellationToken, StepProgress? progress = null,
+        WorkLimits? limits = null, ProjectCheckpoints? checkpoints = null)
     {
+        progress ??= StepProgress.Silent();
+        limits ??= WorkLimits.Default;
         var results = new List<ProjectInvocations>();
-        var loaded = new List<(OutboundInputProject Input, ProjectSource Source)>();
+        var loadedByPath = new System.Collections.Concurrent.ConcurrentDictionary<string, (OutboundInputProject Input, ProjectSource Source)>(StringComparer.Ordinal);
+        var failedByPath = new System.Collections.Concurrent.ConcurrentDictionary<string, ProjectInvocations>(StringComparer.Ordinal);
 
-        foreach (var project in input.Projects.OrderBy(p => p.RelativePath, StringComparer.Ordinal))
+        // Each project is read and parsed once — however many solutions include it — in parallel, each within its own
+        // time limit (rbc-release-5).
+        progress.Phase("load", input.Projects.Count);
+        await Parallel.ForEachAsync(input.Projects, new ParallelOptions { MaxDegreeOfParallelism = Parallelism, CancellationToken = cancellationToken },
+            async (project, ct) =>
         {
+            using var item = progress.Item(project.RelativePath);
             if (project.SkipReason is not null)
             {
-                results.Add(Empty(project, ProjectScanStatuses.Skipped, project.SkipReason, []));
-                continue;
+                failedByPath[project.RelativePath] = Empty(project, ProjectScanStatuses.Skipped, project.SkipReason, []);
+                return;
             }
 
             var directory = Path.GetDirectoryName(Path.Combine(repositoryRoot, project.RelativePath.Replace('/', Path.DirectorySeparatorChar)))!;
             if (!Directory.Exists(directory))
             {
-                results.Add(Empty(project, ProjectScanStatuses.Failed, null,
+                failedByPath[project.RelativePath] = Empty(project, ProjectScanStatuses.Failed, null,
                 [
                     new Warning
                     {
@@ -79,15 +98,39 @@ public sealed class OutboundPipeline
                         Message = $"Project directory not found on disk: {project.RelativePath}",
                         Severity = WarningSeverities.Warning,
                     },
-                ]));
-                continue;
+                ]);
+                return;
             }
 
             // Generated files are loaded (flagged) so a service reference's
             // Reference.cs can supply a binding; nothing else reads them.
-            loaded.Add((project, await ProjectSource.LoadAsync(
-                repositoryRoot, project.RelativePath, project.Packages, NoAuxiliaryFiles.Instance, cancellationToken, includeGenerated: true)));
-        }
+            using var limit = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            limit.CancelAfter(limits.ProjectLoad);
+            try
+            {
+                var source = await ProjectSource.LoadAsync(
+                    repositoryRoot, project.RelativePath, project.Packages, NoAuxiliaryFiles.Instance, limit.Token, includeGenerated: true,
+                    fileTimed: (path, took) => progress.Timed(path, "file", took), fileLimit: limits.File);
+                foreach (var (path, reason) in source.NotChecked)
+                {
+                    progress.RecordNotChecked(path, "file", reason);
+                }
+
+                loadedByPath[project.RelativePath] = (project, source);
+            }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+            {
+                var reason = $"not checked: loading the project took longer than {limits.ProjectLoad.TotalSeconds:0} s";
+                progress.RecordNotChecked(project.RelativePath, "project", reason);
+                failedByPath[project.RelativePath] = Empty(project, ProjectScanStatuses.Failed, null,
+                    [new Warning { Code = WarningCodes.NotChecked, Message = reason, Severity = WarningSeverities.Warning }]);
+            }
+        });
+
+        results.AddRange(failedByPath.Values);
+        var loaded = loadedByPath.Values.OrderBy(l => l.Input.RelativePath, StringComparer.Ordinal).ToList();
+
+        progress.Phase("configuration");
 
         var projectPaths = input.Projects.Select(p => p.RelativePath).ToList();
         var deployFiles = DeployParameterFiles.Discover(repositoryRoot, input.DeployParameterGlobs, projectPaths, cancellationToken);
@@ -95,7 +138,7 @@ public sealed class OutboundPipeline
             .WithDeployParameters(deployFiles, ReadDeclarations(repositoryRoot, deployFiles));
         config = config.WithHosts(ResolveHosts(input.Projects, input.ProjectReferences, config));
         results.AddRange(Detect(input.RepositoryId, loaded, config, input.EntryPoints,
-            new SoapMatrices(input.TargetFramework, input.WcfClientSupport, input.WcfClientPlatform)));
+            new SoapMatrices(input.TargetFramework, input.WcfClientSupport, input.WcfClientPlatform), progress, limits, checkpoints));
         results = results.OrderBy(r => r.ProjectPath, StringComparer.Ordinal).ToList();
 
         var warnings = input.Warnings.ToList();
@@ -215,10 +258,16 @@ public sealed class OutboundPipeline
     /// <summary>Detection over already-loaded projects — the entry point tests use.</summary>
     public static IReadOnlyList<ProjectInvocations> Detect(
         Guid repositoryId, IReadOnlyList<(OutboundInputProject Input, ProjectSource Source)> loaded, RepositoryConfig config,
-        IReadOnlyList<InboundEntryPoint>? entryPoints = null, SoapMatrices? soapMatrices = null)
+        IReadOnlyList<InboundEntryPoint>? entryPoints = null, SoapMatrices? soapMatrices = null, StepProgress? progress = null,
+        WorkLimits? limits = null, ProjectCheckpoints? checkpoints = null)
     {
+        progress ??= StepProgress.Silent();
+        limits ??= WorkLimits.Default;
+        checkpoints ??= ProjectCheckpoints.None;
         var sources = loaded.Select(l => l.Source).ToList();
+        progress.Phase("index");
         var symbols = SymbolIndex.Build(sources);
+        var index = new RepositoryIndex(sources);
         var claimed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var contexts = loaded.Select(l => (l.Input, Context: new DetectionContext
         {
@@ -229,69 +278,57 @@ public sealed class OutboundPipeline
             Repository = sources,
             UncLiterals = l.Input.UncLiterals,
             ClaimedEndpoints = claimed,
+            Index = index,
         })).ToList();
         var references = DatabaseDetector.IndexReferences(contexts.Select(c => c.Context));
 
         // SOAP clients in code first, for every project: a library's client
         // claims its host's endpoint entry before the host looks for entries
         // nothing claimed (1.3.0).
-        var soap = contexts.ToDictionary(c => c.Input.RelativePath, c => SoapClientDetector.Detect(c.Context).ToList(), StringComparer.Ordinal);
-
-        var results = new List<ProjectInvocations>();
-        foreach (var (project, context) in contexts)
+        progress.Phase("soap clients", contexts.Count);
+        var soap = new Dictionary<string, List<Detected>>(StringComparer.Ordinal);
+        foreach (var c in contexts)
         {
-            var detected = new List<Detected>();
-            detected.AddRange(soap[project.RelativePath]);
-            detected.AddRange(SoapClientDetector.DetectConfigOnly(context));
-            detected.AddRange(HttpClientDetector.Detect(context));
-            detected.AddRange(GrpcClientDetector.Detect(context));
-            detected.AddRange(DatabaseDetector.Detect(context, references));
-            detected.AddRange(MessagingDetector.Detect(context));
-            detected.AddRange(CacheDetector.Detect(context));
-            detected.AddRange(SecretStoreDetector.Detect(context));
-            detected.AddRange(FileShareDetector.Detect(context));
-            detected.AddRange(SmtpDetector.Detect(context));
-            detected.AddRange(LdapDetector.Detect(context));
-
-            var invocations = Finish(repositoryId, project.RelativePath, detected, soapMatrices);
-            var used = invocations.Where(i => i.Usage == Usages.Used).ToList();
-            var warnings = new List<Warning>();
-            if (context.Project.Truncated)
-            {
-                warnings.Add(new Warning
-                {
-                    Code = WarningCodes.SourceFileCapExceeded,
-                    Message = $"More than {SourceFileScanner.MaxFilesPerProject} C# files; the rest were not read.",
-                    Severity = WarningSeverities.Warning,
-                });
-            }
-
-            results.Add(new ProjectInvocations
-            {
-                ProjectId = project.ProjectId,
-                ProjectPath = project.RelativePath,
-                Status = ProjectScanStatuses.Scanned,
-                Summary = new ProjectOutboundSummary
-                {
-                    UnusedCount = invocations.Count - used.Count,
-                    CountByMechanism = Count(used.Select(i => i.Mechanism)),
-                    CountByVerdict = Count(used.Select(i => i.LinuxCompatibility.Verdict)),
-                    Incompatible = used
-                        .Where(i => i.LinuxCompatibility.Verdict == Verdicts.Incompatible)
-                        .Select(i => new IncompatibleInvocation
-                        {
-                            InvocationId = i.InvocationId,
-                            Mechanism = i.Mechanism,
-                            Endpoint = Endpoints.Display(i.Endpoint),
-                            Reasons = i.LinuxCompatibility.Reasons,
-                        })
-                        .ToList(),
-                },
-                Invocations = invocations,
-                Warnings = warnings,
-            });
+            using var item = progress.Item(c.Input.RelativePath);
+            soap[c.Input.RelativePath] = SoapClientDetector.Detect(c.Context).ToList();
         }
 
+        // Configuration-only endpoints claim entries too, in project order: kept in order, as before.
+        var configOnly = contexts.ToDictionary(c => c.Input.RelativePath, c => SoapClientDetector.DetectConfigOnly(c.Context).ToList(),
+            StringComparer.Ordinal);
+
+        // The rest, per project, in parallel; each project within its own time limit, and saved as it completes so a
+        // rerun continues from there (rbc-release-5).
+        progress.Phase("detect", contexts.Count);
+        var detectedByPath = new System.Collections.Concurrent.ConcurrentDictionary<string, ProjectInvocations>(StringComparer.Ordinal);
+        Parallel.ForEach(contexts, new ParallelOptions { MaxDegreeOfParallelism = Parallelism }, c =>
+        {
+            using var item = progress.Item(c.Input.RelativePath);
+            if (checkpoints.TryGet<ProjectInvocations>(c.Input.RelativePath, out var saved) && saved is not null)
+            {
+                detectedByPath[c.Input.RelativePath] = saved;
+                return;
+            }
+
+            using var limit = new CancellationTokenSource(limits.ProjectLoad);
+            c.Context.Cancellation = limit.Token;
+            ProjectInvocations result;
+            try
+            {
+                result = DetectProject(repositoryId, c.Input, c.Context, soap[c.Input.RelativePath], configOnly[c.Input.RelativePath], references, soapMatrices);
+            }
+            catch (OperationCanceledException)
+            {
+                var reason = $"not checked: analysing the project took longer than {limits.ProjectLoad.TotalSeconds:0} s";
+                progress.RecordNotChecked(c.Input.RelativePath, "project", reason);
+                result = Empty(c.Input, ProjectScanStatuses.Failed, null,
+                    [new Warning { Code = WarningCodes.NotChecked, Message = reason, Severity = WarningSeverities.Warning }]);
+            }
+
+            checkpoints.Save(c.Input.RelativePath, result);
+            detectedByPath[c.Input.RelativePath] = result;
+        });
+        var results = contexts.Select(c => detectedByPath[c.Input.RelativePath]).ToList();
         // Each project's SetParameters parameters (1.3.0). A URL's value is
         // kept only where a used invocation's binding cites the parameter —
         // the URL then names an endpoint the platform uses — normalised as
@@ -309,12 +346,75 @@ public sealed class OutboundPipeline
             .ToDictionary(g => g.Key, g => g.OrderBy(d => d.SourceFile, StringComparer.Ordinal).ThenBy(d => d.Line).ThenBy(d => d.Name, StringComparer.Ordinal).ToList(),
                 StringComparer.Ordinal);
 
+        progress.Phase("backend reach");
         var reach = BackendReach.Build(sources, allInvocations, entryPoints ?? []);
         return results.Select(r => r with
         {
             DeployParameters = deployByProject.GetValueOrDefault(r.ProjectPath) ?? [],
             EntryPointBackend = reach.GetValueOrDefault(r.ProjectPath) ?? [],
         }).ToList();
+    }
+
+    /// <summary>One project's detection, after the SOAP passes that claim endpoint entries (which run in order).</summary>
+    private static ProjectInvocations DetectProject(
+        Guid repositoryId, OutboundInputProject project, DetectionContext context, IReadOnlyList<Detected> soap,
+        IReadOnlyList<Detected> configOnly, ILookup<string, ConnectionReference> references, SoapMatrices? soapMatrices)
+    {
+        var detected = new List<Detected>();
+        detected.AddRange(soap);
+        detected.AddRange(configOnly);
+        detected.AddRange(HttpClientDetector.Detect(context));
+        detected.AddRange(GrpcClientDetector.Detect(context));
+        detected.AddRange(DatabaseDetector.Detect(context, references));
+        detected.AddRange(MessagingDetector.Detect(context));
+        detected.AddRange(CacheDetector.Detect(context));
+        detected.AddRange(SecretStoreDetector.Detect(context));
+        detected.AddRange(FileShareDetector.Detect(context));
+        detected.AddRange(SmtpDetector.Detect(context));
+        detected.AddRange(LdapDetector.Detect(context));
+
+        var invocations = Finish(repositoryId, project.RelativePath, detected, soapMatrices);
+        var used = invocations.Where(i => i.Usage == Usages.Used).ToList();
+        var warnings = new List<Warning>();
+        if (context.Project.Truncated)
+        {
+            warnings.Add(new Warning
+            {
+                Code = WarningCodes.SourceFileCapExceeded,
+                Message = $"More than {SourceFileScanner.MaxFilesPerProject} C# files; the rest were not read.",
+                Severity = WarningSeverities.Warning,
+            });
+        }
+
+        foreach (var (path, reason) in context.Project.NotChecked)
+        {
+            warnings.Add(new Warning { Code = WarningCodes.NotChecked, Message = $"{path}: {reason}", Severity = WarningSeverities.Warning });
+        }
+
+        return new ProjectInvocations
+        {
+            ProjectId = project.ProjectId,
+            ProjectPath = project.RelativePath,
+            Status = ProjectScanStatuses.Scanned,
+            Summary = new ProjectOutboundSummary
+            {
+                UnusedCount = invocations.Count - used.Count,
+                CountByMechanism = Count(used.Select(i => i.Mechanism)),
+                CountByVerdict = Count(used.Select(i => i.LinuxCompatibility.Verdict)),
+                Incompatible = used
+                    .Where(i => i.LinuxCompatibility.Verdict == Verdicts.Incompatible)
+                    .Select(i => new IncompatibleInvocation
+                    {
+                        InvocationId = i.InvocationId,
+                        Mechanism = i.Mechanism,
+                        Endpoint = Endpoints.Display(i.Endpoint),
+                        Reasons = i.LinuxCompatibility.Reasons,
+                    })
+                    .ToList(),
+            },
+            Invocations = invocations,
+            Warnings = warnings,
+        };
     }
 
     /// <summary>

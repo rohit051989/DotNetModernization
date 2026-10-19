@@ -41,8 +41,10 @@ public sealed class DependencyPipeline(PackageLookup lookup, DependencyOptions o
     /// is none yet; a retired package's replacement is given a version (<see cref="ReplacementVersionAsync"/>).
     /// 1.6.0 (artifact 1.6.0): feeds resolve as dotnet resolves them — a NuGet.config in a folder above the
     /// repository is recorded as declared in <c>parent</c>, and a local folder declared at user level is a client
-    /// feed (<see cref="FeedResolver"/>).</summary>
-    public const string ScannerVersion = "1.6.0";
+    /// feed (<see cref="FeedResolver"/>). 1.7.0 (rbc-release-5): each project within a time limit, over which it is
+    /// recorded NOT_CHECKED with the reason; a transitive restore over its limit ends with everything it started;
+    /// progress, a timing profile, and finished projects kept so a rerun continues from there. Artifact unchanged.</summary>
+    public const string ScannerVersion = "1.7.0";
 
     /// <summary>1.5.0: the PACKAGE_VULNERABLE value's ending when no release without a known advisory supports the
     /// target.</summary>
@@ -62,14 +64,48 @@ public sealed class DependencyPipeline(PackageLookup lookup, DependencyOptions o
     private readonly NuGetFramework _target = NuGetFramework.Parse(options.TargetFramework);
     private readonly Dictionary<string, IReadOnlyDictionary<string, ApiType>?> _surfaces = new(StringComparer.Ordinal);
 
-    public async Task<DependencyAssessmentArtifact> RunAsync(DependencyInput input, string repositoryRoot, CancellationToken ct)
+    public async Task<DependencyAssessmentArtifact> RunAsync(DependencyInput input, string repositoryRoot, CancellationToken ct,
+        StepProgress? progress = null, WorkLimits? limits = null, ProjectCheckpoints? checkpoints = null)
     {
+        progress ??= StepProgress.Silent();
+        limits ??= WorkLimits.Default;
+        checkpoints ??= ProjectCheckpoints.None;
+
+        // One project at a time: the time goes on package lookups, which the lookup cache shares between projects and
+        // a client feed should not see in bursts. Each project has its own time limit, and is saved as it completes so
+        // a rerun continues from there (rbc-release-5).
         var results = new List<ProjectDependencies>();
+        progress.Phase("assess", input.Projects.Count);
         foreach (var project in input.Projects.OrderBy(p => p.RelativePath, StringComparer.Ordinal))
         {
             ct.ThrowIfCancellationRequested();
-            results.Add(await AssessProjectAsync(input.RepositoryId, repositoryRoot, project, ct));
+            using var item = progress.Item(project.RelativePath);
+            if (checkpoints.TryGet<ProjectDependencies>(project.RelativePath, out var saved) && saved is not null)
+            {
+                results.Add(saved);
+                continue;
+            }
+
+            using var limit = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            limit.CancelAfter(limits.ProjectLoad);
+            ProjectDependencies result;
+            try
+            {
+                result = await AssessProjectAsync(input.RepositoryId, repositoryRoot, project, limit.Token);
+            }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+            {
+                var reason = $"not checked: assessing the project took longer than {limits.ProjectLoad.TotalSeconds:0} s";
+                progress.RecordNotChecked(project.RelativePath, "project", reason);
+                result = Empty(project, ProjectScanStatuses.Failed, null,
+                    [new Warning { Code = WarningCodes.NotChecked, Message = reason, Severity = WarningSeverities.Warning }]);
+            }
+
+            checkpoints.Save(project.RelativePath, result);
+            results.Add(result);
         }
+
+        progress.Phase("summarise");
 
         // Version drift (1.1.0): one package id at more than one version across
         // the repository's projects. A finding of its own — consolidating is

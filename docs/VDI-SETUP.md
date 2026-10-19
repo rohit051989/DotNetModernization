@@ -286,11 +286,11 @@ the source folder, make your branch and the platform folder in the client's repo
 #### 1. Clone our repository into the source folder
 
 ```powershell
-git clone -c core.longpaths=true --branch rbc-release-4 https://git.ourcompany.com/modernization-platform.git C:\MP\source
+git clone -c core.longpaths=true --branch rbc-release-5 https://git.ourcompany.com/modernization-platform.git C:\MP\source
 ```
 
 (The address and the release tag come with the release. When the release arrives as a bundle instead, clone the
-bundle: `git clone -c core.longpaths=true --branch rbc-release-4 C:\MP\delivery\rbc-release-4.bundle C:\MP\source`,
+bundle: `git clone -c core.longpaths=true --branch rbc-release-5 C:\MP\delivery\rbc-release-5.bundle C:\MP\source`,
 after checking its hash as in "Appendix: upgrading from a release bundle".)
 
 From now on, the source folder is only ever copied from (rule 1).
@@ -396,6 +396,10 @@ notepad C:\MP\client\modernization-platform\backend\.env
 | `DB_USER` | The login from "Database" | `modplatform` | **yes** |
 | `DB_PASSWORD` | Its password | (from the administrator) | **yes** |
 | `RUNS_DIR` | Where all run output, worktrees, conversions and verifications go. Absolute, short, **outside** the platform folder and outside the client's repository (preflight warns) | `C:\MP\runs` | no |
+| `STEP_TIMEOUT_SECONDS` | Optional, `3600`. How long any step may run before it is stopped ("Large repositories"). Per step and per repository: `python -m app.workflow.time_limits` | `3600` | no |
+| `STEP_STALL_SECONDS` | Optional, `900`. How long a running step may report no progress before it is stopped as stalled, with where it was | `900` | no |
+| `STEP_PROJECT_SECONDS` | Optional, `300`. Inside a step: how long loading one project may take before it is recorded "not checked", with the reason, and the step carries on | `300` | no |
+| `STEP_FILE_SECONDS` | Optional, `60`. The same for one file | `60` | no |
 | `REPOS_DIR` | Optional. Where repositories registered by their git URL are cloned: `<REPOS_DIR>\<engagement>\<repository>`. Absolute, short, outside the platform folder and outside `RUNS_DIR`. Empty: the registration form asks for the folder each time ("Registering a client repository") | `C:\MP\repos` | no |
 | `API_HOST` | The address the backend listens on | `127.0.0.1` | no |
 | `API_PORT` | Its port. Bootstrap writes the frontend's link to the backend from this | `8001` | no |
@@ -456,7 +460,7 @@ git -C C:\MP\client add -A -- modernization-platform
 ```
 
 ```powershell
-git -C C:\MP\client commit -m "Modernization platform rbc-release-4" -- modernization-platform
+git -C C:\MP\client commit -m "Modernization platform rbc-release-5" -- modernization-platform
 ```
 
 ```powershell
@@ -952,6 +956,70 @@ in the way.
 
 ---
 
+### Large repositories: progress, time limits and stopped steps
+
+Discovery of a large legacy repository (well over a hundred projects, many solutions, large generated WCF proxy
+classes) can take a while. Every step shows what it is doing, never waits forever, and can be resumed.
+
+#### Watching a step
+
+The repository's **Executions** tab shows, for the step that is running: how long it has run, its phase (such as
+`load`, `index`, `detect`), the items done out of the total, and the project or file it is on. It changes at least
+every 15 seconds. "last progress ... ago" appears when the step has reported nothing new for over 30 seconds.
+
+Each step also writes, in its output folder under `RUNS_DIR` (the step's folder in the run, shown in its entry):
+
+| File | Contents |
+|---|---|
+| `progress.json` | where the step is, or where it was when it ended |
+| `timing-profile.json` | time per phase, the slowest projects and files, and anything "not checked", with the reason. **Paths and durations only, never code**: it can be shared with us without exposing client code |
+| `stopped.json` | only after a time limit, a stall or a stop: why, and where the step was |
+
+#### Time limits
+
+| Limit | Default | When it is reached |
+|---|---|---|
+| Time limit | 3600 s (`STEP_TIMEOUT_SECONDS`) | the step is stopped, **TIMED_OUT** |
+| Stall limit | 900 s (`STEP_STALL_SECONDS`) | the step reported no new phase, count or item for that long: stopped, **STALLED**, with where it was |
+| One project | 300 s (`STEP_PROJECT_SECONDS`) | that project is recorded "not checked", with the reason; the step carries on with the rest |
+| One file | 60 s (`STEP_FILE_SECONDS`) | that file is recorded "not checked", with the reason; the step carries on |
+
+A stopped step ends with everything it started: no `dotnet`, MSBuild node, `git` or other process is left running.
+
+The defaults are in `backend\.env`. An override for one step, for one repository, or for one step of one
+repository is changed without code or a restart, and the most specific wins:
+
+```powershell
+cd C:\MP\client\modernization-platform\backend; .\.venv\Scripts\python.exe -m app.workflow.time_limits show --repository <engagement>/<repository>
+```
+
+```powershell
+cd C:\MP\client\modernization-platform\backend; .\.venv\Scripts\python.exe -m app.workflow.time_limits set --step outbound-invocation-inventory --repository <engagement>/<repository> --timeout 7200 --note "170 projects"
+```
+
+```powershell
+cd C:\MP\client\modernization-platform\backend; .\.venv\Scripts\python.exe -m app.workflow.time_limits clear --step outbound-invocation-inventory --repository <engagement>/<repository>
+```
+
+`<engagement>/<repository>` is the engagement's id and the repository's slug, as in the repository's address in the
+UI. Leave out `--step` for every step of that repository, or `--repository` for that step everywhere. The same is
+available to scripts as `/api/workflow/time-limits`.
+
+#### After a time limit, a stall or a crash
+
+**Rescan** the repository. A rerun continues from the last project each step completed, as long as its inputs are
+unchanged: projects already done are not analysed again. The step's message says how many it carried over.
+
+If the same step stops again, raise its limit for that repository (above), and send us its `timing-profile.json`
+and `stopped.json`.
+
+#### Legacy projects without Visual Studio
+
+Discovery reads project files and code as text: it never builds a project and needs neither Visual Studio nor the
+.NET Framework build tools or reference assemblies. The one exception is dependency assessment's transitive
+packages (`include_transitive`, off by default), which restores each project: a project that cannot be restored
+there is recorded with the reason, within its own time limit.
+
 ### Troubleshooting
 
 
@@ -971,6 +1039,8 @@ in the way.
 | Conversion section: **"package step skipped: the baseline did not pass: ..."** | The repository does not build, or its tests fail, before any change | Nothing is lost: the conversion is prepared, and its package changes go to the agent as instructions in the runbook. Fix the build in the client repository if it should pass, then **Rescan** |
 | **"package step skipped: no package step: test-coverage-assessment found no unit test project"** | The repository has no unit tests, so package upgrades cannot be checked by running them | As above: the package changes are left to the agent, with instructions |
 | A step fails with "executable not found" | The step programs are not published | `bootstrap.ps1 -Stage 6 -Force` |
+| A step ends **TIMED_OUT** or **STALLED** ("where it was: phase ..., 41 of 170, at ...") | The repository is larger than the step's limit allows, or one project or file is pathological | **Rescan**: it continues from the last completed project. If it stops again, raise the limit for that repository ("Large repositories: progress, time limits and stopped steps") and send us `timing-profile.json` and `stopped.json` from the step's folder |
+| A step's message says **"... item(s) not checked"** | A project or file took longer than `STEP_PROJECT_SECONDS` or `STEP_FILE_SECONDS` | The rest is complete. The items and reasons are in `timing-profile.json` and in the step's warnings (`NOT_CHECKED`). Raise the limit and **Rescan** to check them |
 | The UI loads, but every request fails | `frontend\.env` points at another port, or the frontend is not on 5174 (`CORS_ORIGINS`) | Start the frontend exactly as in "Starting the backend and the frontend" |
 | A job shows **"orphaned by engine restart"** | The backend was stopped while it ran | Rescan the repository (or Verify again) |
 | Preflight: **"Python: 3.14.0b2 ... is a pre-release"** | Software Center (or a download) gave an alpha, beta or release candidate | Replace it with a final release: "Replacing a pre-release Python", below |
@@ -1043,7 +1113,7 @@ rbc-release-4) is reported by preflight and in the backend's log, and left worki
 release that cannot upgrade in place says so in its release notes, with the reason; none so far.
 
 A release arrives as a git bundle, `rbc-release-<n>.bundle`, with `rbc-release-<n>.bundle.sha256` beside it. The
-commands below upgrade `C:\MP\code` to rbc-release-4 from `C:\MP\delivery`; for another release, change the
+commands below upgrade `C:\MP\code` to rbc-release-5 from `C:\MP\delivery`; for another release, change the
 names. An installation of any earlier release is upgraded straight to the newest: there is no need to go through
 the ones between. Run them in one PowerShell window, in order.
 
@@ -1054,11 +1124,11 @@ the ones between. Run them in one PowerShell window, in order.
 3. **Check the bundle arrived intact.** The two lines must be identical:
 
    ```powershell
-   (Get-FileHash -Algorithm SHA256 C:\MP\delivery\rbc-release-4.bundle).Hash.ToLower()
+   (Get-FileHash -Algorithm SHA256 C:\MP\delivery\rbc-release-5.bundle).Hash.ToLower()
    ```
 
    ```powershell
-   (Get-Content C:\MP\delivery\rbc-release-4.bundle.sha256).Split(' ')[0]
+   (Get-Content C:\MP\delivery\rbc-release-5.bundle.sha256).Split(' ')[0]
    ```
 
 4. **Check the platform folder has nothing of yours in it.** git must print nothing (your `.env` files, `.venv`,
@@ -1072,18 +1142,18 @@ the ones between. Run them in one PowerShell window, in order.
 5. **Bring the release in and switch to it:**
 
    ```powershell
-   git -C C:\MP\code fetch C:\MP\delivery\rbc-release-4.bundle "refs/tags/rbc-release-4:refs/tags/rbc-release-4"
+   git -C C:\MP\code fetch C:\MP\delivery\rbc-release-5.bundle "refs/tags/rbc-release-5:refs/tags/rbc-release-5"
    ```
 
    ```powershell
-   git -C C:\MP\code -c core.longpaths=true checkout rbc-release-4
+   git -C C:\MP\code -c core.longpaths=true checkout rbc-release-5
    ```
 
    ```powershell
    git -C C:\MP\code log -1 --format="%h %d"
    ```
 
-   The last command shows the release's commit and `tag: rbc-release-4`. git says it is in "detached HEAD" state:
+   The last command shows the release's commit and `tag: rbc-release-5`. git says it is in "detached HEAD" state:
    that is expected for a release.
 6. **Preflight:**
 
@@ -1101,6 +1171,27 @@ the ones between. Run them in one PowerShell window, in order.
 
    It updates only what the release changed and skips the rest. It ends with `Bootstrap complete`.
 8. **Start the platform** ("Starting the backend and the frontend"). Your engagements, repositories, conversions and verifications are all there.
+
+**What rbc-release-5 changes on an rbc-release-4 installation.** Nothing existing in the database changes:
+- **stage 6** republishes the step programs: every discovery step reports progress and writes a timing profile;
+  each project's own files are read once (a project folder holding another project no longer reads it again);
+  `outbound-invocation-inventory` analyses projects in parallel and no longer searches the whole repository per
+  project or per call; a project or file over its own time limit is recorded "not checked" and the step carries on;
+- **stage 7** adds two columns to step executions (`progress`, `progress_at`) and the table `step_time_limits`;
+- **stage 8** reseeds the step registrations whose versions changed (`solution-discovery`,
+  `application-fingerprinting`, `entry-point-inventory`, `outbound-invocation-inventory`, `dependency-assessment`,
+  `test-coverage-assessment`, `impact-analysis`). Their fixed time limits are gone: every step now takes its limit
+  from the settings;
+- new, optional settings `STEP_TIMEOUT_SECONDS` (3600, as before), `STEP_STALL_SECONDS`, `STEP_PROJECT_SECONDS`
+  and `STEP_FILE_SECONDS` ("backend\.env"), and per-step and per-repository overrides ("Large repositories:
+  progress, time limits and stopped steps");
+- the **Executions** tab shows a running step's phase, items done out of the total and elapsed time; a step that
+  timed out, stalled or was stopped ends with everything it started, and a rerun continues from the last project it
+  completed;
+- repositories scanned before the upgrade keep their results until they are rescanned. A web project holding other
+  projects in its subfolders no longer counts their entry points, calls and findings as its own, so **Rescan** each
+  repository: its counts may go down, by the duplicates. Surface says a scan used an older entry-point manifest
+  (1.3.0) until then.
 
 **What rbc-release-4 changes on an rbc-release-3 installation.** Nothing in the database changes, and no setting is
 added:
@@ -1140,5 +1231,5 @@ into a new folder instead, copy `backend\.env` and `frontend\.env` into it, run 
 platform from the new folder. It uses the same schema and `RUNS_DIR`, so the data is the same:
 
 ```powershell
-git clone -c core.longpaths=true --branch rbc-release-4 C:\MP\delivery\rbc-release-4.bundle C:\MP\code2
+git clone -c core.longpaths=true --branch rbc-release-5 C:\MP\delivery\rbc-release-5.bundle C:\MP\code2
 ```

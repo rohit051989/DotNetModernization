@@ -275,17 +275,18 @@ public static partial class SoapClientDetector
 
     private static IEnumerable<Found> ClientBaseClients(DetectionContext context, HashSet<string> claimed)
     {
-        var classes = context.Repository
+        // Every ClientBase subclass in the repository, found once per run (RepositoryIndex), not once per project.
+        var classes = context.Index.Get("soap.client-classes", all => all
             .SelectMany(p => p.Types.Select(t => (Project: p, Type: t)))
             .Select(x => AsClientClass(x.Project, x.Type))
             .OfType<ClientClass>()
-            .ToList();
+            .ToList());
         if (classes.Count == 0)
         {
             yield break;
         }
 
-        var byName = classes.ToLookup(c => c.Type.Name, StringComparer.Ordinal);
+        var byName = context.Index.Get("soap.client-classes-by-name", _ => classes.ToLookup(c => c.Type.Name, StringComparer.Ordinal));
         var constructed = new HashSet<ClientClass>();
 
         foreach (var file in context.SourceFiles)
@@ -345,10 +346,8 @@ public static partial class SoapClientDetector
     /// to the same-named class declared in that project first — a
     /// hand-written client and a generated proxy often share a name.</summary>
     private static bool IsConstructedAnywhere(DetectionContext context, ClientClass client, ILookup<string, ClientClass> byName) =>
-        context.Repository.Any(project => project.Files.Where(f => !f.IsGenerated)
-            .SelectMany(f => f.Root.DescendantNodes().OfType<ObjectCreationExpressionSyntax>())
-            .Any(c => SyntaxHelpers.RightmostTypeName(c.Type) == client.Type.Name
-                      && (byName[client.Type.Name].FirstOrDefault(x => x.Project == project) ?? byName[client.Type.Name].First()) == client));
+        context.Repository.Any(project => context.Index.ConstructedTypeNames[project].Contains(client.Type.Name)
+                                          && (byName[client.Type.Name].FirstOrDefault(x => x.Project == project) ?? byName[client.Type.Name].First()) == client);
 
     private static ClientClass? AsClientClass(ProjectSource project, DeclaredType type)
     {

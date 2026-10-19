@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using Fingerprinting.Analysis;
 using Fingerprinting.Domain;
 using Fingerprinting.StepHost;
 using Fingerprinting.TestCoverage;
@@ -168,17 +169,24 @@ public static class TestCoverageCli
             }
         }
 
-        artifact ??= await TestCoveragePipeline.RunAsync(testInput, repositoryRoot, CancellationToken.None);
+        // rbc-release-5: progress and a timing profile; each file within its own limit.
+        using var progress = new StepProgress(context.OutputDir, Console.Error);
+        var (projectLimit, fileLimit) = StepLimits.Within(context);
+        artifact ??= await TestCoveragePipeline.RunAsync(testInput, repositoryRoot, CancellationToken.None, progress,
+            WorkLimits.From(projectLimit, fileLimit));
+        progress.Phase("write");
         var outputPath = await WriteArtifactAsync(artifact, context.OutputDir);
         var checksum = ArtifactUri.Sha256File(outputPath);
+        progress.Phase("database");
         var projectIds = await platform.ResolveProjectIdsAsync(inventory.RepositoryId, CancellationToken.None);
         await database.ReplaceAllAsync(artifact, projectIds, cacheKey, cacheState, cacheNote, reusedFrom, checksum,
             StepEnvelopeRunner.TryParseGuid(context.StepExecutionId), CancellationToken.None);
+        progress.Finish();
 
         return new StepResult
         {
             ExitStatus = ExitStatuses.Completed,
-            ExitMessage = $"{Summary(artifact)} Cache: {cacheState}{(cacheNote is null ? "" : $" ({cacheNote})")}.",
+            ExitMessage = $"{Summary(artifact)} Cache: {cacheState}{(cacheNote is null ? "" : $" ({cacheNote})")}." + (progress.NotCheckedItems.Count > 0 ? $" {progress.NotCheckedItems.Count} item(s) not checked (see timing-profile.json)." : ""),
             Metrics = new Dictionary<string, long>
             {
                 ["read_count"] = artifact.Summary.SourceFiles + artifact.Summary.TestClasses,
@@ -261,8 +269,18 @@ public static class TestCoverageCli
                 RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false,
             };
             using var process = Process.Start(start)!;
-            var output = process.StandardOutput.ReadToEnd();
-            process.WaitForExit(30_000);
+            // Both pipes read while git runs, and a time limit that ends git and anything it started (rbc-release-5):
+            // reading one pipe to its end first could wait forever.
+            var reading = process.StandardOutput.ReadToEndAsync();
+            var errors = process.StandardError.ReadToEndAsync();
+            if (!process.WaitForExit(30_000))
+            {
+                process.Kill(entireProcessTree: true);
+                return "git status did not finish within 30 s: the working tree could not be checked, so the cache is not trusted";
+            }
+
+            var output = reading.GetAwaiter().GetResult();
+            errors.GetAwaiter().GetResult();
             if (process.ExitCode != 0) return "git status failed: the working tree could not be checked, so the cache is not trusted";
             var relevant = output.Split('\n', StringSplitOptions.RemoveEmptyEntries)
                 .Select(l => l.Length > 3 ? l[3..].Trim().Trim('"') : "")

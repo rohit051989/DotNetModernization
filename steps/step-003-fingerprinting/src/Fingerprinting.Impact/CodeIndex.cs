@@ -46,12 +46,16 @@ public sealed class CodeIndex
     /// <summary>Every file in the repository, so a proposed new file that already exists is seen.</summary>
     public HashSet<string> Files { get; } = new(StringComparer.OrdinalIgnoreCase);
 
-    public static async Task<CodeIndex> BuildAsync(string repositoryRoot, CancellationToken ct)
+    public static async Task<CodeIndex> BuildAsync(string repositoryRoot, CancellationToken ct, StepProgress? progress = null)
     {
+        progress ??= StepProgress.Silent();
         var index = new CodeIndex();
-        foreach (var absolute in FileSystemWalk.EnumerateFiles(repositoryRoot, ct).Order(StringComparer.Ordinal))
+        var files = FileSystemWalk.EnumerateFiles(repositoryRoot, ct).Order(StringComparer.Ordinal).ToList();
+        progress.Phase("index", files.Count);
+        foreach (var absolute in files)
         {
             var path = FileSystemWalk.ToRepositoryRelativePath(repositoryRoot, absolute);
+            using var item = progress.Item(path, "file");
             index.Files.Add(path);
             var name = Path.GetFileName(path).ToLowerInvariant();
             var extension = Path.GetExtension(name);

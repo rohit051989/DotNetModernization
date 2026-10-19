@@ -1,3 +1,4 @@
+using Fingerprinting.Analysis;
 using Fingerprinting.Domain;
 using Fingerprinting.Extractors;
 
@@ -26,8 +27,13 @@ public sealed class FingerprintPipeline(SignalRegistry registry, IReadOnlyList<I
     // VAULT_SECRET_REFERENCE, CONFIG_FILE_UNPARSEABLE, CUSTOM_FILE_LOGGER_PROVIDER
     // (FileLoggerProviderExtractor), WINDOWS_BUILD_PIPELINE, and the configuration
     // key on a path literal's evidence.
+    // 1.7.0 (rbc-release-5): a project folder holding another project is read
+    // without the nested one, so each project's own files are read once; projects in
+    // parallel, bounded; a time limit per project, over which it is recorded FAILED with
+    // NOT_CHECKED and the reason; progress, a timing profile, and finished projects kept so
+    // a rerun continues from there.
     // Matches the application-fingerprinting step registration version.
-    public const string ScannerVersion = "1.6.0";
+    public const string ScannerVersion = "1.7.0";
 
     // The registry is the single source of truth for evidence_kind per
     // signal name (25-STANDARDS-AND-VIEWPOINTS.md Part A3 addendum) —
@@ -50,9 +56,15 @@ public sealed class FingerprintPipeline(SignalRegistry registry, IReadOnlyList<I
         string repositoryRoot,
         Func<string, Guid?> resolveProjectId,
         CancellationToken cancellationToken,
-        IReadOnlyList<string>? deployParameterGlobs = null)
+        IReadOnlyList<string>? deployParameterGlobs = null,
+        StepProgress? progress = null,
+        WorkLimits? limits = null,
+        ProjectCheckpoints? checkpoints = null)
     {
-        var projects = new List<ProjectFingerprint>();
+        progress ??= StepProgress.Silent();
+        limits ??= WorkLimits.Default;
+        checkpoints ??= ProjectCheckpoints.None;
+        var projects = new System.Collections.Concurrent.ConcurrentBag<ProjectFingerprint>();
         var artifactWarnings = new List<Warning>();
 
         // SetParameters files sit outside project directories; found once
@@ -60,6 +72,9 @@ public sealed class FingerprintPipeline(SignalRegistry registry, IReadOnlyList<I
         var deployFiles = Fingerprinting.Analysis.DeployParameterFiles.Discover(
             repositoryRoot, deployParameterGlobs ?? [], inventory.Projects.Select(p => p.RelativePath).ToList(), cancellationToken);
 
+        // rbc-release-5: each project once, in parallel (bounded), within its own time limit; saved as it completes,
+        // so a rerun continues from the last completed project.
+        var resolved = new List<(InventoryProject Project, Guid Id)>();
         foreach (var inventoryProject in inventory.Projects)
         {
             var projectId = resolveProjectId(inventoryProject.RelativePath);
@@ -75,20 +90,60 @@ public sealed class FingerprintPipeline(SignalRegistry registry, IReadOnlyList<I
                 continue;
             }
 
-            projects.Add(await BuildProjectFingerprintAsync(inventoryProject, repositoryRoot, projectId.Value,
-                deployFiles.Where(f => f.ProjectPath == inventoryProject.RelativePath).ToList(), cancellationToken));
+            resolved.Add((inventoryProject, projectId.Value));
         }
+
+        progress.Phase("fingerprint", resolved.Count);
+        await Parallel.ForEachAsync(resolved, new ParallelOptions
+        {
+            MaxDegreeOfParallelism = Math.Clamp(Environment.ProcessorCount - 1, 1, 8), CancellationToken = cancellationToken,
+        }, async (entry, ct) =>
+        {
+            var path = entry.Project.RelativePath;
+            using var item = progress.Item(path);
+            if (checkpoints.TryGet<ProjectFingerprint>(path, out var saved) && saved is not null)
+            {
+                projects.Add(saved);
+                return;
+            }
+
+            using var limit = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            limit.CancelAfter(limits.ProjectLoad);
+            ProjectFingerprint result;
+            try
+            {
+                result = await BuildProjectFingerprintAsync(entry.Project, repositoryRoot, entry.Id,
+                    deployFiles.Where(f => f.ProjectPath == path).ToList(), limit.Token);
+            }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+            {
+                var reason = $"not checked: fingerprinting the project took longer than {limits.ProjectLoad.TotalSeconds:0} s";
+                progress.RecordNotChecked(path, "project", reason);
+                result = new ProjectFingerprint
+                {
+                    ProjectId = entry.Id,
+                    ProjectPath = path,
+                    FingerprintStatus = FingerprintStatuses.Failed,
+                    AnalysisCapabilities = new AnalysisCapabilities(),
+                    Warnings = [new Warning { Code = WarningCodes.NotChecked, Message = reason, Severity = WarningSeverities.Warning }],
+                };
+            }
+
+            checkpoints.Save(path, result);
+            projects.Add(result);
+        });
 
         // Sort collections per Part B rule 2 — projects by relative path —
         // never rely on inventory or extraction completion order.
-        projects = projects.OrderBy(p => p.ProjectPath, StringComparer.Ordinal).ToList();
+        progress.Phase("repository");
+        var ordered = projects.OrderBy(p => p.ProjectPath, StringComparer.Ordinal).ToList();
         artifactWarnings = artifactWarnings.OrderBy(w => w.Message, StringComparer.Ordinal).ToList();
 
         // Deployment files outside every fingerprinted project directory —
         // a root k8s/ folder, a repo-level Dockerfile. Without these, every
         // project in such a repository would read as having no manifests
         // (28-ITEM-AND-CONVERSION-MODEL.md Part E).
-        var fingerprintedDirectories = projects
+        var fingerprintedDirectories = ordered
             .Where(p => p.FingerprintStatus != FingerprintStatuses.Skipped)
             .Select(p => Path.GetDirectoryName(
                 Path.Combine(repositoryRoot, p.ProjectPath.Replace('/', Path.DirectorySeparatorChar)))!)
@@ -96,9 +151,9 @@ public sealed class FingerprintPipeline(SignalRegistry registry, IReadOnlyList<I
         var repositorySignals = Stamp(FileIndicatorExtractor.ExtractRepositoryLevel(
             repositoryRoot, fingerprintedDirectories, cancellationToken));
 
-        registry.Validate(projects.SelectMany(p => p.Signals).Concat(repositorySignals));
+        registry.Validate(ordered.SelectMany(p => p.Signals).Concat(repositorySignals));
 
-        var summary = BuildSummary(projects);
+        var summary = BuildSummary(ordered);
 
         return new ApplicationFingerprintArtifact
         {
@@ -110,7 +165,7 @@ public sealed class FingerprintPipeline(SignalRegistry registry, IReadOnlyList<I
             ScanStatus = DetermineScanStatus(summary),
             SemanticAnalysisEnabled = false,
             Summary = summary,
-            Projects = projects,
+            Projects = ordered,
             RepositorySignals = repositorySignals,
             Warnings = artifactWarnings,
         };

@@ -493,3 +493,7 @@ use the shared framework.
 The backend outcome constraint gains `framework_provided` (migration `e8b1c4d6a273`); the
 Dependencies view labels it "remove: provided by framework". Item `package-provided-by-framework`
 removes the reference (impact: the project file and the version declaration).
+
+## Large repositories (rbc-release-5: dependency-assessment 1.7.0)
+
+Projects one at a time, as before (the time goes on package lookups, which the lookup cache shares, and a client feed should not see in bursts), each within `project_seconds`, over which it is recorded `NOT_CHECKED`; finished projects are kept so a rerun continues from there. A transitive restore over its limit ends with everything it started, and both its output pipes are read. Artifact unchanged. Every step reports progress, writes a timing profile, keeps to its time and stall limits and ends its whole process tree when stopped: `11-STEP-CONTRACT.md`, "Time limits, progress and stopping". The registration's fixed `timeout_seconds` is gone.

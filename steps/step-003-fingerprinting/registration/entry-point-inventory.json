@@ -3,7 +3,7 @@
   "lifecycle_step_no": 4,
   "display_name": "Entry point inventory",
   "owner_code": "P",
-  "version": "2.3.0",
+  "version": "2.4.0",
   "owner_team": "platform",
   "viewpoint": "FUNCTIONAL",
   "implementation_status": "implemented",
@@ -16,7 +16,6 @@
   ],
   "adapter_type": "process",
   "adapter_config": {
-    "command": ["steps/step-003-fingerprinting/publish/entry-point-inventory/EntryPointInventory.Cli.exe"],
-    "timeout_seconds": 3600
+    "command": ["steps/step-003-fingerprinting/publish/entry-point-inventory/EntryPointInventory.Cli.exe"]
   }
 }

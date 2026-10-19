@@ -48,6 +48,15 @@ class Settings(BaseSettings):
     # Optional: unset, the registration form asks for the target folder. A short absolute path, outside the
     # repository and outside RUNS_DIR (docs/VDI-SETUP.md: Registering a client repository). Read it through repos_path.
     repos_dir: str = ""
+    # Time limits for every step (app.workflow.time_limits): the time limit, and the stall limit — how long a running
+    # step may report no new progress before it is stopped as stalled. Optional, with these defaults; per-step and
+    # per-repository overrides live in the database (python -m app.workflow.time_limits).
+    step_timeout_seconds: int = 3600
+    step_stall_seconds: int = 900
+    # Inside a step: how long loading one project, and analysing one file, may take before it is recorded as "not
+    # checked" with the reason and the step carries on.
+    step_project_seconds: int = 300
+    step_file_seconds: int = 60
     # What this deployment is. The platform ships to each client as code and that client's data
     # lives only in its database, so the default is a client deployment. Only an explicit
     # DEPLOYMENT=demo lets the demo reset (app.seed.reset_demo) clear engagements and repositories.

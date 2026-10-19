@@ -80,7 +80,7 @@ public sealed class PathLiteralExtractor : IFingerprintExtractor
             ExtractFromSource(root, file.RelativePath, accumulator);
         }
 
-        foreach (var filePath in FileSystemWalk.EnumerateFiles(context.ProjectDirectory, cancellationToken))
+        foreach (var filePath in FileSystemWalk.EnumerateProjectFiles(context.ProjectDirectory, cancellationToken))
         {
             var fileName = Path.GetFileName(filePath);
             var relativePath = FileSystemWalk.ToRepositoryRelativePath(context.RepositoryRoot, filePath);

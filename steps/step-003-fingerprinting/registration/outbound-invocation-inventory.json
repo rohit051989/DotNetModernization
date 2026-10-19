@@ -3,7 +3,7 @@
   "lifecycle_step_no": 5,
   "display_name": "Outbound invocation inventory",
   "owner_code": "P",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "owner_team": "platform",
   "viewpoint": "CONTEXT",
   "implementation_status": "implemented",
@@ -17,7 +17,6 @@
   ],
   "adapter_type": "process",
   "adapter_config": {
-    "command": ["steps/step-003-fingerprinting/publish/outbound-invocation-inventory/OutboundInvocationInventory.Cli.exe"],
-    "timeout_seconds": 3600
+    "command": ["steps/step-003-fingerprinting/publish/outbound-invocation-inventory/OutboundInvocationInventory.Cli.exe"]
   }
 }

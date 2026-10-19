@@ -119,8 +119,8 @@ public static class OperationTracer
         bool Named(DeclaredType t) => t.IsInterface && t.Name == contract;
         var declaration = context.Project.Types.Where(Named).FirstOrDefault(IsServiceContract)
                           ?? context.Project.Types.FirstOrDefault(Named)
-                          ?? context.Repository.SelectMany(p => p.Types).Where(Named).FirstOrDefault(IsServiceContract)
-                          ?? context.Repository.SelectMany(p => p.Types).FirstOrDefault(Named);
+                          ?? context.Index.InterfacesByName[contract].Select(x => x.Type).FirstOrDefault(IsServiceContract)
+                          ?? context.Index.InterfacesByName[contract].Select(x => x.Type).FirstOrDefault();
         return declaration?.Syntax.Members.OfType<MethodDeclarationSyntax>().Select(m => m.Identifier.Text).ToHashSet(StringComparer.Ordinal);
     }
 
@@ -153,7 +153,7 @@ public static class OperationTracer
                     {
                         Verb = verb, Path = path, Member = $"{method.Identifier.Text} → {SyntaxHelpers.InvokedName(request)}",
                         Resolution = verb is null ? Resolutions.Partial : resolution, CallSite = CallSiteOf(c.File, c.Call),
-                        Reason = verb is null ? "the HTTP method is not readable from the request" : null,
+                        Reason = verb is null ? "the HTTP method is not readable from the request" : PathReason(resolution),
                     };
                 }).ToList();
             }
@@ -166,7 +166,7 @@ public static class OperationTracer
             {
                 Verb = verb, Path = ownPath, Member = SyntaxHelpers.InvokedName(request) ?? "request",
                 Resolution = verb is null ? Resolutions.Partial : ownResolution, CallSite = CallSiteOf(file, request),
-                Reason = verb is null ? "the HTTP method is not readable from the request" : null,
+                Reason = verb is null ? "the HTTP method is not readable from the request" : PathReason(ownResolution),
             },
         ];
     }
@@ -219,6 +219,7 @@ public static class OperationTracer
             {
                 Verb = Verb(r.Call), Path = JoinPath(basePath, path), Member = SyntaxHelpers.InvokedName(r.Call) ?? "request",
                 Resolution = resolution, CallSite = CallSiteOf(r.File, r.Call),
+                Reason = argument is null ? "the request is made without a URL argument" : PathReason(resolution),
             };
         }).ToList();
         return operations.Count > 0 ? operations : [Unresolved(file, site, "no request through this client found where it is configured, in a typed client or a named client")];
@@ -265,6 +266,11 @@ public static class OperationTracer
     /// <summary>The request's path, holes written <c>{…}</c>: the part after
     /// scheme and host for an absolute URL, the text as written for a
     /// relative one.</summary>
+    /// <summary>Why a request's path is unresolved, when it is: an unresolved operation always says why (the
+    /// artifact schema requires it).</summary>
+    private static string? PathReason(string resolution) =>
+        resolution == Resolutions.Unresolved ? "the request path is not readable from the code" : null;
+
     public static (string Path, string Resolution) RequestPath(ResolvedValue value)
     {
         var text = new StringBuilder();

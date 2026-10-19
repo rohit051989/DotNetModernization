@@ -70,17 +70,16 @@ class ProcessAdapterUnparseableStdoutTests(unittest.TestCase):
 
 class ProcessAdapterTimeoutTests(unittest.TestCase):
     def test_slow_step_times_out(self):
-        adapter = ProcessAdapter(
-            {
-                "command": [sys.executable, str(FIXTURES_DIR / "slow_step.py")],
-                "timeout_seconds": 1,
-            }
-        )
+        # rbc-release-5: the limit comes from the engine (app.workflow.time_limits), never the registration.
+        adapter = ProcessAdapter({"command": [sys.executable, str(FIXTURES_DIR / "slow_step.py")]})
         with tempfile.TemporaryDirectory() as tmp_dir:
-            result = adapter.run(_make_context(tmp_dir))
+            context = _make_context(tmp_dir)
+            context.step_context = {"time_limits": {"timeout_seconds": 1, "stall_seconds": 600}}
+            result = adapter.run(context)
+            self.assertTrue((Path(tmp_dir) / "stopped.json").exists())
 
-        self.assertEqual(result.exit_status, "FAILED")
-        self.assertIn("timed out", result.exit_message.lower())
+        self.assertEqual(result.exit_status, "TIMED_OUT")
+        self.assertIn("time limit", result.exit_message.lower())
 
 
 class ProcessAdapterChecksumVerificationTests(unittest.TestCase):

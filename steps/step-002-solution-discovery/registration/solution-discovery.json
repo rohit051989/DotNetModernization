@@ -3,7 +3,7 @@
   "lifecycle_step_no": 2,
   "display_name": "Solution & project discovery",
   "owner_code": "P",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "owner_team": "platform",
   "viewpoint": "DEVELOPMENT",
   "implementation_status": "implemented",
@@ -25,7 +25,6 @@
     "command": [
       "backend/.venv/Scripts/python.exe",
       "steps/step-002-solution-discovery/main.py"
-    ],
-    "timeout_seconds": 1800
+    ]
   }
 }

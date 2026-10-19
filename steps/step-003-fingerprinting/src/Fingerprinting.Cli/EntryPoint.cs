@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using System.Text.Json;
+using Fingerprinting.Analysis;
 using Fingerprinting.Domain;
 using Fingerprinting.Extractors;
 
@@ -82,8 +83,11 @@ public static class EntryPoint
             // No database in standalone mode — every project gets a
             // deterministic, stable-across-reruns id derived from its path
             // rather than a real projects.id.
+            using var progress = new StepProgress(outDir, error);
             var artifact = await pipeline.RunAsync(
-                inventory, repoPath, relativePath => StandaloneIds.ProjectId(inventory.RepositoryId, relativePath), CancellationToken.None);
+                inventory, repoPath, relativePath => StandaloneIds.ProjectId(inventory.RepositoryId, relativePath), CancellationToken.None,
+                progress: progress);
+            progress.Finish();
 
             var artifactJson = DeterministicJson.Serialize(artifact);
             ArtifactSchemaValidator.Load(SchemaPath()).Validate(artifactJson);
@@ -162,12 +166,25 @@ public static class EntryPoint
         var registry = SignalRegistry.LoadLatest(SchemasDir());
         var pipeline = new FingerprintPipeline(registry, Extractors());
 
+        // rbc-release-5: progress and a timing profile; each project within its own time limit; what is finished kept,
+        // so a rerun continues from the last completed project.
+        using var progress = new StepProgress(context.OutputDir, Console.Error);
+        var (projectLimit, fileLimit) = StepLimits.Within(context);
+        var limits = WorkLimits.From(projectLimit, fileLimit);
+        var globs = await platform.GetDeployParameterGlobsAsync(inventory.RepositoryId, CancellationToken.None);
+        var checkpoints = ProjectCheckpoints.Open(StepLimits.CheckpointDirectory(context), ProjectCheckpoints.Key(
+            "application-fingerprint", FingerprintPipeline.ScannerVersion, registry.RegistryVersion, inventoryRef.Checksum,
+            string.Join(",", globs), limits.ProjectLoad.TotalSeconds.ToString(CultureInfo.InvariantCulture)));
         var artifact = await pipeline.RunAsync(
             inventory,
             repositoryRoot,
             relativePath => projectIds.TryGetValue(relativePath, out var id) ? id : null,
             CancellationToken.None,
-            await platform.GetDeployParameterGlobsAsync(inventory.RepositoryId, CancellationToken.None));
+            globs,
+            progress,
+            limits,
+            checkpoints);
+        progress.Phase("write");
 
         var artifactJson = DeterministicJson.Serialize(artifact);
         ArtifactSchemaValidator.Load(SchemaPath()).Validate(artifactJson);
@@ -192,8 +209,12 @@ public static class EntryPoint
         var localSarifPath = Path.Combine(context.OutputDir, "application-fingerprint.local.sarif");
         await File.WriteAllTextAsync(localSarifPath, localSarifJson, new UTF8Encoding(false));
 
+        progress.Phase("database");
         var stepExecutionId = TryParseGuid(context.StepExecutionId);
         await db.ReplaceAllAsync(inventory.RepositoryId, artifact, stepExecutionId, CancellationToken.None);
+        var resumed = checkpoints.Reused;
+        checkpoints.Complete();
+        progress.Finish();
 
         // generated_at deliberately excluded from the artifact file itself —
         // Part A3 — so unchanged input yields an identical checksum. Carried
@@ -205,7 +226,9 @@ public static class EntryPoint
             ExitStatus = ExitStatuses.Completed,
             ExitMessage = $"Fingerprinted {artifact.Summary.ProjectsEligible} project(s) in '{artifact.RepositorySlug}' " +
                           $"({artifact.Summary.ProjectsPartial} partial, {artifact.Summary.ProjectsFailed} failed, " +
-                          $"{artifact.Summary.ProjectsSkipped} skipped).",
+                          $"{artifact.Summary.ProjectsSkipped} skipped)."
+                          + (resumed > 0 ? $" {resumed} project(s) carried over from the interrupted run." : "")
+                          + (progress.NotCheckedItems.Count > 0 ? $" {progress.NotCheckedItems.Count} item(s) not checked (see timing-profile.json)." : ""),
             Metrics = new Dictionary<string, long>
             {
                 ["read_count"] = inventory.Projects.Count,

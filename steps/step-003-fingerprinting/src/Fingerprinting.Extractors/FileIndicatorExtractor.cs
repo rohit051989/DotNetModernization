@@ -93,7 +93,7 @@ public sealed class FileIndicatorExtractor : IFingerprintExtractor
 
         var signals = new List<Signal>();
 
-        foreach (var filePath in FileSystemWalk.EnumerateFiles(context.ProjectDirectory, cancellationToken))
+        foreach (var filePath in FileSystemWalk.EnumerateProjectFiles(context.ProjectDirectory, cancellationToken))
         {
             var fileName = Path.GetFileName(filePath);
             var extension = Path.GetExtension(filePath);

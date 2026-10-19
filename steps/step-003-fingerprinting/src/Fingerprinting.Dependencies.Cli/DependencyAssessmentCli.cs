@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using System.Text.Json;
+using Fingerprinting.Analysis;
 using Fingerprinting.Dependencies;
 using Fingerprinting.Domain;
 using Fingerprinting.StepHost;
@@ -156,11 +157,26 @@ public static class DependencyAssessmentCli
 
         var projectIds = await platform.ResolveProjectIdsAsync(inventory.RepositoryId, CancellationToken.None);
         var cache = new PostgresLookupCache(connectionString);
-        var (artifact, lookup) = await AssessAsync(repositoryRoot, inventory, fingerprint, path => projectIds.TryGetValue(path, out var id) ? id : null, cache, options);
 
+        // rbc-release-5: progress and a timing profile; each project within its own limit; and what is finished kept,
+        // so a rerun after a time limit, a stall or a crash continues from there.
+        using var progress = new StepProgress(context.OutputDir, Console.Error);
+        var (projectLimit, fileLimit) = StepLimits.Within(context);
+        var limits = WorkLimits.From(projectLimit, fileLimit);
+        var checkpoints = ProjectCheckpoints.Open(StepLimits.CheckpointDirectory(context), ProjectCheckpoints.Key(
+            ArtifactType, DependencyPipeline.ScannerVersion, inventoryRef.Checksum, fingerprintRef.Checksum, target,
+            options.ToString(), limits.ProjectLoad.TotalSeconds.ToString(CultureInfo.InvariantCulture)));
+        var (artifact, lookup) = await AssessAsync(repositoryRoot, inventory, fingerprint, path => projectIds.TryGetValue(path, out var id) ? id : null, cache, options,
+            progress, limits, checkpoints);
+
+        progress.Phase("write");
         var outputPath = await WriteArtifactAsync(artifact, context.OutputDir);
         var checksum = ArtifactUri.Sha256File(outputPath);
+        progress.Phase("database");
         await database.ReplaceAllAsync(artifact, cache, StepEnvelopeRunner.TryParseGuid(context.StepExecutionId), CancellationToken.None);
+        var resumed = checkpoints.Reused;
+        checkpoints.Complete();
+        progress.Finish();
 
         var now = DateTimeOffset.UtcNow;
         var snapshot = lookup.SnapshotTimes.Count > 0 ? lookup.SnapshotTimes.Min() : now;
@@ -170,7 +186,9 @@ public static class DependencyAssessmentCli
             ExitStatus = ExitStatuses.Completed,
             ExitMessage = $"Assessed {summary.PackageCount} direct package(s) across {summary.ProjectsScanned} project(s) in '{artifact.RepositorySlug}' for {artifact.TargetFramework}: "
                           + string.Join(", ", summary.CountByOutcome.Select(kv => $"{kv.Value} {kv.Key}"))
-                          + $"; {summary.DeprecatedCount} deprecated, {summary.VulnerableCount} vulnerable, {summary.NotInClientFeedCount} not in client feed.",
+                          + $"; {summary.DeprecatedCount} deprecated, {summary.VulnerableCount} vulnerable, {summary.NotInClientFeedCount} not in client feed."
+                          + (resumed > 0 ? $" {resumed} project(s) carried over from the interrupted run." : "")
+                          + (progress.NotCheckedItems.Count > 0 ? $" {progress.NotCheckedItems.Count} item(s) not checked (see timing-profile.json)." : ""),
             Metrics = new Dictionary<string, long>
             {
                 ["read_count"] = summary.PackageCount,
@@ -225,7 +243,7 @@ public static class DependencyAssessmentCli
 
     public static async Task<(DependencyAssessmentArtifact, PackageLookup)> AssessAsync(
         string repositoryRoot, SolutionProjectInventory inventory, ApplicationFingerprintSlice fingerprint, Func<string, Guid?> resolveProjectId,
-        ILookupCache cache, Options options)
+        ILookupCache cache, Options options, StepProgress? progress = null, WorkLimits? limits = null, ProjectCheckpoints? checkpoints = null)
     {
         var warnings = new List<Warning>();
         if (options.ExplainChanges)
@@ -272,7 +290,8 @@ public static class DependencyAssessmentCli
         var shared = SharedFrameworks.Load(Path.Combine(AppContext.BaseDirectory, "schemas", "shared-frameworks-1.0.0.json"));
         var pipeline = new DependencyPipeline(lookup, new DependencyOptions(options.TargetFramework, options.ComparePublicFeed, options.IncludeTransitive,
             SharedFrameworks: shared), transitive);
-        var artifact = await pipeline.RunAsync(new DependencyInput(inventory.RepositoryId, inventory.RepositorySlug, FingerprintType, projects, warnings), repositoryRoot, CancellationToken.None);
+        var artifact = await pipeline.RunAsync(new DependencyInput(inventory.RepositoryId, inventory.RepositorySlug, FingerprintType, projects, warnings), repositoryRoot, CancellationToken.None,
+            progress, limits, checkpoints);
         return (artifact, lookup);
     }
 

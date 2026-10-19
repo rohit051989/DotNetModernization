@@ -3,7 +3,7 @@
   "lifecycle_step_no": 8,
   "display_name": "Test coverage & CI maturity",
   "owner_code": "P",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "owner_team": "platform",
   "viewpoint": "DEVELOPMENT",
   "implementation_status": "implemented",
@@ -16,7 +16,6 @@
   ],
   "adapter_type": "process",
   "adapter_config": {
-    "command": ["steps/step-003-fingerprinting/publish/test-coverage-assessment/TestCoverageAssessment.Cli.exe"],
-    "timeout_seconds": 3600
+    "command": ["steps/step-003-fingerprinting/publish/test-coverage-assessment/TestCoverageAssessment.Cli.exe"]
   }
 }

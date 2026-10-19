@@ -21,6 +21,16 @@ public sealed class DetectionContext
     /// a library is configured in the host.</summary>
     public required IReadOnlyList<ProjectSource> Repository { get; init; }
 
+    private RepositoryIndex? _index;
+
+    /// <summary>Repository-wide facts built once per run and shared by every project's context (rbc-release-5). A
+    /// context made on its own (a test) builds its own from <see cref="Repository"/>.</summary>
+    public RepositoryIndex Index
+    {
+        get => LazyInitializer.EnsureInitialized(ref _index, () => new RepositoryIndex(Repository));
+        init => _index = value;
+    }
+
     public IReadOnlyList<UncLiteral> UncLiterals { get; init; } = [];
 
     /// <summary>WCF client endpoint entries a client has claimed, shared by
@@ -28,9 +38,17 @@ public sealed class DetectionContext
     /// entry in its host's configuration.</summary>
     public HashSet<string> ClaimedEndpoints { get; init; } = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>This project's time limit for analysis (rbc-release-5): checked at every file a detector reads, so a
+    /// project over its limit stops between files and is recorded as not checked.</summary>
+    public CancellationToken Cancellation { get; set; }
+
     /// <summary>Hand-written source. Generated files are loaded only so
     /// the SOAP detector can read a service reference's binding (Part C2).</summary>
-    public IEnumerable<ParsedFile> SourceFiles => Project.Files.Where(f => !f.IsGenerated);
+    public IEnumerable<ParsedFile> SourceFiles => Project.Files.Where(f =>
+    {
+        Cancellation.ThrowIfCancellationRequested();
+        return !f.IsGenerated;
+    });
 }
 
 /// <summary>An invocation as a detector finds it, before the pipeline

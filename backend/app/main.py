@@ -31,6 +31,7 @@ from app.routers import (
     surface,
     target_states,
     test_coverage,
+    time_limits,
     workflow_artifacts,
     workflow_capabilities,
     workflow_executions,
@@ -338,6 +339,7 @@ app.include_router(signal_registry.router)
 app.include_router(catalog_items.router)
 app.include_router(item_decisions.router)
 app.include_router(workflow_steps.router)
+app.include_router(time_limits.router)
 app.include_router(workflow_capabilities.router)
 app.include_router(validation_queue.router)
 app.include_router(workflow_jobs.router)

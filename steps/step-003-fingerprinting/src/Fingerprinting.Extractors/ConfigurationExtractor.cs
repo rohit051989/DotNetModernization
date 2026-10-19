@@ -44,7 +44,7 @@ public sealed class ConfigurationExtractor : IFingerprintExtractor
         var accumulator = new SignalAccumulator();
         var warnings = new List<Warning>();
 
-        foreach (var filePath in FileSystemWalk.EnumerateFiles(context.ProjectDirectory, cancellationToken))
+        foreach (var filePath in FileSystemWalk.EnumerateProjectFiles(context.ProjectDirectory, cancellationToken))
         {
             var fileName = Path.GetFileName(filePath);
             var isAppSettings = ConfigFileNames.IsAppSettings(fileName);

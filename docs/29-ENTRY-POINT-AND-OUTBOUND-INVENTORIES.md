@@ -1274,3 +1274,7 @@ per-repository.
       YAML change
 - [ ] Two runs produce identical artifact checksums
 - [ ] `git status` in each scanned repository is clean afterwards
+
+## Large repositories (rbc-release-5: entry-point-inventory 2.4.0, outbound-invocation-inventory 1.7.0)
+
+Both: each project's own files only (a nested project's are its own), projects loaded in parallel (bounded), each within `project_seconds` and each file within `file_seconds`, over which it is recorded `NOT_CHECKED` with the reason. Outbound, in addition: one repository index (types constructed anywhere, interfaces by name, initialised properties) shared by every project, instead of a walk of the repository per project; call sites found from an index of invocations by name, instead of a walk of the project's files per call site, so a large generated proxy (Reference.cs) is read once, however many calls it holds; every unresolved operation names its reason (before 1.7.0 one could fail the schema); detection per project in parallel, saved as each completes, so a rerun continues from there. Artifacts unchanged; results identical to 1.6.0 apart from the nested-project fix. On the Orchard proof copy (90 project files, 118 solutions, six generated 3.4 MB proxies) outbound went from 129 s to 23 s. Every step reports progress, writes a timing profile, keeps to its time and stall limits and ends its whole process tree when stopped: `11-STEP-CONTRACT.md`, "Time limits, progress and stopping". The registration's fixed `timeout_seconds` is gone.

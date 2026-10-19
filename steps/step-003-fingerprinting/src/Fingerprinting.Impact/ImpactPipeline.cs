@@ -1,3 +1,4 @@
+using Fingerprinting.Analysis;
 using Fingerprinting.Domain;
 
 namespace Fingerprinting.Impact;
@@ -30,16 +31,19 @@ public static class ImpactPipeline
 
     private static readonly string[] ImpactRank = ["none", "low", "medium", "high"];
 
-    public static async Task<ImpactArtifact> RunAsync(ImpactInput input, string repositoryRoot, CancellationToken ct)
+    public static async Task<ImpactArtifact> RunAsync(ImpactInput input, string repositoryRoot, CancellationToken ct, StepProgress? progress = null)
     {
-        var index = await CodeIndex.BuildAsync(repositoryRoot, ct);
+        progress ??= StepProgress.Silent();
+        var index = await CodeIndex.BuildAsync(repositoryRoot, ct, progress);
         var engine = new RuleEngine(index, input.Projects, input.Tests, input.EntryPoints, input.HostLinks, input.DeployFiles,
             new VersionDeclarations(repositoryRoot, index.Files));
         var warnings = new List<Warning>();
         var workItems = new List<WorkItemImpact>();
 
+        progress.Phase("work items", input.WorkItems.Count);
         foreach (var seed in input.WorkItems.OrderBy(w => w.ItemId, StringComparer.Ordinal).ThenBy(w => w.ProjectPath, StringComparer.Ordinal))
         {
+            using var progressItem = progress.Item($"{seed.ItemId} {seed.ProjectPath}", "work item");
             if (!input.Items.TryGetValue(seed.ItemId, out var item) || item.Resolutions.Count == 0)
             {
                 warnings.Add(new Warning { Code = "ITEM_WITHOUT_RESOLUTIONS", Message = $"{seed.ItemId} on {seed.ProjectPath}: no live resolution to analyse.", Severity = WarningSeverities.Warning });

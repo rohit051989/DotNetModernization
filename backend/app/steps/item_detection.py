@@ -58,6 +58,7 @@ from app.db import make_engine
 from app.items import evaluation, roles
 from app.items.detection import referenced_signal_names
 from app.items.registry import version_key
+from app.workflow import progress
 from app.workflow.adapters.base import compute_checksum
 from app.workflow.contract import StepContext, StepOutput, StepResult
 
@@ -106,7 +107,8 @@ def _metadata(project: models.Project, fingerprint: models.ProjectFingerprint | 
 # ---------- detection ----------
 
 
-def detect_repository(db: Session, repository: models.Repository, step_execution_id=None) -> dict:
+def detect_repository(db: Session, repository: models.Repository, step_execution_id=None,
+                      report: progress.Reporter | None = None) -> dict:
     """Evaluates every ready item against every project of `repository`,
     replaces its item_occurrences, and returns the artifact body. Flushes;
     the caller commits."""
@@ -156,7 +158,10 @@ def detect_repository(db: Session, repository: models.Repository, step_execution
     counts = {"found": 0, "checked_absent": 0, "not_checked": 0, "excluded": 0, "skipped": 0, "occurrence_rows": 0,
               "possible_occurrence_rows": 0, "possible_only_found": 0}
 
+    report = report or progress.Reporter(None)
+    report.phase("detect", len(projects))
     for project in projects:
+        report.begin(project.relative_path, "project")
         fingerprint = fingerprints.get(project.id)
         fingerprinted = fingerprint is not None and fingerprint.fingerprint_status in ("complete", "partial")
         skipped_by_step3 = fingerprint is not None and fingerprint.fingerprint_status in ("skipped", "not_supported")
@@ -303,12 +308,16 @@ def run(context: StepContext) -> StepResult:
         return StepResult(exit_status="FAILED", exit_message="database_url is required")
 
     db, engine = _open_session(context.database_url)
+    report = None
     try:
         repository = db.get(models.Repository, repository_id)
         if repository is None:
             return StepResult(exit_status="FAILED", exit_message=f"repository '{repository_id}' does not exist")
 
-        artifact = detect_repository(db, repository, step_execution_id=context.step_execution_id)
+        # rbc-release-5: progress per project, and a timing profile.
+        report = progress.for_step(context)
+        artifact = detect_repository(db, repository, step_execution_id=context.step_execution_id, report=report)
+        report.phase("write")
         db.commit()
 
         output_dir = Path(context.output_dir)
@@ -343,6 +352,8 @@ def run(context: StepContext) -> StepResult:
             ],
         )
     finally:
+        if report is not None:
+            report.finish("ended")  # on every path, a failure too: its heartbeat stops with the step
         db.close()
         engine.dispose()
 

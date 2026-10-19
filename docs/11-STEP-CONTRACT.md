@@ -191,7 +191,6 @@ adapter_type: process
 adapter_config:
   command: ["python", "tools/ssis_parser/main.py"]
   cwd: "./external"
-  timeout_seconds: 3600
   env:
     SOME_FLAG: "1"
 ```
@@ -203,6 +202,9 @@ Exit code handling:
 
 This adapter is how a colleague's script drops in with no engine change. Their only
 obligation is: read JSON from stdin, write JSON to stdout, exit 0.
+
+A registration's `adapter_config.timeout_seconds` is no longer read (rbc-release-5): every step's time limit comes
+from "Time limits, progress and stopping" below.
 
 #### Path resolution — `command` and `cwd` are relative to `PLATFORM_ROOT`, never to the backend process's own working directory
 
@@ -338,6 +340,45 @@ restart:
 `version_range` uses npm-style semver ranges: `^1.0.0` accepts 1.x, `~1.2.0`
 accepts 1.2.x, `>=1.0.0 <3.0.0` for explicit windows.
 
+## Time limits, progress and stopping (rbc-release-5)
+
+No step can make the engine wait forever.
+
+**Limits.** Every step has a time limit and a stall limit, from `app.workflow.time_limits`: the most specific of
+(this step, this repository), (every step, this repository), (this step, every repository), and the defaults
+`STEP_TIMEOUT_SECONDS` (3600) and `STEP_STALL_SECONDS` (900). Overrides live in `step_time_limits` and change without
+code (`python -m app.workflow.time_limits`, `/api/workflow/time-limits`). The engine passes what applies in
+`step_context.time_limits`: `timeout_seconds`, `stall_seconds`, and, for the work inside a step,
+`project_seconds` and `file_seconds` (`STEP_PROJECT_SECONDS`, `STEP_FILE_SECONDS`). A job definition's step-level
+`timeout_seconds` (`12-JOB-DEFINITION-FORMAT.md`) is not read.
+
+**Progress.** A step reports, at least every 15 seconds, its phase and items done out of the total, and the item it
+is on. A `process` step writes lines to stderr:
+
+```
+##progress {"phase": "detect", "done": 41, "total": 170, "item": "src/Shop/Shop.csproj", "elapsedSeconds": 812.4}
+```
+
+A `python` step uses `app.workflow.progress.Reporter` (`progress.for_step(context)`), which writes the step
+execution row. Either way the step writes `progress.json` and `timing-profile.json` in `output_dir`: time per phase,
+and the slowest projects and files by path and duration only, never code, so it can be shared. The engine records
+the last progress on the step execution (`progress`, `progress_at`); the job page shows it with the elapsed time.
+
+**Stopping.** When the time limit is reached the step ends `TIMED_OUT`; when its phase, count and item have not
+changed for the stall limit, `STALLED`; when an operator stops the job, `STOPPED`. Each is reported with where the
+step was, and `stopped.json` beside its timing profile. A `process` step runs in a Windows job object, and its whole
+process tree is ended, not just the step: nothing it started is left running, and no pipe a grandchild holds keeps
+the engine waiting (`app.workflow.processes`). A `python` step is asked to stop and stops at its next
+`Reporter.check()`; any child process it runs through `app.workflow.processes.run` is ended with its tree at once.
+TIMED_OUT and STALLED fail the job as FAILED does; STOPPED stops it.
+
+**Inside a step.** Loading one project and analysing one file each have their own limit. Over it, the project or
+file is recorded "not checked" with the reason (warning code `NOT_CHECKED`) and the step carries on.
+
+**Resume.** A step that works project by project keeps each completed project's result in
+`step_context.checkpoint_dir`, keyed by its version and its inputs' checksums. A rerun after a time limit, a stall
+or a crash reuses them and continues from there; a completed run clears them.
+
 ## Obligations on a step implementation
 
 1. **Idempotent.** Re-running with the same context must not duplicate work or
@@ -349,6 +390,8 @@ accepts 1.2.x, `>=1.0.0 <3.0.0` for explicit windows.
    than one that crashes.
 6. **No interactive prompts.** Steps run headless.
 7. **Respect `step_context`** for resumability if the work is chunked.
+8. **Report progress and never wait forever** ("Time limits, progress and stopping"): progress at least every 15
+   seconds; a limit on each project and file; every child process run so that its whole tree ends with the step.
 
 ## Testing a step in isolation
 

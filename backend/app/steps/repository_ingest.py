@@ -12,7 +12,6 @@ import datetime
 import json
 import os
 import re
-import subprocess
 import sys
 from pathlib import Path
 from urllib.parse import urlparse
@@ -22,6 +21,8 @@ from sqlalchemy.orm import sessionmaker
 
 from app import models
 from app.db import make_engine
+from app.workflow import processes
+from app.workflow import progress
 from app.workflow.adapters.base import compute_checksum
 from app.workflow.contract import StepContext, StepOutput, StepResult
 
@@ -95,22 +96,18 @@ def run_git(local_path: Path, *args: str) -> str | None:
     """Runs `git <args>` in `local_path`. Returns None on any failure — a
     missing git executable, a non-zero exit, or empty output — rather than
     raising; the caller treats that as "could not resolve"."""
+    # processes.run: both pipes read, a time limit, and git's whole process tree ended (rbc-release-5).
     try:
-        completed = subprocess.run(
-            ["git", "-C", str(local_path), *args],
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-    except (OSError, subprocess.TimeoutExpired):
+        completed = processes.run(["git", "-C", str(local_path), *args], timeout=30)
+    except OSError:
         return None
-    if completed.returncode != 0:
+    if completed.timed_out or completed.stopped_why or completed.returncode != 0:
         return None
     output = completed.stdout.strip()
     return output or None
 
 
-def compute_size_metrics(local_path: Path) -> tuple[int, int, dict[str, int]]:
+def compute_size_metrics(local_path: Path, report: progress.Reporter | None = None) -> tuple[int, int, dict[str, int]]:
     """Total size, file count and per-language file counts under
     `local_path`, skipping SKIP_DIR_NAMES entirely (pruned from traversal,
     not just excluded from the count). Language counts feed
@@ -120,6 +117,8 @@ def compute_size_metrics(local_path: Path) -> tuple[int, int, dict[str, int]]:
     language_counts: dict[str, int] = {}
     for root, dirs, files in os.walk(local_path):
         dirs[:] = [d for d in dirs if d not in SKIP_DIR_NAMES]
+        if report:
+            report.begin(os.path.relpath(root, local_path).replace(os.sep, "/"), "folder")
         for filename in files:
             file_path = Path(root) / filename
             try:
@@ -220,6 +219,7 @@ def run(context: StepContext) -> StepResult:
         return StepResult(exit_status="FAILED", exit_message="database_url is required")
 
     db, engine = _open_session(context.database_url)
+    report = None
     try:
         repo = db.get(models.Repository, repository_id)
         if repo is None:
@@ -236,8 +236,11 @@ def run(context: StepContext) -> StepResult:
         local_path = Path(repo.local_path)
         now = datetime.datetime.now(datetime.timezone.utc)
 
+        # rbc-release-5: progress and a timing profile.
+        report = progress.for_step(context)
         source_note = None
         if repo.source_type == "git_clone":
+            report.phase("update clone")
             source_note, failure = _bring_clone_up_to_date(db, repo)
             if failure:
                 repo.ingest_status = "scan_failed"
@@ -259,6 +262,7 @@ def run(context: StepContext) -> StepResult:
         current_branch = None
         detected_clone_url = None
         last_commit_date_raw = None
+        report.phase("git")
         if has_git_history:
             ingest_commit_sha = run_git(local_path, "rev-parse", "HEAD")
             current_branch = run_git(local_path, "rev-parse", "--abbrev-ref", "HEAD")
@@ -301,7 +305,9 @@ def run(context: StepContext) -> StepResult:
         # the only implemented source_type, so it always stays null here.
         source_status = None
 
-        size_bytes, file_count, language_counts = compute_size_metrics(local_path)
+        report.phase("size")
+        size_bytes, file_count, language_counts = compute_size_metrics(local_path, report)
+        report.phase("record")
         primary_languages = summarize_primary_languages(language_counts)
 
         repo.has_git_history = has_git_history
@@ -378,6 +384,8 @@ def run(context: StepContext) -> StepResult:
             ],
         )
     finally:
+        if report is not None:
+            report.finish("ended")  # on every path, a failure too: its heartbeat stops with the step
         db.close()
         engine.dispose()
 

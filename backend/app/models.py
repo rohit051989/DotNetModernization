@@ -758,6 +758,9 @@ class WfStepExecution(Base):
     inputs_resolved: Mapped[list | None] = mapped_column(JSONB)
     stdout_tail: Mapped[str | None] = mapped_column(Text)
     stderr_tail: Mapped[str | None] = mapped_column(Text)
+    # The last progress the step reported while running: {phase, done, total, item, ...} (app.workflow.processes).
+    progress: Mapped[dict | None] = mapped_column(JSONB)
+    progress_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
     carried_forward: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
     working_dir: Mapped[str | None] = mapped_column(Text)
     started_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
@@ -2929,3 +2932,18 @@ class DeletionAudit(Base):
     summary: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
 
     __table_args__ = (CheckConstraint("kind IN ('repository', 'engagement')", name="ck_deletion_audit_kind"),)
+
+
+class StepTimeLimit(Base):
+    """A time or stall limit overriding the defaults (STEP_TIMEOUT_SECONDS, STEP_STALL_SECONDS): for one step, for
+    one repository's every step, or for one step of one repository (app.workflow.time_limits)."""
+
+    __tablename__ = "step_time_limits"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    step_name: Mapped[str | None] = mapped_column(Text)
+    repository_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("repositories.id", ondelete="CASCADE"))
+    timeout_seconds: Mapped[int | None] = mapped_column(Integer)
+    stall_seconds: Mapped[int | None] = mapped_column(Integer)
+    note: Mapped[str | None] = mapped_column(Text)
+    updated_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)

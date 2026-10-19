@@ -25,6 +25,7 @@ from pathlib import Path
 from urllib.parse import unquote, urlparse
 
 from discovery import artifact_scanner, framework, persistence, project_parser, solution_parser
+from discovery.progress import Progress
 from discovery.paths import walk_files
 from discovery.project_parser import OUT_OF_SCOPE_STRUCTURAL_TYPES
 
@@ -112,12 +113,25 @@ def _resolve_raw_path(raw_path: str, containing_dir: Path, repo_root: Path) -> t
     return relative, False
 
 
-def _scan(repo_root: Path, inventory: dict, repository_id: str) -> dict:
+def _scan(repo_root: Path, inventory: dict, repository_id: str, progress: Progress | None = None) -> dict:
+    progress = progress or Progress(None)
+    progress.phase("find solutions")
     sln_paths = sorted(p for p in walk_files(repo_root) if p.suffix.lower() == ".sln")
-    parsed_solutions = [solution_parser.parse(p, repo_root) for p in sln_paths]
+    progress.phase("solutions", len(sln_paths))
+    parsed_solutions = []
+    for p in sln_paths:
+        progress.begin(p.relative_to(repo_root).as_posix(), "solution")
+        parsed_solutions.append(solution_parser.parse(p, repo_root))
 
+    progress.phase("find projects")
     project_paths = project_parser.find_project_files(repo_root)
-    parsed_projects_raw = [project_parser.parse(p, repo_root) for p in project_paths]
+    # Each project file is parsed once, however many solutions include it (rbc-release-5).
+    progress.phase("projects", len(project_paths))
+    parsed_projects_raw = []
+    for p in project_paths:
+        progress.begin(p.relative_to(repo_root).as_posix(), "project")
+        parsed_projects_raw.append(project_parser.parse(p, repo_root))
+    progress.phase("relate")
 
     # Ids stable across rescans (project_id_for), indexed by lowercased
     # relative path — Windows filesystems are case-insensitive, and this
@@ -355,6 +369,7 @@ def _scan(repo_root: Path, inventory: dict, repository_id: str) -> dict:
     artifact_project_references.sort(key=lambda r: (r["source_relative_path"], r["raw_path"]))
 
     # ---- Supporting artifacts ----
+    progress.phase("artifacts")
     repository_artifacts = artifact_scanner.scan(repo_root)
     db_repository_artifacts = [{**a, "id": _new_id()} for a in repository_artifacts]
     artifact_repository_artifacts = sorted(repository_artifacts, key=lambda a: a["relative_path"])
@@ -536,10 +551,19 @@ def run(context: dict) -> dict:
     repo_root = repo_root.resolve()
 
     now = _now_iso()
-    outcome = _scan(repo_root, inventory, str(repository_id))
+    progress = Progress(context.get("output_dir"))
+    try:
+        return _run_scan(context, inventory, repository_id, repo_root, now, progress)
+    finally:
+        progress.finish("ended")
+
+
+def _run_scan(context: dict, inventory: dict, repository_id, repo_root: Path, now: str, progress: Progress) -> dict:
+    outcome = _scan(repo_root, inventory, str(repository_id), progress)
 
     database_url = context.get("database_url")
     if database_url:
+        progress.phase("database")
         persistence.replace_all(
             database_url,
             repository_id,
@@ -563,6 +587,7 @@ def run(context: dict) -> dict:
     if outcome["exit_status"] == "FAILED":
         return result
 
+    progress.phase("write")
     output_dir = Path(context["output_dir"])
     output_dir.mkdir(parents=True, exist_ok=True)
     output_path = output_dir / "solution-project-inventory.json"

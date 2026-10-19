@@ -36,11 +36,56 @@ public static class FileSystemWalk
         }
     }
 
+    /// <summary>Project files: a project file in a folder makes that folder, and everything under it, its project's.</summary>
+    private static readonly string[] ProjectExtensions = [".csproj", ".vbproj", ".fsproj"];
+
+    /// <summary>
+    /// A project's own files (rbc-release-5): its folder, without any subfolder that holds a project file of its own.
+    /// A legacy web project's folder often contains every module project (<c>Orchard.Web/Modules/*</c>); walking it
+    /// whole read each module's code — generated proxies included — once more for the web project, and analysed it
+    /// again there, which made the work grow with the square of the code.
+    /// </summary>
+    public static IEnumerable<string> EnumerateProjectFiles(string projectDirectory, CancellationToken cancellationToken)
+    {
+        foreach (var directory in EnumerateDirectoriesIncludingRoot(projectDirectory, cancellationToken, stopAtNestedProjects: true))
+        {
+            IEnumerable<string> files;
+            try
+            {
+                files = Directory.EnumerateFiles(directory);
+            }
+            catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
+            {
+                continue;
+            }
+
+            foreach (var file in files)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                yield return file;
+            }
+        }
+    }
+
+    /// <summary>Whether a folder holds a project file of its own.</summary>
+    public static bool HoldsProject(string directory)
+    {
+        try
+        {
+            return Directory.EnumerateFiles(directory).Any(f => ProjectExtensions.Contains(Path.GetExtension(f), StringComparer.OrdinalIgnoreCase));
+        }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
+        {
+            return false;
+        }
+    }
+
     public static IEnumerable<string> EnumerateDirectories(string root, CancellationToken cancellationToken) =>
         EnumerateDirectoriesIncludingRoot(root, cancellationToken)
             .Where(d => !string.Equals(d, root, StringComparison.OrdinalIgnoreCase));
 
-    public static IEnumerable<string> EnumerateDirectoriesIncludingRoot(string root, CancellationToken cancellationToken)
+    public static IEnumerable<string> EnumerateDirectoriesIncludingRoot(
+        string root, CancellationToken cancellationToken, bool stopAtNestedProjects = false)
     {
         var stack = new Stack<string>();
         stack.Push(root);
@@ -63,7 +108,7 @@ public static class FileSystemWalk
 
             foreach (var child in children)
             {
-                if (!SkipDirNames.Contains(Path.GetFileName(child)))
+                if (!SkipDirNames.Contains(Path.GetFileName(child)) && !(stopAtNestedProjects && HoldsProject(child)))
                 {
                     stack.Push(child);
                 }
