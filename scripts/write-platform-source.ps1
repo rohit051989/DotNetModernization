@@ -25,16 +25,22 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][string]$Source,
-    [string]$Platform = (Split-Path -Parent $PSScriptRoot),
+    [string]$Platform = '',
     [string]$Previous = ''
 )
 
 $ErrorActionPreference = 'Continue'   # git writes to stderr; exit codes are checked instead
-$commit = (& git -C $Source rev-parse HEAD).Trim()
-if ($LASTEXITCODE -ne 0 -or -not $commit) { throw "$Source is not a git clone of our repository: no commit to record" }
-$tag = (& git -C $Source describe --tags --exact-match HEAD 2>$null)
-if ($LASTEXITCODE -ne 0) { $tag = $null } else { $tag = $tag.Trim() }
-$branch = (& git -C $Source rev-parse --abbrev-ref HEAD).Trim()
+# Windows PowerShell 5.1 has no $PSScriptRoot in a parameter's default value: the default is worked out here.
+if (-not $Platform) { $Platform = Split-Path -Parent $PSScriptRoot }
+$commit = & git -C $Source rev-parse HEAD
+if ($LASTEXITCODE -ne 0 -or -not $commit) {
+    Write-Host "$Source is not a git clone of our repository: there is no commit to record." -ForegroundColor Red
+    exit 1
+}
+$commit = "$commit".Trim()
+$tag = & git -C $Source describe --tags --exact-match HEAD 2>$null
+if ($LASTEXITCODE -ne 0 -or -not $tag) { $tag = $null } else { $tag = "$tag".Trim() }
+$branch = "$(& git -C $Source rev-parse --abbrev-ref HEAD)".Trim()
 
 $record = [ordered]@{
     commit         = $commit
