@@ -87,7 +87,7 @@ public static partial class SoapClientDetector
 
                 // 1.6.0: followed up through generic callers (SoapClientDetector.Options.cs).
                 var sites = method is not null && (generic || method.ParameterList.Parameters.Count > 0)
-                    ? Lifted(context.Project, CallSiteEvaluator.CallSites(context.Project, method))
+                    ? Lifted(context.Project, CallSiteEvaluator.CallSites(context.Project, method), cancellation: context.Cancellation)
                     : [];
                 if (sites.Count == 0)
                 {

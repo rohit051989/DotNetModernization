@@ -13,10 +13,16 @@ A row may set the time limit, the stall limit, or both; what it leaves empty com
     python -m app.workflow.time_limits show [--repository <engagement>/<slug>]
     python -m app.workflow.time_limits set [--step <step>] [--repository <engagement>/<slug>] [--timeout <s>] [--stall <s>] [--note "..."]
     python -m app.workflow.time_limits clear [--step <step>] [--repository <engagement>/<slug>]
+    python -m app.workflow.time_limits retry --repository <engagement>/<slug> [--step <step>]
+
+`retry`: a resumed step does not retry a project an earlier, interrupted run recorded "not checked" or was stuck on
+(ProjectCheckpoints, in the step program). This lets the next run retry them: it removes the step's list of them
+(skip.json, and inflight.json) from the repository's checkpoint folder: <RUNS_DIR>/<engagement>/<repository>/checkpoints/<step>.
 """
 import argparse
 import sys
 import uuid
+from pathlib import Path
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -87,6 +93,27 @@ def overrides(db: Session) -> list[models.StepTimeLimit]:
     return sorted(rows, key=lambda r: (r.repository_id is not None, str(r.repository_id or ""), r.step_name or ""))
 
 
+def checkpoint_folder(repository: models.Repository, step: str) -> Path:
+    """Where a step keeps a repository's finished projects between runs (app.workflow.runtime.executor's checkpoint_dir)."""
+    return settings.runs_path / repository.engagement_id / repository.slug / "checkpoints" / step
+
+
+def retry(repository: models.Repository, step: str | None) -> list[str]:
+    """Lets the next run retry what earlier runs left as not to be retried; the steps it did so for."""
+    root = settings.runs_path / repository.engagement_id / repository.slug / "checkpoints"
+    folders = [checkpoint_folder(repository, step)] if step else (sorted(p for p in root.iterdir() if p.is_dir()) if root.is_dir() else [])
+    done = []
+    for folder in folders:
+        removed = False
+        for name in ("skip.json", "inflight.json"):
+            if (folder / name).exists():
+                (folder / name).unlink()
+                removed = True
+        if removed:
+            done.append(folder.name)
+    return done
+
+
 def _repository(db: Session, text: str | None):
     if not text:
         return None
@@ -105,6 +132,9 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="command", required=True)
     show = sub.add_parser("show")
     show.add_argument("--repository")
+    again = sub.add_parser("retry")
+    again.add_argument("--repository", required=True)
+    again.add_argument("--step")
     for name in ("set", "clear"):
         p = sub.add_parser(name)
         p.add_argument("--step")
@@ -118,6 +148,11 @@ def main(argv: list[str] | None = None) -> int:
     try:
         repo = _repository(db, args.repository)
         repo_id = repo.id if repo else None
+        if args.command == "retry":
+            steps = retry(repo, args.step)
+            print(f"the next run retries what was not retried, for: {', '.join(steps)}" if steps
+                  else "nothing was being held back from a retry")
+            return 0
         if args.command == "set":
             set_limit(db, args.step, repo_id, args.timeout, args.stall, args.note)
             db.commit()

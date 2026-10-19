@@ -69,6 +69,22 @@ class EffectiveLimits(unittest.TestCase):
         self.assertEqual(time_limits.effective(self.db, STEP, self.repo.id)["timeout_from"], "default (STEP_TIMEOUT_SECONDS)")
         self.assertIsNotNone(time_limits._row(self.db, STEP, self.repo.id))          # emptied, never hard-deleted
 
+    def test_retry_lets_the_next_run_retry_what_was_held_back(self):
+        saved = settings.runs_dir
+        with tempfile.TemporaryDirectory() as tmp:
+            settings.runs_dir = tmp
+            try:
+                folder = time_limits.checkpoint_folder(self.repo, STEP)
+                folder.mkdir(parents=True)
+                (folder / "skip.json").write_text('{"src/A/A.csproj": "not checked: ..."}', encoding="utf-8")
+                (folder / "inflight.json").write_text("[]", encoding="utf-8")
+                (folder / "manifest.json").write_text("{}", encoding="utf-8")
+                self.assertEqual(time_limits.retry(self.repo, None), [STEP])
+                self.assertEqual(sorted(p.name for p in folder.iterdir()), ["manifest.json"])   # results stay
+                self.assertEqual(time_limits.retry(self.repo, STEP), [])
+            finally:
+                settings.runs_dir = saved
+
     def test_an_override_needs_a_scope_and_positive_seconds(self):
         with self.assertRaises(ValueError):
             time_limits.set_limit(self.db, None, None, 60, None)

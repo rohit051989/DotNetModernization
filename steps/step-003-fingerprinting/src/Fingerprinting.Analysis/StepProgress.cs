@@ -18,6 +18,11 @@ namespace Fingerprinting.Analysis;
 public sealed class StepProgress : IDisposable
 {
     public const int HeartbeatSeconds = 10;
+
+    /// <summary>Items reported between heartbeats are written at most this often: thousands of files must not cost a
+    /// write each.</summary>
+    public const int ItemEmitSeconds = 2;
+
     private const int Slowest = 25;
 
     private readonly string? _outputDirectory;
@@ -27,7 +32,9 @@ public sealed class StepProgress : IDisposable
     private readonly List<PhaseTiming> _phases = [];
     private readonly Dictionary<string, List<ItemTiming>> _items = new(StringComparer.Ordinal);
     private readonly List<NotChecked> _notChecked = [];
+    private readonly Dictionary<string, TimeSpan> _inFlight = new(StringComparer.Ordinal);
     private readonly Timer _heartbeat;
+    private TimeSpan _lastEmit = TimeSpan.MinValue;
     private string _phase = "starting";
     private int _done;
     private int? _total;
@@ -39,8 +46,25 @@ public sealed class StepProgress : IDisposable
     {
         _outputDirectory = outputDirectory;
         _stderr = stderr;
-        _heartbeat = new Timer(_ => Emit(), null, TimeSpan.FromSeconds(HeartbeatSeconds), TimeSpan.FromSeconds(HeartbeatSeconds));
+        _heartbeat = new Timer(_ =>
+        {
+            Emit();
+            Beat?.Invoke();
+        }, null, TimeSpan.FromSeconds(HeartbeatSeconds), TimeSpan.FromSeconds(HeartbeatSeconds));
         Emit();
+    }
+
+    /// <summary>At every heartbeat, after the progress is written (ProjectCheckpoints records what is in flight).</summary>
+    public event Action? Beat;
+
+    /// <summary>The items begun and not yet finished, with how long each has run.</summary>
+    public IReadOnlyList<(string Path, double Seconds)> InFlight()
+    {
+        lock (_gate)
+        {
+            var now = _clock.Elapsed;
+            return _inFlight.Select(kv => (kv.Key, Math.Round((now - kv.Value).TotalSeconds, 1))).OrderBy(x => x.Key, StringComparer.Ordinal).ToList();
+        }
     }
 
     /// <summary>A progress reporter that writes nowhere: for tests and standalone use without an output folder.</summary>
@@ -61,13 +85,15 @@ public sealed class StepProgress : IDisposable
     /// <param name="kind">What the slowest-items list groups it under; by default, the phase it is in.</param>
     public IDisposable Item(string path, string? kind = null)
     {
+        var started = _clock.Elapsed;
         lock (_gate)
         {
             _item = path;
             kind ??= _phase;
+            _inFlight[path] = started;
         }
 
-        return new ItemScope(this, path, kind, _clock.Elapsed);
+        return new ItemScope(this, path, kind, started);
     }
 
     /// <summary>Records one timed piece of work that is not a counted item of the phase (a file within a project).</summary>
@@ -125,9 +151,10 @@ public sealed class StepProgress : IDisposable
         {
             Add(kind, path, _clock.Elapsed - started);
             _done++;
+            _inFlight.Remove(path);
         }
 
-        Emit();
+        Emit(force: false);
     }
 
     private void Add(string kind, string path, TimeSpan duration)
@@ -151,12 +178,18 @@ public sealed class StepProgress : IDisposable
         _phaseStarted = now;
     }
 
-    private void Emit()
+    private void Emit(bool force = true)
     {
         string progress;
         string? profile = null;
         lock (_gate)
         {
+            if (!force && _clock.Elapsed - _lastEmit < TimeSpan.FromSeconds(ItemEmitSeconds))
+            {
+                return;
+            }
+
+            _lastEmit = _clock.Elapsed;
             progress = JsonSerializer.Serialize(new Dictionary<string, object?>
             {
                 ["phase"] = _phase, ["done"] = _done, ["total"] = _total, ["item"] = _item,

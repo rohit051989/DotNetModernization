@@ -70,6 +70,7 @@ public sealed class OutboundPipeline
     {
         progress ??= StepProgress.Silent();
         limits ??= WorkLimits.Default;
+        checkpoints ??= ProjectCheckpoints.None;
         var results = new List<ProjectInvocations>();
         var loadedByPath = new System.Collections.Concurrent.ConcurrentDictionary<string, (OutboundInputProject Input, ProjectSource Source)>(StringComparer.Ordinal);
         var failedByPath = new System.Collections.Concurrent.ConcurrentDictionary<string, ProjectInvocations>(StringComparer.Ordinal);
@@ -102,6 +103,15 @@ public sealed class OutboundPipeline
                 return;
             }
 
+            if (checkpoints.Skipped(project.RelativePath, out var skipped))
+            {
+                // Not retried: an earlier, interrupted run recorded it, or was stuck on it (rbc-release-5).
+                progress.RecordNotChecked(project.RelativePath, "project", skipped);
+                failedByPath[project.RelativePath] = Empty(project, ProjectScanStatuses.Failed, null,
+                    [new Warning { Code = WarningCodes.NotChecked, Message = skipped, Severity = WarningSeverities.Warning }]);
+                return;
+            }
+
             // Generated files are loaded (flagged) so a service reference's
             // Reference.cs can supply a binding; nothing else reads them.
             using var limit = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -122,6 +132,7 @@ public sealed class OutboundPipeline
             {
                 var reason = $"not checked: loading the project took longer than {limits.ProjectLoad.TotalSeconds:0} s";
                 progress.RecordNotChecked(project.RelativePath, "project", reason);
+                checkpoints.MarkNotChecked(project.RelativePath, reason);
                 failedByPath[project.RelativePath] = Empty(project, ProjectScanStatuses.Failed, null,
                     [new Warning { Code = WarningCodes.NotChecked, Message = reason, Severity = WarningSeverities.Warning }]);
             }
@@ -285,17 +296,56 @@ public sealed class OutboundPipeline
         // SOAP clients in code first, for every project: a library's client
         // claims its host's endpoint entry before the host looks for entries
         // nothing claimed (1.3.0).
+        // Each project's SOAP passes within its time limit too (rbc-release-5): a project over it is not checked, and
+        // the others carry on. A project an earlier, interrupted run did not finish because it hit a wall is not retried (ProjectCheckpoints.Skipped).
         progress.Phase("soap clients", contexts.Count);
         var soap = new Dictionary<string, List<Detected>>(StringComparer.Ordinal);
+        var configOnly = new Dictionary<string, List<Detected>>(StringComparer.Ordinal);
+        var stopped = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var c in contexts)
         {
             using var item = progress.Item(c.Input.RelativePath);
-            soap[c.Input.RelativePath] = SoapClientDetector.Detect(c.Context).ToList();
+            if (checkpoints.Skipped(c.Input.RelativePath, out var skipped))
+            {
+                soap[c.Input.RelativePath] = [];
+                stopped[c.Input.RelativePath] = skipped;
+                continue;
+            }
+
+            using var limit = new CancellationTokenSource(limits.ProjectLoad);
+            c.Context.Cancellation = limit.Token;
+            try
+            {
+                soap[c.Input.RelativePath] = SoapClientDetector.Detect(c.Context).ToList();
+            }
+            catch (OperationCanceledException)
+            {
+                soap[c.Input.RelativePath] = [];
+                stopped[c.Input.RelativePath] = $"not checked: analysing the project's SOAP clients took longer than {limits.ProjectLoad.TotalSeconds:0} s";
+            }
         }
 
         // Configuration-only endpoints claim entries too, in project order: kept in order, as before.
-        var configOnly = contexts.ToDictionary(c => c.Input.RelativePath, c => SoapClientDetector.DetectConfigOnly(c.Context).ToList(),
-            StringComparer.Ordinal);
+        foreach (var c in contexts)
+        {
+            if (stopped.ContainsKey(c.Input.RelativePath))
+            {
+                configOnly[c.Input.RelativePath] = [];
+                continue;
+            }
+
+            using var limit = new CancellationTokenSource(limits.ProjectLoad);
+            c.Context.Cancellation = limit.Token;
+            try
+            {
+                configOnly[c.Input.RelativePath] = SoapClientDetector.DetectConfigOnly(c.Context).ToList();
+            }
+            catch (OperationCanceledException)
+            {
+                configOnly[c.Input.RelativePath] = [];
+                stopped[c.Input.RelativePath] = $"not checked: analysing the project's configured endpoints took longer than {limits.ProjectLoad.TotalSeconds:0} s";
+            }
+        }
 
         // The rest, per project, in parallel; each project within its own time limit, and saved as it completes so a
         // rerun continues from there (rbc-release-5).
@@ -310,6 +360,16 @@ public sealed class OutboundPipeline
                 return;
             }
 
+            if (stopped.TryGetValue(c.Input.RelativePath, out var why))
+            {
+                progress.RecordNotChecked(c.Input.RelativePath, "project", why);
+                var notChecked = Empty(c.Input, ProjectScanStatuses.Failed, null,
+                    [new Warning { Code = WarningCodes.NotChecked, Message = why, Severity = WarningSeverities.Warning }]);
+                checkpoints.Save(c.Input.RelativePath, notChecked);
+                detectedByPath[c.Input.RelativePath] = notChecked;
+                return;
+            }
+
             using var limit = new CancellationTokenSource(limits.ProjectLoad);
             c.Context.Cancellation = limit.Token;
             ProjectInvocations result;
@@ -321,6 +381,7 @@ public sealed class OutboundPipeline
             {
                 var reason = $"not checked: analysing the project took longer than {limits.ProjectLoad.TotalSeconds:0} s";
                 progress.RecordNotChecked(c.Input.RelativePath, "project", reason);
+                checkpoints.MarkNotChecked(c.Input.RelativePath, reason);
                 result = Empty(c.Input, ProjectScanStatuses.Failed, null,
                     [new Warning { Code = WarningCodes.NotChecked, Message = reason, Severity = WarningSeverities.Warning }]);
             }
@@ -396,22 +457,7 @@ public sealed class OutboundPipeline
             ProjectId = project.ProjectId,
             ProjectPath = project.RelativePath,
             Status = ProjectScanStatuses.Scanned,
-            Summary = new ProjectOutboundSummary
-            {
-                UnusedCount = invocations.Count - used.Count,
-                CountByMechanism = Count(used.Select(i => i.Mechanism)),
-                CountByVerdict = Count(used.Select(i => i.LinuxCompatibility.Verdict)),
-                Incompatible = used
-                    .Where(i => i.LinuxCompatibility.Verdict == Verdicts.Incompatible)
-                    .Select(i => new IncompatibleInvocation
-                    {
-                        InvocationId = i.InvocationId,
-                        Mechanism = i.Mechanism,
-                        Endpoint = Endpoints.Display(i.Endpoint),
-                        Reasons = i.LinuxCompatibility.Reasons,
-                    })
-                    .ToList(),
-            },
+            Summary = SummariseProject(invocations),
             Invocations = invocations,
             Warnings = warnings,
         };
@@ -518,7 +564,30 @@ public sealed class OutboundPipeline
         Warnings = warnings,
     };
 
-    private static OutboundSummary Summarise(IReadOnlyList<ProjectInvocations> projects)
+    /// <summary>A project's summary from its invocations.</summary>
+    public static ProjectOutboundSummary SummariseProject(IReadOnlyList<Invocation> invocations)
+    {
+        var used = invocations.Where(i => i.Usage == Usages.Used).ToList();
+        return new ProjectOutboundSummary
+        {
+            UnusedCount = invocations.Count - used.Count,
+            CountByMechanism = Count(used.Select(i => i.Mechanism)),
+            CountByVerdict = Count(used.Select(i => i.LinuxCompatibility.Verdict)),
+            Incompatible = used
+                .Where(i => i.LinuxCompatibility.Verdict == Verdicts.Incompatible)
+                .Select(i => new IncompatibleInvocation
+                {
+                    InvocationId = i.InvocationId,
+                    Mechanism = i.Mechanism,
+                    Endpoint = Endpoints.Display(i.Endpoint),
+                    Reasons = i.LinuxCompatibility.Reasons,
+                })
+                .ToList(),
+        };
+    }
+
+    /// <summary>The artifact's summary from its projects.</summary>
+    public static OutboundSummary Summarise(IReadOnlyList<ProjectInvocations> projects)
     {
         var invocations = projects.SelectMany(p => p.Invocations).ToList();
         var used = invocations.Where(i => i.Usage == Usages.Used).ToList();

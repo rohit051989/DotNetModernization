@@ -1277,4 +1277,35 @@ per-repository.
 
 ## Large repositories (rbc-release-5: entry-point-inventory 2.4.0, outbound-invocation-inventory 1.7.0)
 
+**Value resolution that does not grow with the code.** Found in a client repository on the VDI: a mapping layer
+copying one member between a DTO and a generated LINQ-to-SQL entity (`new Entity { Code = src.Code }`) in fifteen
+service classes, and a request reading the DTO's member after a runtime base address
+(`c.BaseAddress + "/path/" + param.Code`). Assignments were indexed by member name only, and resolving a member
+resolved every other assignment to that name, each of which read the name again: about 14 times the work per level
+of depth, over an hour at the depth limit of 8 — the real cause of the step's timeout. The result was then
+discarded, because the URL starts with a runtime value. `ValueResolver` now:
+- (a) never resolves a name that is already being resolved further up: the re-read is a copy, which adds no value
+  of its own, and is left out when the assignments are weighed; each name's result is remembered per environment;
+- (b) leaves a name with more than 8 assignments unresolved, with that reason, without resolving each one;
+- (c) resolves a concatenation or interpolation left to right and stops at a base that names nothing (no
+  configuration key, variable or parameter); literal text after it is kept, nothing else is resolved;
+- (d) where the type owning a member is written — a parameter's, field's or property's declared type, a typed
+  local, `new T(…)`, `this` — weighs only assignments to that type's member (its bases' and derived types' too), or
+  to a member whose owning type the code does not show. Assignments are indexed with their owning type:
+  an object initializer's type, the declaring class, or the receiver's declared type;
+- checks the project's time limit at every step, and takes at most 20 000 steps for one value.
+The same applies to every caller (HTTP, SOAP, gRPC, data, messaging, infrastructure) and to field and property
+initializers and plain assignments. With 16 copying assignments the step takes milliseconds; with 4 or 5, 3 resolver
+calls where it took 1 152 and 17 498. The SOAP passes now also run within each project's time limit.
+
+**A request to the base address itself.** A request with an empty URI, or only a query (`?k=v`) or a fragment
+(`#f`), goes to the client's base address: the operation's path is the base address's path (`/` when it has none),
+its resolution the base address's, and, when that is unresolved, the reason says so. A literal base address is
+treated the same way. Before, such a request on a plain `HttpClient` whose base address came from an unreadable
+field was an unresolved operation without a reason, which the schema refuses, and the whole artifact was lost.
+
+**One record never costs the rest.** Every record is checked against the schema, and every required field must
+hold a value (`RequiredFields`, also run on every record the step's tests produce). A record that does not conform
+is left out and recorded `NOT_CHECKED` on its project, naming the record and the field; the rest is written.
+
 Both: each project's own files only (a nested project's are its own), projects loaded in parallel (bounded), each within `project_seconds` and each file within `file_seconds`, over which it is recorded `NOT_CHECKED` with the reason. Outbound, in addition: one repository index (types constructed anywhere, interfaces by name, initialised properties) shared by every project, instead of a walk of the repository per project; call sites found from an index of invocations by name, instead of a walk of the project's files per call site, so a large generated proxy (Reference.cs) is read once, however many calls it holds; every unresolved operation names its reason (before 1.7.0 one could fail the schema); detection per project in parallel, saved as each completes, so a rerun continues from there. Artifacts unchanged; results identical to 1.6.0 apart from the nested-project fix. On the Orchard proof copy (90 project files, 118 solutions, six generated 3.4 MB proxies) outbound went from 129 s to 23 s. Every step reports progress, writes a timing profile, keeps to its time and stall limits and ends its whole process tree when stopped: `11-STEP-CONTRACT.md`, "Time limits, progress and stopping". The registration's fixed `timeout_seconds` is gone.

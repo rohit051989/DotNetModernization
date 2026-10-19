@@ -43,18 +43,20 @@ public static partial class SoapClientDetector
     /// calls keeps its own call site.
     /// </summary>
     private static List<(ParsedFile File, InvocationExpressionSyntax Call, CallSiteEvaluator.Env Env, bool Lifted)> Lifted(
-        ProjectSource project, IEnumerable<(ParsedFile File, InvocationExpressionSyntax Call, CallSiteEvaluator.Env Env)> sites, int depth = 0)
+        ProjectSource project, IEnumerable<(ParsedFile File, InvocationExpressionSyntax Call, CallSiteEvaluator.Env Env)> sites, int depth = 0,
+        CancellationToken cancellation = default)
     {
         var result = new List<(ParsedFile, InvocationExpressionSyntax, CallSiteEvaluator.Env, bool)>();
         foreach (var (file, call, env) in sites)
         {
+            cancellation.ThrowIfCancellationRequested();   // the project's time limit, inside the fan-out (rbc-release-5)
             if (depth < MaxLift && CallSiteEvaluator.Scope(call) is MethodDeclarationSyntax outer && Forwarded(call, env, outer) is { } inner)
             {
                 var outerSites = CallSiteEvaluator.CallSites(project, outer);
                 if (outerSites.Count > 0)
                 {
                     var composed = outerSites.Select(o => (o.File, o.Call, Compose(inner, o.Env)));
-                    result.AddRange(Lifted(project, composed, depth + 1).Select(s => s with { Lifted = true }));
+                    result.AddRange(Lifted(project, composed, depth + 1, cancellation).Select(s => s with { Lifted = true }));
                     continue;
                 }
             }

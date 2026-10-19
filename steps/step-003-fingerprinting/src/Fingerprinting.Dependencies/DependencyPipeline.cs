@@ -86,6 +86,17 @@ public sealed class DependencyPipeline(PackageLookup lookup, DependencyOptions o
                 continue;
             }
 
+            if (checkpoints.Skipped(project.RelativePath, out var skipped))
+            {
+                // Not retried: an earlier, interrupted run was stuck on it (rbc-release-5).
+                progress.RecordNotChecked(project.RelativePath, "project", skipped);
+                var notChecked = Empty(project, ProjectScanStatuses.Failed, null,
+                    [new Warning { Code = WarningCodes.NotChecked, Message = skipped, Severity = WarningSeverities.Warning }]);
+                checkpoints.Save(project.RelativePath, notChecked);
+                results.Add(notChecked);
+                continue;
+            }
+
             using var limit = CancellationTokenSource.CreateLinkedTokenSource(ct);
             limit.CancelAfter(limits.ProjectLoad);
             ProjectDependencies result;

@@ -14,10 +14,73 @@ namespace Fingerprinting.Outbound;
 /// variables — which become named placeholders. Anything else is a hole,
 /// recorded as such; nothing is guessed. Configuration is read as
 /// <see cref="Environment"/> sees it: that environment's file over the default.
+///
+/// rbc-release-5: what keeps it from growing with the code. A member read follows the assignments to that member; a
+/// mapping layer that copies one member name between types (<c>new Entity { Name = dto.Name }</c> in fifteen
+/// classes) made that exponential, bounded only by <see cref="MaxDepth"/>. Now:
+/// (a) a name being resolved further up is not resolved again — the re-read is a copy, which adds no value of its
+/// own — and each name's result is remembered per environment;
+/// (b) a name with more than <see cref="MaxAssignments"/> assignments is unresolved, with that reason, without
+/// resolving each one;
+/// (c) a concatenation (or interpolation) is resolved left to right and stops at a base that names nothing — nothing
+/// appended to an unresolvable base makes a usable endpoint; literal text after it is still kept;
+/// (d) where the type owning a member is written (a parameter's declared type), only assignments to that type's
+/// member (or of a type the code does not show) are weighed.
+/// And the work is bounded and stoppable: at most <see cref="MaxSteps"/> steps per value, and the project's time
+/// limit is checked at every step.
+/// One resolver per project's detection, not shared between threads.
 /// </summary>
 public sealed partial class ValueResolver(ProjectSource project, SymbolIndex symbols, RepositoryConfig config, string environment = "default")
 {
     private const int MaxDepth = 8;
+
+    /// <summary>(b): more assignments than this to one name are not weighed one by one.</summary>
+    public const int MaxAssignments = 8;
+
+    /// <summary>The most resolution steps one value may take, whatever its shape.</summary>
+    public const int MaxSteps = 20_000;
+
+    private static readonly AsyncLocal<bool> Unguarded = new();
+
+    /// <summary>State the resolvers of one project's detection share, across environments.</summary>
+    private sealed class Shared
+    {
+        public long Calls;
+        public CancellationToken Cancellation;
+        public readonly Dictionary<string, ValueResolver> ByEnvironment = new(StringComparer.Ordinal);
+        public readonly Dictionary<string, IReadOnlySet<string>> Related = new(StringComparer.Ordinal);
+    }
+
+    private Shared _shared = new();
+    private readonly Dictionary<(string Name, string? Owner, ExpressionSyntax? Excluded), ResolvedValue> _memo = new();
+    private readonly List<(string Name, string? Owner)> _resolving = [];
+    private int _repeatFloor = int.MaxValue;
+    private int _truncations;
+    private int _steps;
+    private bool _guarded = true;
+
+    /// <summary>How many times the resolver has been asked to evaluate an expression, across environments.</summary>
+    public long Calls => _shared.Calls;
+
+    /// <summary>The project's time limit: checked at every resolution step, so one long resolution stops in time.</summary>
+    public CancellationToken Cancellation
+    {
+        get => _shared.Cancellation;
+        set => _shared.Cancellation = value;
+    }
+
+    /// <summary>For tests only: resolution exactly as before rbc-release-5's fixes (a) to (d), to reproduce the explosion
+    /// and prove the time limits stop it.</summary>
+    public static IDisposable WithoutSafeguards()
+    {
+        Unguarded.Value = true;
+        return new Restore();
+    }
+
+    private sealed class Restore : IDisposable
+    {
+        public void Dispose() => Unguarded.Value = false;
+    }
 
     [System.Text.RegularExpressions.GeneratedRegex(@"@?\$?""(?:[^""\\]|\\.)*""")]
     private static partial System.Text.RegularExpressions.Regex StringLiteral();
@@ -28,16 +91,45 @@ public sealed partial class ValueResolver(ProjectSource project, SymbolIndex sym
 
     public RepositoryConfig Config => config;
 
-    public ValueResolver For(string otherEnvironment) =>
-        otherEnvironment == environment ? this : new ValueResolver(project, symbols, config, otherEnvironment);
+    /// <summary>This resolver as another environment sees configuration; one per environment, so each remembers its
+    /// own results.</summary>
+    public ValueResolver For(string otherEnvironment)
+    {
+        if (otherEnvironment == environment)
+        {
+            return this;
+        }
 
-    public ResolvedValue Resolve(ExpressionSyntax expression, CallSiteEvaluator.Env env) => Resolve(expression, env, 0);
+        if (!_shared.ByEnvironment.TryGetValue(otherEnvironment, out var other))
+        {
+            other = new ValueResolver(project, symbols, config, otherEnvironment) { _shared = _shared };
+            _shared.ByEnvironment[otherEnvironment] = other;
+        }
+
+        return other;
+    }
+
+    public ResolvedValue Resolve(ExpressionSyntax expression, CallSiteEvaluator.Env env)
+    {
+        _guarded = !Unguarded.Value;
+        _steps = 0;
+        return Resolve(expression, env, 0);
+    }
 
     private ResolvedValue Resolve(ExpressionSyntax expression, CallSiteEvaluator.Env env, int depth)
     {
+        _shared.Calls++;
+        _shared.Cancellation.ThrowIfCancellationRequested();
         if (depth > MaxDepth)
         {
+            _truncations++;
             return ResolvedValue.Hole(Label(expression));
+        }
+
+        if (_guarded && ++_steps > MaxSteps)
+        {
+            _truncations++;
+            return new ResolvedValue([new HolePart(Label(expression), null, $"more than {MaxSteps} resolution steps")]);
         }
 
         switch (expression)
@@ -52,15 +144,30 @@ public sealed partial class ValueResolver(ProjectSource project, SymbolIndex sym
                 return ResolvedValue.Hole("null");
 
             case InterpolatedStringExpressionSyntax interpolated:
-                return ResolvedValue.Join(interpolated.Contents.Select(c => c switch
+            {
+                // (c) Left to right: once the base names nothing, the rest is not resolved.
+                var parts = new List<ResolvedValue>();
+                foreach (var content in interpolated.Contents)
                 {
-                    InterpolatedStringTextSyntax text => ResolvedValue.Text(text.TextToken.ValueText),
-                    InterpolationSyntax hole => Resolve(hole.Expression, env, depth + 1),
-                    _ => new ResolvedValue([]),
-                }));
+                    var stopped = _guarded && parts.Count > 0 && parts[0].HasUnresolvableBase;
+                    parts.Add(content switch
+                    {
+                        InterpolatedStringTextSyntax text => ResolvedValue.Text(text.TextToken.ValueText),
+                        InterpolationSyntax hole when stopped => Unevaluated(hole.Expression),
+                        InterpolationSyntax hole => Resolve(hole.Expression, env, depth + 1),
+                        _ => new ResolvedValue([]),
+                    });
+                }
+
+                return ResolvedValue.Join(parts);
+            }
 
             case BinaryExpressionSyntax binary when binary.IsKind(SyntaxKind.AddExpression):
-                return Resolve(binary.Left, env, depth + 1).Concat(Resolve(binary.Right, env, depth + 1));
+            {
+                // (c) The left operand first; an unresolvable base ends the resolution.
+                var left = Resolve(binary.Left, env, depth + 1);
+                return left.Concat(_guarded && left.HasUnresolvableBase ? Unevaluated(binary.Right) : Resolve(binary.Right, env, depth + 1));
+            }
 
             case BinaryExpressionSyntax binary when binary.IsKind(SyntaxKind.CoalesceExpression):
             {
@@ -104,7 +211,7 @@ public sealed partial class ValueResolver(ProjectSource project, SymbolIndex sym
                 // new Uri(baseUri, "relative") — the relative part appends.
                 return arguments.Count > 1 && SyntaxHelpers.RightmostTypeName(creation.Type) == "Uri"
                        && arguments[1].Expression is not MemberAccessExpressionSyntax { Name.Identifier.Text: "Absolute" or "Relative" or "RelativeOrAbsolute" }
-                    ? first.Concat(Resolve(arguments[1].Expression, env, depth + 1))
+                    ? first.Concat(_guarded && first.HasUnresolvableBase ? Unevaluated(arguments[1].Expression) : Resolve(arguments[1].Expression, env, depth + 1))
                     : first;
             }
 
@@ -277,23 +384,129 @@ public sealed partial class ValueResolver(ProjectSource project, SymbolIndex sym
             return FromConfig(new ConfigKey($"{section}:{memberName}", "json"));
         }
 
-        return FromAssignments(memberName, site, depth);
+        // (d) The receiver's written type, where there is one: only that type's member (and its relatives').
+        return FromAssignments(memberName, site, depth, _guarded ? SymbolIndex.ReceiverType(receiver) : null);
     }
 
     /// <summary>A member assigned in one place (a field set in a
     /// constructor, a property set in an object initializer) resolves to
     /// what it is assigned; several differing assignments do not.</summary>
-    private ResolvedValue FromAssignments(string name, ExpressionSyntax site, int depth)
+    private ResolvedValue FromAssignments(string name, ExpressionSyntax site, int depth, string? owner = null)
     {
-        var assigned = symbols.AssignmentsTo(project, name).Where(a => !a.Span.Contains(site.Span) || a.SyntaxTree != site.SyntaxTree).ToList();
+        var all = symbols.AssignmentsTo(project, name, owner is null ? null : RelatedTypes(owner));
+        var excluded = all.FirstOrDefault(a => a.Value.Span.Contains(site.Span) && a.Value.SyntaxTree == site.SyntaxTree);
+        var assigned = excluded is null ? all : all.Where(a => a != excluded).ToList();
         if (assigned.Count == 0)
         {
             return ResolvedValue.Hole(name);
         }
 
-        var values = assigned.Select(a => Resolve(a, CallSiteEvaluator.Empty, depth + 1)).ToList();
-        var distinct = values.Select(v => v.TextValue ?? v.WholeConfig?.KeyPath ?? v.Placeholder ?? "\u0000" + name).Distinct().Count();
-        return distinct == 1 ? values[0] : ResolvedValue.Hole(name) with { Keys = values.SelectMany(v => v.Keys).Distinct().ToList() };
+        if (!_guarded)
+        {
+            return Weigh(name, assigned.Select(a => Resolve(a.Value, CallSiteEvaluator.Empty, depth + 1)).ToList(), keepRepeats: true);
+        }
+
+        // (b) Too many to weigh: unresolved, with the reason.
+        if (assigned.Count > MaxAssignments)
+        {
+            return new ResolvedValue([new HolePart(name, null, $"{name} is assigned in {assigned.Count} places; more than {MaxAssignments} are not weighed")]);
+        }
+
+        // (a) Remembered, and never resolved twice at once.
+        var key = (name, owner, excluded?.Value);
+        if (_memo.TryGetValue(key, out var known))
+        {
+            return known;
+        }
+
+        var guard = (name, owner);
+        var at = _resolving.IndexOf(guard);
+        if (at >= 0)
+        {
+            _repeatFloor = Math.Min(_repeatFloor, at);
+            return new ResolvedValue([new HolePart(name, null, $"{name} is read while it is being resolved", Repeat: true)]);
+        }
+
+        var position = _resolving.Count;
+        _resolving.Add(guard);
+        var outerFloor = _repeatFloor;
+        var truncations = _truncations;
+        _repeatFloor = int.MaxValue;
+        try
+        {
+            var result = Weigh(name, assigned.Select(a => Resolve(a.Value, CallSiteEvaluator.Empty, depth + 1)).ToList(), keepRepeats: false);
+            // Kept only when it does not depend on where it was asked from: no repeat of a name further up, and
+            // nothing cut short by the depth or step limit.
+            if (_repeatFloor >= position && _truncations == truncations)
+            {
+                _memo[key] = result;
+            }
+
+            return result;
+        }
+        finally
+        {
+            _resolving.RemoveAt(position);
+            _repeatFloor = Math.Min(outerFloor, _repeatFloor);
+        }
+    }
+
+    /// <summary>The value of a name from the values of its assignments: the one value they agree on, or a hole. A
+    /// re-read of the name itself (a copy between members of that name) adds no value of its own, and is left out.</summary>
+    private static ResolvedValue Weigh(string name, IReadOnlyList<ResolvedValue> values, bool keepRepeats)
+    {
+        var own = keepRepeats ? values : values.Where(v => !v.IsRepeat).ToList();
+        if (own.Count == 0)
+        {
+            return new ResolvedValue([new HolePart(name, null, $"{name} is only copied from members of the same name")]);
+        }
+
+        var distinct = own.Select(v => v.TextValue ?? v.WholeConfig?.KeyPath ?? v.Placeholder ?? "\u0000" + name).Distinct().Count();
+        return distinct == 1 ? own[0] : ResolvedValue.Hole(name) with { Keys = own.SelectMany(v => v.Keys).Distinct().ToList() };
+    }
+
+    /// <summary>(c) What follows an unresolvable base: literal text as written, anything else a hole, not resolved.</summary>
+    private static ResolvedValue Unevaluated(ExpressionSyntax expression) =>
+        expression is LiteralExpressionSyntax literal && literal.IsKind(SyntaxKind.StringLiteralExpression)
+            ? ResolvedValue.Text(literal.Token.ValueText)
+            : ResolvedValue.Hole(Label(expression));
+
+    /// <summary>(d) A type and the types related to it by inheritance, as the project declares them: its bases and
+    /// interfaces, and what derives from it. An assignment through a base or a derived type is the same member.</summary>
+    private IReadOnlySet<string> RelatedTypes(string type)
+    {
+        if (_shared.Related.TryGetValue(type, out var known))
+        {
+            return known;
+        }
+
+        var related = new HashSet<string>(StringComparer.Ordinal) { type };
+        var up = new Queue<string>([type]);
+        while (up.Count > 0)
+        {
+            foreach (var declared in project.TypesByName[up.Dequeue()])
+            {
+                foreach (var baseName in declared.BaseNames.Where(related.Add))
+                {
+                    up.Enqueue(baseName);
+                }
+            }
+        }
+
+        var down = new Queue<string>([type]);
+        var derived = new HashSet<string>(StringComparer.Ordinal) { type };
+        while (down.Count > 0)
+        {
+            var current = down.Dequeue();
+            foreach (var declared in project.Types.Where(t => t.BaseNames.Contains(current) && derived.Add(t.Name)))
+            {
+                related.Add(declared.Name);
+                down.Enqueue(declared.Name);
+            }
+        }
+
+        _shared.Related[type] = related;
+        return related;
     }
 
     /// <summary>The options class behind a receiver: <c>x.Value</c> where x

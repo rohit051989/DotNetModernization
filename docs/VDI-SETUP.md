@@ -77,7 +77,7 @@ Install these first. None needs administrator rights if installed per user ("Acc
 Ask for these before you start:
 
 - **An account on the VDI.** No administrator rights are needed.
-- **A folder you can write to, with a short path**, such as `C:\MP` or `D:\MP`, for the source folder, the
+- **A folder you can write to, with a short path**, such as `C:\MP` (the client VDI has only a C drive), for the source folder, the
   client's repository, `RUNS_DIR` and `REPOS_DIR`.
 - **Your own branch in the client's shared repository**, with the right to push it, and the folder name the
   client wants the platform in (this guide uses `modernization-platform`).
@@ -1010,8 +1010,25 @@ available to scripts as `/api/workflow/time-limits`.
 **Rescan** the repository. A rerun continues from the last project each step completed, as long as its inputs are
 unchanged: projects already done are not analysed again. The step's message says how many it carried over.
 
+A rerun never runs into the same wall twice. A project the stopped run recorded "not checked", or was still on after
+60 seconds when it stopped, is not retried: it is recorded "not checked: not retried", with the reason, and the step
+carries on with the rest. To retry them, once the cause is dealt with:
+
+```powershell
+cd C:\MP\client\modernization-platform\backend; .\.venv\Scripts\python.exe -m app.workflow.time_limits retry --repository <engagement>/<repository> --step outbound-invocation-inventory
+```
+
+then **Rescan**. Leave out `--step` for every step of that repository. Changing the project time limit
+(`STEP_PROJECT_SECONDS`) also retries everything, from the start.
+
 If the same step stops again, raise its limit for that repository (above), and send us its `timing-profile.json`
 and `stopped.json`.
+
+#### A record that does not conform
+
+Every record a step writes is checked against its artifact's schema, and every required field must hold a value.
+When one record does not conform, it is left out and recorded "not checked" on its project, naming the record and the
+field, and the rest of the artifact is written. Send us the warning's text: it names code by path and id only.
 
 #### Legacy projects without Visual Studio
 
@@ -1040,6 +1057,7 @@ there is recorded with the reason, within its own time limit.
 | **"package step skipped: no package step: test-coverage-assessment found no unit test project"** | The repository has no unit tests, so package upgrades cannot be checked by running them | As above: the package changes are left to the agent, with instructions |
 | A step fails with "executable not found" | The step programs are not published | `bootstrap.ps1 -Stage 6 -Force` |
 | A step ends **TIMED_OUT** or **STALLED** ("where it was: phase ..., 41 of 170, at ...") | The repository is larger than the step's limit allows, or one project or file is pathological | **Rescan**: it continues from the last completed project. If it stops again, raise the limit for that repository ("Large repositories: progress, time limits and stopped steps") and send us `timing-profile.json` and `stopped.json` from the step's folder |
+| A step's message says **"... not checked: not retried"** | An earlier run that stopped (a time limit, a stall, a crash) recorded that project, or was stuck on it | Deal with the cause (raise the limit for that repository), run `python -m app.workflow.time_limits retry` ("After a time limit, a stall or a crash"), then **Rescan** |
 | A step's message says **"... item(s) not checked"** | A project or file took longer than `STEP_PROJECT_SECONDS` or `STEP_FILE_SECONDS` | The rest is complete. The items and reasons are in `timing-profile.json` and in the step's warnings (`NOT_CHECKED`). Raise the limit and **Rescan** to check them |
 | The UI loads, but every request fails | `frontend\.env` points at another port, or the frontend is not on 5174 (`CORS_ORIGINS`) | Start the frontend exactly as in "Starting the backend and the frontend" |
 | A job shows **"orphaned by engine restart"** | The backend was stopped while it ran | Rescan the repository (or Verify again) |

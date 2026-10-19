@@ -166,6 +166,7 @@ public static class DependencyAssessmentCli
         var checkpoints = ProjectCheckpoints.Open(StepLimits.CheckpointDirectory(context), ProjectCheckpoints.Key(
             ArtifactType, DependencyPipeline.ScannerVersion, inventoryRef.Checksum, fingerprintRef.Checksum, target,
             options.ToString(), limits.ProjectLoad.TotalSeconds.ToString(CultureInfo.InvariantCulture)));
+        checkpoints.Watch(progress);
         var (artifact, lookup) = await AssessAsync(repositoryRoot, inventory, fingerprint, path => projectIds.TryGetValue(path, out var id) ? id : null, cache, options,
             progress, limits, checkpoints);
 

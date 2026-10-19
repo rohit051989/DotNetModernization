@@ -136,8 +136,10 @@ public static class OutboundInventoryCli
             var checkpoints = ProjectCheckpoints.Open(Checkpoints, ProjectCheckpoints.Key(
                 ArtifactType, OutboundPipeline.ScannerVersion, ArtifactUri.Sha256File(inventoryPath), ArtifactUri.Sha256File(fingerprintPath),
                 entryPointsPath is null ? null : ArtifactUri.Sha256File(entryPointsPath), Target, string.Join(",", globs)));
+            checkpoints.Watch(progress);
             var artifact = await new OutboundPipeline().RunAsync(input, repoPath, CancellationToken.None, progress, WorkLimits.Default, checkpoints);
             progress.Phase("write");
+            artifact = Conform(artifact, progress);
             var outputPath = await WriteArtifactAsync(artifact, outDir);
             if (checkpoints.Reused > 0)
             {
@@ -252,8 +254,10 @@ public static class OutboundInventoryCli
             ArtifactType, OutboundPipeline.ScannerVersion, inventoryRef.Checksum, fingerprintRef.Checksum, entryPointsRef?.Checksum,
             input.TargetFramework, input.WcfClientSupport?.Sha256, input.WcfClientPlatform?.Sha256, string.Join(",", input.DeployParameterGlobs),
             limits.ProjectLoad.TotalSeconds.ToString(CultureInfo.InvariantCulture)));
+        checkpoints.Watch(progress);
         var artifact = await new OutboundPipeline().RunAsync(input, repositoryRoot, CancellationToken.None, progress, limits, checkpoints);
         progress.Phase("write");
+        artifact = Conform(artifact, progress);
         var outputPath = await WriteArtifactAsync(artifact, context.OutputDir);
         var checksum = ArtifactUri.Sha256File(outputPath);
 
@@ -391,12 +395,79 @@ public static class OutboundInventoryCli
     private static readonly Lazy<ArtifactSchemaValidator> SchemaValidator = new(() =>
         ArtifactSchemaValidator.Load(Path.Combine(AppContext.BaseDirectory, "schemas", "outbound-invocation-inventory-1.5.0.schema.json")));
 
+    /// <summary>
+    /// rbc-release-5: one record that does not conform never costs the rest. When the artifact has a problem (a schema
+    /// error, or a required field left empty), each record is checked on its own: every invocation that does not
+    /// conform is left out and recorded NOT_CHECKED on its project, naming the record and the problem, and the rest is
+    /// written. A problem no single invocation explains is left for <see cref="WriteArtifactAsync"/> to fail on.
+    /// </summary>
+    public static OutboundInventoryArtifact Conform(OutboundInventoryArtifact artifact, StepProgress? progress = null)
+    {
+        if (SchemaValidator.Value.Problems(DeterministicJson.Serialize(artifact)).Count == 0)
+        {
+            return artifact;
+        }
+
+        var projects = new List<ProjectInvocations>();
+        foreach (var project in artifact.Projects)
+        {
+            if (Problems(artifact, project).Count == 0)
+            {
+                projects.Add(project);
+                continue;
+            }
+
+            var kept = new List<Invocation>();
+            var warnings = project.Warnings.ToList();
+            foreach (var invocation in project.Invocations)
+            {
+                var problems = Problems(artifact, project with { Invocations = [invocation], Summary = OutboundPipeline.SummariseProject([invocation]) });
+                if (problems.Count == 0)
+                {
+                    kept.Add(invocation);
+                    continue;
+                }
+
+                // The problem at its deepest location — the field itself, not the records around it — and not one of
+                // the schema's alternative shapes the record was never meant to have (a oneOf branch's const).
+                var problem = problems.OrderByDescending(p => p.IndexOf(": ", StringComparison.Ordinal))
+                    .ThenBy(p => p.Contains(": const", StringComparison.Ordinal) ? 1 : 0).First();
+                var record = $"{invocation.Mechanism} invocation {invocation.InvocationId}";
+                var reason = $"not checked: {record} did not conform to the artifact schema ({problem}); left out, the rest is written";
+                warnings.Add(new Warning { Code = WarningCodes.NotChecked, Message = reason, Severity = WarningSeverities.Warning });
+                progress?.RecordNotChecked($"{project.ProjectPath}#{invocation.InvocationId}", "record", reason);
+            }
+
+            projects.Add(project with
+            {
+                Invocations = kept,
+                Summary = OutboundPipeline.SummariseProject(kept),
+                Warnings = warnings.OrderBy(w => w.Message, StringComparer.Ordinal).ToList(),
+            });
+        }
+
+        return artifact with { Projects = projects, Summary = OutboundPipeline.Summarise(projects) };
+    }
+
+    /// <summary>Every problem with the artifact as it would be written: schema errors and empty required fields.</summary>
+    public static IReadOnlyList<string> Problems(OutboundInventoryArtifact artifact) =>
+        SchemaValidator.Value.Problems(DeterministicJson.Serialize(artifact));
+
+    private static IReadOnlyList<string> Problems(OutboundInventoryArtifact artifact, ProjectInvocations project) =>
+        SchemaValidator.Value.Problems(DeterministicJson.Serialize(artifact with { Projects = [project], Summary = OutboundPipeline.Summarise([project]) }));
+
     /// <summary>Serialises deterministically, validates against the schema —
-    /// a failure is a step failure — and writes.</summary>
+    /// a failure is a step failure — and writes. Problems in single records are dealt with first (<see cref="Conform"/>);
+    /// the artifact written always conforms.</summary>
     public static async Task<string> WriteArtifactAsync(OutboundInventoryArtifact artifact, string outDir)
     {
         var json = DeterministicJson.Serialize(artifact);
         SchemaValidator.Value.Validate(json);
+        if (SchemaValidator.Value.Problems(json) is [_, ..] empty)
+        {
+            throw new ArtifactSchemaValidationException(empty);
+        }
+
         Directory.CreateDirectory(outDir);
         var outputPath = Path.Combine(outDir, OutputFileName);
         await File.WriteAllTextAsync(outputPath, json, new UTF8Encoding(false));

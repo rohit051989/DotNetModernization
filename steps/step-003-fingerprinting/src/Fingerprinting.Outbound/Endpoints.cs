@@ -15,7 +15,11 @@ public sealed record TextPart(string Value, ConfigSource? Source = null) : Value
 /// member name; never a value.</param>
 /// <param name="Placeholder">When the hole waits on a named external value:
 /// <c>env:X</c>, <c>config:A:B</c>, <c>${X}</c>.</param>
-public sealed record HolePart(string Label, string? Placeholder = null) : ValuePart;
+/// <param name="Reason">Why the resolver stopped here, when it gave up on purpose (rbc-release-5): too many
+/// assignments to weigh, or a name that only copies itself.</param>
+/// <param name="Repeat">A read of a name already being resolved further up: a copy of the same member, which adds no
+/// value of its own.</param>
+public sealed record HolePart(string Label, string? Placeholder = null, string? Reason = null, bool Repeat = false) : ValuePart;
 
 /// <summary>What an expression evaluates to, syntactically.</summary>
 /// <param name="WholeConfig">Set when the whole expression is one
@@ -52,6 +56,16 @@ public sealed record ResolvedValue(IReadOnlyList<ValuePart> Parts, ConfigKey? Wh
 
     /// <summary>The placeholder the value waits on, if any.</summary>
     public string? Placeholder => Parts.OfType<HolePart>().Select(h => h.Placeholder).FirstOrDefault(p => p is not null);
+
+    /// <summary>Why the resolver gave up on the value, when it did on purpose.</summary>
+    public string? Reason => Parts.OfType<HolePart>().Select(h => h.Reason).FirstOrDefault(r => r is not null);
+
+    /// <summary>The value is only a re-read of a name already being resolved.</summary>
+    public bool IsRepeat => Parts is [HolePart { Repeat: true }];
+
+    /// <summary>Starts with a hole that names nothing external (rbc-release-5): no configuration key, variable or
+    /// parameter. Nothing appended to it can make a usable endpoint.</summary>
+    public bool HasUnresolvableBase => Facts is null && Parts.FirstOrDefault() is HolePart { Placeholder: null };
 }
 
 /// <summary>A configuration key: <c>kind</c> is <c>json</c> (appsettings,

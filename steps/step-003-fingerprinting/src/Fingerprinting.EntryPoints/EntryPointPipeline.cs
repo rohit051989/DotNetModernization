@@ -62,10 +62,11 @@ public sealed class EntryPointPipeline
 
     public async Task<EntryPointInventoryArtifact> RunAsync(
         InventoryInput input, string repositoryRoot, CancellationToken cancellationToken, StepProgress? progress = null,
-        WorkLimits? limits = null)
+        WorkLimits? limits = null, ProjectCheckpoints? checkpoints = null)
     {
         progress ??= StepProgress.Silent();
         limits ??= WorkLimits.Default;
+        checkpoints ??= ProjectCheckpoints.None;
         var loadedByPath = new System.Collections.Concurrent.ConcurrentDictionary<string, (InputProject Input, ProjectSource Source)>(StringComparer.Ordinal);
         var other = new System.Collections.Concurrent.ConcurrentBag<ProjectEntryPoints>();
 
@@ -98,6 +99,15 @@ public sealed class EntryPointPipeline
                 return;
             }
 
+            if (checkpoints.Skipped(project.RelativePath, out var skipped))
+            {
+                // Not retried: an earlier, interrupted run recorded it, or was stuck on it (rbc-release-5).
+                progress.RecordNotChecked(project.RelativePath, "project", skipped);
+                other.Add(Empty(project, ProjectScanStatuses.Failed, null,
+                    [new Warning { Code = WarningCodes.NotChecked, Message = skipped, Severity = WarningSeverities.Warning }]));
+                return;
+            }
+
             using var limit = CancellationTokenSource.CreateLinkedTokenSource(ct);
             limit.CancelAfter(limits.ProjectLoad);
             try
@@ -110,6 +120,7 @@ public sealed class EntryPointPipeline
             {
                 var reason = $"not checked: loading the project took longer than {limits.ProjectLoad.TotalSeconds:0} s";
                 progress.RecordNotChecked(project.RelativePath, "project", reason);
+                checkpoints.MarkNotChecked(project.RelativePath, reason);
                 other.Add(Empty(project, ProjectScanStatuses.Failed, null,
                     [new Warning { Code = WarningCodes.NotChecked, Message = reason, Severity = WarningSeverities.Warning }]));
             }

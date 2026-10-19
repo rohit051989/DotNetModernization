@@ -26,7 +26,7 @@ public class OutboundInvocationTests
         var source = ProjectSource.FromText(projectPath, sources);
         var repositoryConfig = RepositoryConfig.FromText(config ?? [])
             .WithDeployParameters(DeployParameterFiles.FromText(setParameters ?? [], [projectPath]), declarations ?? new Dictionary<string, string>());
-        return OutboundPipeline.Detect(RepositoryId, [(project, source)], repositoryConfig, soapMatrices: TestMatrices.Soap);
+        return Conformance.Checked(OutboundPipeline.Detect(RepositoryId, [(project, source)], repositoryConfig, soapMatrices: TestMatrices.Soap));
     }
 
     private static OutboundInventoryArtifact Artifact(IReadOnlyList<ProjectInvocations> projects) => new()

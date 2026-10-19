@@ -12,16 +12,34 @@ namespace Fingerprinting.StepHost;
 public sealed class ArtifactSchemaValidator
 {
     private readonly JsonSchema _schema;
+    private readonly string _schemaText;
 
-    private ArtifactSchemaValidator(JsonSchema schema)
+    private ArtifactSchemaValidator(JsonSchema schema, string schemaText)
     {
         _schema = schema;
+        _schemaText = schemaText;
     }
 
     public static ArtifactSchemaValidator Load(string schemaPath)
     {
-        var schema = JsonSchema.FromText(File.ReadAllText(schemaPath));
-        return new ArtifactSchemaValidator(schema);
+        var text = File.ReadAllText(schemaPath);
+        return new ArtifactSchemaValidator(JsonSchema.FromText(text), text);
+    }
+
+    /// <summary>Every problem with <paramref name="artifactJson"/>, empty when it conforms: schema errors, and
+    /// (rbc-release-5) required text fields left empty (<see cref="RequiredFields"/>).</summary>
+    public IReadOnlyList<string> Problems(string artifactJson)
+    {
+        try
+        {
+            Validate(artifactJson);
+        }
+        catch (ArtifactSchemaValidationException ex)
+        {
+            return ex.Errors;
+        }
+
+        return RequiredFields.Empty(artifactJson, _schemaText).Select(p => $"{p}: required, and empty").ToList();
     }
 
     /// <summary>Throws <see cref="ArtifactSchemaValidationException"/> if

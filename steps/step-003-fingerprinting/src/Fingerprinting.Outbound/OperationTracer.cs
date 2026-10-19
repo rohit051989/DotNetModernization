@@ -148,25 +148,27 @@ public static class OperationTracer
             {
                 return callers.Select(c =>
                 {
-                    var (path, resolution) = RequestPath(context.Resolver.Resolve(url, c.Env));
+                    var value = context.Resolver.Resolve(url, c.Env);
+                    var (path, resolution) = RequestPath(value);
                     return new InvokedOperation
                     {
                         Verb = verb, Path = path, Member = $"{method.Identifier.Text} → {SyntaxHelpers.InvokedName(request)}",
                         Resolution = verb is null ? Resolutions.Partial : resolution, CallSite = CallSiteOf(c.File, c.Call),
-                        Reason = verb is null ? "the HTTP method is not readable from the request" : PathReason(resolution),
+                        Reason = verb is null ? "the HTTP method is not readable from the request" : PathReason(resolution, value),
                     };
                 }).ToList();
             }
         }
 
-        var (ownPath, ownResolution) = RequestPath(context.Resolver.Resolve(url, CallSiteEvaluator.Empty));
+        var ownValue = context.Resolver.Resolve(url, CallSiteEvaluator.Empty);
+        var (ownPath, ownResolution) = RequestPath(ownValue);
         return
         [
             new InvokedOperation
             {
                 Verb = verb, Path = ownPath, Member = SyntaxHelpers.InvokedName(request) ?? "request",
                 Resolution = verb is null ? Resolutions.Partial : ownResolution, CallSite = CallSiteOf(file, request),
-                Reason = verb is null ? "the HTTP method is not readable from the request" : PathReason(ownResolution),
+                Reason = verb is null ? "the HTTP method is not readable from the request" : PathReason(ownResolution, ownValue),
             },
         ];
     }
@@ -174,10 +176,12 @@ public static class OperationTracer
     /// <summary>A client configured with a base address: the relative
     /// requests made through it — on the variable or field it is assigned to,
     /// in a typed client's class, or through <c>CreateClient("name")</c> — each
-    /// with the base address's path prefixed.</summary>
+    /// with the base address's path prefixed. A request whose URI is empty, or only a query or a fragment, goes to the
+    /// base address itself, and is as resolved as the base address is (rbc-release-5).</summary>
     public static IReadOnlyList<InvokedOperation> HttpClientRequests(
-        DetectionContext context, ParsedFile file, SyntaxNode site, string? basePath, string? typedClient, string? clientName)
+        DetectionContext context, ParsedFile file, SyntaxNode site, Endpoint baseAddress, string? typedClient, string? clientName)
     {
+        var basePath = baseAddress.Path;
         var requests = new List<(ParsedFile File, InvocationExpressionSyntax Call)>();
         if (typedClient is not null)
         {
@@ -206,7 +210,7 @@ public static class OperationTracer
                 }
             }
         }
-        else if (Holder(site is AssignmentExpressionSyntax { Left: MemberAccessExpressionSyntax baseAddress } ? baseAddress.Expression : site) is { } holder)
+        else if (Holder(site is AssignmentExpressionSyntax { Left: MemberAccessExpressionSyntax target } ? target.Expression : site) is { } holder)
         {
             requests.AddRange(RequestsOn(holder).Select(i => (file, i)));
         }
@@ -214,12 +218,26 @@ public static class OperationTracer
         var operations = requests.Select(r =>
         {
             var argument = r.Call.ArgumentList.Arguments.FirstOrDefault()?.Expression;
-            var (path, resolution) = argument is null ? ("", Resolutions.Unresolved) : RequestPath(context.Resolver.Resolve(argument, CallSiteEvaluator.Empty));
+            var value = argument is null ? null : context.Resolver.Resolve(argument, CallSiteEvaluator.Empty);
+            if (value?.TextValue is { } uri && TargetsBaseAddress(uri))
+            {
+                // PostAsync("", content), GetAsync("?page=2"): the request goes to the base address itself.
+                return new InvokedOperation
+                {
+                    Verb = Verb(r.Call), Path = string.IsNullOrEmpty(basePath) ? "/" : basePath, Member = SyntaxHelpers.InvokedName(r.Call) ?? "request",
+                    Resolution = baseAddress.Resolution, CallSite = CallSiteOf(r.File, r.Call),
+                    Reason = baseAddress.Resolution == Resolutions.Unresolved
+                        ? "the request goes to the client's base address itself, which is not readable from the code"
+                        : null,
+                };
+            }
+
+            var (path, resolution) = value is null ? ("", Resolutions.Unresolved) : RequestPath(value);
             return new InvokedOperation
             {
                 Verb = Verb(r.Call), Path = JoinPath(basePath, path), Member = SyntaxHelpers.InvokedName(r.Call) ?? "request",
                 Resolution = resolution, CallSite = CallSiteOf(r.File, r.Call),
-                Reason = argument is null ? "the request is made without a URL argument" : PathReason(resolution),
+                Reason = argument is null ? "the request is made without a URL argument" : PathReason(resolution, value),
             };
         }).ToList();
         return operations.Count > 0 ? operations : [Unresolved(file, site, "no request through this client found where it is configured, in a typed client or a named client")];
@@ -268,8 +286,18 @@ public static class OperationTracer
     /// relative one.</summary>
     /// <summary>Why a request's path is unresolved, when it is: an unresolved operation always says why (the
     /// artifact schema requires it).</summary>
-    private static string? PathReason(string resolution) =>
-        resolution == Resolutions.Unresolved ? "the request path is not readable from the code" : null;
+    private static string? PathReason(string resolution, ResolvedValue? value = null) =>
+        resolution != Resolutions.Unresolved ? null
+        : value?.Reason is { } why ? $"the request path is not readable from the code: {why}"
+        : "the request path is not readable from the code";
+
+    /// <summary>A request URI that names no path of its own — empty, or only a query or a fragment — so the request
+    /// goes to the base address itself.</summary>
+    public static bool TargetsBaseAddress(string uri)
+    {
+        var text = uri.Trim();
+        return text.Length == 0 || text[0] is '?' or '#';
+    }
 
     public static (string Path, string Resolution) RequestPath(ResolvedValue value)
     {

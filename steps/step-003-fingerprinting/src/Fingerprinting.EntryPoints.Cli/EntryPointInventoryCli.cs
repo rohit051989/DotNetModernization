@@ -156,14 +156,21 @@ public static class EntryPointInventoryCli
         // rbc-release-5: progress and a timing profile; each project's load within its own time limit.
         using var progress = new StepProgress(context.OutputDir, Console.Error);
         var (projectLimit, fileLimit) = StepLimits.Within(context);
-        var artifact = await new EntryPointPipeline().RunAsync(input, repositoryRoot, CancellationToken.None, progress,
-            WorkLimits.From(projectLimit, fileLimit));
+        var limits = WorkLimits.From(projectLimit, fileLimit);
+        // Kept only to remember what a resume must not retry (rbc-release-5): what was not checked, and what a stopped
+        // run was stuck on.
+        var checkpoints = ProjectCheckpoints.Open(StepLimits.CheckpointDirectory(context), ProjectCheckpoints.Key(
+            "entry-point-inventory", EntryPointPipeline.ScannerVersion, inventoryRef.Checksum, fingerprintRef.Checksum,
+            limits.ProjectLoad.TotalSeconds.ToString(CultureInfo.InvariantCulture)));
+        checkpoints.Watch(progress);
+        var artifact = await new EntryPointPipeline().RunAsync(input, repositoryRoot, CancellationToken.None, progress, limits, checkpoints);
         progress.Phase("write");
         var outputPath = await WriteArtifactAsync(artifact, context.OutputDir);
         var checksum = ArtifactUri.Sha256File(outputPath);
 
         await new EntryPointDatabase(connectionString).ReplaceAllAsync(
             artifact, StepEnvelopeRunner.TryParseGuid(context.StepExecutionId), CancellationToken.None);
+        checkpoints.Complete();
 
         var generatedAt = DateTimeOffset.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.ffffffZ", CultureInfo.InvariantCulture);
         var summary = artifact.Summary;

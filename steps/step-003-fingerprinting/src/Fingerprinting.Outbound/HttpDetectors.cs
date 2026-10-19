@@ -57,7 +57,7 @@ public static class HttpClientDetector
         {
             case "HttpClient" or "WebClient" when BaseAddressIn(creation.Initializer) is { } baseAddress:
                 return Make(context, file, creation, baseAddress, type, clientName: null, typedClient: null, 1.0, [],
-                    endpoint => OperationTracer.HttpClientRequests(context, file, creation, endpoint.Path, null, null));
+                    endpoint => OperationTracer.HttpClientRequests(context, file, creation, endpoint, null, null));
             case "RestClient" when creation.ArgumentList?.Arguments.FirstOrDefault()?.Expression is { } argument:
             {
                 // new RestClient("https://…") or new RestClient(new RestClientOptions("https://…"))
@@ -98,7 +98,7 @@ public static class HttpClientDetector
 
         return Make(context, file, assignment, assignment.Right, receiverType ?? "HttpClient", null, null, receiverType is null ? 0.8 : 1.0,
             receiverType is null ? ["BaseAddress set on a lambda parameter taken to be an HttpClient"] : [],
-            endpoint => OperationTracer.HttpClientRequests(context, file, assignment, endpoint.Path, null, null));
+            endpoint => OperationTracer.HttpClientRequests(context, file, assignment, endpoint, null, null));
     }
 
     private static Detected? FromInvocation(DetectionContext context, ParsedFile file, InvocationExpressionSyntax invocation)
@@ -158,7 +158,7 @@ public static class HttpClientDetector
             _ => null,
         };
         return Make(context, file, invocation, baseAddress, "IHttpClientFactory", clientName, typed, 1.0, [],
-            endpoint => OperationTracer.HttpClientRequests(context, file, invocation, endpoint.Path, typed, clientName));
+            endpoint => OperationTracer.HttpClientRequests(context, file, invocation, endpoint, typed, clientName));
     }
 
     private static Detected? Request(

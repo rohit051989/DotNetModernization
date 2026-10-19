@@ -20,7 +20,7 @@ public class SoapRuntimeVerdictTests
     {
         var project = new OutboundInputProject("src/App/App.csproj", Guid.Empty, null, [], []);
         var source = ProjectSource.FromText("src/App/App.csproj", new Dictionary<string, string> { ["src/App/Use.cs"] = code });
-        return OutboundPipeline.Detect(Guid.Empty, [(project, source)], RepositoryConfig.FromText(config), soapMatrices: TestMatrices.Soap)
+        return Conformance.Checked(OutboundPipeline.Detect(Guid.Empty, [(project, source)], RepositoryConfig.FromText(config), soapMatrices: TestMatrices.Soap))
             .Single().Invocations;
     }
 

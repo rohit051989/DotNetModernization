@@ -10,14 +10,20 @@ namespace Fingerprinting.Outbound;
 /// (<c>BaseUrlConfiguration.CONFIG_NAME</c> lives in a shared library), the
 /// configuration section each options type is bound to
 /// (<c>Configure&lt;BaseUrlConfiguration&gt;(GetSection("baseUrls"))</c> sits in
-/// each host), and, per project, the assignments to each member.
+/// each host), and, per project, the assignments to each member — with the type that owns the member, where the
+/// code shows it (rbc-release-5: <c>new Entity { Name = … }</c> assigns Entity's Name, not a DTO's).
 /// </summary>
 public sealed class SymbolIndex
 {
     private readonly Dictionary<string, string> _constants = new(StringComparer.Ordinal);
     private readonly HashSet<string> _ambiguous = new(StringComparer.Ordinal);
     private readonly Dictionary<string, string> _optionsSections = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, List<(ProjectSource Project, ExpressionSyntax Value)>> _assignments = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, List<Assignment>> _assignments = new(StringComparer.Ordinal);
+
+    /// <summary>One assignment to a member: its value, and the type owning the member when the code shows it — the
+    /// type of an object initializer, of the field or property's declaring class, or of a receiver whose declared
+    /// type is written. Null when it cannot be seen.</summary>
+    public sealed record Assignment(ProjectSource Project, ExpressionSyntax Value, string? Owner);
 
     public static SymbolIndex Build(IReadOnlyList<ProjectSource> projects)
     {
@@ -46,14 +52,15 @@ public sealed class SymbolIndex
                                         }
                                     }
 
-                                    index.AddAssignment(project, variable.Identifier.Text, value);
+                                    index.AddAssignment(project, variable.Identifier.Text, value, owner);
                                 }
                             }
 
                             break;
 
                         case PropertyDeclarationSyntax { Initializer.Value: { } initial } property:
-                            index.AddAssignment(project, property.Identifier.Text, initial);
+                            index.AddAssignment(project, property.Identifier.Text, initial,
+                                property.Ancestors().OfType<TypeDeclarationSyntax>().FirstOrDefault()?.Identifier.Text);
                             break;
 
                         case AssignmentExpressionSyntax { RawKind: (int)SyntaxKind.SimpleAssignmentExpression } assignment:
@@ -65,7 +72,7 @@ public sealed class SymbolIndex
                             };
                             if (name is not null)
                             {
-                                index.AddAssignment(project, name, assignment.Right);
+                                index.AddAssignment(project, name, assignment.Right, OwnerOfTarget(assignment));
                             }
 
                             break;
@@ -95,14 +102,65 @@ public sealed class SymbolIndex
 
     private string? ConstantNamed(string name) => _ambiguous.Contains(name) ? null : _constants.GetValueOrDefault(name);
 
-    private void AddAssignment(ProjectSource project, string name, ExpressionSyntax value)
+    private void AddAssignment(ProjectSource project, string name, ExpressionSyntax value, string? owner)
     {
         if (!_assignments.TryGetValue(name, out var list))
         {
             _assignments[name] = list = [];
         }
 
-        list.Add((project, value));
+        list.Add(new Assignment(project, value, owner));
+    }
+
+    /// <summary>The type owning an assignment's target, where the code shows it: <c>new T { X = … }</c> is T's;
+    /// <c>x.X = …</c> is the declared type of x (a parameter, field, property or typed local); <c>this.X</c> and a
+    /// bare <c>X</c> outside an initializer are the enclosing class's. Null otherwise.</summary>
+    private static string? OwnerOfTarget(AssignmentExpressionSyntax assignment)
+    {
+        if (assignment.Parent is InitializerExpressionSyntax { RawKind: (int)SyntaxKind.ObjectInitializerExpression } initializer)
+        {
+            return initializer.Parent is ObjectCreationExpressionSyntax creation ? SyntaxHelpers.RightmostTypeName(creation.Type) : null;
+        }
+
+        return assignment.Left switch
+        {
+            IdentifierNameSyntax => assignment.Ancestors().OfType<TypeDeclarationSyntax>().FirstOrDefault()?.Identifier.Text,
+            MemberAccessExpressionSyntax { Expression: var receiver } => ReceiverType(receiver),
+            _ => null,
+        };
+    }
+
+    /// <summary>The type a receiver is declared as, where written: <c>this</c>, a parameter, field or property, or
+    /// a local declared with its type or initialised with <c>new T(…)</c>. Null for anything else.</summary>
+    public static string? ReceiverType(ExpressionSyntax receiver)
+    {
+        switch (receiver)
+        {
+            case ThisExpressionSyntax:
+                return receiver.Ancestors().OfType<TypeDeclarationSyntax>().FirstOrDefault()?.Identifier.Text;
+            case IdentifierNameSyntax identifier:
+            {
+                var local = CallSiteEvaluator.Scope(identifier).DescendantNodes().OfType<VariableDeclaratorSyntax>()
+                    .LastOrDefault(v => v.Identifier.Text == identifier.Identifier.Text && v.SpanStart < identifier.SpanStart);
+                if (local?.Parent is VariableDeclarationSyntax declaration)
+                {
+                    if (!declaration.Type.IsVar)
+                    {
+                        return TypeName(declaration.Type);
+                    }
+
+                    return local.Initializer?.Value is ObjectCreationExpressionSyntax creation ? TypeName(creation.Type) : null;
+                }
+
+                return ValueResolver.DeclaredType(identifier) is { } declared ? TypeName(declared) : null;
+            }
+
+            default:
+                return null;
+        }
+
+        static string? TypeName(TypeSyntax type) =>
+            SyntaxHelpers.RightmostTypeName(type is NullableTypeSyntax nullable ? nullable.ElementType : type);
     }
 
     /// <summary><c>Configure&lt;T&gt;(x)</c>, <c>AddOptions&lt;T&gt;().Bind(x)</c>,
@@ -179,6 +237,11 @@ public sealed class SymbolIndex
 
     public string? OptionsSection(string typeName) => _optionsSections.GetValueOrDefault(typeName);
 
-    public IReadOnlyList<ExpressionSyntax> AssignmentsTo(ProjectSource project, string member) =>
-        _assignments.TryGetValue(member, out var list) ? list.Where(x => x.Project == project).Select(x => x.Value).ToList() : [];
+    /// <summary>The assignments to <paramref name="member"/> in <paramref name="project"/>. With
+    /// <paramref name="owners"/> (the type a read is seen to be on, and the types related to it), only assignments
+    /// to that member of one of those types, or of a type the code does not show.</summary>
+    public IReadOnlyList<Assignment> AssignmentsTo(ProjectSource project, string member, IReadOnlySet<string>? owners = null) =>
+        _assignments.TryGetValue(member, out var list)
+            ? list.Where(x => x.Project == project && (owners is null || x.Owner is null || owners.Contains(x.Owner))).ToList()
+            : [];
 }

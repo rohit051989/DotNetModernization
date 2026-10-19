@@ -107,6 +107,23 @@ public sealed class FingerprintPipeline(SignalRegistry registry, IReadOnlyList<I
                 return;
             }
 
+            if (checkpoints.Skipped(path, out var skipped))
+            {
+                // Not retried: an earlier, interrupted run was stuck on it (rbc-release-5).
+                progress.RecordNotChecked(path, "project", skipped);
+                var notChecked = new ProjectFingerprint
+                {
+                    ProjectId = entry.Id,
+                    ProjectPath = path,
+                    FingerprintStatus = FingerprintStatuses.Failed,
+                    AnalysisCapabilities = new AnalysisCapabilities(),
+                    Warnings = [new Warning { Code = WarningCodes.NotChecked, Message = skipped, Severity = WarningSeverities.Warning }],
+                };
+                checkpoints.Save(path, notChecked);
+                projects.Add(notChecked);
+                return;
+            }
+
             using var limit = CancellationTokenSource.CreateLinkedTokenSource(ct);
             limit.CancelAfter(limits.ProjectLoad);
             ProjectFingerprint result;

@@ -12,11 +12,22 @@ namespace Fingerprinting.Analysis;
 /// names what the results were computed from — the step's version and its inputs' checksums — and a different key
 /// empties the folder: a result is reused only for exactly the same inputs. Each result is written whole, to a
 /// temporary name first, so a crash part-way through writing leaves no half result behind.
+///
+/// A resume never runs into the same wall twice. A project recorded "not checked" (over its time limit) is kept as
+/// such; and a project that was still being analysed after <see cref="SuspectSeconds"/> when the run stopped — what a
+/// time limit, a stall or a crash stopped on — is not retried automatically either (<c>inflight.json</c>, written at
+/// every heartbeat by <see cref="Watch"/>). Both are listed in <c>skip.json</c>. A person retries them by removing it
+/// (<c>python -m app.workflow.time_limits retry</c>), or by changing the project time limit, which starts afresh.
 /// </summary>
 public sealed class ProjectCheckpoints
 {
+    /// <summary>In flight this long when the run stopped: the project it was stuck on.</summary>
+    public const int SuspectSeconds = 60;
+
     private static readonly JsonSerializerOptions Json = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
     private readonly string? _directory;
+    private readonly Dictionary<string, string> _skip = new(StringComparer.Ordinal);
+    private StepProgress? _watched;
 
     private ProjectCheckpoints(string? directory) => _directory = directory;
 
@@ -47,8 +58,130 @@ public sealed class ProjectCheckpoints
             File.WriteAllText(manifest, wanted);
         }
 
-        return new ProjectCheckpoints(directory);
+        var checkpoints = new ProjectCheckpoints(directory);
+        checkpoints.ReadSkips();
+        return checkpoints;
     }
+
+    /// <summary>The projects the previous run recorded as not checked, and those it was stuck on when it stopped.</summary>
+    private void ReadSkips()
+    {
+        var skipFile = Path.Combine(_directory!, "skip.json");
+        if (File.Exists(skipFile))
+        {
+            try
+            {
+                foreach (var (path, reason) in JsonSerializer.Deserialize<Dictionary<string, string>>(File.ReadAllText(skipFile)) ?? [])
+                {
+                    _skip[path] = reason;
+                }
+            }
+            catch (JsonException)
+            {
+                // An unreadable list retries everything.
+            }
+        }
+
+        var inflightFile = Path.Combine(_directory!, "inflight.json");
+        if (File.Exists(inflightFile))
+        {
+            try
+            {
+                foreach (var item in JsonSerializer.Deserialize<List<InFlightItem>>(File.ReadAllText(inflightFile), Json) ?? [])
+                {
+                    if (item.Seconds >= SuspectSeconds)
+                    {
+                        _skip.TryAdd(item.Path, $"not checked: not retried — it was still being analysed after {item.Seconds:0} s when the " +
+                                                "previous run stopped (a time limit, a stall or a crash); retry it with " +
+                                                "python -m app.workflow.time_limits retry, or with a different project time limit");
+                    }
+                }
+            }
+            catch (JsonException)
+            {
+                // Nothing known about the previous run.
+            }
+
+            File.Delete(inflightFile);
+        }
+
+        WriteSkips();
+    }
+
+    /// <summary>True when <paramref name="projectPath"/> is not to be retried, with the reason to record.</summary>
+    public bool Skipped(string projectPath, out string reason)
+    {
+        lock (_skip)
+        {
+            if (_skip.TryGetValue(projectPath, out var why))
+            {
+                reason = why.StartsWith("not checked", StringComparison.Ordinal) ? why : $"not checked: not retried — {why}";
+                return true;
+            }
+        }
+
+        reason = "";
+        return false;
+    }
+
+    /// <summary>Records a project as not checked, so a resume does not retry it.</summary>
+    public void MarkNotChecked(string projectPath, string reason)
+    {
+        if (_directory is null)
+        {
+            return;
+        }
+
+        lock (_skip)
+        {
+            _skip[projectPath] = reason;
+            WriteSkips();
+        }
+    }
+
+    /// <summary>Writes what is in flight at every heartbeat of <paramref name="progress"/>, so a run stopped from
+    /// outside leaves behind what it was stuck on.</summary>
+    public void Watch(StepProgress progress)
+    {
+        if (_directory is null || _watched is not null)
+        {
+            return;
+        }
+
+        _watched = progress;
+        progress.Beat += () =>
+        {
+            try
+            {
+                WriteWhole(Path.Combine(_directory, "inflight.json"),
+                    JsonSerializer.Serialize(progress.InFlight().Select(x => new InFlightItem(x.Path, x.Seconds)).ToList(), Json));
+            }
+            catch (IOException)
+            {
+                // Best effort: progress never fails the step.
+            }
+        };
+    }
+
+    private void WriteSkips()
+    {
+        if (_directory is null)
+        {
+            return;
+        }
+
+        var ordered = _skip.OrderBy(kv => kv.Key, StringComparer.Ordinal).ToDictionary(kv => kv.Key, kv => kv.Value);
+        WriteWhole(Path.Combine(_directory, "skip.json"), JsonSerializer.Serialize(ordered, new JsonSerializerOptions { WriteIndented = true }));
+    }
+
+    private static void WriteWhole(string path, string text)
+    {
+        var temporary = path + ".writing";
+        File.WriteAllText(temporary, text);
+        File.Move(temporary, path, overwrite: true);
+    }
+
+    private sealed record InFlightItem(string Path, double Seconds);
 
     /// <summary>A key over the step version and the given inputs (artifact checksums, settings that change results).</summary>
     public static string Key(params string?[] parts) =>
@@ -94,10 +227,7 @@ public sealed class ProjectCheckpoints
             return;
         }
 
-        var path = PathOf(projectPath);
-        var temporary = path + ".writing";
-        File.WriteAllText(temporary, JsonSerializer.Serialize(value, Json));
-        File.Move(temporary, path, overwrite: true);
+        WriteWhole(PathOf(projectPath), JsonSerializer.Serialize(value, Json));
     }
 
     /// <summary>Every result is in the artifact now: nothing left to resume.</summary>
@@ -105,7 +235,10 @@ public sealed class ProjectCheckpoints
     {
         if (_directory is not null && Directory.Exists(_directory))
         {
-            Directory.Delete(_directory, recursive: true);
+            lock (_skip)
+            {
+                Directory.Delete(_directory, recursive: true);
+            }
         }
     }
 

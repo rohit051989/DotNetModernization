@@ -132,7 +132,7 @@ public class SoapHelperClientTests
             ["src/Api/Clients/SoapClients.cs"] = Clients,
         });
         var config = RepositoryConfig.FromText([("src/Api/appsettings.json", AppSettings), ("src/Api/appsettings.SIT.json", Sit)]);
-        return OutboundPipeline.Detect(Guid.NewGuid(), [(project, source)], config, soapMatrices: TestMatrices.Soap).Single().Invocations;
+        return Conformance.Checked(OutboundPipeline.Detect(Guid.NewGuid(), [(project, source)], config, soapMatrices: TestMatrices.Soap)).Single().Invocations;
     }
 
     [Fact]

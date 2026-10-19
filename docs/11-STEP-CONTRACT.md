@@ -377,7 +377,16 @@ file is recorded "not checked" with the reason (warning code `NOT_CHECKED`) and 
 
 **Resume.** A step that works project by project keeps each completed project's result in
 `step_context.checkpoint_dir`, keyed by its version and its inputs' checksums. A rerun after a time limit, a stall
-or a crash reuses them and continues from there; a completed run clears them.
+or a crash reuses them and continues from there; a completed run clears them. A resume never repeats a stall: a
+project the earlier run recorded "not checked", or was still analysing after 60 s when it stopped (`inflight.json`,
+written at every heartbeat), is listed in `skip.json` and recorded "not checked: not retried" instead of being
+analysed again. A person retries it with `python -m app.workflow.time_limits retry`, which removes that list; a
+different project time limit starts afresh.
+
+**Conformance.** A record that does not conform to the artifact schema, or leaves a required field empty, never
+costs the rest: it is left out and recorded `NOT_CHECKED` on its project with the record and the field named, and
+the rest is written, conforming (outbound-invocation-inventory: `OutboundInventoryCli.Conform`;
+`Fingerprinting.StepHost.RequiredFields`).
 
 ## Obligations on a step implementation
 

@@ -40,7 +40,17 @@ public sealed class DetectionContext
 
     /// <summary>This project's time limit for analysis (rbc-release-5): checked at every file a detector reads, so a
     /// project over its limit stops between files and is recorded as not checked.</summary>
-    public CancellationToken Cancellation { get; set; }
+    public CancellationToken Cancellation
+    {
+        get => _cancellation;
+        set
+        {
+            _cancellation = value;
+            Resolver.Cancellation = value;   // inside one long resolution too (rbc-release-5)
+        }
+    }
+
+    private CancellationToken _cancellation;
 
     /// <summary>Hand-written source. Generated files are loaded only so
     /// the SOAP detector can read a service reference's binding (Part C2).</summary>

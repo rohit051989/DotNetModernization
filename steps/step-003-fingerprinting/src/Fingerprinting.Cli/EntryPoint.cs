@@ -175,6 +175,7 @@ public static class EntryPoint
         var checkpoints = ProjectCheckpoints.Open(StepLimits.CheckpointDirectory(context), ProjectCheckpoints.Key(
             "application-fingerprint", FingerprintPipeline.ScannerVersion, registry.RegistryVersion, inventoryRef.Checksum,
             string.Join(",", globs), limits.ProjectLoad.TotalSeconds.ToString(CultureInfo.InvariantCulture)));
+        checkpoints.Watch(progress);
         var artifact = await pipeline.RunAsync(
             inventory,
             repositoryRoot,
