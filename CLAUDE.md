@@ -192,6 +192,11 @@ modernization-platform/
     Nothing the platform or its scripts do commits outside its folder or to another branch:
     `scripts/update-platform.ps1` stages and commits with `-- <folder>` only.
 
+17. **master never falls behind a release.** After every release is tagged, fast-forward master to the tagged commit
+    (`git checkout master; git merge --ff-only rbc-release-<n>`). master always holds the latest release, or later
+    work built on it. If master cannot be fast-forwarded, stop and ask; never merge, rebase or reset master to
+    make it fit. Every release report states master's commit next to the tag's.
+
 ## Domain vocabulary
 
 Use these terms exactly and consistently in code, APIs, and UI copy.
