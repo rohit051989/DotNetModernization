@@ -514,7 +514,7 @@ def repos_dir(cfg: dict[str, str], runs: Path) -> None:
 
 
 def database(cfg: dict[str, str]) -> None:
-    print(Database)
+    print("Database")
     try:
         import psycopg
     except ImportError:
