@@ -1,5 +1,7 @@
 import { Fragment, useEffect, useState } from 'react'
 import { ApiError } from '../../api/client'
+import { CollapsibleSection } from '../../components/CollapsibleSection'
+import { surfaceSectionId } from './surfaceSections'
 import { getRepositorySoapCompatibility } from '../../api/surface'
 import type { RepositorySoap, SoapVerdictLive } from '../../types/surface'
 import { CONFIRMED_HELP, UNDER_REVIEW, UNDER_REVIEW_LABEL } from '../../types/estate'
@@ -74,11 +76,25 @@ export function RepositorySoapPanel({ repositoryId, refreshToken, onOpenEstateSo
   }, [repositoryId, refreshToken])
 
   if (notScanned || (data && data.calls.length === 0 && data.unused_count === 0)) return null
+  const rows = data ? data.calls.reduce((n, c) => n + c.environments.length, 0) : undefined
+  const needChange = data ? data.calls.filter((c) => c.environments.some(needsChange)).length : 0
+  const unknown = data ? data.calls.filter((c) => !c.environments.some(needsChange) && c.environments.some(undecided)).length : 0
+  const summary = failed
+    ? 'could not be loaded'
+    : !data
+      ? 'loading…'
+      : `${data.calls.length} call${data.calls.length === 1 ? '' : 's'}, ${needChange} need${needChange === 1 ? 's' : ''} change` +
+        (unknown > 0 ? `, ${unknown} unknown` : '') +
+        (data.unused_count > 0 ? ` · ${data.unused_count} unused not listed` : '')
   return (
-    <section aria-labelledby="soap-compatibility-heading" className="min-w-0">
-      <h3 id="soap-compatibility-heading" className="mb-2 text-sm font-semibold text-neutral-800">
-        SOAP compatibility
-      </h3>
+    <CollapsibleSection
+      id={surfaceSectionId(repositoryId, 'soap')}
+      title="SOAP compatibility"
+      summary={summary}
+      rowCount={rows}
+      persist="browser"
+      variant="nested"
+    >
       {failed && <p className="text-xs text-red-700">Could not load this repository's SOAP compatibility.</p>}
       {data && (
         <div className="space-y-2 text-xs">
@@ -154,6 +170,17 @@ export function RepositorySoapPanel({ repositoryId, refreshToken, onOpenEstateSo
           </div>
         </div>
       )}
-    </section>
+    </CollapsibleSection>
   )
+}
+
+/** A verdict that asks for a change in some environment: the runtime does not support it, or only with a caveat, or
+ * Linux needs a change or cannot run it. */
+function needsChange(env: RepositorySoap['calls'][number]['environments'][number]): boolean {
+  return ['unsupported', 'supported_with_caveat'].includes(env.runtime.verdict ?? '') || ['incompatible', 'requires_change'].includes(env.platform.verdict ?? '')
+}
+
+/** A verdict not yet decided in some environment: unknown, not assessed, or under review. */
+function undecided(env: RepositorySoap['calls'][number]['environments'][number]): boolean {
+  return [env.runtime.verdict, env.platform.verdict].some((v) => v === null || v === 'unknown' || v === 'not_assessed' || v === UNDER_REVIEW)
 }

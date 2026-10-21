@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react'
 import { ApiError } from '../../api/client'
+import { CollapsibleSection, GroupedItems, SectionGroup } from '../../components/CollapsibleSection'
 import { getRepositoryEntryPoints } from '../../api/surface'
 import { RepositoryBackendReachPanel } from './RepositoryBackendReachPanel'
 import { RepositoryOutboundPanel } from './RepositoryOutboundPanel'
 import { RepositorySoapPanel } from './RepositorySoapPanel'
 import { SourceLink } from './SourceLink'
+import { SURFACE_SECTIONS, surfaceSectionId } from './surfaceSections'
 import type { EntryPoint, EntryPointInventory, EntryPointKind, HttpDetail, HttpParameter, ProjectEntryPoints, WcfEndpoint } from '../../types/surface'
 
 interface RepositorySurfaceSectionProps {
@@ -432,21 +434,74 @@ function Stat({ label, value, tone }: { label: string; value: number; tone?: 'am
   )
 }
 
-/** Surface — 29-ENTRY-POINT-AND-OUTBOUND-INVENTORIES.md Part D: inbound (step 4's
- * entry points) and outbound (step 5's invocations), side by side where
- * the page is wide enough. */
+/** Surface — 29-ENTRY-POINT-AND-OUTBOUND-INVENTORIES.md Part D: inbound (the entry-point inventory) and outbound
+ * (the outbound-invocation inventory), side by side where the page is wide enough, then SOAP compatibility and the
+ * backend calls each inbound operation reaches. A bar at the top links to each section and expands or collapses
+ * them all. */
 export function RepositorySurfaceSection({ repositoryId, localPath, refreshToken, onOpenEstateSoap }: RepositorySurfaceSectionProps) {
   return (
-    <div className="grid gap-6 p-4 xl:grid-cols-2">
-      <RepositoryInboundPanel repositoryId={repositoryId} localPath={localPath} refreshToken={refreshToken} />
-      <RepositoryOutboundPanel repositoryId={repositoryId} localPath={localPath} refreshToken={refreshToken} />
-      <div className="min-w-0 xl:col-span-2">
-        <RepositorySoapPanel repositoryId={repositoryId} refreshToken={refreshToken} onOpenEstateSoap={onOpenEstateSoap} />
+    <SectionGroup
+      label="Surface sections"
+      barClassName="top-10"
+      order={SURFACE_SECTIONS.map((s) => surfaceSectionId(repositoryId, s))}
+    >
+      <div className="grid items-start gap-4 p-4 xl:grid-cols-2">
+        <RepositoryInboundPanel repositoryId={repositoryId} localPath={localPath} refreshToken={refreshToken} />
+        <RepositoryOutboundPanel repositoryId={repositoryId} localPath={localPath} refreshToken={refreshToken} />
+        <div className="min-w-0 xl:col-span-2">
+          <RepositorySoapPanel repositoryId={repositoryId} refreshToken={refreshToken} onOpenEstateSoap={onOpenEstateSoap} />
+        </div>
+        <div className="min-w-0 xl:col-span-2">
+          <RepositoryBackendReachPanel repositoryId={repositoryId} localPath={localPath} refreshToken={refreshToken} />
+        </div>
       </div>
-      <div className="min-w-0 xl:col-span-2">
-        <RepositoryBackendReachPanel repositoryId={repositoryId} localPath={localPath} refreshToken={refreshToken} />
-      </div>
-    </div>
+    </SectionGroup>
+  )
+}
+
+/** A project with no request entry points, in the grouped line: its path, and its lifecycle hooks on demand. */
+function NoRequestProject({ project, localPath, showAll }: { project: ProjectEntryPoints; localPath: string | null; showAll: boolean }) {
+  const lifecycle = project.entry_points.filter((e) => e.entry_class === 'lifecycle')
+  const [show, setShow] = useState(showAll)
+  useEffect(() => setShow(showAll), [showAll])
+  return (
+    <li className="py-0.5">
+      <span className="break-all font-mono text-neutral-700">{project.project_path}</span>
+      {project.status !== 'SCANNED' && <span className="text-neutral-400"> — {project.skip_reason ?? project.status.toLowerCase()}</span>}
+      {lifecycle.length > 0 && (
+        <button type="button" onClick={() => setShow((v) => !v)} className="ml-2 text-violet-600 hover:underline">
+          {show ? 'hide' : 'show'} {lifecycle.length} lifecycle hook{lifecycle.length === 1 ? '' : 's'}
+        </button>
+      )}
+      {show && lifecycle.length > 0 && (
+        <div className="mt-1 mb-2 space-y-3 border-l-2 border-neutral-100 pl-3">
+          <KindGroups entries={lifecycle} localPath={localPath} />
+        </div>
+      )}
+    </li>
+  )
+}
+
+/** Every project with no request entry point — lifecycle hooks only, or nothing at all — as one line that opens to
+ * list them. Lifecycle hooks can be shown for the whole group or per project. */
+export function NoRequestProjects({ projects, localPath }: { projects: ProjectEntryPoints[]; localPath: string | null }) {
+  const [showAll, setShowAll] = useState(false)
+  const hooks = projects.reduce((n, p) => n + p.entry_points.filter((e) => e.entry_class === 'lifecycle').length, 0)
+  return (
+    <GroupedItems
+      label={`${projects.length} project${projects.length === 1 ? '' : 's'} with no request entry points${hooks > 0 ? ` · ${hooks} lifecycle hook${hooks === 1 ? '' : 's'}` : ''}`}
+    >
+      {hooks > 0 && (
+        <button type="button" onClick={() => setShowAll((v) => !v)} className="mb-1 text-xs text-violet-600 hover:underline">
+          {showAll ? 'Hide' : 'Show'} all {hooks} lifecycle hook{hooks === 1 ? '' : 's'}
+        </button>
+      )}
+      <ul className="space-y-0.5 text-xs">
+        {projects.map((project) => (
+          <NoRequestProject key={project.project_id} project={project} localPath={localPath} showAll={showAll} />
+        ))}
+      </ul>
+    </GroupedItems>
   )
 }
 
@@ -456,7 +511,6 @@ export function RepositoryInboundPanel({ repositoryId, localPath, refreshToken }
   const [notScanned, setNotScanned] = useState(false)
   const [failed, setFailed] = useState(false)
   const [loading, setLoading] = useState(true)
-  const [showEmpty, setShowEmpty] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -480,23 +534,41 @@ export function RepositoryInboundPanel({ repositoryId, localPath, refreshToken }
     }
   }, [repositoryId, refreshToken])
 
-  const withEntries = inventory?.projects.filter((p) => p.entry_points.length > 0) ?? []
-  const without = inventory?.projects.filter((p) => p.entry_points.length === 0) ?? []
+  // Projects with a request entry point each get a panel; every other project — lifecycle hooks only, or nothing —
+  // is one grouped line (rbc-release-6): on a large repository they are most of the list.
+  const projects = inventory?.projects ?? []
+  const withRequests = projects.filter((p) => p.request_entry_point_count > 0)
+  const noRequests = projects.filter((p) => p.request_entry_point_count === 0)
+  const summary = loading
+    ? 'loading…'
+    : failed
+      ? 'could not be loaded'
+      : notScanned || !inventory
+        ? 'not scanned yet'
+        : `${projects.length} project${projects.length === 1 ? '' : 's'}, ${withRequests.length} with request entry points · ` +
+          `${inventory.request_entry_point_count} request entry point${inventory.request_entry_point_count === 1 ? '' : 's'}` +
+          (inventory.no_declared_authentication_count > 0 ? ` · ${inventory.no_declared_authentication_count} no declared auth` : '')
 
   return (
-    <div className="min-w-0">
-      <div>
-        <h4 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-neutral-400">Inbound — what can call this repository</h4>
-        {loading ? (
-          <p className="text-sm text-neutral-400">Loading entry points…</p>
-        ) : failed ? (
-          <p className="text-sm text-red-600">Could not load the entry-point inventory.</p>
-        ) : notScanned || !inventory ? (
-          <div className="rounded border border-dashed border-neutral-200 bg-neutral-50 p-4 text-sm text-neutral-500">
-            The entry-point inventory (lifecycle step 4) hasn't run for this repository yet.
-          </div>
-        ) : (
-          <div className="space-y-3">
+    <CollapsibleSection
+      id={surfaceSectionId(repositoryId, 'inbound')}
+      title="Inbound"
+      summary={summary}
+      rowCount={inventory ? projects.length : undefined}
+      persist="browser"
+      variant="nested"
+    >
+      <p className="mb-2 text-xs text-neutral-500">What can call this repository.</p>
+      {loading ? (
+        <p className="text-sm text-neutral-400">Loading entry points…</p>
+      ) : failed ? (
+        <p className="text-sm text-red-600">Could not load the entry-point inventory.</p>
+      ) : notScanned || !inventory ? (
+        <div className="rounded border border-dashed border-neutral-200 bg-neutral-50 p-4 text-sm text-neutral-500">
+          The entry-point inventory (entry-point-inventory) hasn't run for this repository yet.
+        </div>
+      ) : (
+        <div className="space-y-3">
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
               <Stat label="Request entry points" value={inventory.request_entry_point_count} />
               <Stat label="No declared auth" value={inventory.no_declared_authentication_count} tone="amber" />
@@ -518,35 +590,18 @@ export function RepositoryInboundPanel({ repositoryId, localPath, refreshToken }
               Syntax-only: routes, types and authorisation as written in source and config. A number beside a route or handler is its confidence below 1.0 —
               hover for why. Handler links open the source in VS Code.
             </p>
-            {withEntries.length === 0 ? (
-              <p className="text-sm text-neutral-400">No entry points found in any project.</p>
+            {withRequests.length === 0 ? (
+              <p className="text-sm text-neutral-400">No request entry points found in any project.</p>
             ) : (
               <div className="space-y-2">
-                {withEntries.map((project) => (
+                {withRequests.map((project) => (
                   <InboundProjectPanel key={project.project_id} project={project} localPath={localPath} />
                 ))}
               </div>
             )}
-            {without.length > 0 && (
-              <div>
-                <button type="button" onClick={() => setShowEmpty((v) => !v)} className="text-xs text-violet-600 hover:underline">
-                  {showEmpty ? 'Hide' : 'Show'} {without.length} project(s) with no entry points
-                </button>
-                {showEmpty && (
-                  <ul className="mt-1 space-y-0.5 text-xs text-neutral-500">
-                    {without.map((project) => (
-                      <li key={project.project_id}>
-                        <span className="font-mono">{project.project_path}</span>
-                        {project.status !== 'SCANNED' && <span className="text-neutral-400"> — {project.skip_reason ?? project.status.toLowerCase()}</span>}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-    </div>
+            {noRequests.length > 0 && <NoRequestProjects projects={noRequests} localPath={localPath} />}
+        </div>
+      )}
+    </CollapsibleSection>
   )
 }

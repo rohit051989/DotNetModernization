@@ -1,8 +1,10 @@
 import { Fragment, useEffect, useState } from 'react'
 import { ApiError } from '../../api/client'
+import { CollapsibleSection, GroupedItems } from '../../components/CollapsibleSection'
 import { getRepositoryOutboundInvocations } from '../../api/surface'
 import type { LinuxVerdict, OutboundInventory, OutboundInvocation, OutboundMechanism, ProjectOutbound } from '../../types/surface'
 import { SourceLink } from './SourceLink'
+import { surfaceSectionId } from './surfaceSections'
 import { ShowMoreToggle } from '../../components/ShowMoreToggle'
 
 interface RepositoryOutboundPanelProps {
@@ -389,7 +391,6 @@ export function RepositoryOutboundPanel({ repositoryId, localPath, refreshToken 
   const [notScanned, setNotScanned] = useState(false)
   const [failed, setFailed] = useState(false)
   const [loading, setLoading] = useState(true)
-  const [showEmpty, setShowEmpty] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -421,16 +422,38 @@ export function RepositoryOutboundPanel({ repositoryId, localPath, refreshToken 
   )
   const without = inventory?.projects.filter((p) => p.invocations.length === 0) ?? []
 
+  const projects = inventory?.projects ?? []
+  const used = inventory ? inventory.invocation_count - inventory.unused_count : 0
+  const incompatible = inventory?.count_by_verdict.incompatible ?? 0
+  const requiresChange = inventory?.count_by_verdict.requires_change ?? 0
+  const summary = loading
+    ? 'loading…'
+    : failed
+      ? 'could not be loaded'
+      : notScanned || !inventory
+        ? 'not scanned yet'
+        : `${projects.length} project${projects.length === 1 ? '' : 's'}, ${withInvocations.length} with outbound calls · ` +
+          `${used} invocation${used === 1 ? '' : 's'}` +
+          (incompatible > 0 ? `, ${incompatible} incompatible` : '') +
+          (requiresChange > 0 ? `, ${requiresChange} requires change` : '')
+
   return (
-    <div className="min-w-0">
-      <h4 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-neutral-400">Outbound — what this repository calls</h4>
+    <CollapsibleSection
+      id={surfaceSectionId(repositoryId, 'outbound')}
+      title="Outbound"
+      summary={summary}
+      rowCount={inventory ? projects.length : undefined}
+      persist="browser"
+      variant="nested"
+    >
+      <p className="mb-2 text-xs text-neutral-500">What this repository calls.</p>
       {loading ? (
         <p className="text-sm text-neutral-400">Loading outbound invocations…</p>
       ) : failed ? (
         <p className="text-sm text-red-600">Could not load the outbound-invocation inventory.</p>
       ) : notScanned || !inventory ? (
         <div className="rounded border border-dashed border-neutral-200 bg-neutral-50 p-4 text-sm text-neutral-500">
-          The outbound-invocation inventory (lifecycle step 5) hasn't run for this repository yet.
+          The outbound-invocation inventory (outbound-invocation-inventory) hasn't run for this repository yet.
         </div>
       ) : (
         <div className="space-y-3">
@@ -458,24 +481,19 @@ export function RepositoryOutboundPanel({ repositoryId, localPath, refreshToken 
             </div>
           )}
           {without.length > 0 && (
-            <div>
-              <button type="button" onClick={() => setShowEmpty((v) => !v)} className="text-xs text-violet-600 hover:underline">
-                {showEmpty ? 'Hide' : 'Show'} {without.length} project(s) with no outbound invocations
-              </button>
-              {showEmpty && (
-                <ul className="mt-1 space-y-0.5 text-xs text-neutral-500">
-                  {without.map((project) => (
-                    <li key={project.project_id}>
-                      <span className="font-mono">{project.project_path}</span>
-                      {project.status !== 'SCANNED' && <span className="text-neutral-400"> — {project.skip_reason ?? project.status.toLowerCase()}</span>}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
+            <GroupedItems label={`${without.length} project${without.length === 1 ? '' : 's'} with no outbound invocations`}>
+              <ul className="space-y-0.5 text-xs text-neutral-500">
+                {without.map((project) => (
+                  <li key={project.project_id}>
+                    <span className="break-all font-mono">{project.project_path}</span>
+                    {project.status !== 'SCANNED' && <span className="text-neutral-400"> — {project.skip_reason ?? project.status.toLowerCase()}</span>}
+                  </li>
+                ))}
+              </ul>
+            </GroupedItems>
           )}
         </div>
       )}
-    </div>
+    </CollapsibleSection>
   )
 }

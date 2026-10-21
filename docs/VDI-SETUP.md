@@ -286,11 +286,11 @@ the source folder, make your branch and the platform folder in the client's repo
 #### 1. Clone our repository into the source folder
 
 ```powershell
-git clone -c core.longpaths=true --branch rbc-release-5 https://git.ourcompany.com/modernization-platform.git C:\MP\source
+git clone -c core.longpaths=true --branch rbc-release-6 https://git.ourcompany.com/modernization-platform.git C:\MP\source
 ```
 
 (The address and the release tag come with the release. When the release arrives as a bundle instead, clone the
-bundle: `git clone -c core.longpaths=true --branch rbc-release-5 C:\MP\delivery\rbc-release-5.bundle C:\MP\source`,
+bundle: `git clone -c core.longpaths=true --branch rbc-release-6 C:\MP\delivery\rbc-release-6.bundle C:\MP\source`,
 after checking its hash as in "Appendix: upgrading from a release bundle".)
 
 From now on, the source folder is only ever copied from (rule 1).
@@ -460,7 +460,7 @@ git -C C:\MP\client add -A -- modernization-platform
 ```
 
 ```powershell
-git -C C:\MP\client commit -m "Modernization platform rbc-release-5" -- modernization-platform
+git -C C:\MP\client commit -m "Modernization platform rbc-release-6" -- modernization-platform
 ```
 
 ```powershell
@@ -738,7 +738,7 @@ In the UI, on the repository's page:
 | Tab | Shows |
 |---|---|
 | Overview | size, projects, entry points, items found |
-| Surface | what can call the repository, and what it calls |
+| Surface | what can call the repository, and what it calls. Each section folds on its own and says what is in it while folded; the bar at the top jumps to a section and expands or collapses them all, and the page remembers which are open |
 | Structure & fingerprint | solutions, projects, frameworks |
 | Dependencies | every package: the version in use, the recommended version, its outcome and flags, and a **Reason** in plain words for each (the advisory, its severity and the version that fixes it; why an upgrade is safe; which shared framework provides it; the publisher's named successor; why a lookup did not answer, such as a feed returning 401). "Vulnerable" always refers to the version in use |
 | Surface (SOAP compatibility) | each SOAP call per environment: the Runtime and Platform verdicts, a **Why** beside each (the matrix entry that decided it and its probe evidence, or why it is unknown), and whether a named person has **confirmed** that entry (reviewed its evidence and accepted it) |
@@ -1131,7 +1131,7 @@ rbc-release-4) is reported by preflight and in the backend's log, and left worki
 release that cannot upgrade in place says so in its release notes, with the reason; none so far.
 
 A release arrives as a git bundle, `rbc-release-<n>.bundle`, with `rbc-release-<n>.bundle.sha256` beside it. The
-commands below upgrade `C:\MP\code` to rbc-release-5 from `C:\MP\delivery`; for another release, change the
+commands below upgrade `C:\MP\code` to rbc-release-6 from `C:\MP\delivery`; for another release, change the
 names. An installation of any earlier release is upgraded straight to the newest: there is no need to go through
 the ones between. Run them in one PowerShell window, in order.
 
@@ -1142,11 +1142,11 @@ the ones between. Run them in one PowerShell window, in order.
 3. **Check the bundle arrived intact.** The two lines must be identical:
 
    ```powershell
-   (Get-FileHash -Algorithm SHA256 C:\MP\delivery\rbc-release-5.bundle).Hash.ToLower()
+   (Get-FileHash -Algorithm SHA256 C:\MP\delivery\rbc-release-6.bundle).Hash.ToLower()
    ```
 
    ```powershell
-   (Get-Content C:\MP\delivery\rbc-release-5.bundle.sha256).Split(' ')[0]
+   (Get-Content C:\MP\delivery\rbc-release-6.bundle.sha256).Split(' ')[0]
    ```
 
 4. **Check the platform folder has nothing of yours in it.** git must print nothing (your `.env` files, `.venv`,
@@ -1160,18 +1160,18 @@ the ones between. Run them in one PowerShell window, in order.
 5. **Bring the release in and switch to it:**
 
    ```powershell
-   git -C C:\MP\code fetch C:\MP\delivery\rbc-release-5.bundle "refs/tags/rbc-release-5:refs/tags/rbc-release-5"
+   git -C C:\MP\code fetch C:\MP\delivery\rbc-release-6.bundle "refs/tags/rbc-release-6:refs/tags/rbc-release-6"
    ```
 
    ```powershell
-   git -C C:\MP\code -c core.longpaths=true checkout rbc-release-5
+   git -C C:\MP\code -c core.longpaths=true checkout rbc-release-6
    ```
 
    ```powershell
    git -C C:\MP\code log -1 --format="%h %d"
    ```
 
-   The last command shows the release's commit and `tag: rbc-release-5`. git says it is in "detached HEAD" state:
+   The last command shows the release's commit and `tag: rbc-release-6`. git says it is in "detached HEAD" state:
    that is expected for a release.
 6. **Preflight:**
 
@@ -1189,6 +1189,15 @@ the ones between. Run them in one PowerShell window, in order.
 
    It updates only what the release changed and skips the rest. It ends with `Bootstrap complete`.
 8. **Start the platform** ("Starting the backend and the frontend"). Your engagements, repositories, conversions and verifications are all there.
+
+**What rbc-release-6 changes on an rbc-release-5 installation.** Nothing in the database changes, and no setting is
+added; only the frontend changes:
+- on a repository's page, every section of the Surface tab folds on its own and says what is in it while folded; a
+  bar at the top of the tab jumps to each section and expands or collapses them all. Each section's state is kept in
+  this browser, per repository; a section listing more than 50 rows starts folded the first time it is seen;
+- projects with no request entry points are one line that opens to list them, with their lifecycle hooks shown for
+  all of them or per project; projects with no outbound invocations, and applications with no inbound operations, the
+  same.
 
 **What rbc-release-5 changes on an rbc-release-4 installation.** Nothing existing in the database changes:
 - **stage 6** republishes the step programs: every discovery step reports progress and writes a timing profile;
@@ -1249,5 +1258,5 @@ into a new folder instead, copy `backend\.env` and `frontend\.env` into it, run 
 platform from the new folder. It uses the same schema and `RUNS_DIR`, so the data is the same:
 
 ```powershell
-git clone -c core.longpaths=true --branch rbc-release-5 C:\MP\delivery\rbc-release-5.bundle C:\MP\code2
+git clone -c core.longpaths=true --branch rbc-release-6 C:\MP\delivery\rbc-release-6.bundle C:\MP\code2
 ```

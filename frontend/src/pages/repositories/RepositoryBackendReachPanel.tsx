@@ -1,5 +1,7 @@
 import { Fragment, useEffect, useState } from 'react'
 import { ApiError } from '../../api/client'
+import { CollapsibleSection, GroupedItems } from '../../components/CollapsibleSection'
+import { surfaceSectionId } from './surfaceSections'
 import { getRepositoryEntryPointBackend } from '../../api/surface'
 import { SourceLink } from './SourceLink'
 import type { BackendCall, BackendHost, BackendStatus, EntryPointBackend, EntryPointBackendRow } from '../../types/surface'
@@ -219,16 +221,37 @@ export function RepositoryBackendReachPanel({ repositoryId, localPath, refreshTo
     }
   }, [repositoryId, refreshToken])
 
+  const apps = data?.applications ?? []
+  const withRows = apps.filter((a) => a.rows.length > 0)
+  const withoutRows = apps.filter((a) => a.rows.length === 0)
+  const operations = apps.reduce((n, a) => n + a.rows.length, 0)
+  const count = (status: BackendStatus) => apps.reduce((n, a) => n + a.rows.filter((r) => r.status === status).length, 0)
+  const summary = loading
+    ? 'loading…'
+    : failed
+      ? 'could not be loaded'
+      : notScanned || !data
+        ? 'not scanned yet'
+        : `${operations} operation${operations === 1 ? '' : 's'} in ${withRows.length} application${withRows.length === 1 ? '' : 's'} · ` +
+          `${count('yes')} call backend` +
+          (count('unresolved') > 0 ? `, ${count('unresolved')} unresolved` : '')
+
   return (
-    <div className="min-w-0">
-      <h4 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-neutral-400">Inbound operations → backend calls</h4>
+    <CollapsibleSection
+      id={surfaceSectionId(repositoryId, 'reach')}
+      title="Inbound operations → backend calls"
+      summary={summary}
+      rowCount={data ? operations : undefined}
+      persist="browser"
+      variant="nested"
+    >
       {loading ? (
         <p className="text-sm text-neutral-400">Loading…</p>
       ) : failed ? (
         <p className="text-sm text-red-600">Could not load which backend calls each operation reaches.</p>
       ) : notScanned || !data ? (
         <div className="rounded border border-dashed border-neutral-200 bg-neutral-50 p-4 text-sm text-neutral-500">
-          The outbound-invocation inventory (lifecycle step 5) hasn't run for this repository yet.
+          The outbound-invocation inventory (outbound-invocation-inventory) hasn't run for this repository yet.
         </div>
       ) : (
         <div className="space-y-2">
@@ -238,13 +261,24 @@ export function RepositoryBackendReachPanel({ repositoryId, localPath, refreshTo
             make backend calls are shown as not followed, never guessed. The endpoint is the{' '}
             {data.production_environment ? `${data.production_environment} environment's host` : 'host as found (no production environment is set)'}.
           </p>
-          {data.applications.length === 0 ? (
+          {withRows.length === 0 ? (
             <p className="text-sm text-neutral-400">No request entry points in this repository.</p>
           ) : (
-            data.applications.map((app) => <Application key={app.project_id} app={app} localPath={localPath} />)
+            withRows.map((app) => <Application key={app.project_id} app={app} localPath={localPath} />)
+          )}
+          {withoutRows.length > 0 && (
+            <GroupedItems label={`${withoutRows.length} application${withoutRows.length === 1 ? '' : 's'} with no inbound operations`}>
+              <ul className="space-y-0.5 text-xs text-neutral-500">
+                {withoutRows.map((app) => (
+                  <li key={app.project_id} className="break-all font-mono">
+                    {app.project_path}
+                  </li>
+                ))}
+              </ul>
+            </GroupedItems>
           )}
         </div>
       )}
-    </div>
+    </CollapsibleSection>
   )
 }

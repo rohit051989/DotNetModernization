@@ -1234,6 +1234,20 @@ list someone will act on.
 `dependency-and-context-map` builds the estate-wide endpoint register from these rows; this view is
 per-repository.
 
+**Large repositories (rbc-release-6).** Every section of the Surface tab — Inbound, Outbound, SOAP compatibility,
+Inbound operations → backend calls — is collapsible on its own, through one component
+(`frontend/src/components/CollapsibleSection.tsx`): its header or chevron folds and opens it, and a closed section's
+header still says what is in it ("Inbound — 214 projects, 12 with request entry points · 340 request entry points";
+"SOAP compatibility — 9 calls, 2 need change"). A bar at the top of the tab links to each section shown and expands
+or collapses them all; it stays in view while the page scrolls. Each section's state is kept in the browser, per
+repository; a section listing more than 50 rows (Inbound and Outbound: projects; SOAP compatibility: call
+environments; backend calls: operations) starts collapsed the first time it is seen. Projects with no request entry
+point — lifecycle hooks only, or nothing — are one line ("187 projects with no request entry points") that opens to
+list them, with their lifecycle hooks shown for the whole group or per project; projects with no outbound
+invocations, and applications with no inbound operations, are grouped the same way. A SOAP call needs change when, in
+some environment, its runtime verdict is unsupported or supported with a caveat, or its platform verdict is
+incompatible or requires change.
+
 ---
 
 ## Acceptance criteria

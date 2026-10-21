@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import { listCatalogItems } from '../../../api/items'
-import { InboundProjectPanel } from '../../repositories/RepositorySurfaceSection'
+import { InboundProjectPanel, NoRequestProjects } from '../../repositories/RepositorySurfaceSection'
 import { OutboundProjectPanel } from '../../repositories/RepositoryOutboundPanel'
 import { SourceLink } from '../../repositories/SourceLink'
 import { ShowMoreToggle } from '../../../components/ShowMoreToggle'
@@ -312,8 +312,10 @@ export function FingerprintView({ data }: ArtifactRendererProps) {
 export function EntryPointsView({ data, localPath }: ArtifactRendererProps) {
   const projects = useMemo(() => entryPointProjects(data), [data])
   const summary = obj(data.summary)
-  const withEntries = projects.filter((p) => p.entry_points.length > 0)
-  const empty = projects.length - withEntries.length
+  // Projects with a request entry point each get a panel; the rest are one grouped line (rbc-release-6).
+  const withEntries = projects.filter((p) => p.request_entry_point_count > 0)
+  const noRequests = projects.filter((p) => p.request_entry_point_count === 0)
+  const empty = projects.filter((p) => p.entry_points.length === 0).length
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap gap-1.5">
@@ -323,10 +325,11 @@ export function EntryPointsView({ data, localPath }: ArtifactRendererProps) {
         {empty > 0 && <Chip>{empty} project(s) with none</Chip>}
       </div>
       {withEntries.length === 0 ? (
-        <p className="text-xs text-neutral-400">No entry points found.</p>
+        <p className="text-xs text-neutral-400">No request entry points found.</p>
       ) : (
         withEntries.map((project) => <InboundProjectPanel key={project.project_id} project={project} localPath={localPath} />)
       )}
+      {noRequests.length > 0 && <NoRequestProjects projects={noRequests} localPath={localPath} />}
     </div>
   )
 }
