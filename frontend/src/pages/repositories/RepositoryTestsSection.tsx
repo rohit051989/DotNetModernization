@@ -26,18 +26,22 @@ const CACHE_LABEL: Record<string, string> = {
   uncommitted_changes: 'computed — uncommitted changes, cache not used',
 }
 
-/** Collects not-measured reasons into numbered notes, so a cell shows
- * "not measured" with its note number and the reasons read in full below —
- * never a percentage for unknown, and never hidden behind a hover. */
-function noteCollector() {
+/** Every not-measured reason in the data, numbered in the order the tables show them — per project (unit, then
+ * integration), then per source file — so a cell shows "not measured" with its note number and the reasons read in
+ * full below: never a percentage for unknown, and never hidden behind a hover. Worked out from the data before
+ * anything renders, over every row (not just the rows a limited list shows), so a note keeps its number whichever
+ * rows or bucket are on screen. */
+function notMeasuredNotes(data: RepositoryTests): string[] {
   const notes: string[] = []
-  const number = (reason: string) => {
-    const index = notes.indexOf(reason)
-    if (index >= 0) return index + 1
-    notes.push(reason)
-    return notes.length
+  const add = (pct: number | null, reason: string | null) => {
+    if (pct === null && reason && !notes.includes(reason)) notes.push(reason)
   }
-  return { notes, number }
+  for (const p of data.projects) {
+    add(p.unit_line_pct, p.unit_not_measured_reason)
+    add(p.integration_line_pct, p.integration_not_measured_reason)
+  }
+  for (const f of data.source_files) add(f.line_pct, f.not_measured_reason)
+  return notes
 }
 
 function Pct({ value, reason, note }: { value: number | null; reason: string | null; note: (reason: string) => number }) {
@@ -85,12 +89,13 @@ export function RepositoryTestsSection({ repositoryId, localPath, refreshToken }
   }, [repositoryId, refreshToken])
 
   const files = useMemo(() => (data ? data.source_files.filter((f) => bucket === 'all' || f.bucket === bucket) : []), [data, bucket])
+  const notes = useMemo(() => (data ? notMeasuredNotes(data) : []), [data])
 
   if (state === 'loading') return <div className="h-16 animate-pulse rounded bg-neutral-100" />
   if (state === 'not_scanned') return <p className="text-sm text-neutral-400">Test coverage (lifecycle step 8) hasn't run for this repository yet.</p>
   if (state === 'error' || !data) return <p className="text-sm text-red-600">Could not load the tests.</p>
 
-  const { notes, number } = noteCollector()
+  const number = (reason: string) => notes.indexOf(reason) + 1
   const ci = data.ci_maturity
   const byType = data.summary.testClassesByType
   const byBucket = data.summary.sourceFilesByBucket
@@ -308,7 +313,7 @@ export function RepositoryTestsSection({ repositoryId, localPath, refreshToken }
       </div>
 
       {notes.length > 0 && (
-        <ol className="space-y-0.5 text-[11px] text-neutral-500">
+        <ol aria-label="Not measured: why" className="space-y-0.5 text-[11px] text-neutral-500">
           {notes.map((reason, i) => (
             <li key={reason}>
               <sup>{i + 1}</sup> {reason}
