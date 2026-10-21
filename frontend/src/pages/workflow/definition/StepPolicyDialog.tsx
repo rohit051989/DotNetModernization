@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { ApiError } from '../../../api/client'
+import { LimitedList } from '../../../components/LimitedList'
 import {
   deleteGlobalStepPolicy,
   deleteStepPolicy,
@@ -141,11 +142,15 @@ export function StepPolicyDialog({
           <div className="mt-3 space-y-3">
             <div className="rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
               <p>{conflict.message}</p>
-              <ul className="mt-2 list-inside list-disc font-medium">
-                {(conflict.dependent_steps ?? conflict.blocking_steps ?? []).map((step) => (
-                  <li key={step}>{step}</li>
-                ))}
-              </ul>
+              <LimitedList items={conflict.dependent_steps ?? conflict.blocking_steps ?? []} name={(step) => step} noun="steps" className="mt-2">
+                {(visible) => (
+                  <ul className="list-inside list-disc font-medium">
+                    {visible.map((step) => (
+                      <li key={step}>{step}</li>
+                    ))}
+                  </ul>
+                )}
+              </LimitedList>
               <p className="mt-2 text-xs text-amber-700">{conflict.resolution}</p>
             </div>
             {formError && <p className="text-sm text-red-600">{formError}</p>}

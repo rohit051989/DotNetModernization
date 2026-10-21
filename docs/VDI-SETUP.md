@@ -1191,7 +1191,13 @@ the ones between. Run them in one PowerShell window, in order.
 8. **Start the platform** ("Starting the backend and the frontend"). Your engagements, repositories, conversions and verifications are all there.
 
 **What rbc-release-6 changes on an rbc-release-5 installation.** Nothing in the database changes, and no setting is
-added; only the frontend changes:
+added; only the frontend changes. **Stage 5** installs its packages again, because the frontend now has component
+tests: their development packages (vitest, jsdom, @testing-library/react, @testing-library/dom,
+@testing-library/user-event) must be available from `NPM_REGISTRY` like the others ("Package sources"):
+- every list the UI shows from data — projects, entry points, invocations, SOAP calls, backend calls, work items,
+  packages, conversions, executions, the estate views, catalog items and the rest — shows its first 20 items, then
+  "+N more", or "Show 20 more · N remaining" and "Show all", and "Show less"; a list of more than 20 gets a filter box
+  matching on the names it shows;
 - on a repository's page, every section of the Surface tab folds on its own and says what is in it while folded; a
   bar at the top of the tab jumps to each section and expands or collapses them all. Each section's state is kept in
   this browser, per repository; a section listing more than 50 rows starts folded the first time it is seen;

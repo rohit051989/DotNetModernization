@@ -312,6 +312,37 @@ Decision panel.
   flips it back), unlike Deprecate or either Delete, so a confirmation step would
   only add friction without protecting against anything real.
 
+## Long lists (rbc-release-6)
+
+Every list the UI shows from data — projects, entry points, invocations, SOAP calls and their environment rows,
+backend calls, lifecycle hooks, work items, packages, conversions, executions, estate rows, catalog items, policies,
+and so on — goes through one component, `frontend/src/components/LimitedList.tsx`:
+
+- it shows the first 20 items. Below them, when 20 or fewer remain, "+N more" reveals them all; when more remain,
+  "Show 20 more · N remaining" with "Show all" beside it. Once more are shown, "Show less" returns to 20;
+- a list of more than 20 items gets a filter box matching on the names the list shows (a project's path, a
+  package's id, an item's name), so one among hundreds is found without paging. A list that already has a search of
+  its own keeps it, and gets no second box;
+- a grouped summary line ("164 projects with no request entry points") counts as one item of its list; a list
+  nested inside an item is limited on its own;
+- rows of a table body that cannot be wrapped (rows sharing cells through `rowSpan`) use the same limit through
+  `useLimitedList`, its controls in a row of their own.
+
+Not limited: fixed lists that are not data — table headers, `<option>`s, tabs, form fields, chips summarising
+counts, the fixed fields of one record, and a diagram laid out from every item.
+
+Inside a long list of panels (a project's entry points, an application's backend calls), a panel starts open only
+when the list has three or fewer; its header line gives its counts.
+
+Sections fold through one component, `frontend/src/components/CollapsibleSection.tsx`, and a SectionGroup gives a
+group of them jump links and Expand all / Collapse all (`29-ENTRY-POINT-AND-OUTBOUND-INVENTORIES.md` Part D).
+
+Both are covered by component tests (Vitest with Testing Library, jsdom), beside the components as `*.test.tsx`:
+
+```powershell
+cd C:\MP\code\frontend; npm test
+```
+
 ## Future: access control
 
 Not implemented. Recorded here so the intent is visible before auth exists, and

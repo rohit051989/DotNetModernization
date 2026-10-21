@@ -3,8 +3,9 @@ import { listCatalogItems } from '../../../api/items'
 import { InboundProjectPanel, NoRequestProjects } from '../../repositories/RepositorySurfaceSection'
 import { OutboundProjectPanel } from '../../repositories/RepositoryOutboundPanel'
 import { SourceLink } from '../../repositories/SourceLink'
-import { ShowMoreToggle } from '../../../components/ShowMoreToggle'
+import { LimitedList } from '../../../components/LimitedList'
 import { entryPointProjects, list, num, obj, outboundProjects, str, type Json } from './adapters'
+import type { ProjectEntryPoints } from '../../../types/surface'
 import type { WorkListDecisions } from '../../../types/items'
 
 export interface ArtifactRendererProps {
@@ -95,19 +96,24 @@ export function RepositoryInventoryView({ data }: ArtifactRendererProps) {
       <Fact label="Source control">{str(data.source_control_status) ?? '—'}</Fact>
       <div className="sm:col-span-2 lg:col-span-3">
         <dt className="text-[11px] font-medium uppercase tracking-wide text-neutral-400">Primary languages</dt>
-        <dd className="mt-1 space-y-1">
-          {languages.length === 0 && <span className="text-sm text-neutral-400">—</span>}
-          {languages.map((l) => (
-            <div key={str(l.language) ?? ''} className="flex items-center gap-2 text-xs">
-              <span className="w-24 flex-none truncate text-neutral-700">{str(l.language)}</span>
-              <span className="h-2 flex-1 rounded bg-neutral-100">
-                <span className="block h-2 rounded bg-violet-400" style={{ width: `${Math.max(2, num(l.percentage))}%` }} />
-              </span>
-              <span className="w-28 flex-none text-right text-neutral-500">
-                {num(l.percentage)}% · {num(l.file_count)} files
-              </span>
-            </div>
-          ))}
+        <dd className="mt-1">
+          <LimitedList items={languages} name={(l) => str(l.language)} noun="languages" empty={<span className="text-sm text-neutral-400">—</span>}>
+            {(visible) => (
+              <div className="space-y-1">
+                {visible.map((l) => (
+                  <div key={str(l.language) ?? ''} className="flex items-center gap-2 text-xs">
+                    <span className="w-24 flex-none truncate text-neutral-700">{str(l.language)}</span>
+                    <span className="h-2 flex-1 rounded bg-neutral-100">
+                      <span className="block h-2 rounded bg-violet-400" style={{ width: `${Math.max(2, num(l.percentage))}%` }} />
+                    </span>
+                    <span className="w-28 flex-none text-right text-neutral-500">
+                      {num(l.percentage)}% · {num(l.file_count)} files
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </LimitedList>
         </dd>
       </div>
     </dl>
@@ -149,11 +155,15 @@ export function SolutionInventoryView({ data }: ArtifactRendererProps) {
 
       <div>
         <h5 className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-neutral-400">Solutions</h5>
-        {solutions.length === 0 ? (
-          <p className="text-xs text-neutral-400">No solution files.</p>
-        ) : (
+        <LimitedList
+          items={solutions}
+          name={(s) => [str(s.name), str(s.relative_path)]}
+          noun="solutions"
+          empty={<p className="text-xs text-neutral-400">No solution files.</p>}
+        >
+          {(visibleSolutions) => (
           <Table head={['Solution', 'Visual Studio', 'Projects', 'Folders', 'Parse status']}>
-            {solutions.map((s) => (
+            {visibleSolutions.map((s) => (
               <tr key={str(s.relative_path) ?? ''} className="border-b border-neutral-100 align-top last:border-0">
                 <td className="py-1.5 pr-3">
                   <span className="font-medium text-neutral-800">{str(s.name)}</span>
@@ -171,13 +181,16 @@ export function SolutionInventoryView({ data }: ArtifactRendererProps) {
               </tr>
             ))}
           </Table>
-        )}
+          )}
+        </LimitedList>
       </div>
 
       <div>
         <h5 className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-neutral-400">Projects</h5>
+        <LimitedList items={projects} name={(p) => [str(p.name), str(p.relative_path)]} noun="projects">
+          {(visibleProjects) => (
         <Table head={['Project', 'Framework', 'Format', 'Builds as', 'Parse status']} minWidth={640}>
-          {projects.map((p) => (
+          {visibleProjects.map((p) => (
             <tr key={str(p.relative_path) ?? ''} className="border-b border-neutral-100 align-top last:border-0">
               <td className="py-1.5 pr-3">
                 <span className="font-medium text-neutral-800">{str(p.name)}</span>
@@ -200,6 +213,8 @@ export function SolutionInventoryView({ data }: ArtifactRendererProps) {
             </tr>
           ))}
         </Table>
+          )}
+        </LimitedList>
       </div>
     </div>
   )
@@ -263,11 +278,15 @@ export function FingerprintView({ data }: ArtifactRendererProps) {
         ))}
         {str(data.signalRegistryVersion) && <Chip>registry {str(data.signalRegistryVersion)}</Chip>}
       </div>
-      {byCategory.length === 0 ? (
-        <p className="text-xs text-neutral-400">No signals.</p>
-      ) : (
+      <LimitedList
+        items={byCategory}
+        name={([category]) => category.replace(/_/g, ' ').toLowerCase()}
+        noun="signal categories"
+        empty={<p className="text-xs text-neutral-400">No signals.</p>}
+      >
+        {(visibleCategories) => (
         <ul className="divide-y divide-neutral-100 rounded border border-neutral-200">
-          {byCategory.map(([category, rows]) => (
+          {visibleCategories.map(([category, rows]) => (
             <li key={category}>
               <button
                 type="button"
@@ -281,9 +300,10 @@ export function FingerprintView({ data }: ArtifactRendererProps) {
                 </span>
               </button>
               {open[category] && (
-                <div className="px-3 pb-2">
+                <LimitedList items={rows} name={(r) => [r.name, r.value, r.project]} noun="signals" className="px-3 pb-2">
+                  {(visibleRows) => (
                   <Table head={['Signal', 'Value', 'Project', 'Occurrences']} minWidth={520}>
-                    {rows.map((r, i) => (
+                    {visibleRows.map((r, i) => (
                       <tr key={`${r.name}|${r.project}|${r.value}|${i}`} className="border-b border-neutral-100 align-top last:border-0">
                         <td className="py-1 pr-3 font-mono text-[11px] text-neutral-800">{r.name}</td>
                         <td className="max-w-[16rem] break-all py-1 pr-3 font-mono text-[11px] text-neutral-500">{r.value ?? '—'}</td>
@@ -297,17 +317,23 @@ export function FingerprintView({ data }: ArtifactRendererProps) {
                       </tr>
                     ))}
                   </Table>
-                </div>
+                  )}
+                </LimitedList>
               )}
             </li>
           ))}
         </ul>
-      )}
+        )}
+      </LimitedList>
     </div>
   )
 }
 
 // ---------- entry-point-inventory (step 4) ----------
+
+/** One item of the entry-point list: a project's panel, or the one grouped line for the projects with no request
+ * entry point, which counts as a single item. */
+type EntryPointListItem = { kind: 'project'; project: ProjectEntryPoints } | { kind: 'no-requests'; projects: ProjectEntryPoints[] }
 
 export function EntryPointsView({ data, localPath }: ArtifactRendererProps) {
   const projects = useMemo(() => entryPointProjects(data), [data])
@@ -316,6 +342,10 @@ export function EntryPointsView({ data, localPath }: ArtifactRendererProps) {
   const withEntries = projects.filter((p) => p.request_entry_point_count > 0)
   const noRequests = projects.filter((p) => p.request_entry_point_count === 0)
   const empty = projects.filter((p) => p.entry_points.length === 0).length
+  const items: EntryPointListItem[] = [
+    ...withEntries.map((project) => ({ kind: 'project' as const, project })),
+    ...(noRequests.length > 0 ? [{ kind: 'no-requests' as const, projects: noRequests }] : []),
+  ]
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap gap-1.5">
@@ -324,12 +354,24 @@ export function EntryPointsView({ data, localPath }: ArtifactRendererProps) {
         {num(summary.noDeclaredAuthenticationCount) > 0 && <Chip tone="amber">{num(summary.noDeclaredAuthenticationCount)} no declared authentication</Chip>}
         {empty > 0 && <Chip>{empty} project(s) with none</Chip>}
       </div>
-      {withEntries.length === 0 ? (
-        <p className="text-xs text-neutral-400">No request entry points found.</p>
-      ) : (
-        withEntries.map((project) => <InboundProjectPanel key={project.project_id} project={project} localPath={localPath} />)
-      )}
-      {noRequests.length > 0 && <NoRequestProjects projects={noRequests} localPath={localPath} />}
+      {withEntries.length === 0 && <p className="text-xs text-neutral-400">No request entry points found.</p>}
+      <LimitedList
+        items={items}
+        name={(item) => (item.kind === 'project' ? item.project.project_path : item.projects.map((p) => p.project_path))}
+        noun="projects"
+      >
+        {(visibleItems) => (
+          <div className="space-y-2">
+            {visibleItems.map((item) =>
+              item.kind === 'project' ? (
+                <InboundProjectPanel key={item.project.project_id} project={item.project} localPath={localPath} />
+              ) : (
+                <NoRequestProjects key="no-requests" projects={item.projects} localPath={localPath} />
+              ),
+            )}
+          </div>
+        )}
+      </LimitedList>
     </div>
   )
 }
@@ -363,11 +405,20 @@ export function OutboundView({ data, localPath }: ArtifactRendererProps) {
         {(verdicts.compatible ?? 0) > 0 && <Chip tone="teal">{verdicts.compatible} compatible</Chip>}
         {num(summary.unusedCount) > 0 && <Chip>{num(summary.unusedCount)} unused (not counted)</Chip>}
       </div>
-      {projects.length === 0 ? (
-        <p className="text-xs text-neutral-400">No outbound invocations found.</p>
-      ) : (
-        projects.map((project) => <OutboundProjectPanel key={project.project_id} project={project} localPath={localPath} />)
-      )}
+      <LimitedList
+        items={projects}
+        name={(p) => p.project_path}
+        noun="projects"
+        empty={<p className="text-xs text-neutral-400">No outbound invocations found.</p>}
+      >
+        {(visibleProjects) => (
+          <div className="space-y-2">
+            {visibleProjects.map((project) => (
+              <OutboundProjectPanel key={project.project_id} project={project} localPath={localPath} />
+            ))}
+          </div>
+        )}
+      </LimitedList>
     </div>
   )
 }
@@ -626,23 +677,25 @@ export function DependenciesView({ data, localPath }: ArtifactRendererProps) {
           Show current packages
         </label>
       </div>
-      <p className="text-[11px] text-neutral-500">
+      <div className="text-[11px] text-neutral-500">
         Target <span className="font-mono">{str(data.targetFramework)}</span> · answered by{' '}
         {(sources.client_feed ?? 0) > 0 && <span className="font-medium text-teal-700">client feed ×{sources.client_feed} </span>}
         {(sources.nuget_org_fallback ?? 0) > 0 && <span className="font-medium text-neutral-700">nuget.org fallback ×{sources.nuget_org_fallback} </span>}
         {(sources.none ?? 0) > 0 && <span className="text-neutral-500">no feed ×{sources.none}</span>}
-        {feeds.length > 0 && (
-          <span className="block text-neutral-400">
-            Feeds:{' '}
-            {feeds.map((f, i) => (
-              <span key={i} title={`${str(f.url)} — declared in ${str(f.declaredIn)}`}>
-                {i > 0 && ' · '}
-                {str(f.name)} <span className="text-neutral-300">({str(f.role)?.replace(/_/g, ' ')})</span>
-              </span>
-            ))}
-          </span>
-        )}
-      </p>
+        <LimitedList items={feeds} name={(f) => [str(f.name), str(f.url)]} noun="feeds">
+          {(visibleFeeds) => (
+            <span className="block text-neutral-400">
+              Feeds:{' '}
+              {visibleFeeds.map((f, i) => (
+                <span key={i} title={`${str(f.url)} — declared in ${str(f.declaredIn)}`}>
+                  {i > 0 && ' · '}
+                  {str(f.name)} <span className="text-neutral-300">({str(f.role)?.replace(/_/g, ' ')})</span>
+                </span>
+              ))}
+            </span>
+          )}
+        </LimitedList>
+      </div>
       {visible.length === 0 ? (
         <p className="text-xs text-neutral-400">No packages to show.</p>
       ) : (
@@ -652,8 +705,10 @@ export function DependenciesView({ data, localPath }: ArtifactRendererProps) {
           <span className="font-medium text-neutral-700">Recommended version</span> is the newest that supports {str(data.targetFramework)} and has no
           known advisory. <span className="font-medium text-neutral-700">Vulnerable</span> always refers to the version in use.
         </p>
+        <LimitedList items={visible} name={(group) => [group.packageId, ...group.versions.flatMap((v) => v.uses.map((u) => u.project))]} noun="packages">
+          {(visibleGroups) => (
         <Table head={['Package', 'Projects', 'Version in use', 'Recommended version', 'Outcome', 'Flags', 'Reason', 'Feed']} minWidth={1200}>
-          {visible.map((group) => (
+          {visibleGroups.map((group) => (
             <Fragment key={group.packageId}>
               {group.drift && (
                 <tr className="border-b border-neutral-100 bg-amber-50/40 align-top">
@@ -682,14 +737,13 @@ export function DependenciesView({ data, localPath }: ArtifactRendererProps) {
             </Fragment>
           ))}
         </Table>
+          )}
+        </LimitedList>
         </>
       )}
     </div>
   )
 }
-
-/** How many projects a row lists before "+N more". */
-const PROJECTS_SHOWN = 3
 
 function VersionRowView({
   group,
@@ -706,7 +760,6 @@ function VersionRowView({
   expanded: boolean
   onToggle: () => void
 }) {
-  const [allProjects, setAllProjects] = useState(false)
   const pkg = worst(version.uses)
   const outcomes = new Set(version.uses.map((u) => str(u.pkg.outcome)))
   const deprecated = pkg.deprecated ? obj(pkg.deprecated) : null
@@ -735,17 +788,15 @@ function VersionRowView({
           {kind && kind !== 'runtime' && <span className="ml-1.5 text-[10px] uppercase tracking-wide text-neutral-400">{kind}</span>}
         </td>
         <td className="py-1.5 pr-3 font-mono text-[11px] text-neutral-600">
-          {(allProjects ? version.uses : version.uses.slice(0, PROJECTS_SHOWN)).map((u) => (
-            <span key={u.project} className="block max-w-[15rem] truncate" title={u.project}>
-              {shortProjectPath(u.project)}
-            </span>
-          ))}
-          <ShowMoreToggle
-            expanded={allProjects}
-            hidden={version.uses.length - PROJECTS_SHOWN}
-            onToggle={() => setAllProjects((v) => !v)}
-            className="block"
-          />
+          <LimitedList items={version.uses} name={(u) => u.project} noun="projects">
+            {(visibleUses) =>
+              visibleUses.map((u) => (
+                <span key={u.project} className="block max-w-[15rem] truncate" title={u.project}>
+                  {shortProjectPath(u.project)}
+                </span>
+              ))
+            }
+          </LimitedList>
         </td>
         <td className="py-1.5 pr-3 font-mono text-neutral-700">{version.version}</td>
         <td className="py-1.5 pr-3 font-mono">
@@ -817,10 +868,16 @@ function VersionRowView({
       </tr>
       {expanded && (
         <tr className="border-b border-neutral-100 bg-neutral-50/60">
-          <td colSpan={8} className="space-y-2 px-6 py-2">
-            {version.uses.map((use) => (
-              <ProjectUseDetail key={use.project} use={use} localPath={localPath} />
-            ))}
+          <td colSpan={8} className="px-6 py-2">
+            <LimitedList items={version.uses} name={(u) => u.project} noun="projects">
+              {(visibleUses) => (
+                <div className="space-y-2">
+                  {visibleUses.map((use) => (
+                    <ProjectUseDetail key={use.project} use={use} localPath={localPath} />
+                  ))}
+                </div>
+              )}
+            </LimitedList>
           </td>
         </tr>
       )}
@@ -837,6 +894,7 @@ function ProjectUseDetail({ use, localPath }: { use: ProjectUse; localPath: stri
   const sites = list(pkg.callSites)
   const confirmed = sites.filter((s) => str(s.certainty) !== 'ambiguous')
   const possible = sites.filter((s) => str(s.certainty) === 'ambiguous')
+  const siteName = (s: Json) => [`${str(s.filePath) ?? ''}:${num(s.lineStart)}`, str(s.member)]
   const site = (s: Json, i: number) => (
     <li key={i} className="font-mono text-[11px]">
       <SourceLink localPath={localPath} filePath={str(s.filePath) ?? ''} line={num(s.lineStart, 1)} className="text-violet-700">
@@ -862,21 +920,27 @@ function ProjectUseDetail({ use, localPath }: { use: ProjectUse; localPath: stri
       {members.length > 0 && (
         <div className="mt-1">
           <p className="text-[11px] font-medium uppercase tracking-wide text-neutral-400">Changed members the code calls</p>
-          <ul className="mt-0.5 space-y-0.5">
-            {members.map((m, i) => (
-              <li key={i} className="font-mono text-[11px] text-neutral-700">
-                <span className="text-neutral-400">{str(m.change)?.replace(/_/g, ' ')}</span> {str(m.type)}
-                {str(m.member) ? `.${str(m.member)}` : ''}
-                {str(m.oldSignature) && <span className="block pl-4 text-neutral-400">was {str(m.oldSignature)}</span>}
-              </li>
-            ))}
-          </ul>
+          <LimitedList items={members} name={(m) => `${str(m.type) ?? ''}${str(m.member) ? `.${str(m.member)}` : ''}`} noun="members">
+            {(visibleMembers) => (
+              <ul className="mt-0.5 space-y-0.5">
+                {visibleMembers.map((m, i) => (
+                  <li key={i} className="font-mono text-[11px] text-neutral-700">
+                    <span className="text-neutral-400">{str(m.change)?.replace(/_/g, ' ')}</span> {str(m.type)}
+                    {str(m.member) ? `.${str(m.member)}` : ''}
+                    {str(m.oldSignature) && <span className="block pl-4 text-neutral-400">was {str(m.oldSignature)}</span>}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </LimitedList>
         </div>
       )}
       {confirmed.length > 0 && (
         <div className="mt-1">
           <p className="text-[11px] font-medium uppercase tracking-wide text-neutral-400">Call sites ({confirmed.length})</p>
-          <ul className="mt-0.5 space-y-0.5">{confirmed.map(site)}</ul>
+          <LimitedList items={confirmed} name={siteName} noun="call sites">
+            {(visibleSites) => <ul className="mt-0.5 space-y-0.5">{visibleSites.map(site)}</ul>}
+          </LimitedList>
         </div>
       )}
       {possible.length > 0 && (
@@ -884,7 +948,9 @@ function ProjectUseDetail({ use, localPath }: { use: ProjectUse; localPath: stri
           <p className="text-[11px] font-medium uppercase tracking-wide text-neutral-400" title="An unchanged overload accepts the same arguments; syntax cannot tell which one the call binds to">
             Possible call sites ({possible.length}) — may bind to an unchanged overload
           </p>
-          <ul className="mt-0.5 space-y-0.5 opacity-75">{possible.map(site)}</ul>
+          <LimitedList items={possible} name={siteName} noun="call sites">
+            {(visibleSites) => <ul className="mt-0.5 space-y-0.5 opacity-75">{visibleSites.map(site)}</ul>}
+          </LimitedList>
         </div>
       )}
       {str(pkg.outcome) === 'upgrade_breaking' && sites.length === 0 && (
@@ -930,9 +996,6 @@ interface WorkGroup {
   evidencePaths: string[]
 }
 
-/** How many files a work-list row lists before "+N more". */
-const FILES_SHOWN = 3
-
 const possibleOnly = (g: WorkGroup) => g.files.length > 0 && g.files.every((f) => f.certainty === 'possible')
 
 /** The work list. With `decisions` (the repository page), each row also
@@ -943,7 +1006,6 @@ export function ItemOccurrencesView({ data, localPath, decisions }: ArtifactRend
   // Possible occurrences rest only on ambiguous evidence: shown, but left
   // out of the totals unless the reader asks for them.
   const [countPossible, setCountPossible] = useState(false)
-  const [open, setOpen] = useState<Record<string, boolean>>({})
   const [names, setNames] = useState<Record<string, string>>({})
   // occurrence_source.group_by per item: value-grouped items are listed by
   // value under their file, since their occurrences share files.
@@ -1049,27 +1111,27 @@ export function ItemOccurrencesView({ data, localPath, decisions }: ArtifactRend
           </label>
         </div>
       </div>
-      {visible.length === 0 ? (
-        <p className="text-xs text-neutral-400">Nothing found — no work items for this repository.</p>
-      ) : (
-        <Table head={['Item', 'Scope', 'Project', 'Files', 'Detection', ...(decisions ? ['Decision'] : [])]} minWidth={decisions ? 900 : 680}>
-          {visible.map((g) => {
-            const key = `${g.itemId}|${g.project}`
-            return (
+      <LimitedList
+        items={visible}
+        name={(g) => [names[g.itemId], g.itemId, g.project]}
+        noun="work items"
+        empty={<p className="text-xs text-neutral-400">Nothing found — no work items for this repository.</p>}
+      >
+        {(visibleGroups) => (
+          <Table head={['Item', 'Scope', 'Project', 'Files', 'Detection', ...(decisions ? ['Decision'] : [])]} minWidth={decisions ? 900 : 680}>
+            {visibleGroups.map((g) => (
               <WorkGroupRow
-                key={key}
+                key={`${g.itemId}|${g.project}`}
                 group={g}
                 name={names[g.itemId]}
                 decisions={decisions ?? null}
                 byValue={groupBy[g.itemId] === 'source_path_and_value'}
                 localPath={localPath}
-                expanded={!!open[key]}
-                onToggle={() => setOpen((o) => ({ ...o, [key]: !o[key] }))}
               />
-            )
-          })}
-        </Table>
-      )}
+            ))}
+          </Table>
+        )}
+      </LimitedList>
     </div>
   )
 }
@@ -1094,25 +1156,32 @@ function ValuesByFile({ entries, localPath, showCertainty }: { entries: WorkFile
     if (!byFile.has(entry.filePath)) byFile.set(entry.filePath, [])
     byFile.get(entry.filePath)!.push(entry)
   }
+  // The files are one list and each file's values another, limited independently.
   return (
-    <>
-      {[...byFile.entries()].map(([filePath, values]) => (
-        <span key={filePath} className="block">
-          <SourceLink localPath={localPath} filePath={filePath} line={1} className="text-violet-700">
-            {filePath}
-          </SourceLink>
-          {values.map((v, i) => (
-            <span key={`${v.value}|${i}`} className="block pl-3 text-neutral-600">
-              <SourceLink localPath={localPath} filePath={filePath} line={v.line ?? 1} className="text-neutral-700" title={`${filePath}${v.line ? `:${v.line}` : ''}`}>
-                {v.value ?? '(no value)'}
-              </SourceLink>
-              {v.line ? <span className="text-neutral-400">:{v.line}</span> : null}
-              {showCertainty && <CertaintyTag certainty={v.certainty} />}
-            </span>
-          ))}
-        </span>
-      ))}
-    </>
+    <LimitedList items={[...byFile.entries()]} name={([filePath, values]) => [filePath, ...values.map((v) => v.value)]} noun="files">
+      {(visibleFiles) =>
+        visibleFiles.map(([filePath, values]) => (
+          <div key={filePath}>
+            <SourceLink localPath={localPath} filePath={filePath} line={1} className="text-violet-700">
+              {filePath}
+            </SourceLink>
+            <LimitedList items={values} name={(v) => v.value} noun="values">
+              {(visibleValues) =>
+                visibleValues.map((v, i) => (
+                  <span key={`${v.value}|${i}`} className="block pl-3 text-neutral-600">
+                    <SourceLink localPath={localPath} filePath={filePath} line={v.line ?? 1} className="text-neutral-700" title={`${filePath}${v.line ? `:${v.line}` : ''}`}>
+                      {v.value ?? '(no value)'}
+                    </SourceLink>
+                    {v.line ? <span className="text-neutral-400">:{v.line}</span> : null}
+                    {showCertainty && <CertaintyTag certainty={v.certainty} />}
+                  </span>
+                ))
+              }
+            </LimitedList>
+          </div>
+        ))
+      }
+    </LimitedList>
   )
 }
 
@@ -1189,8 +1258,6 @@ function WorkGroupRow({
   decisions,
   byValue,
   localPath,
-  expanded,
-  onToggle,
 }: {
   group: WorkGroup
   name: string | undefined
@@ -1198,13 +1265,10 @@ function WorkGroupRow({
   /** The item groups occurrences by file and value: list values under files. */
   byValue: boolean
   localPath: string | null
-  expanded: boolean
-  onToggle: () => void
 }) {
   const possible = g.files.filter((f) => f.certainty === 'possible').length
   const allPossible = possibleOnly(g)
   const mixed = possible > 0 && !allPossible
-  const shown = expanded ? g.files : g.files.slice(0, FILES_SHOWN)
   // A value-grouped item puts several occurrences in one file (one per
   // package in a project file), so values and files are counted apart.
   const distinctFiles = new Set(g.files.map((f) => f.filePath)).size
@@ -1230,31 +1294,38 @@ function WorkGroupRow({
           <>
             {g.files.length > 1 && <span className="block text-neutral-400">{countLabel}</span>}
             {byValue ? (
-              <ValuesByFile entries={shown} localPath={localPath} showCertainty={mixed || allPossible} />
+              <ValuesByFile entries={g.files} localPath={localPath} showCertainty={mixed || allPossible} />
             ) : (
-              shown.map((f, i) => (
-              <span key={`${f.filePath}|${f.value}|${i}`} className="block">
-                <SourceLink localPath={localPath} filePath={f.filePath} line={f.line ?? 1} className="text-violet-700">
-                  {f.filePath}
-                  {f.line ? `:${f.line}` : ''}
-                </SourceLink>
-                {(mixed || allPossible) && <CertaintyTag certainty={f.certainty} />}
-                {f.value && <span className="block text-neutral-400">{f.value}</span>}
-              </span>
-              ))
+              <LimitedList items={g.files} name={(f) => [f.filePath, f.value]} noun="occurrences">
+                {(visibleFiles) =>
+                  visibleFiles.map((f, i) => (
+                    <span key={`${f.filePath}|${f.value}|${i}`} className="block">
+                      <SourceLink localPath={localPath} filePath={f.filePath} line={f.line ?? 1} className="text-violet-700">
+                        {f.filePath}
+                        {f.line ? `:${f.line}` : ''}
+                      </SourceLink>
+                      {(mixed || allPossible) && <CertaintyTag certainty={f.certainty} />}
+                      {f.value && <span className="block text-neutral-400">{f.value}</span>}
+                    </span>
+                  ))
+                }
+              </LimitedList>
             )}
-            <ShowMoreToggle expanded={expanded} hidden={g.files.length - FILES_SHOWN} onToggle={onToggle} className="block font-sans" />
           </>
         ) : g.evidencePaths.length > 0 ? (
-          <span className="text-neutral-500" title="Application scope: the files whose signals made this item apply">
-            {g.evidencePaths.map((path) => (
-              <span key={path} className="block">
-                <SourceLink localPath={localPath} filePath={path} line={1} className="text-violet-700">
-                  {path}
-                </SourceLink>
+          <LimitedList items={g.evidencePaths} name={(path) => path} noun="files" className="text-neutral-500">
+            {(visiblePaths) => (
+              <span title="Application scope: the files whose signals made this item apply">
+                {visiblePaths.map((path) => (
+                  <span key={path} className="block">
+                    <SourceLink localPath={localPath} filePath={path} line={1} className="text-violet-700">
+                      {path}
+                    </SourceLink>
+                  </span>
+                ))}
               </span>
-            ))}
-          </span>
+            )}
+          </LimitedList>
         ) : (
           <span className="text-neutral-300">{g.scope === 'application' ? 'whole project' : '—'}</span>
         )}

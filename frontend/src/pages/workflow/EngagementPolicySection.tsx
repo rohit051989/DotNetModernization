@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { getEffectivePolicies } from '../../api/policies'
 import type { EffectivePolicy } from '../../types/policy'
 import { CollapsibleSection } from '../../components/CollapsibleSection'
+import { LimitedList } from '../../components/LimitedList'
 import { StepPolicyDialog } from './definition/StepPolicyDialog'
 import { policyStatusText, policyToggleLabel, policyWinningRow } from './definition/policyPresentation'
 
@@ -62,17 +63,21 @@ export function EngagementPolicySection({ engagementId }: EngagementPolicySectio
           <p className="mb-1 font-semibold uppercase tracking-wide text-amber-700">
             {deviations.length} step{deviations.length === 1 ? '' : 's'} {deviations.length === 1 ? 'differs' : 'differ'} from default
           </p>
-          <ul className="space-y-1">
-            {deviations.map((p) => (
-              <li key={p.step_name} className="text-amber-800">
-                <span className="font-medium">{p.step_name}</span>{' '}
-                <span className="rounded bg-amber-100 px-1 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700">
-                  {p.source}
-                </span>
-                {p.reason ? ` — ${p.reason}` : ''}
-              </li>
-            ))}
-          </ul>
+          <LimitedList items={deviations} name={(p) => p.step_name} noun="steps">
+            {(visible) => (
+              <ul className="space-y-1">
+                {visible.map((p) => (
+                  <li key={p.step_name} className="text-amber-800">
+                    <span className="font-medium">{p.step_name}</span>{' '}
+                    <span className="rounded bg-amber-100 px-1 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700">
+                      {p.source}
+                    </span>
+                    {p.reason ? ` — ${p.reason}` : ''}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </LimitedList>
         </div>
       )}
 
@@ -80,52 +85,56 @@ export function EngagementPolicySection({ engagementId }: EngagementPolicySectio
         <p className="p-4 text-sm text-neutral-400">No steps appear in an active job definition yet.</p>
       ) : (
         <div className="overflow-x-auto">
-        <table className="w-full min-w-[640px] text-left text-sm">
-          <thead className="text-xs uppercase tracking-wide text-neutral-500">
-            <tr>
-              <th className="px-4 py-2 font-medium">Step</th>
-              <th className="px-3 py-2 font-medium">Effective state</th>
-              <th className="px-3 py-2 font-medium">Source</th>
-              <th className="px-3 py-2 font-medium">Reason</th>
-              <th className="px-3 py-2 font-medium">Set by</th>
-              <th className="px-3 py-2 font-medium" />
-            </tr>
-          </thead>
-          <tbody>
-            {policies.map((policy) => {
-              const winningRow = policyWinningRow(policy)
-              return (
-                <tr key={policy.step_name} className="border-b border-neutral-100">
-                  <td className="px-4 py-2 font-mono text-xs text-neutral-700">{policy.step_name}</td>
-                  <td className="px-3 py-2">
-                    <span
-                      className={`rounded-full border px-2 py-0.5 text-xs font-medium ${
-                        policy.enabled ? 'border-teal-200 bg-teal-50 text-teal-700' : 'border-red-200 bg-red-50 text-red-700'
-                      }`}
-                    >
-                      {policy.enabled ? 'Enabled' : 'Disabled'}
-                    </span>
-                  </td>
-                  <td className="px-3 py-2">
-                    <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-neutral-600">
-                      {policy.source}
-                    </span>
-                    {policy.source === 'global' && <span className="ml-1 text-[10px] italic text-neutral-400">inherited</span>}
-                  </td>
-                  <td className="px-3 py-2 text-xs text-neutral-500" title={policyStatusText(policy)}>
-                    {policy.reason ?? '—'}
-                  </td>
-                  <td className="px-3 py-2 text-xs text-neutral-500">{winningRow?.set_by ?? '—'}</td>
-                  <td className="px-3 py-2 text-right">
-                    <button type="button" onClick={() => setTarget(policy)} className="text-xs text-violet-600 hover:underline">
-                      {policyToggleLabel(policy, false)}
-                    </button>
-                  </td>
+        <LimitedList items={policies} name={(p) => p.step_name} noun="steps">
+          {(visible) => (
+            <table className="w-full min-w-[640px] text-left text-sm">
+              <thead className="text-xs uppercase tracking-wide text-neutral-500">
+                <tr>
+                  <th className="px-4 py-2 font-medium">Step</th>
+                  <th className="px-3 py-2 font-medium">Effective state</th>
+                  <th className="px-3 py-2 font-medium">Source</th>
+                  <th className="px-3 py-2 font-medium">Reason</th>
+                  <th className="px-3 py-2 font-medium">Set by</th>
+                  <th className="px-3 py-2 font-medium" />
                 </tr>
-              )
-            })}
-          </tbody>
-        </table>
+              </thead>
+              <tbody>
+                {visible.map((policy) => {
+                  const winningRow = policyWinningRow(policy)
+                  return (
+                    <tr key={policy.step_name} className="border-b border-neutral-100">
+                      <td className="px-4 py-2 font-mono text-xs text-neutral-700">{policy.step_name}</td>
+                      <td className="px-3 py-2">
+                        <span
+                          className={`rounded-full border px-2 py-0.5 text-xs font-medium ${
+                            policy.enabled ? 'border-teal-200 bg-teal-50 text-teal-700' : 'border-red-200 bg-red-50 text-red-700'
+                          }`}
+                        >
+                          {policy.enabled ? 'Enabled' : 'Disabled'}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2">
+                        <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-neutral-600">
+                          {policy.source}
+                        </span>
+                        {policy.source === 'global' && <span className="ml-1 text-[10px] italic text-neutral-400">inherited</span>}
+                      </td>
+                      <td className="px-3 py-2 text-xs text-neutral-500" title={policyStatusText(policy)}>
+                        {policy.reason ?? '—'}
+                      </td>
+                      <td className="px-3 py-2 text-xs text-neutral-500">{winningRow?.set_by ?? '—'}</td>
+                      <td className="px-3 py-2 text-right">
+                        <button type="button" onClick={() => setTarget(policy)} className="text-xs text-violet-600 hover:underline">
+                          {policyToggleLabel(policy, false)}
+                        </button>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          )}
+        </LimitedList>
         </div>
       )}
 

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { getEffectivePolicies, getPolicyMatrix } from '../../api/policies'
 import type { EffectivePolicy, PolicyMatrix } from '../../types/policy'
 import { StepPolicyDialog } from '../workflow/definition/StepPolicyDialog'
-import { ShowMoreToggle } from '../../components/ShowMoreToggle'
+import { LimitedList } from '../../components/LimitedList'
 
 /** 23-WORKFLOW-ADMINISTRATION.md Part C3 — one row per step appearing in an
  * active job definition, showing effective global state, reason, set by/at,
@@ -72,54 +72,62 @@ export function GlobalPolicySection() {
       )}
 
       <section className="rounded border border-neutral-200 bg-white">
-        <table className="w-full text-left text-sm">
-          <thead className="text-xs uppercase tracking-wide text-neutral-500">
-            <tr>
-              <th className="px-4 py-2 font-medium">Step</th>
-              <th className="px-3 py-2 font-medium">Global state</th>
-              <th className="px-3 py-2 font-medium">Reason</th>
-              <th className="px-3 py-2 font-medium">Set by</th>
-              <th className="px-3 py-2 font-medium">Set at</th>
-              <th className="px-3 py-2 font-medium">Overriding engagements</th>
-              <th className="px-3 py-2 font-medium" />
-            </tr>
-          </thead>
-          <tbody>
-            {visiblePolicies.map((policy) => {
-              const overriding = overridingEngagements.get(policy.step_name) ?? []
-              return (
-                <tr key={policy.step_name} className="border-b border-neutral-100">
-                  <td className="px-4 py-2">
-                    <div className="text-neutral-800">{displayNames.get(policy.step_name) ?? policy.step_name}</div>
-                    <div className="font-mono text-[10px] text-neutral-400">{policy.step_name}</div>
-                  </td>
-                  <td className="px-3 py-2">
-                    <span
-                      className={`rounded-full border px-2 py-0.5 text-xs font-medium ${
-                        policy.enabled ? 'border-teal-200 bg-teal-50 text-teal-700' : 'border-red-200 bg-red-50 text-red-700'
-                      }`}
-                    >
-                      {policy.enabled ? 'Enabled' : 'Disabled'}
-                    </span>
-                  </td>
-                  <td className="px-3 py-2 text-xs text-neutral-500">{policy.reason ?? '—'}</td>
-                  <td className="px-3 py-2 text-xs text-neutral-500">{policy.global_policy?.set_by ?? '—'}</td>
-                  <td className="px-3 py-2 text-xs text-neutral-500">
-                    {policy.global_policy ? new Date(policy.global_policy.set_at).toLocaleString() : '—'}
-                  </td>
-                  <td className="px-3 py-2 text-xs text-neutral-500">
-                    {overriding.length === 0 ? '—' : <OverridingEngagements names={overriding} />}
-                  </td>
-                  <td className="px-3 py-2 text-right">
-                    <button type="button" onClick={() => setTarget(policy)} className="text-xs text-violet-600 hover:underline">
-                      {policy.source === 'global' ? (policy.enabled ? 'Remove override…' : 'Re-enable…') : 'Disable…'}
-                    </button>
-                  </td>
+        <LimitedList
+          items={visiblePolicies}
+          name={(p) => [displayNames.get(p.step_name), p.step_name]}
+          noun="steps"
+        >
+          {(visible) => (
+            <table className="w-full text-left text-sm">
+              <thead className="text-xs uppercase tracking-wide text-neutral-500">
+                <tr>
+                  <th className="px-4 py-2 font-medium">Step</th>
+                  <th className="px-3 py-2 font-medium">Global state</th>
+                  <th className="px-3 py-2 font-medium">Reason</th>
+                  <th className="px-3 py-2 font-medium">Set by</th>
+                  <th className="px-3 py-2 font-medium">Set at</th>
+                  <th className="px-3 py-2 font-medium">Overriding engagements</th>
+                  <th className="px-3 py-2 font-medium" />
                 </tr>
-              )
-            })}
-          </tbody>
-        </table>
+              </thead>
+              <tbody>
+                {visible.map((policy) => {
+                  const overriding = overridingEngagements.get(policy.step_name) ?? []
+                  return (
+                    <tr key={policy.step_name} className="border-b border-neutral-100">
+                      <td className="px-4 py-2">
+                        <div className="text-neutral-800">{displayNames.get(policy.step_name) ?? policy.step_name}</div>
+                        <div className="font-mono text-[10px] text-neutral-400">{policy.step_name}</div>
+                      </td>
+                      <td className="px-3 py-2">
+                        <span
+                          className={`rounded-full border px-2 py-0.5 text-xs font-medium ${
+                            policy.enabled ? 'border-teal-200 bg-teal-50 text-teal-700' : 'border-red-200 bg-red-50 text-red-700'
+                          }`}
+                        >
+                          {policy.enabled ? 'Enabled' : 'Disabled'}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 text-xs text-neutral-500">{policy.reason ?? '—'}</td>
+                      <td className="px-3 py-2 text-xs text-neutral-500">{policy.global_policy?.set_by ?? '—'}</td>
+                      <td className="px-3 py-2 text-xs text-neutral-500">
+                        {policy.global_policy ? new Date(policy.global_policy.set_at).toLocaleString() : '—'}
+                      </td>
+                      <td className="px-3 py-2 text-xs text-neutral-500">
+                        {overriding.length === 0 ? '—' : <OverridingEngagements names={overriding} />}
+                      </td>
+                      <td className="px-3 py-2 text-right">
+                        <button type="button" onClick={() => setTarget(policy)} className="text-xs text-violet-600 hover:underline">
+                          {policy.source === 'global' ? (policy.enabled ? 'Remove override…' : 'Re-enable…') : 'Disable…'}
+                        </button>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          )}
+        </LimitedList>
       </section>
 
       {target && (
@@ -137,26 +145,17 @@ export function GlobalPolicySection() {
   )
 }
 
-/** How many overriding engagements a row names before "+N more". */
-const ENGAGEMENTS_SHOWN = 2
-
 /** The engagements overriding a global policy, named — not a count with the
  * names behind a tooltip, which a touch screen cannot open. */
 function OverridingEngagements({ names }: { names: string[] }) {
-  const [expanded, setExpanded] = useState(false)
-  const shown = expanded ? names : names.slice(0, ENGAGEMENTS_SHOWN)
   return (
     <span className="block">
       <span className="font-medium text-violet-700">
         {names.length} engagement{names.length === 1 ? '' : 's'}:
       </span>{' '}
-      {shown.join(', ')}
-      <ShowMoreToggle
-        expanded={expanded}
-        hidden={names.length - ENGAGEMENTS_SHOWN}
-        onToggle={() => setExpanded((v) => !v)}
-        className="ml-1"
-      />
+      <LimitedList items={names} name={(n) => n} noun="engagements" className="inline">
+        {(visible) => visible.join(', ')}
+      </LimitedList>
     </span>
   )
 }

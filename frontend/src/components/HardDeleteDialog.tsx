@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { ApiError } from '../api/client'
 import type { DeletionPlan, DeletionSummary } from '../types/deletion'
 import { inputClass } from './FormField'
+import { LimitedList } from './LimitedList'
 
 interface HardDeleteDialogProps {
   title: string
@@ -63,36 +64,58 @@ export function HardDeleteDialog({ title, loadPlan, onDelete, onClose, onDeleted
           {plan && (
             <>
               {plan.kind === 'engagement' && (
-                <p>
-                  Engagement <span className="font-medium">{plan.name}</span> ({plan.engagement}) and its{' '}
-                  {plan.repositories?.length ?? 0} repositor{plan.repositories?.length === 1 ? 'y' : 'ies'}:{' '}
-                  <span className="font-mono text-xs">{plan.repositories?.join(', ') || 'none'}</span>
-                </p>
+                <LimitedList
+                  items={plan.repositories ?? []}
+                  name={(r) => r}
+                  noun="repositories"
+                  empty={
+                    <p>
+                      Engagement <span className="font-medium">{plan.name}</span> ({plan.engagement}) and its 0 repositories:{' '}
+                      <span className="font-mono text-xs">none</span>
+                    </p>
+                  }
+                >
+                  {(visible) => (
+                    <p>
+                      Engagement <span className="font-medium">{plan.name}</span> ({plan.engagement}) and its{' '}
+                      {plan.repositories?.length ?? 0} repositor{plan.repositories?.length === 1 ? 'y' : 'ies'}:{' '}
+                      <span className="font-mono text-xs">{visible.join(', ')}</span>
+                    </p>
+                  )}
+                </LimitedList>
               )}
               <div className="rounded border border-emerald-300 bg-emerald-50 px-2 py-1 text-xs text-emerald-900">
-                {plan.checkouts.length === 0 ? (
-                  <p>No repository folder is touched.</p>
-                ) : (
-                  plan.checkouts.map((c) => <p key={c.checkout}>{c.stays}</p>)
-                )}
+                <LimitedList items={plan.checkouts} name={(c) => [c.checkout, c.stays]} noun="checkouts" empty={<p>No repository folder is touched.</p>}>
+                  {(visible) => visible.map((c) => <p key={c.checkout}>{c.stays}</p>)}
+                </LimitedList>
               </div>
               {blocked && (
-                <p className="rounded border border-amber-300 bg-amber-50 px-2 py-1 text-xs text-amber-900">
-                  Refused while these run: {plan.running.map((r) => `${r.job} (${r.status})`).join(', ')}. Wait for them
-                  to end.
-                </p>
+                <div className="rounded border border-amber-300 bg-amber-50 px-2 py-1 text-xs text-amber-900">
+                  <LimitedList items={plan.running} name={(r) => r.job} noun="jobs">
+                    {(visible) => (
+                      <p>
+                        Refused while these run: {visible.map((r) => `${r.job} (${r.status})`).join(', ')}. Wait for them to
+                        end.
+                      </p>
+                    )}
+                  </LimitedList>
+                </div>
               )}
               {run.length > 0 && (
                 <div className="rounded border border-red-300 bg-red-50 px-2 py-1 text-xs text-red-900">
                   <p className="font-medium">Conversions that have been run — the agent's work lives only on these branches, and goes with them:</p>
-                  <ul className="list-disc pl-5">
-                    {run.map((r) => (
-                      <li key={`${r.repository}-${r.number}`}>
-                        {r.repository} conversion {r.number}: <span className="font-mono">{r.branch}</span>, {r.agent_commits}{' '}
-                        commit(s) by the agent
-                      </li>
-                    ))}
-                  </ul>
+                  <LimitedList items={run} name={(r) => [r.repository, r.branch]} noun="conversions">
+                    {(visible) => (
+                      <ul className="list-disc pl-5">
+                        {visible.map((r) => (
+                          <li key={`${r.repository}-${r.number}`}>
+                            {r.repository} conversion {r.number}: <span className="font-mono">{r.branch}</span>, {r.agent_commits}{' '}
+                            commit(s) by the agent
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </LimitedList>
                 </div>
               )}
               <div>
@@ -100,56 +123,72 @@ export function HardDeleteDialog({ title, loadPlan, onDelete, onClose, onDeleted
                   {rows} database row(s) in {Object.keys(plan.rows).length} table(s) {showRows ? '▾' : '▸'}
                 </button>
                 {showRows && (
-                  <table className="mt-1 text-xs">
-                    <tbody>
-                      {Object.entries(plan.rows).map(([t, n]) => (
-                        <tr key={t}>
-                          <td className="pr-4 font-mono text-neutral-600">{t}</td>
-                          <td className="text-right">{n}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                  <LimitedList items={Object.entries(plan.rows)} name={([t]) => t} noun="tables" className="mt-1">
+                    {(visible) => (
+                      <table className="text-xs">
+                        <tbody>
+                          {visible.map(([t, n]) => (
+                            <tr key={t}>
+                              <td className="pr-4 font-mono text-neutral-600">{t}</td>
+                              <td className="text-right">{n}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                  </LimitedList>
                 )}
               </div>
               <div className="text-xs">
                 <p className="font-medium text-neutral-700">Folders under RUNS_DIR</p>
-                {plan.folders.length === 0 ? (
-                  <p className="text-neutral-400">none</p>
-                ) : (
-                  plan.folders.map((f) => (
-                    <p key={f.path} className="break-all font-mono">
-                      {f.path} <span className="text-neutral-500">({f.files} files, {mb(f.bytes)})</span>
-                    </p>
-                  ))
-                )}
+                <LimitedList items={plan.folders} name={(f) => f.path} noun="folders" empty={<p className="text-neutral-400">none</p>}>
+                  {(visible) =>
+                    visible.map((f) => (
+                      <p key={f.path} className="break-all font-mono">
+                        {f.path} <span className="text-neutral-500">({f.files} files, {mb(f.bytes)})</span>
+                      </p>
+                    ))
+                  }
+                </LimitedList>
               </div>
-              {plan.checkouts.map((c) => (
-                <div key={c.checkout} className="text-xs">
-                  <p className="font-medium text-neutral-700">
-                    What goes in <span className="break-all font-mono font-normal">{c.checkout}</span>
-                  </p>
-                  {!c.available && <p className="text-neutral-500">Not a git checkout here any more: nothing to remove in it.</p>}
-                  {c.worktrees.length > 0 && <p className="text-neutral-600">{c.worktrees.length} worktree(s) the platform made</p>}
-                  {c.branches.length > 0 && (
-                    <ul className="ml-4 list-disc">
-                      {c.branches.map((b) => (
-                        <li key={b.branch}>
-                          branch <span className="font-mono">{b.branch}</span> <span className="text-neutral-500">({b.source}; {b.commits_only_here} commit(s) on no other branch)</span>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                  {c.kept.map((k) => (
-                    <p key={k.branch} className="text-neutral-500">
-                      kept: <span className="font-mono">{k.branch}</span> — {k.why}
-                    </p>
-                  ))}
-                  {c.available && c.worktrees.length === 0 && c.branches.length === 0 && (
-                    <p className="text-neutral-400">nothing the platform created</p>
-                  )}
-                </div>
-              ))}
+              <LimitedList items={plan.checkouts} name={(c) => c.checkout} noun="checkouts" className="space-y-3">
+                {(visible) =>
+                  visible.map((c) => (
+                    <div key={c.checkout} className="text-xs">
+                      <p className="font-medium text-neutral-700">
+                        What goes in <span className="break-all font-mono font-normal">{c.checkout}</span>
+                      </p>
+                      {!c.available && <p className="text-neutral-500">Not a git checkout here any more: nothing to remove in it.</p>}
+                      {c.worktrees.length > 0 && <p className="text-neutral-600">{c.worktrees.length} worktree(s) the platform made</p>}
+                      {c.branches.length > 0 && (
+                        <LimitedList items={c.branches} name={(b) => b.branch} noun="branches">
+                          {(branches) => (
+                            <ul className="ml-4 list-disc">
+                              {branches.map((b) => (
+                                <li key={b.branch}>
+                                  branch <span className="font-mono">{b.branch}</span> <span className="text-neutral-500">({b.source}; {b.commits_only_here} commit(s) on no other branch)</span>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </LimitedList>
+                      )}
+                      <LimitedList items={c.kept} name={(k) => k.branch} noun="branches">
+                        {(kept) =>
+                          kept.map((k) => (
+                            <p key={k.branch} className="text-neutral-500">
+                              kept: <span className="font-mono">{k.branch}</span> — {k.why}
+                            </p>
+                          ))
+                        }
+                      </LimitedList>
+                      {c.available && c.worktrees.length === 0 && c.branches.length === 0 && (
+                        <p className="text-neutral-400">nothing the platform created</p>
+                      )}
+                    </div>
+                  ))
+                }
+              </LimitedList>
               <p className="text-xs text-neutral-500">
                 Kept: {plan.kept_shared}.{plan.estate_note && ` Note: ${plan.estate_note}.`}
               </p>

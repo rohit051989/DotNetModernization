@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { LimitedList } from './LimitedList'
 
 /** A small, dependency-free collapsible JSON tree — approximate syntax
  * highlighting by value type, objects/arrays collapsible. */
@@ -45,6 +46,16 @@ function CollapsibleContainer({
 }) {
   const [expanded, setExpanded] = useState(depth < 2)
 
+  const renderEntries = (shown: { key: string; value: unknown }[]) =>
+    shown.map(({ key, value }, index) => (
+      <div key={key}>
+        {showKeys && <span className="text-neutral-700">"{key}"</span>}
+        {showKeys && <span className="text-neutral-400">: </span>}
+        <JsonNode value={value} depth={depth + 1} />
+        {index < entries.length - 1 && <span className="text-neutral-400">,</span>}
+      </div>
+    ))
+
   if (count === 0) {
     return (
       <span className="text-neutral-400">
@@ -62,14 +73,18 @@ function CollapsibleContainer({
       </button>
       {expanded && (
         <div className="ml-4 border-l border-neutral-100 pl-3">
-          {entries.map(({ key, value }, index) => (
-            <div key={key}>
-              {showKeys && <span className="text-neutral-700">"{key}"</span>}
-              {showKeys && <span className="text-neutral-400">: </span>}
-              <JsonNode value={value} depth={depth + 1} />
-              {index < entries.length - 1 && <span className="text-neutral-400">,</span>}
-            </div>
-          ))}
+          {/* An array is a list and is limited like every list; an object's keys are the fields of one record. */}
+          {showKeys ? (
+            renderEntries(entries)
+          ) : (
+            <LimitedList
+              items={entries}
+              name={({ value }) => (value !== null && typeof value === 'object' ? null : String(value))}
+              noun="items"
+            >
+              {renderEntries}
+            </LimitedList>
+          )}
         </div>
       )}
       {expanded && <span className="text-neutral-400">{close}</span>}

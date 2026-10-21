@@ -1,18 +1,12 @@
 import { Fragment, useEffect, useState } from 'react'
 import { ApiError } from '../../api/client'
 import { getRepositoryImpact, getWorkItemImpact } from '../../api/surface'
-import { ShowMoreToggle } from '../../components/ShowMoreToggle'
+import { LimitedList } from '../../components/LimitedList'
 import type { FileRollup, ImpactAction, ImpactConflict, ImpactEntry, RepositoryImpact, ResolutionImpact, RollupWorkItem, RuleConflict, RuleSide, WorkItemImpact, WorkItemSummary } from '../../types/impact'
 import { SourceLink } from './SourceLink'
 
 /** The order actions are listed in, strongest first (33-IMPACT-ANALYSIS Part F). */
 const ACTIONS: ImpactAction[] = ['delete', 'rewrite', 'update', 'create', 'review']
-
-/** How many files the per-file table lists before "+N more". */
-const FILES_SHOWN = 30
-
-/** How many traversal paths an entry shows before "+N more". */
-const PATHS_SHOWN = 3
 
 const ACTION_STYLE: Record<ImpactAction, string> = {
   delete: 'border-red-200 bg-red-50 text-red-800',
@@ -72,8 +66,16 @@ function Conflicts({ rules, workItems, localPath }: { rules: RuleConflict[]; wor
       {rules.length > 0 && (
         <div>
           <p className="text-xs font-medium text-neutral-700">Catalog rule conflicts — fix once, in the catalog rules</p>
+          <LimitedList
+            items={rules}
+            name={(g) => [g.first.item_name, g.first.resolution_name, g.second.item_name, g.second.resolution_name]}
+            noun="rule conflicts"
+          >
+            {(visible) => (
           <ul className="space-y-1.5">
-            {rules.map((g, index) => (
+            {visible.map((g) => {
+              const index = rules.indexOf(g)
+              return (
               <li key={index} className="text-xs">
                 <span className="text-red-700">
                   1 rule conflict affecting {g.work_items} work items across {g.repositories} repositor{g.repositories === 1 ? 'y' : 'ies'}
@@ -95,26 +97,35 @@ function Conflicts({ rules, workItems, localPath }: { rules: RuleConflict[]; wor
                   {open === index ? 'hide files' : 'files'}
                 </button>
                 {open === index && (
-                  <ul className="ml-3">
-                    {g.instances.map((c) => (
-                      <li key={`${c.file_key}:${c.first.project_path}:${c.second.project_path}`}>
-                        <SourceLink localPath={localPath} filePath={c.file_key} line={1} className="font-mono">
-                          {c.file_key}
-                        </SourceLink>
-                      </li>
-                    ))}
-                  </ul>
+                  <LimitedList items={g.instances} name={(c) => c.file_key} noun="files" className="ml-3">
+                    {(visibleInstances) => (
+                      <ul>
+                        {visibleInstances.map((c) => (
+                          <li key={`${c.file_key}:${c.first.project_path}:${c.second.project_path}`}>
+                            <SourceLink localPath={localPath} filePath={c.file_key} line={1} className="font-mono">
+                              {c.file_key}
+                            </SourceLink>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </LimitedList>
                 )}
               </li>
-            ))}
+              )
+            })}
           </ul>
+            )}
+          </LimitedList>
         </div>
       )}
       {workItems.length > 0 && (
         <div>
           <p className="text-xs font-medium text-neutral-700">Work-item conflicts — a person decides</p>
+          <LimitedList items={workItems} name={(c) => [c.file_key, c.first.item_name, c.second.item_name]} noun="conflicts">
+            {(visible) => (
           <ul className="space-y-1.5">
-            {workItems.map((c, index) => (
+            {visible.map((c, index) => (
               <li key={`${c.file_key}:${index}`}>
                 <span className="mr-1 text-xs text-red-700">{CONFLICT_KIND[c.kind]}</span>
                 <span className="font-mono text-xs">{c.file_key}</span>
@@ -131,6 +142,8 @@ function Conflicts({ rules, workItems, localPath }: { rules: RuleConflict[]; wor
               </li>
             ))}
           </ul>
+            )}
+          </LimitedList>
         </div>
       )}
     </div>
@@ -149,8 +162,6 @@ function WorkItemRef({ item }: { item: RollupWorkItem }) {
 /** One impacted file: path (a link where it is in this repository), certainty,
  * reasons, and the traversal path back to the seed. */
 function EntryRow({ entry, localPath }: { entry: ImpactEntry; localPath: string | null }) {
-  const [showPaths, setShowPaths] = useState(false)
-  const paths = showPaths ? entry.traversal_paths : entry.traversal_paths.slice(0, PATHS_SHOWN)
   return (
     <li className="py-1">
       <div className="flex flex-wrap items-baseline gap-1.5">
@@ -173,26 +184,37 @@ function EntryRow({ entry, localPath }: { entry: ImpactEntry; localPath: string 
         {entry.certainty === 'possible' && <span className="text-[11px] text-amber-700">possible</span>}
       </div>
       {entry.description && <p className="ml-1 text-xs text-neutral-600">{entry.description}</p>}
-      {entry.details.map((d) => (
-        <p key={d} className="ml-1 text-xs text-neutral-700">
-          {d}
-        </p>
-      ))}
-      <ul className="ml-1 text-xs text-neutral-600">
-        {entry.reasons.map((r) => (
-          <li key={r.ruleId}>
-            <span className="font-mono text-neutral-400">{r.ruleId}</span> {r.reason}
-          </li>
-        ))}
-      </ul>
-      <ul className="ml-1 text-[11px] text-neutral-400">
-        {paths.map((p) => (
-          <li key={p} className="font-mono">
-            {p}
-          </li>
-        ))}
-      </ul>
-      <ShowMoreToggle expanded={showPaths} hidden={entry.traversal_paths.length - PATHS_SHOWN} onToggle={() => setShowPaths((v) => !v)} className="ml-1 text-[11px]" />
+      <LimitedList items={entry.details} name={(d) => d} noun="details">
+        {(visible) =>
+          visible.map((d) => (
+            <p key={d} className="ml-1 text-xs text-neutral-700">
+              {d}
+            </p>
+          ))
+        }
+      </LimitedList>
+      <LimitedList items={entry.reasons} name={(r) => [r.ruleId, r.reason]} noun="reasons">
+        {(visible) => (
+          <ul className="ml-1 text-xs text-neutral-600">
+            {visible.map((r) => (
+              <li key={r.ruleId}>
+                <span className="font-mono text-neutral-400">{r.ruleId}</span> {r.reason}
+              </li>
+            ))}
+          </ul>
+        )}
+      </LimitedList>
+      <LimitedList items={entry.traversal_paths} name={(p) => p} noun="paths" className="ml-1">
+        {(visible) => (
+          <ul className="text-[11px] text-neutral-400">
+            {visible.map((p) => (
+              <li key={p} className="font-mono">
+                {p}
+              </li>
+            ))}
+          </ul>
+        )}
+      </LimitedList>
     </li>
   )
 }
@@ -217,11 +239,15 @@ function ResolutionFiles({ resolution, localPath }: { resolution: ResolutionImpa
               {open[key] ? '▾' : '▸'} {action} ({entries.length})
             </button>
             {open[key] && (
-              <ul className="ml-3 divide-y divide-neutral-100">
-                {entries.map((e) => (
-                  <EntryRow key={`${e.source}:${e.file_repository_slug ?? ''}:${e.file_path ?? e.proposed_path}`} entry={e} localPath={localPath} />
-                ))}
-              </ul>
+              <LimitedList items={entries} name={(e) => [e.file_repository_slug, e.file_path ?? e.proposed_path]} noun="files" className="ml-3">
+                {(visible) => (
+                  <ul className="divide-y divide-neutral-100">
+                    {visible.map((e) => (
+                      <EntryRow key={`${e.source}:${e.file_repository_slug ?? ''}:${e.file_path ?? e.proposed_path}`} entry={e} localPath={localPath} />
+                    ))}
+                  </ul>
+                )}
+              </LimitedList>
             )}
           </div>
         )
@@ -229,11 +255,15 @@ function ResolutionFiles({ resolution, localPath }: { resolution: ResolutionImpa
       {resolution.known_limits.length > 0 && (
         <div className="mt-1 text-xs text-neutral-500">
           Known limits:
-          <ul className="ml-3 list-disc">
-            {resolution.known_limits.map((l) => (
-              <li key={l}>{l}</li>
-            ))}
-          </ul>
+          <LimitedList items={resolution.known_limits} name={(l) => l} noun="known limits">
+            {(visible) => (
+              <ul className="ml-3 list-disc">
+                {visible.map((l) => (
+                  <li key={l}>{l}</li>
+                ))}
+              </ul>
+            )}
+          </LimitedList>
         </div>
       )}
     </div>
@@ -338,6 +368,23 @@ function FileKey({ file, localPath }: { file: FileRollup; localPath: string | nu
   )
 }
 
+/** The work items that touch one file: a list of its own, limited independently of the file list. */
+function FileWorkItems({ file }: { file: FileRollup }) {
+  return (
+    <LimitedList items={file.work_items} name={(i) => [i.item_name, i.project_path]} noun="work items" className="ml-3">
+      {(visible) => (
+        <ul className="text-xs">
+          {visible.map((i) => (
+            <li key={`${i.item_id}:${i.project_path}:${i.source}`}>
+              <WorkItemRef item={i} />
+            </li>
+          ))}
+        </ul>
+      )}
+    </LimitedList>
+  )
+}
+
 /** impact-analysis's Impact section (33-IMPACT-ANALYSIS Part J): the repository summary,
  * hotspots and conflicts, each work item with its default-versus-chosen
  * side by side, and the per-file view. */
@@ -345,8 +392,6 @@ export function RepositoryImpactSection({ repositoryId, localPath, refreshToken 
   const [data, setData] = useState<RepositoryImpact | null>(null)
   const [state, setState] = useState<'loading' | 'ready' | 'not_scanned' | 'error'>('loading')
   const [expanded, setExpanded] = useState<string | null>(null)
-  const [showAllFiles, setShowAllFiles] = useState(false)
-  const [fileFilter, setFileFilter] = useState('')
 
   useEffect(() => {
     let cancelled = false
@@ -370,9 +415,6 @@ export function RepositoryImpactSection({ repositoryId, localPath, refreshToken 
   if (state === 'error' || !data) return <p className="text-sm text-red-600">Could not load the impact.</p>
 
   const t = data.totals
-  const filter = fileFilter.trim().toLowerCase()
-  const files = data.files.filter((f) => !filter || f.file_key.toLowerCase().includes(filter))
-  const shownFiles = showAllFiles ? files : files.slice(0, FILES_SHOWN)
 
   return (
     <div className="space-y-4 text-sm">
@@ -404,24 +446,18 @@ export function RepositoryImpactSection({ repositoryId, localPath, refreshToken 
         <div className="grid gap-3 lg:grid-cols-2">
           <div>
             <h4 className="mb-1 text-[11px] font-medium uppercase tracking-wide text-neutral-400">Hotspots — three or more work items</h4>
-            {data.hotspots.length === 0 ? (
-              <p className="text-xs text-neutral-400">None.</p>
-            ) : (
-              <ul className="space-y-1.5">
-                {data.hotspots.map((f) => (
-                  <li key={f.file_key}>
-                    <FileKey file={f} localPath={localPath} />
-                    <ul className="ml-3 text-xs">
-                      {f.work_items.map((i) => (
-                        <li key={`${i.item_id}:${i.project_path}:${i.source}`}>
-                          <WorkItemRef item={i} />
-                        </li>
-                      ))}
-                    </ul>
-                  </li>
-                ))}
-              </ul>
-            )}
+            <LimitedList items={data.hotspots} name={(f) => f.file_key} noun="hotspots" empty={<p className="text-xs text-neutral-400">None.</p>}>
+              {(visible) => (
+                <ul className="space-y-1.5">
+                  {visible.map((f) => (
+                    <li key={f.file_key}>
+                      <FileKey file={f} localPath={localPath} />
+                      <FileWorkItems file={f} />
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </LimitedList>
           </div>
           <div>
             <h4 className="mb-1 text-[11px] font-medium uppercase tracking-wide text-neutral-400">Conflicts</h4>
@@ -433,6 +469,8 @@ export function RepositoryImpactSection({ repositoryId, localPath, refreshToken 
       {/* Work items */}
       <div>
         <h4 className="mb-1 text-[11px] font-medium uppercase tracking-wide text-neutral-400">Work items</h4>
+        <LimitedList items={data.work_items} name={(w) => [w.item_name, w.project_path]} noun="work items">
+          {(visibleWorkItems) => (
         <table className="w-full text-xs">
           <thead>
             <tr className="text-left text-neutral-500">
@@ -443,7 +481,7 @@ export function RepositoryImpactSection({ repositoryId, localPath, refreshToken 
             </tr>
           </thead>
           <tbody>
-            {data.work_items.map((w) => {
+            {visibleWorkItems.map((w) => {
               const key = `${w.item_id}|${w.project_path}`
               const open = expanded === key
               return (
@@ -452,7 +490,9 @@ export function RepositoryImpactSection({ repositoryId, localPath, refreshToken 
                     <td className="py-1 pr-3 font-medium">{w.item_name}</td>
                     <td className="py-1 pr-3 font-mono text-neutral-500">{w.project_path}</td>
                     <td className="py-1 pr-3">
-                      {w.resolutions.map((r) => (
+                      <LimitedList items={w.resolutions} name={(r) => r.name} noun="resolutions">
+                        {(visibleResolutions) =>
+                          visibleResolutions.map((r) => (
                         <div key={r.resolution_id}>
                           <span className={r.effective ? 'font-medium' : 'text-neutral-500'}>{r.name}</span>{' '}
                           <span className="text-neutral-400">({roleLabel(r.roles).toLowerCase()})</span>{' '}
@@ -469,7 +509,9 @@ export function RepositoryImpactSection({ repositoryId, localPath, refreshToken 
                           )}
                           {r.stale && <span className="ml-1 text-amber-700">stale</span>}
                         </div>
-                      ))}
+                          ))
+                        }
+                      </LimitedList>
                     </td>
                     <td className="py-1 text-right">
                       <button type="button" onClick={() => setExpanded(open ? null : key)} className="text-violet-700 hover:underline">
@@ -489,38 +531,29 @@ export function RepositoryImpactSection({ repositoryId, localPath, refreshToken 
             })}
           </tbody>
         </table>
+          )}
+        </LimitedList>
       </div>
 
       {/* Per-file view */}
       <div>
-        <div className="mb-1 flex items-center gap-2">
-          <h4 className="text-[11px] font-medium uppercase tracking-wide text-neutral-400">Files</h4>
-          <input
-            value={fileFilter}
-            onChange={(e) => setFileFilter(e.target.value)}
-            placeholder="filter by path"
-            className="rounded border border-neutral-200 px-1.5 py-0.5 text-xs"
-          />
-        </div>
-        <ul className="divide-y divide-neutral-100">
-          {shownFiles.map((f) => (
-            <li key={f.file_key} className="py-1">
-              <div className="flex flex-wrap items-baseline gap-1.5">
-                <FileKey file={f} localPath={localPath} />
-                {f.hotspot && <span className="text-[11px] text-amber-700">hotspot</span>}
-                {f.conflicts > 0 && <span className="text-[11px] text-red-700">{f.conflicts} conflict(s)</span>}
-              </div>
-              <ul className="ml-3 text-xs">
-                {f.work_items.map((i) => (
-                  <li key={`${i.item_id}:${i.project_path}:${i.source}`}>
-                    <WorkItemRef item={i} />
-                  </li>
-                ))}
-              </ul>
-            </li>
-          ))}
-        </ul>
-        <ShowMoreToggle expanded={showAllFiles} hidden={files.length - FILES_SHOWN} onToggle={() => setShowAllFiles((v) => !v)} className="text-xs" />
+        <h4 className="mb-1 text-[11px] font-medium uppercase tracking-wide text-neutral-400">Files</h4>
+        <LimitedList items={data.files} name={(f) => f.file_key} noun="files">
+          {(visible) => (
+            <ul className="divide-y divide-neutral-100">
+              {visible.map((f) => (
+                <li key={f.file_key} className="py-1">
+                  <div className="flex flex-wrap items-baseline gap-1.5">
+                    <FileKey file={f} localPath={localPath} />
+                    {f.hotspot && <span className="text-[11px] text-amber-700">hotspot</span>}
+                    {f.conflicts > 0 && <span className="text-[11px] text-red-700">{f.conflicts} conflict(s)</span>}
+                  </div>
+                  <FileWorkItems file={f} />
+                </li>
+              ))}
+            </ul>
+          )}
+        </LimitedList>
       </div>
     </div>
   )

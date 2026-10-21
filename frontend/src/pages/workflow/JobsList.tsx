@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { listExecutions, listJobDefinitions } from '../../api/workflow'
 import type { JobDefinitionSummary, JobExecution } from '../../types/workflow'
 import { BatchStatusBadge } from '../../components/WorkflowBadges'
+import { LimitedList } from '../../components/LimitedList'
 import { LaunchJobDrawer } from './LaunchJobDrawer'
 
 function formatRelative(iso: string | null): string {
@@ -64,70 +65,74 @@ export function JobsList({ engagementId, selectedJobName, onSelectExecution, onS
       {!loading && jobs.length === 0 && <p className="p-4 text-sm text-neutral-400">No jobs registered.</p>}
       {!loading && jobs.length > 0 && (
         <div className="overflow-x-auto">
-        <table className="w-full min-w-[640px] text-left text-sm">
-          <thead className="text-xs uppercase tracking-wide text-neutral-500">
-            <tr>
-              <th className="px-4 py-2 font-medium">Job</th>
-              <th className="px-3 py-2 font-medium">Version</th>
-              <th className="px-3 py-2 font-medium">Scope</th>
-              <th className="px-3 py-2 font-medium">Steps implemented</th>
-              <th className="px-3 py-2 font-medium">Last execution</th>
-              <th className="px-3 py-2 font-medium" />
-            </tr>
-          </thead>
-          <tbody>
-            {jobs.map((job) => {
-              const last = lastExecutions[job.job_name]
-              const isSelected = selectedJobName === job.job_name
-              return (
-                <tr key={job.job_name} className={`border-b border-neutral-100 ${isSelected ? 'bg-violet-50/60' : ''}`}>
-                  <td className="px-4 py-2">
-                    <button
-                      type="button"
-                      onClick={() => onSelectJob(job.job_name)}
-                      title="View flow, consumes/produces, and policy state"
-                      className="flex items-center gap-1.5 text-left font-medium text-violet-700 hover:text-violet-800 hover:underline"
-                    >
-                      <span aria-hidden="true" className="text-neutral-400">
-                        {isSelected ? '▾' : '▸'}
-                      </span>
-                      {job.job_name}
-                    </button>
-                    {job.description && <div className="pl-4 text-xs text-neutral-400">{job.description}</div>}
-                  </td>
-                  <td className="px-3 py-2 text-neutral-600">v{job.active_version}</td>
-                  <td className="px-3 py-2 text-neutral-500">{SCOPE_LABELS[job.scope]}</td>
-                  <td className="px-3 py-2 text-neutral-600">
-                    {job.implemented_step_count} of {job.step_count} implemented
-                  </td>
-                  <td className="px-3 py-2">
-                    {last ? (
-                      <button
-                        type="button"
-                        onClick={() => onSelectExecution(last.id)}
-                        className="flex items-center gap-2 hover:underline"
-                      >
-                        <BatchStatusBadge status={last.batch_status} />
-                        <span className="text-xs text-neutral-400">{formatRelative(last.started_at ?? last.created_at)}</span>
-                      </button>
-                    ) : (
-                      <span className="text-xs text-neutral-300">never run</span>
-                    )}
-                  </td>
-                  <td className="px-3 py-2 text-right">
-                    <button
-                      type="button"
-                      onClick={() => setLaunchingJob(job.job_name)}
-                      className="rounded bg-violet-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-violet-700"
-                    >
-                      Launch
-                    </button>
-                  </td>
+        <LimitedList items={jobs} name={(j) => j.job_name} noun="jobs">
+          {(visible) => (
+            <table className="w-full min-w-[640px] text-left text-sm">
+              <thead className="text-xs uppercase tracking-wide text-neutral-500">
+                <tr>
+                  <th className="px-4 py-2 font-medium">Job</th>
+                  <th className="px-3 py-2 font-medium">Version</th>
+                  <th className="px-3 py-2 font-medium">Scope</th>
+                  <th className="px-3 py-2 font-medium">Steps implemented</th>
+                  <th className="px-3 py-2 font-medium">Last execution</th>
+                  <th className="px-3 py-2 font-medium" />
                 </tr>
-              )
-            })}
-          </tbody>
-        </table>
+              </thead>
+              <tbody>
+                {visible.map((job) => {
+                  const last = lastExecutions[job.job_name]
+                  const isSelected = selectedJobName === job.job_name
+                  return (
+                    <tr key={job.job_name} className={`border-b border-neutral-100 ${isSelected ? 'bg-violet-50/60' : ''}`}>
+                      <td className="px-4 py-2">
+                        <button
+                          type="button"
+                          onClick={() => onSelectJob(job.job_name)}
+                          title="View flow, consumes/produces, and policy state"
+                          className="flex items-center gap-1.5 text-left font-medium text-violet-700 hover:text-violet-800 hover:underline"
+                        >
+                          <span aria-hidden="true" className="text-neutral-400">
+                            {isSelected ? '▾' : '▸'}
+                          </span>
+                          {job.job_name}
+                        </button>
+                        {job.description && <div className="pl-4 text-xs text-neutral-400">{job.description}</div>}
+                      </td>
+                      <td className="px-3 py-2 text-neutral-600">v{job.active_version}</td>
+                      <td className="px-3 py-2 text-neutral-500">{SCOPE_LABELS[job.scope]}</td>
+                      <td className="px-3 py-2 text-neutral-600">
+                        {job.implemented_step_count} of {job.step_count} implemented
+                      </td>
+                      <td className="px-3 py-2">
+                        {last ? (
+                          <button
+                            type="button"
+                            onClick={() => onSelectExecution(last.id)}
+                            className="flex items-center gap-2 hover:underline"
+                          >
+                            <BatchStatusBadge status={last.batch_status} />
+                            <span className="text-xs text-neutral-400">{formatRelative(last.started_at ?? last.created_at)}</span>
+                          </button>
+                        ) : (
+                          <span className="text-xs text-neutral-300">never run</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 text-right">
+                        <button
+                          type="button"
+                          onClick={() => setLaunchingJob(job.job_name)}
+                          className="rounded bg-violet-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-violet-700"
+                        >
+                          Launch
+                        </button>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          )}
+        </LimitedList>
         </div>
       )}
 

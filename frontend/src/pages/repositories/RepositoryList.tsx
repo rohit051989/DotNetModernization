@@ -8,6 +8,7 @@ import type { DashboardRepositoryRow } from '../../types/dashboard'
 import { EmptyState } from '../../components/EmptyState'
 import { CriticalityBadge, CloneUrlVerificationBadge, IngestStatusBadge, RetirementBadge } from '../../components/RepositoryBadges'
 import { DiscoveryProgressBar } from '../../components/DiscoveryProgressBar'
+import { LimitedList } from '../../components/LimitedList'
 import { RegisterRepositoryDrawer } from './RegisterRepositoryDrawer'
 
 const INGEST_STATUS_OPTIONS = ['registered', 'scanned', 'scan_failed', 'path_missing']
@@ -242,6 +243,8 @@ export function RepositoryList({
           />
         )}
         {!loading && !error && repositories.length > 0 && (
+          <LimitedList items={repositories} noun="repositories">
+            {(visibleRepositories) => (
           <table className="w-full min-w-[760px] text-left text-sm">
             <thead className="sticky top-0 bg-neutral-50 text-xs uppercase tracking-wide text-neutral-500">
               <tr>
@@ -256,7 +259,7 @@ export function RepositoryList({
               </tr>
             </thead>
             <tbody>
-              {repositories.map((repo) => {
+              {visibleRepositories.map((repo) => {
                 const progress = progressByRepo[repo.id]
                 const latest = progress?.latest_execution ?? null
                 return (
@@ -321,6 +324,8 @@ export function RepositoryList({
               })}
             </tbody>
           </table>
+            )}
+          </LimitedList>
         )}
       </div>
 

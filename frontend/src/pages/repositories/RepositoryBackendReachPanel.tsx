@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useState } from 'react'
 import { ApiError } from '../../api/client'
 import { CollapsibleSection, GroupedItems } from '../../components/CollapsibleSection'
+import { LimitedList, useLimitedList } from '../../components/LimitedList'
 import { surfaceSectionId } from './surfaceSections'
 import { getRepositoryEntryPointBackend } from '../../api/surface'
 import { SourceLink } from './SourceLink'
@@ -47,14 +48,18 @@ function Endpoint({ call }: { call: BackendCall }) {
             {open ? 'Hide' : 'Show'} {others.length} other environment{others.length === 1 ? '' : 's'}
           </button>
           {open && (
+            <LimitedList items={others} name={(o) => [o.environment, o.host]} noun="environments">
+              {(shown) => (
             <ul className="mt-0.5 space-y-0.5">
-              {others.map((o) => (
+              {shown.map((o) => (
                 <li key={`${o.environment}|${o.source_file}`} className="text-[11px]" title={o.source_file ?? undefined}>
                   <span className="text-neutral-400">{o.environment}</span> <span className="break-all font-mono text-neutral-700">{hostLabel(o)}</span>
                   {o.linux_verdict === 'requires_change' && <span className="ml-1 text-amber-700">requires change</span>}
                 </li>
               ))}
             </ul>
+              )}
+            </LimitedList>
           )}
         </div>
       )}
@@ -73,42 +78,52 @@ function Flags({ call }: { call: BackendCall }) {
   )
 }
 
+/** One inbound operation: its backend calls are rows of the operations table (the operation's cells span them), so
+ * they are limited with the list hook, its controls in a row of their own. */
 function Row({ row, localPath }: { row: EntryPointBackendRow; localPath: string }) {
   const status = STATUS[row.status]
-  const calls: (BackendCall | null)[] = row.calls.length > 0 ? row.calls : [null]
+  const list = useLimitedList(row.calls, { name: (c) => [c.operation, c.contract, c.call_site.filePath], noun: 'backend calls' })
+  const calls: (BackendCall | null)[] = list.visible.length > 0 ? list.visible : [null]
+  const span = calls.length + (list.hasControls ? 1 : 0)
   return (
     <>
       {calls.map((call, index) => (
-        <tr key={call ? `${call.invocation_id}|${call.call_site.lineStart}` : 'none'} className={`align-top ${index === calls.length - 1 ? 'border-b border-neutral-100' : ''}`}>
+        <tr
+          key={call ? `${call.invocation_id}|${call.call_site.lineStart}` : 'none'}
+          className={`align-top ${index === calls.length - 1 && !list.hasControls ? 'border-b border-neutral-100' : ''}`}
+        >
           {index === 0 && (
             <>
-              <td rowSpan={calls.length} className="py-1.5 pr-2 text-right text-neutral-400">
+              <td rowSpan={span} className="py-1.5 pr-2 text-right text-neutral-400">
                 {row.number}
               </td>
-              <td rowSpan={calls.length} className="py-1.5 pr-3 font-mono text-neutral-700">
+              <td rowSpan={span} className="py-1.5 pr-3 font-mono text-neutral-700">
                 {row.service}
               </td>
-              <td rowSpan={calls.length} className="py-1.5 pr-3">
+              <td rowSpan={span} className="py-1.5 pr-3">
                 <SourceLink localPath={localPath} filePath={row.handler.filePath} line={row.handler.lineStart} className="font-mono text-neutral-900">
                   {row.operation}
                 </SourceLink>
               </td>
-              <td rowSpan={calls.length} className="py-1.5 pr-3">
+              <td rowSpan={span} className="py-1.5 pr-3">
+                {list.filterBox}
                 <span className={`whitespace-nowrap rounded border px-1.5 py-0.5 text-[11px] font-medium ${status.style}`} title={status.title}>
                   {status.label}
                 </span>
-                {row.unresolved.length > 0 && (
-                  <ul className="mt-1 space-y-0.5 text-[11px] text-amber-800">
-                    {row.unresolved.map((u) => (
-                      <li key={`${u.reason}|${u.callSite.lineStart}`}>
-                        not followed: {u.reason}{' '}
-                        <SourceLink localPath={localPath} filePath={u.callSite.filePath} line={u.callSite.lineStart} className="font-mono text-neutral-500">
-                          :{u.callSite.lineStart}
-                        </SourceLink>
-                      </li>
-                    ))}
-                  </ul>
-                )}
+                <LimitedList items={row.unresolved} name={(u) => [u.reason, u.callSite.filePath]} noun="paths not followed">
+                  {(shown) => (
+                    <ul className="mt-1 space-y-0.5 text-[11px] text-amber-800">
+                      {shown.map((u) => (
+                        <li key={`${u.reason}|${u.callSite.lineStart}`}>
+                          not followed: {u.reason}{' '}
+                          <SourceLink localPath={localPath} filePath={u.callSite.filePath} line={u.callSite.lineStart} className="font-mono text-neutral-500">
+                            :{u.callSite.lineStart}
+                          </SourceLink>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </LimitedList>
               </td>
             </>
           )}
@@ -137,17 +152,30 @@ function Row({ row, localPath }: { row: EntryPointBackendRow; localPath: string 
             </>
           ) : (
             <td colSpan={4} className="py-1.5 text-neutral-300">
-              —
+              {list.noMatch ?? '—'}
             </td>
           )}
         </tr>
       ))}
+      {list.hasControls && (
+        <tr className="border-b border-neutral-100">
+          <td colSpan={4} className="pb-1.5">
+            {list.controls}
+          </td>
+        </tr>
+      )}
     </>
   )
 }
 
-function Application({ app, localPath }: { app: EntryPointBackend['applications'][number]; localPath: string }) {
-  const [expanded, setExpanded] = useState(true)
+type Application = EntryPointBackend['applications'][number]
+
+/** A list of at most this many panels opens them all at first; a longer one starts with each folded. */
+const FEW_OPEN = 3
+
+/** Open at first only when it is one of a few: its header line already gives its counts (rbc-release-6). */
+function Application({ app, localPath, defaultOpen = true }: { app: Application; localPath: string; defaultOpen?: boolean }) {
+  const [expanded, setExpanded] = useState(defaultOpen)
   const count = (s: BackendStatus) => app.rows.filter((r) => r.status === s).length
   return (
     <div className="rounded border border-neutral-200">
@@ -168,7 +196,10 @@ function Application({ app, localPath }: { app: EntryPointBackend['applications'
         </span>
       </button>
       {expanded && (
-        <div className="overflow-x-auto border-t border-neutral-100 px-3 py-2">
+        <div className="border-t border-neutral-100 px-3 py-2">
+        <LimitedList items={app.rows} name={(row) => [row.service, row.operation, row.handler.type, row.handler.member]} noun="operations">
+          {(shown) => (
+        <div className="overflow-x-auto">
           <table className="w-full min-w-[1000px] text-left text-xs">
             <thead className="text-neutral-400">
               <tr className="border-b border-neutral-200">
@@ -180,13 +211,16 @@ function Application({ app, localPath }: { app: EntryPointBackend['applications'
               </tr>
             </thead>
             <tbody>
-              {app.rows.map((row) => (
+              {shown.map((row) => (
                 <Fragment key={row.entry_point_id}>
                   <Row row={row} localPath={localPath} />
                 </Fragment>
               ))}
             </tbody>
           </table>
+        </div>
+          )}
+        </LimitedList>
         </div>
       )}
     </div>
@@ -261,22 +295,37 @@ export function RepositoryBackendReachPanel({ repositoryId, localPath, refreshTo
             make backend calls are shown as not followed, never guessed. The endpoint is the{' '}
             {data.production_environment ? `${data.production_environment} environment's host` : 'host as found (no production environment is set)'}.
           </p>
-          {withRows.length === 0 ? (
-            <p className="text-sm text-neutral-400">No request entry points in this repository.</p>
-          ) : (
-            withRows.map((app) => <Application key={app.project_id} app={app} localPath={localPath} />)
-          )}
-          {withoutRows.length > 0 && (
-            <GroupedItems label={`${withoutRows.length} application${withoutRows.length === 1 ? '' : 's'} with no inbound operations`}>
-              <ul className="space-y-0.5 text-xs text-neutral-500">
-                {withoutRows.map((app) => (
-                  <li key={app.project_id} className="break-all font-mono">
-                    {app.project_path}
-                  </li>
-                ))}
-              </ul>
-            </GroupedItems>
-          )}
+          {withRows.length === 0 && <p className="text-sm text-neutral-400">No request entry points in this repository.</p>}
+          {/* One list: an application per project with inbound operations, and the grouped line for the rest, which counts as one. */}
+          <LimitedList<Application | 'without'>
+            items={[...withRows, ...(withoutRows.length > 0 ? (['without'] as const) : [])]}
+            name={(a) => (a === 'without' ? withoutRows.map((w) => w.project_path) : a.project_path)}
+            noun="applications"
+          >
+            {(shown) => (
+              <div className="space-y-2">
+                {shown.map((app) =>
+                  app === 'without' ? (
+                    <GroupedItems key="without" label={`${withoutRows.length} application${withoutRows.length === 1 ? '' : 's'} with no inbound operations`}>
+                      <LimitedList items={withoutRows} name={(w) => w.project_path} noun="applications">
+                        {(rows) => (
+                          <ul className="space-y-0.5 text-xs text-neutral-500">
+                            {rows.map((w) => (
+                              <li key={w.project_id} className="break-all font-mono">
+                                {w.project_path}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </LimitedList>
+                    </GroupedItems>
+                  ) : (
+                    <Application key={app.project_id} app={app} localPath={localPath} defaultOpen={withRows.length <= FEW_OPEN} />
+                  ),
+                )}
+              </div>
+            )}
+          </LimitedList>
         </div>
       )}
     </CollapsibleSection>

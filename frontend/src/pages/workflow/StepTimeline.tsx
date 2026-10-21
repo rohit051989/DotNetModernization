@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { getArtifact } from '../../api/workflow'
 import { CopyButton } from '../../components/CopyButton'
+import { LimitedList } from '../../components/LimitedList'
 import { OwnerCodeBadge, StubChip, GateChip, CarriedForwardChip, SkipReasonChip } from '../../components/WorkflowBadges'
 import type { ArtifactSummary, StepExecution } from '../../types/workflow'
 import { ArtifactContentView } from './artifacts/ArtifactContentView'
@@ -132,147 +133,163 @@ export function StepTimeline({ steps, artifactsById, localPath, onViewArtifact }
 
   return (
     <div className="space-y-0">
-      {steps.map((step, index) => (
-        <div key={step.step_execution_id} className="relative flex gap-3 pb-4">
-          <div className="flex flex-col items-center">
-            <span className={`mt-1 h-3 w-3 flex-none rounded-full ${markerClass(step)}`} />
-            {index < steps.length - 1 && <span className="mt-1 w-px flex-1 bg-neutral-200" />}
-          </div>
-          <div className={`min-w-0 flex-1 rounded border px-3 py-2 ${step.batch_status === 'FAILED' ? 'border-red-200 bg-red-50/40' : 'border-neutral-200 bg-white'}`}>
-            <button type="button" onClick={() => toggle(step)} className="flex w-full flex-wrap items-center gap-2 text-left">
-              <span className="font-mono text-xs text-neutral-400">
-                #{step.sequence}
-                {step.lifecycle_step_no !== null ? ` · L${step.lifecycle_step_no}` : ''}
-              </span>
-              <span className={`text-sm font-medium ${step.exit_status === 'NOT_IMPLEMENTED' ? 'text-neutral-400' : 'text-neutral-900'}`}>
-                {step.display_name}
-              </span>
-              <OwnerCodeBadge code={step.owner_code} />
-              {step.exit_status === 'NOT_IMPLEMENTED' && <StubChip />}
-              {step.exit_status === 'AWAITING_APPROVAL' && <GateChip />}
-              {step.exit_status === 'SKIPPED' && <SkipReasonChip reason={step.skip_reason} />}
-              {step.carried_forward && <CarriedForwardChip />}
-              <span
-                className={`rounded-full border px-2 py-0.5 text-xs font-medium ${
-                  step.batch_status === 'COMPLETED'
-                    ? 'border-teal-200 bg-teal-50 text-teal-700'
-                    : step.batch_status === 'FAILED'
-                      ? 'border-red-200 bg-red-50 text-red-700'
-                      : 'border-neutral-200 bg-neutral-50 text-neutral-600'
-                }`}
-              >
-                {step.batch_status}
-              </span>
-              {/* Skip reasons appear in the collapsed row, not only on expand
-                  (Part D) — someone scanning the timeline sees why immediately. */}
-              {step.exit_status === 'SKIPPED' && step.exit_message && (
-                <span className="max-w-xs truncate text-xs text-neutral-500" title={step.exit_message}>
-                  {step.exit_message}
-                </span>
-              )}
-              <span className="text-xs text-neutral-400">{formatDuration(step.duration_seconds)}</span>
-              <span className="text-xs text-neutral-400">
-                read {step.metrics.read_count} · write {step.metrics.write_count} · skip {step.metrics.skip_count}
-              </span>
-              <span className="ml-auto text-xs text-neutral-300">{isExpanded(step) ? '▲' : '▼'}</span>
-            </button>
-            <StepProgressLine step={step} />
+      <LimitedList items={steps} name={(s) => [s.display_name, s.step_name]} noun="steps">
+        {(visible) =>
+          visible.map((step, index) => (
+            <div key={step.step_execution_id} className="relative flex gap-3 pb-4">
+              <div className="flex flex-col items-center">
+                <span className={`mt-1 h-3 w-3 flex-none rounded-full ${markerClass(step)}`} />
+                {index < visible.length - 1 && <span className="mt-1 w-px flex-1 bg-neutral-200" />}
+              </div>
+              <div className={`min-w-0 flex-1 rounded border px-3 py-2 ${step.batch_status === 'FAILED' ? 'border-red-200 bg-red-50/40' : 'border-neutral-200 bg-white'}`}>
+                <button type="button" onClick={() => toggle(step)} className="flex w-full flex-wrap items-center gap-2 text-left">
+                  <span className="font-mono text-xs text-neutral-400">
+                    #{step.sequence}
+                    {step.lifecycle_step_no !== null ? ` · L${step.lifecycle_step_no}` : ''}
+                  </span>
+                  <span className={`text-sm font-medium ${step.exit_status === 'NOT_IMPLEMENTED' ? 'text-neutral-400' : 'text-neutral-900'}`}>
+                    {step.display_name}
+                  </span>
+                  <OwnerCodeBadge code={step.owner_code} />
+                  {step.exit_status === 'NOT_IMPLEMENTED' && <StubChip />}
+                  {step.exit_status === 'AWAITING_APPROVAL' && <GateChip />}
+                  {step.exit_status === 'SKIPPED' && <SkipReasonChip reason={step.skip_reason} />}
+                  {step.carried_forward && <CarriedForwardChip />}
+                  <span
+                    className={`rounded-full border px-2 py-0.5 text-xs font-medium ${
+                      step.batch_status === 'COMPLETED'
+                        ? 'border-teal-200 bg-teal-50 text-teal-700'
+                        : step.batch_status === 'FAILED'
+                          ? 'border-red-200 bg-red-50 text-red-700'
+                          : 'border-neutral-200 bg-neutral-50 text-neutral-600'
+                    }`}
+                  >
+                    {step.batch_status}
+                  </span>
+                  {/* Skip reasons appear in the collapsed row, not only on expand
+                      (Part D) — someone scanning the timeline sees why immediately. */}
+                  {step.exit_status === 'SKIPPED' && step.exit_message && (
+                    <span className="max-w-xs truncate text-xs text-neutral-500" title={step.exit_message}>
+                      {step.exit_message}
+                    </span>
+                  )}
+                  <span className="text-xs text-neutral-400">{formatDuration(step.duration_seconds)}</span>
+                  <span className="text-xs text-neutral-400">
+                    read {step.metrics.read_count} · write {step.metrics.write_count} · skip {step.metrics.skip_count}
+                  </span>
+                  <span className="ml-auto text-xs text-neutral-300">{isExpanded(step) ? '▲' : '▼'}</span>
+                </button>
+                <StepProgressLine step={step} />
 
-            {isExpanded(step) && (
-              <div className="mt-3 space-y-3 border-t border-neutral-100 pt-3 text-xs">
-                {step.attempt > 1 && <p className="text-neutral-500">Attempt {step.attempt}</p>}
-                {step.exit_message && <p className="text-neutral-700">{step.exit_message}</p>}
+                {isExpanded(step) && (
+                  <div className="mt-3 space-y-3 border-t border-neutral-100 pt-3 text-xs">
+                    {step.attempt > 1 && <p className="text-neutral-500">Attempt {step.attempt}</p>}
+                    {step.exit_message && <p className="text-neutral-700">{step.exit_message}</p>}
 
-                {step.inputs_resolved.length > 0 && (
-                  <div>
-                    <p className="mb-1 font-semibold uppercase tracking-wide text-neutral-400">Inputs resolved</p>
-                    <ul className="space-y-0.5">
-                      {step.inputs_resolved.map((input) => (
-                        <li key={input.artifact_id} className="flex flex-wrap items-baseline gap-x-2">
-                          <button type="button" onClick={() => onViewArtifact(input.artifact_id)} className="font-medium text-violet-600 hover:underline">
-                            {input.artifact_type}
-                          </button>
-                          <span className="text-neutral-500">v{input.artifact_version}</span>
-                          <span className="text-neutral-400">from</span>
-                          <ProducedBy artifactId={input.artifact_id} known={artifactsById[input.artifact_id]} displayNames={displayNames} />
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
-                {step.outputs_produced.length > 0 && (
-                  <div className="space-y-2">
-                    <p className="font-semibold uppercase tracking-wide text-neutral-400">Outputs produced</p>
-                    {step.outputs_produced.map((output) => (
-                      <div key={output.artifact_id} className="rounded border border-neutral-200 p-2">
-                        <div className="mb-2 flex flex-wrap items-baseline gap-x-2">
-                          <span className="font-medium text-neutral-800">{output.artifact_type}</span>
-                          <span className="text-neutral-500">v{output.artifact_version}</span>
-                          <button type="button" onClick={() => onViewArtifact(output.artifact_id)} className="ml-auto text-violet-600 hover:underline">
-                            Open in viewer
-                          </button>
-                        </div>
-                        <ArtifactContentView artifactId={output.artifact_id} artifactType={output.artifact_type} localPath={localPath} />
+                    {step.inputs_resolved.length > 0 && (
+                      <div>
+                        <p className="mb-1 font-semibold uppercase tracking-wide text-neutral-400">Inputs resolved</p>
+                        <LimitedList items={step.inputs_resolved} name={(input) => input.artifact_type} noun="inputs">
+                          {(inputs) => (
+                            <ul className="space-y-0.5">
+                              {inputs.map((input) => (
+                                <li key={input.artifact_id} className="flex flex-wrap items-baseline gap-x-2">
+                                  <button type="button" onClick={() => onViewArtifact(input.artifact_id)} className="font-medium text-violet-600 hover:underline">
+                                    {input.artifact_type}
+                                  </button>
+                                  <span className="text-neutral-500">v{input.artifact_version}</span>
+                                  <span className="text-neutral-400">from</span>
+                                  <ProducedBy artifactId={input.artifact_id} known={artifactsById[input.artifact_id]} displayNames={displayNames} />
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </LimitedList>
                       </div>
-                    ))}
+                    )}
+
+                    {step.outputs_produced.length > 0 && (
+                      <div className="space-y-2">
+                        <p className="font-semibold uppercase tracking-wide text-neutral-400">Outputs produced</p>
+                        <LimitedList items={step.outputs_produced} name={(output) => output.artifact_type} noun="outputs" className="space-y-2">
+                          {(outputs) =>
+                            outputs.map((output) => (
+                              <div key={output.artifact_id} className="rounded border border-neutral-200 p-2">
+                                <div className="mb-2 flex flex-wrap items-baseline gap-x-2">
+                                  <span className="font-medium text-neutral-800">{output.artifact_type}</span>
+                                  <span className="text-neutral-500">v{output.artifact_version}</span>
+                                  <button type="button" onClick={() => onViewArtifact(output.artifact_id)} className="ml-auto text-violet-600 hover:underline">
+                                    Open in viewer
+                                  </button>
+                                </div>
+                                <ArtifactContentView artifactId={output.artifact_id} artifactType={output.artifact_type} localPath={localPath} />
+                              </div>
+                            ))
+                          }
+                        </LimitedList>
+                      </div>
+                    )}
+
+                    {step.diagnostics.length > 0 && (
+                      <div>
+                        <p className="mb-1 font-semibold uppercase tracking-wide text-neutral-400">Diagnostics</p>
+                        <LimitedList items={step.diagnostics} name={(d) => [d.code, d.message]} noun="diagnostics">
+                          {(diagnostics) => (
+                            <table className="w-full border-collapse text-left">
+                              <thead className="text-neutral-400">
+                                <tr>
+                                  <th className="pr-2 font-medium">Level</th>
+                                  <th className="pr-2 font-medium">Code</th>
+                                  <th className="pr-2 font-medium">Message</th>
+                                  <th className="font-medium">Ref</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {diagnostics.map((diagnostic, i) => (
+                                  <tr key={i} className="align-top">
+                                    <td className="pr-2 text-neutral-500">{diagnostic.level}</td>
+                                    <td className="pr-2 font-mono text-neutral-500">{diagnostic.code}</td>
+                                    <td className="pr-2 text-neutral-700">{diagnostic.message}</td>
+                                    <td className="text-neutral-400">{diagnostic.ref ?? '—'}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          )}
+                        </LimitedList>
+                      </div>
+                    )}
+
+                    <div>
+                      <p className="mb-1 font-semibold uppercase tracking-wide text-neutral-400">stdout</p>
+                      {step.stdout_tail ? (
+                        <pre className="max-h-32 overflow-auto rounded bg-neutral-900 p-2 font-mono text-[11px] text-neutral-100">{step.stdout_tail}</pre>
+                      ) : (
+                        <p className="text-neutral-400">No output captured.</p>
+                      )}
+                    </div>
+                    <div>
+                      <p className="mb-1 font-semibold uppercase tracking-wide text-neutral-400">stderr</p>
+                      {step.stderr_tail ? (
+                        <pre className="max-h-32 overflow-auto rounded bg-neutral-900 p-2 font-mono text-[11px] text-red-300">{step.stderr_tail}</pre>
+                      ) : (
+                        <p className="text-neutral-400">No output captured.</p>
+                      )}
+                    </div>
+
+                    {step.working_dir && (
+                      <p className="flex items-center gap-1.5 text-neutral-500">
+                        <span className="break-all font-mono">{step.working_dir}</span>
+                        <CopyButton value={step.working_dir} />
+                      </p>
+                    )}
                   </div>
-                )}
-
-                {step.diagnostics.length > 0 && (
-                  <div>
-                    <p className="mb-1 font-semibold uppercase tracking-wide text-neutral-400">Diagnostics</p>
-                    <table className="w-full border-collapse text-left">
-                      <thead className="text-neutral-400">
-                        <tr>
-                          <th className="pr-2 font-medium">Level</th>
-                          <th className="pr-2 font-medium">Code</th>
-                          <th className="pr-2 font-medium">Message</th>
-                          <th className="font-medium">Ref</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {step.diagnostics.map((diagnostic, i) => (
-                          <tr key={i} className="align-top">
-                            <td className="pr-2 text-neutral-500">{diagnostic.level}</td>
-                            <td className="pr-2 font-mono text-neutral-500">{diagnostic.code}</td>
-                            <td className="pr-2 text-neutral-700">{diagnostic.message}</td>
-                            <td className="text-neutral-400">{diagnostic.ref ?? '—'}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-
-                <div>
-                  <p className="mb-1 font-semibold uppercase tracking-wide text-neutral-400">stdout</p>
-                  {step.stdout_tail ? (
-                    <pre className="max-h-32 overflow-auto rounded bg-neutral-900 p-2 font-mono text-[11px] text-neutral-100">{step.stdout_tail}</pre>
-                  ) : (
-                    <p className="text-neutral-400">No output captured.</p>
-                  )}
-                </div>
-                <div>
-                  <p className="mb-1 font-semibold uppercase tracking-wide text-neutral-400">stderr</p>
-                  {step.stderr_tail ? (
-                    <pre className="max-h-32 overflow-auto rounded bg-neutral-900 p-2 font-mono text-[11px] text-red-300">{step.stderr_tail}</pre>
-                  ) : (
-                    <p className="text-neutral-400">No output captured.</p>
-                  )}
-                </div>
-
-                {step.working_dir && (
-                  <p className="flex items-center gap-1.5 text-neutral-500">
-                    <span className="break-all font-mono">{step.working_dir}</span>
-                    <CopyButton value={step.working_dir} />
-                  </p>
                 )}
               </div>
-            )}
-          </div>
-        </div>
-      ))}
+            </div>
+          ))
+        }
+      </LimitedList>
     </div>
   )
 }

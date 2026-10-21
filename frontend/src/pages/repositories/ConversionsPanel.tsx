@@ -3,6 +3,7 @@ import { ApiError } from '../../api/client'
 import { listConversions, startNextConversion, verifyConversion } from '../../api/conversion'
 import { CopyButton } from '../../components/CopyButton'
 import { ConfirmDialog } from '../../components/ConfirmDialog'
+import { LimitedList } from '../../components/LimitedList'
 import type { ConversionEntry, ConversionState, Conversions, JobRef, PlanRef } from '../../types/conversion'
 import { RepositoryConversionSection } from './RepositoryConversionSection'
 
@@ -55,15 +56,22 @@ function SupersededPlans({ repositoryId, plans, refreshToken, label }: { reposit
       <button type="button" onClick={() => setShown(!shown)} className="text-xs text-violet-700 hover:underline">
         {shown ? 'Hide' : 'Show'} {plans.length} {label}
       </button>
-      {shown &&
-        plans.map((p) => (
-          <div key={p.id} className="space-y-1 rounded border border-dashed border-neutral-300 p-2 opacity-80">
-            <p className="text-[11px] font-medium uppercase tracking-wide text-neutral-500">
-              Superseded · plan <span className="font-mono">{p.id.slice(0, 8)}</span> of {when(p.created_at)} · {p.status}
-            </p>
-            <RepositoryConversionSection repositoryId={repositoryId} planId={p.id} refreshToken={refreshToken} />
-          </div>
-        ))}
+      {shown && (
+        <LimitedList items={plans} name={(p) => p.id.slice(0, 8)} noun="plans">
+          {(visible) => (
+            <div className="space-y-2">
+              {visible.map((p) => (
+                <div key={p.id} className="space-y-1 rounded border border-dashed border-neutral-300 p-2 opacity-80">
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-neutral-500">
+                    Superseded · plan <span className="font-mono">{p.id.slice(0, 8)}</span> of {when(p.created_at)} · {p.status}
+                  </p>
+                  <RepositoryConversionSection repositoryId={repositoryId} planId={p.id} refreshToken={refreshToken} />
+                </div>
+              ))}
+            </div>
+          )}
+        </LimitedList>
+      )}
     </div>
   )
 }
@@ -179,13 +187,15 @@ function ConversionCard({
                 {!entry.verification.current && ' — the branch has moved on since'}
               </span>
             </div>
-            {entry.verification.reasons.length > 0 && (
-              <ul className="list-disc pl-5 text-xs text-neutral-700">
-                {entry.verification.reasons.map((r) => (
-                  <li key={r}>{r}</li>
-                ))}
-              </ul>
-            )}
+            <LimitedList items={entry.verification.reasons} name={(r) => r} noun="reasons">
+              {(visible) => (
+                <ul className="list-disc pl-5 text-xs text-neutral-700">
+                  {visible.map((r) => (
+                    <li key={r}>{r}</li>
+                  ))}
+                </ul>
+              )}
+            </LimitedList>
             <details>
               <summary className="cursor-pointer text-xs font-medium text-violet-700">Open VERIFICATION.md</summary>
               <Pre text={entry.verification.markdown} />
@@ -305,23 +315,28 @@ export function ConversionsPanel({ repositoryId, refreshToken }: { repositoryId:
       </div>
       {message && <p className="text-xs text-neutral-600">{message}</p>}
 
-      {data.conversions.length === 0 ? (
-        <p className="text-sm text-neutral-400">No conversion prepared yet. Discovery prepares one when it ends.</p>
-      ) : (
-        <div className="space-y-2">
-          {data.conversions.map((entry, i) => (
-            <ConversionCard
-              key={entry.number}
-              repositoryId={repositoryId}
-              entry={entry}
-              refreshToken={refreshToken}
-              defaultOpen={i === 0}
-              verifyBusy={busy || running(data.verification_job)}
-              onVerify={onVerify}
-            />
-          ))}
-        </div>
-      )}
+      <LimitedList
+        items={data.conversions}
+        name={(entry) => [`Conversion ${entry.number}`, entry.branch]}
+        noun="conversions"
+        empty={<p className="text-sm text-neutral-400">No conversion prepared yet. Discovery prepares one when it ends.</p>}
+      >
+        {(visible) => (
+          <div className="space-y-2">
+            {visible.map((entry) => (
+              <ConversionCard
+                key={entry.number}
+                repositoryId={repositoryId}
+                entry={entry}
+                refreshToken={refreshToken}
+                defaultOpen={entry === data.conversions[0]}
+                verifyBusy={busy || running(data.verification_job)}
+                onVerify={onVerify}
+              />
+            ))}
+          </div>
+        )}
+      </LimitedList>
 
       <SupersededPlans
         repositoryId={repositoryId}

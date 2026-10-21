@@ -9,6 +9,7 @@ import {
   type ReadinessState,
 } from '../../types/items'
 import { EmptyState } from '../../components/EmptyState'
+import { LimitedList } from '../../components/LimitedList'
 import { CategoryBadge, DeletedBadge, ItemDecisionStatusBadge, ReadinessBadge } from '../../components/Badge'
 import { ReadinessReason } from './ReadinessReason'
 import { detectionProfile, type DetectionProfile, type DetectionType } from './itemHelpers'
@@ -275,39 +276,44 @@ export function ItemList({ engagementId, selectedItemId, onSelectItem, refreshTo
                 <div className="sticky top-0 z-10 border-b border-neutral-200 bg-neutral-50 px-4 py-1.5 text-xs font-semibold uppercase tracking-wide text-neutral-500">
                   {label} <span className="font-normal normal-case tracking-normal text-neutral-400">· {hint} · {group.length}</span>
                 </div>
-                {group.map((item) => {
-                  const decision = liveDecisionByItem.get(item.id)
-                  const isSelected = item.id === selectedItemId
-                  return (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => onSelectItem(item.id)}
-                      className={`flex w-full flex-col border-b border-neutral-100 px-4 py-2.5 text-left ${
-                        isSelected ? 'bg-violet-50' : 'hover:bg-neutral-50'
-                      } ${item.deleted_at ? 'opacity-60' : ''}`}
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <span className="text-sm font-medium text-neutral-900">{item.name}</span>
-                        <ReadinessBadge state={item.state} />
-                      </div>
-                      <span className="truncate font-mono text-[11px] text-neutral-400">{item.id}</span>
-                      <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                        <CategoryBadge category={item.category} />
-                        <DetectionBadge profile={profiles.get(item.id) ?? detectionProfile(item.detection?.match)} />
-                        {item.status === 'deprecated' && (
-                          <span className="text-[11px] font-medium text-neutral-500">deprecated</span>
-                        )}
-                        {item.deleted_at && <DeletedBadge />}
-                        {!isMaster && <ItemDecisionStatusBadge status={decision?.status ?? 'none'} />}
-                      </div>
-                      {!isMaster && decision?.resolution_name && (
-                        <span className="mt-1 truncate text-xs text-neutral-600">→ {decision.resolution_name}</span>
-                      )}
-                      {isMaster && <ReadinessReason item={item} compact />}
-                    </button>
-                  )
-                })}
+                {/* The search above already matches names, so the list is limited without a second filter box. */}
+                <LimitedList items={group} noun="items">
+                  {(visible) =>
+                    visible.map((item) => {
+                      const decision = liveDecisionByItem.get(item.id)
+                      const isSelected = item.id === selectedItemId
+                      return (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => onSelectItem(item.id)}
+                          className={`flex w-full flex-col border-b border-neutral-100 px-4 py-2.5 text-left ${
+                            isSelected ? 'bg-violet-50' : 'hover:bg-neutral-50'
+                          } ${item.deleted_at ? 'opacity-60' : ''}`}
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <span className="text-sm font-medium text-neutral-900">{item.name}</span>
+                            <ReadinessBadge state={item.state} />
+                          </div>
+                          <span className="truncate font-mono text-[11px] text-neutral-400">{item.id}</span>
+                          <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                            <CategoryBadge category={item.category} />
+                            <DetectionBadge profile={profiles.get(item.id) ?? detectionProfile(item.detection?.match)} />
+                            {item.status === 'deprecated' && (
+                              <span className="text-[11px] font-medium text-neutral-500">deprecated</span>
+                            )}
+                            {item.deleted_at && <DeletedBadge />}
+                            {!isMaster && <ItemDecisionStatusBadge status={decision?.status ?? 'none'} />}
+                          </div>
+                          {!isMaster && decision?.resolution_name && (
+                            <span className="mt-1 truncate text-xs text-neutral-600">→ {decision.resolution_name}</span>
+                          )}
+                          {isMaster && <ReadinessReason item={item} compact />}
+                        </button>
+                      )
+                    })
+                  }
+                </LimitedList>
               </div>
             )
           })}

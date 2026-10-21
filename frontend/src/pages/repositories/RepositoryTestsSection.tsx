@@ -1,12 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { ApiError } from '../../api/client'
 import { getRepositoryTests } from '../../api/surface'
-import { ShowMoreToggle } from '../../components/ShowMoreToggle'
+import { LimitedList } from '../../components/LimitedList'
 import type { RepositoryTests, SourceFileRow, TestBucket, TestType } from '../../types/tests'
 import { SourceLink } from './SourceLink'
-
-/** How many source files the per-file table lists before "+N more". */
-const FILES_SHOWN = 40
 
 const TYPE_STYLE: Record<TestType, string> = {
   unit: 'border-emerald-200 bg-emerald-50 text-emerald-800',
@@ -67,7 +64,6 @@ export function RepositoryTestsSection({ repositoryId, localPath, refreshToken }
   const [data, setData] = useState<RepositoryTests | null>(null)
   const [state, setState] = useState<'loading' | 'ready' | 'not_scanned' | 'error'>('loading')
   const [bucket, setBucket] = useState<TestBucket | 'all'>('all')
-  const [showAllFiles, setShowAllFiles] = useState(false)
   const [showClasses, setShowClasses] = useState(false)
   const [showCiEvidence, setShowCiEvidence] = useState(false)
 
@@ -98,7 +94,6 @@ export function RepositoryTestsSection({ repositoryId, localPath, refreshToken }
   const ci = data.ci_maturity
   const byType = data.summary.testClassesByType
   const byBucket = data.summary.sourceFilesByBucket
-  const shown = showAllFiles ? files : files.slice(0, FILES_SHOWN)
 
   return (
     <div className="space-y-4 text-sm">
@@ -131,28 +126,34 @@ export function RepositoryTestsSection({ repositoryId, localPath, refreshToken }
                 </span>
               ))}
             </div>
-            {ci.pipelines.length > 0 && (
-              <p className="mt-1 text-xs text-neutral-500">
-                {ci.pipelines.map((p) => `${p.path} (${p.system.replace('_', ' ')})`).join(' · ')}
-                {ci.evidence.length > 0 && (
-                  <button type="button" onClick={() => setShowCiEvidence((v) => !v)} className="ml-2 text-violet-600 hover:underline">
-                    {showCiEvidence ? 'hide evidence' : 'why'}
-                  </button>
-                )}
-              </p>
-            )}
+            <LimitedList items={ci.pipelines} name={(p) => p.path} noun="pipelines" className="mt-1 text-xs text-neutral-500">
+              {(visible) => (
+                <p>
+                  {visible.map((p) => `${p.path} (${p.system.replace('_', ' ')})`).join(' · ')}
+                  {ci.evidence.length > 0 && (
+                    <button type="button" onClick={() => setShowCiEvidence((v) => !v)} className="ml-2 text-violet-600 hover:underline">
+                      {showCiEvidence ? 'hide evidence' : 'why'}
+                    </button>
+                  )}
+                </p>
+              )}
+            </LimitedList>
             {showCiEvidence && (
-              <ul className="mt-1 space-y-0.5 text-[11px] text-neutral-600">
-                {ci.evidence.map((e, i) => (
-                  <li key={i}>
-                    <span className="font-medium">{e.fact.replaceAll('_', ' ')}</span> —{' '}
-                    <SourceLink localPath={localPath} filePath={e.path} line={e.line} className="font-mono text-violet-700">
-                      {e.path}:{e.line}
-                    </SourceLink>{' '}
-                    <code className="text-neutral-500">{e.text}</code>
-                  </li>
-                ))}
-              </ul>
+              <LimitedList items={ci.evidence} name={(e) => [e.fact.replaceAll('_', ' '), e.path]} noun="evidence lines" className="mt-1">
+                {(visible) => (
+                  <ul className="space-y-0.5 text-[11px] text-neutral-600">
+                    {visible.map((e, i) => (
+                      <li key={i}>
+                        <span className="font-medium">{e.fact.replaceAll('_', ' ')}</span> —{' '}
+                        <SourceLink localPath={localPath} filePath={e.path} line={e.line} className="font-mono text-violet-700">
+                          {e.path}:{e.line}
+                        </SourceLink>{' '}
+                        <code className="text-neutral-500">{e.text}</code>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </LimitedList>
             )}
           </>
         ) : (
@@ -165,11 +166,15 @@ export function RepositoryTestsSection({ repositoryId, localPath, refreshToken }
         <h4 className="mb-1 text-[11px] font-medium uppercase tracking-wide text-neutral-400">
           Tests — {data.summary.testClasses ?? 0} classes, {data.summary.testMethods ?? 0} test methods
         </h4>
-        {data.test_projects.length === 0 ? (
-          <p className="text-xs text-neutral-400">No test project found.</p>
-        ) : (
+        <LimitedList
+          items={data.test_projects}
+          name={(p) => p.project_path}
+          noun="test projects"
+          empty={<p className="text-xs text-neutral-400">No test project found.</p>}
+        >
+          {(visible) => (
           <ul className="space-y-0.5 text-xs">
-            {data.test_projects.map((p) => (
+            {visible.map((p) => (
               <li key={p.project_path} className="flex flex-wrap items-center gap-1">
                 <span className="font-mono text-neutral-700">{p.project_path}</span>
                 {(Object.entries(p.test_classes_by_type) as [TestType, number][])
@@ -180,7 +185,8 @@ export function RepositoryTestsSection({ repositoryId, localPath, refreshToken }
               </li>
             ))}
           </ul>
-        )}
+          )}
+        </LimitedList>
         {byType && (byType.unclassified ?? 0) > 0 && (
           <p className="mt-1 text-xs text-neutral-500">Unclassified means the evidence conflicted or there was none — never guessed.</p>
         )}
@@ -190,7 +196,9 @@ export function RepositoryTestsSection({ repositoryId, localPath, refreshToken }
           </button>
         )}
         {showClasses && (
-          <div className="mt-1 overflow-x-auto">
+          <LimitedList items={data.test_classes} name={(c) => [c.class_name, c.file_path]} noun="test classes" className="mt-1">
+            {(visible) => (
+          <div className="overflow-x-auto">
             <table className="w-full min-w-[640px] text-left text-xs">
               <thead className="text-neutral-400">
                 <tr>
@@ -201,7 +209,7 @@ export function RepositoryTestsSection({ repositoryId, localPath, refreshToken }
                 </tr>
               </thead>
               <tbody>
-                {data.test_classes.map((c) => (
+                {visible.map((c) => (
                   <tr key={`${c.file_path}|${c.class_name}`} className="border-t border-neutral-100 align-top">
                     <td className="py-1 pr-3">
                       <span className="font-medium text-neutral-800">{c.class_name}</span>
@@ -217,12 +225,16 @@ export function RepositoryTestsSection({ repositoryId, localPath, refreshToken }
               </tbody>
             </table>
           </div>
+            )}
+          </LimitedList>
         )}
       </div>
 
       {/* Per project, Part K */}
       <div className="overflow-x-auto">
         <h4 className="mb-1 text-[11px] font-medium uppercase tracking-wide text-neutral-400">Per project</h4>
+        <LimitedList items={data.projects} name={(p) => p.project_path} noun="projects">
+          {(visible) => (
         <table className="w-full min-w-[640px] text-left text-xs">
           <thead className="text-neutral-400">
             <tr>
@@ -236,7 +248,7 @@ export function RepositoryTestsSection({ repositoryId, localPath, refreshToken }
             </tr>
           </thead>
           <tbody>
-            {data.projects.map((p) => (
+            {visible.map((p) => (
               <tr key={p.project_path} className="border-t border-neutral-100">
                 <td className="py-1 pr-3 font-mono text-neutral-700">{p.project_path}</td>
                 <td className="py-1 pr-3 font-mono">{p.files}</td>
@@ -249,6 +261,8 @@ export function RepositoryTestsSection({ repositoryId, localPath, refreshToken }
             ))}
           </tbody>
         </table>
+          )}
+        </LimitedList>
       </div>
 
       {/* Per source file, Part K */}
@@ -259,10 +273,7 @@ export function RepositoryTestsSection({ repositoryId, localPath, refreshToken }
             <button
               key={b}
               type="button"
-              onClick={() => {
-                setBucket(b)
-                setShowAllFiles(false)
-              }}
+              onClick={() => setBucket(b)}
               aria-pressed={bucket === b}
               className={`rounded border px-1.5 py-0.5 text-[11px] ${bucket === b ? 'border-violet-300 bg-violet-50 text-violet-800' : 'border-neutral-200 text-neutral-600 hover:bg-neutral-50'}`}
             >
@@ -270,6 +281,9 @@ export function RepositoryTestsSection({ repositoryId, localPath, refreshToken }
             </button>
           ))}
         </div>
+        {/* Keyed by bucket: a new bucket starts again at its first 20 files. */}
+        <LimitedList key={bucket} items={files} name={(f) => f.file_path} noun="source files">
+          {(visible) => (
         <div className="overflow-x-auto">
           <table className="w-full min-w-[760px] text-left text-xs">
             <thead className="text-neutral-400">
@@ -283,13 +297,14 @@ export function RepositoryTestsSection({ repositoryId, localPath, refreshToken }
               </tr>
             </thead>
             <tbody>
-              {shown.map((f) => (
+              {visible.map((f) => (
                 <FileRow key={f.file_path} file={f} localPath={localPath} note={number} />
               ))}
             </tbody>
           </table>
         </div>
-        <ShowMoreToggle expanded={showAllFiles} hidden={files.length - FILES_SHOWN} onToggle={() => setShowAllFiles((v) => !v)} className="mt-1 block text-xs" />
+          )}
+        </LimitedList>
       </div>
 
       {notes.length > 0 && (
@@ -321,21 +336,21 @@ function FileRow({ file: f, localPath, note }: { file: SourceFileRow; localPath:
         </span>
       </td>
       <td className="py-1 pr-3">
-        {f.tests.length === 0 ? (
-          <span className="text-neutral-300">—</span>
-        ) : (
-          f.tests.map((t) => (
-            <span key={`${t.test_file}|${t.test_class}`} className="block">
-              <SourceLink localPath={localPath} filePath={t.test_file} line={1} className="font-mono text-violet-700">
-                {t.test_file.split('/').pop()}
-              </SourceLink>{' '}
-              <span className="text-[10px] text-neutral-400">
-                {t.method === 'naming_only' ? 'name only, ' : ''}
-                {t.confidence.toFixed(2)}
+        <LimitedList items={f.tests} name={(t) => [t.test_file, t.test_class]} noun="test files" empty={<span className="text-neutral-300">—</span>}>
+          {(visible) =>
+            visible.map((t) => (
+              <span key={`${t.test_file}|${t.test_class}`} className="block">
+                <SourceLink localPath={localPath} filePath={t.test_file} line={1} className="font-mono text-violet-700">
+                  {t.test_file.split('/').pop()}
+                </SourceLink>{' '}
+                <span className="text-[10px] text-neutral-400">
+                  {t.method === 'naming_only' ? 'name only, ' : ''}
+                  {t.confidence.toFixed(2)}
+                </span>
               </span>
-            </span>
-          ))
-        )}
+            ))
+          }
+        </LimitedList>
       </td>
       <td className="py-1 pr-3">
         {[...new Set(f.tests.map((t) => t.test_type))].map((type) => (

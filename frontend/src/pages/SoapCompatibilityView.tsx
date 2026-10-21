@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useState } from 'react'
 import { soapCompatibilityCsvUrl } from '../api/estate'
-import type { MatrixProbe, RuntimeVerdict, SoapBackendHost, SoapCompatibilityArtifact, SoapEnvironment } from '../types/estate'
+import { LimitedList, useLimitedList } from '../components/LimitedList'
+import type { MatrixProbe, RuntimeVerdict, SoapBackendHost, SoapCaller, SoapCompatibilityArtifact, SoapEnvironment } from '../types/estate'
 import { CONFIRMED_HELP, UNDER_REVIEW, UNDER_REVIEW_LABEL } from '../types/estate'
 
 // The Estate tab's SOAP backend compatibility report — 31-DEPENDENCY-AND-CONTEXT-MAP.md
@@ -107,8 +108,10 @@ function Probes({ env }: { env: SoapEnvironment }) {
   return (
     <div>
       <span className="text-neutral-400">Probes (.NET 10 client in a Linux container, against a real service):</span>
+      <LimitedList items={probes} name={(probe) => [probe.scenario, probe.outcome, probe.summary, probe.reason, probe.service]} noun="probes">
+        {(visible) => (
       <ul className="ml-3 list-disc">
-        {probes.map((probe) => (
+        {visible.map((probe) => (
           <li key={probeKey(probe)}>
             {probe.outcome === 'not_probed' ? (
               <span className={PROBE_STYLE.not_probed}>
@@ -130,9 +133,13 @@ function Probes({ env }: { env: SoapEnvironment }) {
           </li>
         ))}
       </ul>
-      {contradictions.map((c) => (
-        <p key={c} className="font-medium text-red-700">Contradicts its matrix entry: {c}</p>
-      ))}
+        )}
+      </LimitedList>
+      <LimitedList items={contradictions} name={(c) => c} noun="contradictions">
+        {(visible) => visible.map((c) => (
+          <p key={c} className="font-medium text-red-700">Contradicts its matrix entry: {c}</p>
+        ))}
+      </LimitedList>
     </div>
   )
 }
@@ -153,10 +160,120 @@ function Owner({ host }: { host: SoapBackendHost }) {
   )
 }
 
+/** A SOAP call's rows, one per environment: limited on their own inside the host's table body, so the controls are a row. */
+function CallerRows({
+  caller,
+  target,
+  highlight,
+  open,
+  setOpen,
+}: {
+  caller: SoapCaller
+  target: string | null
+  highlight: string | null
+  open: string | null
+  setOpen: (key: string | null) => void
+}) {
+  const environments = useLimitedList(caller.environments, { name: (env) => [env.environment, env.address, env.binding], noun: 'environments' })
+  return (
+    <>
+      {environments.filterBox && (
+        <tr className="border-t border-neutral-100">
+          <td />
+          <td colSpan={10} className="pt-1">{environments.filterBox}{environments.noMatch}</td>
+        </tr>
+      )}
+      {environments.visible.map((env, index) => {
+        const key = `${caller.invocationId}|${env.environment}|${env.sourceFile}`
+        return (
+          <Fragment key={key}>
+            <tr
+              id={index === 0 ? `soap-call-${caller.invocationId}` : undefined}
+              className={`border-t border-neutral-100 align-top ${highlight === caller.invocationId ? 'bg-violet-50' : ''}`}
+            >
+              <td className="py-1 pr-3">
+                {index === 0 ? (
+                  <>
+                    <span className="font-medium text-neutral-800">{caller.application}</span>
+                    <span className="block font-mono text-[11px] text-neutral-500">{caller.contract}</span>
+                    <span className="block font-mono text-[10px] text-neutral-400">{caller.projectPath}</span>
+                  </>
+                ) : null}
+              </td>
+              <td className="py-1 pr-3">
+                <button type="button" onClick={() => setOpen(open === key ? null : key)} aria-expanded={open === key}
+                  className="text-left text-neutral-800 hover:text-violet-700">
+                  {env.environment}
+                </button>
+                <span className="block break-all font-mono text-[10px] text-neutral-400">{env.address}</span>
+              </td>
+              <td className="py-1 pr-3 font-mono">{env.binding}</td>
+              <td className="py-1 pr-3">
+                {env.securityMode}
+                {env.securitySource === 'binding_default' && <span className="block text-[10px] text-neutral-400">binding default</span>}
+              </td>
+              <td className="py-1 pr-3">{env.credentialType}</td>
+              <td className="py-1 pr-3">
+                <Chip className={RUNTIME_STYLE[env.runtime.verdict]}>{verdictLabel(env.runtime.verdict)}</Chip>
+                <EntryFlags live={env.runtime} target={target} />
+              </td>
+              <td className="max-w-[18rem] py-1 pr-3 text-[11px] text-neutral-600">{env.runtime.why}</td>
+              <td className="py-1 pr-3">
+                {env.platform.verdict && <Chip className={PLATFORM_STYLE[env.platform.verdict] ?? PLATFORM_STYLE.unknown}>{verdictLabel(env.platform.verdict)}</Chip>}
+                <EntryFlags live={env.platform} target={target} />
+              </td>
+              <td className="max-w-[18rem] py-1 pr-3 text-[11px] text-neutral-600">{env.platform.why}</td>
+              <td className="py-1 pr-3 text-neutral-700">
+                {env.changes.length === 0 ? (
+                  env.underReview && env.underReview.length > 0
+                    ? <span className="text-violet-800">under review: what must change waits for the revised entry</span>
+                    : <span className="text-neutral-400">no change</span>
+                ) : (
+                  <ul className="space-y-0.5">{env.changes.map((c, i) => <li key={i}>{c.change}</li>)}</ul>
+                )}
+              </td>
+              <td className="py-1 text-neutral-700">
+                <ul className="space-y-0.5">{env.changes.map((c, i) => <li key={i} className="whitespace-nowrap">{WHO_LABEL[c.who]}</li>)}</ul>
+              </td>
+            </tr>
+            {open === key && (
+              <tr className="bg-neutral-50/60 text-[11px]">
+                <td />
+                <td colSpan={10} className="space-y-1 py-2 pr-2">
+                  <p><span className="text-neutral-400">Runtime: </span>{env.runtime.reasons.join(' · ')}</p>
+                  <MatrixEntry label="Runtime" live={env.runtime} />
+                  <p><span className="text-neutral-400">Platform: </span>{env.platform.reasons.join(' · ')}</p>
+                  <MatrixEntry label="Platform" live={env.platform} />
+                  <Probes env={env} />
+                  {env.changes.filter((c) => c.note).map((c, i) => (
+                    <p key={i}><span className="text-neutral-400">Note: </span>{c.note}</p>
+                  ))}
+                  <p className="text-neutral-400">
+                    {env.sourceFile}
+                    {env.deployParameter ? ` · SetParameters ${env.deployParameter}` : ''}
+                  </p>
+                </td>
+              </tr>
+            )}
+          </Fragment>
+        )
+      })}
+      {environments.hasControls && (
+        <tr>
+          <td />
+          <td colSpan={10}>{environments.controls}</td>
+        </tr>
+      )}
+    </>
+  )
+}
+
 function HostTable({ host, target, highlight }: { host: SoapBackendHost; target: string | null; highlight: string | null }) {
   const [open, setOpen] = useState<string | null>(null)
+  const highlighted = host.callers.find((caller) => caller.invocationId === highlight)
   return (
-    <div className="overflow-x-auto">
+    <LimitedList items={host.callers} name={(caller) => [caller.application, caller.contract, caller.projectPath]} noun="SOAP calls" className="overflow-x-auto">
+      {(visible) => (
       <table className="w-full min-w-[1400px] text-left text-xs">
         <thead className="text-neutral-400">
           <tr>
@@ -167,86 +284,14 @@ function HostTable({ host, target, highlight }: { host: SoapBackendHost; target:
           </tr>
         </thead>
         <tbody>
-          {host.callers.map((caller) =>
-            caller.environments.map((env, index) => {
-              const key = `${caller.invocationId}|${env.environment}|${env.sourceFile}`
-              return (
-                <Fragment key={key}>
-                  <tr
-                    id={index === 0 ? `soap-call-${caller.invocationId}` : undefined}
-                    className={`border-t border-neutral-100 align-top ${highlight === caller.invocationId ? 'bg-violet-50' : ''}`}
-                  >
-                    <td className="py-1 pr-3">
-                      {index === 0 ? (
-                        <>
-                          <span className="font-medium text-neutral-800">{caller.application}</span>
-                          <span className="block font-mono text-[11px] text-neutral-500">{caller.contract}</span>
-                          <span className="block font-mono text-[10px] text-neutral-400">{caller.projectPath}</span>
-                        </>
-                      ) : null}
-                    </td>
-                    <td className="py-1 pr-3">
-                      <button type="button" onClick={() => setOpen(open === key ? null : key)} aria-expanded={open === key}
-                        className="text-left text-neutral-800 hover:text-violet-700">
-                        {env.environment}
-                      </button>
-                      <span className="block break-all font-mono text-[10px] text-neutral-400">{env.address}</span>
-                    </td>
-                    <td className="py-1 pr-3 font-mono">{env.binding}</td>
-                    <td className="py-1 pr-3">
-                      {env.securityMode}
-                      {env.securitySource === 'binding_default' && <span className="block text-[10px] text-neutral-400">binding default</span>}
-                    </td>
-                    <td className="py-1 pr-3">{env.credentialType}</td>
-                    <td className="py-1 pr-3">
-                      <Chip className={RUNTIME_STYLE[env.runtime.verdict]}>{verdictLabel(env.runtime.verdict)}</Chip>
-                      <EntryFlags live={env.runtime} target={target} />
-                    </td>
-                    <td className="max-w-[18rem] py-1 pr-3 text-[11px] text-neutral-600">{env.runtime.why}</td>
-                    <td className="py-1 pr-3">
-                      {env.platform.verdict && <Chip className={PLATFORM_STYLE[env.platform.verdict] ?? PLATFORM_STYLE.unknown}>{verdictLabel(env.platform.verdict)}</Chip>}
-                      <EntryFlags live={env.platform} target={target} />
-                    </td>
-                    <td className="max-w-[18rem] py-1 pr-3 text-[11px] text-neutral-600">{env.platform.why}</td>
-                    <td className="py-1 pr-3 text-neutral-700">
-                      {env.changes.length === 0 ? (
-                        env.underReview && env.underReview.length > 0
-                          ? <span className="text-violet-800">under review: what must change waits for the revised entry</span>
-                          : <span className="text-neutral-400">no change</span>
-                      ) : (
-                        <ul className="space-y-0.5">{env.changes.map((c, i) => <li key={i}>{c.change}</li>)}</ul>
-                      )}
-                    </td>
-                    <td className="py-1 text-neutral-700">
-                      <ul className="space-y-0.5">{env.changes.map((c, i) => <li key={i} className="whitespace-nowrap">{WHO_LABEL[c.who]}</li>)}</ul>
-                    </td>
-                  </tr>
-                  {open === key && (
-                    <tr className="bg-neutral-50/60 text-[11px]">
-                      <td />
-                      <td colSpan={10} className="space-y-1 py-2 pr-2">
-                        <p><span className="text-neutral-400">Runtime: </span>{env.runtime.reasons.join(' · ')}</p>
-                        <MatrixEntry label="Runtime" live={env.runtime} />
-                        <p><span className="text-neutral-400">Platform: </span>{env.platform.reasons.join(' · ')}</p>
-                        <MatrixEntry label="Platform" live={env.platform} />
-                        <Probes env={env} />
-                        {env.changes.filter((c) => c.note).map((c, i) => (
-                          <p key={i}><span className="text-neutral-400">Note: </span>{c.note}</p>
-                        ))}
-                        <p className="text-neutral-400">
-                          {env.sourceFile}
-                          {env.deployParameter ? ` · SetParameters ${env.deployParameter}` : ''}
-                        </p>
-                      </td>
-                    </tr>
-                  )}
-                </Fragment>
-              )
-            }),
-          )}
+          {/* A call opened from its repository page is shown even when it lies past the limit, so it can be scrolled to. */}
+          {(highlighted && !visible.includes(highlighted) ? [...visible, highlighted] : visible).map((caller) => (
+            <CallerRows key={caller.invocationId} caller={caller} target={target} highlight={highlight} open={open} setOpen={setOpen} />
+          ))}
         </tbody>
       </table>
-    </div>
+      )}
+    </LimitedList>
   )
 }
 
@@ -279,6 +324,8 @@ export function SoapCompatibilityView({
   if (!data) {
     return <p className="text-sm text-neutral-400">No SOAP compatibility report yet: run the estate consolidation.</p>
   }
+  // The host of a call opened from its repository page is shown even when it lies past the limit.
+  const highlightedHost = data.hosts.find((host) => host.callers.some((caller) => caller.invocationId === highlight))
   const chart = data.matrix.sources.find((s) => s.id.startsWith('chart-'))
   return (
     <div className="space-y-4 text-sm">
@@ -336,7 +383,8 @@ export function SoapCompatibilityView({
           Export CSV{data.matrix.readyForClient ? '' : ' (draft)'}
         </a>
       </div>
-      {data.hosts.map((host) => (
+      <LimitedList items={data.hosts} name={(host) => [host.host, ...host.servedBy, host.owningTeam]} noun="SOAP backends" className="space-y-4">
+        {(visible) => (highlightedHost && !visible.includes(highlightedHost) ? [...visible, highlightedHost] : visible).map((host) => (
         <section key={host.host} className="rounded border border-neutral-200 p-3">
           <div className="mb-2 flex flex-wrap items-center gap-2">
             <h4 className="font-mono text-sm text-neutral-800">{host.host}</h4>
@@ -350,7 +398,8 @@ export function SoapCompatibilityView({
           </div>
           <HostTable host={host} target={data.matrix.targetWcfClientVersion} highlight={highlight} />
         </section>
-      ))}
+        ))}
+      </LimitedList>
     </div>
   )
 }

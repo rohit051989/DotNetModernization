@@ -1,5 +1,6 @@
 import type { CatalogItem } from '../../types/items'
 import { IdentifierText } from '../../components/IdentifierText'
+import { LimitedList } from '../../components/LimitedList'
 
 const REASON_LABEL: Record<string, string> = {
   signal_mapping_pending: 'Signal mapping pending — the detection has nothing to match yet',
@@ -48,39 +49,41 @@ export function ReadinessReason({
         A not-ready item is inert: detection does not evaluate it. It promotes automatically once every signal it
         references is ready — nobody edits the item.
       </p>
-      {blocking.length > 0 && (
-        <table className="mt-3 w-full text-left text-xs">
-          <thead className="text-amber-700">
-            <tr>
-              <th className="py-1 pr-3 font-medium">Blocking signal</th>
-              <th className="py-1 pr-3 font-medium">Reason</th>
-              <th className="py-1 font-medium">Expected extractor</th>
-            </tr>
-          </thead>
-          <tbody className="text-amber-900">
-            {blocking.map((b) => (
-              <tr key={b.signal} className="border-t border-amber-200">
-                <td className="py-1 pr-3 font-mono">
-                  {onSelectSignal ? (
-                    <button
-                      type="button"
-                      onClick={() => onSelectSignal(b.signal)}
-                      title="Open in Signals"
-                      className="text-left underline decoration-dotted underline-offset-2 hover:text-violet-700 hover:decoration-solid"
-                    >
-                      <IdentifierText name={b.signal} />
-                    </button>
-                  ) : (
-                    <IdentifierText name={b.signal} />
-                  )}
-                </td>
-                <td className="py-1 pr-3">{REASON_LABEL[b.reason_code] ?? b.reason_code}</td>
-                <td className="py-1 font-mono">{b.expected_extractor ?? '— none declared —'}</td>
+      <LimitedList items={blocking} name={(b) => [b.signal, b.expected_extractor]} noun="blocking signals" className="mt-3">
+        {(visible) => (
+          <table className="w-full text-left text-xs">
+            <thead className="text-amber-700">
+              <tr>
+                <th className="py-1 pr-3 font-medium">Blocking signal</th>
+                <th className="py-1 pr-3 font-medium">Reason</th>
+                <th className="py-1 font-medium">Expected extractor</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+            </thead>
+            <tbody className="text-amber-900">
+              {visible.map((b) => (
+                <tr key={b.signal} className="border-t border-amber-200">
+                  <td className="py-1 pr-3 font-mono">
+                    {onSelectSignal ? (
+                      <button
+                        type="button"
+                        onClick={() => onSelectSignal(b.signal)}
+                        title="Open in Signals"
+                        className="text-left underline decoration-dotted underline-offset-2 hover:text-violet-700 hover:decoration-solid"
+                      >
+                        <IdentifierText name={b.signal} />
+                      </button>
+                    ) : (
+                      <IdentifierText name={b.signal} />
+                    )}
+                  </td>
+                  <td className="py-1 pr-3">{REASON_LABEL[b.reason_code] ?? b.reason_code}</td>
+                  <td className="py-1 font-mono">{b.expected_extractor ?? '— none declared —'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </LimitedList>
     </div>
   )
 }

@@ -6,6 +6,7 @@ import { isExecutionTerminal, type JobExecution } from '../../types/workflow'
 import { BatchStatusBadge, ExitStatusBadge } from '../../components/WorkflowBadges'
 import { EmptyState } from '../../components/EmptyState'
 import { CollapsibleSection } from '../../components/CollapsibleSection'
+import { LimitedList } from '../../components/LimitedList'
 import { usePolling } from '../../hooks/usePolling'
 
 const BATCH_STATUS_OPTIONS = ['STARTING', 'STARTED', 'COMPLETED', 'FAILED', 'STOPPING', 'STOPPED', 'ABANDONED']
@@ -142,49 +143,55 @@ export function ExecutionsList({ engagementId, onSelectExecution, onNavigateToRe
       )}
       {!loading && !error && executions.length > 0 && (
         <div className="overflow-x-auto">
-        <table className="w-full min-w-[720px] text-left text-sm">
-          <thead className="text-xs uppercase tracking-wide text-neutral-500">
-            <tr>
-              <th className="px-4 py-2 font-medium">Job</th>
-              <th className="px-3 py-2 font-medium">Repository</th>
-              <th className="px-3 py-2 font-medium">Batch status</th>
-              <th className="px-3 py-2 font-medium">Exit status</th>
-              <th className="px-3 py-2 font-medium">Steps</th>
-              <th className="px-3 py-2 font-medium">Duration</th>
-              <th className="px-3 py-2 font-medium">Started</th>
-              <th className="px-3 py-2 font-medium">Triggered by</th>
-            </tr>
-          </thead>
-          <tbody>
-            {executions.map((execution) => {
-              const repositoryId = typeof execution.parameters.repository_id === 'string' ? execution.parameters.repository_id : null
-              const repositoryName =
-                execution.resolved_context.repository_name ?? (repositoryId ? repoNameById[repositoryId] : null)
-              return (
-                <tr
-                  key={execution.id}
-                  onClick={() => onSelectExecution(execution.id)}
-                  className="cursor-pointer border-b border-neutral-100 hover:bg-neutral-50"
-                >
-                  <td className="px-4 py-2 font-medium text-neutral-900">{execution.job_name}</td>
-                  <td className="px-3 py-2 text-neutral-600">{repositoryName ?? '—'}</td>
-                  <td className="px-3 py-2">
-                    <BatchStatusBadge status={execution.batch_status} />
-                  </td>
-                  <td className="px-3 py-2">
-                    <ExitStatusBadge status={execution.exit_status} />
-                  </td>
-                  <td className="px-3 py-2 text-neutral-500">
-                    {execution.step_summary.completed + execution.step_summary.not_implemented}/{execution.step_summary.total}
-                  </td>
-                  <td className="px-3 py-2 text-neutral-500">{formatDuration(execution.duration_seconds)}</td>
-                  <td className="px-3 py-2 whitespace-nowrap text-neutral-500">{formatRelative(execution.started_at)}</td>
-                  <td className="px-3 py-2 text-neutral-500">{execution.triggered_by ?? '—'}</td>
+        {/* The job name and repository filters above already find an execution, so the rows are limited without a
+            second filter box. */}
+        <LimitedList items={executions} noun="executions">
+          {(visible) => (
+            <table className="w-full min-w-[720px] text-left text-sm">
+              <thead className="text-xs uppercase tracking-wide text-neutral-500">
+                <tr>
+                  <th className="px-4 py-2 font-medium">Job</th>
+                  <th className="px-3 py-2 font-medium">Repository</th>
+                  <th className="px-3 py-2 font-medium">Batch status</th>
+                  <th className="px-3 py-2 font-medium">Exit status</th>
+                  <th className="px-3 py-2 font-medium">Steps</th>
+                  <th className="px-3 py-2 font-medium">Duration</th>
+                  <th className="px-3 py-2 font-medium">Started</th>
+                  <th className="px-3 py-2 font-medium">Triggered by</th>
                 </tr>
-              )
-            })}
-          </tbody>
-        </table>
+              </thead>
+              <tbody>
+                {visible.map((execution) => {
+                  const repositoryId = typeof execution.parameters.repository_id === 'string' ? execution.parameters.repository_id : null
+                  const repositoryName =
+                    execution.resolved_context.repository_name ?? (repositoryId ? repoNameById[repositoryId] : null)
+                  return (
+                    <tr
+                      key={execution.id}
+                      onClick={() => onSelectExecution(execution.id)}
+                      className="cursor-pointer border-b border-neutral-100 hover:bg-neutral-50"
+                    >
+                      <td className="px-4 py-2 font-medium text-neutral-900">{execution.job_name}</td>
+                      <td className="px-3 py-2 text-neutral-600">{repositoryName ?? '—'}</td>
+                      <td className="px-3 py-2">
+                        <BatchStatusBadge status={execution.batch_status} />
+                      </td>
+                      <td className="px-3 py-2">
+                        <ExitStatusBadge status={execution.exit_status} />
+                      </td>
+                      <td className="px-3 py-2 text-neutral-500">
+                        {execution.step_summary.completed + execution.step_summary.not_implemented}/{execution.step_summary.total}
+                      </td>
+                      <td className="px-3 py-2 text-neutral-500">{formatDuration(execution.duration_seconds)}</td>
+                      <td className="px-3 py-2 whitespace-nowrap text-neutral-500">{formatRelative(execution.started_at)}</td>
+                      <td className="px-3 py-2 text-neutral-500">{execution.triggered_by ?? '—'}</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          )}
+        </LimitedList>
         </div>
       )}
     </CollapsibleSection>

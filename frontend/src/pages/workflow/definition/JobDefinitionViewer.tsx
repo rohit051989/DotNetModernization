@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { getJobDefinitionView } from '../../../api/workflow'
 import { CopyButton } from '../../../components/CopyButton'
+import { LimitedList } from '../../../components/LimitedList'
 import { AdapterTypeChip, ImplementationStatusChip, OwnerCodeBadge } from '../../../components/WorkflowBadges'
 import type { ArtifactRefView, FlowStepView, JobDefinitionView } from '../../../types/workflow'
 import { StepPolicyDialog } from './StepPolicyDialog'
@@ -209,17 +210,21 @@ export function JobDefinitionViewer({ jobName, engagementId }: JobDefinitionView
       {disabledSteps.length > 0 && (
         <div className="rounded border border-amber-200 bg-amber-50 p-3 text-xs">
           <p className="mb-1 font-semibold uppercase tracking-wide text-amber-700">Policy — deviations from default</p>
-          <ul className="space-y-1">
-            {disabledSteps.map((s) => (
-              <li key={s.step_name} className="text-amber-800">
-                <span className="font-medium">{s.display_name}</span> disabled{' '}
-                <span className="rounded bg-amber-100 px-1 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700">
-                  {s.policy.source}
-                </span>
-                {s.policy.reason ? ` — ${s.policy.reason}` : ''}
-              </li>
-            ))}
-          </ul>
+          <LimitedList items={disabledSteps} name={(s) => [s.display_name, s.step_name]} noun="steps">
+            {(visible) => (
+              <ul className="space-y-1">
+                {visible.map((s) => (
+                  <li key={s.step_name} className="text-amber-800">
+                    <span className="font-medium">{s.display_name}</span> disabled{' '}
+                    <span className="rounded bg-amber-100 px-1 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700">
+                      {s.policy.source}
+                    </span>
+                    {s.policy.reason ? ` — ${s.policy.reason}` : ''}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </LimitedList>
         </div>
       )}
 

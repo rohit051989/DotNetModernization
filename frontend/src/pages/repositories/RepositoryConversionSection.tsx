@@ -2,6 +2,7 @@ import { Fragment, useEffect, useState } from 'react'
 import { ApiError } from '../../api/client'
 import { evidenceHref, getRepositoryConversion } from '../../api/conversion'
 import type { ConversionUnit, EvidenceLink, PlanStatus, RepositoryConversion, TestRun, UnitStatus } from '../../types/conversion'
+import { LimitedList } from '../../components/LimitedList'
 
 const STATUS_STYLE: Record<UnitStatus, string> = {
   committed: 'border-emerald-200 bg-emerald-50 text-emerald-800',
@@ -37,21 +38,29 @@ function StatusChip({ status, count }: { status: UnitStatus; count?: number }) {
 }
 
 function EvidenceLinks({ evidence }: { evidence: EvidenceLink[] }) {
-  if (evidence.length === 0) return <span className="text-neutral-400">none recorded</span>
   return (
-    <ul className="space-y-0.5">
-      {evidence.map((e) => (
-        <li key={e.path}>
-          <a href={evidenceHref(e.url)} target="_blank" rel="noreferrer" className="font-mono text-violet-700 hover:underline">
-            {e.kind.replace('_', ' ')}
-            {e.project ? ` · ${e.project.split('/').pop()}` : ''}
-          </a>{' '}
-          <span className="font-mono text-[10px] text-neutral-400" title={e.sha256}>
-            sha256 {e.sha256.slice(0, 12)}
-          </span>
-        </li>
-      ))}
-    </ul>
+    <LimitedList
+      items={evidence}
+      name={(e) => [e.kind.replace('_', ' '), e.project?.split('/').pop()]}
+      noun="evidence files"
+      empty={<span className="text-neutral-400">none recorded</span>}
+    >
+      {(visible) => (
+        <ul className="space-y-0.5">
+          {visible.map((e) => (
+            <li key={e.path}>
+              <a href={evidenceHref(e.url)} target="_blank" rel="noreferrer" className="font-mono text-violet-700 hover:underline">
+                {e.kind.replace('_', ' ')}
+                {e.project ? ` · ${e.project.split('/').pop()}` : ''}
+              </a>{' '}
+              <span className="font-mono text-[10px] text-neutral-400" title={e.sha256}>
+                sha256 {e.sha256.slice(0, 12)}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </LimitedList>
   )
 }
 
@@ -71,18 +80,22 @@ function TestTable({ label, run, extra }: { label: string; run: TestRun | null; 
               {run.passed}/{run.total} passed
             </span>
           </p>
-          <ul className="mt-1 space-y-0.5 text-xs">
-            {Object.entries(run.tests).map(([project, t]) => (
-              <li key={project}>
-                <span className="font-mono text-neutral-700">{project}</span>{' '}
-                <span className="font-mono">
-                  {t.passed}/{t.total}
-                </span>
-                {t.failed > 0 && <span className="text-red-700"> · {t.failed} failed: {t.failed_tests.join(', ')}</span>}
-                {t.skipped > 0 && <span className="text-neutral-500"> · {t.skipped} skipped</span>}
-              </li>
-            ))}
-          </ul>
+          <LimitedList items={Object.entries(run.tests)} name={([project]) => project} noun="test projects" className="mt-1">
+            {(visible) => (
+              <ul className="space-y-0.5 text-xs">
+                {visible.map(([project, t]) => (
+                  <li key={project}>
+                    <span className="font-mono text-neutral-700">{project}</span>{' '}
+                    <span className="font-mono">
+                      {t.passed}/{t.total}
+                    </span>
+                    {t.failed > 0 && <span className="text-red-700"> · {t.failed} failed: {t.failed_tests.join(', ')}</span>}
+                    {t.skipped > 0 && <span className="text-neutral-500"> · {t.skipped} skipped</span>}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </LimitedList>
           <div className="mt-1 text-[11px]">
             <EvidenceLinks evidence={run.evidence} />
           </div>
@@ -125,11 +138,15 @@ function UnitRow({ unit, open, onToggle }: { unit: ConversionUnit; open: boolean
             {unit.depends_on.length > 0 && (
               <div>
                 <span className="text-neutral-400">Depends on: </span>
-                <ul className="ml-3 list-disc">
-                  {unit.depends_on.map((d) => (
-                    <li key={d.sequence}>unit {d.sequence} — {d.reason}</li>
-                  ))}
-                </ul>
+                <LimitedList items={unit.depends_on} name={(d) => [`unit ${d.sequence}`, d.reason]} noun="units">
+                  {(visible) => (
+                    <ul className="ml-3 list-disc">
+                      {visible.map((d) => (
+                        <li key={d.sequence}>unit {d.sequence} — {d.reason}</li>
+                      ))}
+                    </ul>
+                  )}
+                </LimitedList>
               </div>
             )}
             <div>
@@ -210,11 +227,13 @@ export function RepositoryConversionSection({ repositoryId, planId, refreshToken
             {Object.entries(data.automation).map(([cls, n]) => `${n} ${cls}`).join(', ')}
           </span>
         </div>
-        {plan.exclusions.length > 0 && (
-          <p className="text-[11px] text-neutral-500">
-            Left out of the plan: {plan.exclusions.map((e) => `${e.package_id} (${e.reason})`).join('; ')}
-          </p>
-        )}
+        <LimitedList items={plan.exclusions} name={(e) => e.package_id} noun="packages">
+          {(visible) => (
+            <p className="text-[11px] text-neutral-500">
+              Left out of the plan: {visible.map((e) => `${e.package_id} (${e.reason})`).join('; ')}
+            </p>
+          )}
+        </LimitedList>
       </div>
 
       <div className="flex flex-wrap gap-2">
@@ -230,6 +249,8 @@ export function RepositoryConversionSection({ repositoryId, planId, refreshToken
         <h4 className="mb-1 text-[11px] font-medium uppercase tracking-wide text-neutral-400">
           Units, in order — select one for why it is there, what it waits on, and its evidence
         </h4>
+        <LimitedList items={data.units} name={(unit) => [String(unit.sequence), unit.title]} noun="units">
+          {(visible) => (
         <table className="w-full min-w-[720px] text-left text-xs">
           <thead className="text-neutral-400">
             <tr>
@@ -242,11 +263,13 @@ export function RepositoryConversionSection({ repositoryId, planId, refreshToken
             </tr>
           </thead>
           <tbody>
-            {data.units.map((unit) => (
+            {visible.map((unit) => (
               <UnitRow key={unit.unit_id} unit={unit} open={open.has(unit.sequence)} onToggle={() => toggle(unit.sequence)} />
             ))}
           </tbody>
         </table>
+          )}
+        </LimitedList>
       </div>
     </div>
   )

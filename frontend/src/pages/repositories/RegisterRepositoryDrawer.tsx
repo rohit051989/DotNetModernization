@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { Drawer } from '../../components/Drawer'
 import { Field, inputClass } from '../../components/FormField'
+import { LimitedList } from '../../components/LimitedList'
 import { TagInput } from '../../components/TagInput'
 import { useToast } from '../../components/Toast'
 import { ApiError } from '../../api/client'
@@ -261,11 +262,17 @@ export function RegisterRepositoryDrawer({ engagementId, onClose, onRegistered }
               {urlInspection && !inspectingUrl && (
                 <div className="space-y-1.5 rounded border border-neutral-200 bg-neutral-50 p-3 text-xs text-neutral-600">
                   {urlInspection.target_message && urlInspection.target_action !== 'refuse' && <p>{urlInspection.target_message}</p>}
-                  {urlInspection.problems.map((problem) => (
-                    <p key={problem} className="text-red-600">
-                      {problem}
-                    </p>
-                  ))}
+                  <LimitedList items={urlInspection.problems} name={(problem) => problem} noun="problems">
+                    {(visible) => (
+                      <div className="space-y-1.5">
+                        {visible.map((problem) => (
+                          <p key={problem} className="text-red-600">
+                            {problem}
+                          </p>
+                        ))}
+                      </div>
+                    )}
+                  </LimitedList>
                   {urlInspection.duplicate_conflict && (
                     <p className="font-medium text-red-600">{urlInspection.duplicate_conflict.message}</p>
                   )}
@@ -306,11 +313,17 @@ export function RegisterRepositoryDrawer({ engagementId, onClose, onRegistered }
                       Est. {inspection.estimated_file_count ?? 0} files, {inspection.solution_files_found ?? 0} .sln,{' '}
                       {inspection.project_files_found ?? 0} .csproj
                     </p>
-                    {inspection.warnings.map((warning) => (
-                      <p key={warning} className="text-amber-600">
-                        {warning}
-                      </p>
-                    ))}
+                    <LimitedList items={inspection.warnings} name={(warning) => warning} noun="warnings">
+                      {(visible) => (
+                        <div className="space-y-1.5">
+                          {visible.map((warning) => (
+                            <p key={warning} className="text-amber-600">
+                              {warning}
+                            </p>
+                          ))}
+                        </div>
+                      )}
+                    </LimitedList>
                   </>
                 )}
                 {blockingConflict && <p className="font-medium text-red-600">{blockingConflict.message}</p>}

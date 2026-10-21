@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { getEngagementRuleConflicts, listCatalogRuleConflicts } from '../api/surface'
+import { LimitedList } from '../components/LimitedList'
 import type { EngagementRuleConflicts, MasterRuleConflict, RuleSide } from '../types/impact'
 
 // Catalog rule conflicts — 33-IMPACT-ANALYSIS.md Part G, as implemented: a
@@ -15,6 +16,11 @@ function Side({ side }: { side: RuleSide }) {
       <span className="font-mono text-[11px] text-neutral-400"> [{side.rule_ids.join(', ')}]</span>
     </span>
   )
+}
+
+/** What a person sees of a rule pair: its two items and their resolutions. */
+function sideNames(r: { first: RuleSide; second: RuleSide }): string[] {
+  return [r.first.item_name, r.first.resolution_name, r.second.item_name, r.second.resolution_name]
 }
 
 function plural(n: number, one: string, many: string) {
@@ -42,11 +48,15 @@ export function EstateRuleConflictsView({ engagementId, onOpenRepository }: { en
   return (
     <div className="space-y-3 rounded border border-neutral-200 bg-white p-4 text-sm">
       <p className="text-xs text-neutral-500">{data.note}</p>
-      {data.rule_conflicts.length === 0 ? (
-        <p className="text-neutral-400">No catalog rule conflicts in this estate.</p>
-      ) : (
+      <LimitedList
+        items={data.rule_conflicts}
+        name={sideNames}
+        noun="rule conflicts"
+        empty={<p className="text-neutral-400">No catalog rule conflicts in this estate.</p>}
+      >
+        {(visible) => (
         <ul className="divide-y divide-neutral-100">
-          {data.rule_conflicts.map((r) => (
+          {visible.map((r) => (
             <li key={r.rule_key} className="py-2">
               <p>
                 <span className="text-red-700">
@@ -66,8 +76,10 @@ export function EstateRuleConflictsView({ engagementId, onOpenRepository }: { en
                 {open === r.rule_key ? 'hide instances' : `${r.instances.length} instance(s)`}
               </button>
               {open === r.rule_key && (
-                <ul className="ml-3 text-xs">
-                  {r.instances.map((i) => (
+                <LimitedList items={r.instances} name={(i) => [i.repository_slug ?? i.repository_id, i.file_key]} noun="instances" className="ml-3">
+                  {(visibleInstances) => (
+                <ul className="text-xs">
+                  {visibleInstances.map((i) => (
                     <li key={`${i.repository_id}:${i.file_key}:${i.first_project_path}:${i.second_project_path}`}>
                       <button type="button" onClick={() => onOpenRepository(i.repository_id)} className="text-violet-700 hover:underline">
                         {i.repository_slug ?? i.repository_id}
@@ -76,11 +88,14 @@ export function EstateRuleConflictsView({ engagementId, onOpenRepository }: { en
                     </li>
                   ))}
                 </ul>
+                  )}
+                </LimitedList>
               )}
             </li>
           ))}
         </ul>
-      )}
+        )}
+      </LimitedList>
     </div>
   )
 }
@@ -113,11 +128,15 @@ export function MasterRuleConflictsView({ onSelectItem }: { onSelectItem: (itemI
           Fix the rules once; every instance goes away on the next scan.
         </p>
       </div>
-      {data.length === 0 ? (
-        <p className="text-neutral-400">No catalog rule conflicts in any engagement.</p>
-      ) : (
+      <LimitedList
+        items={data}
+        name={sideNames}
+        noun="rule conflicts"
+        empty={<p className="text-neutral-400">No catalog rule conflicts in any engagement.</p>}
+      >
+        {(visible) => (
         <ul className="divide-y divide-neutral-100 rounded border border-neutral-200 bg-white">
-          {data.map((r) => (
+          {visible.map((r) => (
             <li key={r.rule_key} className="p-3">
               <p>
                 <span className="text-red-700">
@@ -142,7 +161,8 @@ export function MasterRuleConflictsView({ onSelectItem }: { onSelectItem: (itemI
             </li>
           ))}
         </ul>
-      )}
+        )}
+      </LimitedList>
     </div>
   )
 }

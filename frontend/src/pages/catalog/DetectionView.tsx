@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { IdentifierText } from '../../components/IdentifierText'
+import { LimitedList } from '../../components/LimitedList'
 import type {
   CatalogSignal,
   ItemDetection,
@@ -137,8 +138,25 @@ function Group({ label, hint, children }: { label: string; hint: string; childre
       <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
         {label} <span className="font-normal normal-case tracking-normal text-neutral-400">— {hint}</span>
       </p>
-      <ul className="mt-1.5 space-y-1.5 border-l-2 border-neutral-100 pl-3">{children}</ul>
+      <div className="mt-1.5">{children}</div>
     </div>
+  )
+}
+
+const CONDITION_LIST = 'space-y-1.5 border-l-2 border-neutral-100 pl-3'
+
+/** One group's signal conditions, limited like every list. */
+function RuleLines({ conditions, signals, onSelectSignal }: { conditions: ItemRuleCondition[] } & SignalLinking) {
+  return (
+    <LimitedList items={conditions} name={(c) => [c.id, c.signal.name]} noun="conditions">
+      {(visible) => (
+        <ul className={CONDITION_LIST}>
+          {visible.map((c, i) => (
+            <RuleLine key={c.id ?? i} condition={c} signals={signals} onSelectSignal={onSelectSignal} />
+          ))}
+        </ul>
+      )}
+    </LimitedList>
   )
 }
 
@@ -160,16 +178,12 @@ export function DetectionView({ detection, signals, onSelectSignal }: DetectionV
       )}
       {all.length > 0 && (
         <Group label="All of" hint="every condition must hold">
-          {all.map((c, i) => (
-            <RuleLine key={c.id ?? i} condition={c} signals={signals} onSelectSignal={onSelectSignal} />
-          ))}
+          <RuleLines conditions={all} signals={signals} onSelectSignal={onSelectSignal} />
         </Group>
       )}
       {any.length > 0 && (
         <Group label="Any of" hint="at least one must hold">
-          {any.map((c, i) => (
-            <RuleLine key={c.id ?? i} condition={c} signals={signals} onSelectSignal={onSelectSignal} />
-          ))}
+          <RuleLines conditions={any} signals={signals} onSelectSignal={onSelectSignal} />
         </Group>
       )}
       {atLeast.map((group, gi) => (
@@ -178,23 +192,25 @@ export function DetectionView({ detection, signals, onSelectSignal }: DetectionV
           label={`At least ${group.count} of`}
           hint={group.id ? `group ${group.id}` : `${group.of.length} candidate(s)`}
         >
-          {group.of.map((c, i) => (
-            <RuleLine key={c.id ?? i} condition={c} signals={signals} onSelectSignal={onSelectSignal} />
-          ))}
+          <RuleLines conditions={group.of} signals={signals} onSelectSignal={onSelectSignal} />
         </Group>
       ))}
       {none.length > 0 && (
         <Group label="None of" hint="excluded when any of these holds">
-          {none.map((c, i) => (
-            <RuleLine key={c.id ?? i} condition={c} signals={signals} onSelectSignal={onSelectSignal} />
-          ))}
+          <RuleLines conditions={none} signals={signals} onSelectSignal={onSelectSignal} />
         </Group>
       )}
       {metadata.length > 0 && (
         <Group label="Project metadata" hint="every condition must hold">
-          {metadata.map((c, i) => (
-            <MetadataLine key={c.id ?? i} condition={c} />
-          ))}
+          <LimitedList items={metadata} name={(c) => [c.id, c.field]} noun="conditions">
+            {(visible) => (
+              <ul className={CONDITION_LIST}>
+                {visible.map((c, i) => (
+                  <MetadataLine key={c.id ?? i} condition={c} />
+                ))}
+              </ul>
+            )}
+          </LimitedList>
         </Group>
       )}
 

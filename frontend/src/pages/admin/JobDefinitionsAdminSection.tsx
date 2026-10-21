@@ -3,6 +3,7 @@ import { ApiError } from '../../api/client'
 import { deleteJobDefinitionVersion, getJobDefinitionVersion, listAllJobDefinitions } from '../../api/workflow'
 import { ConfirmDialog } from '../../components/ConfirmDialog'
 import { CopyButton } from '../../components/CopyButton'
+import { LimitedList } from '../../components/LimitedList'
 import { useToast } from '../../components/Toast'
 import type { JobDefinitionAdmin, JobDefinitionFull } from '../../types/workflow'
 import { JobDefinitionViewer } from '../workflow/definition/JobDefinitionViewer'
@@ -114,15 +115,19 @@ export function JobDefinitionsAdminSection() {
               ? 'A newer version is stored but not active'
               : `${staleActiveWarnings.length} jobs have a newer version stored but not active`}
           </p>
-          <ul className="mt-1 space-y-0.5 text-xs">
-            {staleActiveWarnings.map((w) => (
-              <li key={w.jobName}>
-                <span className="font-mono font-medium">{w.jobName}</span>: v{w.highestVersion} is the highest stored
-                version, but v{w.activeVersion} is active. The engine is running v{w.activeVersion} until v
-                {w.highestVersion} is explicitly activated.
-              </li>
-            ))}
-          </ul>
+          <LimitedList items={staleActiveWarnings} name={(w) => w.jobName} noun="jobs" className="mt-1">
+            {(visible) => (
+              <ul className="space-y-0.5 text-xs">
+                {visible.map((w) => (
+                  <li key={w.jobName}>
+                    <span className="font-mono font-medium">{w.jobName}</span>: v{w.highestVersion} is the highest stored
+                    version, but v{w.activeVersion} is active. The engine is running v{w.activeVersion} until v
+                    {w.highestVersion} is explicitly activated.
+                  </li>
+                ))}
+              </ul>
+            )}
+          </LimitedList>
         </div>
       )}
 
@@ -131,79 +136,83 @@ export function JobDefinitionsAdminSection() {
           <h3 className="border-b border-neutral-100 px-4 py-2 text-sm font-semibold text-neutral-900">
             Job definitions — every stored version
           </h3>
-          <table className="w-full text-left text-xs">
-            <thead className="uppercase tracking-wide text-neutral-400">
-              <tr>
-                <th className="px-3 py-2 font-medium">Job</th>
-                <th className="px-3 py-2 font-medium">v</th>
-                <th className="px-3 py-2 font-medium">Status</th>
-                <th className="px-3 py-2 font-medium">Steps</th>
-                <th className="px-3 py-2 font-medium" />
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row) => {
-                const isSelected = selected?.jobName === row.job_name && selected.version === row.version
-                return (
-                  <tr
-                    key={`${row.job_name}-${row.version}`}
-                    onClick={() =>
-                      setSelected({
-                        jobName: row.job_name,
-                        version: row.version,
-                        isActive: row.is_active,
-                        validationStatus: row.validation_status,
-                      })
-                    }
-                    className={`cursor-pointer border-b border-neutral-100 ${isSelected ? 'bg-violet-50' : 'hover:bg-neutral-50'}`}
-                  >
-                    <td className="px-3 py-2 font-medium text-neutral-800">{row.job_name}</td>
-                    <td className="px-3 py-2 font-mono text-neutral-500">v{row.version}</td>
-                    <td className="px-3 py-2">
-                      <div className="flex flex-wrap gap-1">
-                        {row.is_active && (
-                          <span className="rounded bg-teal-100 px-1.5 py-0.5 font-semibold tracking-wide text-teal-700">ACTIVE</span>
-                        )}
-                        {!row.is_active && (
-                          <span className="rounded bg-neutral-200 px-1.5 py-0.5 font-semibold tracking-wide text-neutral-500">
-                            INACTIVE
-                          </span>
-                        )}
-                        {row.validation_status === 'invalid' && (
-                          <span className="rounded bg-red-100 px-1.5 py-0.5 font-semibold tracking-wide text-red-700">INVALID</span>
-                        )}
-                        {!row.is_active && highestVersionByStaleJob.get(row.job_name) === row.version && (
-                          <span
-                            className="rounded bg-amber-100 px-1.5 py-0.5 font-semibold tracking-wide text-amber-700"
-                            title="This is the highest stored version, but it is not the active one."
-                          >
-                            NEWER THAN ACTIVE
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-3 py-2 text-neutral-500">
-                      {row.implemented_step_count} / {row.step_count}
-                    </td>
-                    <td className="px-3 py-2 text-right">
-                      {!row.is_active && !row.has_executions && (
-                        <button
-                          type="button"
-                          onClick={(event) => {
-                            event.stopPropagation()
-                            setDiscardTarget(row)
-                          }}
-                          className="text-red-600 hover:underline"
-                        >
-                          Discard…
-                        </button>
-                      )}
-                    </td>
+          <LimitedList items={rows} name={(r) => r.job_name} noun="job definition versions">
+            {(visible) => (
+              <table className="w-full text-left text-xs">
+                <thead className="uppercase tracking-wide text-neutral-400">
+                  <tr>
+                    <th className="px-3 py-2 font-medium">Job</th>
+                    <th className="px-3 py-2 font-medium">v</th>
+                    <th className="px-3 py-2 font-medium">Status</th>
+                    <th className="px-3 py-2 font-medium">Steps</th>
+                    <th className="px-3 py-2 font-medium" />
                   </tr>
-                )
-              })}
-            </tbody>
-          </table>
+                </thead>
+                <tbody>
+                  {visible.map((row) => {
+                    const isSelected = selected?.jobName === row.job_name && selected.version === row.version
+                    return (
+                      <tr
+                        key={`${row.job_name}-${row.version}`}
+                        onClick={() =>
+                          setSelected({
+                            jobName: row.job_name,
+                            version: row.version,
+                            isActive: row.is_active,
+                            validationStatus: row.validation_status,
+                          })
+                        }
+                        className={`cursor-pointer border-b border-neutral-100 ${isSelected ? 'bg-violet-50' : 'hover:bg-neutral-50'}`}
+                      >
+                        <td className="px-3 py-2 font-medium text-neutral-800">{row.job_name}</td>
+                        <td className="px-3 py-2 font-mono text-neutral-500">v{row.version}</td>
+                        <td className="px-3 py-2">
+                          <div className="flex flex-wrap gap-1">
+                            {row.is_active && (
+                              <span className="rounded bg-teal-100 px-1.5 py-0.5 font-semibold tracking-wide text-teal-700">ACTIVE</span>
+                            )}
+                            {!row.is_active && (
+                              <span className="rounded bg-neutral-200 px-1.5 py-0.5 font-semibold tracking-wide text-neutral-500">
+                                INACTIVE
+                              </span>
+                            )}
+                            {row.validation_status === 'invalid' && (
+                              <span className="rounded bg-red-100 px-1.5 py-0.5 font-semibold tracking-wide text-red-700">INVALID</span>
+                            )}
+                            {!row.is_active && highestVersionByStaleJob.get(row.job_name) === row.version && (
+                              <span
+                                className="rounded bg-amber-100 px-1.5 py-0.5 font-semibold tracking-wide text-amber-700"
+                                title="This is the highest stored version, but it is not the active one."
+                              >
+                                NEWER THAN ACTIVE
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-3 py-2 text-neutral-500">
+                          {row.implemented_step_count} / {row.step_count}
+                        </td>
+                        <td className="px-3 py-2 text-right">
+                          {!row.is_active && !row.has_executions && (
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                setDiscardTarget(row)
+                              }}
+                              className="text-red-600 hover:underline"
+                            >
+                              Discard…
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            )}
+          </LimitedList>
         </section>
 
         <section>
@@ -281,17 +290,21 @@ function VersionDetail({ jobName, version }: { jobName: string; version: number 
       {detail.validation_errors && detail.validation_errors.length > 0 && (
         <div className="rounded border border-red-200 bg-red-50 p-3 text-xs">
           <p className="mb-1 font-semibold uppercase tracking-wide text-red-700">Validation errors</p>
-          <ul className="space-y-2">
-            {detail.validation_errors.map((err, i) => (
-              <li key={i} className="text-red-800">
-                <span className="font-mono font-semibold">{err.code}</span>
-                {err.step && <span className="text-red-600"> ({err.step})</span>} — {err.detail}
-                {err.affected_steps.length > 0 && (
-                  <span className="text-red-600"> · affects: {err.affected_steps.join(', ')}</span>
-                )}
-              </li>
-            ))}
-          </ul>
+          <LimitedList items={detail.validation_errors} name={(e) => [e.code, e.step]} noun="validation errors">
+            {(visible) => (
+              <ul className="space-y-2">
+                {visible.map((err, i) => (
+                  <li key={i} className="text-red-800">
+                    <span className="font-mono font-semibold">{err.code}</span>
+                    {err.step && <span className="text-red-600"> ({err.step})</span>} — {err.detail}
+                    {err.affected_steps.length > 0 && (
+                      <span className="text-red-600"> · affects: {err.affected_steps.join(', ')}</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </LimitedList>
         </div>
       )}
 

@@ -5,7 +5,7 @@ import { getRepositoryOutboundInvocations } from '../../api/surface'
 import type { LinuxVerdict, OutboundInventory, OutboundInvocation, OutboundMechanism, ProjectOutbound } from '../../types/surface'
 import { SourceLink } from './SourceLink'
 import { surfaceSectionId } from './surfaceSections'
-import { ShowMoreToggle } from '../../components/ShowMoreToggle'
+import { LimitedList } from '../../components/LimitedList'
 
 interface RepositoryOutboundPanelProps {
   repositoryId: string
@@ -154,8 +154,10 @@ function Credentials({ invocation }: { invocation: OutboundInvocation }) {
     )
   }
   return (
+    <LimitedList items={invocation.credentials} name={(c) => [c.kind, c.keyPath]} noun="credentials">
+      {(shown) => (
     <span className="flex flex-wrap gap-1">
-      {invocation.credentials.map((c) => (
+      {shown.map((c) => (
         <span
           key={`${c.kind}|${c.keyPath ?? ''}|${c.declaredAt ?? ''}`}
           className="rounded bg-neutral-100 px-1.5 py-0.5 text-[11px] text-neutral-700"
@@ -166,39 +168,34 @@ function Credentials({ invocation }: { invocation: OutboundInvocation }) {
         </span>
       ))}
     </span>
+      )}
+    </LimitedList>
   )
 }
 
-/** How many call sites a row lists before "+N more". */
-const CALL_SITES_SHOWN = 1
-
 function CallSites({ invocation, localPath }: { invocation: OutboundInvocation; localPath: string | null }) {
-  const [expanded, setExpanded] = useState(false)
   const sites = invocation.call_sites
   if (sites.length === 0) return null
   const fileName = (path: string) => path.split('/').pop()
-  const shown = expanded ? sites : sites.slice(0, CALL_SITES_SHOWN)
   const constructions = invocation.construction_sites ?? []
   return (
     <span className="text-[11px]">
-      {shown.map((c) => (
-        <SourceLink
-          key={`${c.filePath}:${c.lineStart}`}
-          localPath={localPath}
-          filePath={c.filePath}
-          line={c.lineStart}
-          className="block font-mono text-violet-700"
-          title={c.filePath}
-        >
-          {fileName(c.filePath)}:{c.lineStart}
-        </SourceLink>
-      ))}
-      <ShowMoreToggle
-        expanded={expanded}
-        hidden={sites.length - CALL_SITES_SHOWN}
-        onToggle={() => setExpanded((v) => !v)}
-        className="block font-sans"
-      />
+      <LimitedList items={sites} name={(c) => c.filePath} noun="call sites" className="font-sans">
+        {(shown) =>
+          shown.map((c) => (
+            <SourceLink
+              key={`${c.filePath}:${c.lineStart}`}
+              localPath={localPath}
+              filePath={c.filePath}
+              line={c.lineStart}
+              className="block font-mono text-violet-700"
+              title={c.filePath}
+            >
+              {fileName(c.filePath)}:{c.lineStart}
+            </SourceLink>
+          ))
+        }
+      </LimitedList>
       {constructions.length > 0 && (
         <span className="block text-[10px] text-neutral-400">
           created at{' '}
@@ -233,9 +230,11 @@ function Bindings({ invocation }: { invocation: OutboundInvocation }) {
         )}
       </button>
       {open && (
+        <LimitedList items={bindings} name={(b) => [b.environment, b.host, b.placeholder, b.sourceFile, b.keyPath]} noun="environment bindings">
+          {(shown) => (
         <table className="mt-1 w-full text-left text-[11px]">
           <tbody>
-            {bindings.map((b) => (
+            {shown.map((b) => (
               <tr key={`${b.environment}|${b.sourceFile}|${b.keyPath}`} className="border-t border-neutral-100">
                 <td className="py-0.5 pr-2">{b.linuxVerdict && <VerdictBadge verdict={b.linuxVerdict} reasons={b.linuxReasons} />}</td>
                 <td className="py-0.5 pr-2 font-medium text-neutral-600">{b.environment}</td>
@@ -254,6 +253,8 @@ function Bindings({ invocation }: { invocation: OutboundInvocation }) {
             ))}
           </tbody>
         </table>
+          )}
+        </LimitedList>
       )}
     </div>
   )
@@ -317,23 +318,27 @@ function MechanismGroups({ invocations, localPath }: { invocations: OutboundInvo
           <h5 className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-neutral-400">
             {MECHANISM_LABEL[mechanism]} <span className="font-normal normal-case">({list.length})</span>
           </h5>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="text-neutral-400">
-                <tr className="border-b border-neutral-200">
-                  <th className="w-28 py-1 pr-3 font-medium">Linux</th>
-                  <th className="py-1 pr-3 font-medium">Endpoint</th>
-                  <th className="py-1 pr-3 font-medium">Credentials</th>
-                  <th className="py-1 text-right font-medium">Called from</th>
-                </tr>
-              </thead>
-              <tbody>
-                {list.map((i) => (
-                  <InvocationRow key={i.id} invocation={i} localPath={localPath} />
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <LimitedList items={list} name={(i) => [endpointText(i), describe(i)]} noun="invocations">
+            {(shown) => (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="text-neutral-400">
+                    <tr className="border-b border-neutral-200">
+                      <th className="w-28 py-1 pr-3 font-medium">Linux</th>
+                      <th className="py-1 pr-3 font-medium">Endpoint</th>
+                      <th className="py-1 pr-3 font-medium">Credentials</th>
+                      <th className="py-1 text-right font-medium">Called from</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {shown.map((i) => (
+                      <InvocationRow key={i.id} invocation={i} localPath={localPath} />
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </LimitedList>
         </div>
       ))}
     </div>
@@ -471,27 +476,38 @@ export function RepositoryOutboundPanel({ repositoryId, localPath, refreshToken 
             its query and fragment are never stored — and a value from configuration shows its key, with one binding per environment file.
             Credentials are shown by kind and key path only. {inventory.auth_declared_scope}
           </p>
-          {withInvocations.length === 0 ? (
-            <p className="text-sm text-neutral-400">No outbound invocations found in any project.</p>
-          ) : (
-            <div className="space-y-2">
-              {withInvocations.map((project) => (
-                <OutboundProjectPanel key={project.project_id} project={project} localPath={localPath} />
-              ))}
-            </div>
-          )}
-          {without.length > 0 && (
-            <GroupedItems label={`${without.length} project${without.length === 1 ? '' : 's'} with no outbound invocations`}>
-              <ul className="space-y-0.5 text-xs text-neutral-500">
-                {without.map((project) => (
-                  <li key={project.project_id}>
-                    <span className="break-all font-mono">{project.project_path}</span>
-                    {project.status !== 'SCANNED' && <span className="text-neutral-400"> — {project.skip_reason ?? project.status.toLowerCase()}</span>}
-                  </li>
-                ))}
-              </ul>
-            </GroupedItems>
-          )}
+          {withInvocations.length === 0 && <p className="text-sm text-neutral-400">No outbound invocations found in any project.</p>}
+          {/* One list: a panel per project with invocations, and the grouped line for the rest, which counts as one. */}
+          <LimitedList<ProjectOutbound | 'without'>
+            items={[...withInvocations, ...(without.length > 0 ? (['without'] as const) : [])]}
+            name={(p) => (p === 'without' ? without.map((w) => w.project_path) : p.project_path)}
+            noun="projects"
+          >
+            {(shown) => (
+              <div className="space-y-2">
+                {shown.map((project) =>
+                  project === 'without' ? (
+                    <GroupedItems key="without" label={`${without.length} project${without.length === 1 ? '' : 's'} with no outbound invocations`}>
+                      <LimitedList items={without} name={(w) => w.project_path} noun="projects">
+                        {(rows) => (
+                          <ul className="space-y-0.5 text-xs text-neutral-500">
+                            {rows.map((w) => (
+                              <li key={w.project_id}>
+                                <span className="break-all font-mono">{w.project_path}</span>
+                                {w.status !== 'SCANNED' && <span className="text-neutral-400"> — {w.skip_reason ?? w.status.toLowerCase()}</span>}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </LimitedList>
+                    </GroupedItems>
+                  ) : (
+                    <OutboundProjectPanel key={project.project_id} project={project} localPath={localPath} />
+                  ),
+                )}
+              </div>
+            )}
+          </LimitedList>
         </div>
       )}
     </CollapsibleSection>

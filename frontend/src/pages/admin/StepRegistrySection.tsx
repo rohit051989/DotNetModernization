@@ -2,6 +2,7 @@ import { Fragment, useEffect, useMemo, useState } from 'react'
 import { listSteps } from '../../api/registration'
 import { AdapterTypeChip, ImplementationStatusChip, OwnerCodeBadge } from '../../components/WorkflowBadges'
 import { JsonTreeView } from '../../components/JsonTreeView'
+import { LimitedList } from '../../components/LimitedList'
 import type { StepRegistration } from '../../types/registration'
 import { PHASES, UNASSIGNED_PHASE_NAME, phaseForStep } from './phases'
 
@@ -143,67 +144,72 @@ export function StepRegistrySection() {
                 </span>
               )}
             </div>
-            <table className="w-full text-left text-sm">
-              <thead className="text-xs uppercase tracking-wide text-neutral-500">
-                <tr>
-                  <th className="px-4 py-2 font-medium">#</th>
-                  <th className="px-3 py-2 font-medium">Step name</th>
-                  <th className="px-3 py-2 font-medium">Display name</th>
-                  <th className="px-3 py-2 font-medium">Owner</th>
-                  <th className="px-3 py-2 font-medium">Viewpoint</th>
-                  <th className="px-3 py-2 font-medium">Adapter</th>
-                  <th className="px-3 py-2 font-medium">Status</th>
-                  <th className="px-3 py-2 font-medium">Version</th>
-                  <th className="px-3 py-2 font-medium">Owner team</th>
-                  <th className="px-3 py-2 font-medium">Consumes</th>
-                  <th className="px-3 py-2 font-medium">Produces</th>
-                </tr>
-              </thead>
-              <tbody>
-                {phaseSteps.map((step) => (
-                  <Fragment key={step.step_name}>
-                    <tr
-                      className="cursor-pointer border-b border-neutral-100 hover:bg-neutral-50"
-                      onClick={() => setExpanded((cur) => ({ ...cur, [step.step_name]: !cur[step.step_name] }))}
-                    >
-                      <td className="px-4 py-2 font-mono text-xs text-neutral-400">{step.lifecycle_step_no ?? '—'}</td>
-                      <td className="px-3 py-2 font-mono text-xs text-neutral-700">{step.step_name}</td>
-                      <td className="px-3 py-2 text-neutral-700">{step.display_name}</td>
-                      <td className="px-3 py-2">
-                        <OwnerCodeBadge code={step.owner_code} />
-                      </td>
-                      <td className="px-3 py-2 text-xs text-neutral-500">
-                        {step.viewpoint && step.viewpoint !== 'NONE' ? step.viewpoint : '—'}
-                      </td>
-                      <td className="px-3 py-2">
-                        <AdapterTypeChip adapterType={step.adapter_type} />
-                      </td>
-                      <td className="px-3 py-2">
-                        <ImplementationStatusChip status={step.implementation_status} />
-                      </td>
-                      <td className="px-3 py-2 font-mono text-xs text-neutral-500">{step.version}</td>
-                      <td className="px-3 py-2 text-xs text-neutral-500">{step.owner_team ?? '—'}</td>
-                      <td className="px-3 py-2 text-xs text-neutral-500">
-                        {step.consumes.length === 0 ? '—' : step.consumes.map((c) => c.artifact_type).join(', ')}
-                      </td>
-                      <td className="px-3 py-2 text-xs text-neutral-500">
-                        {step.produces.length === 0 ? '—' : step.produces.map((p) => p.artifact_type).join(', ')}
-                      </td>
+            {/* The search above already matches step names, so the rows are limited without a second filter box. */}
+            <LimitedList items={phaseSteps} noun="steps">
+              {(visible) => (
+                <table className="w-full text-left text-sm">
+                  <thead className="text-xs uppercase tracking-wide text-neutral-500">
+                    <tr>
+                      <th className="px-4 py-2 font-medium">#</th>
+                      <th className="px-3 py-2 font-medium">Step name</th>
+                      <th className="px-3 py-2 font-medium">Display name</th>
+                      <th className="px-3 py-2 font-medium">Owner</th>
+                      <th className="px-3 py-2 font-medium">Viewpoint</th>
+                      <th className="px-3 py-2 font-medium">Adapter</th>
+                      <th className="px-3 py-2 font-medium">Status</th>
+                      <th className="px-3 py-2 font-medium">Version</th>
+                      <th className="px-3 py-2 font-medium">Owner team</th>
+                      <th className="px-3 py-2 font-medium">Consumes</th>
+                      <th className="px-3 py-2 font-medium">Produces</th>
                     </tr>
-                    {expanded[step.step_name] && (
-                      <tr className="border-b border-neutral-100 bg-neutral-50">
-                        <td colSpan={11} className="px-4 py-3">
-                          <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-neutral-400">
-                            adapter_config — where this step actually runs from
-                          </p>
-                          <JsonTreeView value={step.adapter_config} />
-                        </td>
-                      </tr>
-                    )}
-                  </Fragment>
-                ))}
-              </tbody>
-            </table>
+                  </thead>
+                  <tbody>
+                    {visible.map((step) => (
+                      <Fragment key={step.step_name}>
+                        <tr
+                          className="cursor-pointer border-b border-neutral-100 hover:bg-neutral-50"
+                          onClick={() => setExpanded((cur) => ({ ...cur, [step.step_name]: !cur[step.step_name] }))}
+                        >
+                          <td className="px-4 py-2 font-mono text-xs text-neutral-400">{step.lifecycle_step_no ?? '—'}</td>
+                          <td className="px-3 py-2 font-mono text-xs text-neutral-700">{step.step_name}</td>
+                          <td className="px-3 py-2 text-neutral-700">{step.display_name}</td>
+                          <td className="px-3 py-2">
+                            <OwnerCodeBadge code={step.owner_code} />
+                          </td>
+                          <td className="px-3 py-2 text-xs text-neutral-500">
+                            {step.viewpoint && step.viewpoint !== 'NONE' ? step.viewpoint : '—'}
+                          </td>
+                          <td className="px-3 py-2">
+                            <AdapterTypeChip adapterType={step.adapter_type} />
+                          </td>
+                          <td className="px-3 py-2">
+                            <ImplementationStatusChip status={step.implementation_status} />
+                          </td>
+                          <td className="px-3 py-2 font-mono text-xs text-neutral-500">{step.version}</td>
+                          <td className="px-3 py-2 text-xs text-neutral-500">{step.owner_team ?? '—'}</td>
+                          <td className="px-3 py-2 text-xs text-neutral-500">
+                            {step.consumes.length === 0 ? '—' : step.consumes.map((c) => c.artifact_type).join(', ')}
+                          </td>
+                          <td className="px-3 py-2 text-xs text-neutral-500">
+                            {step.produces.length === 0 ? '—' : step.produces.map((p) => p.artifact_type).join(', ')}
+                          </td>
+                        </tr>
+                        {expanded[step.step_name] && (
+                          <tr className="border-b border-neutral-100 bg-neutral-50">
+                            <td colSpan={11} className="px-4 py-3">
+                              <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-neutral-400">
+                                adapter_config — where this step actually runs from
+                              </p>
+                              <JsonTreeView value={step.adapter_config} />
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </LimitedList>
           </section>
         )
       })}

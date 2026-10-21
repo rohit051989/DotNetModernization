@@ -5,6 +5,7 @@ import { isExecutionTerminal, type DashboardRepositoryRow, type DashboardSummary
 import type { ViewpointCoverage } from '../types/registration'
 import { EmptyState } from '../components/EmptyState'
 import { DiscoveryProgressBar } from '../components/DiscoveryProgressBar'
+import { LimitedList } from '../components/LimitedList'
 
 const COVERAGE_LABEL_TONE: Record<string, string> = {
   strong: 'bg-emerald-100 text-emerald-700',
@@ -256,7 +257,8 @@ export function DashboardPage({ engagementId, onNavigateToRepositories, onNaviga
         <h2 className="border-b border-neutral-100 px-4 py-3 text-sm font-semibold text-neutral-900">
           Repository status
         </h2>
-        <div className="overflow-x-auto">
+        <LimitedList items={rows} name={(row) => row.name} noun="repositories" className="overflow-x-auto">
+        {(visibleRows) => (
         <table className="w-full text-left text-sm">
           <thead className="text-xs uppercase tracking-wide text-neutral-500">
             <tr>
@@ -277,7 +279,7 @@ export function DashboardPage({ engagementId, onNavigateToRepositories, onNaviga
             </tr>
           </thead>
           <tbody>
-            {rows.map((row) => {
+            {visibleRows.map((row) => {
               const latest = row.latest_execution
               return (
                 <tr key={row.repository_id} className="border-b border-neutral-100">
@@ -336,7 +338,8 @@ export function DashboardPage({ engagementId, onNavigateToRepositories, onNaviga
             })}
           </tbody>
         </table>
-        </div>
+        )}
+        </LimitedList>
       </section>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -373,7 +376,13 @@ export function DashboardPage({ engagementId, onNavigateToRepositories, onNaviga
                   </dd>
                 </div>
               </dl>
-              {items.top_items.length > 0 ? (
+              <LimitedList
+                items={items.top_items}
+                name={(item) => item.item_name}
+                noun="items"
+                empty={<p className="text-xs text-neutral-400">No catalog items found in the evaluated projects yet.</p>}
+              >
+                {(visibleItems) => (
                 <table className="w-full text-left text-sm">
                   <thead className="text-xs uppercase tracking-wide text-neutral-400">
                     <tr>
@@ -383,7 +392,7 @@ export function DashboardPage({ engagementId, onNavigateToRepositories, onNaviga
                     </tr>
                   </thead>
                   <tbody>
-                    {items.top_items.map((item) => (
+                    {visibleItems.map((item) => (
                       <tr key={item.item_id} className="border-t border-neutral-50">
                         <td className="py-1.5 text-neutral-700">{item.item_name}</td>
                         <td className="py-1.5 text-right font-medium text-neutral-900">{item.projects}</td>
@@ -392,9 +401,8 @@ export function DashboardPage({ engagementId, onNavigateToRepositories, onNaviga
                     ))}
                   </tbody>
                 </table>
-              ) : (
-                <p className="text-xs text-neutral-400">No catalog items found in the evaluated projects yet.</p>
-              )}
+                )}
+              </LimitedList>
             </>
           ) : (
             <p className="text-sm text-neutral-300">
@@ -404,8 +412,15 @@ export function DashboardPage({ engagementId, onNavigateToRepositories, onNaviga
         </section>
         <section className="rounded border border-neutral-200 bg-white p-4">
           <h2 className="mb-2 text-sm font-semibold text-neutral-900">Recent activity</h2>
+          <LimitedList
+            items={summary.recent_executions}
+            name={(execution) => [execution.job_name, execution.repository_slug]}
+            noun="executions"
+            empty={<p className="text-sm text-neutral-400">No executions yet.</p>}
+          >
+            {(visibleExecutions) => (
           <ul className="divide-y divide-neutral-100">
-            {summary.recent_executions.slice(0, 10).map((execution) => (
+            {visibleExecutions.map((execution) => (
               <li key={execution.job_execution_id}>
                 <button
                   type="button"
@@ -436,8 +451,9 @@ export function DashboardPage({ engagementId, onNavigateToRepositories, onNaviga
                 </button>
               </li>
             ))}
-            {summary.recent_executions.length === 0 && <p className="text-sm text-neutral-400">No executions yet.</p>}
           </ul>
+            )}
+          </LimitedList>
         </section>
       </div>
 

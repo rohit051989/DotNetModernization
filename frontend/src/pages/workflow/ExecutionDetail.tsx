@@ -7,6 +7,7 @@ import { isExecutionTerminal } from '../../types/workflow'
 import { BatchStatusBadge, ExitStatusBadge } from '../../components/WorkflowBadges'
 import { CopyButton } from '../../components/CopyButton'
 import { EmptyState } from '../../components/EmptyState'
+import { LimitedList } from '../../components/LimitedList'
 import { useToast } from '../../components/Toast'
 import { usePolling } from '../../hooks/usePolling'
 import { StepTimeline } from './StepTimeline'
@@ -196,37 +197,49 @@ export function ExecutionDetail({ executionId, onBack }: ExecutionDetailProps) {
         {artifacts.length === 0 ? (
           <p className="text-sm text-neutral-400">No artifacts produced yet.</p>
         ) : (
-          <div className="space-y-3">
-            {Object.entries(artifactsByStep).map(([stepName, stepArtifacts]) => (
-              <div key={stepName} className="rounded border border-neutral-200 bg-white">
-                <p className="border-b border-neutral-100 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">
-                  {stepName}
-                </p>
-                <ul className="divide-y divide-neutral-100">
-                  {stepArtifacts.map((artifact) => (
-                    <li key={artifact.id} className="flex items-center justify-between px-3 py-2 text-sm">
-                      <div>
-                        <p className="font-medium text-neutral-800">
-                          {artifact.artifact_type}@{artifact.artifact_version}
-                        </p>
-                        <p className="text-xs text-neutral-400">
-                          {artifact.size_bytes !== null ? `${(artifact.size_bytes / 1024).toFixed(1)} KB` : '—'} ·{' '}
-                          {artifact.checksum.slice(0, 19)}… · {new Date(artifact.created_at).toLocaleString()}
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setViewingArtifactId(artifact.id)}
-                        className="rounded border border-neutral-300 px-2 py-1 text-xs text-neutral-600 hover:bg-neutral-50"
-                      >
-                        View
-                      </button>
-                    </li>
-                  ))}
-                </ul>
+          <LimitedList
+            items={Object.entries(artifactsByStep)}
+            name={([stepName, stepArtifacts]) => [stepName, ...stepArtifacts.map((a) => a.artifact_type)]}
+            noun="steps"
+          >
+            {(visibleSteps) => (
+              <div className="space-y-3">
+                {visibleSteps.map(([stepName, stepArtifacts]) => (
+                  <div key={stepName} className="rounded border border-neutral-200 bg-white">
+                    <p className="border-b border-neutral-100 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                      {stepName}
+                    </p>
+                    <LimitedList items={stepArtifacts} name={(a) => a.artifact_type} noun="artifacts" className="pb-1">
+                      {(visible) => (
+                        <ul className="divide-y divide-neutral-100">
+                          {visible.map((artifact) => (
+                            <li key={artifact.id} className="flex items-center justify-between px-3 py-2 text-sm">
+                              <div>
+                                <p className="font-medium text-neutral-800">
+                                  {artifact.artifact_type}@{artifact.artifact_version}
+                                </p>
+                                <p className="text-xs text-neutral-400">
+                                  {artifact.size_bytes !== null ? `${(artifact.size_bytes / 1024).toFixed(1)} KB` : '—'} ·{' '}
+                                  {artifact.checksum.slice(0, 19)}… · {new Date(artifact.created_at).toLocaleString()}
+                                </p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => setViewingArtifactId(artifact.id)}
+                                className="rounded border border-neutral-300 px-2 py-1 text-xs text-neutral-600 hover:bg-neutral-50"
+                              >
+                                View
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </LimitedList>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            )}
+          </LimitedList>
         )}
       </section>
 

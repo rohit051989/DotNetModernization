@@ -5,6 +5,7 @@ import type { Engagement } from '../../types/catalog'
 import type { CatalogItem, EngagementDecision, ItemResolution } from '../../types/items'
 import { ItemDecisionStatusBadge, PerspectiveBadge } from '../../components/Badge'
 import { ConfirmDialog } from '../../components/ConfirmDialog'
+import { LimitedList } from '../../components/LimitedList'
 import { useToast } from '../../components/Toast'
 import { ItemDecisionForm } from './ItemDecisionForm'
 import { formatDate } from './itemHelpers'
@@ -56,22 +57,24 @@ function DecisionBody({ decision, resolutions }: { decision: EngagementDecision;
               )}
             </p>
           )}
-          {(decision.followers ?? []).length > 0 && (
-            <p className="text-neutral-700">
-              Drives:{' '}
-              {decision.followers!
-                .map((f) => `${f.item_name} → ${f.resolution_name ?? '—'} (${f.source === 'derived' ? 'derived' : f.needs_review ? 'overridden by hand, needs review' : 'overridden by hand'})`)
-                .join('; ')}
-            </p>
-          )}
+          <LimitedList items={decision.followers ?? []} name={(f) => [f.item_name, f.resolution_name]} noun="decisions">
+            {(visible) => (
+              <p className="text-neutral-700">
+                Drives:{' '}
+                {visible
+                  .map((f) => `${f.item_name} → ${f.resolution_name ?? '—'} (${f.source === 'derived' ? 'derived' : f.needs_review ? 'overridden by hand, needs review' : 'overridden by hand'})`)
+                  .join('; ')}
+              </p>
+            )}
+          </LimitedList>
         </div>
       )}
       <div className="col-span-2">
         <dt className="text-xs text-neutral-400">Candidates considered</dt>
         <dd className="text-sm text-neutral-700">
-          {decision.candidates_considered && decision.candidates_considered.length > 0
-            ? decision.candidates_considered.map(nameOf).join(' · ')
-            : '—'}
+          <LimitedList items={decision.candidates_considered ?? []} name={nameOf} noun="candidates" empty="—">
+            {(visible) => visible.map(nameOf).join(' · ')}
+          </LimitedList>
         </dd>
       </div>
       <div className="col-span-2">
@@ -197,9 +200,9 @@ export function ItemDecisionPanel({ item, engagement, resolutions, refreshToken,
           </div>
           {live.warnings.length > 0 && (
             <div className="rounded border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800">
-              {live.warnings.map((w, i) => (
-                <p key={i}>⚠ {w}</p>
-              ))}
+              <LimitedList items={live.warnings} name={(w) => w} noun="warnings">
+                {(visible) => visible.map((w, i) => <p key={i}>⚠ {w}</p>)}
+              </LimitedList>
             </div>
           )}
           <DecisionBody decision={live} resolutions={resolutions} />
@@ -223,19 +226,23 @@ export function ItemDecisionPanel({ item, engagement, resolutions, refreshToken,
             {showHistory ? 'Hide' : 'Show'} decision history ({history.length} superseded)
           </button>
           {showHistory && (
-            <ul className="mt-3 space-y-3">
-              {history.map((d) => (
-                <li key={d.id} className="rounded border border-neutral-200 bg-neutral-50 p-3 opacity-80">
-                  <div className="mb-2 flex items-center gap-2 text-xs text-neutral-400">
-                    <ItemDecisionStatusBadge status={d.status} />
-                    <span>
-                      created {formatDate(d.created_at)} · superseded {formatDate(d.updated_at)}
-                    </span>
-                  </div>
-                  <DecisionBody decision={d} resolutions={resolutions} />
-                </li>
-              ))}
-            </ul>
+            <LimitedList items={history} name={(d) => [d.resolution_name, d.approver_name]} noun="decisions" className="mt-3">
+              {(visible) => (
+                <ul className="space-y-3">
+                  {visible.map((d) => (
+                    <li key={d.id} className="rounded border border-neutral-200 bg-neutral-50 p-3 opacity-80">
+                      <div className="mb-2 flex items-center gap-2 text-xs text-neutral-400">
+                        <ItemDecisionStatusBadge status={d.status} />
+                        <span>
+                          created {formatDate(d.created_at)} · superseded {formatDate(d.updated_at)}
+                        </span>
+                      </div>
+                      <DecisionBody decision={d} resolutions={resolutions} />
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </LimitedList>
           )}
         </div>
       )}

@@ -29,6 +29,7 @@ import {
   StatusBadge,
 } from '../../components/Badge'
 import { ConfirmDialog } from '../../components/ConfirmDialog'
+import { LimitedList } from '../../components/LimitedList'
 import { Markdown } from '../../components/Markdown'
 import { useToast } from '../../components/Toast'
 import { DetectionView } from './DetectionView'
@@ -292,11 +293,15 @@ export function ItemDetail({
         <div className="flex items-start justify-between gap-3 rounded border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
           <div>
             <p className="font-medium">Saved with warnings</p>
-            {saveWarnings.map((w, i) => (
-              <p key={i} className="mt-1">
-                {w}
-              </p>
-            ))}
+            <LimitedList items={saveWarnings} name={(w) => w} noun="warnings">
+              {(visible) =>
+                visible.map((w, i) => (
+                  <p key={i} className="mt-1">
+                    {w}
+                  </p>
+                ))
+              }
+            </LimitedList>
           </div>
           <button type="button" onClick={onDismissSaveWarnings} aria-label="Dismiss" className="text-amber-500 hover:text-amber-700">
             ✕
@@ -403,52 +408,56 @@ export function ItemDetail({
         ) : itemSignals.length === 0 ? (
           <p className="mt-3 text-sm text-neutral-400">The detection references no signals yet.</p>
         ) : (
-          <table className="mt-3 w-full text-left text-xs">
-            <thead className="text-neutral-400">
-              <tr className="border-b border-neutral-200">
-                <th className="py-1.5 pr-3 font-medium">Signal</th>
-                <th className="py-1.5 pr-3 font-medium">Used in</th>
-                <th className="py-1.5 pr-3 font-medium">State</th>
-                <th className="py-1.5 pr-3 font-medium">Type</th>
-                <th className="py-1.5 pr-3 font-medium">Category</th>
-                <th className="py-1.5 font-medium">Extractor</th>
-              </tr>
-            </thead>
-            <tbody>
-              {itemSignals.map((signal) => (
-                <tr key={signal.name} className="border-b border-neutral-100 align-top">
-                  <td className="py-1.5 pr-3">
-                    {onSelectSignal ? (
-                      <button
-                        type="button"
-                        onClick={() => onSelectSignal(signal.name)}
-                        className={`font-mono hover:underline ${signal.registered ? 'text-violet-700' : 'text-red-700'}`}
-                      >
-                        {signal.name}
-                      </button>
-                    ) : (
-                      <span className={`font-mono ${signal.registered ? 'text-neutral-800' : 'text-red-700'}`}>
-                        {signal.name}
-                      </span>
-                    )}
-                  </td>
-                  <td className="py-1.5 pr-3">
-                    <span className="flex flex-wrap gap-1">
-                      {signal.usages.map((usage) => (
-                        <SignalUsageBadge key={usage} usage={usage} />
-                      ))}
-                    </span>
-                  </td>
-                  <td className="py-1.5 pr-3">
-                    <SignalStateBadge state={signal.registered ? signal.state : null} />
-                  </td>
-                  <td className="py-1.5 pr-3 font-mono text-neutral-600">{signal.type ?? '—'}</td>
-                  <td className="py-1.5 pr-3 text-neutral-600">{signal.category ?? '—'}</td>
-                  <td className="py-1.5 font-mono text-neutral-600">{signal.expected_extractor ?? '—'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <LimitedList items={itemSignals} name={(s) => s.name} noun="signals" className="mt-3">
+            {(visible) => (
+              <table className="w-full text-left text-xs">
+                <thead className="text-neutral-400">
+                  <tr className="border-b border-neutral-200">
+                    <th className="py-1.5 pr-3 font-medium">Signal</th>
+                    <th className="py-1.5 pr-3 font-medium">Used in</th>
+                    <th className="py-1.5 pr-3 font-medium">State</th>
+                    <th className="py-1.5 pr-3 font-medium">Type</th>
+                    <th className="py-1.5 pr-3 font-medium">Category</th>
+                    <th className="py-1.5 font-medium">Extractor</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visible.map((signal) => (
+                    <tr key={signal.name} className="border-b border-neutral-100 align-top">
+                      <td className="py-1.5 pr-3">
+                        {onSelectSignal ? (
+                          <button
+                            type="button"
+                            onClick={() => onSelectSignal(signal.name)}
+                            className={`font-mono hover:underline ${signal.registered ? 'text-violet-700' : 'text-red-700'}`}
+                          >
+                            {signal.name}
+                          </button>
+                        ) : (
+                          <span className={`font-mono ${signal.registered ? 'text-neutral-800' : 'text-red-700'}`}>
+                            {signal.name}
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-1.5 pr-3">
+                        <span className="flex flex-wrap gap-1">
+                          {signal.usages.map((usage) => (
+                            <SignalUsageBadge key={usage} usage={usage} />
+                          ))}
+                        </span>
+                      </td>
+                      <td className="py-1.5 pr-3">
+                        <SignalStateBadge state={signal.registered ? signal.state : null} />
+                      </td>
+                      <td className="py-1.5 pr-3 font-mono text-neutral-600">{signal.type ?? '—'}</td>
+                      <td className="py-1.5 pr-3 text-neutral-600">{signal.category ?? '—'}</td>
+                      <td className="py-1.5 font-mono text-neutral-600">{signal.expected_extractor ?? '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </LimitedList>
         )}
       </section>
 
@@ -472,47 +481,55 @@ export function ItemDetail({
             No resolutions yet{isMaster ? ' — add the options an engagement can choose from.' : '.'}
           </p>
         )}
-        <div className="space-y-3">
-          {[...liveResolutions, ...(showDeletedResolutions ? deletedResolutions : [])].map((resolution) => {
-            const resolutionDeleted = resolution.deleted_at !== null
-            return (
-              <ResolutionCard
-                key={resolution.id}
-                resolution={resolution}
-                isLowestImpact={lowest?.consumer_impact === resolution.consumer_impact && resolution.status === 'active'}
-                actions={
-                  isMaster && !deleted ? (
-                    // TODO: gate behind an admin check once auth exists — resolution
-                    // edit/default/delete/restore are master-scoped mutations.
-                    resolutionDeleted ? (
-                      <button type="button" disabled={busy} onClick={() => handleRestoreResolution(resolution)} className={smallButton}>
-                        Restore
-                      </button>
-                    ) : (
-                      <>
-                        <button type="button" onClick={() => setResolutionForm({ kind: 'edit', resolution })} className={smallButton}>
-                          Edit
-                        </button>
-                        {!resolution.is_default && resolution.status === 'active' && (
-                          <button type="button" disabled={busy} onClick={() => handleMakeDefault(resolution)} className={smallButton}>
-                            Make default
+        <LimitedList
+          items={[...liveResolutions, ...(showDeletedResolutions ? deletedResolutions : [])]}
+          name={(r) => r.name}
+          noun="resolutions"
+        >
+          {(visible) => (
+            <div className="space-y-3">
+              {visible.map((resolution) => {
+                const resolutionDeleted = resolution.deleted_at !== null
+                return (
+                  <ResolutionCard
+                    key={resolution.id}
+                    resolution={resolution}
+                    isLowestImpact={lowest?.consumer_impact === resolution.consumer_impact && resolution.status === 'active'}
+                    actions={
+                      isMaster && !deleted ? (
+                        // TODO: gate behind an admin check once auth exists — resolution
+                        // edit/default/delete/restore are master-scoped mutations.
+                        resolutionDeleted ? (
+                          <button type="button" disabled={busy} onClick={() => handleRestoreResolution(resolution)} className={smallButton}>
+                            Restore
                           </button>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => setPendingConfirm({ kind: 'delete-resolution', resolution })}
-                          className="rounded border border-red-200 px-2 py-0.5 text-xs text-red-600 hover:bg-red-50"
-                        >
-                          Delete
-                        </button>
-                      </>
-                    )
-                  ) : undefined
-                }
-              />
-            )
-          })}
-        </div>
+                        ) : (
+                          <>
+                            <button type="button" onClick={() => setResolutionForm({ kind: 'edit', resolution })} className={smallButton}>
+                              Edit
+                            </button>
+                            {!resolution.is_default && resolution.status === 'active' && (
+                              <button type="button" disabled={busy} onClick={() => handleMakeDefault(resolution)} className={smallButton}>
+                                Make default
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => setPendingConfirm({ kind: 'delete-resolution', resolution })}
+                              className="rounded border border-red-200 px-2 py-0.5 text-xs text-red-600 hover:bg-red-50"
+                            >
+                              Delete
+                            </button>
+                          </>
+                        )
+                      ) : undefined
+                    }
+                  />
+                )
+              })}
+            </div>
+          )}
+        </LimitedList>
         {isMaster && !deleted && (
           // TODO: gate behind an admin check once auth exists — adding a resolution
           // is a master-scoped mutation.

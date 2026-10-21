@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { ApiError } from '../../api/client'
 import { CollapsibleSection, GroupedItems, SectionGroup } from '../../components/CollapsibleSection'
+import { LimitedList } from '../../components/LimitedList'
 import { getRepositoryEntryPoints } from '../../api/surface'
 import { RepositoryBackendReachPanel } from './RepositoryBackendReachPanel'
 import { RepositoryOutboundPanel } from './RepositoryOutboundPanel'
@@ -54,6 +55,13 @@ const VERB_STYLE: Record<string, string> = {
 
 function isHttp(entry: EntryPoint): boolean {
   return entry.kind === 'http_controller_action' || entry.kind === 'http_minimal_api' || entry.kind === 'razor_page'
+}
+
+/** What a person sees of an entry point: its handler, and its route or description. */
+function entryNames(entry: EntryPoint): string[] {
+  const handler = entry.handler_member ? `${entry.handler_type}.${entry.handler_member}` : entry.handler_type
+  const http = isHttp(entry) ? (entry.detail as HttpDetail) : null
+  return [handler, http ? `${http.verb} /${http.routeTemplate ?? ''}` : describe(entry)]
 }
 
 function HandlerLink({ entry, localPath }: { entry: EntryPoint; localPath: string | null }) {
@@ -166,6 +174,8 @@ function RouteCell({ http }: { http: HttpDetail }) {
 
 function HttpRouteTable({ entries, localPath }: { entries: EntryPoint[]; localPath: string | null }) {
   return (
+    <LimitedList items={entries} name={entryNames} noun="routes">
+      {(shown) => (
     <div className="overflow-x-auto">
       <table className="w-full text-left text-xs">
         <thead className="text-neutral-400">
@@ -178,7 +188,7 @@ function HttpRouteTable({ entries, localPath }: { entries: EntryPoint[]; localPa
           </tr>
         </thead>
         <tbody>
-          {entries.map((entry) => {
+          {shown.map((entry) => {
             const http = entry.detail as HttpDetail
             return (
               <tr key={entry.id} className={`border-b border-neutral-100 align-top ${entry.auth_declared === 'none_declared' ? 'bg-amber-50/40' : ''}`}>
@@ -221,6 +231,8 @@ function HttpRouteTable({ entries, localPath }: { entries: EntryPoint[]; localPa
         </tbody>
       </table>
     </div>
+      )}
+    </LimitedList>
   )
 }
 
@@ -277,8 +289,10 @@ function WcfEndpoints({ endpoints }: { endpoints: WcfEndpoint[] }) {
     return <p className="mt-0.5 text-[11px] text-neutral-400">No endpoint declared in config or code — security not assessed.</p>
   }
   return (
+    <LimitedList items={endpoints} name={(e) => [e.binding, e.declaredAt, e.hostedAt]} noun="endpoints">
+      {(shown) => (
     <ul className="mt-1 space-y-0.5">
-      {endpoints.map((e) => (
+      {shown.map((e) => (
         <li key={`${e.hostedAt}|${e.declaredAt}`} className="flex flex-wrap items-center gap-1 text-[11px]">
           <span className="rounded bg-neutral-100 px-1 text-neutral-500">{HOST_LABEL[e.hostKind]}</span>
           <span className="font-mono text-neutral-700">{e.binding}</span>
@@ -297,15 +311,19 @@ function WcfEndpoints({ endpoints }: { endpoints: WcfEndpoint[] }) {
         </li>
       ))}
     </ul>
+      )}
+    </LimitedList>
   )
 }
 
 function OtherKindTable({ entries, localPath }: { entries: EntryPoint[]; localPath: string | null }) {
   return (
+    <LimitedList items={entries} name={entryNames} noun="entry points">
+      {(shown) => (
     <div className="overflow-x-auto">
     <table className="w-full min-w-[420px] text-left text-xs">
       <tbody>
-        {entries.map((entry) => {
+        {shown.map((entry) => {
           const authorisation = (entry.detail as Record<string, unknown>).authorisation as string | null | undefined
           return (
             <tr key={entry.id} className={`border-b border-neutral-100 align-top ${entry.auth_declared === 'none_declared' ? 'bg-amber-50/40' : ''}`}>
@@ -330,6 +348,8 @@ function OtherKindTable({ entries, localPath }: { entries: EntryPoint[]; localPa
       </tbody>
     </table>
     </div>
+      )}
+    </LimitedList>
   )
 }
 
@@ -352,8 +372,8 @@ function KindGroups({ entries, localPath }: { entries: EntryPoint[]; localPath: 
 /** One project's entry points: request entry points first, lifecycle hooks
  * collapsed. Shared by the repository Surface panel and the
  * entry-point-inventory artifact renderer. */
-export function InboundProjectPanel({ project, localPath }: { project: ProjectEntryPoints; localPath: string | null }) {
-  const [expanded, setExpanded] = useState(true)
+export function InboundProjectPanel({ project, localPath, defaultOpen = true }: { project: ProjectEntryPoints; localPath: string | null; defaultOpen?: boolean }) {
+  const [expanded, setExpanded] = useState(defaultOpen)
   const [showLifecycle, setShowLifecycle] = useState(false)
   const requests = project.entry_points.filter((e) => e.entry_class === 'request')
   const lifecycle = project.entry_points.filter((e) => e.entry_class === 'lifecycle')
@@ -401,16 +421,24 @@ export function InboundProjectPanel({ project, localPath }: { project: ProjectEn
           )}
           {(project.conventional_routes.length > 0 || project.global_authorisation.length > 0) && (
             <div className="space-y-1 rounded bg-neutral-50 px-2 py-1.5 text-[11px] text-neutral-500">
-              {project.conventional_routes.map((route) => (
-                <p key={route}>
-                  <span className="font-medium text-neutral-600">Conventional route table:</span> <span className="break-all font-mono">{route}</span>
-                </p>
-              ))}
-              {project.global_authorisation.map((text) => (
-                <p key={text}>
-                  <span className="font-medium text-neutral-600">Project-wide authorisation:</span> <span className="break-all font-mono">{text}</span>
-                </p>
-              ))}
+              <LimitedList items={project.conventional_routes} name={(route) => route} noun="routes">
+                {(shown) =>
+                  shown.map((route) => (
+                    <p key={route}>
+                      <span className="font-medium text-neutral-600">Conventional route table:</span> <span className="break-all font-mono">{route}</span>
+                    </p>
+                  ))
+                }
+              </LimitedList>
+              <LimitedList items={project.global_authorisation} name={(text) => text} noun="rules">
+                {(shown) =>
+                  shown.map((text) => (
+                    <p key={text}>
+                      <span className="font-medium text-neutral-600">Project-wide authorisation:</span> <span className="break-all font-mono">{text}</span>
+                    </p>
+                  ))
+                }
+              </LimitedList>
             </div>
           )}
           {project.authorisation_not_assessed_count > 0 && (
@@ -496,11 +524,15 @@ export function NoRequestProjects({ projects, localPath }: { projects: ProjectEn
           {showAll ? 'Hide' : 'Show'} all {hooks} lifecycle hook{hooks === 1 ? '' : 's'}
         </button>
       )}
-      <ul className="space-y-0.5 text-xs">
-        {projects.map((project) => (
-          <NoRequestProject key={project.project_id} project={project} localPath={localPath} showAll={showAll} />
-        ))}
-      </ul>
+      <LimitedList items={projects} name={(p) => p.project_path} noun="projects">
+        {(shown) => (
+          <ul className="space-y-0.5 text-xs">
+            {shown.map((project) => (
+              <NoRequestProject key={project.project_id} project={project} localPath={localPath} showAll={showAll} />
+            ))}
+          </ul>
+        )}
+      </LimitedList>
     </GroupedItems>
   )
 }
@@ -590,16 +622,26 @@ export function RepositoryInboundPanel({ repositoryId, localPath, refreshToken }
               Syntax-only: routes, types and authorisation as written in source and config. A number beside a route or handler is its confidence below 1.0 —
               hover for why. Handler links open the source in VS Code.
             </p>
-            {withRequests.length === 0 ? (
-              <p className="text-sm text-neutral-400">No request entry points found in any project.</p>
-            ) : (
-              <div className="space-y-2">
-                {withRequests.map((project) => (
-                  <InboundProjectPanel key={project.project_id} project={project} localPath={localPath} />
-                ))}
-              </div>
-            )}
-            {noRequests.length > 0 && <NoRequestProjects projects={noRequests} localPath={localPath} />}
+            {withRequests.length === 0 && <p className="text-sm text-neutral-400">No request entry points found in any project.</p>}
+            {/* One list: a panel per project with request entry points, and the grouped line for the rest, which counts as one. */}
+            <LimitedList<ProjectEntryPoints | 'noRequests'>
+              items={[...withRequests, ...(noRequests.length > 0 ? (['noRequests'] as const) : [])]}
+              name={(p) => (p === 'noRequests' ? noRequests.map((n) => n.project_path) : p.project_path)}
+              noun="projects"
+            >
+              {(shown) => (
+                <div className="space-y-2">
+                  {shown.map((project) =>
+                    project === 'noRequests' ? (
+                      <NoRequestProjects key="noRequests" projects={noRequests} localPath={localPath} />
+                    ) : (
+                      // Open at first only when it is one of a few (rbc-release-6): its header line gives its counts.
+                      <InboundProjectPanel key={project.project_id} project={project} localPath={localPath} defaultOpen={withRequests.length <= 3} />
+                    ),
+                  )}
+                </div>
+              )}
+            </LimitedList>
         </div>
       )}
     </CollapsibleSection>

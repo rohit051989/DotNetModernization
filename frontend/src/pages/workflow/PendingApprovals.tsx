@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { getValidationQueueSummary, listValidationQueue } from '../../api/validationQueue'
 import type { QueueItem, QueueSummary } from '../../types/validationQueue'
 import { EmptyState } from '../../components/EmptyState'
+import { LimitedList } from '../../components/LimitedList'
 import { usePolling } from '../../hooks/usePolling'
 
 const POLL_INTERVAL_MS = 15000
@@ -122,81 +123,104 @@ export function PendingApprovals({ engagementId, onSelectExecution }: PendingApp
           {summary && summary.blocked_executions.length > 0 && (
             <div className="border-b border-neutral-100 bg-amber-50 px-4 py-3">
               <p className="text-xs font-medium text-amber-900">Executions waiting on these decisions</p>
-              <ul className="mt-1 space-y-1">
-                {summary.blocked_executions.map((execution) => (
-                  <li key={execution.job_execution_id} className="flex flex-wrap items-center gap-2 text-xs text-amber-900">
-                    <span className="rounded bg-white px-1.5 py-0.5 font-medium">
-                      {execution.batch_status} / {execution.exit_status}
-                    </span>
-                    <span>
-                      blocked by {execution.open_item_count} item{execution.open_item_count === 1 ? '' : 's'}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => onSelectExecution(execution.job_execution_id)}
-                      className="font-mono text-sky-700 hover:underline"
-                    >
-                      {execution.job_execution_id.slice(0, 8)}…
-                    </button>
-                  </li>
-                ))}
-              </ul>
+              <LimitedList
+                items={summary.blocked_executions}
+                name={(e) => e.job_execution_id}
+                noun="executions"
+                className="mt-1"
+              >
+                {(visible) => (
+                  <ul className="space-y-1">
+                    {visible.map((execution) => (
+                      <li key={execution.job_execution_id} className="flex flex-wrap items-center gap-2 text-xs text-amber-900">
+                        <span className="rounded bg-white px-1.5 py-0.5 font-medium">
+                          {execution.batch_status} / {execution.exit_status}
+                        </span>
+                        <span>
+                          blocked by {execution.open_item_count} item{execution.open_item_count === 1 ? '' : 's'}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => onSelectExecution(execution.job_execution_id)}
+                          className="font-mono text-sky-700 hover:underline"
+                        >
+                          {execution.job_execution_id.slice(0, 8)}…
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </LimitedList>
             </div>
           )}
 
-          {[...byStep.entries()]
-            .sort(([a], [b]) => a.localeCompare(b))
-            .map(([stepName, stepItems]) => (
-              <div key={stepName} className="border-b border-neutral-100 last:border-b-0">
-                <div className="px-4 py-2">
-                  <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
-                    {STEP_LABEL[stepName] ?? stepName}
-                  </h3>
-                </div>
-                <table className="w-full text-left text-sm">
-                  <thead className="text-xs uppercase tracking-wide text-neutral-400">
-                    <tr>
-                      <th className="px-4 py-1 font-medium">Item</th>
-                      <th className="px-3 py-1 font-medium">Type</th>
-                      <th className="px-3 py-1 font-medium">Age</th>
-                      <th className="px-3 py-1 font-medium">Priority</th>
-                      <th className="px-3 py-1 font-medium">Blocks</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {stepItems
-                      .slice()
-                      .sort((a, b) => a.priority - b.priority || a.created_at.localeCompare(b.created_at))
-                      .map((item) => (
-                        <tr key={item.id} className="border-t border-neutral-50">
-                          <td className="px-4 py-2">
-                            <span className="text-neutral-900">{item.title}</span>
-                            {item.is_deferred && (
-                              <span className="ml-2 rounded bg-neutral-100 px-1.5 py-0.5 text-xs text-neutral-600">
-                                deferred
-                              </span>
-                            )}
-                          </td>
-                          <td className="px-3 py-2 text-xs text-neutral-600">
-                            {ITEM_TYPE_LABEL[item.item_type] ?? item.item_type}
-                          </td>
-                          <td className="px-3 py-2 text-xs text-neutral-600">{age(item.created_at)}</td>
-                          <td className="px-3 py-2 text-xs text-neutral-600">{item.priority}</td>
-                          <td className="px-3 py-2">
-                            <button
-                              type="button"
-                              onClick={() => onSelectExecution(item.job_execution_id)}
-                              className="font-mono text-xs text-sky-700 hover:underline"
-                            >
-                              {item.job_execution_id.slice(0, 8)}…
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                  </tbody>
-                </table>
-              </div>
-            ))}
+          <LimitedList
+            items={[...byStep.entries()].sort(([a], [b]) => a.localeCompare(b))}
+            name={([stepName]) => [STEP_LABEL[stepName], stepName]}
+            noun="steps"
+          >
+            {(visibleSteps) => (
+              <>
+                {visibleSteps.map(([stepName, stepItems]) => (
+                  <div key={stepName} className="border-b border-neutral-100 last:border-b-0">
+                    <div className="px-4 py-2">
+                      <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                        {STEP_LABEL[stepName] ?? stepName}
+                      </h3>
+                    </div>
+                    <LimitedList
+                      items={stepItems.slice().sort((a, b) => a.priority - b.priority || a.created_at.localeCompare(b.created_at))}
+                      name={(item) => item.title}
+                      noun="items"
+                      className="pb-2"
+                    >
+                      {(visible) => (
+                        <table className="w-full text-left text-sm">
+                          <thead className="text-xs uppercase tracking-wide text-neutral-400">
+                            <tr>
+                              <th className="px-4 py-1 font-medium">Item</th>
+                              <th className="px-3 py-1 font-medium">Type</th>
+                              <th className="px-3 py-1 font-medium">Age</th>
+                              <th className="px-3 py-1 font-medium">Priority</th>
+                              <th className="px-3 py-1 font-medium">Blocks</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {visible.map((item) => (
+                              <tr key={item.id} className="border-t border-neutral-50">
+                                <td className="px-4 py-2">
+                                  <span className="text-neutral-900">{item.title}</span>
+                                  {item.is_deferred && (
+                                    <span className="ml-2 rounded bg-neutral-100 px-1.5 py-0.5 text-xs text-neutral-600">
+                                      deferred
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="px-3 py-2 text-xs text-neutral-600">
+                                  {ITEM_TYPE_LABEL[item.item_type] ?? item.item_type}
+                                </td>
+                                <td className="px-3 py-2 text-xs text-neutral-600">{age(item.created_at)}</td>
+                                <td className="px-3 py-2 text-xs text-neutral-600">{item.priority}</td>
+                                <td className="px-3 py-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => onSelectExecution(item.job_execution_id)}
+                                    className="font-mono text-xs text-sky-700 hover:underline"
+                                  >
+                                    {item.job_execution_id.slice(0, 8)}…
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      )}
+                    </LimitedList>
+                  </div>
+                ))}
+              </>
+            )}
+          </LimitedList>
         </>
       )}
     </section>

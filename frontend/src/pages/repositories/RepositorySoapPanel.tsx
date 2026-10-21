@@ -1,6 +1,7 @@
-import { Fragment, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { ApiError } from '../../api/client'
 import { CollapsibleSection } from '../../components/CollapsibleSection'
+import { LimitedList, useLimitedList } from '../../components/LimitedList'
 import { surfaceSectionId } from './surfaceSections'
 import { getRepositorySoapCompatibility } from '../../api/surface'
 import type { RepositorySoap, SoapVerdictLive } from '../../types/surface'
@@ -113,6 +114,9 @@ export function RepositorySoapPanel({ repositoryId, refreshToken, onOpenEstateSo
               {CONFIRMED_HELP.charAt(0).toLowerCase() + CONFIRMED_HELP.slice(1)}
             </span>
           </p>
+          {/* Calls are the list's items; a call's rows, one per environment file, stay together. */}
+          <LimitedList items={data.calls} name={(call) => [call.contract, call.clientType, call.endpoint, call.projectPath]} noun="SOAP calls">
+            {(shown) => (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[1200px] text-left">
               <thead className="text-neutral-400">
@@ -123,9 +127,27 @@ export function RepositorySoapPanel({ repositoryId, refreshToken, onOpenEstateSo
                 </tr>
               </thead>
               <tbody>
-                {data.calls.map((call) => (
-                  <Fragment key={call.invocationId}>
-                    {call.environments.map((env, index) => (
+                {shown.map((call) => (
+                  <CallRows key={call.invocationId} call={call} data={data} onOpenEstateSoap={onOpenEstateSoap} />
+                ))}
+              </tbody>
+            </table>
+          </div>
+            )}
+          </LimitedList>
+        </div>
+      )}
+    </CollapsibleSection>
+  )
+}
+
+/** One SOAP call: a row per environment file, the call's own cells on the first. Its environments are limited like
+ * any list, with the list hook, since they are rows of the calls table. */
+function CallRows({ call, data, onOpenEstateSoap }: { call: RepositorySoap['calls'][number]; data: RepositorySoap; onOpenEstateSoap?: (invocationId: string) => void }) {
+  const list = useLimitedList(call.environments, { name: (env) => [env.environment, env.address], noun: 'environments' })
+  return (
+    <>
+      {list.visible.map((env, index) => (
                       <tr key={`${env.environment}|${env.sourceFile}`} className={`align-top ${index === 0 ? 'border-t border-neutral-100' : ''}`}>
                         <td className="py-1 pr-3">
                           {index === 0 && (
@@ -163,14 +185,15 @@ export function RepositorySoapPanel({ repositoryId, refreshToken, onOpenEstateSo
                         </td>
                       </tr>
                     ))}
-                  </Fragment>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+      {list.hasControls && (
+        <tr>
+          <td />
+          <td colSpan={9} className="pb-1">
+            {list.controls}
+          </td>
+        </tr>
       )}
-    </CollapsibleSection>
+    </>
   )
 }
 

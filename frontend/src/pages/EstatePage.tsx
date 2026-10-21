@@ -1,6 +1,7 @@
-import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { getEstate, putEndpointAnnotation, putEstateSettings } from '../api/estate'
 import { launchJob } from '../api/workflow'
+import { LimitedList } from '../components/LimitedList'
 import { useToast } from '../components/Toast'
 import { SoapCompatibilityView } from './SoapCompatibilityView'
 import { EstateRuleConflictsView } from './RuleConflictsViews'
@@ -215,6 +216,20 @@ export function EstatePage({
 
 // ---------- endpoint register ----------
 
+/** A row of the register: a host the estate calls, or one no longer called whose annotation is kept. */
+type RegisterRow = { host: RegisterHost; noLongerCalled?: undefined } | { host?: undefined; noLongerCalled: string }
+
+/** The names a person sees on a register row, for its filter box. */
+function registerRowNames(row: RegisterRow): string[] {
+  if (!row.host) return [row.noLongerCalled]
+  return [
+    row.host.host,
+    ...row.host.otherHosts.map((o) => o.host),
+    ...row.host.services.flatMap((s) => [s.path, s.contract ?? '']),
+    ...row.host.callingRepositories,
+  ]
+}
+
 function RegisterView({
   engagementId,
   register,
@@ -240,6 +255,7 @@ function RegisterView({
   const underWay = backend.filter((h) => ['in_progress', 'agreed'].includes(status(h.host))).length
   const notStarted = backend.filter((h) => status(h.host) === 'not_started').length
   const done = backend.length - underWay - notStarted
+  const rows: RegisterRow[] = [...register.hosts.map((host) => ({ host })), ...register.noLongerCalled.map((noLongerCalled) => ({ noLongerCalled }))]
 
   // Settings and served-by annotations take effect on the next run: say so
   // when what is stored differs from what this register was built with.
@@ -354,6 +370,8 @@ function RegisterView({
         </span>
       </div>
 
+      <LimitedList items={rows} name={registerRowNames} noun="hosts">
+        {(visible) => (
       <div className="overflow-x-auto rounded border border-neutral-200 bg-white">
         <table className="w-full min-w-[1100px] text-left text-xs">
           <thead className="border-b border-neutral-200 text-neutral-400">
@@ -366,7 +384,8 @@ function RegisterView({
             </tr>
           </thead>
           <tbody>
-            {register.hosts.map((host) => (
+            {visible.map(({ host, noLongerCalled }) =>
+              host ? (
               <HostRow
                 key={host.host}
                 engagementId={engagementId}
@@ -378,24 +397,26 @@ function RegisterView({
                 onOpenRepository={onOpenRepository}
                 onSaved={onSaved}
               />
-            ))}
-            {register.noLongerCalled.map((host) => (
+              ) : (
               <HostRow
-                key={host}
+                key={noLongerCalled}
                 engagementId={engagementId}
                 host={null}
-                hostName={host}
+                hostName={noLongerCalled}
                 repositories={settings.repositories}
-                annotation={byHost[host]}
+                annotation={byHost[noLongerCalled]}
                 expanded={false}
                 onToggle={() => undefined}
                 onOpenRepository={onOpenRepository}
                 onSaved={onSaved}
               />
-            ))}
+              ),
+            )}
           </tbody>
         </table>
       </div>
+        )}
+      </LimitedList>
 
       {register.unresolved.length > 0 && (
         <div className="rounded border border-neutral-200 bg-white">
@@ -412,8 +433,15 @@ function RegisterView({
             <span className="text-neutral-400">{showUnresolved ? '▲' : '▼'}</span>
           </button>
           {showUnresolved && (
-            <ul className="space-y-1 border-t border-neutral-100 px-3 py-2 text-xs">
-              {register.unresolved.map((u) => (
+            <LimitedList
+              items={register.unresolved}
+              name={(u) => [`${u.repositorySlug}:${u.projectPath}`, u.contract, u.placeholder ?? u.resolution]}
+              noun="unresolved endpoints"
+              className="border-t border-neutral-100 px-3 py-2"
+            >
+              {(visible) => (
+            <ul className="space-y-1 text-xs">
+              {visible.map((u) => (
                 <li key={u.invocationId} className="break-all">
                   <span className="font-mono text-neutral-700">
                     {u.repositorySlug}:{u.projectPath}
@@ -423,6 +451,8 @@ function RegisterView({
                 </li>
               ))}
             </ul>
+              )}
+            </LimitedList>
           )}
         </div>
       )}
@@ -474,11 +504,15 @@ function HostRow({
           {host?.groupedBy === 'production_environment' && (
             <span className="block pl-4 text-[11px] text-neutral-500">{host.productionEnvironment} host</span>
           )}
-          {host?.otherHosts.map((o) => (
+          {host && (
+            <LimitedList items={host.otherHosts} name={(o) => [o.host, ...o.environments]} noun="hosts">
+              {(visible) => visible.map((o) => (
             <span key={o.host} className="block break-all pl-4 font-mono text-[11px] text-neutral-500" title="The same service as other environments' configuration names it">
               ↳ {o.host} <span className="font-sans text-neutral-400">({o.environments.join(', ')})</span>
             </span>
-          ))}
+              ))}
+            </LimitedList>
+          )}
           {(host?.annotationCarriedFrom ?? []).length > 0 && (
             <span
               className="block pl-4 text-[11px] text-violet-700"
@@ -523,7 +557,8 @@ function HostRow({
             host.classification === 'internal' ? (
               <>
                 <Pill className="border-violet-200 bg-violet-50 text-violet-700">internal</Pill>
-                {servingRepos.map((t) => (
+                <LimitedList items={servingRepos} name={(t) => t.repositorySlug} noun="repositories">
+                  {(visible) => visible.map((t) => (
                   <button
                     key={t.repositoryId}
                     type="button"
@@ -534,7 +569,8 @@ function HostRow({
                     served by {t.repositorySlug}
                     {t.sameRepository ? ' (same repository)' : ''}
                   </button>
-                ))}
+                  ))}
+                </LimitedList>
               </>
             ) : (
               <Pill>external</Pill>
@@ -544,11 +580,15 @@ function HostRow({
           )}
         </td>
         <td className="px-2 py-1.5">
-          {host?.services.map((s) => (
+          {host && (
+            <LimitedList items={host.services} name={(s) => [s.path, s.contract]} noun="services">
+              {(visible) => visible.map((s) => (
             <span key={`${s.path}|${s.contract}`} className="block font-mono text-[11px] text-neutral-700">
               {s.path || '(no path)'} {s.contract && <span className="text-neutral-400">{s.contract}</span>}
             </span>
-          ))}
+              ))}
+            </LimitedList>
+          )}
         </td>
         <td className="px-2 py-1.5">
           {host && (
@@ -588,11 +628,15 @@ function HostRow({
       {expanded && host && (
         <tr className="border-b border-neutral-100 bg-neutral-50/60">
           <td colSpan={11} className="space-y-2 px-6 py-2 text-xs">
-            {host.backendChangeReasons.map((r) => (
+            <LimitedList items={host.backendChangeReasons} name={(r) => r} noun="reasons">
+              {(visible) => visible.map((r) => (
               <p key={r} className="text-red-700">
                 {r}
               </p>
-            ))}
+              ))}
+            </LimitedList>
+            <LimitedList items={host.services} name={(s) => [s.path, s.contract, ...s.callingProjects]} noun="services">
+              {(visibleServices) => (
             <table className="w-full text-left">
               <thead className="text-neutral-400">
                 <tr>
@@ -604,24 +648,25 @@ function HostRow({
                 </tr>
               </thead>
               <tbody>
-                {host.services.map((s) => (
+                {visibleServices.map((s) => (
                   <tr key={`${s.path}|${s.contract}`} className="align-top">
                     <td className="py-1 pr-3 font-mono">{s.path || '(no path)'}</td>
                     <td className="py-1 pr-3 font-mono">{s.contract ?? '—'}</td>
                     <td className="py-1 pr-3">{s.ports.join(', ') || '—'}</td>
                     <td className="py-1 pr-3">{s.bindings.join(', ') || s.mechanisms.join(', ').replace(/_/g, ' ')}</td>
                     <td className="py-1 pr-3 font-mono text-[11px]">
-                      {s.callingProjects.map((p) => (
+                      <LimitedList items={s.callingProjects} name={(p) => p} noun="projects">
+                        {(visible) => visible.map((p) => (
                         <span key={p} className="block break-all">
                           {p}
                         </span>
-                      ))}
+                        ))}
+                      </LimitedList>
                     </td>
                     <td className="py-1 pr-3">{s.worstVerdict && <Pill className={VERDICT_STYLE[s.worstVerdict]}>{verdictLabel(s.worstVerdict)}</Pill>}</td>
                     <td className="py-1 pr-3 text-[11px]">
-                      {s.internalTargets.length === 0
-                        ? '—'
-                        : s.internalTargets.map((t) => (
+                      <LimitedList items={s.internalTargets} name={(t) => [`${t.repositorySlug}:${t.projectPath}`, t.served]} noun="entry points" empty="—">
+                        {(visible) => visible.map((t) => (
                             <span key={`${t.projectId}|${t.served}`} className="block">
                               <button type="button" onClick={() => onOpenRepository(t.repositoryId)} className="text-violet-700 hover:underline">
                                 {t.repositorySlug}:{t.projectPath}
@@ -630,13 +675,16 @@ function HostRow({
                                 {t.served} · entry point {t.entryPointId.slice(0, 10)}
                               </span>
                             </span>
-                          ))}
+                        ))}
+                      </LimitedList>
                       {s.matchedBy.length > 0 && <span className="block text-neutral-400">matched by {s.matchedBy.join('; ')}</span>}
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
+              )}
+            </LimitedList>
             <p>
               <span className="font-medium text-neutral-600">Verdict by environment: </span>
               {Object.entries(host.verdictByEnvironment).map(([env, v]) => (
@@ -849,10 +897,17 @@ function IntegrationView({ data, onOpenRepository }: { data: IntegrationMapArtif
         route template (on a local address, or a host annotated with its serving repository), gRPC by service and method. "No internal caller found" is not
         "unused" — callers outside the estate are not visible here.
       </p>
-      {apps.length === 0 && <p className="rounded border border-neutral-200 bg-white px-4 py-6 text-sm text-neutral-500">No application matches.</p>}
-      {apps.map((a) => (
-        <ApplicationCard key={`${a.repositorySlug}:${a.projectPath}`} app={a} showUncalled={exposed === 'all'} onOpenRepository={onOpenRepository} />
-      ))}
+      {/* The filter above is this list's own, so the list is limited without a second filter box. */}
+      <LimitedList
+        items={apps}
+        noun="applications"
+        className="space-y-3"
+        empty={<p className="rounded border border-neutral-200 bg-white px-4 py-6 text-sm text-neutral-500">No application matches.</p>}
+      >
+        {(visible) => visible.map((a) => (
+          <ApplicationCard key={`${a.repositorySlug}:${a.projectPath}`} app={a} showUncalled={exposed === 'all'} onOpenRepository={onOpenRepository} />
+        ))}
+      </LimitedList>
     </div>
   )
 }
@@ -874,15 +929,21 @@ function ApplicationCard({ app, showUncalled, onOpenRepository }: { app: Integra
       <div className="grid gap-3 px-3 py-2 lg:grid-cols-2">
         <div className="min-w-0">
           <h4 className="text-[11px] font-medium uppercase tracking-wide text-neutral-400">Operations it calls</h4>
-          {app.calls.length === 0 ? (
-            <p className="mt-1 text-xs text-neutral-500">No SOAP, HTTP or gRPC call recorded.</p>
-          ) : (
-            <ul className="mt-1 space-y-1.5 text-xs">
-              {app.calls.map((c) => (
+          <LimitedList
+            items={app.calls}
+            name={(c) => [c.operation, site(c.callSite), ...c.targets.map((t) => `${t.calleeRepositorySlug}:${t.calleeProjectPath}`)]}
+            noun="calls"
+            className="mt-1"
+            empty={<p className="mt-1 text-xs text-neutral-500">No SOAP, HTTP or gRPC call recorded.</p>}
+          >
+            {(visibleCalls) => (
+            <ul className="space-y-1.5 text-xs">
+              {visibleCalls.map((c) => (
                 <li key={`${site(c.callSite)}|${c.operation}|${c.invocationId}`} className="break-all">
                   <Pill>{MECHANISM_LABEL[c.mechanism] ?? c.mechanism}</Pill> <span className="font-mono text-neutral-800">{c.operation}</span>
                   <span className="block pl-1 font-mono text-[11px] text-neutral-400">{site(c.callSite)}</span>
-                  {c.targets.map((t) => (
+                  <LimitedList items={c.targets} name={(t) => [`${t.calleeRepositorySlug}:${t.calleeProjectPath}`, t.served]} noun="targets">
+                    {(visible) => visible.map((t) => (
                     <span key={t.entryPointId} className="block pl-1 text-[11px]">
                       → <span className="font-mono text-violet-700">{t.calleeRepositorySlug}:{t.calleeProjectPath}</span>{' '}
                       <span className="text-neutral-500">
@@ -890,35 +951,50 @@ function ApplicationCard({ app, showUncalled, onOpenRepository }: { app: Integra
                       </span>
                       {t.sameRepository && <Pill className="ml-1">same repository</Pill>}
                     </span>
-                  ))}
+                    ))}
+                  </LimitedList>
                   {c.unmatchedReason && <span className="block pl-1 text-[11px] text-amber-700">not matched: {c.unmatchedReason}</span>}
                 </li>
               ))}
             </ul>
-          )}
+            )}
+          </LimitedList>
         </div>
         <div className="min-w-0">
           <h4 className="text-[11px] font-medium uppercase tracking-wide text-neutral-400">Its operations others call</h4>
           {called.length === 0 && <p className="mt-1 text-xs text-neutral-500">{app.exposes.length === 0 ? 'No entry point a call can reach.' : 'No internal caller found for any of its entry points.'}</p>}
-          <ul className="mt-1 space-y-1.5 text-xs">
-            {called.map((e) => (
+          <LimitedList
+            items={called}
+            name={(e) => [e.operation, ...e.callers.map((c) => `${c.callerRepositorySlug}:${c.callerProjectPath}`)]}
+            noun="operations"
+            className="mt-1"
+          >
+            {(visibleCalled) => (
+          <ul className="space-y-1.5 text-xs">
+            {visibleCalled.map((e) => (
               <li key={e.entryPointId} className="break-all">
                 <span className="font-mono text-neutral-800">{e.operation}</span>{' '}
                 <Pill className="border-violet-200 bg-violet-50 text-violet-700">
                   internal caller found{e.crossRepositoryCallerCount > 0 ? ` · ${e.crossRepositoryCallerCount} from other repositories` : ''}
                 </Pill>
-                {e.callers.map((c, i) => (
+                <LimitedList items={e.callers} name={(c) => [`${c.callerRepositorySlug}:${c.callerProjectPath}`, site(c.callSite)]} noun="callers">
+                  {(visible) => visible.map((c, i) => (
                   <span key={i} className="block pl-1 text-[11px] text-neutral-500">
                     ← <span className="font-mono">{c.callerRepositorySlug}:{c.callerProjectPath}</span> <span className="font-mono text-neutral-400">{site(c.callSite)}</span>
                     {c.sameRepository && <Pill className="ml-1">same repository</Pill>}
                   </span>
-                ))}
+                  ))}
+                </LimitedList>
               </li>
             ))}
           </ul>
+            )}
+          </LimitedList>
           {uncalled.length > 0 && (showUncalled || showAll) && (
-            <ul className="mt-1.5 space-y-0.5 text-xs">
-              {uncalled.map((e) => (
+            <LimitedList items={uncalled} name={(e) => e.operation} noun="operations" className="mt-1.5">
+              {(visible) => (
+            <ul className="space-y-0.5 text-xs">
+              {visible.map((e) => (
                 <li key={e.entryPointId} className="break-all text-neutral-500">
                   <span className="font-mono">{e.operation}</span>{' '}
                   <Pill title="Nothing in the estate calls it; callers outside the estate are not visible">
@@ -927,6 +1003,8 @@ function ApplicationCard({ app, showUncalled, onOpenRepository }: { app: Integra
                 </li>
               ))}
             </ul>
+              )}
+            </LimitedList>
           )}
           {uncalled.length > 0 && !showUncalled && (
             <button type="button" onClick={() => setShowAll((v) => !v)} className="mt-1 text-[11px] text-violet-700 hover:underline">
@@ -970,6 +1048,9 @@ function PackagesView({ data }: { data: PackageEstateArtifact }) {
           onChange={(e) => setQuery(e.target.value)}
         />
       </div>
+      {/* The filter above is this table's own, so the rows are limited without a second filter box. */}
+      <LimitedList items={rows} noun="packages">
+        {(visible) => (
       <div className="overflow-x-auto rounded border border-neutral-200 bg-white">
         <table className="w-full min-w-[900px] text-left text-xs">
           <thead className="border-b border-neutral-200 text-neutral-400">
@@ -982,7 +1063,7 @@ function PackagesView({ data }: { data: PackageEstateArtifact }) {
             </tr>
           </thead>
           <tbody>
-            {rows.map((p) => (
+            {visible.map((p) => (
               <Fragment key={p.packageId}>
                 <tr className="border-b border-neutral-100 align-top">
                   <td className="px-2 py-1.5">
@@ -1036,14 +1117,23 @@ function PackagesView({ data }: { data: PackageEstateArtifact }) {
                   <tr className="border-b border-neutral-100 bg-neutral-50/60">
                     <td colSpan={7} className="px-6 py-2">
                       <p className="text-[11px] font-medium uppercase tracking-wide text-neutral-400">Changed members hit anywhere in the estate</p>
-                      <ul className="mt-0.5 space-y-0.5">
-                        {p.breakingMembers.map((m, i) => (
+                      <LimitedList
+                        items={p.breakingMembers}
+                        name={(m) => [`${m.type ?? ''}${m.member ? `.${m.member}` : ''}`, m.change?.replace(/_/g, ' ')]}
+                        noun="members"
+                        className="mt-0.5"
+                      >
+                        {(visibleMembers) => (
+                      <ul className="space-y-0.5">
+                        {visibleMembers.map((m, i) => (
                           <li key={i} className="font-mono text-[11px] text-neutral-700">
                             <span className="text-neutral-400">{m.change?.replace(/_/g, ' ')}</span> {m.type}
                             {m.member ? `.${m.member}` : ''}
                           </li>
                         ))}
                       </ul>
+                        )}
+                      </LimitedList>
                     </td>
                   </tr>
                 )}
@@ -1052,6 +1142,8 @@ function PackagesView({ data }: { data: PackageEstateArtifact }) {
           </tbody>
         </table>
       </div>
+        )}
+      </LimitedList>
     </div>
   )
 }
@@ -1071,8 +1163,14 @@ function DependenciesView({ data }: { data: DependencyGraphArtifact }) {
         <Pill className={data.summary.cycles > 0 ? 'border-red-200 bg-red-50 text-red-700' : ''}>{data.summary.cycles} cycles</Pill>
         <Pill>{data.summary.originReconciliations} origin reconciliations</Pill>
       </div>
-      <Section title="Shared libraries" empty="No project is depended on from two or more repositories." count={data.sharedLibraries.length}>
-        {data.sharedLibraries.map((s) => (
+      <Section
+        title="Shared libraries"
+        empty="No project is depended on from two or more repositories."
+        items={data.sharedLibraries}
+        name={(s) => ref(s.project)}
+        noun="shared libraries"
+      >
+        {(visible) => visible.map((s) => (
           <li key={s.project.projectId}>
             <span className="font-mono text-neutral-800">{ref(s.project)}</span>{' '}
             <span className="text-neutral-500">
@@ -1081,16 +1179,28 @@ function DependenciesView({ data }: { data: DependencyGraphArtifact }) {
           </li>
         ))}
       </Section>
-      <Section title="Cycles" empty="No cycles: every dependency chain has a project that can migrate first." count={data.cycles.length}>
-        {data.cycles.map((c) => (
+      <Section
+        title="Cycles"
+        empty="No cycles: every dependency chain has a project that can migrate first."
+        items={data.cycles}
+        name={(c) => c.members.map(ref)}
+        noun="cycles"
+      >
+        {(visible) => visible.map((c) => (
           <li key={c.cycleId}>
             {c.crossRepository && <Pill className="border-red-200 bg-red-50 text-red-700">across repositories</Pill>}{' '}
             <span className="font-mono text-neutral-800">{c.members.map(ref).join(' → ')}</span>
           </li>
         ))}
       </Section>
-      <Section title="Cross-repository dependencies" empty="No package reference names a project in another repository of the engagement." count={cross.length}>
-        {cross.map((e) => (
+      <Section
+        title="Cross-repository dependencies"
+        empty="No package reference names a project in another repository of the engagement."
+        items={cross}
+        name={(e) => [ref(e.from), ref(e.to), e.via]}
+        noun="dependencies"
+      >
+        {(visible) => visible.map((e) => (
           <li key={`${e.from.projectId}|${e.to.projectId}|${e.kind}`}>
             <span className="font-mono">{ref(e.from)}</span> → <span className="font-mono">{ref(e.to)}</span>{' '}
             <span className="text-neutral-500">
@@ -1100,8 +1210,14 @@ function DependenciesView({ data }: { data: DependencyGraphArtifact }) {
           </li>
         ))}
       </Section>
-      <Section title="Origin reconciliations" empty="No framework-origin entry point turned out to be declared in another repository." count={data.originReconciliations.length}>
-        {data.originReconciliations.map((r) => (
+      <Section
+        title="Origin reconciliations"
+        empty="No framework-origin entry point turned out to be declared in another repository."
+        items={data.originReconciliations}
+        name={(r) => [r.entryPointId.slice(0, 12), r.originalOrigin, r.reconciledOrigin, r.reason]}
+        noun="origin reconciliations"
+      >
+        {(visible) => visible.map((r) => (
           <li key={r.entryPointId}>
             <span className="font-mono">{r.entryPointId.slice(0, 12)}</span> {r.originalOrigin} → {r.reconciledOrigin}: <span className="text-neutral-500">{r.reason}</span>
           </li>
@@ -1111,13 +1227,30 @@ function DependenciesView({ data }: { data: DependencyGraphArtifact }) {
   )
 }
 
-function Section({ title, empty, count, children }: { title: string; empty: string; count: number; children: React.ReactNode }) {
+/** A titled list of the dependency graph: limited, with a filter on the names its rows show. */
+function Section<T>({
+  title,
+  empty,
+  items,
+  name,
+  noun,
+  children,
+}: {
+  title: string
+  empty: string
+  items: T[]
+  name: (item: T) => string | (string | null)[]
+  noun: string
+  children: (visible: T[]) => ReactNode
+}) {
   return (
     <div className="rounded border border-neutral-200 bg-white px-3 py-2">
       <h3 className="text-sm font-semibold text-neutral-900">
-        {title} <span className="font-normal text-neutral-400">({count})</span>
+        {title} <span className="font-normal text-neutral-400">({items.length})</span>
       </h3>
-      {count === 0 ? <p className="mt-1 text-xs text-neutral-500">{empty}</p> : <ul className="mt-1 space-y-1 break-all text-xs">{children}</ul>}
+      <LimitedList items={items} name={name} noun={noun} className="mt-1" empty={<p className="mt-1 text-xs text-neutral-500">{empty}</p>}>
+        {(visible) => <ul className="space-y-1 break-all text-xs">{children(visible)}</ul>}
+      </LimitedList>
     </div>
   )
 }

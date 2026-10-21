@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { getExtractorBacklog, getItemCoverage, getSignalCoverage } from '../../api/items'
 import { getEntryPointCapabilities } from '../../api/surface'
+import { LimitedList } from '../../components/LimitedList'
 import type { ExtractorBacklog, ItemCoverage, SignalCoverage } from '../../types/items'
 import type { EntryPointCapabilities } from '../../types/surface'
 
@@ -73,14 +74,18 @@ export function DetectionCapabilitiesSection() {
           {backlog.entries.length === 0 ? (
             <p className="mt-1 text-xs text-neutral-500">Nothing blocked: every active catalog item's signals have an implemented extractor.</p>
           ) : (
-            <ul className="mt-1 space-y-1 text-xs">
-              {backlog.entries.map((e) => (
-                <li key={e.expected_extractor ?? '(none)'} className="flex justify-between gap-2">
-                  <span className="font-mono text-neutral-700">{e.expected_extractor ?? 'no extractor declared'}</span>
-                  <span className="text-neutral-400">blocks {e.items_blocked.length}</span>
-                </li>
-              ))}
-            </ul>
+            <LimitedList items={backlog.entries} name={(e) => e.expected_extractor} noun="extractors" className="mt-1">
+              {(visible) => (
+                <ul className="space-y-1 text-xs">
+                  {visible.map((e) => (
+                    <li key={e.expected_extractor ?? '(none)'} className="flex justify-between gap-2">
+                      <span className="font-mono text-neutral-700">{e.expected_extractor ?? 'no extractor declared'}</span>
+                      <span className="text-neutral-400">blocks {e.items_blocked.length}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </LimitedList>
           )}
           <p className="mt-3 text-[11px] text-neutral-400">Full backlog and signal index: Catalog → Extractor backlog &amp; coverage.</p>
         </section>
@@ -97,58 +102,66 @@ export function DetectionCapabilitiesSection() {
             {manifest.kinds.length} kinds detected; {found} found somewhere in the estate.
           </p>
           <div className="mt-3 overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="text-neutral-400">
-                <tr className="border-b border-neutral-200">
-                  <th className="py-1.5 pr-3 font-medium">Kind</th>
-                  <th className="py-1.5 pr-3 font-medium">Detects</th>
-                  <th className="py-1.5 pr-3 font-medium">Class</th>
-                  <th className="py-1.5 pr-3 font-medium">Authentication</th>
-                  <th className="py-1.5 pr-3 font-medium">Since</th>
-                  <th className="py-1.5 text-right font-medium">Found</th>
-                </tr>
-              </thead>
-              <tbody>
-                {manifest.kinds.map((k) => (
-                  <tr key={k.kind} className="border-b border-neutral-100 align-top">
-                    <td className="py-1.5 pr-3">
-                      <p className="font-medium text-neutral-800">{k.label}</p>
-                      <p className="font-mono text-[10px] text-neutral-400">{k.kind}</p>
-                    </td>
-                    <td className="py-1.5 pr-3 text-neutral-600" title={k.identified_by}>
-                      {k.detects}
-                    </td>
-                    <td className="py-1.5 pr-3 text-neutral-500">{k.entry_class}</td>
-                    <td className="py-1.5 pr-3 text-neutral-500">{k.auth_declared}</td>
-                    <td className="py-1.5 pr-3 whitespace-nowrap text-neutral-500">{k.added_in}</td>
-                    <td className="py-1.5 text-right whitespace-nowrap">
-                      {k.found_in_estate > 0 ? (
-                        <span className="text-neutral-800">
-                          {k.found_in_estate} <span className="text-neutral-400">in {k.repositories_with_kind}</span>
-                        </span>
-                      ) : (
-                        <span className="text-neutral-300" title="Looked for in every scan on this manifest; none found">
-                          none found
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <LimitedList items={manifest.kinds} name={(k) => [k.label, k.kind]} noun="kinds">
+              {(visible) => (
+                <table className="w-full text-left text-xs">
+                  <thead className="text-neutral-400">
+                    <tr className="border-b border-neutral-200">
+                      <th className="py-1.5 pr-3 font-medium">Kind</th>
+                      <th className="py-1.5 pr-3 font-medium">Detects</th>
+                      <th className="py-1.5 pr-3 font-medium">Class</th>
+                      <th className="py-1.5 pr-3 font-medium">Authentication</th>
+                      <th className="py-1.5 pr-3 font-medium">Since</th>
+                      <th className="py-1.5 text-right font-medium">Found</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {visible.map((k) => (
+                      <tr key={k.kind} className="border-b border-neutral-100 align-top">
+                        <td className="py-1.5 pr-3">
+                          <p className="font-medium text-neutral-800">{k.label}</p>
+                          <p className="font-mono text-[10px] text-neutral-400">{k.kind}</p>
+                        </td>
+                        <td className="py-1.5 pr-3 text-neutral-600" title={k.identified_by}>
+                          {k.detects}
+                        </td>
+                        <td className="py-1.5 pr-3 text-neutral-500">{k.entry_class}</td>
+                        <td className="py-1.5 pr-3 text-neutral-500">{k.auth_declared}</td>
+                        <td className="py-1.5 pr-3 whitespace-nowrap text-neutral-500">{k.added_in}</td>
+                        <td className="py-1.5 text-right whitespace-nowrap">
+                          {k.found_in_estate > 0 ? (
+                            <span className="text-neutral-800">
+                              {k.found_in_estate} <span className="text-neutral-400">in {k.repositories_with_kind}</span>
+                            </span>
+                          ) : (
+                            <span className="text-neutral-300" title="Looked for in every scan on this manifest; none found">
+                              none found
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </LimitedList>
           </div>
 
           <h4 className="mt-4 text-xs font-semibold uppercase tracking-wide text-neutral-400">
             Not covered — not looked for, so absence means nothing
           </h4>
-          <ul className="mt-1 grid gap-x-6 gap-y-1 text-xs sm:grid-cols-2">
-            {manifest.not_covered.map((p) => (
-              <li key={p.pattern} title={p.note || undefined}>
-                <span className="text-neutral-700">{p.pattern}</span>
-                <span className="text-neutral-400"> — {p.marker}</span>
-              </li>
-            ))}
-          </ul>
+          <LimitedList items={manifest.not_covered} name={(p) => [p.pattern, p.marker]} noun="patterns" className="mt-1">
+            {(visible) => (
+              <ul className="grid gap-x-6 gap-y-1 text-xs sm:grid-cols-2">
+                {visible.map((p) => (
+                  <li key={p.pattern} title={p.note || undefined}>
+                    <span className="text-neutral-700">{p.pattern}</span>
+                    <span className="text-neutral-400"> — {p.marker}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </LimitedList>
 
           <p className="mt-3 rounded border border-amber-100 bg-amber-50/60 px-2 py-1.5 text-[11px] text-amber-900">{manifest.auth_declared_scope}</p>
         </section>

@@ -1,11 +1,8 @@
 import { useEffect, useState } from 'react'
 import { apiUrl } from '../../api/client'
 import { getCatalogExportStatus } from '../../api/items'
-import { ShowMoreToggle } from '../../components/ShowMoreToggle'
+import { LimitedList } from '../../components/LimitedList'
 import type { CatalogExportChange, CatalogExportStatus } from '../../types/items'
-
-/** How many changed items the panel lists before "+N more". */
-const CHANGES_SHOWN = 5
 
 const CHANGE_STYLE: Record<CatalogExportChange['change'], string> = {
   added: 'border-emerald-200 bg-emerald-50 text-emerald-800',
@@ -20,7 +17,6 @@ const CHANGE_STYLE: Record<CatalogExportChange['change'], string> = {
 export function CatalogExportPanel({ refreshToken, onSelectItem }: { refreshToken: number; onSelectItem: (itemId: string) => void }) {
   const [status, setStatus] = useState<CatalogExportStatus | null>(null)
   const [failed, setFailed] = useState(false)
-  const [expanded, setExpanded] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -39,7 +35,6 @@ export function CatalogExportPanel({ refreshToken, onSelectItem }: { refreshToke
     }
   }, [refreshToken])
 
-  const changes = status ? (expanded ? status.changes : status.changes.slice(0, CHANGES_SHOWN)) : []
   return (
     <div className="mb-3 rounded border border-neutral-200 text-xs">
       <a
@@ -69,26 +64,24 @@ export function CatalogExportPanel({ refreshToken, onSelectItem }: { refreshToke
             {status.last_export && (
               <p className="text-neutral-500">last exported {new Date(status.last_export.exported_at).toLocaleString()}</p>
             )}
-            <ul className="mt-1 space-y-0.5">
-              {changes.map((c) => (
-                <li key={c.item_id} className="flex items-baseline gap-1.5">
-                  <span className={`shrink-0 rounded border px-1 text-[10px] ${CHANGE_STYLE[c.change]}`}>{c.change}</span>
-                  {c.item_name !== null ? (
-                    <button type="button" onClick={() => onSelectItem(c.item_id)} className="truncate text-left text-violet-700 hover:underline" title={c.item_name}>
-                      {c.item_id}
-                    </button>
-                  ) : (
-                    <span className="truncate text-neutral-600">{c.item_id}</span>
-                  )}
-                </li>
-              ))}
-            </ul>
-            <ShowMoreToggle
-              expanded={expanded}
-              hidden={status.changes.length - CHANGES_SHOWN}
-              onToggle={() => setExpanded((v) => !v)}
-              className="mt-0.5 block"
-            />
+            <LimitedList items={status.changes} name={(c) => [c.item_id, c.item_name]} noun="changed items" className="mt-1">
+              {(visible) => (
+                <ul className="space-y-0.5">
+                  {visible.map((c) => (
+                    <li key={c.item_id} className="flex items-baseline gap-1.5">
+                      <span className={`shrink-0 rounded border px-1 text-[10px] ${CHANGE_STYLE[c.change]}`}>{c.change}</span>
+                      {c.item_name !== null ? (
+                        <button type="button" onClick={() => onSelectItem(c.item_id)} className="truncate text-left text-violet-700 hover:underline" title={c.item_name}>
+                          {c.item_id}
+                        </button>
+                      ) : (
+                        <span className="truncate text-neutral-600">{c.item_id}</span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </LimitedList>
             <p className="mt-1 text-neutral-500">
               Export into the repository and commit (from <span className="font-mono">backend/</span>):
               <code className="mt-0.5 block break-all rounded bg-neutral-100 px-1 py-0.5 font-mono text-[11px] text-neutral-800">

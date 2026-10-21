@@ -16,6 +16,7 @@ import { getWorkListDecisions } from '../../api/items'
 import { ApiError } from '../../api/client'
 import { CollapsibleSection } from '../../components/CollapsibleSection'
 import { EmptyState } from '../../components/EmptyState'
+import { LimitedList } from '../../components/LimitedList'
 import { Field, inputClass } from '../../components/FormField'
 import { TagInput } from '../../components/TagInput'
 import { useToast } from '../../components/Toast'
@@ -318,11 +319,17 @@ export function RepositoryDetailPage({
           {repo.ingest_error}
         </p>
       )}
-      {repo.warnings.map((warning) => (
-        <p key={warning} className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-          {warning}
-        </p>
-      ))}
+      <LimitedList items={repo.warnings} name={(warning) => warning} noun="warnings">
+        {(visible) => (
+          <div className="space-y-4">
+            {visible.map((warning) => (
+              <p key={warning} className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                {warning}
+              </p>
+            ))}
+          </div>
+        )}
+      </LimitedList>
       {repo.ingest_status === 'path_missing' && (
         <p className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
           The registered folder is currently missing at <code className="font-mono">{repo.local_path}</code>.
@@ -602,6 +609,12 @@ function ExecutionHistory({
   if (executions.length === 0) return <p className="text-sm text-neutral-400">Discovery has not run yet.</p>
 
   return (
+    <LimitedList
+      items={executions}
+      name={(execution) => [execution.batch_status, execution.exit_status, execution.triggered_by]}
+      noun="executions"
+    >
+      {(visible) => (
     <div className="overflow-x-auto">
     <table className="w-full min-w-[560px] text-left text-sm">
       <thead className="text-xs uppercase tracking-wide text-neutral-500">
@@ -614,7 +627,7 @@ function ExecutionHistory({
         </tr>
       </thead>
       <tbody>
-        {executions.map((execution) => (
+        {visible.map((execution) => (
           <tr
             key={execution.id}
             onClick={() => onNavigateToExecution(execution.id)}
@@ -638,6 +651,8 @@ function ExecutionHistory({
       </tbody>
     </table>
     </div>
+      )}
+    </LimitedList>
   )
 }
 

@@ -3,6 +3,7 @@ import { getSignalIndex } from '../../api/items'
 import type { SignalIndexEntry, SignalReference } from '../../types/items'
 import { EmptyState } from '../../components/EmptyState'
 import { IdentifierText } from '../../components/IdentifierText'
+import { LIST_PAGE, LimitedList } from '../../components/LimitedList'
 import { ExclusionOnlyBadge, SignalStateBadge, UnregisteredBadge } from '../../components/Badge'
 
 type ReferencedFilter = 'all' | 'referenced' | 'unreferenced'
@@ -34,41 +35,45 @@ function ItemReferenceList({
   // Capped, like the Signal column: a long list wraps rather than claiming
   // the width the other columns need.
   return (
-    <span className="flex max-w-[17rem] flex-wrap gap-1">
-      {refs.map((ref) => (
-        <span key={ref.item_id} className="inline-flex items-center gap-0.5">
-          <button
-            type="button"
-            onClick={(event) => {
-              event.stopPropagation()
-              onSelectItem(ref.item_id)
-            }}
-            title={`${ref.item_name} (${ref.item_scope} scope${ref.item_status === 'deprecated' ? ', deprecated' : ''})`}
-            className={`whitespace-nowrap rounded bg-neutral-100 px-1.5 py-0.5 font-mono text-[11px] hover:bg-violet-50 ${
-              ref.item_status === 'deprecated' ? 'text-neutral-400 line-through' : 'text-violet-700'
-            }`}
-          >
-            {ref.item_id}
-          </button>
-          {column === 'match' && ref.usages.includes('occurrence_source') && (
-            <span
-              title="Also this item's occurrence_source: each occurrence is located by this signal."
-              className="rounded border border-indigo-200 bg-indigo-50 px-1 text-[9px] font-semibold leading-4 text-indigo-700"
-            >
-              occ
+    <LimitedList items={refs} name={(ref) => [ref.item_id, ref.item_name]} noun="items">
+      {(visible) => (
+        <span className="flex max-w-[17rem] flex-wrap gap-1">
+          {visible.map((ref) => (
+            <span key={ref.item_id} className="inline-flex items-center gap-0.5">
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation()
+                  onSelectItem(ref.item_id)
+                }}
+                title={`${ref.item_name} (${ref.item_scope} scope${ref.item_status === 'deprecated' ? ', deprecated' : ''})`}
+                className={`whitespace-nowrap rounded bg-neutral-100 px-1.5 py-0.5 font-mono text-[11px] hover:bg-violet-50 ${
+                  ref.item_status === 'deprecated' ? 'text-neutral-400 line-through' : 'text-violet-700'
+                }`}
+              >
+                {ref.item_id}
+              </button>
+              {column === 'match' && ref.usages.includes('occurrence_source') && (
+                <span
+                  title="Also this item's occurrence_source: each occurrence is located by this signal."
+                  className="rounded border border-indigo-200 bg-indigo-50 px-1 text-[9px] font-semibold leading-4 text-indigo-700"
+                >
+                  occ
+                </span>
+              )}
+              {column === 'match' && ref.usages.includes('none') && (
+                <span
+                  title="This item also uses the signal in a none condition."
+                  className="rounded border border-neutral-300 px-1 text-[9px] font-semibold leading-4 text-neutral-500"
+                >
+                  +none
+                </span>
+              )}
             </span>
-          )}
-          {column === 'match' && ref.usages.includes('none') && (
-            <span
-              title="This item also uses the signal in a none condition."
-              className="rounded border border-neutral-300 px-1 text-[9px] font-semibold leading-4 text-neutral-500"
-            >
-              +none
-            </span>
-          )}
+          ))}
         </span>
-      ))}
-    </span>
+      )}
+    </LimitedList>
   )
 }
 
@@ -160,9 +165,15 @@ export function SignalIndexView({ refreshToken, selectedSignal, onSelectSignal, 
       setSearch('')
       return
     }
+    if (filtered.findIndex((e) => e.name === target) >= LIST_PAGE && search !== target) {
+      // The table shows its first rows only; searching for the signal brings
+      // it into them, and this effect runs again and scrolls.
+      setSearch(target)
+      return
+    }
     rowRefs.current.get(target)?.scrollIntoView({ block: 'center' })
     pendingFocus.current = null
-  }, [entries, filtered, loading])
+  }, [entries, filtered, loading, search])
 
   const counts = useMemo(
     () => ({
@@ -259,93 +270,98 @@ export function SignalIndexView({ refreshToken, selectedSignal, onSelectSignal, 
             }
           />
         ) : (
-          <table className="w-full text-left text-xs">
-            <thead className="sticky top-0 z-20 bg-neutral-50 text-neutral-400">
-              <tr className="border-b border-neutral-200">
-                <th className="sticky left-0 z-30 bg-neutral-50 px-3 py-2 font-medium">Signal</th>
-                <th className="px-3 py-2 font-medium">Type</th>
-                <th className="px-3 py-2 font-medium">Category</th>
-                <th className="px-3 py-2 font-medium">Extractor</th>
-                <th className="px-3 py-2 font-medium">State</th>
-                <th className="px-3 py-2 font-medium">Introduced in</th>
-                <th className="min-w-[9rem] px-3 py-2 font-medium">Match</th>
-                <th className="min-w-[7rem] px-3 py-2 font-medium">None</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((entry) => {
-                const isSelected = entry.name === selectedSignal
-                const matchRefs = entry.referenced_by.filter(isMatchReference)
-                const noneRefs = entry.referenced_by.filter((ref) => !isMatchReference(ref))
-                return (
-                  <tr
-                    key={entry.name}
-                    ref={(el) => {
-                      if (el) rowRefs.current.set(entry.name, el)
-                      else rowRefs.current.delete(entry.name)
-                    }}
-                    onClick={() => selectRow(entry.name)}
-                    className={`group cursor-pointer border-b border-neutral-100 align-top ${
-                      isSelected ? 'bg-violet-50 ring-1 ring-inset ring-violet-300' : 'hover:bg-neutral-50'
-                    } ${entry.registered ? '' : 'bg-red-50/40'}`}
-                  >
-                    {/* Pinned, so a row stays identifiable when a narrow
-                        window scrolls the table sideways. It needs an opaque
-                        background of its own, matching the row's. */}
-                    <td
-                      className={`sticky left-0 z-10 px-3 py-2 ${
-                        isSelected
-                          ? 'bg-violet-50'
-                          : entry.registered
-                            ? 'bg-white group-hover:bg-neutral-50'
-                            : 'bg-red-50'
-                      }`}
-                    >
-                      {/* The inner max width caps the column (a cell's own
-                          max-width is ignored): a long name wraps at its
-                          underscores instead of widening the table. */}
-                      <div className="min-w-[10rem] max-w-[15rem]">
-                        <span
-                          className={`block font-mono ${entry.registered ? 'text-neutral-800' : 'text-red-700'}`}
-                          title={entry.description ?? undefined}
-                        >
-                          <IdentifierText name={entry.name} />
-                        </span>
-                        {(!entry.registered || entry.exclusion_only) && (
-                          <span className="mt-1 flex flex-wrap gap-1">
-                            {!entry.registered && <UnregisteredBadge />}
-                            {entry.exclusion_only && <ExclusionOnlyBadge />}
-                          </span>
-                        )}
-                        {isSelected && entry.description && (
-                          <span className="mt-1 block text-[11px] text-neutral-500">{entry.description}</span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-3 py-2 font-mono text-neutral-600">
-                      {entry.type ? <IdentifierText name={entry.type} /> : '—'}
-                    </td>
-                    <td className="px-3 py-2 text-neutral-600">
-                      {entry.category ? <IdentifierText name={entry.category} /> : '—'}
-                    </td>
-                    <td className="px-3 py-2 font-mono text-neutral-600">
-                      {entry.expected_extractor ? <IdentifierText name={entry.expected_extractor} /> : '—'}
-                    </td>
-                    <td className="px-3 py-2">
-                      <SignalStateBadge state={entry.state} />
-                    </td>
-                    <td className="px-3 py-2 text-neutral-600">{entry.signal_introduced_in_version ?? '—'}</td>
-                    <td className="px-3 py-2">
-                      <ItemReferenceList refs={matchRefs} column="match" onSelectItem={onSelectItem} />
-                    </td>
-                    <td className="px-3 py-2">
-                      <ItemReferenceList refs={noneRefs} column="none" onSelectItem={onSelectItem} />
-                    </td>
+          // The search above already matches names, so the rows are limited without a second filter box.
+          <LimitedList items={filtered} noun="signals">
+            {(visible) => (
+              <table className="w-full text-left text-xs">
+                <thead className="sticky top-0 z-20 bg-neutral-50 text-neutral-400">
+                  <tr className="border-b border-neutral-200">
+                    <th className="sticky left-0 z-30 bg-neutral-50 px-3 py-2 font-medium">Signal</th>
+                    <th className="px-3 py-2 font-medium">Type</th>
+                    <th className="px-3 py-2 font-medium">Category</th>
+                    <th className="px-3 py-2 font-medium">Extractor</th>
+                    <th className="px-3 py-2 font-medium">State</th>
+                    <th className="px-3 py-2 font-medium">Introduced in</th>
+                    <th className="min-w-[9rem] px-3 py-2 font-medium">Match</th>
+                    <th className="min-w-[7rem] px-3 py-2 font-medium">None</th>
                   </tr>
-                )
-              })}
-            </tbody>
-          </table>
+                </thead>
+                <tbody>
+                  {visible.map((entry) => {
+                    const isSelected = entry.name === selectedSignal
+                    const matchRefs = entry.referenced_by.filter(isMatchReference)
+                    const noneRefs = entry.referenced_by.filter((ref) => !isMatchReference(ref))
+                    return (
+                      <tr
+                        key={entry.name}
+                        ref={(el) => {
+                          if (el) rowRefs.current.set(entry.name, el)
+                          else rowRefs.current.delete(entry.name)
+                        }}
+                        onClick={() => selectRow(entry.name)}
+                        className={`group cursor-pointer border-b border-neutral-100 align-top ${
+                          isSelected ? 'bg-violet-50 ring-1 ring-inset ring-violet-300' : 'hover:bg-neutral-50'
+                        } ${entry.registered ? '' : 'bg-red-50/40'}`}
+                      >
+                        {/* Pinned, so a row stays identifiable when a narrow
+                            window scrolls the table sideways. It needs an opaque
+                            background of its own, matching the row's. */}
+                        <td
+                          className={`sticky left-0 z-10 px-3 py-2 ${
+                            isSelected
+                              ? 'bg-violet-50'
+                              : entry.registered
+                                ? 'bg-white group-hover:bg-neutral-50'
+                                : 'bg-red-50'
+                          }`}
+                        >
+                          {/* The inner max width caps the column (a cell's own
+                              max-width is ignored): a long name wraps at its
+                              underscores instead of widening the table. */}
+                          <div className="min-w-[10rem] max-w-[15rem]">
+                            <span
+                              className={`block font-mono ${entry.registered ? 'text-neutral-800' : 'text-red-700'}`}
+                              title={entry.description ?? undefined}
+                            >
+                              <IdentifierText name={entry.name} />
+                            </span>
+                            {(!entry.registered || entry.exclusion_only) && (
+                              <span className="mt-1 flex flex-wrap gap-1">
+                                {!entry.registered && <UnregisteredBadge />}
+                                {entry.exclusion_only && <ExclusionOnlyBadge />}
+                              </span>
+                            )}
+                            {isSelected && entry.description && (
+                              <span className="mt-1 block text-[11px] text-neutral-500">{entry.description}</span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-3 py-2 font-mono text-neutral-600">
+                          {entry.type ? <IdentifierText name={entry.type} /> : '—'}
+                        </td>
+                        <td className="px-3 py-2 text-neutral-600">
+                          {entry.category ? <IdentifierText name={entry.category} /> : '—'}
+                        </td>
+                        <td className="px-3 py-2 font-mono text-neutral-600">
+                          {entry.expected_extractor ? <IdentifierText name={entry.expected_extractor} /> : '—'}
+                        </td>
+                        <td className="px-3 py-2">
+                          <SignalStateBadge state={entry.state} />
+                        </td>
+                        <td className="px-3 py-2 text-neutral-600">{entry.signal_introduced_in_version ?? '—'}</td>
+                        <td className="px-3 py-2">
+                          <ItemReferenceList refs={matchRefs} column="match" onSelectItem={onSelectItem} />
+                        </td>
+                        <td className="px-3 py-2">
+                          <ItemReferenceList refs={noneRefs} column="none" onSelectItem={onSelectItem} />
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            )}
+          </LimitedList>
         )}
       </section>
     </div>
