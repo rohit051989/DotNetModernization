@@ -1,7 +1,7 @@
 <#
 .SYNOPSIS
     Writes a git bundle of a release tag, and its SHA-256, for installing on a machine with no access to this
-    repository (docs\VDI-SETUP.md, sections B and M).
+    repository (docs\VDI-SETUP.md, "Appendix: upgrading from a release bundle").
 
 .DESCRIPTION
     Writes two files into OutDir:
@@ -11,19 +11,22 @@
 
     The bundle is checked with git bundle verify before its hash is written. Nothing is pushed or uploaded.
 
+    Release tags are release-N (release-7 onward). Releases 1 to 6 carry an older form, <prefix>-release-N; they are
+    accepted too, so an earlier release can still be bundled.
+
 .PARAMETER Tag
-    The release tag to bundle. Default: rbc-release-1.
+    The release tag to bundle. Default: the newest release tag, by its number.
 
 .PARAMETER OutDir
     Where to write the files. Default: a release folder beside the repository (outside it, so the bundle is never
     committed).
 
 .EXAMPLE
-    .\scripts\release-bundle.ps1 -Tag rbc-release-1
+    .\scripts\release-bundle.ps1 -Tag release-7
 #>
 [CmdletBinding()]
 param(
-    [string]$Tag = 'rbc-release-1',
+    [string]$Tag = '',
     [string]$OutDir = ''
 )
 
@@ -31,10 +34,23 @@ $ErrorActionPreference = 'Continue'
 $root = Split-Path -Parent $PSScriptRoot
 if (-not $OutDir) { $OutDir = Join-Path (Split-Path -Parent $root) 'release' }
 
+# A release tag: release-N, or the older <prefix>-release-N of releases 1 to 6.
+$ReleaseTag = '^(?:[a-z0-9]+-)?release-(\d+)$'
+
 function Fail([string]$why) {
     Write-Host "Not written: $why" -ForegroundColor Red
     exit 1
 }
+
+if (-not $Tag) {
+    $newest = @(& git -C $root tag --list 2>$null) |
+        Where-Object { $_ -match $ReleaseTag } |
+        Sort-Object { [int]([regex]::Match($_, $ReleaseTag).Groups[1].Value) } |
+        Select-Object -Last 1
+    if (-not $newest) { Fail "there is no release tag in $root (release-N)." }
+    $Tag = $newest
+}
+if ($Tag -notmatch $ReleaseTag) { Fail "$Tag is not a release tag: release tags are release-N, such as release-7." }
 
 $commit = (& git -C $root rev-parse --verify --quiet "refs/tags/$Tag^{commit}" 2>$null)
 if ($LASTEXITCODE -ne 0 -or -not $commit) { Fail "there is no tag $Tag in $root." }

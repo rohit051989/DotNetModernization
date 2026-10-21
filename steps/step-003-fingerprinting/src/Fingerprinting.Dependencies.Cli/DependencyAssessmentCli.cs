@@ -158,7 +158,7 @@ public static class DependencyAssessmentCli
         var projectIds = await platform.ResolveProjectIdsAsync(inventory.RepositoryId, CancellationToken.None);
         var cache = new PostgresLookupCache(connectionString);
 
-        // rbc-release-5: progress and a timing profile; each project within its own limit; and what is finished kept,
+        // release 5: progress and a timing profile; each project within its own limit; and what is finished kept,
         // so a rerun after a time limit, a stall or a crash continues from there.
         using var progress = new StepProgress(context.OutputDir, Console.Error);
         var (projectLimit, fileLimit) = StepLimits.Within(context);

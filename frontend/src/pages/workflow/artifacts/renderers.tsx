@@ -338,7 +338,7 @@ type EntryPointListItem = { kind: 'project'; project: ProjectEntryPoints } | { k
 export function EntryPointsView({ data, localPath }: ArtifactRendererProps) {
   const projects = useMemo(() => entryPointProjects(data), [data])
   const summary = obj(data.summary)
-  // Projects with a request entry point each get a panel; the rest are one grouped line (rbc-release-6).
+  // Projects with a request entry point each get a panel; the rest are one grouped line (release 6).
   const withEntries = projects.filter((p) => p.request_entry_point_count > 0)
   const noRequests = projects.filter((p) => p.request_entry_point_count === 0)
   const empty = projects.filter((p) => p.entry_points.length === 0).length

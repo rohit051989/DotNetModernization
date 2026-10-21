@@ -1,4 +1,4 @@
-"""How long a step may run, and how long it may go without progress (rbc-release-5).
+"""How long a step may run, and how long it may go without progress (release 5).
 
 A default for every step, from the settings (STEP_TIMEOUT_SECONDS, 3600; STEP_STALL_SECONDS, 900), and overrides in the
 database, changeable without code — the most specific wins:

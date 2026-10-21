@@ -31,7 +31,7 @@ class PlatformInASubfolder(unittest.TestCase):
         (self.platform / "backend" / "main.py").write_text("print('platform')\n")
         (self.platform / ".gitignore").write_text("backend/.env\n")
         (self.platform / instrument.SOURCE_FILE).write_text(json.dumps(
-            {"commit": "a" * 40, "tag": "rbc-release-4", "date": "2026-10-19T10:00:00Z"}))
+            {"commit": "a" * 40, "tag": "release-4", "date": "2026-10-19T10:00:00Z"}))
         git(self.host, "add", "-A", "--", "modernization-platform")
         git(self.host, "commit", "-q", "-m", "platform")
 
@@ -41,12 +41,12 @@ class PlatformInASubfolder(unittest.TestCase):
     def test_identity_is_our_source_commit_beside_the_host_commit(self):
         state = instrument.platform_state(self.platform)
         self.assertEqual((state["commit"], state["dirty"]), ("a" * 40, False))
-        self.assertEqual(state["source"]["tag"], "rbc-release-4")
+        self.assertEqual(state["source"]["tag"], "release-4")
         self.assertEqual(state["host"]["folder"], "modernization-platform")
         self.assertEqual(state["host"]["branch"], "rohit/platform")
         self.assertEqual(state["host"]["commit"], git(self.host, "rev-parse", "HEAD"))
         text = instrument.describe(state)
-        self.assertIn("platform aaaaaaaaaaaa (rbc-release-4)", text)
+        self.assertIn("platform aaaaaaaaaaaa (release-4)", text)
         self.assertIn("in modernization-platform/ of the host repository", text)
 
     def test_changes_outside_the_platform_folder_never_make_it_dirty(self):
@@ -82,9 +82,21 @@ class PlatformInASubfolder(unittest.TestCase):
         git(own, "init", "-q", "-b", "main")
         git(own, "add", "-A")
         git(own, "commit", "-q", "-m", "ours")
-        git(own, "tag", "rbc-release-9")
+        git(own, "tag", "release-9")
         state = instrument.platform_state(own)
-        self.assertEqual((state["commit"], state["source"]["tag"], state["host"]), (git(own, "rev-parse", "HEAD"), "rbc-release-9", None))
+        self.assertEqual((state["commit"], state["source"]["tag"], state["host"]), (git(own, "rev-parse", "HEAD"), "release-9", None))
+
+    def test_release_tags_of_either_form_are_read_and_other_tags_are_not(self):
+        own = Path(self.tmp.name) / "own"
+        own.mkdir()
+        (own / "f.txt").write_text("x")
+        git(own, "init", "-q", "-b", "main")
+        git(own, "add", "-A")
+        git(own, "commit", "-q", "-m", "ours")
+        git(own, "tag", "experiment-before-demo")
+        self.assertIsNone(instrument.platform_state(own)["source"]["tag"])      # not a release tag
+        git(own, "tag", "old-release-6")
+        self.assertEqual(instrument.platform_state(own)["source"]["tag"], "old-release-6")   # releases 1 to 6
 
 
 if __name__ == "__main__":

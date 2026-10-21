@@ -169,7 +169,7 @@ public static class TestCoverageCli
             }
         }
 
-        // rbc-release-5: progress and a timing profile; each file within its own limit.
+        // release 5: progress and a timing profile; each file within its own limit.
         using var progress = new StepProgress(context.OutputDir, Console.Error);
         var (projectLimit, fileLimit) = StepLimits.Within(context);
         artifact ??= await TestCoveragePipeline.RunAsync(testInput, repositoryRoot, CancellationToken.None, progress,
@@ -269,7 +269,7 @@ public static class TestCoverageCli
                 RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false,
             };
             using var process = Process.Start(start)!;
-            // Both pipes read while git runs, and a time limit that ends git and anything it started (rbc-release-5):
+            // Both pipes read while git runs, and a time limit that ends git and anything it started (release 5):
             // reading one pipe to its end first could wait forever.
             var reading = process.StandardOutput.ReadToEndAsync();
             var errors = process.StandardError.ReadToEndAsync();

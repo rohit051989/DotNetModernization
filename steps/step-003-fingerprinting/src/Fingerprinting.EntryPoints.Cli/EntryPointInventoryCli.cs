@@ -153,11 +153,11 @@ public static class EntryPointInventoryCli
         var projectIds = await platform.ResolveProjectIdsAsync(inventory.RepositoryId, CancellationToken.None);
         var input = BuildInput(inventory, fingerprint, path => projectIds.TryGetValue(path, out var id) ? id : null);
 
-        // rbc-release-5: progress and a timing profile; each project's load within its own time limit.
+        // release 5: progress and a timing profile; each project's load within its own time limit.
         using var progress = new StepProgress(context.OutputDir, Console.Error);
         var (projectLimit, fileLimit) = StepLimits.Within(context);
         var limits = WorkLimits.From(projectLimit, fileLimit);
-        // Kept only to remember what a resume must not retry (rbc-release-5): what was not checked, and what a stopped
+        // Kept only to remember what a resume must not retry (release 5): what was not checked, and what a stopped
         // run was stuck on.
         var checkpoints = ProjectCheckpoints.Open(StepLimits.CheckpointDirectory(context), ProjectCheckpoints.Key(
             "entry-point-inventory", EntryPointPipeline.ScannerVersion, inventoryRef.Checksum, fingerprintRef.Checksum,

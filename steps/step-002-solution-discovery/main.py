@@ -125,7 +125,7 @@ def _scan(repo_root: Path, inventory: dict, repository_id: str, progress: Progre
 
     progress.phase("find projects")
     project_paths = project_parser.find_project_files(repo_root)
-    # Each project file is parsed once, however many solutions include it (rbc-release-5).
+    # Each project file is parsed once, however many solutions include it (release 5).
     progress.phase("projects", len(project_paths))
     parsed_projects_raw = []
     for p in project_paths:

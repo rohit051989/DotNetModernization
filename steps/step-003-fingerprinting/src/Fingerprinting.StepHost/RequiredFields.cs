@@ -3,7 +3,7 @@ using System.Text.Json.Nodes;
 namespace Fingerprinting.StepHost;
 
 /// <summary>
-/// rbc-release-5: every field an artifact schema lists as required that holds text holds some — an empty string in a
+/// release 5: every field an artifact schema lists as required that holds text holds some — an empty string in a
 /// required field is a record the step did not finish, even where the schema's type allows it. Read from the schema
 /// itself (<c>required</c>, <c>properties</c>, <c>items</c>, <c>$ref</c>, and the branches of <c>allOf</c>, <c>anyOf</c>,
 /// <c>oneOf</c>), so a new required field is covered without a change here.

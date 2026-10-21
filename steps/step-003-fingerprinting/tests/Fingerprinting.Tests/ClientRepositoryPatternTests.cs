@@ -10,7 +10,7 @@ using Xunit.Abstractions;
 namespace Fingerprinting.Tests;
 
 /// <summary>
-/// rbc-release-5: two patterns found in a client repository on the VDI, in generic form, each reproduced with
+/// release 5: two patterns found in a client repository on the VDI, in generic form, each reproduced with
 /// synthetic code. (1) A mapping layer copying one member name between types in many classes made value resolution
 /// exponential: the real cause of outbound-invocation-inventory's timeout. (2) A request with an empty URI on a plain
 /// HttpClient left an unresolved operation without a reason, and the whole artifact was discarded.
@@ -118,7 +118,7 @@ public sealed class ClientRepositoryPatternTests(ITestOutputHelper output)
             before = ResolveRequest(Mapping(n, typedSource: false, typedParam: false)).Calls;
         }
 
-        output.WriteLine($"N = {n}: {calls} resolver calls; {before} as before rbc-release-5");
+        output.WriteLine($"N = {n}: {calls} resolver calls; {before} as before release 5");
         Assert.True(value.HasUnresolvableBase);   // the URL starts with the runtime base address: unusable either way
         Assert.True(calls <= 10, $"{calls} calls");
         Assert.True(before > 1_000, $"{before} calls before the fixes");
@@ -159,7 +159,7 @@ public sealed class ClientRepositoryPatternTests(ITestOutputHelper output)
     [Fact]
     public void A_member_read_on_a_typed_receiver_weighs_only_that_types_assignments()
     {
-        // Fix (d): a DTO's Url and an entity's Url are different members. Before rbc-release-5 the two differing values
+        // Fix (d): a DTO's Url and an entity's Url are different members. Before release 5 the two differing values
         // made the read unresolved; now the parameter's declared type picks the DTO's.
         var source = ProjectSource.FromText(ProjectPath, new Dictionary<string, string>
         {
@@ -183,7 +183,7 @@ public sealed class ClientRepositoryPatternTests(ITestOutputHelper output)
     [Fact]
     public void A_project_limit_stops_one_long_resolution_and_the_step_carries_on()
     {
-        // Pattern 1, as the client's code has it, with the resolver as before rbc-release-5: many minutes. A 1 s project
+        // Pattern 1, as the client's code has it, with the resolver as before release 5: many minutes. A 1 s project
         // limit stops it inside the resolver's recursion, and the other project is analysed as usual.
         var slow = ProjectSource.FromText(ProjectPath, Mapping(16, typedSource: true));
         const string otherPath = "src/Other/Other.csproj";

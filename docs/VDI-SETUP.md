@@ -286,11 +286,11 @@ the source folder, make your branch and the platform folder in the client's repo
 #### 1. Clone our repository into the source folder
 
 ```powershell
-git clone -c core.longpaths=true --branch rbc-release-6 https://git.ourcompany.com/modernization-platform.git C:\MP\source
+git clone -c core.longpaths=true --branch release-7 https://git.ourcompany.com/modernization-platform.git C:\MP\source
 ```
 
 (The address and the release tag come with the release. When the release arrives as a bundle instead, clone the
-bundle: `git clone -c core.longpaths=true --branch rbc-release-6 C:\MP\delivery\rbc-release-6.bundle C:\MP\source`,
+bundle: `git clone -c core.longpaths=true --branch release-7 C:\MP\delivery\release-7.bundle C:\MP\source`,
 after checking its hash as in "Appendix: upgrading from a release bundle".)
 
 From now on, the source folder is only ever copied from (rule 1).
@@ -460,7 +460,7 @@ git -C C:\MP\client add -A -- modernization-platform
 ```
 
 ```powershell
-git -C C:\MP\client commit -m "Modernization platform rbc-release-6" -- modernization-platform
+git -C C:\MP\client commit -m "Modernization platform release-7" -- modernization-platform
 ```
 
 ```powershell
@@ -770,7 +770,7 @@ A conversion always starts from the commit discovery scanned. When the client re
 
 ### Moving an existing install that carries our .git
 
-An install made before rbc-release-4 is a folder that is itself a clone of our repository, for example `C:\MP\code`,
+An install made before release 4 is a folder that is itself a clone of our repository, for example `C:\MP\code`,
 with our `.git`. Moving it into the client's repository keeps all its data: the database schema, `RUNS_DIR`,
 `REPOS_DIR` and the clones in it, and its `backend\.env`, which names them. Nothing in the database or `RUNS_DIR`
 names the platform's own folder, so they carry over unchanged.
@@ -1127,11 +1127,12 @@ such as `C:\MP\code`. A client install, in a folder of the client's repository, 
 the clones, `backend\.env` and `frontend\.env`. Its migrations only add to the schema or extend it, never drop or
 rewrite what is there, and every new setting is optional with a default, so `backend\.env` needs no edit. Data an
 older release allowed and a newer rule would refuse (such as one checkout registered in two engagements before
-rbc-release-4) is reported by preflight and in the backend's log, and left working, never changed or deleted. A
+release 4) is reported by preflight and in the backend's log, and left working, never changed or deleted. A
 release that cannot upgrade in place says so in its release notes, with the reason; none so far.
 
-A release arrives as a git bundle, `rbc-release-<n>.bundle`, with `rbc-release-<n>.bundle.sha256` beside it. The
-commands below upgrade `C:\MP\code` to rbc-release-6 from `C:\MP\delivery`; for another release, change the
+A release arrives as a git bundle, `release-<n>.bundle`, with `release-<n>.bundle.sha256` beside it. Releases are tagged
+`release-<n>` from release 7 on; releases 1 to 6 carry an older tag of the form `<prefix>-release-<n>`, and every
+script and check accepts both. The commands below upgrade `C:\MP\code` to release-7 from `C:\MP\delivery`; for another release, change the
 names. An installation of any earlier release is upgraded straight to the newest: there is no need to go through
 the ones between. Run them in one PowerShell window, in order.
 
@@ -1142,11 +1143,11 @@ the ones between. Run them in one PowerShell window, in order.
 3. **Check the bundle arrived intact.** The two lines must be identical:
 
    ```powershell
-   (Get-FileHash -Algorithm SHA256 C:\MP\delivery\rbc-release-6.bundle).Hash.ToLower()
+   (Get-FileHash -Algorithm SHA256 C:\MP\delivery\release-7.bundle).Hash.ToLower()
    ```
 
    ```powershell
-   (Get-Content C:\MP\delivery\rbc-release-6.bundle.sha256).Split(' ')[0]
+   (Get-Content C:\MP\delivery\release-7.bundle.sha256).Split(' ')[0]
    ```
 
 4. **Check the platform folder has nothing of yours in it.** git must print nothing (your `.env` files, `.venv`,
@@ -1160,18 +1161,18 @@ the ones between. Run them in one PowerShell window, in order.
 5. **Bring the release in and switch to it:**
 
    ```powershell
-   git -C C:\MP\code fetch C:\MP\delivery\rbc-release-6.bundle "refs/tags/rbc-release-6:refs/tags/rbc-release-6"
+   git -C C:\MP\code fetch C:\MP\delivery\release-7.bundle "refs/tags/release-7:refs/tags/release-7"
    ```
 
    ```powershell
-   git -C C:\MP\code -c core.longpaths=true checkout rbc-release-6
+   git -C C:\MP\code -c core.longpaths=true checkout release-7
    ```
 
    ```powershell
    git -C C:\MP\code log -1 --format="%h %d"
    ```
 
-   The last command shows the release's commit and `tag: rbc-release-6`. git says it is in "detached HEAD" state:
+   The last command shows the release's commit and `tag: release-7`. git says it is in "detached HEAD" state:
    that is expected for a release.
 6. **Preflight:**
 
@@ -1190,7 +1191,7 @@ the ones between. Run them in one PowerShell window, in order.
    It updates only what the release changed and skips the rest. It ends with `Bootstrap complete`.
 8. **Start the platform** ("Starting the backend and the frontend"). Your engagements, repositories, conversions and verifications are all there.
 
-**What rbc-release-6 changes on an rbc-release-5 installation.** Nothing in the database changes, and no setting is
+**What release 6 changes on a release 5 installation.** Nothing in the database changes, and no setting is
 added; only the frontend changes. **Stage 5** installs its packages again, because the frontend now has component
 tests: their development packages (vitest, jsdom, @testing-library/react, @testing-library/dom,
 @testing-library/user-event) must be available from `NPM_REGISTRY` like the others ("Package sources"):
@@ -1205,7 +1206,7 @@ tests: their development packages (vitest, jsdom, @testing-library/react, @testi
   all of them or per project; projects with no outbound invocations, and applications with no inbound operations, the
   same.
 
-**What rbc-release-5 changes on an rbc-release-4 installation.** Nothing existing in the database changes:
+**What release 5 changes on a release 4 installation.** Nothing existing in the database changes:
 - **stage 6** republishes the step programs: every discovery step reports progress and writes a timing profile;
   each project's own files are read once (a project folder holding another project no longer reads it again);
   `outbound-invocation-inventory` analyses projects in parallel and no longer searches the whole repository per
@@ -1226,7 +1227,7 @@ tests: their development packages (vitest, jsdom, @testing-library/react, @testi
   repository: its counts may go down, by the duplicates. Surface says a scan used an older entry-point manifest
   (1.3.0) until then.
 
-**What rbc-release-4 changes on an rbc-release-3 installation.** Nothing in the database changes, and no setting is
+**What release 4 changes on a release 3 installation.** Nothing in the database changes, and no setting is
 added:
 - the platform can run in a folder of a client's shared repository, with `scripts\update-platform.ps1` to update it
   and `scripts\write-platform-source.ps1` to record our source commit (Part 1 and Part 2 of this guide). An install
@@ -1237,8 +1238,7 @@ added:
 - preflight reports where the platform runs and its source commit, and warns when `RUNS_DIR` or `REPOS_DIR` is
   inside the host repository.
 
-**What rbc-release-3 changes on an rbc-release-2 installation** (upgrade with the commands above, with
-`rbc-release-3` in place of `rbc-release-2`). Nothing in the database changes, and no setting is added:
+**What release 3 changes on a release 2 installation** (upgrade with the commands above). Nothing in the database changes, and no setting is added:
 - **stage 6** republishes the step programs: `outbound-invocation-inventory` now reads WCF client platform matrix
   1.2.0;
 - the UI: a **Reason** column in Dependencies, a **Why** beside each SOAP verdict (also in the CSV export, as
@@ -1249,7 +1249,7 @@ added:
   authority. Repositories scanned before the upgrade keep their verdicts until they are rescanned: the SOAP
   report then says the run used an older matrix than the newest. **Rescan** each repository with SOAP calls.
 
-**What rbc-release-2 changes on an rbc-release-1 installation:**
+**What release 2 changes on a release 1 installation:**
 - **stage 3** installs the exact versions in `backend\requirements.lock`; packages may move to the locked versions;
 - **stage 6** republishes the step programs whose sources changed;
 - **stage 7** adds the tables `platform_heartbeat` ("More than one person") and `deletion_audit` ("Deleting a repository or an engagement"), and lets a
@@ -1264,5 +1264,5 @@ into a new folder instead, copy `backend\.env` and `frontend\.env` into it, run 
 platform from the new folder. It uses the same schema and `RUNS_DIR`, so the data is the same:
 
 ```powershell
-git clone -c core.longpaths=true --branch rbc-release-6 C:\MP\delivery\rbc-release-6.bundle C:\MP\code2
+git clone -c core.longpaths=true --branch release-7 C:\MP\delivery\release-7.bundle C:\MP\code2
 ```

@@ -70,7 +70,7 @@ Primary key: **normalised host**. A host is usually one owning team, so it is th
 conversation. Within a host, group by path and contract.
 
 ```
-wsse0.saifg.rbc.com                         ← one conversation
+soap0.services.client-a.example                         ← one conversation
   /AccountService.svc   IAccountService     called by 6 repositories
   /PaymentService.svc   IPaymentService     called by 3 repositories
 ```
@@ -180,7 +180,7 @@ consistent.
 - **Intra-repository edges:** from `project_references`
 - **Cross-repository edges:** a package reference whose id matches a project's package id or
   assembly name in **another** repository in the engagement. Repository A builds
-  `Rbc.Common`; repository B references package `Rbc.Common`; that is an edge from B to A
+  `ClientA.Common`; repository B references package `ClientA.Common`; that is an edge from B to A
 
 Packages answered by a client feed (`dependency-assessment` `feed_source: client_feed`) are the likeliest
 internal packages, so match those first, but match any package id.
@@ -224,7 +224,7 @@ document: machine-readable, diffable, renders without bespoke tooling.
 workspace {
   model {
     estate = softwareSystem "Engagement estate"
-    wsse0 = softwareSystem "wsse0.saifg.rbc.com" "External" { tags "External" }
+    wsse0 = softwareSystem "soap0.services.client-a.example" "External" { tags "External" }
     estate -> wsse0 "SOAP over NetTcp — 6 repositories"
   }
   views { systemContext estate { include * autolayout lr } }

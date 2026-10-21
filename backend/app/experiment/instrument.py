@@ -61,6 +61,11 @@ def location(root: Path = PLATFORM_ROOT) -> dict:
     return {"kind": "subfolder" if folder else "repository", "top": str(top_path), "folder": folder}
 
 
+# A release tag: release-N (release 7 onward), or the older <prefix>-release-N of releases 1 to 6. Any other tag on the
+# commit is not a release, and is not reported as one.
+RELEASE_TAGS = ("--match", "release-*", "--match", "*-release-*")
+
+
 def platform_state(root: Path = PLATFORM_ROOT) -> dict:
     """{"commit": our source commit the platform runs, "dirty": whether the platform's own files differ from what is
     committed, "source": {commit, tag, date} with where it was read from, "host": the host repository's commit and
@@ -68,7 +73,7 @@ def platform_state(root: Path = PLATFORM_ROOT) -> dict:
     where = location(root)
     if where["kind"] == "repository":
         commit = _git(root, "rev-parse", "HEAD").strip()
-        tag = (_git(root, "describe", "--tags", "--exact-match", "HEAD", check=False) or "").strip() or None
+        tag = (_git(root, "describe", "--tags", "--exact-match", *RELEASE_TAGS, "HEAD", check=False) or "").strip() or None
         dirty = bool(_git(root, "status", "--porcelain").strip())
         return {"commit": commit, "dirty": dirty, "source": {"commit": commit, "tag": tag, "from": "git"}, "host": None}
     record = source_record(root) or {}

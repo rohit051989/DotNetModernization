@@ -1,4 +1,4 @@
-"""Step time limits (rbc-release-5): the defaults, the overrides, and what is in effect — changeable without code.
+"""Step time limits (release 5): the defaults, the overrides, and what is in effect — changeable without code.
 
 The defaults come from the settings (STEP_TIMEOUT_SECONDS, STEP_STALL_SECONDS); an override names a step, a
 repository, or both (app.workflow.time_limits, which the command line uses too).

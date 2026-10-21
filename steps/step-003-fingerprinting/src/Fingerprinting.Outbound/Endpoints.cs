@@ -15,7 +15,7 @@ public sealed record TextPart(string Value, ConfigSource? Source = null) : Value
 /// member name; never a value.</param>
 /// <param name="Placeholder">When the hole waits on a named external value:
 /// <c>env:X</c>, <c>config:A:B</c>, <c>${X}</c>.</param>
-/// <param name="Reason">Why the resolver stopped here, when it gave up on purpose (rbc-release-5): too many
+/// <param name="Reason">Why the resolver stopped here, when it gave up on purpose (release 5): too many
 /// assignments to weigh, or a name that only copies itself.</param>
 /// <param name="Repeat">A read of a name already being resolved further up: a copy of the same member, which adds no
 /// value of its own.</param>
@@ -63,7 +63,7 @@ public sealed record ResolvedValue(IReadOnlyList<ValuePart> Parts, ConfigKey? Wh
     /// <summary>The value is only a re-read of a name already being resolved.</summary>
     public bool IsRepeat => Parts is [HolePart { Repeat: true }];
 
-    /// <summary>Starts with a hole that names nothing external (rbc-release-5): no configuration key, variable or
+    /// <summary>Starts with a hole that names nothing external (release 5): no configuration key, variable or
     /// parameter. Nothing appended to it can make a usable endpoint.</summary>
     public bool HasUnresolvableBase => Facts is null && Parts.FirstOrDefault() is HolePart { Placeholder: null };
 }

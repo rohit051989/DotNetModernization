@@ -1,7 +1,7 @@
 namespace Fingerprinting.Analysis;
 
 /// <summary>
-/// How long one project's load, and one file's analysis, may take within a step (rbc-release-5). Over the limit, the
+/// How long one project's load, and one file's analysis, may take within a step (release 5). Over the limit, the
 /// project or file is recorded as "not checked", with the reason, and the step carries on: no single project or file
 /// can hold a whole step up. The engine passes them (STEP_PROJECT_SECONDS, STEP_FILE_SECONDS); these are the defaults.
 /// </summary>

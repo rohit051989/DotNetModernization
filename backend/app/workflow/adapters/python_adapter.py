@@ -48,7 +48,7 @@ class PythonAdapter(StepAdapter):
         self._wants_session = "session" in inspect.signature(func).parameters
 
     def _invoke(self, context: StepContext) -> StepResult:
-        """Runs the step on a worker thread while this thread watches its time and stall limits (rbc-release-5). A step
+        """Runs the step on a worker thread while this thread watches its time and stall limits (release 5). A step
         over a limit is asked to stop: it stops at its next progress checkpoint (Reporter.check), and any child process
         it is waiting on is ended with its whole tree (app.workflow.processes). It is then reported TIMED_OUT or
         STALLED with where it was. The engine waits for it to stop rather than abandon a thread that may hold the

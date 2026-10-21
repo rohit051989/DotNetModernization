@@ -23,7 +23,7 @@ public sealed class DetectionContext
 
     private RepositoryIndex? _index;
 
-    /// <summary>Repository-wide facts built once per run and shared by every project's context (rbc-release-5). A
+    /// <summary>Repository-wide facts built once per run and shared by every project's context (release 5). A
     /// context made on its own (a test) builds its own from <see cref="Repository"/>.</summary>
     public RepositoryIndex Index
     {
@@ -38,7 +38,7 @@ public sealed class DetectionContext
     /// entry in its host's configuration.</summary>
     public HashSet<string> ClaimedEndpoints { get; init; } = new(StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>This project's time limit for analysis (rbc-release-5): checked at every file a detector reads, so a
+    /// <summary>This project's time limit for analysis (release 5): checked at every file a detector reads, so a
     /// project over its limit stops between files and is recorded as not checked.</summary>
     public CancellationToken Cancellation
     {
@@ -46,7 +46,7 @@ public sealed class DetectionContext
         set
         {
             _cancellation = value;
-            Resolver.Cancellation = value;   // inside one long resolution too (rbc-release-5)
+            Resolver.Cancellation = value;   // inside one long resolution too (release 5)
         }
     }
 

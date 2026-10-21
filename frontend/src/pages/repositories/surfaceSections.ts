@@ -1,5 +1,5 @@
 /** The Surface tab's sections, in the order of its jump links. Each is collapsible on its own, says what is in it
- * while closed, and is remembered per repository in this browser (rbc-release-6). */
+ * while closed, and is remembered per repository in this browser (release 6). */
 export const SURFACE_SECTIONS = ['inbound', 'outbound', 'soap', 'reach'] as const
 
 export type SurfaceSection = (typeof SURFACE_SECTIONS)[number]

@@ -30,7 +30,7 @@ public sealed record InventoryInput(
 /// </summary>
 public sealed class EntryPointPipeline
 {
-    /// <summary>Matches the entry-point-inventory step registration version. 2.4.0 (rbc-release-5): each project's own
+    /// <summary>Matches the entry-point-inventory step registration version. 2.4.0 (release 5): each project's own
     /// files only (a nested project's are its own); projects loaded in parallel, bounded, each within a time limit,
     /// over which it is recorded NOT_CHECKED with the reason; progress and a timing profile. Artifact unchanged.</summary>
     public const string ScannerVersion = "2.4.0";
@@ -70,7 +70,7 @@ public sealed class EntryPointPipeline
         var loadedByPath = new System.Collections.Concurrent.ConcurrentDictionary<string, (InputProject Input, ProjectSource Source)>(StringComparer.Ordinal);
         var other = new System.Collections.Concurrent.ConcurrentBag<ProjectEntryPoints>();
 
-        // rbc-release-5: each project read once, in parallel (bounded), within its own time limit.
+        // release 5: each project read once, in parallel (bounded), within its own time limit.
         progress.Phase("load", input.Projects.Count);
         await Parallel.ForEachAsync(input.Projects, new ParallelOptions
         {
@@ -101,7 +101,7 @@ public sealed class EntryPointPipeline
 
             if (checkpoints.Skipped(project.RelativePath, out var skipped))
             {
-                // Not retried: an earlier, interrupted run recorded it, or was stuck on it (rbc-release-5).
+                // Not retried: an earlier, interrupted run recorded it, or was stuck on it (release 5).
                 progress.RecordNotChecked(project.RelativePath, "project", skipped);
                 other.Add(Empty(project, ProjectScanStatuses.Failed, null,
                     [new Warning { Code = WarningCodes.NotChecked, Message = skipped, Severity = WarningSeverities.Warning }]));

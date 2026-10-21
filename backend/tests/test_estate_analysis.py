@@ -249,9 +249,9 @@ class GraphTests(unittest.TestCase):
                 "name": name, "assembly_name": name, "root_namespace": name}
 
     def test_a_package_naming_another_repositorys_project_is_a_cross_repository_edge_and_shared_library(self):
-        projects = [self.project("common", R_WCF, "Rbc.Common"), self.project("web", R_SHOP, "Web"), self.project("api", R_PAY, "Api")]
-        packages = [{"project_id": "web", "package_name": "rbc.common"}, {"project_id": "api", "package_name": "Rbc.Common"}]
-        graph = analysis.build_graph(projects, [], packages, client_feed_packages={"rbc.common"})
+        projects = [self.project("common", R_WCF, "ClientA.Common"), self.project("web", R_SHOP, "Web"), self.project("api", R_PAY, "Api")]
+        packages = [{"project_id": "web", "package_name": "clienta.common"}, {"project_id": "api", "package_name": "ClientA.Common"}]
+        graph = analysis.build_graph(projects, [], packages, client_feed_packages={"clienta.common"})
         self.assertEqual([(e["from"], e["to"], e["kind"], e["crossRepository"], e["clientFeed"]) for e in graph["edges"]],
                          [("api", "common", "internal_package", True, True), ("web", "common", "internal_package", True, True)])
         self.assertEqual([(s["projectId"], s["consumerRepositoryCount"]) for s in graph["sharedLibraries"]], [("common", 2)])
@@ -264,8 +264,8 @@ class GraphTests(unittest.TestCase):
         self.assertEqual([(c["members"], c["crossRepository"]) for c in graph["cycles"]], [(["a", "b", "c"], True)])
 
     def test_a_framework_entry_point_declared_in_another_repository_is_reconciled(self):
-        projects = [self.project("common", R_WCF, "Rbc.Common")]
-        eps = [{"id": "ep1", "repository_id": R_SHOP, "origin": "framework", "handler_type": "Rbc.Common.Web.AuditModule"},
+        projects = [self.project("common", R_WCF, "ClientA.Common")]
+        eps = [{"id": "ep1", "repository_id": R_SHOP, "origin": "framework", "handler_type": "ClientA.Common.Web.AuditModule"},
                {"id": "ep2", "repository_id": R_SHOP, "origin": "framework", "handler_type": "System.Web.Handlers.Transfer"}]
         out = analysis.reconcile_origins(eps, projects)
         self.assertEqual([(r["entryPointId"], r["reconciledOrigin"]) for r in out], [("ep1", "application")])

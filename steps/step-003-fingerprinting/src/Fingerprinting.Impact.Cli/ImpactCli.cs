@@ -144,7 +144,7 @@ public static class ImpactCli
             HostLinks(JsonDocument.Parse(await ReadAsync(refs["entry-point-inventory"])).RootElement),
             DeployFiles(JsonDocument.Parse(await ReadAsync(refs["outbound-invocation-inventory"])).RootElement));
 
-        // rbc-release-5: progress and a timing profile.
+        // release 5: progress and a timing profile.
         using var progress = new StepProgress(context.OutputDir, Console.Error);
         var artifact = await ImpactPipeline.RunAsync(input, repositoryRoot, CancellationToken.None, progress);
         progress.Phase("write");

@@ -96,7 +96,7 @@ def run_git(local_path: Path, *args: str) -> str | None:
     """Runs `git <args>` in `local_path`. Returns None on any failure — a
     missing git executable, a non-zero exit, or empty output — rather than
     raising; the caller treats that as "could not resolve"."""
-    # processes.run: both pipes read, a time limit, and git's whole process tree ended (rbc-release-5).
+    # processes.run: both pipes read, a time limit, and git's whole process tree ended (release 5).
     try:
         completed = processes.run(["git", "-C", str(local_path), *args], timeout=30)
     except OSError:
@@ -236,7 +236,7 @@ def run(context: StepContext) -> StepResult:
         local_path = Path(repo.local_path)
         now = datetime.datetime.now(datetime.timezone.utc)
 
-        # rbc-release-5: progress and a timing profile.
+        # release 5: progress and a timing profile.
         report = progress.for_step(context)
         source_note = None
         if repo.source_type == "git_clone":

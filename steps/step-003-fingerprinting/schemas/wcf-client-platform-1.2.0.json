@@ -1550,7 +1550,7 @@
     {
       "version": "1.2.0",
       "on": "2026-10-16",
-      "by": "Rohit Khanna (instruction: rbc-release-3 item 4)",
+      "by": "Rohit Khanna (instruction: release 3 item 4)",
       "changes": [
         "net10.0/linux/basicHttpsBinding/Transport/None: new, compatible, with its probe (2026-10-13); unconfirmed",
         "net10.0/linux/basicHttpsBinding/Transport/Certificate: new, compatible, with its probe (2026-10-13), and the rerun with its no-client-certificate control as a matched pair; unconfirmed",

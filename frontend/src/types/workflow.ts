@@ -178,7 +178,7 @@ export interface StepExecution {
   stderr_tail: string | null
   working_dir: string | null
   carried_forward: boolean
-  /** rbc-release-5: what the step last reported while it ran, and where it was when it ended. */
+  /** release 5: what the step last reported while it ran, and where it was when it ended. */
   progress: StepProgress | null
   progress_at: string | null
 }

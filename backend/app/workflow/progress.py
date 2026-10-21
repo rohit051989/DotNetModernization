@@ -1,4 +1,4 @@
-"""Progress and timing for a step (rbc-release-5).
+"""Progress and timing for a step (release 5).
 
 Every discovery step reports progress at least every 15 seconds — its phase, and items done out of the total — and
 writes a timing profile a person can share without exposing client code: time per phase, and the slowest projects

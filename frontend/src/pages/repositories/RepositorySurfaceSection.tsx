@@ -567,7 +567,7 @@ export function RepositoryInboundPanel({ repositoryId, localPath, refreshToken }
   }, [repositoryId, refreshToken])
 
   // Projects with a request entry point each get a panel; every other project — lifecycle hooks only, or nothing —
-  // is one grouped line (rbc-release-6): on a large repository they are most of the list.
+  // is one grouped line (release 6): on a large repository they are most of the list.
   const projects = inventory?.projects ?? []
   const withRequests = projects.filter((p) => p.request_entry_point_count > 0)
   const noRequests = projects.filter((p) => p.request_entry_point_count === 0)
@@ -635,7 +635,7 @@ export function RepositoryInboundPanel({ repositoryId, localPath, refreshToken }
                     project === 'noRequests' ? (
                       <NoRequestProjects key="noRequests" projects={noRequests} localPath={localPath} />
                     ) : (
-                      // Open at first only when it is one of a few (rbc-release-6): its header line gives its counts.
+                      // Open at first only when it is one of a few (release 6): its header line gives its counts.
                       <InboundProjectPanel key={project.project_id} project={project} localPath={localPath} defaultOpen={withRequests.length <= 3} />
                     ),
                   )}

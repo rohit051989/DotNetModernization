@@ -3,7 +3,7 @@ using System.Text.Json;
 namespace Fingerprinting.StepHost;
 
 /// <summary>
-/// What the engine passes a step in <c>step_context</c> (rbc-release-5; backend/app/workflow/runtime/executor.py): the
+/// What the engine passes a step in <c>step_context</c> (release 5; backend/app/workflow/runtime/executor.py): the
 /// limits within the step — one project's load, one file's analysis — and the folder that outlives this execution,
 /// where the step keeps what it has finished so a rerun continues from there.
 /// </summary>

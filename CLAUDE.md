@@ -178,7 +178,7 @@ modernization-platform/
 15. **Every release upgrades an existing installation in place, keeping all its data.** Migrations keep
     existing data intact: they add or extend, never drop or rewrite what a client's schema holds (rule 4 still
     applies). Every new setting is optional with a default, so an upgrade never requires editing `.env`.
-    Existing data a new rule would refuse (one checkout registered in two engagements before rbc-release-2) is
+    Existing data a new rule would refuse (one checkout registered in two engagements before release 2) is
     reported — in preflight, the backend's startup log and the UI — and left working, never broken or deleted;
     code that acts on such data, a hard delete included, must not damage the other side of it. A release that
     cannot upgrade in place says so explicitly, with the reason. `docs/VDI-SETUP.md` "Appendix: upgrading from a release bundle" holds the exact
@@ -193,9 +193,16 @@ modernization-platform/
     `scripts/update-platform.ps1` stages and commits with `-- <folder>` only.
 
 17. **master never falls behind a release.** After every release is tagged, fast-forward master to the tagged commit
-    (`git checkout master; git merge --ff-only rbc-release-<n>`). master always holds the latest release, or later
+    (`git checkout master; git merge --ff-only release-<n>`). master always holds the latest release, or later
     work built on it. If master cannot be fast-forwarded, stop and ask; never merge, rebase or reset master to
-    make it fit. Every release report states master's commit next to the tag's.
+    make it fit. Every release report states master's commit next to the tag's. Release tags are `release-<n>`
+    (release-7 onward); releases 1 to 6 keep their older tags, which every script and check still accepts.
+
+18. **No client's name, anywhere.** This platform serves many clients. No client's name, business unit,
+    application or repository code, or host name appears in it: not in code, comments, tests, test data,
+    documentation, file names, branch names, tag names or commit messages. Write "the client" or "client A"
+    (client B, ...) instead, and an example domain such as `client-a.example` for a host. What a client's
+    repositories contain belongs in that client's own database and runs folder, never in this repository.
 
 ## Domain vocabulary
 

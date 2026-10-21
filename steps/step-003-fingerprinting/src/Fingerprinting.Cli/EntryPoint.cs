@@ -166,7 +166,7 @@ public static class EntryPoint
         var registry = SignalRegistry.LoadLatest(SchemasDir());
         var pipeline = new FingerprintPipeline(registry, Extractors());
 
-        // rbc-release-5: progress and a timing profile; each project within its own time limit; what is finished kept,
+        // release 5: progress and a timing profile; each project within its own time limit; what is finished kept,
         // so a rerun continues from the last completed project.
         using var progress = new StepProgress(context.OutputDir, Console.Error);
         var (projectLimit, fileLimit) = StepLimits.Within(context);

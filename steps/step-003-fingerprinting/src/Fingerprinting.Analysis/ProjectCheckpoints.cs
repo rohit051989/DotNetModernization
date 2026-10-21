@@ -5,7 +5,7 @@ using System.Text.Json;
 namespace Fingerprinting.Analysis;
 
 /// <summary>
-/// What a step has finished, project by project, kept in a folder that outlives the execution (rbc-release-5), so a
+/// What a step has finished, project by project, kept in a folder that outlives the execution (release 5), so a
 /// rerun after a time limit, a stall or a crash continues from the last completed project instead of starting over.
 ///
 /// The folder belongs to one step and one repository (the engine passes it: <c>checkpoint_dir</c>). Its manifest

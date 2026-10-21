@@ -27,7 +27,7 @@ public sealed class FingerprintPipeline(SignalRegistry registry, IReadOnlyList<I
     // VAULT_SECRET_REFERENCE, CONFIG_FILE_UNPARSEABLE, CUSTOM_FILE_LOGGER_PROVIDER
     // (FileLoggerProviderExtractor), WINDOWS_BUILD_PIPELINE, and the configuration
     // key on a path literal's evidence.
-    // 1.7.0 (rbc-release-5): a project folder holding another project is read
+    // 1.7.0 (release 5): a project folder holding another project is read
     // without the nested one, so each project's own files are read once; projects in
     // parallel, bounded; a time limit per project, over which it is recorded FAILED with
     // NOT_CHECKED and the reason; progress, a timing profile, and finished projects kept so
@@ -72,7 +72,7 @@ public sealed class FingerprintPipeline(SignalRegistry registry, IReadOnlyList<I
         var deployFiles = Fingerprinting.Analysis.DeployParameterFiles.Discover(
             repositoryRoot, deployParameterGlobs ?? [], inventory.Projects.Select(p => p.RelativePath).ToList(), cancellationToken);
 
-        // rbc-release-5: each project once, in parallel (bounded), within its own time limit; saved as it completes,
+        // release 5: each project once, in parallel (bounded), within its own time limit; saved as it completes,
         // so a rerun continues from the last completed project.
         var resolved = new List<(InventoryProject Project, Guid Id)>();
         foreach (var inventoryProject in inventory.Projects)
@@ -109,7 +109,7 @@ public sealed class FingerprintPipeline(SignalRegistry registry, IReadOnlyList<I
 
             if (checkpoints.Skipped(path, out var skipped))
             {
-                // Not retried: an earlier, interrupted run was stuck on it (rbc-release-5).
+                // Not retried: an earlier, interrupted run was stuck on it (release 5).
                 progress.RecordNotChecked(path, "project", skipped);
                 var notChecked = new ProjectFingerprint
                 {

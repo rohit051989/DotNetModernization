@@ -5,7 +5,7 @@ using Xunit;
 
 namespace Fingerprinting.Tests;
 
-/// <summary>rbc-release-5: every record any outbound test produces is checked as it would be written — the schema,
+/// <summary>release 5: every record any outbound test produces is checked as it would be written — the schema,
 /// and every required field holding text holds some (Fingerprinting.StepHost.RequiredFields). The tests' detection
 /// helpers pass their results through <see cref="Checked"/>.</summary>
 public static class Conformance

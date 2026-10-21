@@ -6,7 +6,7 @@ namespace Fingerprinting.Outbound;
 
 /// <summary>
 /// Repository-wide facts the detectors look up, each built once per run on first use and shared by every project's
-/// detection (rbc-release-5). Before, each project's detection re-derived them by walking every file of the repository
+/// detection (release 5). Before, each project's detection re-derived them by walking every file of the repository
 /// — once per project, and in places once per call site — so the work grew with the square of the code: a repository
 /// with many projects and large generated proxies took hours.
 /// Thread-safe: projects are detected in parallel.

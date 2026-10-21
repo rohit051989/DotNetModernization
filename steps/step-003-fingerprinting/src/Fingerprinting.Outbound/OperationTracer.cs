@@ -177,7 +177,7 @@ public static class OperationTracer
     /// requests made through it — on the variable or field it is assigned to,
     /// in a typed client's class, or through <c>CreateClient("name")</c> — each
     /// with the base address's path prefixed. A request whose URI is empty, or only a query or a fragment, goes to the
-    /// base address itself, and is as resolved as the base address is (rbc-release-5).</summary>
+    /// base address itself, and is as resolved as the base address is (release 5).</summary>
     public static IReadOnlyList<InvokedOperation> HttpClientRequests(
         DetectionContext context, ParsedFile file, SyntaxNode site, Endpoint baseAddress, string? typedClient, string? clientName)
     {

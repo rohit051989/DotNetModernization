@@ -44,7 +44,7 @@ function formatElapsed(seconds: number): string {
   return h > 0 ? `${h}:${two(Math.floor((s % 3600) / 60))}:${two(s % 60)}` : `${two(Math.floor(s / 60))}:${two(s % 60)}`
 }
 
-/** A running step's progress (rbc-release-5): the phase, items done out of the total, the current item, and the
+/** A running step's progress (release 5): the phase, items done out of the total, the current item, and the
  * time since the step started, ticking every second between polls. Once the step has ended without completing — a
  * time limit, a stall, a stop — where it was when it ended. */
 function StepProgressLine({ step }: { step: StepExecution }) {

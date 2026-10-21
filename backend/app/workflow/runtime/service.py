@@ -198,7 +198,7 @@ def stop_execution(db: Session, execution_id: uuid.UUID) -> models.WfJobExecutio
 
     execution.batch_status = "STOPPED"
     execution.exit_message = "Stopped by operator request"
-    # The step running now stops too, and every process it started ends with it (rbc-release-5).
+    # The step running now stops too, and every process it started ends with it (release 5).
     from app.workflow import progress
     progress.cancel_job(str(execution.id))
     execution.ended_at = datetime.datetime.now(datetime.timezone.utc)

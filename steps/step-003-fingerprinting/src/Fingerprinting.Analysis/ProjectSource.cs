@@ -65,7 +65,7 @@ public sealed class ProjectSource
     /// directory, with their text.</summary>
     public required IReadOnlyList<(string RelativePath, string Text)> AuxiliaryFiles { get; init; }
 
-    /// <summary>Files not read within the per-file time limit (rbc-release-5), with the reason: recorded as "not
+    /// <summary>Files not read within the per-file time limit (release 5), with the reason: recorded as "not
     /// checked", never silently dropped.</summary>
     public IReadOnlyList<(string RelativePath, string Reason)> NotChecked { get; init; } = [];
 
@@ -82,7 +82,7 @@ public sealed class ProjectSource
 
     /// <summary>
     /// Every call in the project, by the simple name of what it invokes (<c>Foo</c> for <c>x.Foo(...)</c>,
-    /// <c>Foo&lt;T&gt;(...)</c>, <c>Foo(...)</c>), built once on first use (rbc-release-5). Finding a method's callers
+    /// <c>Foo&lt;T&gt;(...)</c>, <c>Foo(...)</c>), built once on first use (release 5). Finding a method's callers
     /// is then a lookup, not a walk of every file — a walk that, once per call site, re-read a large generated proxy.
     /// </summary>
     public ILookup<string, (ParsedFile File, InvocationExpressionSyntax Call)> InvocationsByName =>
@@ -271,7 +271,7 @@ public sealed class ProjectSource
         foreach (var file in Files)
         {
             // Types are declared only in namespaces and other types: the walk never enters a member's body, so a large
-            // generated proxy costs what its declarations do, not what its code does (rbc-release-5).
+            // generated proxy costs what its declarations do, not what its code does (release 5).
             foreach (var declaration in file.Root.DescendantNodes(DeclarationsOnly).OfType<TypeDeclarationSyntax>())
             {
                 var baseNames = declaration.BaseList?.Types

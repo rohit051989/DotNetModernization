@@ -40,7 +40,7 @@ public static class FileSystemWalk
     private static readonly string[] ProjectExtensions = [".csproj", ".vbproj", ".fsproj"];
 
     /// <summary>
-    /// A project's own files (rbc-release-5): its folder, without any subfolder that holds a project file of its own.
+    /// A project's own files (release 5): its folder, without any subfolder that holds a project file of its own.
     /// A legacy web project's folder often contains every module project (<c>Orchard.Web/Modules/*</c>); walking it
     /// whole read each module's code — generated proxies included — once more for the web project, and analysed it
     /// again there, which made the work grow with the square of the code.

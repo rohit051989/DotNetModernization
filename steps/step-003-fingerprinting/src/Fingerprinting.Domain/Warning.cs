@@ -43,7 +43,7 @@ public static class WarningCodes
     /// file must not fail the whole project).</summary>
     public const string ConfigurationParseFailed = "CONFIGURATION_PARSE_FAILED";
 
-    /// <summary>rbc-release-5: something the step could not check within its time limit — a project whose load or
+    /// <summary>release 5: something the step could not check within its time limit — a project whose load or
     /// analysis, or a file whose parse, took longer than allowed. The message says what and why; the step carried on.</summary>
     public const string NotChecked = "NOT_CHECKED";
 }

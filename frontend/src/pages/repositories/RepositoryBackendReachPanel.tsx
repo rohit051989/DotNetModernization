@@ -173,7 +173,7 @@ type Application = EntryPointBackend['applications'][number]
 /** A list of at most this many panels opens them all at first; a longer one starts with each folded. */
 const FEW_OPEN = 3
 
-/** Open at first only when it is one of a few: its header line already gives its counts (rbc-release-6). */
+/** Open at first only when it is one of a few: its header line already gives its counts (release 6). */
 function Application({ app, localPath, defaultOpen = true }: { app: Application; localPath: string; defaultOpen?: boolean }) {
   const [expanded, setExpanded] = useState(defaultOpen)
   const count = (s: BackendStatus) => app.rows.filter((r) => r.status === s).length

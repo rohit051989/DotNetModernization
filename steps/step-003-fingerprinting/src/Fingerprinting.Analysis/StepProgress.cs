@@ -4,7 +4,7 @@ using System.Text.Json;
 namespace Fingerprinting.Analysis;
 
 /// <summary>
-/// Progress and timing for a step (rbc-release-5; backend/app/workflow/progress.py is the Python twin).
+/// Progress and timing for a step (release 5; backend/app/workflow/progress.py is the Python twin).
 ///
 /// At least every <see cref="HeartbeatSeconds"/> seconds, and at every change of phase, the step's position — phase,
 /// items done out of the total, the current item — goes to stderr as <c>##progress {json}</c>, which the engine reads

@@ -27,7 +27,7 @@ public sealed class ArtifactSchemaValidator
     }
 
     /// <summary>Every problem with <paramref name="artifactJson"/>, empty when it conforms: schema errors, and
-    /// (rbc-release-5) required text fields left empty (<see cref="RequiredFields"/>).</summary>
+    /// (release 5) required text fields left empty (<see cref="RequiredFields"/>).</summary>
     public IReadOnlyList<string> Problems(string artifactJson)
     {
         try

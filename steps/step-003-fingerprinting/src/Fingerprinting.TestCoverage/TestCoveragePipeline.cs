@@ -60,7 +60,7 @@ public static class TestCoveragePipeline
             }
         }
 
-        // Each file within its own time limit (rbc-release-5): one over it is analysed as empty, recorded as not
+        // Each file within its own time limit (release 5): one over it is analysed as empty, recorded as not
         // checked with the reason, and the step carries on.
         var roots = new Dictionary<string, SyntaxNode>(StringComparer.Ordinal);
         var allFiles = filesByProject.Values.SelectMany(f => f).ToList();

@@ -73,7 +73,7 @@ public sealed class TransitiveResolver(string scratchRoot, string packagesDirect
             using var timer = CancellationTokenSource.CreateLinkedTokenSource(ct);
             timer.CancelAfter(timeout);
             // Both pipes are read, so a chatty restore never blocks on a full one; over the time limit, or when the
-            // step is stopped, the restore and everything it started end (rbc-release-5).
+            // step is stopped, the restore and everything it started end (release 5).
             var output = process.StandardOutput.ReadToEndAsync(CancellationToken.None);
             var errors = process.StandardError.ReadToEndAsync(CancellationToken.None);
             try

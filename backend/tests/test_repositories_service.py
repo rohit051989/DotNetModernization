@@ -229,7 +229,7 @@ class OneCheckoutOneEngagementTests(RepositoryRegistrationTestCase):
         self.assertEqual(repo.engagement_id, self.other.id)
 
     def test_a_checkout_shared_before_the_rule_is_reported_and_left_working(self):
-        """CLAUDE.md rule 15: an installation upgraded from rbc-release-1 may already have one checkout in two
+        """CLAUDE.md rule 15: an installation upgraded from release 1 may already have one checkout in two
         engagements. It is reported, and nothing refuses or changes the existing registrations."""
         import subprocess
 
@@ -237,7 +237,7 @@ class OneCheckoutOneEngagementTests(RepositoryRegistrationTestCase):
 
         path = self._git_repo("shared-before")
         first = self._register(path)
-        # What rbc-release-1 allowed: the same folder in a second engagement, written as it wrote it.
+        # What release 1 allowed: the same folder in a second engagement, written as it wrote it.
         second = models.Repository(**{c.name: getattr(first, c.name) for c in models.Repository.__table__.columns
                                       if c.name not in ("id", "engagement_id", "created_at", "updated_at")},
                                    id=uuid.uuid4(), engagement_id=self.other.id)

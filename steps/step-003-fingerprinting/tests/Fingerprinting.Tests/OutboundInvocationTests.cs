@@ -158,7 +158,7 @@ public class OutboundInvocationTests
                   <netTcpBinding><binding name="secure"><security mode="Transport"><transport clientCredentialType="Windows" /></security></binding></netTcpBinding>
                 </bindings>
                 <client>
-                  <endpoint name="Account" address="net.tcp://WSSE0.saifg.rbc.com/AccountService.svc" binding="netTcpBinding" bindingConfiguration="secure" contract="Refs.IAccountService" />
+                  <endpoint name="Account" address="net.tcp://SOAP0.services.client-a.example/AccountService.svc" binding="netTcpBinding" bindingConfiguration="secure" contract="Refs.IAccountService" />
                   <endpoint name="Catalog" address="http://catalog.local:8080/Catalog.svc" binding="basicHttpBinding" contract="Refs.ICatalogService" />
                 </client>
               </system.serviceModel>
@@ -173,7 +173,7 @@ public class OutboundInvocationTests
 
         var account = Assert.Single(invocations, i => i.Soap!.Contract == "IAccountService");
         Assert.Equal(("config", "hand_written", "AccountClient"), (account.Soap!.BindingSource, account.Soap.ClientSource, account.Soap.ClientType));
-        Assert.Equal(("net.tcp", "wsse0.saifg.rbc.com", 808), (account.Endpoint.Scheme, account.Endpoint.Host, account.Endpoint.Port));
+        Assert.Equal(("net.tcp", "soap0.services.client-a.example", 808), (account.Endpoint.Scheme, account.Endpoint.Host, account.Endpoint.Port));
         Assert.Equal("Windows", account.Soap.ClientCredentialType);
         // netTcp is cross-platform; its Windows credential negotiates Kerberos, which needs configuring.
         Assert.Equal(Verdicts.RequiresChange, account.LinuxCompatibility.Verdict);
@@ -237,8 +237,8 @@ public class OutboundInvocationTests
     [Fact]
     public void Endpoints_normalise_and_never_keep_userinfo_query_or_fragment()
     {
-        var endpoint = Endpoints.FromUrl("http://svc:pass@WSSE0.saifg.rbc.com:8080/Account.svc?wsdl#frag")!;
-        Assert.Equal(("http", "wsse0.saifg.rbc.com", 8080, "/Account.svc"), (endpoint.Scheme, endpoint.Host, endpoint.Port, endpoint.Path));
+        var endpoint = Endpoints.FromUrl("http://svc:pass@SOAP0.services.client-a.example:8080/Account.svc?wsdl#frag")!;
+        Assert.Equal(("http", "soap0.services.client-a.example", 8080, "/Account.svc"), (endpoint.Scheme, endpoint.Host, endpoint.Port, endpoint.Path));
 
         var partial = Endpoints.FromValue(new ResolvedValue([new TextPart("https://user:pw@api.local/v1/"), new HolePart("id"), new TextPart("?token=abc")]));
         Assert.Equal(Resolutions.Partial, partial.Resolution);
@@ -265,14 +265,14 @@ public class OutboundInvocationTests
             """;
         var invocations = Detect("src/AccountOpenAPI/AccountOpenAPI.csproj", new() { ["src/AccountOpenAPI/Services/AccountClient.cs"] = code },
         [
-            ("src/AccountOpenAPI/appsettings.DEVOCP.json", """{ "Services": { "Account": { "Url": "net.tcp://wsse0-dev.saifg.rbc.com/AccountService.svc" } } }"""),
-            ("src/AccountOpenAPI/appsettings.PROD.json", """{ "Services": { "Account": { "Url": "net.tcp://wsse0.saifg.rbc.com/AccountService.svc" } } }"""),
+            ("src/AccountOpenAPI/appsettings.DEVOCP.json", """{ "Services": { "Account": { "Url": "net.tcp://soap0-dev.services.client-a.example/AccountService.svc" } } }"""),
+            ("src/AccountOpenAPI/appsettings.PROD.json", """{ "Services": { "Account": { "Url": "net.tcp://soap0.services.client-a.example/AccountService.svc" } } }"""),
         ]);
 
         var invocation = Assert.Single(invocations);
         Assert.Equal(2, invocation.EnvironmentBindings.Count);
         Assert.Equal(["DEVOCP", "PROD"], invocation.EnvironmentBindings.Select(b => b.Environment));
-        Assert.Equal(["wsse0-dev.saifg.rbc.com", "wsse0.saifg.rbc.com"], invocation.EnvironmentBindings.Select(b => b.Host));
+        Assert.Equal(["soap0-dev.services.client-a.example", "soap0.services.client-a.example"], invocation.EnvironmentBindings.Select(b => b.Host));
         Assert.All(invocation.EnvironmentBindings, b => Assert.Equal("Services:Account:Url", b.KeyPath));
         // No default file sets it: the default endpoint waits on the key.
         Assert.Equal(Resolutions.Unresolved, invocation.Endpoint.Resolution);

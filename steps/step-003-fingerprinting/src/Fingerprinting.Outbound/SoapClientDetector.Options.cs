@@ -49,7 +49,7 @@ public static partial class SoapClientDetector
         var result = new List<(ParsedFile, InvocationExpressionSyntax, CallSiteEvaluator.Env, bool)>();
         foreach (var (file, call, env) in sites)
         {
-            cancellation.ThrowIfCancellationRequested();   // the project's time limit, inside the fan-out (rbc-release-5)
+            cancellation.ThrowIfCancellationRequested();   // the project's time limit, inside the fan-out (release 5)
             if (depth < MaxLift && CallSiteEvaluator.Scope(call) is MethodDeclarationSyntax outer && Forwarded(call, env, outer) is { } inner)
             {
                 var outerSites = CallSiteEvaluator.CallSites(project, outer);

@@ -131,7 +131,7 @@ class StepExecutionOut(BaseModel):
     stderr_tail: str | None = Field(description="Last 8KB of captured stderr. Null — 'no output captured' — is normal, not an error.")
     working_dir: str | None = Field(description="This step's working directory on disk.")
     carried_forward: bool = Field(description="True when this row was copied unchanged from a prior execution on restart, rather than re-run.")
-    progress: dict | None = Field(default=None, description="rbc-release-5: what the step last reported — phase, done, total, "
+    progress: dict | None = Field(default=None, description="release 5: what the step last reported — phase, done, total, "
                                    "item, elapsedSeconds — while it runs, and where it was when it ended. Null for a step "
                                    "that reported nothing.")
     progress_at: datetime.datetime | None = Field(default=None, description="When the step last reported progress.")

@@ -65,7 +65,7 @@ public static class OutboundInventoryCli
                 case "--entry-points" when index + 1 < args.Length: entryPoints = Path.GetFullPath(args[++index]); break;
                 // 1.4.0, optional: the target framework the SOAP runtime verdicts are for.
                 case "--target" when index + 1 < args.Length: Target = args[++index]; break;
-                // rbc-release-5, optional: a checkpoint folder, so a rerun continues from the last completed project.
+                // release 5, optional: a checkpoint folder, so a rerun continues from the last completed project.
                 case "--checkpoints" when index + 1 < args.Length: Checkpoints = Path.GetFullPath(args[++index]); break;
                 case "--deploy-globs" when index + 1 < args.Length:
                     globs = args[++index].Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
@@ -97,7 +97,7 @@ public static class OutboundInventoryCli
     /// <summary>Standalone mode's --target (1.4.0).</summary>
     private static string? Target;
 
-    /// <summary>Standalone mode's --checkpoints (rbc-release-5).</summary>
+    /// <summary>Standalone mode's --checkpoints (release 5).</summary>
     private static string? Checkpoints;
 
     /// <summary>The WCF client support matrix (1.4.0), published beside the schemas.</summary>
@@ -245,7 +245,7 @@ public static class OutboundInventoryCli
             };
         }
 
-        // rbc-release-5: progress and a timing profile throughout; each project's load and analysis within its own
+        // release 5: progress and a timing profile throughout; each project's load and analysis within its own
         // limit; and what is finished kept, so a rerun after a time limit, a stall or a crash continues from there.
         using var progress = new StepProgress(context.OutputDir, Console.Error);
         var (projectLimit, fileLimit) = StepLimits.Within(context);
@@ -396,7 +396,7 @@ public static class OutboundInventoryCli
         ArtifactSchemaValidator.Load(Path.Combine(AppContext.BaseDirectory, "schemas", "outbound-invocation-inventory-1.5.0.schema.json")));
 
     /// <summary>
-    /// rbc-release-5: one record that does not conform never costs the rest. When the artifact has a problem (a schema
+    /// release 5: one record that does not conform never costs the rest. When the artifact has a problem (a schema
     /// error, or a required field left empty), each record is checked on its own: every invocation that does not
     /// conform is left out and recorded NOT_CHECKED on its project, naming the record and the problem, and the rest is
     /// written. A problem no single invocation explains is left for <see cref="WriteArtifactAsync"/> to fail on.

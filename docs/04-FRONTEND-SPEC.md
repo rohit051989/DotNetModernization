@@ -312,7 +312,7 @@ Decision panel.
   flips it back), unlike Deprecate or either Delete, so a confirmation step would
   only add friction without protecting against anything real.
 
-## Long lists (rbc-release-6)
+## Long lists (release 6)
 
 Every list the UI shows from data — projects, entry points, invocations, SOAP calls and their environment rows,
 backend calls, lifecycle hooks, work items, packages, conversions, executions, estate rows, catalog items, policies,

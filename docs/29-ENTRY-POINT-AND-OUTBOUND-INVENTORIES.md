@@ -5,7 +5,7 @@ Lifecycle steps `entry-point-inventory` and `outbound-invocation-inventory`. Own
 
 `application-fingerprinting` detects **presence** — "this project has controllers". These steps produce
 **inventories** — "`GET /api/accounts/{id}` is handled by
-`AccountsController.GetById`", and "this project calls `wsse0.saifg.rbc.com` over
+`AccountsController.GetById`", and "this project calls `soap0.services.client-a.example` over
 NetTcp". Different shape, different consumers.
 
 | | `entry-point-inventory` — inbound | `outbound-invocation-inventory` — outbound |
@@ -512,8 +512,8 @@ strip:   userinfo, query string, fragment
 case:    host lowercased
 ```
 
-`http://svc:pass@wsse0.saifg.rbc.com:8080/Account.svc?wsdl` records as scheme `http`,
-host `wsse0.saifg.rbc.com`, port `8080`, path `/Account.svc`. The credentials and query
+`http://svc:pass@soap0.services.client-a.example:8080/Account.svc?wsdl` records as scheme `http`,
+host `soap0.services.client-a.example`, port `8080`, path `/Account.svc`. The credentials and query
 never reach storage.
 
 ### C4. Configuration resolution
@@ -592,13 +592,13 @@ be assessed as much as what could.
   "invocationId": "derived — project + mechanism + normalised endpoint + contract",
   "mechanism": "soap_client",
   "projectPath": "src/AccountOpenAPI/AccountOpenAPI.csproj",
-  "endpoint": { "scheme": "net.tcp", "host": "wsse0.saifg.rbc.com", "port": 808,
+  "endpoint": { "scheme": "net.tcp", "host": "soap0.services.client-a.example", "port": 808,
                 "path": "/AccountService.svc", "resolution": "resolved" },
   "environmentBindings": [
     { "sourceFile": "appsettings.DEVOCP.json", "keyPath": "Services:Account:Url",
-      "host": "wsse0-dev.saifg.rbc.com" },
+      "host": "soap0-dev.services.client-a.example" },
     { "sourceFile": "appsettings.PROD.json", "keyPath": "Services:Account:Url",
-      "host": "wsse0.saifg.rbc.com" }
+      "host": "soap0.services.client-a.example" }
   ],
   "soap": { "contract": "IAccountService", "binding": "netTcpBinding",
             "securityMode": "Transport", "clientCredentialType": "Windows" },
@@ -1234,7 +1234,7 @@ list someone will act on.
 `dependency-and-context-map` builds the estate-wide endpoint register from these rows; this view is
 per-repository.
 
-**Large repositories (rbc-release-6).** Every section of the Surface tab — Inbound, Outbound, SOAP compatibility,
+**Large repositories (release 6).** Every section of the Surface tab — Inbound, Outbound, SOAP compatibility,
 Inbound operations → backend calls — is collapsible on its own, through one component
 (`frontend/src/components/CollapsibleSection.tsx`): its header or chevron folds and opens it, and a closed section's
 header still says what is in it ("Inbound — 214 projects, 12 with request entry points · 340 request entry points";
@@ -1289,7 +1289,7 @@ incompatible or requires change.
 - [ ] Two runs produce identical artifact checksums
 - [ ] `git status` in each scanned repository is clean afterwards
 
-## Large repositories (rbc-release-5: entry-point-inventory 2.4.0, outbound-invocation-inventory 1.7.0)
+## Large repositories (release 5: entry-point-inventory 2.4.0, outbound-invocation-inventory 1.7.0)
 
 **Value resolution that does not grow with the code.** Found in a client repository on the VDI: a mapping layer
 copying one member between a DTO and a generated LINQ-to-SQL entity (`new Entity { Code = src.Code }`) in fifteen

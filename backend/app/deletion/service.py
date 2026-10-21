@@ -192,7 +192,7 @@ def _worktrees(checkout: Path) -> list[dict]:
 
 def _sharing(db: Session, repo: models.Repository, deleting: set) -> list[models.Repository]:
     """Other registrations, not being deleted, of this same checkout (the same git directory). Refused since
-    rbc-release-2, but an installation upgraded from rbc-release-1 may have them (CLAUDE.md rule 15)."""
+    release 2, but an installation upgraded from release 1 may have them (CLAUDE.md rule 15)."""
     from app.repositories.service import git_common_dir
 
     mine = git_common_dir(Path(repo.local_path))

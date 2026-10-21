@@ -742,8 +742,8 @@ What the platform passes in. **Stable contract — version it if it changes.**
   "dry_run": false,
 
   "repository": {
-    "id": "…", "slug": "n600-accountopencoreapi",
-    "local_path": "D:\\repos\\n600-AccountOpenCoreAPI",
+    "id": "…", "slug": "accounts-core-api",
+    "local_path": "D:\\repos\\accounts-core-api",
     "branch": "modernization/ocp4"
   },
 
@@ -778,7 +778,7 @@ What the platform passes in. **Stable contract — version it if it changes.**
     "target_platform": "ocp4",
     "target_framework": "net10.0",
     "log_destination": "stdout-efk",
-    "naming_conventions": { "configmap_prefix": "n600-" }
+    "naming_conventions": { "configmap_prefix": "app-" }
   },
 
   "working_dir": "…", "output_dir": "…",
@@ -865,7 +865,7 @@ conversion.
 
 ## Part O — Worked examples
 
-Both drawn from the RBC assessment. The test that decides scope:
+Both drawn from the client's assessment. The test that decides scope:
 
 > **Can this occur more than once in a single project?** Sixteen Serilog file sinks —
 > yes, occurrence. One host builder — no, application.
@@ -875,7 +875,7 @@ about the project".
 
 ### J1 — Occurrence scope: Serilog file sink
 
-`n600-AccountOpenCoreAPI` — 18 hardcoded Windows paths across 16 `appsettings` files.
+`accounts-core-api` — 18 hardcoded Windows paths across 16 `appsettings` files.
 
 **Catalog item** (client-agnostic, defined once):
 
@@ -954,8 +954,8 @@ edits and sixteen builds would be slower and no safer.
   "scope": "occurrence",
   "dry_run": false,
 
-  "repository": { "id": "r-001", "slug": "n600-accountopencoreapi",
-                  "local_path": "D:\\repos\\n600-AccountOpenCoreAPI",
+  "repository": { "id": "r-001", "slug": "accounts-core-api",
+                  "local_path": "D:\\repos\\accounts-core-api",
                   "branch": "modernization/ocp4" },
 
   "project": { "id": "p-014", "name": "AccountOpenAPI",
@@ -1022,7 +1022,7 @@ edits and sixteen builds would be slower and no safer.
 
 ### J2 — Application scope: Windows Service hosting
 
-`n600-workflow-service` — `UseWindowsService()` in `Program.cs`, flagged BLOCKER.
+`workflow-service` — `UseWindowsService()` in `Program.cs`, flagged BLOCKER.
 
 **Catalog item:**
 
@@ -1108,8 +1108,8 @@ The client selects `generic-host-deployment` — the assessment records
   "scope": "application",
   "dry_run": false,
 
-  "repository": { "id": "r-007", "slug": "n600-workflow-service",
-                  "local_path": "D:\\repos\\n600-workflow-service",
+  "repository": { "id": "r-007", "slug": "workflow-service",
+                  "local_path": "D:\\repos\\workflow-service",
                   "branch": "modernization/ocp4" },
 
   "project": { "id": "p-102", "name": "WorkflowService",

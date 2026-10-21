@@ -11,7 +11,7 @@ namespace Fingerprinting.Outbound;
 /// configuration section each options type is bound to
 /// (<c>Configure&lt;BaseUrlConfiguration&gt;(GetSection("baseUrls"))</c> sits in
 /// each host), and, per project, the assignments to each member — with the type that owns the member, where the
-/// code shows it (rbc-release-5: <c>new Entity { Name = … }</c> assigns Entity's Name, not a DTO's).
+/// code shows it (release 5: <c>new Entity { Name = … }</c> assigns Entity's Name, not a DTO's).
 /// </summary>
 public sealed class SymbolIndex
 {

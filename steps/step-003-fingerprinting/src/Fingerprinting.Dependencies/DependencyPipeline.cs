@@ -41,7 +41,7 @@ public sealed class DependencyPipeline(PackageLookup lookup, DependencyOptions o
     /// is none yet; a retired package's replacement is given a version (<see cref="ReplacementVersionAsync"/>).
     /// 1.6.0 (artifact 1.6.0): feeds resolve as dotnet resolves them — a NuGet.config in a folder above the
     /// repository is recorded as declared in <c>parent</c>, and a local folder declared at user level is a client
-    /// feed (<see cref="FeedResolver"/>). 1.7.0 (rbc-release-5): each project within a time limit, over which it is
+    /// feed (<see cref="FeedResolver"/>). 1.7.0 (release 5): each project within a time limit, over which it is
     /// recorded NOT_CHECKED with the reason; a transitive restore over its limit ends with everything it started;
     /// progress, a timing profile, and finished projects kept so a rerun continues from there. Artifact unchanged.</summary>
     public const string ScannerVersion = "1.7.0";
@@ -73,7 +73,7 @@ public sealed class DependencyPipeline(PackageLookup lookup, DependencyOptions o
 
         // One project at a time: the time goes on package lookups, which the lookup cache shares between projects and
         // a client feed should not see in bursts. Each project has its own time limit, and is saved as it completes so
-        // a rerun continues from there (rbc-release-5).
+        // a rerun continues from there (release 5).
         var results = new List<ProjectDependencies>();
         progress.Phase("assess", input.Projects.Count);
         foreach (var project in input.Projects.OrderBy(p => p.RelativePath, StringComparer.Ordinal))
@@ -88,7 +88,7 @@ public sealed class DependencyPipeline(PackageLookup lookup, DependencyOptions o
 
             if (checkpoints.Skipped(project.RelativePath, out var skipped))
             {
-                // Not retried: an earlier, interrupted run was stuck on it (rbc-release-5).
+                // Not retried: an earlier, interrupted run was stuck on it (release 5).
                 progress.RecordNotChecked(project.RelativePath, "project", skipped);
                 var notChecked = Empty(project, ProjectScanStatuses.Failed, null,
                     [new Warning { Code = WarningCodes.NotChecked, Message = skipped, Severity = WarningSeverities.Warning }]);

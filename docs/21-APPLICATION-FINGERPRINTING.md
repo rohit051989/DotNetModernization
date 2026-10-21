@@ -335,7 +335,7 @@ what its evidence entries carry. Twelve types:
 | **`LITERAL`** | **The matched value**, e.g. `G:\Logs\App\` | line span, **plus `matchedValue`** | `WINDOWS_PATH_LITERAL` |
 
 `API_INVOCATION` and `LITERAL` were added with `application-fingerprint@1.2.0`, for the
-RBC-style findings: API usages and literals whose behaviour changes on Linux. Since
+findings like the client's: API usages and literals whose behaviour changes on Linux. Since
 signal registry 1.4.0 they are emitted by `ApiUsageExtractor` and `PathLiteralExtractor`
 (see "Extractor batch 2" below). An artifact containing either declares
 `artifactVersion: 1.2.0`, which `application-fingerprinting` now always emits.
@@ -894,6 +894,6 @@ Never "WCF applications: 145". The **Applications** and **Patterns** cards still
       show `—`
 - [ ] The artifact contains no `applicationPattern`, `scanId` or timestamp field
 
-## Large repositories (rbc-release-5: application-fingerprinting, scanner 1.7.0)
+## Large repositories (release 5: application-fingerprinting, scanner 1.7.0)
 
 A project folder that holds another project is read without the nested one: each project's own files, once. Before 1.7.0 a web project holding its modules in a subfolder (Orchard.Web and its Modules) read every module's code again as its own. Projects are fingerprinted in parallel (bounded: processors - 1, at most 8), each within `project_seconds`, over which it is recorded `failed` with `NOT_CHECKED` and the reason; finished projects are kept, so a rerun continues from there. Artifact unchanged. Every step reports progress, writes a timing profile, keeps to its time and stall limits and ends its whole process tree when stopped: `11-STEP-CONTRACT.md`, "Time limits, progress and stopping". The registration's fixed `timeout_seconds` is gone.

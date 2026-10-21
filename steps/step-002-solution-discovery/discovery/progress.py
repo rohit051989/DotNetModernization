@@ -1,4 +1,4 @@
-"""Progress and a timing profile for this step (rbc-release-5), without importing the backend.
+"""Progress and a timing profile for this step (release 5), without importing the backend.
 
 The same protocol as every other step: ``##progress {json}`` lines on stderr, which the platform's process runner
 reads for its stall limit and the job page — at every phase, every 2 seconds at most while items go by, and every 10

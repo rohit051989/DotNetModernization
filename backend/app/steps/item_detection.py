@@ -314,7 +314,7 @@ def run(context: StepContext) -> StepResult:
         if repository is None:
             return StepResult(exit_status="FAILED", exit_message=f"repository '{repository_id}' does not exist")
 
-        # rbc-release-5: progress per project, and a timing profile.
+        # release 5: progress per project, and a timing profile.
         report = progress.for_step(context)
         artifact = detect_repository(db, repository, step_execution_id=context.step_execution_id, report=report)
         report.phase("write")

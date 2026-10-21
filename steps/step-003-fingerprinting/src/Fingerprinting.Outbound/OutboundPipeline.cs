@@ -53,7 +53,7 @@ public sealed class OutboundPipeline
     /// matrices 1.1.0 (the wildcard rule; reviewer decisions); artifact 1.5.0 unchanged. 1.6.0: a SOAP client built by
     /// a custom helper from options-bound configuration (WCFClientHelper.CreateClient&lt;T&gt;(name)) — call sites followed
     /// up through generic callers, binding, mode, credential and address read per environment; artifact unchanged.
-    /// 1.7.0 (rbc-release-5): each project's own files only (a nested project's are its own); one repository index
+    /// 1.7.0 (release 5): each project's own files only (a nested project's are its own); one repository index
     /// shared by every project instead of a walk of the repository per project, and call sites found from an index
     /// of invocations instead of a walk of the project per call site; projects in parallel, bounded, each within a
     /// time limit, and each file within its own, over which it is recorded NOT_CHECKED with the reason; every
@@ -76,7 +76,7 @@ public sealed class OutboundPipeline
         var failedByPath = new System.Collections.Concurrent.ConcurrentDictionary<string, ProjectInvocations>(StringComparer.Ordinal);
 
         // Each project is read and parsed once — however many solutions include it — in parallel, each within its own
-        // time limit (rbc-release-5).
+        // time limit (release 5).
         progress.Phase("load", input.Projects.Count);
         await Parallel.ForEachAsync(input.Projects, new ParallelOptions { MaxDegreeOfParallelism = Parallelism, CancellationToken = cancellationToken },
             async (project, ct) =>
@@ -105,7 +105,7 @@ public sealed class OutboundPipeline
 
             if (checkpoints.Skipped(project.RelativePath, out var skipped))
             {
-                // Not retried: an earlier, interrupted run recorded it, or was stuck on it (rbc-release-5).
+                // Not retried: an earlier, interrupted run recorded it, or was stuck on it (release 5).
                 progress.RecordNotChecked(project.RelativePath, "project", skipped);
                 failedByPath[project.RelativePath] = Empty(project, ProjectScanStatuses.Failed, null,
                     [new Warning { Code = WarningCodes.NotChecked, Message = skipped, Severity = WarningSeverities.Warning }]);
@@ -296,7 +296,7 @@ public sealed class OutboundPipeline
         // SOAP clients in code first, for every project: a library's client
         // claims its host's endpoint entry before the host looks for entries
         // nothing claimed (1.3.0).
-        // Each project's SOAP passes within its time limit too (rbc-release-5): a project over it is not checked, and
+        // Each project's SOAP passes within its time limit too (release 5): a project over it is not checked, and
         // the others carry on. A project an earlier, interrupted run did not finish because it hit a wall is not retried (ProjectCheckpoints.Skipped).
         progress.Phase("soap clients", contexts.Count);
         var soap = new Dictionary<string, List<Detected>>(StringComparer.Ordinal);
@@ -348,7 +348,7 @@ public sealed class OutboundPipeline
         }
 
         // The rest, per project, in parallel; each project within its own time limit, and saved as it completes so a
-        // rerun continues from there (rbc-release-5).
+        // rerun continues from there (release 5).
         progress.Phase("detect", contexts.Count);
         var detectedByPath = new System.Collections.Concurrent.ConcurrentDictionary<string, ProjectInvocations>(StringComparer.Ordinal);
         Parallel.ForEach(contexts, new ParallelOptions { MaxDegreeOfParallelism = Parallelism }, c =>

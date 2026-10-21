@@ -6,7 +6,7 @@ using Xunit;
 
 namespace Fingerprinting.Tests;
 
-/// <summary>rbc-release-5: very large and legacy repositories — each project's own files read once, a time limit per
+/// <summary>release 5: very large and legacy repositories — each project's own files read once, a time limit per
 /// project and per file recorded as NOT_CHECKED, and a rerun continuing from the last completed project.</summary>
 public sealed class LargeRepositoryTests : IDisposable
 {

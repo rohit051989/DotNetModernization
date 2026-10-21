@@ -1,4 +1,4 @@
-"""app.workflow.processes: no child process can make its caller wait forever (rbc-release-5)."""
+"""app.workflow.processes: no child process can make its caller wait forever (release 5)."""
 import os
 import subprocess
 import sys

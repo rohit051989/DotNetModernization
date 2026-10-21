@@ -70,7 +70,7 @@ class ProcessAdapterUnparseableStdoutTests(unittest.TestCase):
 
 class ProcessAdapterTimeoutTests(unittest.TestCase):
     def test_slow_step_times_out(self):
-        # rbc-release-5: the limit comes from the engine (app.workflow.time_limits), never the registration.
+        # release 5: the limit comes from the engine (app.workflow.time_limits), never the registration.
         adapter = ProcessAdapter({"command": [sys.executable, str(FIXTURES_DIR / "slow_step.py")]})
         with tempfile.TemporaryDirectory() as tmp_dir:
             context = _make_context(tmp_dir)

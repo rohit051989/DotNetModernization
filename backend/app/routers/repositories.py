@@ -129,7 +129,7 @@ def _existing_data_warnings(db: Session, repo: models.Repository) -> list[str]:
     if other is None:
         return []
     return [f"This checkout is also registered in engagement '{other.engagement_id}' as \"{other.slug}\", from before "
-            "rbc-release-2 refused that. Both keep working, but conversions of the two share branch names in the "
+            "release 2 refused that. Both keep working, but conversions of the two share branch names in the "
             "checkout's git: run conversions in one engagement only, or clone the repository again for one of them "
             "(docs/VDI-SETUP.md: More than one person)."]
 

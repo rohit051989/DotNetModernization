@@ -38,7 +38,8 @@ if ($LASTEXITCODE -ne 0 -or -not $commit) {
     exit 1
 }
 $commit = "$commit".Trim()
-$tag = & git -C $Source describe --tags --exact-match HEAD 2>$null
+# Its release tag: release-N, or the older <prefix>-release-N of releases 1 to 6. Any other tag is not a release.
+$tag = & git -C $Source describe --tags --exact-match --match 'release-*' --match '*-release-*' HEAD 2>$null
 if ($LASTEXITCODE -ne 0 -or -not $tag) { $tag = $null } else { $tag = "$tag".Trim() }
 $branch = "$(& git -C $Source rev-parse --abbrev-ref HEAD)".Trim()
 

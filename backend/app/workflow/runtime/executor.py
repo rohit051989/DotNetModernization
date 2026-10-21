@@ -310,7 +310,7 @@ def _resolve_batch_status(exit_status: str, stub_policy: str, on_failure: str) -
         return ("COMPLETED", False) if stub_policy == "continue" else ("FAILED", True)
     if exit_status == "AWAITING_APPROVAL":
         return "STOPPED", True
-    # TIMED_OUT and STALLED (rbc-release-5): failures, told apart so the job page can say which, and why.
+    # TIMED_OUT and STALLED (release 5): failures, told apart so the job page can say which, and why.
     if exit_status in ("FAILED", "TIMED_OUT", "STALLED"):
         return "FAILED", on_failure != "continue"
     if exit_status == "STOPPED":           # an operator stopped the job while this step ran
@@ -618,7 +618,7 @@ def _invoke_step(
         inputs=inputs,
         job_context=job_execution.execution_context or {},
         # The time and stall limits in effect, and a folder that outlives this execution, where a step keeps what it
-        # has finished so a rerun after a time-out, stall or crash continues from there (rbc-release-5).
+        # has finished so a rerun after a time-out, stall or crash continues from there (release 5).
         step_context={"time_limits": time_limits.effective(db, node.step, (instance.parameters or {}).get("repository_id")),
                       "checkpoint_dir": str(run_base.parent / "checkpoints" / node.step)},
         working_dir=str(run_root),

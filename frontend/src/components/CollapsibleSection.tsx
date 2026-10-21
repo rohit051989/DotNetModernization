@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 
-/** A section listing more rows than this starts collapsed the first time it is seen (rbc-release-6). */
+/** A section listing more rows than this starts collapsed the first time it is seen (release 6). */
 export const LARGE_SECTION_ROWS = 50
 
 type Persistence = 'session' | 'browser'

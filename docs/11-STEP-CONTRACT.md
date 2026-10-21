@@ -203,7 +203,7 @@ Exit code handling:
 This adapter is how a colleague's script drops in with no engine change. Their only
 obligation is: read JSON from stdin, write JSON to stdout, exit 0.
 
-A registration's `adapter_config.timeout_seconds` is no longer read (rbc-release-5): every step's time limit comes
+A registration's `adapter_config.timeout_seconds` is no longer read (release 5): every step's time limit comes
 from "Time limits, progress and stopping" below.
 
 #### Path resolution — `command` and `cwd` are relative to `PLATFORM_ROOT`, never to the backend process's own working directory
@@ -340,7 +340,7 @@ restart:
 `version_range` uses npm-style semver ranges: `^1.0.0` accepts 1.x, `~1.2.0`
 accepts 1.2.x, `>=1.0.0 <3.0.0` for explicit windows.
 
-## Time limits, progress and stopping (rbc-release-5)
+## Time limits, progress and stopping (release 5)
 
 No step can make the engine wait forever.
 

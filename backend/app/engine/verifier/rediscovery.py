@@ -95,7 +95,7 @@ def snapshot(engagement_id: str, worktree: Path, name: str, scratch_dir: Path, l
             copied = _copy(settings.database_url, scratch.url, engagement_id, lookups)
             env = {**os.environ, "DB_SCHEMA": scratch.name, "RUNS_DIR": str(runs)}
             # processes.run: the worker and every step program it starts end together on the time limit or a
-            # stop (rbc-release-5).
+            # stop (release 5).
             done = processes.run([sys.executable, "-m", "app.engine.verifier.rediscovery", "--worker",
                                   "--engagement", engagement_id, "--path", str(worktree), "--name", name, "--out", str(out)]
                                  + (["--offline"] if lookups is not None else []),

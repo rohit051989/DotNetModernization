@@ -546,6 +546,6 @@ work-item conflict; recurring across the estate it is one catalog rule conflict.
 
 **Not built.** The LLM residue (Part H).
 
-## Large repositories (rbc-release-5: impact-analysis 2.3.1)
+## Large repositories (release 5: impact-analysis 2.3.1)
 
 Progress per file indexed and per work item. Artifact unchanged. Every step reports progress, writes a timing profile, keeps to its time and stall limits and ends its whole process tree when stopped: `11-STEP-CONTRACT.md`, "Time limits, progress and stopping". The registration's fixed `timeout_seconds` is gone.

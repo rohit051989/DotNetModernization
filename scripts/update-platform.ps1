@@ -149,7 +149,8 @@ $staged = @(Invoke-Git $top @('diff', '--cached', '--name-only', '--', $folder) 
 if ($staged.Count -eq 0) {
     Write-Host 'Nothing changed in the platform folder: no commit.'
 } else {
-    $tag = (& git -C $Source describe --tags --exact-match $new 2>$null)
+    # Its release tag: release-N, or the older <prefix>-release-N of releases 1 to 6.
+    $tag = (& git -C $Source describe --tags --exact-match --match 'release-*' --match '*-release-*' $new 2>$null)
     $title = "Modernization platform: update to $($new.Substring(0, 12))$(if ($LASTEXITCODE -eq 0 -and $tag) { " ($($tag.Trim()))" })"
     $message = "$title`n`nSource commit: $new`nPrevious source commit: $old`nFiles: $($staged.Count) changed in $folder"
     Invoke-Git $top @('commit', '-q', '-m', $message, '--', $folder) 'Committing the platform folder' | Out-Null

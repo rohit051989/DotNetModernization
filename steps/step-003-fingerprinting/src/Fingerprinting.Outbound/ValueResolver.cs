@@ -15,7 +15,7 @@ namespace Fingerprinting.Outbound;
 /// recorded as such; nothing is guessed. Configuration is read as
 /// <see cref="Environment"/> sees it: that environment's file over the default.
 ///
-/// rbc-release-5: what keeps it from growing with the code. A member read follows the assignments to that member; a
+/// release 5: what keeps it from growing with the code. A member read follows the assignments to that member; a
 /// mapping layer that copies one member name between types (<c>new Entity { Name = dto.Name }</c> in fifteen
 /// classes) made that exponential, bounded only by <see cref="MaxDepth"/>. Now:
 /// (a) a name being resolved further up is not resolved again — the re-read is a copy, which adds no value of its
@@ -69,7 +69,7 @@ public sealed partial class ValueResolver(ProjectSource project, SymbolIndex sym
         set => _shared.Cancellation = value;
     }
 
-    /// <summary>For tests only: resolution exactly as before rbc-release-5's fixes (a) to (d), to reproduce the explosion
+    /// <summary>For tests only: resolution exactly as before release 5's fixes (a) to (d), to reproduce the explosion
     /// and prove the time limits stop it.</summary>
     public static IDisposable WithoutSafeguards()
     {

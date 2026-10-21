@@ -179,7 +179,7 @@ when to stop. The experiment runs interactively; unattended operation is not wha
 | Question | Where it is answered |
 |---|---|
 | Can the engine run unattended across hundreds of applications? | A later trial, on the second app onward |
-| The pilot → playbook → instruction loop | The RBC-shaped fixture, where there is fan-out to learn from |
+| The pilot → playbook → instruction loop | The client-shaped fixture, where there is fan-out to learn from |
 | The circuit breaker | Fan-out across several units or applications |
 | SOAP-to-REST protocol changes | Document 35's target contract design still applies |
 
@@ -259,7 +259,7 @@ conversions safe to run twice, and a crashed step's child processes terminated w
 - **Engine allowlist per engagement, enforced in code.** The platform refuses to send an engagement's
   code to any engine or LLM provider not on the engagement's allowlist — this includes the shared LLM
   provider in `32-TEST-COVERAGE-ASSESSMENT.md` Part G. For client engagements the list starts empty: nothing
-  is allowed until it is set. RBC: GitHub Copilot under RBC's organisation only
+  is allowed until it is set. For client A: GitHub Copilot under client A's organisation only
 - **Every run records** the signed-in identity and organisation as the engine reports them, the model
   and the engine version. The runbook's first step checks the identity and stops if it is not the
   company account

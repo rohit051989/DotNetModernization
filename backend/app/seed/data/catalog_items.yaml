@@ -2,7 +2,7 @@
 # Client-agnostic master catalog IP. Items migrated from the pattern catalog
 # are NOT here: app/items/pattern_migration.py moves those (Part Q).
 #
-# The first five are occurrence-scope items drawn from the RBC assessment.
+# The first five are occurrence-scope items drawn from the client's assessment.
 # Each can occur many times in one project (the Part O scope test), so each
 # declares occurrence_source: which signal's evidence becomes one occurrence
 # row per file. They were authored while their signals were still planned and
@@ -29,9 +29,9 @@ items:
     category: logging
     description: >-
       A Serilog File sink configured with a Windows drive-letter or UNC path.
-      On OCP4 the path does not exist and logs belong on stdout for EFK. RBC:
-      n600-AccountOpenCoreAPI has 18 hardcoded Windows paths across 16
-      appsettings files. One occurrence per appsettings file, so a batching:
+      On OCP4 the path does not exist and logs belong on stdout for EFK. In the
+      client's assessment, one API repository has 18 hardcoded Windows paths
+      across 16 appsettings files. One occurrence per appsettings file, so a batching:
       all approach can treat the set as one coherent change.
 
       Conversion ordering (docs/28 Part E): runs BEFORE hardcoded-windows-path.

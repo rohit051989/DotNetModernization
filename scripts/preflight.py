@@ -28,7 +28,7 @@ Reports, in plain language, each prerequisite as PRESENT or MISSING, and exits 1
   RUNS_DIR, and writable;
 - with the schema in place: whether a platform holds it (its heartbeat: live, or expired, and how to clear one known
   to be stale), and existing data a later rule would refuse, reported as WARNING and never changed (a checkout
-  registered in two engagements before rbc-release-2).
+  registered in two engagements before release 2).
 
 Standard library only, so it runs before anything is installed. It reads backend/.env and the environment, and never
 prints a username or a password.
@@ -249,7 +249,8 @@ def platform_location(cfg: dict[str, str]) -> None:
     if top is None:
         note("location", f"{ROOT}, not in a git repository")
     elif top == ROOT.resolve():
-        code, head = run("git", "-C", str(ROOT), "describe", "--tags", "--always", "HEAD")
+        # The release tag, release-N or the older <prefix>-release-N, else the commit.
+        code, head = run("git", "-C", str(ROOT), "describe", "--tags", "--always", "--match", "release-*", "--match", "*-release-*", "HEAD")
         note("location", f"{ROOT}, its own repository, at {head.strip()}")
     else:
         folder = ROOT.resolve().relative_to(top).as_posix()
@@ -616,7 +617,7 @@ def platform_state(c, schema: str) -> None:
             if len({g[0] for g in group}) > 1:
                 warn("existing data", f"one checkout is registered in several engagements ("
                                       f"{', '.join(f'{e}/{s}' for e, s, _ in group)}, {group[0][2]}), from before "
-                                      "rbc-release-2 refused it. Left working and unchanged; see docs/VDI-SETUP.md "
+                                      "release 2 refused it. Left working and unchanged; see docs/VDI-SETUP.md "
                                       "More than one person")
 
 

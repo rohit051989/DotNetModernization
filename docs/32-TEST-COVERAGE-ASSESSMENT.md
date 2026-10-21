@@ -445,6 +445,6 @@ fact is a line-level match recorded as evidence with file and line, and the UI s
 - **Not measured** shows as "not measured" with a numbered note, and the reasons are
   listed below the table, readable on a phone.
 
-## Large repositories (rbc-release-5: test-coverage-assessment 1.1.0)
+## Large repositories (release 5: test-coverage-assessment 1.1.0)
 
 Each project's own files only; each file within `file_seconds`, over which it is analysed as empty and recorded `NOT_CHECKED`; the working-tree check (`git status`) reads both pipes and ends within 30 s. Artifact unchanged. Every step reports progress, writes a timing profile, keeps to its time and stall limits and ends its whole process tree when stopped: `11-STEP-CONTRACT.md`, "Time limits, progress and stopping". The registration's fixed `timeout_seconds` is gone.

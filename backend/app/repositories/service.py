@@ -734,8 +734,8 @@ def register_git_clone(db: Session, engagement: models.Engagement, payload: Regi
 
 
 def shared_checkouts(db: Session) -> list[list[models.Repository]]:
-    """Checkouts registered in more than one engagement: refused since rbc-release-2, but an installation upgraded
-    from rbc-release-1 may already have them. Reported, never changed: each registration keeps working as it did."""
+    """Checkouts registered in more than one engagement: refused since release 2, but an installation upgraded
+    from release 1 may already have them. Reported, never changed: each registration keeps working as it did."""
     groups: dict[str, list[models.Repository]] = {}
     for repo in db.query(models.Repository).filter(models.Repository.deleted_at.is_(None)).order_by(
             models.Repository.engagement_id, models.Repository.slug):
@@ -750,7 +750,7 @@ def shared_checkouts(db: Session) -> list[list[models.Repository]]:
 def shared_checkout_message(group: list[models.Repository]) -> str:
     named = ", ".join(f"{r.engagement_id}/{r.slug}" for r in group)
     return (f"One checkout is registered in {len({r.engagement_id for r in group})} engagements ({named}, "
-            f"{group[0].local_path}). Registered before rbc-release-2 refused it, so it is left working. Their "
+            f"{group[0].local_path}). Registered before release 2 refused it, so it is left working. Their "
             "conversion branches share names in that checkout's git, so run conversions in one engagement only, or "
             "clone the repository again for the other engagement, register the new clone there, and delete the old "
             "registration (docs/VDI-SETUP.md: More than one person).")

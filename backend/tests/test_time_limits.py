@@ -1,4 +1,4 @@
-"""Step time limits, progress, and stopping an in-process step (rbc-release-5).
+"""Step time limits, progress, and stopping an in-process step (release 5).
 
 Run with:
     python -m unittest tests.test_time_limits

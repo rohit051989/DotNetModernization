@@ -1,4 +1,4 @@
-"""Running a child process so that nothing can wait forever (rbc-release-5).
+"""Running a child process so that nothing can wait forever (release 5).
 
 Every process a step starts, and every step that is itself a process, runs through `run`:
 

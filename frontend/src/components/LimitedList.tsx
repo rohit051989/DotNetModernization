@@ -1,6 +1,6 @@
 import { useMemo, useState, type ReactNode } from 'react'
 
-/** How many items a list shows before it is asked for more (rbc-release-6). */
+/** How many items a list shows before it is asked for more (release 6). */
 export const LIST_PAGE = 20
 
 interface LimitOptions<T> {

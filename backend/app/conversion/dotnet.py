@@ -1,6 +1,6 @@
 """Build and test, with results read from files, never from console text.
 
-Every dotnet runs through app.workflow.processes (rbc-release-5): both pipes
+Every dotnet runs through app.workflow.processes (release 5): both pipes
 read, a time limit, and the whole process tree ended afterwards, so no worker
 node or test host is left running or holding a pipe.
 
