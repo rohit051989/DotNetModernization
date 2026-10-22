@@ -1550,7 +1550,13 @@
     {
       "version": "1.2.0",
       "on": "2026-10-16",
-      "by": "Rohit Khanna (instruction: release 3 item 4)",
+      "by": "Rohit Khanna (instruction: [client name removed]-release-3 item 4)",
+      "redacted": {
+        "on": "2026-10-22",
+        "file": "this file was redacted in place on 2026-10-22, after release 6; matrix 1.2.1 carries the same redaction as a version of its own",
+        "what": "the client's name, in the instruction reference of this entry (a release tag name)",
+        "why": "no client's name is kept in the platform (CLAUDE.md rule 18); the rest of the entry is as recorded"
+      },
       "changes": [
         "net10.0/linux/basicHttpsBinding/Transport/None: new, compatible, with its probe (2026-10-13); unconfirmed",
         "net10.0/linux/basicHttpsBinding/Transport/Certificate: new, compatible, with its probe (2026-10-13), and the rerun with its no-client-certificate control as a matched pair; unconfirmed",

@@ -247,6 +247,7 @@ public class SoapRuntimeVerdictTests
     [Theory]
     [InlineData("wcf-client-support-1.1.0.json", new[] { "supported", "supported_with_caveat" })]
     [InlineData("wcf-client-platform-1.2.0.json", new[] { "compatible" })]
+    [InlineData("wcf-client-platform-1.2.1.json", new[] { "compatible" })]
     public void No_wildcard_entry_asserts_that_a_call_works(string file, string[] works)
     {
         using var document = JsonDocument.Parse(File.ReadAllBytes(TestMatrices.Schemas(file)));

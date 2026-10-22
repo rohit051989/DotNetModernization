@@ -3,7 +3,7 @@
   "lifecycle_step_no": 5,
   "display_name": "Outbound invocation inventory",
   "owner_code": "P",
-  "version": "1.7.0",
+  "version": "1.7.1",
   "owner_team": "platform",
   "viewpoint": "CONTEXT",
   "implementation_status": "implemented",

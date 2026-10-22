@@ -58,8 +58,9 @@ public sealed class OutboundPipeline
     /// of invocations instead of a walk of the project per call site; projects in parallel, bounded, each within a
     /// time limit, and each file within its own, over which it is recorded NOT_CHECKED with the reason; every
     /// unresolved operation names its reason; progress, a timing profile, and finished projects kept so a rerun
-    /// continues from there. Artifact unchanged.</summary>
-    public const string ScannerVersion = "1.7.0";
+    /// continues from there. Artifact unchanged.
+    /// 1.7.1: the WCF client platform matrix 1.2.1, wording only; no verdict changed. Artifact unchanged.</summary>
+    public const string ScannerVersion = "1.7.1";
 
     /// <summary>Projects loaded and analysed at once: bounded, leaving a core for the rest of the machine.</summary>
     public static int Parallelism { get; } = Math.Clamp(Environment.ProcessorCount - 1, 1, 8);

@@ -103,8 +103,8 @@ public static class OutboundInventoryCli
     /// <summary>The WCF client support matrix (1.4.0), published beside the schemas.</summary>
     public const string WcfClientSupportFile = "wcf-client-support-1.1.0.json";
 
-    /// <summary>The WCF client platform matrix (1.5.0), published beside it.</summary>
-    public const string WcfClientPlatformFile = "wcf-client-platform-1.2.0.json";
+    /// <summary>The WCF client platform matrix (1.5.0), published beside it. 1.2.1: wording only, no verdict changed.</summary>
+    public const string WcfClientPlatformFile = "wcf-client-platform-1.2.1.json";
 
     private static WcfClientSupport LoadWcfClientSupport() =>
         WcfClientSupport.Load(Path.Combine(AppContext.BaseDirectory, "schemas", WcfClientSupportFile));

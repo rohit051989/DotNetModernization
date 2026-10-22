@@ -1216,6 +1216,12 @@ Both were confirmed by Rohit Khanna on 2026-10-17, decision `RK-2026-10-17-a`, w
 scanned with 1.1.0 keeps citing the wildcard until the repository is rescanned; the SOAP report
 says so (an older matrix than the newest: rescan).
 
+**Platform matrix 1.2.1** (outbound-invocation-inventory 1.7.1): wording only; no verdict changed. The 1.2.0
+history entry's instruction reference named a client in a release tag; the name is redacted visibly
+("[client name removed]") with a note on that entry saying when and why (CLAUDE.md rule 18). The 1.2.0 file stays,
+redacted the same way and saying so, because runs that recorded 1.2.0 read it. A run on 1.2.0 is reported as using
+an older matrix than the newest until its repository is rescanned; its verdicts are the same.
+
 ---
 
 ## Part D — UI
