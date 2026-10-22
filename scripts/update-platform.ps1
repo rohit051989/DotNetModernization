@@ -12,14 +12,15 @@
     In order, stopping with a plain message at the first problem:
       1. The client repository must be on -Branch, and the platform folder must have no uncommitted changes
          (both are named when not).
-      2. The source folder is pulled (git pull --ff-only). The old commit is the one the platform folder holds
-         (its PLATFORM_SOURCE.json), else the source folder's commit before the pull.
+      2. The source folder fetches our release tags and checks out a release: the newest by default, or the one
+         -Release names. A release is installed, never the tip of master. The old commit is the one the platform
+         folder holds (its PLATFORM_SOURCE.json), else the source folder's commit before the checkout.
       3. The client branch is updated with git pull --ff-only.
       4. The source is copied into the platform folder with robocopy, leaving out .git, .venv, node_modules and
          .env files. robocopy's exit codes 0 to 7 mean success.
       5. Files deleted upstream are removed from the platform folder, including the old names of renamed files:
          git diff --name-only --no-renames --diff-filter=D <old> <new>, in the source folder.
-      6. PLATFORM_SOURCE.json is written (scripts\write-platform-source.ps1).
+      6. PLATFORM_SOURCE.json is written (scripts\write-platform-source.ps1), naming the release installed.
       7. Only the platform folder is staged and committed: git add -A -- <folder>, then git commit -- <folder>,
          with our source commit in the message. Nothing outside the folder is ever staged or committed.
       8. With -Push, only -Branch is pushed.
@@ -37,6 +38,10 @@
 .PARAMETER Branch
     Your own branch in the client's repository. The script stops if the repository is on any other.
 
+.PARAMETER Release
+    The release to install, by its tag: release-N (release-7 onward), or the older <prefix>-release-N of releases 1
+    to 6. Default: the newest release, by its number.
+
 .PARAMETER Push
     Push -Branch (and only it) to origin after committing.
 
@@ -48,8 +53,12 @@ param(
     [Parameter(Mandatory)][string]$Source,
     [Parameter(Mandatory)][string]$Platform,
     [Parameter(Mandatory)][string]$Branch,
+    [string]$Release = '',
     [switch]$Push
 )
+
+# A release tag: release-N, or the older <prefix>-release-N of releases 1 to 6.
+$ReleaseTag = '^(?:[a-z0-9]+-)?release-(\d+)$'
 
 $ErrorActionPreference = 'Continue'   # git writes progress to stderr; every exit code is checked instead
 
@@ -105,12 +114,22 @@ $sourceBefore = @(Invoke-Git $Source @('rev-parse', 'HEAD') 'Reading the source 
 $installed = $null
 $record = Join-Path $Platform 'PLATFORM_SOURCE.json'
 if (Test-Path $record) { $installed = (Get-Content $record -Raw | ConvertFrom-Json).commit }
-Invoke-Git $Source @('pull', '--ff-only') 'Pulling the source folder' | Out-Null
+# The client installs releases, never the tip of master: fetch the tags, choose the release, check it out.
+Invoke-Git $Source @('fetch', '--quiet', '--tags', '--force', 'origin') 'Fetching our releases' | Out-Null
+$releases = @(Invoke-Git $Source @('tag', '--list') 'Listing our releases') | Where-Object { $_ -match $ReleaseTag }
+if ($Release) {
+    if ($Release -notmatch $ReleaseTag) { Stop-Update "$Release is not a release: releases are tagged release-N, such as release-7." }
+    if ($releases -notcontains $Release) { Stop-Update "there is no release $Release in the source folder. Releases there: $(($releases | Sort-Object) -join ', ')" }
+} else {
+    $Release = $releases | Sort-Object { [int]([regex]::Match($_, $ReleaseTag).Groups[1].Value) } | Select-Object -Last 1
+    if (-not $Release) { Stop-Update "the source folder has no release (a tag release-N). Ask for one; the platform is never installed from master." }
+}
+Invoke-Git $Source @('-c', 'advice.detachedHead=false', 'checkout', '--quiet', "refs/tags/$Release") "Checking out $Release in the source folder" | Out-Null
 $new = @(Invoke-Git $Source @('rev-parse', 'HEAD') 'Reading the source commit')[0]
 $old = $(if ($installed) { $installed } else { $sourceBefore })
 & git -C $Source cat-file -e "$old^{commit}" 2>$null
 if ($LASTEXITCODE -ne 0) { Stop-Update "the platform folder's recorded source commit $old is not in the source folder's history." }
-Write-Host "Source $Source`: $($old.Substring(0, 12)) -> $($new.Substring(0, 12))$(if (-not $installed) { ' (no PLATFORM_SOURCE.json: the old commit is the source folder''s before the pull)' })"
+Write-Host "Source $Source`: $Release, $($old.Substring(0, 12)) -> $($new.Substring(0, 12))$(if (-not $installed) { ' (no PLATFORM_SOURCE.json: the old commit is the source folder''s before the checkout)' })"
 
 # ---- 3. The client branch
 Invoke-Git $top @('pull', '--ff-only') "Updating $Branch (git pull --ff-only)" | Out-Null
@@ -140,7 +159,7 @@ Write-Host "Removed $removed file(s) deleted or renamed upstream"
 
 # ---- 6. Which of our commits this is
 # The copy just placed in the platform folder: nothing is ever run from the source folder.
-& (Join-Path $Platform 'scripts\write-platform-source.ps1') -Source $Source -Platform $Platform -Previous $old
+& (Join-Path $Platform 'scripts\write-platform-source.ps1') -Source $Source -Platform $Platform -Previous $old -Release $Release
 if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) { Stop-Update 'writing PLATFORM_SOURCE.json failed.' }
 
 # ---- 7. Commit only the platform folder
@@ -149,10 +168,8 @@ $staged = @(Invoke-Git $top @('diff', '--cached', '--name-only', '--', $folder) 
 if ($staged.Count -eq 0) {
     Write-Host 'Nothing changed in the platform folder: no commit.'
 } else {
-    # Its release tag: release-N, or the older <prefix>-release-N of releases 1 to 6.
-    $tag = (& git -C $Source describe --tags --exact-match --match 'release-*' --match '*-release-*' $new 2>$null)
-    $title = "Modernization platform: update to $($new.Substring(0, 12))$(if ($LASTEXITCODE -eq 0 -and $tag) { " ($($tag.Trim()))" })"
-    $message = "$title`n`nSource commit: $new`nPrevious source commit: $old`nFiles: $($staged.Count) changed in $folder"
+    $title = "Modernization platform: update to $Release ($($new.Substring(0, 12)))"
+    $message = "$title`n`nRelease: $Release`nSource commit: $new`nPrevious source commit: $old`nFiles: $($staged.Count) changed in $folder"
     Invoke-Git $top @('commit', '-q', '-m', $message, '--', $folder) 'Committing the platform folder' | Out-Null
     $commit = @(Invoke-Git $top @('rev-parse', '--short', 'HEAD') 'Reading the commit')[0]
     Write-Host "Committed $commit on $Branch`: $($staged.Count) file(s) in $folder"

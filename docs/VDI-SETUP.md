@@ -804,7 +804,9 @@ names the platform's own folder, so they carry over unchanged.
 
 ### Updating the platform
 
-How a new release of ours reaches the platform folder. Four steps, every time:
+How a new release of ours reaches the platform folder. The client's environment installs releases, never the tip of
+our master: a release is a tag, `release-<n>` (releases 1 to 6 carry an older tag of the form
+`<prefix>-release-<n>`, which works the same way). Four steps, every time:
 
 1. **Stop the backend and the frontend.** Wait until no discovery or verification is running (the **Executions**
    tab), then press **Ctrl+C** in both windows. One still running when the backend stops is marked "orphaned by
@@ -815,16 +817,47 @@ How a new release of ours reaches the platform folder. Four steps, every time:
    powershell -ExecutionPolicy Bypass -File C:\MP\client\modernization-platform\scripts\update-platform.ps1 -Source C:\MP\source -Platform C:\MP\client\modernization-platform -Branch rohit/modernization-platform
    ```
 
+   It installs the newest release. To install a particular one, add `-Release` with its tag:
+
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File C:\MP\client\modernization-platform\scripts\update-platform.ps1 -Source C:\MP\source -Platform C:\MP\client\modernization-platform -Branch rohit/modernization-platform -Release release-7
+   ```
+
    Add `-Push` to push your branch afterwards. The script:
    - stops, changing nothing, if the client's repository is not on your branch, or if the platform folder has
      uncommitted changes; it names the branch, or lists the files;
-   - pulls the source folder, and updates your branch with `git pull --ff-only`;
+   - fetches our releases into the source folder and checks out the release: the newest by its number, or the one
+     `-Release` names. It stops if `-Release` names something that is not a release, or if the source folder has
+     no release at all: the platform is never installed from master;
+   - updates your branch with `git pull --ff-only`;
    - copies the source into the platform folder with robocopy, leaving out `.git`, `.venv`, `node_modules` and
      `.env`, and removes the files we deleted or renamed since the commit the folder held (from its
      `PLATFORM_SOURCE.json`);
-   - writes the new `PLATFORM_SOURCE.json`;
-   - stages and commits only the platform folder, with our source commit in the message; with `-Push`, pushes only
-     your branch.
+   - writes the new `PLATFORM_SOURCE.json`, which names the release installed (`release`) and its commit;
+   - stages and commits only the platform folder, with the release and our source commit in the message; with
+     `-Push`, pushes only your branch.
+
+   **The first update made with an older script still pulls master.** The script that runs is the one already in
+   the platform folder, from the release installed before. A copy older than this change pulls the source folder's
+   branch, which is master, and installs its tip. Once that update has copied this script in, every later update
+   installs a release. To install a release on that first update instead, check it out in the source folder before
+   running the script, and run the script with `-Source` as usual:
+
+   ```powershell
+   git -C C:\MP\source fetch --tags origin; git -C C:\MP\source checkout release-7
+   ```
+
+   The older script then stops with "Pulling the source folder failed" (a release is not a branch), having changed
+   nothing. Copy the new script from the source folder over the one in the platform folder, commit only that file
+   to your branch, and run the update again:
+
+   ```powershell
+   Copy-Item C:\MP\source\scripts\update-platform.ps1 C:\MP\client\modernization-platform\scripts\update-platform.ps1
+   ```
+
+   ```powershell
+   git -C C:\MP\client commit -m "Modernization platform: update script" -- modernization-platform/scripts/update-platform.ps1
+   ```
 
    Your local files are never touched: `backend\.env`, `frontend\.env`, `.venv`, `node_modules`, the published
    step programs, and anything you changed elsewhere in the client's repository (which stays uncommitted).

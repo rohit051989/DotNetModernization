@@ -19,6 +19,10 @@
 .PARAMETER Previous
     The source commit the platform folder held before this copy, when there was one (recorded, for the history).
 
+.PARAMETER Release
+    The release installed (its tag), as scripts\update-platform.ps1 chose it. Default: the release tag of the source
+    folder's commit, if it has one.
+
 .EXAMPLE
     .\scripts\write-platform-source.ps1 -Source C:\MP\source
 #>
@@ -26,7 +30,8 @@
 param(
     [Parameter(Mandatory)][string]$Source,
     [string]$Platform = '',
-    [string]$Previous = ''
+    [string]$Previous = '',
+    [string]$Release = ''
 )
 
 $ErrorActionPreference = 'Continue'   # git writes to stderr; exit codes are checked instead
@@ -41,11 +46,14 @@ $commit = "$commit".Trim()
 # Its release tag: release-N, or the older <prefix>-release-N of releases 1 to 6. Any other tag is not a release.
 $tag = & git -C $Source describe --tags --exact-match --match 'release-*' --match '*-release-*' HEAD 2>$null
 if ($LASTEXITCODE -ne 0 -or -not $tag) { $tag = $null } else { $tag = "$tag".Trim() }
+if ($Release) { $tag = $Release }
 $branch = "$(& git -C $Source rev-parse --abbrev-ref HEAD)".Trim()
+if ($branch -eq 'HEAD') { $branch = $null }   # a release checked out: no branch
 
 $record = [ordered]@{
     commit         = $commit
     tag            = $tag
+    release        = $tag
     branch         = $branch
     date           = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
     previousCommit = $(if ($Previous) { $Previous } else { $null })

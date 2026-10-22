@@ -39,6 +39,7 @@ class UpdatePlatform(unittest.TestCase):
         (work / "docs" / "old-name.md").write_text("renamed upstream\n")
         (work / ".gitignore").write_text("backend/.env\n")
         git(work, "init", "-q", "-b", "main"); git(work, "add", "-A"); git(work, "commit", "-q", "-m", "ours v1")
+        git(work, "tag", "release-1")                    # the client installs releases, never the tip of master
         self.ours = root / "ours.git"
         subprocess.run(["git", "clone", "-q", "--bare", str(work), str(self.ours)], check=True)
         self.work = root / "ours-dev"
@@ -79,13 +80,24 @@ class UpdatePlatform(unittest.TestCase):
         return ps(self.platform / "scripts" / "update-platform.ps1", "-Source", str(self.source), "-Platform",
                   str(self.platform), "-Branch", BRANCH, *extra)
 
-    def upstream(self):
+    def upstream(self, tag: str | None = "release-2"):
         (self.work / "changed.txt").write_text("v2\n")
         git(self.work, "rm", "-q", "deleted.txt")
         git(self.work, "mv", "docs/old-name.md", "docs/new-name.md")
         git(self.work, "commit", "-q", "-am", "ours v2: change, delete, rename")
-        git(self.work, "push", "-q", "origin", "main")
+        return self.publish(tag)
+
+    def publish(self, tag: str | None) -> str:
+        """Pushes main, and tags the commit as a release when `tag` is given."""
+        if tag:
+            git(self.work, "tag", tag)
+        git(self.work, "push", "-q", "--tags", "origin", "main")
         return git(self.work, "rev-parse", "HEAD")
+
+    def commit_upstream(self, text: str, tag: str | None) -> str:
+        (self.work / "changed.txt").write_text(text)
+        git(self.work, "commit", "-q", "-am", f"ours {text.strip()}")
+        return self.publish(tag)
 
     def test_an_update_copies_removes_records_and_commits_only_the_platform_folder(self):
         new = self.upstream()
@@ -104,11 +116,50 @@ class UpdatePlatform(unittest.TestCase):
         self.assertNotEqual(record["previousCommit"], new)
         files = git(self.client, "show", "--name-only", "--format=", "HEAD").splitlines()
         self.assertTrue(files and all(f.startswith(FOLDER + "/") for f in files), files)
+        self.assertEqual(record["release"], "release-2")
         self.assertIn(f"Source commit: {new}", git(self.client, "log", "-1", "--format=%B"))
+        self.assertIn("Release: release-2", git(self.client, "log", "-1", "--format=%B"))
         self.assertEqual(git(self.client, "rev-parse", "HEAD~1"), head)
         self.assertEqual(git(self.client, "status", "--porcelain", "--", "README.md"), "M README.md")
         self.assertEqual(git(self.remote, "rev-parse", BRANCH), git(self.client, "rev-parse", "HEAD"))
         self.assertEqual(git(self.remote, "rev-parse", OTHER), self.other_before)
+
+    def test_the_newest_release_is_installed_never_the_tip_of_master(self):
+        release = self.upstream("release-2")
+        self.commit_upstream("v3, not released\n", tag=None)
+        done = self.update()
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertEqual((self.platform / "changed.txt").read_text(), "v2\n")
+        record = json.loads((self.platform / "PLATFORM_SOURCE.json").read_text(encoding="utf-8"))
+        self.assertEqual((record["commit"], record["release"], record["branch"]), (release, "release-2", None))
+
+    def test_release_names_a_specific_release_of_either_tag_form(self):
+        self.upstream("old-release-2")                     # the older tag form of releases 1 to 6
+        self.commit_upstream("v3\n", tag="release-3")
+        done = self.update("-Release", "old-release-2")
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertEqual((self.platform / "changed.txt").read_text(), "v2\n")
+        record = json.loads((self.platform / "PLATFORM_SOURCE.json").read_text(encoding="utf-8"))
+        self.assertEqual(record["release"], "old-release-2")
+        done = self.update()                               # by default, the newest by its number
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertEqual((self.platform / "changed.txt").read_text(), "v3\n")
+
+    def test_a_name_that_is_not_a_release_is_refused(self):
+        self.upstream()
+        done = self.update("-Release", "main")
+        self.assertNotEqual(done.returncode, 0)
+        self.assertIn("main is not a release", done.stdout)
+        self.assertEqual((self.platform / "changed.txt").read_text(), "v1\n")
+
+    def test_a_source_with_no_release_is_refused(self):
+        git(self.ours, "tag", "-d", "release-1")
+        git(self.source, "tag", "-d", "release-1")
+        git(self.work, "tag", "-d", "release-1")
+        self.upstream(tag=None)
+        done = self.update()
+        self.assertNotEqual(done.returncode, 0)
+        self.assertIn("never installed from master", done.stdout)
 
     def test_it_stops_on_the_wrong_branch(self):
         # Another branch that carries the platform folder: the script is there, and stops naming the branch.
