@@ -3,7 +3,7 @@
   "lifecycle_step_no": 2,
   "display_name": "Solution & project discovery",
   "owner_code": "P",
-  "version": "2.1.1",
+  "version": "2.1.2",
   "owner_team": "platform",
   "viewpoint": "DEVELOPMENT",
   "implementation_status": "implemented",

@@ -205,8 +205,12 @@ def _package_references(root: ET.Element) -> list[dict]:
     return packages
 
 
-def _project_references(root: ET.Element) -> list[dict]:
-    references = []
+def _project_references(root: ET.Element) -> tuple[list[dict], list[str]]:
+    """Each ProjectReference once, with a warning for each repeat. Two Includes naming the same file — the same
+    text, or differing only in slash direction or case, which Windows MSBuild treats as one path — are one
+    reference: the first is kept as written. Recording both would duplicate the reference (and an exact repeat
+    would break uq_project_references_source_raw_path)."""
+    references, warnings, seen = [], [], {}
     for item_group in root:
         if _local_tag(item_group) != "ItemGroup":
             continue
@@ -214,9 +218,16 @@ def _project_references(root: ET.Element) -> list[dict]:
             if _local_tag(item) != "ProjectReference":
                 continue
             raw_path = item.attrib.get("Include")
-            if raw_path:
-                references.append({"raw_path": raw_path})
-    return references
+            if not raw_path:
+                continue
+            key = raw_path.strip().replace("\\", "/").lower()
+            if key in seen:
+                same = "" if raw_path == seen[key] else f" (as '{seen[key]}')"
+                warnings.append(f"ProjectReference '{raw_path}' is declared more than once{same}; recorded once")
+                continue
+            seen[key] = raw_path
+            references.append({"raw_path": raw_path})
+    return references, warnings
 
 
 def _parse_packages_config(path: Path) -> tuple[list[dict], str | None]:
@@ -356,7 +367,8 @@ def parse(path: Path, repo_root: Path) -> dict:
     result["is_multi_targeting"] = bool(target_frameworks_raw) and len(target_frameworks_raw) > 1
 
     packages = _package_references(root)
-    result["project_references"] = _project_references(root)
+    result["project_references"], reference_warnings = _project_references(root)
+    warnings.extend(reference_warnings)
 
     config_path = path.with_name("packages.config")
     has_packages_config = config_path.is_file()

@@ -421,6 +421,13 @@ to forward slashes, resolve relative to the containing file, then relative to th
 repository root. A resolved path escaping the repository root is
 `external_repository`, not `unresolved`.
 
+**A ProjectReference declared twice** is recorded once. Two Includes naming the same
+file count as one, whether the text is identical or differs only in slash direction or
+case (Windows MSBuild treats those as one path). The first is kept as written, and each
+repeat adds a parse warning: "ProjectReference '<path>' is declared more than once;
+recorded once". Before `solution-discovery` 2.1.2, an identical repeat failed the whole
+run on `uq_project_references_source_raw_path`.
+
 **Encoding.** Legacy files are frequently UTF-8 with BOM, occasionally UTF-16. Detect
 BOM, fall back to UTF-8 with replacement, and warn rather than fail.
 

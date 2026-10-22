@@ -94,6 +94,39 @@ class ProjectParserParseTests(unittest.TestCase):
         self.assertEqual(len(result["project_references"]), 1)
         self.assertEqual(result["project_references"][0]["raw_path"], "..\\Other\\Other.csproj")
 
+    def test_a_project_reference_declared_twice_is_recorded_once_with_a_warning(self):
+        path = self._write("src/App/App.csproj", """<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFramework>net8.0</TargetFramework></PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\\Domain\\Domain.csproj" />
+    <ProjectReference Include="..\\Core\\Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\\Domain\\Domain.csproj" />
+  </ItemGroup>
+</Project>
+""")
+        result = project_parser.parse(path, self.repo_root)
+
+        self.assertEqual(result["parse_status"], "success")
+        self.assertEqual([r["raw_path"] for r in result["project_references"]], ["..\\Domain\\Domain.csproj", "..\\Core\\Core.csproj"])
+        self.assertEqual(result["parse_warnings"], ["ProjectReference '..\\Domain\\Domain.csproj' is declared more than once; recorded once"])
+
+    def test_references_differing_only_in_slashes_or_case_are_one_reference(self):
+        path = self._write("src/App/App.csproj", """<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFramework>net8.0</TargetFramework></PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\\Domain\\Domain.csproj" />
+    <ProjectReference Include="../domain/Domain.csproj" />
+  </ItemGroup>
+</Project>
+""")
+        result = project_parser.parse(path, self.repo_root)
+
+        self.assertEqual([r["raw_path"] for r in result["project_references"]], ["..\\Domain\\Domain.csproj"])
+        self.assertEqual(result["parse_warnings"],
+                         ["ProjectReference '../domain/Domain.csproj' is declared more than once (as '..\\Domain\\Domain.csproj'); recorded once"])
+
     def test_sdk_style_project_parses(self):
         path = self._write("src/Web/Web.csproj", SDK_CSPROJ)
         result = project_parser.parse(path, self.repo_root)
