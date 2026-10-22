@@ -43,8 +43,10 @@ public sealed class DependencyPipeline(PackageLookup lookup, DependencyOptions o
     /// repository is recorded as declared in <c>parent</c>, and a local folder declared at user level is a client
     /// feed (<see cref="FeedResolver"/>). 1.7.0 (release 5): each project within a time limit, over which it is
     /// recorded NOT_CHECKED with the reason; a transitive restore over its limit ends with everything it started;
-    /// progress, a timing profile, and finished projects kept so a rerun continues from there. Artifact unchanged.</summary>
-    public const string ScannerVersion = "1.7.0";
+    /// progress, a timing profile, and finished projects kept so a rerun continues from there. Artifact unchanged.
+    /// 1.7.1: the step reports its artifact to the engine as 1.6.0, the version it writes; it had reported 1.5.0.
+    /// Artifact unchanged.</summary>
+    public const string ScannerVersion = "1.7.1";
 
     /// <summary>1.5.0: the PACKAGE_VULNERABLE value's ending when no release without a known advisory supports the
     /// target.</summary>

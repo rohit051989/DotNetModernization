@@ -17,7 +17,6 @@ namespace Fingerprinting.Dependencies.Cli;
 public static class DependencyAssessmentCli
 {
     public const string ArtifactType = "dependency-assessment";
-    public const string ArtifactVersion = "1.5.0";
     public const string OutputFileName = "dependency-assessment.json";
 
     private const string InventoryType = "solution-project-inventory";
@@ -202,7 +201,8 @@ public static class DependencyAssessmentCli
                 new StepOutput
                 {
                     ArtifactType = ArtifactType,
-                    ArtifactVersion = ArtifactVersion,
+                    // The version the artifact itself carries (1.7.1): a second constant here had drifted to 1.5.0.
+                    ArtifactVersion = artifact.ArtifactVersion,
                     Uri = ArtifactUri.FromLocalPath(outputPath),
                     Checksum = checksum,
                     // Volatile fields, kept out of the file so the checksum is
