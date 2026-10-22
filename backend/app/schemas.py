@@ -38,9 +38,9 @@ def _validate_slug(value: str) -> str:
     return value
 
 
-# ---------- Step 4 classification schema (24-PATTERN-CLASSIFICATION.md Part C) ----------
+# ---------- pattern-classification schema (24-PATTERN-CLASSIFICATION.md Part C) ----------
 # Stored in `patterns.detection_rules` (legacy pattern tables, kept until the
-# reset). The engine that evaluated it was removed with step 4; the grammar
+# reset). The engine that evaluated it was removed with pattern-classification; the grammar
 # lives on in catalog item detection (app/items/detection.py, evaluation.py).
 
 
@@ -61,7 +61,7 @@ class ValueMatch(BaseModel):
 
 
 class SignalCondition(BaseModel):
-    """A reference to one registered step 3 signal, with optional narrowing
+    """A reference to one registered application-fingerprinting signal, with optional narrowing
     conditions (Part C 'Signal condition fields')."""
 
     model_config = ConfigDict(extra="forbid")
@@ -123,7 +123,7 @@ class AtLeastGroup(BaseModel):
 
 
 class MetadataCondition(BaseModel):
-    """A condition against step 2/3 project metadata rather than a signal
+    """A condition against solution-discovery or application-fingerprinting project metadata rather than a signal
     (Part C 'Metadata conditions'), e.g. `{"field": "outputType", "equals": "Library"}`."""
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
@@ -187,7 +187,7 @@ class SignalRuleSet(BaseModel):
     matchWarnings: list[str] = Field(
         default_factory=list,
         description="Shown (as project-level warnings) whenever this pattern matches. For a pattern whose "
-        "detection is confident but its evidence is thin — e.g. metadata-only, no step 3 signal evidence yet "
+        "detection is confident but its evidence is thin — e.g. metadata-only, no application-fingerprinting signal evidence yet "
         "— so that gap is visible on the match rather than implied by its absence.",
     )
 
@@ -238,13 +238,13 @@ class PatternThresholds(BaseModel):
 
 class RequiredSignalPending(BaseModel):
     """One entry in `required_signals_pending` — a signal this pattern's
-    rules need but that step 3 does not yet produce (Part B2)."""
+    rules need but that application-fingerprinting does not yet produce (Part B2)."""
 
     model_config = ConfigDict(extra="forbid")
 
     signal_name: str = Field(description="The not-yet-registered signal name this pattern is waiting on.")
     purpose: str = Field(description="Why this signal matters to the pattern's rules.")
-    expected_extractor: str = Field(description="The step 3 extractor expected to eventually produce this signal.")
+    expected_extractor: str = Field(description="The application-fingerprinting extractor expected to eventually produce this signal.")
     blocking: bool = Field(
         default=True,
         description="True if the pattern cannot be evaluated at all without this signal; false if it is enrichment only.",
@@ -252,7 +252,7 @@ class RequiredSignalPending(BaseModel):
 
 
 class SignalRegistryEntry(BaseModel):
-    """One registered step 3 signal — Part B4: 'Every signal select shows
+    """One registered application-fingerprinting signal — Part B4: 'Every signal select shows
     its registry description.'"""
 
     name: str
@@ -350,7 +350,7 @@ class PatternBase(BaseModel):
         default=None, description="Risks or gotchas worth knowing before migrating this pattern."
     )
 
-    # ---- Step 4 classification schema (24-PATTERN-CLASSIFICATION.md Part B1) ----
+    # ---- pattern-classification schema (24-PATTERN-CLASSIFICATION.md Part B1) ----
     # Every field below is optional here: on create, omitting one applies the
     # same default the J1 migration gave existing patterns; on update,
     # omitting one leaves the current value untouched. None is never a valid
@@ -388,7 +388,7 @@ class PatternBase(BaseModel):
         default=None, description="Fingerprint statuses and excluded project roles this pattern may be evaluated under."
     )
     analysis_requirements: PatternAnalysisRequirements | None = Field(
-        default=None, description="Required vs preferred step 3 analysis capabilities."
+        default=None, description="Required vs preferred application-fingerprinting analysis capabilities."
     )
     thresholds: PatternThresholds | None = Field(
         default=None,
@@ -485,7 +485,7 @@ class PatternSummary(BaseModel):
     status: LifecycleStatus = Field(description="Lifecycle state: 'draft', 'active', or 'deprecated'.")
     # On the summary, not just the detail, so a caller can tell an
     # application pattern from a PROJECT_ROLE one without fetching each
-    # pattern in turn. Step 6's merge-target selector needs exactly this:
+    # pattern in turn. The retired pattern-validation's merge-target selector needed this:
     # merging a discovered shape into `role-library-project` is meaningless,
     # and filtering on an `id` prefix would be a convention masquerading as
     # a rule.
@@ -527,7 +527,7 @@ class PatternDetail(BaseModel):
     conflicts_with: list[str] = Field(description="Pattern ids this pattern cannot coexist with as a primary match.")
     anchor_signals: list[str] = Field(description="Signal names used for the inverted candidate index.")
     eligibility: dict | None = Field(description="Fingerprint statuses and excluded project roles this pattern may be evaluated under.")
-    analysis_requirements: dict | None = Field(description="Required vs preferred step 3 analysis capabilities.")
+    analysis_requirements: dict | None = Field(description="Required vs preferred application-fingerprinting analysis capabilities.")
     thresholds: dict = Field(description="{minimumScore, highConfidenceScore} used by the classification engine.")
     rules_status: RulesStatus = Field(description="'active', 'awaiting_signals', or 'draft'. Only 'active' patterns are evaluated.")
     required_signals_pending: list[dict] = Field(
@@ -670,7 +670,7 @@ class EngagementBase(BaseModel):
     )
     target_framework: str = Field(
         default="net10.0",
-        description="The .NET target framework moniker the estate moves to — what step 6 checks every package against.",
+        description="The .NET target framework moniker the estate moves to — what dependency-assessment checks every package against.",
     )
 
 
@@ -704,15 +704,15 @@ class Engagement(BaseModel):
     description: str | None = Field(description="Free-text notes about this engagement.")
     target_platform: str | None = Field(description="Intended deployment target, e.g. 'OpenShift 4'.")
     default_posture: str = Field(description="Default migration posture for this engagement.")
-    target_framework: str = Field(description="The .NET target framework moniker packages must support (step 6).")
+    target_framework: str = Field(description="The .NET target framework moniker packages must support (dependency-assessment).")
     production_environment: str | None = Field(
         default=None,
-        description="The environment whose host names a service in the endpoint register (step 11). "
+        description="The environment whose host names a service in the endpoint register (dependency-and-context-map). "
         "Set through PUT /api/engagements/{id}/estate/settings.",
     )
     deploy_parameter_globs: list[str] | None = Field(
         default=None,
-        description="Where Web Deploy SetParameters files are (steps 3 and 5); null means the defaults. "
+        description="Where Web Deploy SetParameters files are (application-fingerprinting and outbound-invocation-inventory); null means the defaults. "
         "Set through PUT /api/engagements/{id}/estate/settings.",
     )
     status: LifecycleStatus = Field(description="Lifecycle state: 'draft', 'active', or 'deprecated'.")

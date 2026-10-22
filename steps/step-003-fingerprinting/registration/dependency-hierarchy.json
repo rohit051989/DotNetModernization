@@ -1,0 +1,21 @@
+{
+  "step_name": "dependency-hierarchy",
+  "lifecycle_step_no": 7,
+  "display_name": "Dependency hierarchy",
+  "owner_code": "P",
+  "version": "1.0.0",
+  "owner_team": "platform",
+  "viewpoint": "DEVELOPMENT",
+  "implementation_status": "implemented",
+  "consumes": [
+    { "artifact_type": "solution-project-inventory", "version_range": "^2.0.0", "optional": false },
+    { "artifact_type": "dependency-assessment", "version_range": "^1.5.0", "optional": false }
+  ],
+  "produces": [
+    { "artifact_type": "dependency-hierarchy", "artifact_version": "1.0.0" }
+  ],
+  "adapter_type": "process",
+  "adapter_config": {
+    "command": ["steps/step-003-fingerprinting/publish/dependency-hierarchy/DependencyHierarchy.Cli.exe"]
+  }
+}

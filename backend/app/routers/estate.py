@@ -72,13 +72,13 @@ class EstateSettingsIn(BaseModel):
 
     production_environment: str | None = Field(
         default=None,
-        description="The environment, as step 5 names it from configuration and SetParameters file names "
+        description="The environment, as outbound-invocation-inventory names it from configuration and SetParameters file names "
         "(appsettings.Production.json, SetParamFiles/PROD/SetParam.xml), whose host names a service in the endpoint "
         "register. Null: group by the host as found.",
     )
     deploy_parameter_globs: list[str] | None = Field(
         default=None,
-        description="Where Web Deploy SetParameters files are, as repository-relative globs (steps 3 and 5). "
+        description="Where Web Deploy SetParameters files are, as repository-relative globs (application-fingerprinting and outbound-invocation-inventory). "
         "Null or empty: the defaults, **/SetParam*.xml and **/SetParameters*.xml. Takes effect on the next scan.",
     )
     target_wcf_client_version: str | None = Field(
@@ -96,7 +96,7 @@ class EstateSettingsOut(BaseModel):
     target_wcf_client_version_effective: str | None = Field(description="The version in force: as set, else the matrices'.")
     deploy_parameter_globs: list[str] = Field(description="The globs in force — the defaults when none are set.")
     deploy_parameter_globs_default: bool = Field(description="True when no globs are set and the defaults apply.")
-    environments: list[str] = Field(description="Every environment step 5 found in the estate's configuration, for choosing.")
+    environments: list[str] = Field(description="Every environment outbound-invocation-inventory found in the estate's configuration, for choosing.")
     repositories: list[str] = Field(description="The engagement's repository slugs, for served_by_repository.")
 
 
@@ -109,7 +109,7 @@ class EstateRunOut(BaseModel):
 
 class EstateOut(BaseModel):
     engagement_id: str
-    run: EstateRunOut | None = Field(description="The newest completed step 11 run; null if it has never run for this engagement.")
+    run: EstateRunOut | None = Field(description="The newest completed dependency-and-context-map run; null if it has never run for this engagement.")
     artifacts: dict[str, Any] = Field(
         description="endpoint-register, package-estate, dependency-graph and context-map, as that run wrote them. Each carries coverage."
     )
@@ -158,7 +158,7 @@ def _settings_out(db: Session, engagement: models.Engagement, slugs: dict) -> Es
 
 
 def _latest_run(db: Session, engagement_id: str) -> tuple[Any, dict[str, Any]]:
-    """The newest completed step 11 run of the engagement, and its artifacts."""
+    """The newest completed dependency-and-context-map run of the engagement, and its artifacts."""
     row = db.execute(text("""
         select s.id, s.job_execution_id, s.ended_at, s.exit_message
         from wf_step_executions s
@@ -280,7 +280,7 @@ def _soap_report(report: dict, annotations: list, engagement: models.Engagement,
     "/{engagement_id}/estate",
     response_model=EstateOut,
     summary="Get the engagement's estate view",
-    response_description="The newest step 11 run's artifacts, with the endpoint annotations.",
+    response_description="The newest dependency-and-context-map run's artifacts, with the endpoint annotations.",
     operation_id="get_engagement_estate",
     responses={404: _NOT_FOUND},
 )
@@ -316,8 +316,8 @@ def get_estate(engagement_id: str, db: Session = Depends(get_db)):
 )
 def put_settings(engagement_id: str, payload: EstateSettingsIn, db: Session = Depends(get_db)):
     """The production environment groups the endpoint register by that
-    environment's host (Part C1); the next step 11 run uses it. The
-    SetParameters globs say where steps 3 and 5 look for Web Deploy
+    environment's host (Part C1); the next dependency-and-context-map run uses it. The
+    SetParameters globs say where application-fingerprinting and outbound-invocation-inventory look for Web Deploy
     parameter files; the next scan uses them. Only the fields sent change."""
     engagement = _engagement(db, engagement_id)
     if "production_environment" in payload.model_fields_set:

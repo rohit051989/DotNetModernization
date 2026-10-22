@@ -17,6 +17,7 @@ from app.routers import (
     dashboard,
     deletion,
     editors,
+    hierarchy,
     decisions,
     estate,
     engagement_patterns,
@@ -262,7 +263,7 @@ app = FastAPI(
         {
             "name": "Estate",
             "description": (
-                "Engagement-wide results of lifecycle step 11: the endpoint register, "
+                "Engagement-wide results of dependency-and-context-map: the endpoint register, "
                 "package estate, dependency graph and context map, with the "
                 "conversation annotations people keep on each host. See "
                 "31-DEPENDENCY-AND-CONTEXT-MAP.md."
@@ -271,7 +272,7 @@ app = FastAPI(
         {
             "name": "Solution Discovery",
             "description": (
-                "Read-only results of lifecycle step 2: solutions, projects, project "
+                "Read-only results of solution-discovery: solutions, projects, project "
                 "references, and supporting artifacts found per repository. Structural "
                 "facts only — nothing here is interpreted as an application or a pattern "
                 "yet. See 19-SOLUTION-DISCOVERY.md."
@@ -280,7 +281,7 @@ app = FastAPI(
         {
             "name": "Surface",
             "description": (
-                "Read-only results of lifecycle step 4: what can call a repository's "
+                "Read-only results of entry-point-inventory: what can call a repository's "
                 "applications — HTTP routes, WCF, ASMX, gRPC and SignalR operations, "
                 "WebForms pages, consumers, hosted services, scheduled jobs and mains. "
                 "See 29-ENTRY-POINT-AND-OUTBOUND-INVENTORIES.md Part D."
@@ -357,3 +358,4 @@ app.include_router(impact.router)
 app.include_router(conversion.router)
 app.include_router(deletion.router)
 app.include_router(editors.router)
+app.include_router(hierarchy.router)

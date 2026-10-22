@@ -374,6 +374,21 @@ settings.
 
 Tests: `frontend/src/pages/repositories/SourceLink.test.tsx` and `backend/tests/test_editors.py`.
 
+## Structure (repository page)
+
+The repository page's **Structure** section shows the repository's dependency graph, as a node-link graph (React Flow,
+laid out top to bottom by dagre) or an indented tree. The section that was "Structure & fingerprint" is now
+**Projects & fingerprint**. Its behaviour, API and libraries are specified in `37-DEPENDENCY-HIERARCHY.md` Part E. In
+short:
+- it opens on the roots; + and − expand and collapse, and nothing expands on a double click;
+- children load when a node is expanded, 20 at a time ("+N more");
+- a shared node is drawn once, and says "referenced by N";
+- search reveals a node with its path from a root; transitive packages are off by default; filters show internal,
+  external or projects only;
+- clicking a node opens its details, with the editor link (see "File links").
+
+Tests: `frontend/src/pages/repositories/structure/*.test.tsx`.
+
 ## Future: access control
 
 Not implemented. Recorded here so the intent is visible before auth exists, and

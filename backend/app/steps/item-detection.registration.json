@@ -1,6 +1,6 @@
 {
   "step_name": "item-detection",
-  "lifecycle_step_no": 7,
+  "lifecycle_step_no": 8,
   "display_name": "Catalog item detection & occurrence mapping",
   "owner_code": "P",
   "version": "1.1.0",

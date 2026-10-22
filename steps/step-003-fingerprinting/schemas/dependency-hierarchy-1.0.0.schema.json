@@ -1,0 +1,689 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://modernization-platform/schemas/dependency-hierarchy-1.0.0.schema.json",
+  "title": "dependency-hierarchy 1.0.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "artifactType",
+    "artifactVersion",
+    "scannerVersion",
+    "repositoryId",
+    "repositorySlug",
+    "limits",
+    "summary",
+    "roots",
+    "nodes",
+    "edges",
+    "cycles",
+    "warnings"
+  ],
+  "properties": {
+    "artifactType": {
+      "const": "dependency-hierarchy"
+    },
+    "artifactVersion": {
+      "const": "1.0.0"
+    },
+    "scannerVersion": {
+      "type": "string"
+    },
+    "repositoryId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "repositorySlug": {
+      "type": "string"
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "maxPackageDepth",
+        "maxPackages"
+      ],
+      "properties": {
+        "maxPackageDepth": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "maxPackages": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "projectCount",
+        "countByProjectKind",
+        "packageCount",
+        "internalPackageCount",
+        "externalPackageCount",
+        "transitivePackageCount",
+        "assemblyCount",
+        "edgeCount",
+        "countByEdgeKind",
+        "rootCount",
+        "cycleCount",
+        "notCheckedCount",
+        "depth"
+      ],
+      "properties": {
+        "projectCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "countByProjectKind": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "packageCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "internalPackageCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "externalPackageCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "transitivePackageCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "assemblyCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "edgeCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "countByEdgeKind": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "rootCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "cycleCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "notCheckedCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "depth": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "roots": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "nodes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "type",
+          "name",
+          "status",
+          "notCheckedReason",
+          "project",
+          "package",
+          "assembly"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^(project|package|assembly):.+"
+          },
+          "type": {
+            "enum": [
+              "project",
+              "package",
+              "assembly"
+            ]
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "status": {
+            "enum": [
+              "checked",
+              "not_checked"
+            ]
+          },
+          "notCheckedReason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "project": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "projectId",
+                  "path",
+                  "kind",
+                  "kindBasis",
+                  "targetFrameworks",
+                  "projectFormat",
+                  "packageManagement"
+                ],
+                "properties": {
+                  "projectId": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "format": "uuid"
+                  },
+                  "path": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "kind": {
+                    "enum": [
+                      "application",
+                      "library",
+                      "test",
+                      "other"
+                    ]
+                  },
+                  "kindBasis": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "targetFrameworks": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "projectFormat": {
+                    "enum": [
+                      "sdk_style",
+                      "legacy_msbuild",
+                      "unknown"
+                    ]
+                  },
+                  "packageManagement": {
+                    "enum": [
+                      "packagereference",
+                      "packages_config",
+                      "mixed",
+                      "none"
+                    ]
+                  }
+                }
+              }
+            ]
+          },
+          "package": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "packageId",
+                  "version",
+                  "origin",
+                  "originBasis",
+                  "feedName",
+                  "feedUrl",
+                  "transitive",
+                  "producer",
+                  "findings",
+                  "vulnerabilityMaxSeverity",
+                  "dependenciesResolution",
+                  "dependenciesNotCheckedReason"
+                ],
+                "properties": {
+                  "packageId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "version": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "origin": {
+                    "enum": [
+                      "internal",
+                      "external",
+                      "unknown"
+                    ]
+                  },
+                  "originBasis": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "feedName": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "feedUrl": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "transitive": {
+                    "type": "boolean"
+                  },
+                  "producer": {
+                    "anyOf": [
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                          "repositoryId",
+                          "repositoryName",
+                          "projectPath"
+                        ],
+                        "properties": {
+                          "repositoryId": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "repositoryName": {
+                            "type": "string"
+                          },
+                          "projectPath": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  "findings": {
+                    "anyOf": [
+                      {
+                        "type": "null"
+                      },
+                      {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                          "outcome",
+                          "outcomeReason",
+                          "recommendedVersion",
+                          "outdated",
+                          "deprecated",
+                          "vulnerable",
+                          "vulnerabilityMaxSeverity"
+                        ],
+                        "properties": {
+                          "outcome": {
+                            "enum": [
+                              "current",
+                              "upgrade_safe",
+                              "upgrade_breaking",
+                              "no_compatible_version",
+                              "unknown",
+                              "framework_provided"
+                            ]
+                          },
+                          "outcomeReason": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "recommendedVersion": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "outdated": {
+                            "type": "boolean"
+                          },
+                          "deprecated": {
+                            "type": "boolean"
+                          },
+                          "vulnerable": {
+                            "type": "boolean"
+                          },
+                          "vulnerabilityMaxSeverity": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  "vulnerabilityMaxSeverity": {
+                    "enum": [
+                      null,
+                      "low",
+                      "moderate",
+                      "high",
+                      "critical"
+                    ]
+                  },
+                  "dependenciesResolution": {
+                    "enum": [
+                      null,
+                      "assets_file",
+                      "feed_metadata"
+                    ]
+                  },
+                  "dependenciesNotCheckedReason": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                }
+              }
+            ]
+          },
+          "assembly": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "assemblyName",
+                  "version",
+                  "location",
+                  "path",
+                  "exists"
+                ],
+                "properties": {
+                  "assemblyName": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "version": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "location": {
+                    "enum": [
+                      "repository",
+                      "outside_repository",
+                      "gac",
+                      "framework"
+                    ]
+                  },
+                  "path": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "exists": {
+                    "type": [
+                      "boolean",
+                      "null"
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "status": {
+                  "const": "not_checked"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "notCheckedReason": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "else": {
+              "properties": {
+                "notCheckedReason": {
+                  "type": "null"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "type": {
+                  "const": "project"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "project": {
+                  "type": "object"
+                },
+                "package": {
+                  "type": "null"
+                },
+                "assembly": {
+                  "type": "null"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "type": {
+                  "const": "package"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "package": {
+                  "type": "object"
+                },
+                "project": {
+                  "type": "null"
+                },
+                "assembly": {
+                  "type": "null"
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "type": {
+                  "const": "assembly"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "assembly": {
+                  "type": "object"
+                },
+                "project": {
+                  "type": "null"
+                },
+                "package": {
+                  "type": "null"
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    "edges": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "from",
+          "to",
+          "kind",
+          "resolution",
+          "versionRequested",
+          "frameworks",
+          "declaredAt",
+          "closesCycle"
+        ],
+        "properties": {
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "project_reference",
+              "package_reference",
+              "central_package_version",
+              "packages_config",
+              "assembly_reference",
+              "package_dependency"
+            ]
+          },
+          "resolution": {
+            "enum": [
+              "declared",
+              "assets_file",
+              "feed_metadata"
+            ]
+          },
+          "versionRequested": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "frameworks": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "declaredAt": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "filePath",
+                  "line"
+                ],
+                "properties": {
+                  "filePath": {
+                    "type": "string"
+                  },
+                  "line": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "minimum": 1
+                  }
+                }
+              }
+            ]
+          },
+          "closesCycle": {
+            "type": "boolean"
+          }
+        }
+      }
+    },
+    "cycles": {
+      "type": "array",
+      "items": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "minItems": 1
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "message",
+          "severity"
+        ],
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "severity": {
+            "enum": [
+              "info",
+              "warning",
+              "error"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

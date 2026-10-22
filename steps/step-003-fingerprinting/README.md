@@ -24,6 +24,7 @@ registration, artifact and tables.
 | `Fingerprinting.Extractors` / `Fingerprinting.Cli` | `application-fingerprinting`'s extractors and exe | `application-fingerprinting` |
 | `Fingerprinting.EntryPoints` / `Fingerprinting.EntryPoints.Cli` | `entry-point-inventory`'s detectors, route composition and exe | `entry-point-inventory` |
 | `Fingerprinting.Impact` / `Fingerprinting.Impact.Cli` | `impact-analysis`'s code index, impact-rule engine, rollup and exe (`docs/33-IMPACT-ANALYSIS.md`) | `impact-analysis` |
+| `Fingerprinting.Hierarchy` / `Fingerprinting.Hierarchy.Cli` | `dependency-hierarchy`'s graph builder (projects, packages, assembly references and their edges) and exe; shares `dependency-assessment`'s feeds and lookup cache (`docs/37-DEPENDENCY-HIERARCHY.md`) | `dependency-hierarchy` |
 
 ## Build
 
@@ -32,6 +33,7 @@ dotnet publish src/Fingerprinting.Cli -c Release -o publish
 dotnet publish src/Fingerprinting.EntryPoints.Cli -c Release -o publish/entry-point-inventory
 dotnet publish src/Fingerprinting.Impact.Cli -c Release -o publish/impact-analysis
 dotnet publish src/Fingerprinting.Dependencies.Cli -c Release -o publish/dependency-assessment
+dotnet publish src/Fingerprinting.Hierarchy.Cli -c Release -o publish/dependency-hierarchy
 ```
 
 `publish/Fingerprinting.Cli.exe` is what `wf_step_registrations.adapter_config`

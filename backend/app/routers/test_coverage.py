@@ -1,7 +1,7 @@
 """The repository page's Tests section — 32-TEST-COVERAGE-ASSESSMENT.md
 Part K, phase 1.
 
-Rows come from the tables step 8 writes (test_classes, test_mappings,
+Rows come from the tables test-coverage-assessment writes (test_classes, test_mappings,
 source_file_coverage, ci_maturity). The per-project figures and summary come
 from the scan's result: a project's unit or integration percentage is
 covered lines over instrumented lines across its files, which the per-file
@@ -31,7 +31,7 @@ from app.test_coverage.schemas import (
 router = APIRouter(prefix="/api", tags=["Test Coverage"])
 
 PHASE_1_EXECUTION = (
-    "No test is executed: execution is phase 3 of step 8 (32-TEST-COVERAGE-ASSESSMENT Part F), behind two keys and opt-in per engagement. "
+    "No test is executed: execution is phase 3 of test-coverage-assessment (32-TEST-COVERAGE-ASSESSMENT Part F), behind two keys and opt-in per engagement. "
     "Coverage comes only from existing reports."
 )
 
@@ -47,11 +47,11 @@ def _float(value) -> float | None:
     operation_id="get_repository_tests",
     responses={
         404: {"model": ErrorResponse, "description": "No repository exists with this id."},
-        409: {"model": ErrorResponse, "description": "Test coverage (lifecycle step 8) has not run yet for this repository."},
+        409: {"model": ErrorResponse, "description": "Test coverage (test-coverage-assessment) has not run yet for this repository."},
     },
 )
 def get_repository_tests(repository_id: uuid.UUID, db: Session = Depends(get_db)):
-    """Step 8's latest result for the repository. 409 until it has run, so
+    """test-coverage-assessment's latest result for the repository. 409 until it has run, so
     the UI can show an empty state naming the step."""
     repo = db.get(models.Repository, repository_id)
     if repo is None or repo.deleted_at is not None:
@@ -65,7 +65,7 @@ def get_repository_tests(repository_id: uuid.UUID, db: Session = Depends(get_db)
         .first()
     )
     if scan is None:
-        raise error(409, "Test coverage (step 8) has not run yet for this repository.", code="NOT_SCANNED")
+        raise error(409, "Test coverage (test-coverage-assessment) has not run yet for this repository.", code="NOT_SCANNED")
     source = db.get(models.CoverageScan, scan.reused_from_scan_id) if scan.reused_from_scan_id else scan
     result = (source.result if source is not None else None) or {}
 

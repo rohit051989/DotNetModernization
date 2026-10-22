@@ -374,8 +374,8 @@ The platform contacts only these:
 |---|---|---|
 | The PostgreSQL server (`DB_HOST`:`DB_PORT`) | backend, step programs | always |
 | `PIP_INDEX_URL`, `NPM_REGISTRY`, `NUGET_SOURCES` | `bootstrap.ps1` | installing |
-| The NuGet feeds each scanned repository resolves (below) | `dependency-assessment` (version lookups, package downloads for API diffs); `dotnet restore` in the package step and the verifier | discovery, preparation, verification |
-| nuget.org | `dependency-assessment` | only where no NuGet configuration names a feed, and for the public comparison, which `COMPARE_PUBLIC_NUGET_FEED=false` switches off |
+| The NuGet feeds each scanned repository resolves (below) | `dependency-assessment` (version lookups, package downloads for API diffs); `dependency-hierarchy` (the dependencies of packages a project has not restored, through the same lookup cache); `dotnet restore` in the package step and the verifier | discovery, preparation, verification |
+| nuget.org | `dependency-assessment`, `dependency-hierarchy` | only where no NuGet configuration names a feed, and for the public comparison, which `COMPARE_PUBLIC_NUGET_FEED=false` switches off |
 | The git host of each repository registered by its URL (https or SSH) | `repository-ingest`, running git as the person, with their own Git Credential Manager sign-in or SSH key | registration (the clone) and every rescan (a fetch) |
 
 - **Unreachable feeds fail nothing.** A lookup that cannot be answered is recorded as "unknown", never a failure.

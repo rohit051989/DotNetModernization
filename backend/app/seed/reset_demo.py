@@ -39,11 +39,12 @@ RUNS_DIR = settings.runs_path
 CLEARED_TABLES = (
     # workflow history
     "validation_queue", "wf_artifacts", "wf_step_executions", "wf_job_executions", "wf_job_instances",
-    # step 11 output, and the annotations people keep on its register (client data)
+    # dependency-and-context-map output, and the annotations people keep on its register (client data)
     "integration_entry_points", "integration_edges", "origin_reconciliations", "dependency_cycles", "shared_libraries", "dependency_edges", "package_estate",
     "endpoint_register_services", "endpoint_register", "endpoint_annotations", "estate_sources",
-    # step 2 to 7 output
+    # solution-discovery to item-detection output
     "entry_point_backend", "entry_points", "entry_point_scans", "outbound_invocations", "outbound_scans", "package_assessments", "item_occurrences",
+    "hierarchy_edges", "hierarchy_nodes",
     "fingerprint_signals", "project_fingerprints", "fingerprint_scans",
     "project_packages", "project_references", "solution_projects", "solutions",
     "repository_artifacts", "repository_structure", "projects",

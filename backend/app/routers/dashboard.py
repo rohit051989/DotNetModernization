@@ -31,7 +31,7 @@ _NOT_FOUND = {"model": ErrorResponse, "description": "No engagement exists with 
 # capability name -> the step_name that must be implemented to unlock it.
 _CAPABILITY_STEP = {
     "application_count": "application-fingerprinting",
-    # Step 6 produces the work list, which is also the impact map (the
+    # item-detection produces the work list, which is also the impact map (the
     # retired impact-map-generation step, 17-LIFECYCLE-STEPS.md v2.0).
     "item_detection": "item-detection",
     "test_coverage": "test-coverage-assessment",
@@ -70,7 +70,7 @@ class DecisionCounts(BaseModel):
 
 
 class StructureCounts(BaseModel):
-    """Real (not null) once solution-discovery — lifecycle step 2 — is
+    """Real (not null) once solution-discovery is
     implemented, unlike `applications`/`patterns`/`risk_tiers`/`waves` below.
     Zero repositories scanned yet is a legitimate zero, not an unimplemented
     capability, so this is never null."""
@@ -93,7 +93,7 @@ class TopItem(BaseModel):
 
 
 class ItemCounts(BaseModel):
-    """The dashboard's work-list card, real once item-detection (step 7) is
+    """The dashboard's work-list card, real once item-detection is
     implemented — 28-ITEM-AND-CONVERSION-MODEL.md Part G. Counts what needs
     doing, not what kind of application anything is."""
 
@@ -107,11 +107,11 @@ class ItemCounts(BaseModel):
 
 
 class DashboardCapabilities(BaseModel):
-    application_count: bool = Field(description="True once 'application-fingerprinting' (step 3) is implemented.")
-    item_detection: bool = Field(description="True once 'item-detection' (step 7) is implemented.")
-    test_coverage: bool = Field(description="True once 'test-coverage-assessment' (step 8) is implemented.")
-    risk_tier: bool = Field(description="True once 'risk-scoring-tier-assignment' (step 9) is implemented.")
-    wave_planning: bool = Field(description="True once 'migration-wave-planning' (step 11) is implemented.")
+    application_count: bool = Field(description="True once 'application-fingerprinting' is implemented.")
+    item_detection: bool = Field(description="True once 'item-detection' is implemented.")
+    test_coverage: bool = Field(description="True once 'test-coverage-assessment' is implemented.")
+    risk_tier: bool = Field(description="True once 'risk-scoring-tier-assignment' is implemented.")
+    wave_planning: bool = Field(description="True once 'migration-wave-planning' is implemented.")
 
 
 class RecentExecution(BaseModel):
@@ -191,7 +191,7 @@ class DashboardSummary(BaseModel):
     discovery: DiscoveryCounts
     structure: StructureCounts = Field(description="Solution/project discovery rollup — see 19-SOLUTION-DISCOVERY.md.")
     applications: dict | None = Field(default=None, description="Null — no step producing application rollups is implemented yet.")
-    items: ItemCounts | None = Field(default=None, description="Null until item-detection (step 6) is implemented and has run; real thereafter.")
+    items: ItemCounts | None = Field(default=None, description="Null until item-detection is implemented and has run; real thereafter.")
     risk_tiers: dict | None = Field(default=None, description="Null — no step producing risk tiers is implemented yet.")
     waves: dict | None = Field(default=None, description="Null — no step producing wave status is implemented yet.")
     decisions: DecisionCounts = Field(description="Real now — computed the same way as GET /api/engagements/{eid}/coverage.")
@@ -256,10 +256,10 @@ class DashboardRepositoryRow(BaseModel):
     last_ingested_at: datetime.datetime | None = Field(description="repositories.last_scanned_at.")
     latest_execution: LatestExecutionInfo | None = Field(description="Null if discovery has never run for this repository.")
     structure: RepositoryStructureBrief | None = Field(default=None, description="Null until solution-discovery has run for this repository.")
-    application_count: int | None = Field(default=None, description="Null — awaiting application fingerprinting (step 3).")
-    items_found: int | None = Field(default=None, description="Distinct catalog items found in this repository. Null until item-detection (step 6) is implemented.")
-    highest_risk_tier: str | None = Field(default=None, description="Null — awaiting risk scoring (step 8).")
-    wave: str | None = Field(default=None, description="Null — awaiting wave planning (step 11).")
+    application_count: int | None = Field(default=None, description="Null — awaiting application fingerprinting (application-fingerprinting).")
+    items_found: int | None = Field(default=None, description="Distinct catalog items found in this repository. Null until item-detection is implemented.")
+    highest_risk_tier: str | None = Field(default=None, description="Null — awaiting risk scoring (risk-scoring-tier-assignment).")
+    wave: str | None = Field(default=None, description="Null — awaiting wave planning (migration-wave-planning).")
 
 
 class DashboardRepositoriesResponse(BaseModel):
@@ -350,7 +350,7 @@ def _get_engagement(db: Session, engagement_id: str) -> models.Engagement:
 
 def _item_counts(db: Session, repository_ids: list, include_possible: bool = False) -> ItemCounts | None:
     """Work-list rollup over item_occurrences for these repositories. Null
-    when step 7 has not written anything for any of them yet. Possible
+    when item-detection has not written anything for any of them yet. Possible
     occurrences (every piece of evidence ambiguous) are counted apart and,
     unless `include_possible`, left out of the work totals: a finding that
     may not exist should not size the work."""

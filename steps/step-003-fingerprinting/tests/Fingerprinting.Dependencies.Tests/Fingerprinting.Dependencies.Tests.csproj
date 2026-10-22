@@ -25,6 +25,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Fingerprinting.Dependencies\Fingerprinting.Dependencies.csproj" />
+    <!-- dependency-hierarchy shares step 6's feeds and lookup cache, so its tests live here too. -->
+    <ProjectReference Include="..\..\src\Fingerprinting.Hierarchy\Fingerprinting.Hierarchy.csproj" />
     <!-- ArtifactSchemaValidator: artifacts are checked against the schema the step publishes. -->
     <ProjectReference Include="..\..\src\Fingerprinting.StepHost\Fingerprinting.StepHost.csproj" />
   </ItemGroup>
@@ -32,6 +34,10 @@
   <ItemGroup>
     <Content Include="..\..\schemas\dependency-assessment-1.6.0.schema.json">
       <Link>schemas\dependency-assessment-1.6.0.schema.json</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="..\..\schemas\dependency-hierarchy-1.0.0.schema.json">
+      <Link>schemas\dependency-hierarchy-1.0.0.schema.json</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
     <Content Include="..\..\schemas\shared-frameworks-1.0.0.json">

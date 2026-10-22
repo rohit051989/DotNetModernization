@@ -363,6 +363,11 @@ from the client's Artifactory or the nuget.org fallback.
 
 ## As implemented (`dependency-assessment`, scanner 1.2.0, artifact `dependency-assessment@1.2.0`)
 
+**packages.config is read.** `solution-discovery` records each entry of a project's packages.config as a direct
+package (`declaration_source: packages_config`), and this step assesses it like any PackageReference, finding its line
+in packages.config (`versionSource: packages_config`). `dependency-hierarchy` reads these through this step's
+artifact and draws them as packages.config edges (`37-DEPENDENCY-HIERARCHY.md` Part A).
+
 Code: `steps/step-003-fingerprinting/src/Fingerprinting.Dependencies` (pipeline) and
 `Fingerprinting.Dependencies.Cli` (`DependencyAssessment.Cli.exe`), sharing
 `Fingerprinting.Analysis` and `Fingerprinting.StepHost` with `application-fingerprinting`,

@@ -1,6 +1,6 @@
 {
   "step_name": "independent-verification",
-  "lifecycle_step_no": 23,
+  "lifecycle_step_no": 24,
   "display_name": "Independent build, test & scan verification",
   "owner_code": "P",
   "version": "1.0.0",

@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- dependency-hierarchy (37-DEPENDENCY-HIERARCHY.md): each repository's dependency graph. Shares
+       dependency-assessment's feed resolution and lookup cache (Fingerprinting.Dependencies); the envelope and
+       database live in Fingerprinting.Hierarchy.Cli. -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Fingerprinting.Hierarchy</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Fingerprinting.Domain\Fingerprinting.Domain.csproj" />
+    <ProjectReference Include="..\Fingerprinting.Analysis\Fingerprinting.Analysis.csproj" />
+    <ProjectReference Include="..\Fingerprinting.Dependencies\Fingerprinting.Dependencies.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -29,6 +29,7 @@ import { RepositorySurfaceSection } from './RepositorySurfaceSection'
 import { RepositoryImpactSection } from './RepositoryImpactSection'
 import { RepositoryTestsSection } from './RepositoryTestsSection'
 import { ConversionsPanel } from './ConversionsPanel'
+import { StructureSection } from './structure/StructureSection'
 import { useLatestArtifacts, type LatestArtifact } from './useLatestArtifacts'
 
 interface RepositoryDetailPageProps {
@@ -45,7 +46,8 @@ interface RepositoryDetailPageProps {
 const SECTIONS = [
   { id: 'repo-overview', label: 'Overview' },
   { id: 'repo-surface', label: 'Surface' },
-  { id: 'repo-structure', label: 'Structure & fingerprint' },
+  { id: 'repo-hierarchy', label: 'Structure' },
+  { id: 'repo-structure', label: 'Projects & fingerprint' },
   { id: 'repo-dependencies', label: 'Dependencies' },
   { id: 'repo-worklist', label: 'Work list' },
   { id: 'repo-tests', label: 'Tests' },
@@ -373,12 +375,12 @@ export function RepositoryDetailPage({
             label="Version drift"
             value={dependencies ? num(dependencySummary.versionDriftCount) : dash}
             tone={num(dependencySummary.versionDriftCount) > 0 ? 'amber' : undefined}
-            hint="Packages referenced at more than one version across projects (step 6): consolidate before upgrading"
+            hint="Packages referenced at more than one version across projects (dependency-assessment): consolidate before upgrading"
           />
           <Tile
             label="Items found"
             value={occurrences ? num(work.found) - num(work.possible_only_found) : dash}
-            hint="Catalog items found by step 7, per project. Findings resting only on ambiguous evidence (possible) are not counted."
+            hint="Catalog items found by item-detection, per project. Findings resting only on ambiguous evidence (possible) are not counted."
           />
           <Tile label="Last scanned" value={formatRelative(repo.last_scanned_at)} />
         </div>
@@ -401,9 +403,22 @@ export function RepositoryDetailPage({
 
       {!editing && (
         <CollapsibleSection
+          id="repo:hierarchy"
+          anchorId="repo-hierarchy"
+          title="Structure"
+          summary="the dependency graph: projects, packages and assembly references, from the roots down"
+        >
+          <div className="p-4">
+            <StructureSection repositoryId={repo.id} localPath={repo.local_path} refreshToken={localRefresh} assessment={dependencies?.data} />
+          </div>
+        </CollapsibleSection>
+      )}
+
+      {!editing && (
+        <CollapsibleSection
           id="repo:structure"
           anchorId="repo-structure"
-          title="Structure & fingerprint"
+          title="Projects & fingerprint"
           summary={
             artifacts['solution-project-inventory']
               ? `${num(structure.solution_count)} solution(s) · ${num(structure.project_file_count)} project(s)${fingerprint ? ` · ${num(fingerprintSummary.totalSignals)} signals` : ''}`
@@ -422,7 +437,7 @@ export function RepositoryDetailPage({
                   <FingerprintView data={fingerprint.data} localPath={repo.local_path} />
                 </>
               ) : (
-                <p className="text-sm text-neutral-400">Application fingerprinting (lifecycle step 3) hasn't run for this repository yet.</p>
+                <p className="text-sm text-neutral-400">Application fingerprinting (application-fingerprinting) hasn't run for this repository yet.</p>
               )}
             </div>
           </div>
@@ -447,7 +462,7 @@ export function RepositoryDetailPage({
                 <DependenciesView data={dependencies.data} localPath={repo.local_path} />
               </>
             ) : (
-              <p className="text-sm text-neutral-400">Dependency assessment (lifecycle step 6) hasn't run for this repository yet.</p>
+              <p className="text-sm text-neutral-400">Dependency assessment (dependency-assessment) hasn't run for this repository yet.</p>
             )}
           </div>
         </CollapsibleSection>
@@ -471,7 +486,7 @@ export function RepositoryDetailPage({
                 <ItemOccurrencesView data={occurrences.data} localPath={repo.local_path} decisions={workListDecisions} />
               </>
             ) : (
-              <p className="text-sm text-neutral-400">Item detection (lifecycle step 7) hasn't run for this repository yet.</p>
+              <p className="text-sm text-neutral-400">Item detection (item-detection) hasn't run for this repository yet.</p>
             )}
           </div>
         </CollapsibleSection>

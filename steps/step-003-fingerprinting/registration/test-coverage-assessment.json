@@ -1,6 +1,6 @@
 {
   "step_name": "test-coverage-assessment",
-  "lifecycle_step_no": 8,
+  "lifecycle_step_no": 9,
   "display_name": "Test coverage & CI maturity",
   "owner_code": "P",
   "version": "1.1.0",

@@ -389,7 +389,7 @@ export function RegisterRepositoryDrawer({ engagementId, onClose, onRegistered }
                 <option value="high">High</option>
                 <option value="critical">Critical</option>
               </select>
-              <p className="mt-1 text-xs text-neutral-400">Feeds review tier assignment at lifecycle step 10.</p>
+              <p className="mt-1 text-xs text-neutral-400">Feeds review tier assignment (risk-scoring-tier-assignment).</p>
             </Field>
 
             <Field label="Retirement status">

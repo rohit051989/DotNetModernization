@@ -76,7 +76,7 @@ function StatusText({ status }: { status: string | null }) {
   return <span className={bad ? 'font-medium text-amber-700' : 'text-neutral-500'}>{status ?? '—'}</span>
 }
 
-// ---------- repository-inventory (step 1) ----------
+// ---------- repository-inventory (repository-ingest) ----------
 
 export function RepositoryInventoryView({ data }: ArtifactRendererProps) {
   const languages = list(data.primary_languages)
@@ -120,9 +120,9 @@ export function RepositoryInventoryView({ data }: ArtifactRendererProps) {
   )
 }
 
-// ---------- solution-project-inventory (step 2) ----------
+// ---------- solution-project-inventory (solution-discovery) ----------
 
-/** What the project builds into, from its OutputType. Not step 6's role
+/** What the project builds into, from its OutputType. Not item-detection's role
  * (application, library, test...), which is decided later from entry points. */
 function outputKind(project: Json): string {
   const structural = str(project.structural_type)
@@ -203,7 +203,7 @@ export function SolutionInventoryView({ data }: ArtifactRendererProps) {
                 </span>
               </td>
               <td className="py-1.5 pr-3 text-neutral-500">{(str(p.project_format) ?? '—').replace(/_/g, '-')}</td>
-              <td className="py-1.5 pr-3 text-neutral-500" title="From the project's OutputType. Step 6 assigns the application role.">
+              <td className="py-1.5 pr-3 text-neutral-500" title="From the project's OutputType. item-detection assigns the application role.">
                 {outputKind(p)}
               </td>
               <td className="py-1.5 pr-3">
@@ -220,7 +220,7 @@ export function SolutionInventoryView({ data }: ArtifactRendererProps) {
   )
 }
 
-// ---------- application-fingerprint (step 3) ----------
+// ---------- application-fingerprint (application-fingerprinting) ----------
 
 interface SignalRow {
   name: string
@@ -329,7 +329,7 @@ export function FingerprintView({ data }: ArtifactRendererProps) {
   )
 }
 
-// ---------- entry-point-inventory (step 4) ----------
+// ---------- entry-point-inventory ----------
 
 /** One item of the entry-point list: a project's panel, or the one grouped line for the projects with no request
  * entry point, which counts as a single item. */
@@ -376,7 +376,7 @@ export function EntryPointsView({ data, localPath }: ArtifactRendererProps) {
   )
 }
 
-// ---------- outbound-invocation-inventory (step 5) ----------
+// ---------- outbound-invocation-inventory ----------
 
 const VERDICT_RANK: Record<string, number> = { incompatible: 0, requires_change: 1, unknown: 2, compatible: 3 }
 
@@ -423,7 +423,7 @@ export function OutboundView({ data, localPath }: ArtifactRendererProps) {
   )
 }
 
-// ---------- dependency-assessment (step 6) ----------
+// ---------- dependency-assessment ----------
 
 const OUTCOME_STYLE: Record<string, string> = {
   no_compatible_version: 'border-red-200 bg-red-50 text-red-700',
@@ -960,7 +960,7 @@ function ProjectUseDetail({ use, localPath }: { use: ProjectUse; localPath: stri
   )
 }
 
-// ---------- item-occurrences (step 7): the work list ----------
+// ---------- item-occurrences (item-detection): the work list ----------
 
 const STATE_RANK: Record<string, number> = { found: 0, not_checked: 1, excluded: 2, checked_absent: 3, skipped: 4 }
 const STATE_STYLE: Record<string, string> = {

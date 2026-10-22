@@ -62,7 +62,7 @@ function TypeChip({ type, count }: { type: TestType; count?: number }) {
   )
 }
 
-/** Step 8's Tests section (32-TEST-COVERAGE-ASSESSMENT Part K): CI maturity, test projects
+/** test-coverage-assessment's Tests section (32-TEST-COVERAGE-ASSESSMENT Part K): CI maturity, test projects
  * and classes by type, the per-project table, and the per-file table. */
 export function RepositoryTestsSection({ repositoryId, localPath, refreshToken }: { repositoryId: string; localPath: string | null; refreshToken: number }) {
   const [data, setData] = useState<RepositoryTests | null>(null)
@@ -92,7 +92,7 @@ export function RepositoryTestsSection({ repositoryId, localPath, refreshToken }
   const notes = useMemo(() => (data ? notMeasuredNotes(data) : []), [data])
 
   if (state === 'loading') return <div className="h-16 animate-pulse rounded bg-neutral-100" />
-  if (state === 'not_scanned') return <p className="text-sm text-neutral-400">Test coverage (lifecycle step 8) hasn't run for this repository yet.</p>
+  if (state === 'not_scanned') return <p className="text-sm text-neutral-400">Test coverage (test-coverage-assessment) hasn't run for this repository yet.</p>
   if (state === 'error' || !data) return <p className="text-sm text-red-600">Could not load the tests.</p>
 
   const number = (reason: string) => notes.indexOf(reason) + 1

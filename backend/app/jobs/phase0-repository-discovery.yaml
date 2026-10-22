@@ -1,5 +1,5 @@
 job_name: phase0-repository-discovery
-version: 17
+version: 18
 description: "Per-repository discovery and analysis, repository-ingest through risk-scoring-tier-assignment, then conversion-preparation (17-LIFECYCLE-STEPS.md)."
 
 parameters:
@@ -84,6 +84,21 @@ flow:
       lookup_offline: "${params.lookup_offline}"
       include_transitive: false
       enable_change_explanation: false
+  # v18: dependency-hierarchy (37-DEPENDENCY-HIERARCHY.md), each repository's dependency graph. After
+  # dependency-assessment, whose classification of packages it reads, and before item-detection. Both inputs
+  # required. Its package lookups share dependency-assessment's lookup cache and settings; up to
+  # lookup_concurrency are made at once when the cache does not answer.
+  - step: dependency-hierarchy
+    inputs:
+      solution-project-inventory: "${artifacts.solution-project-inventory}"
+      dependency-assessment: "${artifacts.dependency-assessment}"
+    config:
+      compare_public_feed: "${settings.compare_public_nuget_feed}"
+      lookup_cache_ttl_hours: 24
+      lookup_offline: "${params.lookup_offline}"
+      max_package_depth: 12
+      max_packages: 5000
+      lookup_concurrency: 8
   # item-detection replaces pattern-classification: it matches catalog items
   # against the fingerprint's signals (application-fingerprinting's and
   # dependency-assessment's) and emits occurrences, not a classification.

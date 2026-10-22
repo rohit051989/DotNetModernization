@@ -740,7 +740,8 @@ In the UI, on the repository's page:
 |---|---|
 | Overview | size, projects, entry points, items found |
 | Surface | what can call the repository, and what it calls. Each section folds on its own and says what is in it while folded; the bar at the top jumps to a section and expands or collapses them all, and the page remembers which are open |
-| Structure & fingerprint | solutions, projects, frameworks |
+| Structure | the dependency graph: projects, packages and assembly references from the roots down, as a graph or a tree, with + and − to expand and collapse, search, transitive packages and filters (`37-DEPENDENCY-HIERARCHY.md` Part E) |
+| Projects & fingerprint | solutions, projects, frameworks |
 | Dependencies | every package: the version in use, the recommended version, its outcome and flags, and a **Reason** in plain words for each (the advisory, its severity and the version that fixes it; why an upgrade is safe; which shared framework provides it; the publisher's named successor; why a lookup did not answer, such as a feed returning 401). "Vulnerable" always refers to the version in use |
 | Surface (SOAP compatibility) | each SOAP call per environment: the Runtime and Platform verdicts, a **Why** beside each (the matrix entry that decided it and its probe evidence, or why it is unknown), and whether a named person has **confirmed** that entry (reviewed its evidence and accepted it) |
 | Work list | the catalog items found, where, and how each is to be resolved |

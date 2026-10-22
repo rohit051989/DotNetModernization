@@ -220,6 +220,7 @@ if (Run 6) {
             @('Fingerprinting.EntryPoints.Cli', 'publish\entry-point-inventory', 'EntryPointInventory.Cli.exe'),
             @('Fingerprinting.Impact.Cli', 'publish\impact-analysis', 'ImpactAnalysis.Cli.exe'),
             @('Fingerprinting.Dependencies.Cli', 'publish\dependency-assessment', 'DependencyAssessment.Cli.exe'),
+            @('Fingerprinting.Hierarchy.Cli', 'publish\dependency-hierarchy', 'DependencyHierarchy.Cli.exe'),
             @('Fingerprinting.Outbound.Cli', 'publish\outbound-invocation-inventory', 'OutboundInvocationInventory.Cli.exe'),
             @('Fingerprinting.TestCoverage.Cli', 'publish\test-coverage-assessment', 'TestCoverageAssessment.Cli.exe')
         )

@@ -1,8 +1,9 @@
 namespace Fingerprinting.StepHost;
 
 /// <summary>
-/// The slice of step 2's <c>solution-project-inventory</c> artifact that
-/// steps 3 and 4 actually read. Step 3 must not re-extract what step 2 already
+/// The slice of solution-discovery's <c>solution-project-inventory</c> artifact that
+/// application-fingerprinting, entry-point-inventory and dependency-hierarchy actually read.
+/// application-fingerprinting must not re-extract what solution-discovery already
 /// captured (21-APPLICATION-FINGERPRINTING.md Part A7) — everything else in
 /// that file (packages, project references, solutions, ...) is left for a
 /// future extractor to read directly rather than modelled here unused.
@@ -13,7 +14,7 @@ public sealed record SolutionProjectInventory
     public required string RepositorySlug { get; init; }
     public required IReadOnlyList<InventoryProject> Projects { get; init; }
 
-    /// <summary>Step 2's resolved project references — step 5 resolves a
+    /// <summary>solution-discovery's resolved project references — outbound-invocation-inventory resolves a
     /// class library's configuration through the hosts that reference it.</summary>
     public IReadOnlyList<InventoryProjectReference> ProjectReferences { get; init; } = [];
 }
@@ -23,31 +24,43 @@ public sealed record InventoryProjectReference
     public required string SourceRelativePath { get; init; }
     public string? ReferencedRelativePath { get; init; }
     public string? ResolutionStatus { get; init; }
+
+    /// <summary>The Include as written — dependency-hierarchy names an unresolved reference by it.</summary>
+    public string? RawPath { get; init; }
 }
 
 public sealed record InventoryProject
 {
     public required string RelativePath { get; init; }
+
+    /// <summary>The project file's name without its extension; dependency-hierarchy's node label.</summary>
+    public string? Name { get; init; }
+
+    /// <summary><c>sdk_style</c>, <c>legacy_msbuild</c> or <c>unknown</c>.</summary>
+    public string? ProjectFormat { get; init; }
+
+    /// <summary><c>packagereference</c>, <c>packages_config</c>, <c>mixed</c> or <c>none</c>.</summary>
+    public string? PackageManagementStyle { get; init; }
     public required string ParseStatus { get; init; }
 
-    /// <summary>One of step 2's structural types — see
+    /// <summary>One of solution-discovery's structural types — see
     /// steps/step-002-solution-discovery/discovery/project_parser.py.
     /// Despite 21-APPLICATION-FINGERPRINTING.md Part C's wording ("parse_status
-    /// of out_of_scope"), step 2 actually records a known non-.NET project
+    /// of out_of_scope"), solution-discovery actually records a known non-.NET project
     /// type (Docker Compose, Node.js, ...) with <c>parse_status: success</c>
     /// and the out-of-scope-ness carried entirely in this field — see
     /// 19-SOLUTION-DISCOVERY.md's acceptance criteria. Both signals
     /// are checked; see <see cref="OutOfScopeStructuralTypes"/>.</summary>
     public required string StructuralType { get; init; }
 
-    /// <summary>Package references step 2 already recorded — read directly
+    /// <summary>Package references solution-discovery already recorded — read directly
     /// here for FrameworkReferenceExtractor's package axis rather than
-    /// re-parsed from the project file (Part A7). Step 2's <c>version_raw</c>
+    /// re-parsed from the project file (Part A7). solution-discovery's <c>version_raw</c>
     /// and <c>declaration_source</c> fields are left unmodeled; only what
     /// FrameworkReferenceExtractor needs is carried.</summary>
     public IReadOnlyList<InventoryPackage> Packages { get; init; } = [];
 
-    /// <summary>What the project builds for — step 6 reads the current
+    /// <summary>What the project builds for — dependency-assessment reads the current
     /// package version's assemblies for it.</summary>
     public string? TargetFrameworkRaw { get; init; }
     public IReadOnlyList<string>? TargetFrameworksRaw { get; init; }
@@ -67,7 +80,7 @@ public sealed record InventoryPackage
     public string? VersionRaw { get; init; }
 
     /// <summary><c>packagereference</c> or <c>packages_config</c> — where
-    /// step 6 finds the line that declares it.</summary>
+    /// dependency-assessment finds the line that declares it.</summary>
     public string? DeclarationSource { get; init; }
 }
 

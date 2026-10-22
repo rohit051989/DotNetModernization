@@ -206,7 +206,7 @@ export function DashboardPage({ engagementId, onNavigateToRepositories, onNaviga
           </p>
           <p className="text-xs text-neutral-400">legacy_msbuild vs sdk_style</p>
         </SummaryCard>
-        <UnavailableCard title="Applications" awaiting="application fingerprinting (step 3)" />
+        <UnavailableCard title="Applications" awaiting="application fingerprinting (application-fingerprinting)" />
         {items ? (
           <SummaryCard title="Items found">
             <p className="text-2xl font-semibold text-neutral-900">{items.items_found}</p>
@@ -250,7 +250,7 @@ export function DashboardPage({ engagementId, onNavigateToRepositories, onNaviga
             </>
           )}
         </SummaryCard>
-        <UnavailableCard title="Waves" awaiting="wave planning (step 12)" />
+        <UnavailableCard title="Waves" awaiting="wave planning (migration-wave-planning)" />
       </div>
 
       <section className="rounded border border-neutral-200 bg-white">
@@ -311,7 +311,7 @@ export function DashboardPage({ engagementId, onNavigateToRepositories, onNaviga
                       <span className="text-xs text-neutral-300">not scanned</span>
                     )}
                   </td>
-                  <td className="px-3 py-2 text-neutral-300" title="Awaiting application fingerprinting (step 3)">
+                  <td className="px-3 py-2 text-neutral-300" title="Awaiting application fingerprinting (application-fingerprinting)">
                     —
                   </td>
                   {row.items_found !== null ? (

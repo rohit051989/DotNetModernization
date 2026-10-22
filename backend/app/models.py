@@ -38,7 +38,7 @@ FORCING_PERSPECTIVE = (
     "DEVELOPMENT_RESOURCE",
 )
 
-# ---- Step 4 — pattern classification, catalog schema (24-PATTERN-CLASSIFICATION.md Part B1) ----
+# ---- pattern-classification (now item-detection) — catalog schema (24-PATTERN-CLASSIFICATION.md Part B1) ----
 CLASSIFICATION_ROLE = ("PRIMARY", "SECONDARY", "PROJECT_ROLE")
 PATTERN_SCOPE = ("PROJECT", "REPOSITORY")
 RULES_STATUS = ("active", "awaiting_signals", "draft")
@@ -102,7 +102,7 @@ SOURCE_STATUS = ("active", "archived", "disabled", "inaccessible")
 # meaning for those. See 15-REPOSITORY-INGEST-UI.md Part C.
 SOURCE_CONTROL_STATUS = ("GIT", "NONE")
 
-# ---- Step 2 — solution & project discovery (19-SOLUTION-DISCOVERY.md) ----
+# ---- solution-discovery — solution & project discovery (19-SOLUTION-DISCOVERY.md) ----
 SCAN_STATUS = ("complete", "partial", "failed")
 PARSE_STATUS = ("success", "partial", "failed", "out_of_scope")
 PROJECT_FORMAT = ("legacy_msbuild", "sdk_style", "unknown")
@@ -122,12 +122,12 @@ REPOSITORY_ARTIFACT_CATEGORY = (
     "documentation",
 )
 
-# ---- Step 3 — application fingerprinting (21-APPLICATION-FINGERPRINTING.md Part E) ----
+# ---- application-fingerprinting (21-APPLICATION-FINGERPRINTING.md Part E) ----
 FINGERPRINT_STATUS = ("complete", "partial", "failed", "skipped", "not_supported")
 # The sixteen categories from application-fingerprinting-v1.md section 19,
 # SCREAMING_SNAKE_CASE per 21-APPLICATION-FINGERPRINTING.md Part D. Renaming any of
 # these later means rewriting every signal registry entry and catalog detection
-# rule that references it — see that doc's note on step 4.
+# rule that references it — see that doc's note on pattern-classification.
 SIGNAL_CATEGORY = (
     "PROJECT_METADATA",
     "FRAMEWORK_REFERENCE",
@@ -182,7 +182,7 @@ EVIDENCE_SOURCE_TYPE = (
 # (25-STANDARDS-AND-VIEWPOINTS.md Part A3 addendum). FOLDER and NONE must
 # never be treated as an openable file location by any consumer of
 # fingerprint_signals (e.g. a future "view evidence" UI) — that assumption is
-# exactly what broke the step 3 SARIF viewer.
+# exactly what broke the application-fingerprinting SARIF viewer.
 SIGNAL_EVIDENCE_KIND = ("FILE", "FOLDER", "NONE")
 
 
@@ -201,9 +201,9 @@ class Pattern(Base):
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default="active")
     version: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
 
-    # ---- Step 4 classification schema (24-PATTERN-CLASSIFICATION.md Part B1) ----
+    # ---- pattern-classification schema (24-PATTERN-CLASSIFICATION.md Part B1) ----
     # `detection_rules` holds the Part C signal-rules/1.0 structure. The
-    # pre-step-4 tag-input rules this superseded lived in
+    # pre-pattern-classification tag-input rules this superseded lived in
     # `detection_rules_legacy` through J1-J4's transition; dropped once the
     # rule builder (J4) was verified (Part B4).
     classification_role: Mapped[str] = mapped_column(Text, nullable=False, server_default="PRIMARY")
@@ -308,7 +308,7 @@ class CatalogRevision(Base):
     """One row per mutating write to `patterns` or `target_state_options`.
     The current catalog revision is `MAX(id)` — a monotonic integer that never
     goes backwards, since nothing here is ever hard-deleted. Recorded on every
-    classification (step 4) so a result can always be traced back to the exact
+    classification (pattern-classification, now item-detection) so a result can always be traced back to the exact
     catalog state that produced it (24-PATTERN-CLASSIFICATION.md Part H)."""
 
     __tablename__ = "catalog_revisions"
@@ -342,16 +342,16 @@ class Engagement(Base):
     default_posture: Mapped[str] = mapped_column(
         Text, nullable=False, server_default="lift-and-shift"
     )
-    # Step 6 (30-DEPENDENCY-ASSESSMENT Part C1): the framework packages must support.
+    # dependency-assessment (30-DEPENDENCY-ASSESSMENT Part C1): the framework packages must support.
     target_framework: Mapped[str] = mapped_column(Text, nullable=False, server_default="net10.0")
-    # Step 11 (31-DEPENDENCY-AND-CONTEXT-MAP Part C1): the environment whose host names a
+    # dependency-and-context-map (31-DEPENDENCY-AND-CONTEXT-MAP Part C1): the environment whose host names a
     # service in the endpoint register. Null: group by the host as found.
     production_environment: Mapped[str | None] = mapped_column(Text)
     # 29-ENTRY-POINT-AND-OUTBOUND-INVENTORIES C11: the WCF client package version (System.ServiceModel.*) the
     # engagement targets; the SOAP report flags probe evidence older than it. Null: the version the WCF client
     # matrices record for target_framework.
     target_wcf_client_version: Mapped[str | None] = mapped_column(Text)
-    # Step 5 (29-ENTRY-POINT-AND-OUTBOUND-INVENTORIES Part C9, 1.3.0): globs for Web Deploy SetParameters
+    # outbound-invocation-inventory (29-ENTRY-POINT-AND-OUTBOUND-INVENTORIES Part C9, 1.3.0): globs for Web Deploy SetParameters
     # files. Null means **/SetParam*.xml and **/SetParameters*.xml.
     deploy_parameter_globs: Mapped[list | None] = mapped_column(JSONB)
     # 36-COPILOT-ENHANCED-CONVERSION Part I: the engines and LLM providers this engagement's code may be
@@ -854,7 +854,7 @@ class Repository(Base):
     # git's latest progress line while a repository registered by URL is cloned or fetched (ingest_status 'cloning').
     clone_progress: Mapped[str | None] = mapped_column(Text)
 
-    # docs/19 Part A — step 1 amendments feeding step 2's requirements.
+    # docs/19 Part A — repository-ingest amendments feeding solution-discovery's requirements.
     organization: Mapped[str | None] = mapped_column(Text)
     last_commit_date: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
     primary_languages: Mapped[list | None] = mapped_column(JSONB)
@@ -925,7 +925,7 @@ class Repository(Base):
 
 
 class RepositoryStructure(Base):
-    """1:1 summary written by step 2 (solution-discovery). Separate from
+    """1:1 summary written by solution-discovery. Separate from
     `repositories` so step ownership is explicit and replacement — delete by
     repository_id, then insert — is trivial. See
     19-SOLUTION-DISCOVERY.md Part C."""
@@ -1010,7 +1010,7 @@ class Project(Base):
     assembly_name: Mapped[str | None] = mapped_column(Text)
     root_namespace: Mapped[str | None] = mapped_column(Text)
     output_type: Mapped[str | None] = mapped_column(Text)
-    # Step 2 (solution-project-inventory 2.1.0): the SDK the project file
+    # solution-discovery (solution-project-inventory 2.1.0): the SDK the project file
     # declares, version stripped; 'none' for a legacy MSBuild project.
     project_sdk: Mapped[str | None] = mapped_column(Text)
     target_framework_raw: Mapped[str | None] = mapped_column(Text)
@@ -1158,9 +1158,9 @@ class RepositoryArtifact(Base):
 
 
 class ProjectFingerprint(Base):
-    """1:1 with `projects` — written by step 3 (application-fingerprinting).
+    """1:1 with `projects` — written by application-fingerprinting.
     Replaced wholesale per repository on rescan, same pattern as
-    `repository_structure` for step 2. See
+    `repository_structure` for solution-discovery. See
     21-APPLICATION-FINGERPRINTING.md Part E."""
 
     __tablename__ = "project_fingerprints"
@@ -1254,7 +1254,7 @@ class FingerprintSignal(Base):
 
 class FingerprintScan(Base):
     """1:1 with `repositories` — the repository-level summary written by
-    step 3 (application-fingerprinting). See 21-APPLICATION-FINGERPRINTING.md
+    application-fingerprinting. See 21-APPLICATION-FINGERPRINTING.md
     Part E."""
 
     __tablename__ = "fingerprint_scans"
@@ -1287,9 +1287,9 @@ class ValidationQueueItem(Base):
     """One thing a human must decide — 27-PATTERN-VALIDATION.md
     Part B.
 
-    **Generic across every gate step**, not step 6's own table. Step 6 is
-    the first consumer; steps 22 (plan approval), 38 (code review) and 50
-    (release approval) raise items here too. Everything step-specific
+    **Generic across every gate step**, not one step's own table. The
+    since-retired pattern-validation was the first consumer;
+    plan-approval-gate, code-review and release-approval raise items here too. Everything step-specific
     lives in `item_type` and `payload`, so a new gate needs no schema
     change and inherits the queue UI, the summary and the decide/defer
     endpoints as they stand.
@@ -1381,7 +1381,7 @@ DETECTION_STATE = ("found", "checked_absent", "not_checked")
 
 
 class Extractor(Base):
-    """A step 3 extractor and the signals it declares it can emit (Part C
+    """An application-fingerprinting extractor and the signals it declares it can emit (Part C
     'Extractor declarations'). A signal can be declared ahead of its
     extraction code without being unclaimed, two ways: on a `planned`
     extractor (a new extractor), or in an `implemented` extractor's
@@ -1410,8 +1410,8 @@ class Extractor(Base):
 
 
 class SignalRegistryEntry(Base):
-    """One registered step 3 signal. Rows come from the versioned
-    signal-registry-*.json files step 3 ships, or are registered ahead of
+    """One registered application-fingerprinting signal. Rows come from the versioned
+    signal-registry-*.json files application-fingerprinting ships, or are registered ahead of
     their extractor through the API. `state` and `state_reason` are computed
     (app/items/readiness.py), never written by a caller."""
 
@@ -1519,7 +1519,7 @@ class ItemResolution(Base):
     # reseed never overwrites a row edited since. Null: no baseline.
     seeded_hash: Mapped[str | None] = mapped_column(Text)
     # What converting an item this way touches (33-IMPACT-ANALYSIS Part D): rules
-    # step 9 evaluates. Empty: the default rule (app/items/impact_rules.py).
+    # impact-analysis evaluates. Empty: the default rule (app/items/impact_rules.py).
     impact_rules: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -1732,7 +1732,7 @@ class EngagementItemScope(Base):
 
 
 class ItemOccurrence(Base):
-    """The work list's raw rows (Part G). Written by step 6 (item-detection),
+    """The work list's raw rows (Part G). Written by item-detection,
     replaced per repository on rescan. `signal_registry_version` records what
     was true when detected, so a row survives its signal's extractor being
     removed later."""
@@ -1798,7 +1798,7 @@ class ItemOccurrence(Base):
     )
 
 
-# Step 4, entry-point-inventory — 29-ENTRY-POINT-AND-OUTBOUND-INVENTORIES.md Part B1.
+# entry-point-inventory — 29-ENTRY-POINT-AND-OUTBOUND-INVENTORIES.md Part B1.
 ENTRY_POINT_KIND = (
     "http_controller_action",
     "http_minimal_api",
@@ -1831,7 +1831,7 @@ ENTRY_CLASS = ("request", "lifecycle")
 
 class EntryPoint(Base):
     """One row per entry point — what can call an application. Written by
-    step 4 (entry-point-inventory), replaced per repository on rescan. See
+    entry-point-inventory, replaced per repository on rescan. See
     29-ENTRY-POINT-AND-OUTBOUND-INVENTORIES.md Part B4.
 
     `id` is derived, not random (sha256 over repository, project, kind,
@@ -1883,8 +1883,8 @@ class EntryPoint(Base):
 
 
 class EntryPointScan(Base):
-    """1:1 with `repositories` — step 4's repository-level summary, as
-    `fingerprint_scans` is step 3's. Carries what the rows alone cannot:
+    """1:1 with `repositories` — entry-point-inventory's repository-level summary, as
+    `fingerprint_scans` is application-fingerprinting's. Carries what the rows alone cannot:
     per-project counts including skipped projects, the project-wide
     authorisation written in source, and the conventional route tables."""
 
@@ -1904,7 +1904,7 @@ class EntryPointScan(Base):
     scanned_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
 
 
-# ---------- step 5: outbound-invocation inventory ----------
+# ---------- outbound-invocation-inventory ----------
 
 OUTBOUND_MECHANISM = (
     "http_client", "soap_client", "grpc_client", "database", "message_producer", "message_consumer",
@@ -1919,7 +1919,7 @@ OUTBOUND_USAGE = ("used", "unused")
 
 class OutboundInvocation(Base):
     """One row per outbound dependency of a project — what an application
-    calls. Written by step 5 (outbound-invocation-inventory), replaced per
+    calls. Written by outbound-invocation-inventory, replaced per
     repository on rescan. See 29-ENTRY-POINT-AND-OUTBOUND-INVENTORIES.md Part C8.
 
     `id` is derived (sha256 over repository, project, mechanism, normalised
@@ -1928,11 +1928,11 @@ class OutboundInvocation(Base):
     fragment are stripped before storage (Part C5). `detail` is
     {endpoint, block} with the mechanism's block (`soap`, `database`, ...)
     camelCase as in the artifact. `credentials` is kind and key path only,
-    never a value. `endpoint_host` is what step 10's register aggregates on.
+    never a value. `endpoint_host` is what dependency-and-context-map's register aggregates on.
 
     `usage` is 'used' or 'unused'. An unused client (constructed nowhere,
-    configured nowhere) makes no outbound call: the row is kept, but step
-    10's register reads usage = 'used' only. Each environment binding in
+    configured nowhere) makes no outbound call: the row is kept, but
+    dependency-and-context-map's register reads usage = 'used' only. Each environment binding in
     `environment_bindings` carries its own `linuxVerdict`; `linux_verdict`
     is the worst of them."""
 
@@ -1993,8 +1993,8 @@ class OutboundInvocation(Base):
 
 
 class OutboundScan(Base):
-    """1:1 with `repositories` — step 5's repository-level summary, as
-    `entry_point_scans` is step 4's: per-project counts by mechanism and
+    """1:1 with `repositories` — outbound-invocation-inventory's repository-level summary, as
+    `entry_point_scans` is entry-point-inventory's: per-project counts by mechanism and
     verdict, skipped projects included, and each project's incompatible list."""
 
     __tablename__ = "outbound_scans"
@@ -2011,7 +2011,7 @@ class OutboundScan(Base):
     scanned_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
 
 
-# ---------- step 6: dependency assessment ----------
+# ---------- dependency-assessment ----------
 
 # framework_provided (dependency-assessment 1.4.0): the target's shared framework already
 # provides the package, so the reference is removed rather than upgraded.
@@ -2021,7 +2021,7 @@ PACKAGE_OUTCOME = ("current", "upgrade_safe", "upgrade_breaking", "no_compatible
 class PackageAssessment(Base):
     """One row per project per direct package — whether it can move to the
     engagement's target framework, to what, and which call sites break.
-    Written by step 6 (dependency-assessment), replaced per repository on
+    Written by dependency-assessment, replaced per repository on
     rescan. See 30-DEPENDENCY-ASSESSMENT.md Part F. `id` is derived
     (sha256 over repository, project and package id). `feed_url` is
     normalised: nothing derived from a feed credential is stored (Part B4)."""
@@ -2106,10 +2106,65 @@ class PackageLookupCache(Base):
     fetched_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
-# ---------- Lifecycle step 11: estate dependency map (31-DEPENDENCY-AND-CONTEXT-MAP.md) ----------
+
+# ---------- dependency-hierarchy (37-DEPENDENCY-HIERARCHY.md Part D) ----------
+#
+# Each repository's dependency graph, replaced wholesale by each run of the step. `detail` holds the artifact's node
+# or edge as written; the columns beside it are what the repository page's queries filter and join on.
+
+HIERARCHY_NODE_TYPE = ("project", "package", "assembly")
+HIERARCHY_EDGE_KIND = ("project_reference", "package_reference", "central_package_version", "packages_config",
+                       "assembly_reference", "package_dependency")
+
+
+class HierarchyNode(Base):
+    """A project, package or assembly reference in one repository's graph: once, however many parents it has."""
+
+    __tablename__ = "hierarchy_nodes"
+
+    repository_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("repositories.id", ondelete="CASCADE"), primary_key=True
+    )
+    node_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    node_type: Mapped[str] = mapped_column(Text, nullable=False)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False)
+    is_root: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    project_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="SET NULL"))
+    detail: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    step_execution_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+
+    __table_args__ = (
+        CheckConstraint(f"node_type IN {HIERARCHY_NODE_TYPE}", name="ck_hierarchy_nodes_type"),
+        CheckConstraint("status IN ('checked', 'not_checked')", name="ck_hierarchy_nodes_status"),
+        Index("ix_hierarchy_nodes_name", "repository_id", text("lower(name)")),
+    )
+
+
+class HierarchyEdge(Base):
+    """One dependency in one repository's graph, recorded once."""
+
+    __tablename__ = "hierarchy_edges"
+
+    repository_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("repositories.id", ondelete="CASCADE"), primary_key=True
+    )
+    from_node: Mapped[str] = mapped_column(Text, primary_key=True)
+    to_node: Mapped[str] = mapped_column(Text, primary_key=True)
+    kind: Mapped[str] = mapped_column(Text, primary_key=True)
+    resolution: Mapped[str] = mapped_column(Text, nullable=False)
+    closes_cycle: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    detail: Mapped[dict] = mapped_column(JSONB, nullable=False)
+
+    __table_args__ = (
+        CheckConstraint(f"kind IN {HIERARCHY_EDGE_KIND}", name="ck_hierarchy_edges_kind"),
+        Index("ix_hierarchy_edges_to", "repository_id", "to_node"),
+    )
+
+# ---------- dependency-and-context-map: estate dependency map (31-DEPENDENCY-AND-CONTEXT-MAP.md) ----------
 #
 # Engagement-scoped. Every table but endpoint_annotations is replaced by each
-# run of step 11 for its engagement; endpoint_annotations is human data and a
+# run of dependency-and-context-map for its engagement; endpoint_annotations is human data and a
 # run never writes it.
 
 CONVERSATION_STATUS = ("not_started", "in_progress", "agreed", "resolved", "not_required")
@@ -2118,8 +2173,8 @@ DEPENDENCY_EDGE_KIND = ("project_reference", "internal_package")
 
 
 class EstateSource(Base):
-    """Lineage (Part B1): per repository, which step execution's rows step 11
-    read, for each per-repository step it reads from."""
+    """Lineage (Part B1): per repository, which step execution's rows
+    dependency-and-context-map read, for each per-repository step it reads from."""
 
     __tablename__ = "estate_sources"
 
@@ -2283,7 +2338,7 @@ class DependencyCycle(Base):
 
 
 class OriginReconciliation(Base):
-    """Step 4's origin, corrected with the estate in view (E4). Step 4's own
+    """entry-point-inventory's origin, corrected with the estate in view (E4). Its own
     rows are never rewritten — its next rescan would revert them; consumers
     apply this overlay."""
 
@@ -2350,11 +2405,11 @@ class IntegrationEntryPoint(Base):
 
 
 class EntryPointBackend(Base):
-    """Per step 4 entry point, the outbound call sites it reaches (step 5,
-    1.3.0): status yes/no/unresolved, each call with its depth, the methods
+    """Per entry-point-inventory entry point, the outbound call sites it reaches
+    (outbound-invocation-inventory 1.3.0): status yes/no/unresolved, each call with its depth, the methods
     walked and whether it is conditional or in a loop, and the paths not
     followed (another class, an injected dependency, too deep). Written by
-    step 5 and replaced per repository with its other rows."""
+    outbound-invocation-inventory and replaced per repository with its other rows."""
 
     __tablename__ = "entry_point_backend"
 
@@ -2371,7 +2426,7 @@ class EntryPointBackend(Base):
     __table_args__ = (CheckConstraint("status IN ('yes', 'no', 'unresolved')", name="ck_entry_point_backend_status"),)
 
 
-# ---------- lifecycle step 8, test-coverage-assessment (32-TEST-COVERAGE-ASSESSMENT) ----------
+# ---------- test-coverage-assessment (32-TEST-COVERAGE-ASSESSMENT) ----------
 #
 # Phase 1 (Part L): written by the step's own process
 # (steps/step-003-fingerprinting/src/Fingerprinting.TestCoverage.Cli), replaced
@@ -2503,7 +2558,7 @@ class CiMaturity(Base):
 
 
 class CoverageScan(Base):
-    """One run of step 8 for a repository, and its cache (Part I): a run at
+    """One run of test-coverage-assessment for a repository, and its cache (Part I): a run at
     a commit already computed, with no uncommitted changes to the files that
     matter, reuses that result. `result` is the artifact, kept on every row
     that computed it (null on a reused row, which points at its source); only
@@ -2534,10 +2589,10 @@ class CoverageScan(Base):
     )
 
 
-# ---------- lifecycle step 9, impact-analysis (33-IMPACT-ANALYSIS) ----------
+# ---------- impact-analysis (33-IMPACT-ANALYSIS) ----------
 #
 # Written by the step's own process (Fingerprinting.Impact.Cli), replaced per
-# repository on every run; step 12 (dependency-and-context-map) adds the
+# repository on every run; dependency-and-context-map adds the
 # `client` rows at the end of each estate run and recomputes the rollup.
 
 IMPACT_ACTIONS = ("update", "rewrite", "delete", "create", "review")
