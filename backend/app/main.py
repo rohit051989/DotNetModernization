@@ -16,6 +16,7 @@ from app.routers import (
     conversion,
     dashboard,
     deletion,
+    editors,
     decisions,
     estate,
     engagement_patterns,
@@ -355,3 +356,4 @@ app.include_router(test_coverage.router)
 app.include_router(impact.router)
 app.include_router(conversion.router)
 app.include_router(deletion.router)
+app.include_router(editors.router)

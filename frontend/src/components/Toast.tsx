@@ -35,7 +35,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
           <div
             key={toast.id}
             role="status"
-            className={`max-w-sm rounded px-4 py-2.5 text-sm text-white shadow-lg ${
+            className={`max-w-sm break-words rounded px-4 py-2.5 text-sm text-white shadow-lg ${
               toast.kind === 'success' ? 'bg-emerald-600' : 'bg-red-600'
             }`}
           >

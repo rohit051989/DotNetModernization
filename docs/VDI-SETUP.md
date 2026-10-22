@@ -70,7 +70,8 @@ Install these first. None needs administrator rights if installed per user ("Acc
 | **npm** | **7.0.0 or later** | Every Node.js above ships a newer one |
 | **.NET SDK** | **any .NET 10 SDK, 10.0.100 or later** (tested: 10.0.203 and 10.0.302) | Any feature band (1xx, 2xx, 3xx). The .NET 9 SDK alone is not enough |
 | **git** | **2.17.0 or later** (tested: 2.55.0) | |
-| Visual Studio with GitHub Copilot | the client's standard | Only for running a conversion ("Registering a client repository"); the platform does not need it |
+| Visual Studio with GitHub Copilot | the client's standard | Only for running a conversion ("Registering a client repository"); the platform does not need it. When installed, file links in the UI can open in it, at the line (`04-FRONTEND-SPEC.md` "File links") |
+| VS Code | any | Optional. When `code` is on PATH, file links in the UI can open in it, at the line. Without either editor, file links copy the path and line |
 
 #### Access needed
 

@@ -343,6 +343,37 @@ Both are covered by component tests (Vitest with Testing Library, jsdom), beside
 cd C:\MP\code\frontend; npm test
 ```
 
+## File links
+
+Every link to a file in a repository (a handler, a call site, a package reference, a test) goes through one
+component, `frontend/src/pages/repositories/SourceLink.tsx`. Clicking it does what the person chose; ▾ beside it
+opens a menu with every other way.
+
+Each person chooses an editor for file links: **VS Code**, **Visual Studio** or **Copy only**. The choice is
+remembered in the browser (`localStorage`, key `file-links:editor`), changed from the menu beside any file link,
+and every link on the page follows it. Only editors found on the machine the platform runs on are offered
+(`GET /api/editors`): VS Code when `code` is on PATH, Visual Studio when vswhere finds an installation. Copying is
+always offered. Until a person chooses, links use the first editor found, else copy. A remembered editor that is no
+longer installed falls back the same way.
+
+- **VS Code** opens through its `vscode://file/<path>:<line>` link, at the file and line. The browser opens it.
+- **Visual Studio** cannot be opened by a browser, so the backend opens it (`POST /api/editors/visual-studio/open`):
+  it runs on the same machine, in the person's session (CLAUDE.md "Operating model"). It hands the file to the
+  Visual Studio already running, through Visual Studio's automation object (DTE), and moves the caret to the line.
+  With none running, it starts one (`devenv /Edit`) and moves to the line once it is ready, up to 90 seconds. A
+  toast gives the answer. When the line could not be set (an instance that never became ready, or one running as
+  administrator, which a backend that is not cannot reach), the file is still open, and the toast says plainly that
+  it is not at the line: "It could not be moved to line N: go there with Ctrl+G."
+- **Copy path and line** puts `D:\repos\shop\src\Web\X.cs:42` on the clipboard, in the repository path's own
+  style, whatever editor is chosen.
+
+The backend opens only a file inside a registered repository (not soft-deleted), a conversion worktree or
+`RUNS_DIR`, after following links and junctions; any other path, or a folder, is refused with 403
+`PATH_NOT_ALLOWED`, and no editor is touched. Nothing on the machine changes: no registry keys, protocol handlers or
+settings.
+
+Tests: `frontend/src/pages/repositories/SourceLink.test.tsx` and `backend/tests/test_editors.py`.
+
 ## Future: access control
 
 Not implemented. Recorded here so the intent is visible before auth exists, and

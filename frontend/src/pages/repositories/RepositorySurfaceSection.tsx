@@ -13,7 +13,7 @@ import type { EntryPoint, EntryPointInventory, EntryPointKind, HttpDetail, HttpP
 interface RepositorySurfaceSectionProps {
   repositoryId: string
   /** The repository's path on this machine — source links open the
-   * handler in VS Code, which only works on the machine that registered it
+   * handler in the person's editor, which only works on the machine that registered it
    * (the single-operator model; CLAUDE.md "Operating model"). */
   localPath: string
   refreshToken: number
@@ -71,7 +71,7 @@ function HandlerLink({ entry, localPath }: { entry: EntryPoint; localPath: strin
       localPath={localPath}
       filePath={entry.file_path}
       line={entry.line_start}
-      title={`${entry.file_path}:${entry.line_start}–${entry.line_end}${localPath ? ' — opens in VS Code' : ''}`}
+      title={`${entry.file_path}:${entry.line_start}–${entry.line_end}`}
       className="font-mono text-violet-700"
     >
       {label}
@@ -620,7 +620,7 @@ export function RepositoryInboundPanel({ repositoryId, localPath, refreshToken }
                 ? `Scanned for ${inventory.capability_kinds.length} entry-point kinds (capability manifest ${inventory.capabilities_manifest_version}); patterns outside it are listed in Workflow Administration → Detection capabilities. `
                 : 'Scanned before capability manifests existed — rescan to see which kinds were looked for. '}
               Syntax-only: routes, types and authorisation as written in source and config. A number beside a route or handler is its confidence below 1.0 —
-              hover for why. Handler links open the source in VS Code.
+              hover for why. Handler links open the source in your chosen editor; ▾ beside one offers the others and copying its path and line.
             </p>
             {withRequests.length === 0 && <p className="text-sm text-neutral-400">No request entry points found in any project.</p>}
             {/* One list: a panel per project with request entry points, and the grouped line for the rest, which counts as one. */}
