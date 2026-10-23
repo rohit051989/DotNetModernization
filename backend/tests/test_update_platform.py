@@ -189,5 +189,35 @@ class UpdatePlatform(unittest.TestCase):
         self.assertIn("is the root of a git repository", done.stdout)
 
 
+    def test_delivery_pushes_files_only_never_our_history_or_tags(self):
+        """Delivery from our machine (docs/VDI-SETUP.md, "Delivering a release from our machine"): after -Push, the
+        client's repository holds the platform folder's files, and none of our commits or tags."""
+        ours = [git(self.work, "rev-parse", "HEAD")]
+        ours.append(self.upstream())
+        done = self.update("-Push")
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertEqual(git(self.remote, "tag", "--list"), "")
+        refs = git(self.remote, "for-each-ref", "--format=%(refname)").splitlines()
+        self.assertEqual(sorted(refs), sorted(["refs/heads/main", f"refs/heads/{OTHER}", f"refs/heads/{BRANCH}"]))
+        for commit in ours:
+            missing = subprocess.run(["git", "-C", str(self.remote), "cat-file", "-e", f"{commit}^{{commit}}"], capture_output=True)
+            self.assertNotEqual(missing.returncode, 0, f"our commit {commit} reached the client")
+        # The client branch's history is the client's own commits and the platform commits, nothing of ours.
+        subjects = git(self.remote, "log", "--format=%s", BRANCH).splitlines()
+        self.assertFalse([s for s in subjects if s.startswith("ours ")], subjects)
+
+    def test_a_working_repository_as_the_source_is_refused(self):
+        self.upstream()
+        git(self.source, "switch", "-q", "main")
+        (self.source / "changed.txt").write_text("work in progress\n")
+        git(self.source, "commit", "-q", "-am", "local work")
+        done = self.update()
+        self.assertNotEqual(done.returncode, 0)
+        self.assertIn("is a working repository", done.stdout)
+        git(self.source, "switch", "-q", "-c", "my-feature")
+        done = self.update()
+        self.assertIn("follows nothing on origin", done.stdout)
+
+
 if __name__ == "__main__":
     unittest.main()

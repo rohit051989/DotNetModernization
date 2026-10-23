@@ -42,6 +42,7 @@ also work in, on their own branches. You work on your own branch. Our `.git` nev
 | ["Moving an existing install that carries our .git"](#moving-an-existing-install-that-carries-our-git) | keeping its database, RUNS_DIR, REPOS_DIR and .env |
 | **Part 2. Ongoing** | |
 | ["Updating the platform"](#updating-the-platform) | stop, update-platform.ps1, bootstrap, start |
+| ["Delivering a release from our machine"](#delivering-a-release-from-our-machine) | when the client's environment cannot reach our git: files only, never our history |
 | ["More than one person"](#more-than-one-person) | one platform per schema, a stale heartbeat, one checkout per engagement |
 | ["Deleting a repository or an engagement"](#deleting-a-repository-or-an-engagement) | hard delete, the audit |
 | ["Troubleshooting"](#troubleshooting) | |
@@ -295,6 +296,10 @@ bundle: `git clone -c core.longpaths=true --branch release-7 C:\MP\delivery\rele
 after checking its hash as in "Appendix: upgrading from a release bundle".)
 
 From now on, the source folder is only ever copied from (rule 1).
+
+**When the client's environment cannot reach our git**, none of Part 1's copying happens on the client's machine: we
+deliver the platform folder into the client's repository from our own machine, and the client's environment only
+pulls its branch ("Delivering a release from our machine", Part 2).
 
 #### 2. Your branch and the platform folder in the client's repository
 
@@ -880,6 +885,117 @@ rule 15); a release that cannot says so in its notes.
 Run the two commands of "Starting the backend and the frontend" again. Nothing else is needed: the database and
 `RUNS_DIR` keep everything.
 
+### Delivering a release from our machine
+
+A client's environment may have no access to our company git. Then a release reaches it through the client's own
+repository: on **our** machine, `update-platform.ps1` copies the release into a local clone of the client's
+repository, commits only the platform folder on the client's branch, and pushes that branch with `-Push`. The
+client's environment then pulls the branch and runs bootstrap, as the platform folder's `README.md` says.
+
+**Why our history must never travel.** The client receives files, never our repository:
+- our history and tags hold work for every client we serve: commits, messages and branches that name other
+  engagements, and the platform's own history, which is ours, not the client's (CLAUDE.md rule 18);
+- once pushed into a client's repository, history cannot be taken back: every clone, mirror and backup of that
+  repository keeps it;
+- a client needs the release, not how it was made: `PLATFORM_SOURCE.json` records which of our commits and which
+  release the folder holds, which is enough to trace any question back to us.
+
+So the source is a separate clone used only to copy from, the script copies files and never `.git`, and it pushes only
+the client's branch (`refs/heads/<branch>`), never tags or any other ref. Never `git push --tags`, `--mirror` or
+`--all` into a client's repository, never add our repository as a remote of theirs, and never merge or cherry-pick
+between the two.
+
+Two folders on our machine, short paths as in "Why paths must be short":
+
+| Folder | What it is | Never |
+|---|---|---|
+| `C:\MPD\source` | **a separate, pristine clone of our repository**, used only to copy releases from. The script checks releases out in it | the repository we work in: the script refuses a source whose branch follows nothing on origin or has commits not on origin |
+| `C:\MPD\client-a` | a local clone of the client's repository, on the client's branch for the platform | anything of ours committed outside the platform folder |
+
+#### First time
+
+1. **The source clone**, once:
+
+   ```powershell
+   git clone -c core.longpaths=true https://git.ourcompany.com/modernization-platform.git C:\MPD\source
+   ```
+
+2. **The client's repository and its branch.** Clone it with the access the client gave us, and create the branch the
+   client agreed for the platform (here `platform/modernization`) from the branch they name (here `main`):
+
+   ```powershell
+   git clone -c core.longpaths=true https://git.client-a.example/team/shared.git C:\MPD\client-a
+   ```
+
+   ```powershell
+   git -C C:\MPD\client-a switch -c platform/modernization origin/main
+   ```
+
+3. **The platform folder, with the release in it, committed.** As Part 1's "Copy the source in", from the source
+   clone at the release:
+
+   ```powershell
+   git -C C:\MPD\source checkout release-7
+   ```
+
+   ```powershell
+   New-Item -ItemType Directory C:\MPD\client-a\modernization-platform
+   ```
+
+   ```powershell
+   robocopy C:\MPD\source C:\MPD\client-a\modernization-platform /E /XD .git .venv node_modules /XF .env
+   ```
+
+   ```powershell
+   cd C:\MPD\client-a\modernization-platform; powershell -ExecutionPolicy Bypass -File .\scripts\write-platform-source.ps1 -Source C:\MPD\source
+   ```
+
+   ```powershell
+   git -C C:\MPD\client-a add -A -- modernization-platform; git -C C:\MPD\client-a commit -m "Modernization platform: release-7" -- modernization-platform
+   ```
+
+4. **Push only the branch**, then check what the client's repository received: no tag of ours, and no commit
+   outside the platform folder.
+
+   ```powershell
+   git -C C:\MPD\client-a push origin refs/heads/platform/modernization:refs/heads/platform/modernization
+   ```
+
+   ```powershell
+   git -C C:\MPD\client-a ls-remote --tags origin
+   ```
+
+   ```powershell
+   git -C C:\MPD\client-a diff --stat origin/main platform/modernization -- . ":(exclude)modernization-platform"
+   ```
+
+   The last two print nothing.
+5. **On the client's environment**, someone with access clones or pulls the branch and follows the platform folder's
+   `README.md`: `.env`, preflight, bootstrap, start. Part 1 of this guide is the detail.
+
+#### Each release after that
+
+1. Bring the client's branch up to date and make sure the platform folder is clean (the script checks both):
+
+   ```powershell
+   git -C C:\MPD\client-a switch platform/modernization; git -C C:\MPD\client-a pull --ff-only
+   ```
+
+2. **Run the update script** from the platform folder in the client's clone, with the pristine source, and `-Push`:
+
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File C:\MPD\client-a\modernization-platform\scripts\update-platform.ps1 -Source C:\MPD\source -Platform C:\MPD\client-a\modernization-platform -Branch platform/modernization -Push
+   ```
+
+   It fetches our releases into the source clone and checks out the newest (or `-Release`), copies files only,
+   removes what we deleted or renamed, writes `PLATFORM_SOURCE.json`, commits only the platform folder, and pushes
+   only the branch ("Updating the platform" lists every check).
+3. Check what went, as in step 4 above, then tell the client the release is on the branch. On their environment:
+   stop the platform, `git pull` the branch, run bootstrap, start it again (the platform folder's `README.md`).
+
+Nothing is run from the client's clone on our machine: no bootstrap, no backend. It exists only to receive the
+release and push it.
+
 ### More than one person
 
 
@@ -1034,7 +1150,7 @@ cd C:\MP\client\modernization-platform\backend; .\.venv\Scripts\python.exe -m ap
 ```
 
 ```powershell
-cd C:\MP\client\modernization-platform\backend; .\.venv\Scripts\python.exe -m app.workflow.time_limits set --step outbound-invocation-inventory --repository <engagement>/<repository> --timeout 7200 --note "170 projects"
+cd C:\MP\client\modernization-platform\backend; .\.venv\Scripts\python.exe -m app.workflow.time_limits set --step outbound-invocation-inventory --repository <engagement>/<repository> --timeout 7200 --note "a very large repository"
 ```
 
 ```powershell

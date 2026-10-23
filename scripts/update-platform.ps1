@@ -5,9 +5,16 @@
 
 .DESCRIPTION
     Two folders on the machine:
-      - the source folder: a clone of our repository, used only as the source of copies. Never run anything in it.
+      - the source folder: a separate, pristine clone of our repository, used only as the source of copies. Never
+        the repository we work in: the script checks releases out in it, and stops when it looks like a working
+        repository (a branch following nothing on origin, or with commits not on origin).
       - the platform folder: a folder inside the client's repository, which other people also work in, on their
         own branches. Our .git never goes there.
+
+    It runs on the client's machine, or on ours when the client's environment cannot reach our git: then the
+    client's repository is a local clone on our machine and -Push delivers the release (docs\VDI-SETUP.md,
+    "Delivering a release from our machine"). Either way only files are copied: our history and tags never go into
+    the client's repository, and only -Branch is pushed.
 
     In order, stopping with a plain message at the first problem:
       1. The client repository must be on -Branch, and the platform folder must have no uncommitted changes
@@ -109,6 +116,22 @@ $sourceChanged = @(Invoke-Git $Source @('status', '--porcelain') 'Checking the s
 if ($sourceChanged.Count -gt 0) {
     Stop-Update ("the source folder has changes, and nothing is ever run or edited there:`n  " + ($sourceChanged -join "`n  ") +
         "`nDiscard them (git -C `"$Source`" checkout -- . ; git -C `"$Source`" clean -fd) and run the update again.")
+}
+# A pristine clone, never the working repository: the script checks releases out in it. Its HEAD is a release checked
+# out (detached) or a branch with nothing of its own beyond origin's; a branch with no upstream, or with commits not
+# on origin, is someone's working repository.
+$sourceTop = @(Invoke-Git $Source @('rev-parse', '--show-toplevel') 'Reading the source folder')[0]
+if ($sourceTop -eq $top) { Stop-Update "the source folder is the client's repository. The source is a separate clone of our repository." }
+$sourceBranch = @(Invoke-Git $Source @('rev-parse', '--abbrev-ref', 'HEAD') 'Reading the source branch')[0]
+if ($sourceBranch -ne 'HEAD') {
+    $upstream = & git -C $Source rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>$null
+    if ($LASTEXITCODE -ne 0 -or -not $upstream) {
+        Stop-Update "the source folder is on branch '$sourceBranch', which follows nothing on origin: it looks like a working repository. Use a separate, pristine clone of our repository as the source (docs\VDI-SETUP.md, `"Delivering a release from our machine`")."
+    }
+    $ahead = @(Invoke-Git $Source @('rev-list', '--count', '@{u}..HEAD') 'Comparing the source with origin')[0]
+    if ([int]$ahead -gt 0) {
+        Stop-Update "the source folder's branch '$sourceBranch' has $ahead commit(s) not on origin: it is a working repository. Use a separate, pristine clone of our repository as the source (docs\VDI-SETUP.md, `"Delivering a release from our machine`")."
+    }
 }
 $sourceBefore = @(Invoke-Git $Source @('rev-parse', 'HEAD') 'Reading the source commit')[0]
 $installed = $null
