@@ -734,18 +734,23 @@ Discovery runs every step on its own, and its last step, `conversion-preparation
 It takes from a few minutes to much longer for a large repository; the repository's page shows each step as it
 finishes (**Executions** tab).
 
-In the UI, on the repository's page:
+In the UI, on the repository's page, one tab at a time, in four groups: **Overview**; **Discovery** (Surface,
+Projects & fingerprint, Dependencies, Dependency graph, Impact, Tests); **Modernization** (Work list, Conversion);
+**Activity** (Executions, Details). Each tab has its own address (`/repositories/<id>/<tab>`), so it can be
+bookmarked or sent, and the page reopens on the tab last used:
 
 | Tab | Shows |
 |---|---|
-| Overview | size, projects, entry points, items found |
+| Overview | size, projects, entry points, items found; and the key figure from each tab (work items, request entry points, dependencies and SOAP calls needing change, the conversion's state, the latest execution), each a link into its tab |
 | Surface | what can call the repository, and what it calls. Each section folds on its own and says what is in it while folded; the bar at the top jumps to a section and expands or collapses them all, and the page remembers which are open |
-| Structure | the dependency graph: projects, packages and assembly references from the roots down, as a graph or a tree, with + and − to expand and collapse, search, transitive packages and filters (`37-DEPENDENCY-HIERARCHY.md` Part E) |
+| Dependency graph | the dependency graph: projects, packages and assembly references from the roots down, as a graph or a tree, with + and − to expand and collapse, search, transitive packages and filters (`37-DEPENDENCY-HIERARCHY.md` Part E) |
 | Projects & fingerprint | solutions, projects, frameworks |
 | Dependencies | every package: the version in use, the recommended version, its outcome and flags, and a **Reason** in plain words for each (the advisory, its severity and the version that fixes it; why an upgrade is safe; which shared framework provides it; the publisher's named successor; why a lookup did not answer, such as a feed returning 401). "Vulnerable" always refers to the version in use |
 | Surface (SOAP compatibility) | each SOAP call per environment: the Runtime and Platform verdicts, a **Why** beside each (the matrix entry that decided it and its probe evidence, or why it is unknown), and whether a named person has **confirmed** that entry (reviewed its evidence and accepted it) |
 | Work list | the catalog items found, where, and how each is to be resolved |
 | Tests | test projects and what they cover |
+| Executions | each discovery run, newest first, opening its step-by-step page |
+| Details | the repository's registration, git facts and owner; Edit changes them |
 | Impact | files each change touches |
 | **Conversion** | every conversion, newest first: number, branch, status (prepared, run, verified) and verdict. Each one's entry has the commit it starts from, its worktree, the runbook, the opening message for GitHub Copilot (with a copy button), its package-step plan, **Verify** once it has been run, and its VERIFICATION.md once verified |
 
@@ -1225,6 +1230,27 @@ the ones between. Run them in one PowerShell window, in order.
 
    It updates only what the release changed and skips the rest. It ends with `Bootstrap complete`.
 8. **Start the platform** ("Starting the backend and the frontend"). Your engagements, repositories, conversions and verifications are all there.
+
+**What release 7 changes on a release 6 installation.** Nothing existing in the database changes, and no setting
+is added:
+- **stage 5** installs the frontend's packages again: the dependency graph uses React Flow (`@xyflow/react`) and
+  dagre (`@dagrejs/dagre`), both MIT, which must be available from `NPM_REGISTRY` like the others ("Package sources");
+- **stage 6** publishes a new step program, `dependency-hierarchy` (`publish\dependency-hierarchy`), and republishes
+  the others: each now reports the artifact version it wrote, which the engine checks;
+- **stage 7** adds two tables, `hierarchy_nodes` and `hierarchy_edges`;
+- **stage 8** registers `dependency-hierarchy` and activates `phase0-repository-discovery` version 18, which runs it
+  after `dependency-assessment`; later lifecycle steps move up one number, their names unchanged. It also reseeds
+  `solution-discovery` 2.1.2 (a ProjectReference declared twice is recorded once, where it used to fail the run) and
+  `dependency-assessment` 1.7.1;
+- a repository's page shows one tab at a time, in four groups, each tab at its own address
+  (`/repositories/<id>/<tab>`); old links to a section open its tab. The Structure section is now the **Dependency
+  graph** tab, and "Structure & fingerprint" is **Projects & fingerprint**; file links offer VS Code, Visual Studio or
+  copying, by each person's choice;
+- `scripts\update-platform.ps1` installs the newest release tag (or the one `-Release` names), never the tip of
+  master, and `PLATFORM_SOURCE.json` records the release (Part 2). The first update made with an older copy of the
+  script still pulls master;
+- the WCF client platform matrix is 1.2.1: wording only, no verdict changed;
+- repositories scanned before the upgrade show no dependency graph until they are rescanned: **Rescan** each one.
 
 **What release 6 changes on a release 5 installation.** Nothing in the database changes, and no setting is
 added; only the frontend changes. **Stage 5** installs its packages again, because the frontend now has component
