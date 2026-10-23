@@ -243,7 +243,7 @@ public sealed record Invocation
     public string Usage { get; init; } = Usages.Used;
 
     /// <summary>One logical endpoint's value per environment file (Part C4):
-    /// <c>appsettings.DEVOCP.json</c> and <c>appsettings.PROD.json</c> pointing
+    /// <c>appsettings.DEV.json</c> and <c>appsettings.PROD.json</c> pointing
     /// at different hosts is one invocation with two bindings.</summary>
     public IReadOnlyList<EnvironmentBinding> EnvironmentBindings { get; init; } = [];
 
@@ -347,7 +347,7 @@ public sealed record EnvironmentBinding
 
     /// <summary>This environment's own verdict. The invocation's verdict is
     /// the worst of these; an OpenShift target environment
-    /// (appsettings.DEVOCP.json) already on SQL authentication is
+    /// (appsettings.DEV.json) already on SQL authentication is
     /// compatible even where a legacy Windows environment is not.</summary>
     public string? LinuxVerdict { get; init; }
 

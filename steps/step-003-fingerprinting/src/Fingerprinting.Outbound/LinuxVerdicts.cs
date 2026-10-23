@@ -5,7 +5,7 @@ namespace Fingerprinting.Outbound;
 /// and a verdict on each environment binding. The invocation's verdict is
 /// the worst environment's — a summary; the per-environment verdict is the
 /// answer for a migration target, since an OpenShift environment
-/// (appsettings.DEVOCP.json) already on SQL authentication is compatible
+/// (appsettings.DEV.json) already on SQL authentication is compatible
 /// even where a legacy Windows environment is not.
 /// <c>unknown</c> is given where a fact the verdict depends on is
 /// unresolved — a SOAP binding that could not be evaluated, a database's

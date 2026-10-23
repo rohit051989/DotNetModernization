@@ -263,15 +263,15 @@ public class OutboundInvocationTests
                 }
             }
             """;
-        var invocations = Detect("src/AccountOpenAPI/AccountOpenAPI.csproj", new() { ["src/AccountOpenAPI/Services/AccountClient.cs"] = code },
+        var invocations = Detect("src/OrdersApi/OrdersApi.csproj", new() { ["src/OrdersApi/Services/AccountClient.cs"] = code },
         [
-            ("src/AccountOpenAPI/appsettings.DEVOCP.json", """{ "Services": { "Account": { "Url": "net.tcp://soap0-dev.services.client-a.example/AccountService.svc" } } }"""),
-            ("src/AccountOpenAPI/appsettings.PROD.json", """{ "Services": { "Account": { "Url": "net.tcp://soap0.services.client-a.example/AccountService.svc" } } }"""),
+            ("src/OrdersApi/appsettings.DEV.json", """{ "Services": { "Account": { "Url": "net.tcp://soap0-dev.services.client-a.example/AccountService.svc" } } }"""),
+            ("src/OrdersApi/appsettings.PROD.json", """{ "Services": { "Account": { "Url": "net.tcp://soap0.services.client-a.example/AccountService.svc" } } }"""),
         ]);
 
         var invocation = Assert.Single(invocations);
         Assert.Equal(2, invocation.EnvironmentBindings.Count);
-        Assert.Equal(["DEVOCP", "PROD"], invocation.EnvironmentBindings.Select(b => b.Environment));
+        Assert.Equal(["DEV", "PROD"], invocation.EnvironmentBindings.Select(b => b.Environment));
         Assert.Equal(["soap0-dev.services.client-a.example", "soap0.services.client-a.example"], invocation.EnvironmentBindings.Select(b => b.Host));
         Assert.All(invocation.EnvironmentBindings, b => Assert.Equal("Services:Account:Url", b.KeyPath));
         // No default file sets it: the default endpoint waits on the key.
@@ -474,14 +474,14 @@ public class OutboundInvocationTests
         var invocation = Assert.Single(Detect("src/Api/Api.csproj", new() { ["src/Api/Events.cs"] = code },
         [
             ("src/Api/appsettings.json", """{ "Kafka": { "BootstrapServers": "kafka.corp.local:9092", "sasl.mechanism": "GSSAPI" } }"""),
-            ("src/Api/appsettings.DEVOCP.json", """{ "Kafka": { "BootstrapServers": "kafka.apps.ocp.local:9093", "sasl.mechanism": "SCRAM-SHA-512" } }"""),
+            ("src/Api/appsettings.DEV.json", """{ "Kafka": { "BootstrapServers": "kafka.apps.ocp.local:9093", "sasl.mechanism": "SCRAM-SHA-512" } }"""),
         ]));
 
         Assert.Equal(Mechanisms.MessageConsumer, invocation.Mechanism);
         var byEnvironment = invocation.EnvironmentBindings.ToDictionary(b => b.Environment);
         Assert.Equal(("gssapi", Verdicts.RequiresChange), (byEnvironment["default"].Authentication, byEnvironment["default"].LinuxVerdict));
-        Assert.Equal(("scram", Verdicts.Compatible), (byEnvironment["DEVOCP"].Authentication, byEnvironment["DEVOCP"].LinuxVerdict));
-        Assert.Equal("kafka.apps.ocp.local", byEnvironment["DEVOCP"].Host);
+        Assert.Equal(("scram", Verdicts.Compatible), (byEnvironment["DEV"].Authentication, byEnvironment["DEV"].LinuxVerdict));
+        Assert.Equal("kafka.apps.ocp.local", byEnvironment["DEV"].Host);
         // The summary is the worst environment.
         Assert.Equal(Verdicts.RequiresChange, invocation.LinuxCompatibility.Verdict);
     }
@@ -533,13 +533,13 @@ public class OutboundInvocationTests
         var invocation = Assert.Single(Detect("src/Api/Api.csproj", new() { ["src/Api/Data.cs"] = code },
         [
             ("src/Api/appsettings.json", """{ "ConnectionStrings": { "Main": "Server=SQLWIN01;Database=Main;Integrated Security=true" } }"""),
-            ("src/Api/appsettings.DEVOCP.json", """{ "ConnectionStrings": { "Main": "Server=mssql.apps.ocp.local,1433;Database=Main;User Id=app;Password=x" } }"""),
+            ("src/Api/appsettings.DEV.json", """{ "ConnectionStrings": { "Main": "Server=mssql.apps.ocp.local,1433;Database=Main;User Id=app;Password=x" } }"""),
         ]));
 
         var byEnvironment = invocation.EnvironmentBindings.ToDictionary(b => b.Environment);
         Assert.Equal(Verdicts.RequiresChange, byEnvironment["default"].LinuxVerdict);
-        Assert.Equal(Verdicts.Compatible, byEnvironment["DEVOCP"].LinuxVerdict);
-        Assert.Equal(["SQL authentication"], byEnvironment["DEVOCP"].LinuxReasons);
+        Assert.Equal(Verdicts.Compatible, byEnvironment["DEV"].LinuxVerdict);
+        Assert.Equal(["SQL authentication"], byEnvironment["DEV"].LinuxReasons);
         Assert.Equal(Verdicts.RequiresChange, invocation.LinuxCompatibility.Verdict);
     }
 

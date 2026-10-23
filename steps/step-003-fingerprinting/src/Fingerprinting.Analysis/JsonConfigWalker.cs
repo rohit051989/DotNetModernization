@@ -6,7 +6,7 @@ namespace Fingerprinting.Analysis;
 /// <summary>
 /// Which configuration files step 3 reads. <c>appsettings*.json</c> covers
 /// the environment variants (<c>appsettings.Development.json</c>,
-/// <c>appsettings.DEVOCP.json</c>) that an exact <c>appsettings.json</c> match
+/// <c>appsettings.DEV.json</c>) that an exact <c>appsettings.json</c> match
 /// used to miss — they carry the same connection strings, sinks and paths.
 /// </summary>
 public static class ConfigFileNames

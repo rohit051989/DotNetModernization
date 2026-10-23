@@ -282,7 +282,7 @@ public sealed class ExtractorBatch2Tests
     public async Task Config_ReadsEnvironmentAppSettings_WithLineNumbers_AndSerilogSinks()
     {
         using var repo = new TempRepo();
-        repo.Write("appsettings.DEVOCP.json", """
+        repo.Write("appsettings.DEV.json", """
             {
               // comments are allowed, as .NET's loader allows them
               "Serilog": {

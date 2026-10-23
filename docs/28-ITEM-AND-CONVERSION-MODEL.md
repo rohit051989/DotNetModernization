@@ -748,8 +748,8 @@ What the platform passes in. **Stable contract — version it if it changes.**
   },
 
   "project": {
-    "id": "…", "name": "AccountOpenAPI",
-    "relative_path": "src/AccountOpenAPI/AccountOpenAPI.csproj",
+    "id": "…", "name": "OrdersApi",
+    "relative_path": "src/OrdersApi/OrdersApi.csproj",
     "framework_family": "net", "framework_version": "10.0",
     "output_type": "Exe", "project_format": "sdk_style"
   },
@@ -769,8 +769,8 @@ What the platform passes in. **Stable contract — version it if it changes.**
   "occurrences": [
     {
       "occurrence_id": "…",
-      "file_path": "src/AccountOpenAPI/appsettings.json",
-      "evidence": [ { "line_start": 42, "line_end": 58, "signal_name": "SERILOG_FILE_SINK_CONFIG", "value": "G:\\Logs\\AccountOpenAPI\\" } ]
+      "file_path": "src/OrdersApi/appsettings.json",
+      "evidence": [ { "line_start": 42, "line_end": 58, "signal_name": "SERILOG_FILE_SINK_CONFIG", "value": "G:\\Logs\\OrdersApi\\" } ]
     }
   ],
 
@@ -807,7 +807,7 @@ For `application` scope, `occurrences` is empty and the whole project is in play
   "occurrences_resolved": ["…", "…"],
   "occurrences_failed": [ { "occurrence_id": "…", "reason": "sink not found — already removed" } ],
 
-  "files_modified": ["src/AccountOpenAPI/appsettings.json"],
+  "files_modified": ["src/OrdersApi/appsettings.json"],
   "files_created": [], "files_deleted": [],
 
   "pre_check_results":    [ { "check": "sink-present", "passed": true } ],
@@ -958,8 +958,8 @@ edits and six builds would be slower and no safer.
                   "local_path": "D:\\repos\\orders-api",
                   "branch": "modernization/ocp4" },
 
-  "project": { "id": "p-014", "name": "AccountOpenAPI",
-               "relative_path": "src/AccountOpenAPI/AccountOpenAPI.csproj",
+  "project": { "id": "p-014", "name": "OrdersApi",
+               "relative_path": "src/OrdersApi/OrdersApi.csproj",
                "framework_family": "net", "framework_version": "10.0",
                "output_type": "Exe", "project_format": "sdk_style" },
 
@@ -971,15 +971,15 @@ edits and six builds would be slower and no safer.
 
   "occurrences": [
     { "occurrence_id": "o-001",
-      "file_path": "src/AccountOpenAPI/appsettings.json",
+      "file_path": "src/OrdersApi/appsettings.json",
       "evidence": [ { "line_start": 42, "line_end": 58,
                       "signal_name": "SERILOG_FILE_SINK_CONFIG",
-                      "value": "G:\\Logs\\AccountOpenAPI\\" } ] },
+                      "value": "G:\\Logs\\OrdersApi\\" } ] },
     { "occurrence_id": "o-002",
-      "file_path": "src/AccountOpenAPI/appsettings.DEVOCP.json",
+      "file_path": "src/OrdersApi/appsettings.DEV.json",
       "evidence": [ { "line_start": 39, "line_end": 55,
                       "signal_name": "SERILOG_FILE_SINK_CONFIG",
-                      "value": "C:\\logs\\AccountOpenAPI\\" } ] }
+                      "value": "C:\\logs\\OrdersApi\\" } ] }
   ],
 
   "engagement_parameters": { "target_platform": "ocp4",
@@ -1003,8 +1003,8 @@ edits and six builds would be slower and no safer.
   "occurrences_resolved": ["o-001", "o-002"],
   "occurrences_failed": [],
 
-  "files_modified": ["src/AccountOpenAPI/appsettings.json",
-                     "src/AccountOpenAPI/appsettings.DEVOCP.json"],
+  "files_modified": ["src/OrdersApi/appsettings.json",
+                     "src/OrdersApi/appsettings.DEV.json"],
   "files_created": [], "files_deleted": [],
 
   "pre_check_results":    [ { "check": "sink-present",  "passed": true } ],

@@ -112,9 +112,9 @@ Rules:
 {
   "entryPointId": "sha256 of project + kind + handler + route + verb, truncated",
   "kind": "http_controller_action",
-  "projectPath": "src/AccountOpenAPI/AccountOpenAPI.csproj",
+  "projectPath": "src/OrdersApi/OrdersApi.csproj",
   "handler": { "type": "AccountsController", "member": "GetById",
-               "filePath": "src/AccountOpenAPI/Controllers/AccountsController.cs",
+               "filePath": "src/OrdersApi/Controllers/AccountsController.cs",
                "lineStart": 42, "lineEnd": 58 },
   "http": { "verb": "GET", "routeTemplate": "api/accounts/{id}",
             "routing": "attribute",
@@ -524,7 +524,7 @@ placeholders.
 - resolve an endpoint from `appsettings*.json`, `web.config` and `app.config`, recording
   **which file and key** it came from
 - the same logical endpoint differing by environment file records **one invocation with
-  several environment values**, not several invocations. `appsettings.DEVOCP.json` and
+  several environment values**, not several invocations. `appsettings.DEV.json` and
   `appsettings.PROD.json` pointing at different hosts is one dependency with two
   environment bindings
 - a value that is a placeholder (`${SERVICE_URL}`, `%SERVICE_URL%`, `{{…}}`) or reads an
@@ -574,7 +574,7 @@ Each invocation carries a verdict with a reason:
 **Per environment.** Every environment binding carries its own verdict; the
 invocation's verdict is the worst of them — a summary. The per-environment verdict
 is the answer for a migration target: an OpenShift environment
-(`appsettings.DEVOCP.json`) already on SQL authentication is `compatible` even where
+(`appsettings.DEV.json`) already on SQL authentication is `compatible` even where
 a legacy Windows environment's Integrated Security is not.
 
 **Unused clients.** A client with no construction site and no configuration — a
@@ -591,23 +591,23 @@ be assessed as much as what could.
 {
   "invocationId": "derived — project + mechanism + normalised endpoint + contract",
   "mechanism": "soap_client",
-  "projectPath": "src/AccountOpenAPI/AccountOpenAPI.csproj",
+  "projectPath": "src/OrdersApi/OrdersApi.csproj",
   "endpoint": { "scheme": "net.tcp", "host": "soap0.services.client-a.example", "port": 808,
                 "path": "/AccountService.svc", "resolution": "resolved" },
   "environmentBindings": [
-    { "sourceFile": "appsettings.DEVOCP.json", "keyPath": "Services:Account:Url",
+    { "sourceFile": "appsettings.DEV.json", "keyPath": "Services:Account:Url",
       "host": "soap0-dev.services.client-a.example" },
     { "sourceFile": "appsettings.PROD.json", "keyPath": "Services:Account:Url",
       "host": "soap0.services.client-a.example" }
   ],
   "soap": { "contract": "IAccountService", "binding": "netTcpBinding",
             "securityMode": "Transport", "clientCredentialType": "Windows" },
-  "callSites": [ { "filePath": "src/AccountOpenAPI/Services/AccountClient.cs",
+  "callSites": [ { "filePath": "src/OrdersApi/Services/AccountClient.cs",
                    "lineStart": 31, "lineEnd": 31 } ],
   "operations": [
     { "operation": "OpenAccount", "verb": null, "path": null, "member": "OpenAccount",
       "resolution": "resolved", "reason": null,
-      "callSite": { "filePath": "src/AccountOpenAPI/Services/AccountClient.cs",
+      "callSite": { "filePath": "src/OrdersApi/Services/AccountClient.cs",
                     "lineStart": 44, "lineEnd": 44 } }
   ],
   "linuxCompatibility": { "verdict": "requires_change",
