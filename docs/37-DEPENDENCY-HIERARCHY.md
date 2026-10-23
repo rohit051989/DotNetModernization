@@ -2,7 +2,7 @@
 
 The `dependency-hierarchy` discovery step builds each repository's dependency graph: its projects, the packages they
 use (and those packages' own dependencies), and the assembly references no package declares, joined by edges that
-record their kind. The repository page's **Structure** section shows it as a node-link graph or an indented tree.
+record their kind. The repository page's **Dependency graph** tab shows it as a node-link graph or an indented tree.
 
 It is a graph, not a tree. A shared library with several parents is one node; every edge is recorded once.
 
@@ -163,10 +163,11 @@ repository removes them (`app/deletion` finds them by `repository_id`), and the 
 
 ---
 
-## Part E — The Structure section
+## Part E — The Dependency graph tab
 
-The repository page's **Structure** section (`frontend/src/pages/repositories/structure/`). The section that was
-called "Structure & fingerprint" is now **Projects & fingerprint**.
+The repository page's **Dependency graph** tab, under Discovery (`frontend/src/pages/repositories/structure/`;
+until release 7 the "Structure" section). The section that was called "Structure & fingerprint" is now **Projects &
+fingerprint**.
 
 **API** (`backend/app/routers/hierarchy.py`, read-only; every call takes the view, `transitive` and `show`):
 
@@ -247,3 +248,6 @@ Measured on this machine (2026-10-22):
 Tests: `steps/step-003-fingerprinting/tests/Fingerprinting.Dependencies.Tests/DependencyHierarchyTests.cs` (graph
 building), `backend/tests/test_dependency_hierarchy.py` (the API's reads), and
 `frontend/src/pages/repositories/structure/*.test.tsx` (expand, collapse, the 20-item rule, shared nodes, the view).
+Since release 7 the repository is no longer kept registered: `backend/tests/test_platform_scale.py` generates it into a
+scratch folder for each run and scans it with both jobs in the run's own schema (`01-ENVIRONMENT-SETUP.md`, "Running
+the tests").

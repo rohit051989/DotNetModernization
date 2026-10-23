@@ -1,4 +1,4 @@
-"""Response shapes for the repository's Structure section (37-DEPENDENCY-HIERARCHY.md Part E)."""
+"""Response shapes for the repository's Dependency graph tab (37-DEPENDENCY-HIERARCHY.md Part E)."""
 from pydantic import BaseModel, Field
 
 

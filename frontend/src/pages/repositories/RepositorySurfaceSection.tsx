@@ -470,7 +470,8 @@ export function RepositorySurfaceSection({ repositoryId, localPath, refreshToken
   return (
     <SectionGroup
       label="Surface sections"
-      barClassName="top-10"
+      // Just below the repository page's sticky header (its height, --repo-header).
+      barClassName="top-[var(--repo-header,0px)]"
       order={SURFACE_SECTIONS.map((s) => surfaceSectionId(repositoryId, s))}
     >
       <div className="grid items-start gap-4 p-4 xl:grid-cols-2">

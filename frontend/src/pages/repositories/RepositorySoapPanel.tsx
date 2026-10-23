@@ -6,6 +6,7 @@ import { surfaceSectionId } from './surfaceSections'
 import { getRepositorySoapCompatibility } from '../../api/surface'
 import type { RepositorySoap, SoapVerdictLive } from '../../types/surface'
 import { CONFIRMED_HELP, UNDER_REVIEW, UNDER_REVIEW_LABEL } from '../../types/estate'
+import { needsChange } from './soapNeedsChange'
 
 // The repository's own view of the SOAP backend compatibility report
 // (31-DEPENDENCY-AND-CONTEXT-MAP.md Part J): each used SOAP client, per
@@ -195,12 +196,6 @@ function CallRows({ call, data, onOpenEstateSoap }: { call: RepositorySoap['call
       )}
     </>
   )
-}
-
-/** A verdict that asks for a change in some environment: the runtime does not support it, or only with a caveat, or
- * Linux needs a change or cannot run it. */
-function needsChange(env: RepositorySoap['calls'][number]['environments'][number]): boolean {
-  return ['unsupported', 'supported_with_caveat'].includes(env.runtime.verdict ?? '') || ['incompatible', 'requires_change'].includes(env.platform.verdict ?? '')
 }
 
 /** A verdict not yet decided in some environment: unknown, not assessed, or under review. */

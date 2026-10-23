@@ -1,4 +1,4 @@
-"""Reads a repository's dependency graph for the Structure section (37-DEPENDENCY-HIERARCHY.md Part E).
+"""Reads a repository's dependency graph for the Dependency graph tab (37-DEPENDENCY-HIERARCHY.md Part E).
 
 The dependency-hierarchy step writes `hierarchy_nodes` and `hierarchy_edges`; nothing here writes. The UI asks for the
 roots, then a node's children each time one is expanded, a page at a time — never the whole graph — so a repository of

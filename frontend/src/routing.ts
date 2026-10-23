@@ -24,18 +24,38 @@ export function pushRootRoute(): void {
   }
 }
 
-const REPOSITORY_PATH_RE = /^\/repositories\/([^/]+)\/?$/
+const REPOSITORY_PATH_RE = /^\/repositories\/([^/]+)(?:\/([a-z-]+))?\/?$/
 
 /** A repository detail opens as a page of its own, in the same tab, like an
- * execution — so it can be linked to, reloaded and left with Back. */
+ * execution — so it can be linked to, reloaded and left with Back. Each of its
+ * tabs has its own address: /repositories/<id>/<tab> (release 7). */
 export function parseRepositoryIdFromLocation(): string | null {
-  const match = REPOSITORY_PATH_RE.exec(window.location.pathname)
-  return match ? decodeURIComponent(match[1]) : null
+  return parseRepositoryRoute()?.repositoryId ?? null
 }
 
-export function pushRepositoryRoute(repositoryId: string): void {
-  const path = `/repositories/${encodeURIComponent(repositoryId)}`
+/** The repository and the tab the address names; the tab is null when the address names none. */
+export function parseRepositoryRoute(): { repositoryId: string; tab: string | null } | null {
+  const match = REPOSITORY_PATH_RE.exec(window.location.pathname)
+  return match ? { repositoryId: decodeURIComponent(match[1]), tab: match[2] ?? null } : null
+}
+
+export function repositoryPath(repositoryId: string, tab?: string | null): string {
+  return `/repositories/${encodeURIComponent(repositoryId)}${tab ? `/${tab}` : ''}`
+}
+
+/** Opens a repository. Leaving the tab out lets the page choose (the last tab, else Overview) and replace the address. */
+export function pushRepositoryRoute(repositoryId: string, tab?: string | null): void {
+  const path = repositoryPath(repositoryId, tab)
   if (window.location.pathname !== path) {
     window.history.pushState({}, '', path)
   }
+}
+
+/** The page's own tab changes: `replace` for one the page chose itself (a bare or old address), a new history entry
+ * for one the person chose, so Back and Forward move between tabs. */
+export function setRepositoryTabRoute(repositoryId: string, tab: string, replace: boolean): void {
+  const path = repositoryPath(repositoryId, tab)
+  if (window.location.pathname === path && !window.location.hash) return
+  if (replace) window.history.replaceState({}, '', path)
+  else window.history.pushState({}, '', path)
 }

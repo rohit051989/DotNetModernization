@@ -1,4 +1,4 @@
-// The repository's dependency graph, as the Structure section reads it (37-DEPENDENCY-HIERARCHY.md Part E;
+// The repository's dependency graph, as the Dependency graph tab reads it (37-DEPENDENCY-HIERARCHY.md Part E;
 // backend/app/hierarchy/schemas.py).
 
 export type HierarchyNodeType = 'project' | 'package' | 'assembly'

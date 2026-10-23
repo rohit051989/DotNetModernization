@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { deleteRepositoryHard, getRepositoryDeletionPlan } from '../../api/deletion'
 import { HardDeleteDialog } from '../../components/HardDeleteDialog'
 import {
@@ -14,7 +14,6 @@ import type { JobExecution } from '../../types/workflow'
 import type { WorkListDecisions } from '../../types/items'
 import { getWorkListDecisions } from '../../api/items'
 import { ApiError } from '../../api/client'
-import { CollapsibleSection } from '../../components/CollapsibleSection'
 import { EmptyState } from '../../components/EmptyState'
 import { LimitedList } from '../../components/LimitedList'
 import { Field, inputClass } from '../../components/FormField'
@@ -31,6 +30,21 @@ import { RepositoryTestsSection } from './RepositoryTestsSection'
 import { ConversionsPanel } from './ConversionsPanel'
 import { StructureSection } from './structure/StructureSection'
 import { useLatestArtifacts, type LatestArtifact } from './useLatestArtifacts'
+import { RepositoryOverview } from './RepositoryOverview'
+import { useRepositorySummary } from './useRepositorySummary'
+import { parseRepositoryRoute, setRepositoryTabRoute } from '../../routing'
+import {
+  GROUPS,
+  TABS,
+  groupOf,
+  initialTab,
+  rememberScroll,
+  rememberTab,
+  rememberedScroll,
+  tabsOf,
+  type GroupKey,
+  type TabSlug,
+} from './repositoryTabs'
 
 interface RepositoryDetailPageProps {
   repositoryId: string
@@ -42,20 +56,6 @@ interface RepositoryDetailPageProps {
   /** Opens a SOAP call's row in the Estate tab's SOAP compatibility report. */
   onOpenEstateSoap?: (invocationId: string) => void
 }
-
-const SECTIONS = [
-  { id: 'repo-overview', label: 'Overview' },
-  { id: 'repo-surface', label: 'Surface' },
-  { id: 'repo-hierarchy', label: 'Structure' },
-  { id: 'repo-structure', label: 'Projects & fingerprint' },
-  { id: 'repo-dependencies', label: 'Dependencies' },
-  { id: 'repo-worklist', label: 'Work list' },
-  { id: 'repo-tests', label: 'Tests' },
-  { id: 'repo-impact', label: 'Impact' },
-  { id: 'repo-conversion', label: 'Conversion' },
-  { id: 'repo-executions', label: 'Executions' },
-  { id: 'repo-details', label: 'Details' },
-]
 
 function formatRelative(iso: string | null): string {
   if (!iso) return 'never'
@@ -89,8 +89,8 @@ function Provenance({ artifact, onNavigateToExecution }: { artifact: LatestArtif
   )
 }
 
-/** A repository's own page — full width, opened in place of the list (like
- * an execution), with a sticky section bar and collapsible sections. */
+/** A repository's own page — full width, opened in place of the list (like an execution). A slim header and two rows of
+ * tabs in groups; only the selected tab is shown, each at its own address (release 7; 04-FRONTEND-SPEC.md). */
 export function RepositoryDetailPage({
   repositoryId,
   refreshToken,
@@ -200,9 +200,92 @@ export function RepositoryDetailPage({
     }
   }
 
-  function jumpTo(sectionId: string) {
-    document.getElementById(sectionId)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-  }
+  // ---------- tabs (release 7): only the selected tab is shown; each has its own address ----------
+
+  const [tab, setTab] = useState<TabSlug>(() => {
+    const route = parseRepositoryRoute()
+    return initialTab(repositoryId, route?.repositoryId === repositoryId ? route.tab : null, window.location.hash)
+  })
+  // A tab's content is loaded the first time its tab is opened, and kept (hidden) after that.
+  const [visited, setVisited] = useState<ReadonlySet<TabSlug>>(() => new Set([tab]))
+  const rootRef = useRef<HTMLDivElement>(null)
+  const tabRef = useRef(tab)
+  tabRef.current = tab
+  // Each group's last tab, so choosing a group reopens it.
+  const lastInGroup = useRef<Partial<Record<GroupKey, TabSlug>>>({ [groupOf(tab)]: tab })
+
+  const scroller = useCallback((): HTMLElement | null => {
+    for (let node = rootRef.current?.parentElement ?? null; node; node = node.parentElement) {
+      const overflow = getComputedStyle(node).overflowY
+      if (overflow === 'auto' || overflow === 'scroll') return node
+    }
+    return (document.scrollingElement as HTMLElement | null) ?? null
+  }, [])
+
+  const show = useCallback(
+    (next: TabSlug, push: boolean) => {
+      const element = scroller()
+      if (element) rememberScroll(repositoryId, tabRef.current, element.scrollTop)
+      setTab(next)
+      lastInGroup.current[groupOf(next)] = next
+      setVisited((current) => (current.has(next) ? current : new Set([...current, next])))
+      rememberTab(repositoryId, next)
+      if (push) setRepositoryTabRoute(repositoryId, next, false)
+    },
+    [repositoryId, scroller],
+  )
+
+  // The address names the tab shown: a bare /repositories/<id>, or an old #repo-… link, is replaced, not added to.
+  useEffect(() => {
+    setRepositoryTabRoute(repositoryId, tabRef.current, true)
+    rememberTab(repositoryId, tabRef.current)
+  }, [repositoryId])
+
+  // Back and Forward move between tabs.
+  useEffect(() => {
+    function onPopState() {
+      const route = parseRepositoryRoute()
+      if (route?.repositoryId !== repositoryId) return
+      const next = initialTab(repositoryId, route.tab, window.location.hash)
+      if (next !== tabRef.current) show(next, false)
+      if (!route.tab) setRepositoryTabRoute(repositoryId, next, true)
+    }
+    window.addEventListener('popstate', onPopState)
+    return () => window.removeEventListener('popstate', onPopState)
+  }, [repositoryId, show])
+
+  // Each tab's scroll position: restored when the tab is shown, kept as it scrolls.
+  useLayoutEffect(() => {
+    const element = scroller()
+    if (element) element.scrollTop = rememberedScroll(repositoryId, tab)
+  }, [repositoryId, tab, scroller, loading])
+  useEffect(() => {
+    const element = scroller()
+    if (!element) return
+    let frame = 0
+    const onScroll = () => {
+      cancelAnimationFrame(frame)
+      frame = requestAnimationFrame(() => rememberScroll(repositoryId, tabRef.current, element.scrollTop))
+    }
+    element.addEventListener('scroll', onScroll, { passive: true })
+    return () => {
+      cancelAnimationFrame(frame)
+      element.removeEventListener('scroll', onScroll)
+    }
+  }, [repositoryId, scroller, loading])
+
+  const summary = useRepositorySummary(repositoryId, artifacts, refreshToken + localRefresh)
+
+  // The sticky header's height, as --repo-header, so a tab's own sticky bar (Surface's) sits just below it.
+  const headerRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const header = headerRef.current
+    const root = rootRef.current
+    if (!header || !root || typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(() => root.style.setProperty('--repo-header', `${header.offsetHeight}px`))
+    observer.observe(header)
+    return () => observer.disconnect()
+  }, [loading])
 
   const back = (
     <button type="button" onClick={onBack} className="text-sm text-violet-600 hover:underline">
@@ -236,76 +319,301 @@ export function RepositoryDetailPage({
   const occurrences = artifacts['item-occurrences']
   const fingerprintSummary = obj(fingerprint?.data.summary)
 
+  // Tab labels carry a count or a state where it helps: "Work list · 28", "Conversion · ready".
+  const badge: Partial<Record<TabSlug, string | number>> = {
+    surface: summary.requestEntryPoints?.value,
+    projects: summary.projects,
+    dependencies: summary.dependenciesNeedingChange?.value,
+    'work-list': summary.workItems?.value,
+    conversion: summary.conversion?.value,
+    executions: summary.executions,
+  }
+  const group = groupOf(tab)
+
+  const content: Record<TabSlug, () => React.ReactNode> = {
+    overview: () => (
+      <RepositoryOverview
+        repo={repo}
+        summary={summary}
+        tiles={
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-9">
+            <Tile label="Size" value={repo.size_bytes !== null ? formatBytes(repo.size_bytes) : dash} />
+            <Tile label="Files" value={repo.file_count ?? dash} />
+            <Tile label="Main language" value={topLanguage ? `${topLanguage.language} ${topLanguage.percentage}%` : dash} />
+            <Tile label="Projects" value={artifacts['solution-project-inventory'] ? num(structure.project_file_count) : dash} />
+            <Tile
+              label="Request entry points"
+              value={artifacts['entry-point-inventory'] ? num(inbound.requestEntryPointCount) : dash}
+              hint="Inbound: what can call this repository"
+            />
+            <Tile
+              label="Linux incompatible"
+              value={artifacts['outbound-invocation-inventory'] ? num(verdicts.incompatible) : dash}
+              tone={num(verdicts.incompatible) > 0 ? 'red' : undefined}
+              hint="Outbound invocations whose Linux verdict is incompatible"
+            />
+            <Tile
+              label="Version drift"
+              value={dependencies ? num(dependencySummary.versionDriftCount) : dash}
+              tone={num(dependencySummary.versionDriftCount) > 0 ? 'amber' : undefined}
+              hint="Packages referenced at more than one version across projects (dependency-assessment): consolidate before upgrading"
+            />
+            <Tile
+              label="Items found"
+              value={occurrences ? num(work.found) - num(work.possible_only_found) : dash}
+              hint="Catalog items found by item-detection, per project. Findings resting only on ambiguous evidence (possible) are not counted."
+            />
+            <Tile label="Last scanned" value={formatRelative(repo.last_scanned_at)} />
+          </div>
+        }
+        onOpenTab={(next) => show(next, true)}
+      />
+    ),
+    surface: () => (
+      <Panel
+        summary={
+          artifacts['entry-point-inventory'] || artifacts['outbound-invocation-inventory']
+            ? `${num(inbound.requestEntryPointCount)} request entry points · ${num(outbound.invocationCount) - num(outbound.unusedCount)} outbound invocations${num(verdicts.incompatible) > 0 ? ` · ${num(verdicts.incompatible)} incompatible` : ''}`
+            : 'inbound and outbound'
+        }
+        bare
+      >
+        <RepositorySurfaceSection repositoryId={repo.id} localPath={repo.local_path} refreshToken={localRefresh} onOpenEstateSoap={onOpenEstateSoap} />
+      </Panel>
+    ),
+    projects: () => (
+      <Panel
+        summary={
+          artifacts['solution-project-inventory']
+            ? `${num(structure.solution_count)} solution(s) · ${num(structure.project_file_count)} project(s)${fingerprint ? ` · ${num(fingerprintSummary.totalSignals)} signals` : ''}`
+            : undefined
+        }
+      >
+        <div className="grid gap-6 xl:grid-cols-2">
+          <div className="min-w-0">
+            <RepositoryStructureSection repositoryId={repo.id} refreshToken={localRefresh} />
+          </div>
+          <div className="min-w-0 space-y-2">
+            <h3 className="text-sm font-semibold text-neutral-900">Fingerprint</h3>
+            {fingerprint ? (
+              <>
+                <Provenance artifact={fingerprint} onNavigateToExecution={onNavigateToExecution} />
+                <FingerprintView data={fingerprint.data} localPath={repo.local_path} />
+              </>
+            ) : (
+              <p className="text-sm text-neutral-400">Application fingerprinting (application-fingerprinting) hasn't run for this repository yet.</p>
+            )}
+          </div>
+        </div>
+      </Panel>
+    ),
+    dependencies: () => (
+      <Panel
+        summary={
+          dependencies
+            ? `${num(dependencySummary.packageCount)} package references · ${num(dependencyOutcomes.no_compatible_version)} no compatible version · ${num(dependencyOutcomes.upgrade_breaking)} breaking · ${num(dependencySummary.vulnerableCount)} vulnerable · ${num(dependencySummary.versionDriftCount)} version drift`
+            : undefined
+        }
+      >
+        {dependencies ? (
+          <div className="space-y-2">
+            <Provenance artifact={dependencies} onNavigateToExecution={onNavigateToExecution} />
+            <DependenciesView data={dependencies.data} localPath={repo.local_path} />
+          </div>
+        ) : (
+          <p className="text-sm text-neutral-400">Dependency assessment (dependency-assessment) hasn't run for this repository yet.</p>
+        )}
+      </Panel>
+    ),
+    'dependency-graph': () => (
+      <Panel summary="projects, packages and assembly references, from the roots down">
+        <StructureSection repositoryId={repo.id} localPath={repo.local_path} refreshToken={localRefresh} assessment={dependencies?.data} />
+      </Panel>
+    ),
+    impact: () => (
+      <Panel>
+        <RepositoryImpactSection repositoryId={repo.id} localPath={repo.local_path} refreshToken={localRefresh} />
+      </Panel>
+    ),
+    tests: () => (
+      <Panel>
+        <RepositoryTestsSection repositoryId={repo.id} localPath={repo.local_path} refreshToken={localRefresh} />
+      </Panel>
+    ),
+    'work-list': () => (
+      <Panel
+        summary={
+          occurrences
+            ? `${num(work.found) - num(work.possible_only_found)} found · ${num(work.not_checked)} not checked${num(work.possible_occurrence_rows) > 0 ? ` · ${num(work.possible_occurrence_rows)} possible (not counted)` : ''}`
+            : undefined
+        }
+      >
+        {occurrences ? (
+          <div className="space-y-2">
+            <Provenance artifact={occurrences} onNavigateToExecution={onNavigateToExecution} />
+            <ItemOccurrencesView data={occurrences.data} localPath={repo.local_path} decisions={workListDecisions} />
+          </div>
+        ) : (
+          <p className="text-sm text-neutral-400">Item detection (item-detection) hasn't run for this repository yet.</p>
+        )}
+      </Panel>
+    ),
+    conversion: () => (
+      <Panel>
+        <div className="space-y-4">
+          <ConversionsPanel repositoryId={repo.id} refreshToken={localRefresh} />
+        </div>
+      </Panel>
+    ),
+    executions: () => (
+      <Panel summary="discovery runs of this repository, newest first">
+        <ExecutionHistory repositoryId={repo.id} refreshToken={localRefresh} onNavigateToExecution={onNavigateToExecution} />
+      </Panel>
+    ),
+    details: () => (
+      <Panel summary={repo.technical_owner ? `owner ${repo.technical_owner}` : undefined}>
+        {editing ? (
+          <EditForm
+            repo={repo}
+            onCancel={() => setEditing(false)}
+            onSaved={() => {
+              setEditing(false)
+              refreshLocal()
+              onChanged()
+            }}
+          />
+        ) : (
+          <dl className="grid grid-cols-1 gap-x-6 gap-y-3 text-sm sm:grid-cols-2 xl:grid-cols-3">
+            <Metadata label="Root folder">{repo.root_folder_name}</Metadata>
+            <Metadata label="Local path">
+              <span className="break-all font-mono text-xs">{repo.local_path}</span>
+            </Metadata>
+            <Metadata label="Clone URL">
+              {repo.clone_url ? <span className="break-all font-mono text-xs">{repo.clone_url}</span> : <span className="text-neutral-400">Not under source control</span>}
+            </Metadata>
+            <Metadata label="Detected remote">
+              {repo.detected_clone_url ? <span className="break-all font-mono text-xs">{repo.detected_clone_url}</span> : '—'}
+            </Metadata>
+            <Metadata label="Provider">{repo.provider ?? '—'}</Metadata>
+            <Metadata label="Organization">{repo.organization ?? '—'}</Metadata>
+            <Metadata label="Default branch">{repo.default_branch ?? '—'}</Metadata>
+            <Metadata label="Commit SHA">
+              {repo.has_git_history ? <span className="font-mono text-xs">{repo.ingest_commit_sha?.slice(0, 12)}</span> : 'no git history'}
+            </Metadata>
+            <Metadata label="Last commit">{repo.last_commit_date ? new Date(repo.last_commit_date).toLocaleString() : '—'}</Metadata>
+            <Metadata label="Primary languages">
+              {repo.primary_languages && repo.primary_languages.length > 0
+                ? repo.primary_languages.map((entry) => `${entry.language} (${entry.percentage}%)`).join(', ')
+                : '—'}
+            </Metadata>
+            <Metadata label="Source status">{repo.source_status ?? '—'}</Metadata>
+            <Metadata label="Technical owner">{repo.technical_owner ?? '—'}</Metadata>
+            <Metadata label="Description">{repo.description ?? '—'}</Metadata>
+            <Metadata label="Tags">{repo.tags.length ? repo.tags.join(', ') : '—'}</Metadata>
+            <Metadata label="Notes">{repo.notes ?? '—'}</Metadata>
+            <Metadata label="First registered">{repo.first_registered_at ? new Date(repo.first_registered_at).toLocaleString() : '—'}</Metadata>
+            <Metadata label="Last scanned">{repo.last_scanned_at ? new Date(repo.last_scanned_at).toLocaleString() : 'never'}</Metadata>
+            <Metadata label="Repository id">
+              <span className="break-all font-mono text-xs">{repo.id}</span>
+            </Metadata>
+          </dl>
+        )}
+      </Panel>
+    ),
+  }
+
+  const actionClass = 'rounded border border-neutral-300 px-2.5 py-1 text-xs text-neutral-700 hover:bg-neutral-50'
+
   return (
-    <div className="space-y-4 px-4 pb-10 pt-4 sm:px-6">
+    <div ref={rootRef} className="space-y-3 px-4 pb-10 pt-3 sm:px-6">
       {back}
 
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h2 className="text-xl font-semibold text-neutral-900">{repo.name}</h2>
-          <p className="break-all font-mono text-xs text-neutral-400">{repo.local_path}</p>
-          {repo.source_type === 'git_clone' && repo.clone_url && (
-            <p className="break-all text-xs text-neutral-400">
-              Cloned from <span className="font-mono">{repo.clone_url}</span>
-              {repo.default_branch && <> ({repo.default_branch})</>}; Rescan fetches and fast-forwards it first.
-            </p>
-          )}
-          <div className="mt-2 flex flex-wrap items-center gap-2">
+      {/* The slim header: name, status chips and actions, on every tab, above the tab rows. */}
+      <div ref={headerRef} className="sticky top-0 z-20 -mx-4 border-b border-neutral-200 bg-white/95 px-4 pt-2 backdrop-blur sm:-mx-6 sm:px-6">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <h2 className="truncate text-lg font-semibold text-neutral-900" title={repo.local_path}>
+              {repo.name}
+            </h2>
             <IngestStatusBadge status={repo.ingest_status} />
             <CriticalityBadge criticality={repo.criticality} />
             <CloneUrlVerificationBadge verification={repo.clone_url_verification} />
             <RetirementBadge status={repo.retirement_status} />
           </div>
+          <div className="flex flex-wrap gap-1.5">
+            {repo.deleted_at ? (
+              <button type="button" onClick={handleRestore} disabled={busy} className={actionClass}>
+                Restore
+              </button>
+            ) : (
+              <>
+                <button type="button" onClick={handleVerifyPath} disabled={busy} className={actionClass}>
+                  Verify path
+                </button>
+                <button type="button" onClick={handleRescan} disabled={busy} className={actionClass}>
+                  Rescan
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditing((value) => !value)
+                    show('details', true)
+                  }}
+                  className={actionClass}
+                >
+                  {editing ? 'Cancel edit' : 'Edit'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowDeleteConfirm(true)}
+                  disabled={busy}
+                  className="rounded border border-red-300 px-2.5 py-1 text-xs text-red-700 hover:bg-red-50"
+                >
+                  Delete
+                </button>
+              </>
+            )}
+          </div>
         </div>
-        <div className="flex flex-wrap gap-2">
-          {repo.deleted_at ? (
+
+        <nav aria-label="Tab groups" className="mt-2 flex gap-1 overflow-x-auto" role="tablist">
+          {GROUPS.map((g) => (
             <button
+              key={g.key}
               type="button"
-              onClick={handleRestore}
-              disabled={busy}
-              className="rounded border border-neutral-300 px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50"
+              role="tab"
+              aria-selected={group === g.key}
+              onClick={() => {
+                if (g.key !== group) show(g.key === 'overview' ? 'overview' : lastTabIn(g.key), true)
+              }}
+              className={`shrink-0 whitespace-nowrap border-b-2 px-3 py-1.5 text-sm font-medium ${
+                group === g.key ? 'border-violet-600 text-neutral-900' : 'border-transparent text-neutral-500 hover:text-neutral-800'
+              }`}
             >
-              Restore
+              {g.label}
             </button>
-          ) : (
-            <>
+          ))}
+        </nav>
+        {group !== 'overview' && (
+          <nav aria-label="Tabs" className="-mx-1 flex gap-1 overflow-x-auto border-t border-neutral-100 py-1.5" role="tablist">
+            {tabsOf(group).map((t) => (
               <button
+                key={t.slug}
                 type="button"
-                onClick={handleVerifyPath}
-                disabled={busy}
-                className="rounded border border-neutral-300 px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50"
+                role="tab"
+                aria-selected={tab === t.slug}
+                aria-controls={`repo-panel-${t.slug}`}
+                onClick={() => tab !== t.slug && show(t.slug, true)}
+                className={`shrink-0 whitespace-nowrap rounded px-2.5 py-1 text-xs font-medium ${
+                  tab === t.slug ? 'bg-violet-100 text-violet-800' : 'text-neutral-600 hover:bg-violet-50 hover:text-violet-700'
+                }`}
               >
-                Verify path
+                {t.label}
+                {badge[t.slug] !== undefined && <span className="text-neutral-400"> · {badge[t.slug]}</span>}
               </button>
-              <button
-                type="button"
-                onClick={handleRescan}
-                disabled={busy}
-                className="rounded border border-neutral-300 px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50"
-              >
-                Rescan
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setEditing((value) => !value)
-                  jumpTo('repo-details')
-                }}
-                className="rounded border border-neutral-300 px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50"
-              >
-                {editing ? 'Cancel edit' : 'Edit'}
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowDeleteConfirm(true)}
-                disabled={busy}
-                className="rounded border border-red-300 px-3 py-1.5 text-sm text-red-700 hover:bg-red-50"
-              >
-                Delete
-              </button>
-            </>
-          )}
-        </div>
+            ))}
+          </nav>
+        )}
       </div>
 
       {repo.deleted_at && (
@@ -317,13 +625,11 @@ export function RepositoryDetailPage({
         </p>
       )}
       {repo.ingest_status === 'scan_failed' && repo.ingest_error && (
-        <p className="whitespace-pre-wrap rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
-          {repo.ingest_error}
-        </p>
+        <p className="whitespace-pre-wrap rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{repo.ingest_error}</p>
       )}
       <LimitedList items={repo.warnings} name={(warning) => warning} noun="warnings">
         {(visible) => (
-          <div className="space-y-4">
+          <div className="space-y-2">
             {visible.map((warning) => (
               <p key={warning} className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
                 {warning}
@@ -338,240 +644,11 @@ export function RepositoryDetailPage({
         </p>
       )}
 
-      <nav
-        aria-label="Sections"
-        className="sticky top-0 z-20 -mx-4 flex gap-1 overflow-x-auto border-y border-neutral-200 bg-white/95 px-4 py-1.5 backdrop-blur sm:-mx-6 sm:px-6"
-      >
-        {SECTIONS.map((section) => (
-          <button
-            key={section.id}
-            type="button"
-            onClick={() => jumpTo(section.id)}
-            className="whitespace-nowrap rounded px-2.5 py-1 text-xs font-medium text-neutral-600 hover:bg-violet-50 hover:text-violet-700"
-          >
-            {section.label}
-          </button>
-        ))}
-      </nav>
-
-      <section id="repo-overview" className="scroll-mt-14">
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-9">
-          <Tile label="Size" value={repo.size_bytes !== null ? formatBytes(repo.size_bytes) : dash} />
-          <Tile label="Files" value={repo.file_count ?? dash} />
-          <Tile label="Main language" value={topLanguage ? `${topLanguage.language} ${topLanguage.percentage}%` : dash} />
-          <Tile label="Projects" value={artifacts['solution-project-inventory'] ? num(structure.project_file_count) : dash} />
-          <Tile
-            label="Request entry points"
-            value={artifacts['entry-point-inventory'] ? num(inbound.requestEntryPointCount) : dash}
-            hint="Inbound: what can call this repository"
-          />
-          <Tile
-            label="Linux incompatible"
-            value={artifacts['outbound-invocation-inventory'] ? num(verdicts.incompatible) : dash}
-            tone={num(verdicts.incompatible) > 0 ? 'red' : undefined}
-            hint="Outbound invocations whose Linux verdict is incompatible"
-          />
-          <Tile
-            label="Version drift"
-            value={dependencies ? num(dependencySummary.versionDriftCount) : dash}
-            tone={num(dependencySummary.versionDriftCount) > 0 ? 'amber' : undefined}
-            hint="Packages referenced at more than one version across projects (dependency-assessment): consolidate before upgrading"
-          />
-          <Tile
-            label="Items found"
-            value={occurrences ? num(work.found) - num(work.possible_only_found) : dash}
-            hint="Catalog items found by item-detection, per project. Findings resting only on ambiguous evidence (possible) are not counted."
-          />
-          <Tile label="Last scanned" value={formatRelative(repo.last_scanned_at)} />
+      {TABS.filter((t) => visited.has(t.slug)).map((t) => (
+        <div key={t.slug} id={`repo-panel-${t.slug}`} role="tabpanel" aria-label={t.label} hidden={t.slug !== tab}>
+          {content[t.slug]()}
         </div>
-      </section>
-
-      {!editing && (
-        <CollapsibleSection
-          id="repo:surface"
-          anchorId="repo-surface"
-          title="Surface"
-          summary={
-            artifacts['entry-point-inventory'] || artifacts['outbound-invocation-inventory']
-              ? `${num(inbound.requestEntryPointCount)} request entry points · ${num(outbound.invocationCount) - num(outbound.unusedCount)} outbound invocations${num(verdicts.incompatible) > 0 ? ` · ${num(verdicts.incompatible)} incompatible` : ''}`
-              : 'inbound and outbound'
-          }
-        >
-          <RepositorySurfaceSection repositoryId={repo.id} localPath={repo.local_path} refreshToken={localRefresh} onOpenEstateSoap={onOpenEstateSoap} />
-        </CollapsibleSection>
-      )}
-
-      {!editing && (
-        <CollapsibleSection
-          id="repo:hierarchy"
-          anchorId="repo-hierarchy"
-          title="Structure"
-          summary="the dependency graph: projects, packages and assembly references, from the roots down"
-        >
-          <div className="p-4">
-            <StructureSection repositoryId={repo.id} localPath={repo.local_path} refreshToken={localRefresh} assessment={dependencies?.data} />
-          </div>
-        </CollapsibleSection>
-      )}
-
-      {!editing && (
-        <CollapsibleSection
-          id="repo:structure"
-          anchorId="repo-structure"
-          title="Projects & fingerprint"
-          summary={
-            artifacts['solution-project-inventory']
-              ? `${num(structure.solution_count)} solution(s) · ${num(structure.project_file_count)} project(s)${fingerprint ? ` · ${num(fingerprintSummary.totalSignals)} signals` : ''}`
-              : undefined
-          }
-        >
-          <div className="grid gap-6 p-4 xl:grid-cols-2">
-            <div className="min-w-0">
-              <RepositoryStructureSection repositoryId={repo.id} refreshToken={localRefresh} />
-            </div>
-            <div className="min-w-0 space-y-2">
-              <h3 className="text-sm font-semibold text-neutral-900">Fingerprint</h3>
-              {fingerprint ? (
-                <>
-                  <Provenance artifact={fingerprint} onNavigateToExecution={onNavigateToExecution} />
-                  <FingerprintView data={fingerprint.data} localPath={repo.local_path} />
-                </>
-              ) : (
-                <p className="text-sm text-neutral-400">Application fingerprinting (application-fingerprinting) hasn't run for this repository yet.</p>
-              )}
-            </div>
-          </div>
-        </CollapsibleSection>
-      )}
-
-      {!editing && (
-        <CollapsibleSection
-          id="repo:dependencies"
-          anchorId="repo-dependencies"
-          title="Dependencies"
-          summary={
-            dependencies
-              ? `${num(dependencySummary.packageCount)} package references · ${num(dependencyOutcomes.no_compatible_version)} no compatible version · ${num(dependencyOutcomes.upgrade_breaking)} breaking · ${num(dependencySummary.vulnerableCount)} vulnerable · ${num(dependencySummary.versionDriftCount)} version drift`
-              : undefined
-          }
-        >
-          <div className="space-y-2 p-4">
-            {dependencies ? (
-              <>
-                <Provenance artifact={dependencies} onNavigateToExecution={onNavigateToExecution} />
-                <DependenciesView data={dependencies.data} localPath={repo.local_path} />
-              </>
-            ) : (
-              <p className="text-sm text-neutral-400">Dependency assessment (dependency-assessment) hasn't run for this repository yet.</p>
-            )}
-          </div>
-        </CollapsibleSection>
-      )}
-
-      {!editing && (
-        <CollapsibleSection
-          id="repo:worklist"
-          anchorId="repo-worklist"
-          title="Work list"
-          summary={
-            occurrences
-              ? `${num(work.found) - num(work.possible_only_found)} found · ${num(work.not_checked)} not checked${num(work.possible_occurrence_rows) > 0 ? ` · ${num(work.possible_occurrence_rows)} possible (not counted)` : ''}`
-              : undefined
-          }
-        >
-          <div className="space-y-2 p-4">
-            {occurrences ? (
-              <>
-                <Provenance artifact={occurrences} onNavigateToExecution={onNavigateToExecution} />
-                <ItemOccurrencesView data={occurrences.data} localPath={repo.local_path} decisions={workListDecisions} />
-              </>
-            ) : (
-              <p className="text-sm text-neutral-400">Item detection (item-detection) hasn't run for this repository yet.</p>
-            )}
-          </div>
-        </CollapsibleSection>
-      )}
-
-      {!editing && (
-        <CollapsibleSection id="repo:tests" anchorId="repo-tests" title="Tests">
-          <div className="p-4">
-            <RepositoryTestsSection repositoryId={repo.id} localPath={repo.local_path} refreshToken={localRefresh} />
-          </div>
-        </CollapsibleSection>
-      )}
-
-      {!editing && (
-        <CollapsibleSection id="repo:impact" anchorId="repo-impact" title="Impact">
-          <div className="p-4">
-            <RepositoryImpactSection repositoryId={repo.id} localPath={repo.local_path} refreshToken={localRefresh} />
-          </div>
-        </CollapsibleSection>
-      )}
-
-      {!editing && (
-        <CollapsibleSection id="repo:conversion" anchorId="repo-conversion" title="Conversion">
-          <div className="space-y-4 p-4">
-            <ConversionsPanel repositoryId={repo.id} refreshToken={localRefresh} />
-          </div>
-        </CollapsibleSection>
-      )}
-
-      <CollapsibleSection id="repo:executions" anchorId="repo-executions" title="Discovery execution history">
-        <div className="p-4">
-          <ExecutionHistory repositoryId={repo.id} refreshToken={localRefresh} onNavigateToExecution={onNavigateToExecution} />
-        </div>
-      </CollapsibleSection>
-
-      <CollapsibleSection id="repo:details" anchorId="repo-details" title="Details" summary={repo.technical_owner ? `owner ${repo.technical_owner}` : undefined}>
-        <div className="p-4">
-          {editing ? (
-            <EditForm
-              repo={repo}
-              onCancel={() => setEditing(false)}
-              onSaved={() => {
-                setEditing(false)
-                refreshLocal()
-                onChanged()
-              }}
-            />
-          ) : (
-            <dl className="grid grid-cols-1 gap-x-6 gap-y-3 text-sm sm:grid-cols-2 xl:grid-cols-3">
-              <Metadata label="Root folder">{repo.root_folder_name}</Metadata>
-              <Metadata label="Local path">
-                <span className="break-all font-mono text-xs">{repo.local_path}</span>
-              </Metadata>
-              <Metadata label="Clone URL">
-                {repo.clone_url ? <span className="break-all font-mono text-xs">{repo.clone_url}</span> : <span className="text-neutral-400">Not under source control</span>}
-              </Metadata>
-              <Metadata label="Detected remote">
-                {repo.detected_clone_url ? <span className="break-all font-mono text-xs">{repo.detected_clone_url}</span> : '—'}
-              </Metadata>
-              <Metadata label="Provider">{repo.provider ?? '—'}</Metadata>
-              <Metadata label="Organization">{repo.organization ?? '—'}</Metadata>
-              <Metadata label="Default branch">{repo.default_branch ?? '—'}</Metadata>
-              <Metadata label="Commit SHA">
-                {repo.has_git_history ? <span className="font-mono text-xs">{repo.ingest_commit_sha?.slice(0, 12)}</span> : 'no git history'}
-              </Metadata>
-              <Metadata label="Last commit">{repo.last_commit_date ? new Date(repo.last_commit_date).toLocaleString() : '—'}</Metadata>
-              <Metadata label="Primary languages">
-                {repo.primary_languages && repo.primary_languages.length > 0
-                  ? repo.primary_languages.map((entry) => `${entry.language} (${entry.percentage}%)`).join(', ')
-                  : '—'}
-              </Metadata>
-              <Metadata label="Source status">{repo.source_status ?? '—'}</Metadata>
-              <Metadata label="Technical owner">{repo.technical_owner ?? '—'}</Metadata>
-              <Metadata label="Description">{repo.description ?? '—'}</Metadata>
-              <Metadata label="Tags">{repo.tags.length ? repo.tags.join(', ') : '—'}</Metadata>
-              <Metadata label="Notes">{repo.notes ?? '—'}</Metadata>
-              <Metadata label="First registered">{repo.first_registered_at ? new Date(repo.first_registered_at).toLocaleString() : '—'}</Metadata>
-              <Metadata label="Last scanned">{repo.last_scanned_at ? new Date(repo.last_scanned_at).toLocaleString() : 'never'}</Metadata>
-              <Metadata label="Repository id">
-                <span className="break-all font-mono text-xs">{repo.id}</span>
-              </Metadata>
-            </dl>
-          )}
-        </div>
-      </CollapsibleSection>
+      ))}
 
       {showDeleteConfirm && (
         <HardDeleteDialog
@@ -587,6 +664,21 @@ export function RepositoryDetailPage({
         />
       )}
     </div>
+  )
+
+  /** A group's tab to open: the last one shown in it, else its first. */
+  function lastTabIn(key: GroupKey): TabSlug {
+    return lastInGroup.current[key] ?? tabsOf(key)[0].slug
+  }
+}
+
+/** One tab's content, with its one-line summary. `bare`: content that draws its own sections (Surface). */
+function Panel({ summary, bare = false, children }: { summary?: string; bare?: boolean; children: React.ReactNode }) {
+  return (
+    <section className={bare ? 'min-w-0 space-y-2' : 'min-w-0 space-y-3 rounded border border-neutral-200 bg-white p-4'}>
+      {summary && <p className="text-xs text-neutral-500">{summary}</p>}
+      {children}
+    </section>
   )
 }
 

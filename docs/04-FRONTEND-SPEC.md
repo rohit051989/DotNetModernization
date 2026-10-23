@@ -374,11 +374,53 @@ settings.
 
 Tests: `frontend/src/pages/repositories/SourceLink.test.tsx` and `backend/tests/test_editors.py`.
 
-## Structure (repository page)
+## Repository page: tabs in groups (release 7)
 
-The repository page's **Structure** section shows the repository's dependency graph, as a node-link graph (React Flow,
-laid out top to bottom by dagre) or an indented tree. The section that was "Structure & fingerprint" is now
-**Projects & fingerprint**. Its behaviour, API and libraries are specified in `37-DEPENDENCY-HIERARCHY.md` Part E. In
+The repository page shows one tab at a time, in the same browser tab (`frontend/src/pages/repositories/`:
+`RepositoryDetailPage.tsx`, `repositoryTabs.ts`). Before release 7 every section was on one long page and the bar
+only jumped down to it.
+
+- **Two rows.** The first holds the groups; the second, the selected group's tabs. Overview is on its own, with no
+  second row.
+
+  | Group | Tabs (address) |
+  |---|---|
+  | Overview | Overview (`overview`) |
+  | Discovery | Surface (`surface`), Projects & fingerprint (`projects`), Dependencies (`dependencies`), Dependency graph (`dependency-graph`), Impact (`impact`), Tests (`tests`) |
+  | Modernization | Work list (`work-list`), Conversion (`conversion`) |
+  | Activity | Executions (`executions`), Details (`details`) |
+
+  Choosing a group opens the tab last shown in it, else its first.
+- **Only the selected tab is shown.** Every other tab's content is hidden, and loaded only when its tab is first
+  opened; after that it is kept, hidden, so coming back to it does not load it again.
+- **Each tab has its own address**, `/repositories/<id>/<tab>`. A refresh stays on the tab, Back and Forward move
+  between tabs, and a link can open a repository on a tab. `/repositories/<id>` opens the repository's last tab (else
+  Overview) and the address becomes that tab's. Old links to a section (`#repo-worklist`, `#repo-hierarchy`, …, and a
+  Surface section's own anchors) open the matching tab.
+- **A slim header**: the name, the status chips and the actions (Verify path, Rescan, Edit, Delete) stay at the top
+  of every tab, with the two rows. A tab's own sticky bar (Surface's section bar) sits just below it (`--repo-header`).
+- **Overview is the summary**: the cards (size, files, main language, projects, request entry points, Linux
+  incompatible, version drift, items found, last scanned), then the key figure from each tab, each a link into it —
+  work items, request entry points, dependencies needing change (any outcome but current or unknown), SOAP calls
+  needing change (the SOAP panel's rule), the conversion's state, the latest execution (`useRepositorySummary.ts`).
+- **Tab labels carry counts** where they help: "Surface · 54" (request entry points), "Projects & fingerprint · 11",
+  "Dependencies · 66" (needing change), "Work list · 28", "Conversion · ready", "Executions · 9".
+- **Remembered**: each repository's last tab in this browser (`localStorage`, `repo-tab:<id>`), and each tab's scroll
+  position for the session (`sessionStorage`), restored when the tab is shown again.
+- **Kept inside the tabs**: the collapsible sections, the 20-item lists, the filters, and the Surface section bar.
+
+Other pages: none has the long-page pattern. Estate already shows one view at a time (its views have no address of
+their own); Catalog, Dashboard, Workflow and Workflow Administration are lists or single views.
+
+Tests: `frontend/src/pages/repositories/RepositoryDetailPage.test.tsx` covers the groups, switching tabs, loading on
+first open, the addresses, Back and Forward, the old section links, the remembered tab and scroll position, and
+Overview's links.
+
+## Dependency graph (repository page)
+
+The repository page's **Dependency graph** tab (until release 7, the "Structure" section) shows the repository's
+dependency graph, as a node-link graph (React Flow, laid out top to bottom by dagre) or an indented tree. The section
+that was "Structure & fingerprint" is now **Projects & fingerprint**. Its behaviour, API and libraries are specified in `37-DEPENDENCY-HIERARCHY.md` Part E. In
 short:
 - it opens on the roots; + and − expand and collapse, and nothing expands on a double click;
 - children load when a node is expanded, 20 at a time ("+N more");

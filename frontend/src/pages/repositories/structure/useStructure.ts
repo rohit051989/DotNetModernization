@@ -20,7 +20,7 @@ import {
 export type LoadState = { kind: 'loading' } | { kind: 'not_scanned'; message: string } | { kind: 'error'; message: string } | { kind: 'ready' }
 
 /**
- * The Structure section's state: the view (transitive packages, filter), the graph's roots, and every expanded node's
+ * The Dependency graph tab's state: the view (transitive packages, filter), the graph's roots, and every expanded node's
  * children — loaded from the backend when the node is expanded, a page at a time, never the whole graph.
  */
 export function useStructure(repositoryId: string, refreshToken: number) {
