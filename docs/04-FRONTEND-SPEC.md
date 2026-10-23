@@ -323,7 +323,7 @@ and so on — goes through one component, `frontend/src/components/LimitedList.t
 - a list of more than 20 items gets a filter box matching on the names the list shows (a project's path, a
   package's id, an item's name), so one among hundreds is found without paging. A list that already has a search of
   its own keeps it, and gets no second box;
-- a grouped summary line ("164 projects with no request entry points") counts as one item of its list; a list
+- a grouped summary line ("N projects with no request entry points") counts as one item of its list; a list
   nested inside an item is limited on its own;
 - rows of a table body that cannot be wrapped (rows sharing cells through `rowSpan`) use the same limit through
   `useLimitedList`, its controls in a row of their own.

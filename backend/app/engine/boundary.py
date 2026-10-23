@@ -13,7 +13,7 @@ place that decides; every path that hands code to an engine or provider calls
 The allowlist is `engagements.engine_allowlist`: [{provider, organisation}].
 It starts empty for every engagement, so nothing is allowed until a person
 sets it. An entry with an organisation admits that provider under that
-organisation only (for client A: GitHub Copilot under client A's organisation); an entry
+organisation only (for example, GitHub Copilot under the client's own organisation); an entry
 without one admits the provider under any organisation, which is what an LLM
 provider with no organisation concept needs.
 

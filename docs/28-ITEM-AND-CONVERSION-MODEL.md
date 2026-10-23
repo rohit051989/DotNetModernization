@@ -742,8 +742,8 @@ What the platform passes in. **Stable contract — version it if it changes.**
   "dry_run": false,
 
   "repository": {
-    "id": "…", "slug": "accounts-core-api",
-    "local_path": "D:\\repos\\accounts-core-api",
+    "id": "…", "slug": "orders-api",
+    "local_path": "D:\\repos\\orders-api",
     "branch": "modernization/ocp4"
   },
 
@@ -802,7 +802,7 @@ For `application` scope, `occurrences` is empty and the whole project is in play
 {
   "envelope_version": "1.0",
   "status": "SUCCESS",
-  "message": "Removed file sink from 16 appsettings files",
+  "message": "Removed file sink from 6 appsettings files",
 
   "occurrences_resolved": ["…", "…"],
   "occurrences_failed": [ { "occurrence_id": "…", "reason": "sink not found — already removed" } ],
@@ -814,7 +814,7 @@ For `application` scope, `occurrences` is empty and the whole project is in play
   "post_check_results":   [ { "check": "no-windows-path", "passed": true } ],
   "verification_results": [ { "check": "build", "passed": true, "duration_ms": 18400 } ],
 
-  "metrics": { "occurrences_resolved": 16, "occurrences_failed": 0, "files_touched": 16 },
+  "metrics": { "occurrences_resolved": 6, "occurrences_failed": 0, "files_touched": 6 },
   "diagnostics": [ { "level": "warning", "code": "…", "message": "…", "ref": "…" } ],
 
   "requires_human_review": false,
@@ -865,9 +865,9 @@ conversion.
 
 ## Part O — Worked examples
 
-Both drawn from the client's assessment. The test that decides scope:
+Both are patterns typical of legacy .NET estates; the repositories and counts are invented for the examples. The test that decides scope:
 
-> **Can this occur more than once in a single project?** Sixteen Serilog file sinks —
+> **Can this occur more than once in a single project?** Six Serilog file sinks —
 > yes, occurrence. One host builder — no, application.
 
 Application scope is not "bigger". It is "at most once per project, and it is a choice
@@ -875,7 +875,7 @@ about the project".
 
 ### J1 — Occurrence scope: Serilog file sink
 
-`accounts-core-api` — 18 hardcoded Windows paths across 16 `appsettings` files.
+`orders-api` — a Serilog file sink writing to a Windows path in each of its six `appsettings` files.
 
 **Catalog item** (client-agnostic, defined once):
 
@@ -940,10 +940,10 @@ approver and date.
 }
 ```
 
-`batching: all` because sixteen config files are one coherent change. Sixteen separate
-edits and sixteen builds would be slower and no safer.
+`batching: all` because six config files are one coherent change. Six separate
+edits and six builds would be slower and no safer.
 
-**ConversionContext in** (abbreviated to two of sixteen occurrences):
+**ConversionContext in** (abbreviated to two of six occurrences):
 
 ```json
 {
@@ -954,8 +954,8 @@ edits and sixteen builds would be slower and no safer.
   "scope": "occurrence",
   "dry_run": false,
 
-  "repository": { "id": "r-001", "slug": "accounts-core-api",
-                  "local_path": "D:\\repos\\accounts-core-api",
+  "repository": { "id": "r-001", "slug": "orders-api",
+                  "local_path": "D:\\repos\\orders-api",
                   "branch": "modernization/ocp4" },
 
   "project": { "id": "p-014", "name": "AccountOpenAPI",
@@ -1022,7 +1022,7 @@ edits and sixteen builds would be slower and no safer.
 
 ### J2 — Application scope: Windows Service hosting
 
-`workflow-service` — `UseWindowsService()` in `Program.cs`, flagged BLOCKER.
+`batch-worker` — `UseWindowsService()` in `Program.cs`, flagged BLOCKER.
 
 **Catalog item:**
 
@@ -1108,8 +1108,8 @@ The client selects `generic-host-deployment` — the assessment records
   "scope": "application",
   "dry_run": false,
 
-  "repository": { "id": "r-007", "slug": "workflow-service",
-                  "local_path": "D:\\repos\\workflow-service",
+  "repository": { "id": "r-007", "slug": "batch-worker",
+                  "local_path": "D:\\repos\\batch-worker",
                   "branch": "modernization/ocp4" },
 
   "project": { "id": "p-102", "name": "WorkflowService",

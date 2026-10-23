@@ -380,7 +380,7 @@ as for any new signal.
 
 ### Extractor batch 2 — signal registry 1.4.0
 
-Findings from a client assessment of .NET 8/10 APIs and workers on Windows moving to
+Patterns common in .NET 8/10 APIs and workers on Windows that move to
 OpenShift. 28 signals, 91 → 119. Scanner version 1.1.0.
 
 | Extractor | Signals |

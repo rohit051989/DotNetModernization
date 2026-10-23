@@ -259,7 +259,7 @@ conversions safe to run twice, and a crashed step's child processes terminated w
 - **Engine allowlist per engagement, enforced in code.** The platform refuses to send an engagement's
   code to any engine or LLM provider not on the engagement's allowlist — this includes the shared LLM
   provider in `32-TEST-COVERAGE-ASSESSMENT.md` Part G. For client engagements the list starts empty: nothing
-  is allowed until it is set. For client A: GitHub Copilot under client A's organisation only
+  is allowed until it is set. For example: GitHub Copilot under the client's own organisation only
 - **Every run records** the signed-in identity and organisation as the engine reports them, the model
   and the engine version. The runbook's first step checks the identity and stops if it is not the
   company account

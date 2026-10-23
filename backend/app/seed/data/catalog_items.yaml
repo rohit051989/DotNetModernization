@@ -2,7 +2,7 @@
 # Client-agnostic master catalog IP. Items migrated from the pattern catalog
 # are NOT here: app/items/pattern_migration.py moves those (Part Q).
 #
-# The first five are occurrence-scope items drawn from the client's assessment.
+# The first five are occurrence-scope items: patterns common in legacy .NET estates.
 # Each can occur many times in one project (the Part O scope test), so each
 # declares occurrence_source: which signal's evidence becomes one occurrence
 # row per file. They were authored while their signals were still planned and
@@ -29,9 +29,9 @@ items:
     category: logging
     description: >-
       A Serilog File sink configured with a Windows drive-letter or UNC path.
-      On OCP4 the path does not exist and logs belong on stdout for EFK. In the
-      client's assessment, one API repository has 18 hardcoded Windows paths
-      across 16 appsettings files. One occurrence per appsettings file, so a batching:
+      On OCP4 the path does not exist and logs belong on stdout for EFK. A
+      repository often repeats the same path across many appsettings files, one
+      per environment or host. One occurrence per appsettings file, so a batching:
       all approach can treat the set as one coherent change.
 
       Conversion ordering (docs/28 Part E): runs BEFORE hardcoded-windows-path.
@@ -668,7 +668,7 @@ items:
     description: >-
       The project calls a WCF service over NetTcp. NetTcp with Windows
       transport security has no Kerberos identity in a Linux container; it
-      is the canonical Linux blocker. Exact, from the client's own binding:
+      is the canonical Linux blocker. Exact, from the caller's own binding:
       a <client> endpoint whose binding is netTcpBinding, or a
       NetTcpBinding constructed in client code (a ClientBase<T> or
       ChannelFactory<T> file, including svcutil's generated Reference.cs).
@@ -679,7 +679,7 @@ items:
       project doing both matches both, correctly.
 
       An internal client — one calling a service inside this migration
-      (lifecycle step 11's integration edges) — follows that service's
+      (dependency-and-context-map's integration edges) — follows that service's
       wcf-service decision where the decision settles it: a REST or gRPC
       rewrite derives "Migrate to the service's new protocol". CoreWCF keeps
       WCF and SOAP, so it settles nothing here: the client still needs a

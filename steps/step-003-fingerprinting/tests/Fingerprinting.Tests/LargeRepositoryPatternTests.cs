@@ -10,12 +10,12 @@ using Xunit.Abstractions;
 namespace Fingerprinting.Tests;
 
 /// <summary>
-/// release 5: two patterns found in a client repository on the VDI, in generic form, each reproduced with
-/// synthetic code. (1) A mapping layer copying one member name between types in many classes made value resolution
-/// exponential: the real cause of outbound-invocation-inventory's timeout. (2) A request with an empty URI on a plain
+/// release 5: two shapes common in large repositories, each reproduced with synthetic code. (1) A mapping layer
+/// copying one member name between types in many classes made value resolution exponential, enough to time
+/// outbound-invocation-inventory out. (2) A request with an empty URI on a plain
 /// HttpClient left an unresolved operation without a reason, and the whole artifact was discarded.
 /// </summary>
-public sealed class ClientRepositoryPatternTests(ITestOutputHelper output)
+public sealed class LargeRepositoryPatternTests(ITestOutputHelper output)
 {
     private const string ProjectPath = "src/App/App.csproj";
 
@@ -24,11 +24,11 @@ public sealed class ClientRepositoryPatternTests(ITestOutputHelper output)
     /// <summary>
     /// A DTO and a generated entity share a member <c>Code</c>; <paramref name="n"/> - 1 service classes, one per
     /// file, copy it (<c>new Entity { Name = src.Name, Code = src.Code }</c>), and one more ends the chain from another
-    /// member. An HTTP request in another class reads <c>param.Code</c> after the client's runtime base address.
-    /// <paramref name="typedSource"/>: the copies' source is a parameter of type Dto (as in the client's code), or a
+    /// member. An HTTP request in another class reads <c>param.Code</c> after the HttpClient's runtime base address.
+    /// <paramref name="typedSource"/>: the copies' source is a parameter of type Dto (the usual shape), or a
     /// local whose type the code does not show — the case fix (d) cannot help with.
     /// </summary>
-    /// <paramref name="typedParam"/>: the request reads a parameter declared as Dto (as in the client's code), or a local
+    /// <paramref name="typedParam"/>: the request reads a parameter declared as Dto (the usual shape), or a local
     /// whose type is not written.
     public static Dictionary<string, string> Mapping(
         int n, bool typedSource, string copy = "initializer", string request = "concatenation", bool typedParam = true)
@@ -183,7 +183,7 @@ public sealed class ClientRepositoryPatternTests(ITestOutputHelper output)
     [Fact]
     public void A_project_limit_stops_one_long_resolution_and_the_step_carries_on()
     {
-        // Pattern 1, as the client's code has it, with the resolver as before release 5: many minutes. A 1 s project
+        // Pattern 1 in its usual shape, with the resolver as before release 5: many minutes. A 1 s project
         // limit stops it inside the resolver's recursion, and the other project is analysed as usual.
         var slow = ProjectSource.FromText(ProjectPath, Mapping(16, typedSource: true));
         const string otherPath = "src/Other/Other.csproj";

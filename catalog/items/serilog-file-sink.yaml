@@ -1,7 +1,7 @@
 category: logging
 deleted: false
 description: |-
-  A Serilog File sink configured with a Windows drive-letter or UNC path. On OCP4 the path does not exist and logs belong on stdout for EFK. In the client's assessment, one API repository has 18 hardcoded Windows paths across 16 appsettings files. One occurrence per appsettings file, so a batching: all approach can treat the set as one coherent change.
+  A Serilog File sink configured with a Windows drive-letter or UNC path. On OCP4 the path does not exist and logs belong on stdout for EFK. A repository often repeats the same path across many appsettings files, one per environment or host. One occurrence per appsettings file, so a batching: all approach can treat the set as one coherent change.
   Conversion ordering (docs/28 Part E): runs BEFORE hardcoded-windows-path. Removing the sink removes its path; reversed, a path about to be deleted gets externalised first and the work list carries a spurious occurrence. Becomes a depends_on entry.
 detection:
   match:

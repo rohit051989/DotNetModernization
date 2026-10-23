@@ -1243,12 +1243,12 @@ per-repository.
 **Large repositories (release 6).** Every section of the Surface tab — Inbound, Outbound, SOAP compatibility,
 Inbound operations → backend calls — is collapsible on its own, through one component
 (`frontend/src/components/CollapsibleSection.tsx`): its header or chevron folds and opens it, and a closed section's
-header still says what is in it ("Inbound — 214 projects, 12 with request entry points · 340 request entry points";
+header still says what is in it ("Inbound — N projects, M with request entry points · K request entry points";
 "SOAP compatibility — 9 calls, 2 need change"). A bar at the top of the tab links to each section shown and expands
 or collapses them all; it stays in view while the page scrolls. Each section's state is kept in the browser, per
 repository; a section listing more than 50 rows (Inbound and Outbound: projects; SOAP compatibility: call
 environments; backend calls: operations) starts collapsed the first time it is seen. Projects with no request entry
-point — lifecycle hooks only, or nothing — are one line ("187 projects with no request entry points") that opens to
+point — lifecycle hooks only, or nothing — are one line ("N projects with no request entry points") that opens to
 list them, with their lifecycle hooks shown for the whole group or per project; projects with no outbound
 invocations, and applications with no inbound operations, are grouped the same way. A SOAP call needs change when, in
 some environment, its runtime verdict is unsupported or supported with a caveat, or its platform verdict is
@@ -1297,12 +1297,12 @@ incompatible or requires change.
 
 ## Large repositories (release 5: entry-point-inventory 2.4.0, outbound-invocation-inventory 1.7.0)
 
-**Value resolution that does not grow with the code.** Found in a client repository on the VDI: a mapping layer
-copying one member between a DTO and a generated LINQ-to-SQL entity (`new Entity { Code = src.Code }`) in fifteen
+**Value resolution that does not grow with the code.** A shape common in large repositories: a mapping layer
+copying one member between a DTO and a generated LINQ-to-SQL entity (`new Entity { Code = src.Code }`) in many
 service classes, and a request reading the DTO's member after a runtime base address
 (`c.BaseAddress + "/path/" + param.Code`). Assignments were indexed by member name only, and resolving a member
 resolved every other assignment to that name, each of which read the name again: about 14 times the work per level
-of depth, over an hour at the depth limit of 8 — the real cause of the step's timeout. The result was then
+of depth, over an hour at the depth limit of 8, enough to time the step out. The result was then
 discarded, because the URL starts with a runtime value. `ValueResolver` now:
 - (a) never resolves a name that is already being resolved further up: the re-read is a copy, which adds no value
   of its own, and is left out when the assignments are weighed; each name's result is remembered per environment;

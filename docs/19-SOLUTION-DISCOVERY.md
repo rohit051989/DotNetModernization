@@ -598,4 +598,4 @@ produce a number that quietly becomes wrong at `application-fingerprinting`.
 
 ## Large repositories (release 5: solution-discovery 2.1.1)
 
-Progress per solution and per project file; each project file is parsed once, however many solutions name it (the 117 solutions of the VDI's repository share most of its 170 projects). Artifact unchanged. Every step reports progress, writes a timing profile, keeps to its time and stall limits and ends its whole process tree when stopped: `11-STEP-CONTRACT.md`, "Time limits, progress and stopping". The registration's fixed `timeout_seconds` is gone.
+Progress per solution and per project file; each project file is parsed once, however many solutions name it (a large repository can have a hundred solutions sharing most of its projects). Artifact unchanged. Every step reports progress, writes a timing profile, keeps to its time and stall limits and ends its whole process tree when stopped: `11-STEP-CONTRACT.md`, "Time limits, progress and stopping". The registration's fixed `timeout_seconds` is gone.
