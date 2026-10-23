@@ -57,6 +57,13 @@ def _engagement_data(db) -> dict:
     return {**report, **repoint}
 
 
+# Items whose wording a release corrected because it described a client's findings rather than the pattern (release 7;
+# CLAUDE.md rule 18). An existing catalog is the database's own, so a reseed would never bring the correction; these are
+# applied from the export through baseline.seed_row, like any seed: a row nobody has edited takes the new wording, and
+# an edited one is left as it is and reported as a conflict, for a person to correct.
+WORDING_CORRECTIONS = ("serilog-file-sink", "wcf-nettcp-client")
+
+
 def seed_from_export_or_database() -> dict | None:
     """Runs the export or database source and returns its report, or None
     when the factory defaults apply (the caller runs those, unchanged)."""
@@ -69,6 +76,9 @@ def seed_from_export_or_database() -> dict | None:
         files = catalog_export.read_files(export_dir())
         if source == "export":
             report["baseline"] = catalog_export.import_files(db, files)
+        else:
+            corrected = {f"{item}.yaml": files[f"{item}.yaml"] for item in WORDING_CORRECTIONS if f"{item}.yaml" in files}
+            report["corrections"] = catalog_export.import_files(db, corrected) if corrected else baseline.new_report()
         # A catalog identical to the committed export, with no export recorded (a fresh install imported it): record
         # it, so staleness reads "current", not "not in git".
         if (export_dir().resolve() == catalog_export.DEFAULT_DIR.resolve()
@@ -94,6 +104,11 @@ def print_report(report: dict) -> None:
     else:
         print("Catalog: the database's own — an export exists, so the factory defaults do not apply, and the database is "
               "authoritative over it (merge an export explicitly with python -m app.items.catalog_export import)")
+        corrections = report.get("corrections")
+        if corrections is not None:
+            print(f"  wording corrections ({', '.join(WORDING_CORRECTIONS)}): {baseline.summary(corrections)}")
+            if corrections["conflicts"]:
+                print(baseline.format_conflicts(corrections["conflicts"]))
     engagement = report["engagement"]
     print(f"  engagement data following the catalog: {engagement['decisions']} legacy decision(s) migrated, "
           f"{engagement['scope_rows']} scope row(s), {len(engagement['repointed_decisions'])} decision(s) repointed")

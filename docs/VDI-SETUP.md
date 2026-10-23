@@ -1369,8 +1369,10 @@ is added:
 - the platform folder has a `README.md` for someone who has only the client's repository, and a release can be
   delivered from our machine when the client's environment cannot reach our git ("Delivering a release from our
   machine"). `update-platform.ps1` now refuses a source folder that looks like a working repository;
-- catalog descriptions no longer cite findings from a client's code (`serilog-file-sink`, `wcf-nettcp-client`): an
-  unedited catalog takes the new wording at stage 8; one edited in the UI keeps its own;
+- catalog descriptions no longer cite findings from a client's code (`serilog-file-sink`, `wcf-nettcp-client`).
+  Stage 8 applies the corrected wording to an existing catalog: an item nobody has edited takes it; an item edited
+  in the UI keeps its edit, and stage 8 prints `CONFLICT catalog_items <item>` with both versions. Then open the item
+  in the catalog and rewrite its description in general terms yourself;
 - repositories scanned before the upgrade show no dependency graph until they are rescanned: **Rescan** each one.
 
 **What release 6 changes on a release 5 installation.** Nothing in the database changes, and no setting is
