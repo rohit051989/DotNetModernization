@@ -2,8 +2,11 @@
 
 Step registrations and job definitions are seeded from files, never
 downgrading or overwriting what this machine has (CLAUDE.md rule 10). Each
-test edits the live rows inside one rolled-back transaction to stage the
-case; nothing persists. The end-to-end proof is
+test edits the rows of this run's own schema (tests/__init__.py), seeded from
+the repository, inside one rolled-back transaction to stage the case; nothing
+persists. Before release 7 they edited the live rows, and "an unchanged
+machine is a no-op" failed whenever the live database and the repository's
+files differed, such as between editing a registration and reseeding. The end-to-end proof is
 `python -m app.seed.reproduce` (a scratch database seeded from the
 repository alone, compared with this one).
 

@@ -3,10 +3,13 @@
 Every adapter takes a StepContext and returns a StepResult over the same
 envelope, regardless of transport. Checksum verification on declared outputs
 happens HERE, once, after the concrete adapter's `_invoke` returns — so no
-adapter subclass has to reimplement it.
+adapter subclass has to reimplement it. So does the version check: the version
+a step reports for an artifact must be the version the artifact declares in
+itself (release 7; dependency-assessment once wrote 1.6.0 and reported 1.5.0).
 """
 
 import hashlib
+import json
 import re
 from abc import ABC, abstractmethod
 from pathlib import Path
@@ -36,6 +39,26 @@ def compute_checksum(uri: str) -> str:
     throughout the envelope."""
     digest = hashlib.sha256(local_path_from_uri(uri).read_bytes()).hexdigest()
     return f"sha256:{digest}"
+
+
+def declared_version(uri: str) -> str | None:
+    """The version a JSON artifact declares in itself: its top-level `artifactVersion` or `artifact_version`, or a
+    SARIF log's `version`. None for a file that is not a JSON object or declares none."""
+    path = local_path_from_uri(uri)
+    if path.suffix.lower() not in (".json", ".sarif"):
+        return None
+    try:
+        document = json.loads(path.read_text(encoding="utf-8-sig"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(document, dict):
+        return None
+    for key in ("artifactVersion", "artifact_version"):
+        if isinstance(document.get(key), str):
+            return document[key]
+    if "runs" in document and isinstance(document.get("version"), str):
+        return document["version"]
+    return None
 
 
 class StepAdapter(ABC):
@@ -69,20 +92,28 @@ class StepAdapter(ABC):
                     f"declared {output.checksum}, computed {actual}"
                 )
 
-        if not mismatches:
+        versions = []
+        for output in result.outputs:
+            written = declared_version(output.uri)
+            if written is not None and written != output.artifact_version:
+                versions.append(f"{output.artifact_type} ({output.uri}): reported {output.artifact_version}, the file declares {written}")
+
+        if not mismatches and not versions:
             return result
 
+        message = "; ".join(filter(None, [
+            "Checksum verification failed: " + "; ".join(mismatches) if mismatches else "",
+            "Artifact version mismatch: " + "; ".join(versions) if versions else "",
+        ]))
         return result.model_copy(
             update={
                 "exit_status": "FAILED",
-                "exit_message": "Checksum verification failed: " + "; ".join(mismatches),
+                "exit_message": message,
                 "outputs": [],
                 "diagnostics": [
                     *result.diagnostics,
-                    *(
-                        Diagnostic(level="error", code="CHECKSUM_MISMATCH", message=m)
-                        for m in mismatches
-                    ),
+                    *(Diagnostic(level="error", code="CHECKSUM_MISMATCH", message=m) for m in mismatches),
+                    *(Diagnostic(level="error", code="ARTIFACT_VERSION_MISMATCH", message=m) for m in versions),
                 ],
             }
         )

@@ -2,8 +2,8 @@
 and D.
 
 stdlib unittest; every test runs in one rolled-back transaction, so nothing
-persists. Needs the database migrated; the consistency test needs at least one
-repository step 4 has run for (skipped otherwise).
+persists. The tests that need a repository entry-point-inventory has run for scan the eShopOnWeb sample in this
+run's own schema first (tests.support.scanned_sample; skipped only where the sample is not on the machine).
 
 Run from backend/:  python -m unittest tests.test_entry_points -v
 """
@@ -20,6 +20,12 @@ from app.routers import surface
 
 
 class EntryPointReadTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        from tests.support import scanned_sample
+
+        scanned_sample("eShopOnWeb")
+
     def setUp(self):
         self.connection = engine.connect()
         self.outer = self.connection.begin()
@@ -38,7 +44,7 @@ class EntryPointReadTests(unittest.TestCase):
     def test_repository_step_4_has_not_run_for_is_409(self):
         scanned = self.db.query(models.EntryPointScan).first()
         if scanned is None:
-            self.skipTest("step 4 has not run for any repository")
+            self.skipTest("entry-point-inventory has not run: the eShopOnWeb sample is not on this machine")
         self.db.delete(scanned)
         self.db.flush()
         with self.assertRaises(HTTPException) as ctx:
@@ -48,7 +54,7 @@ class EntryPointReadTests(unittest.TestCase):
     def test_summary_agrees_with_the_rows(self):
         scan = self.db.query(models.EntryPointScan).first()
         if scan is None:
-            self.skipTest("step 4 has not run for any repository")
+            self.skipTest("entry-point-inventory has not run: the eShopOnWeb sample is not on this machine")
         result = surface.get_repository_entry_points(scan.repository_id, db=self.db)
 
         rows = self.db.query(models.EntryPoint).filter_by(repository_id=scan.repository_id).all()

@@ -246,7 +246,7 @@ public static class EntryPoint
                     // (Part D "Signal types") — additive over 1.1.0, so a
                     // ^1.0.0 consumes range still accepts it.
                     ArtifactType = "application-fingerprint",
-                    ArtifactVersion = "1.2.0",
+                    ArtifactVersion = ArtifactUri.DeclaredVersion(outputPath),
                     Uri = ArtifactUri.FromLocalPath(outputPath),
                     Checksum = checksum,
                     Metadata = new Dictionary<string, object?> { ["generated_at"] = generatedAt },
@@ -258,7 +258,7 @@ public static class EntryPoint
                     // re-projected into the OASIS-standard interchange
                     // format so it opens in any SARIF viewer.
                     ArtifactType = "fingerprint-sarif",
-                    ArtifactVersion = "2.1.0",
+                    ArtifactVersion = ArtifactUri.DeclaredVersion(sarifPath),
                     Uri = ArtifactUri.FromLocalPath(sarifPath),
                     Checksum = sarifChecksum,
                     Metadata = new Dictionary<string, object?> { ["generated_at"] = generatedAt },

@@ -1,4 +1,4 @@
-"""Read-only endpoints for the repository's Structure section: its dependency graph (37-DEPENDENCY-HIERARCHY.md Part
+"""Read-only endpoints for the repository's Dependency graph tab: its dependency graph (37-DEPENDENCY-HIERARCHY.md Part
 E). The dependency-hierarchy step owns every row read. The UI asks for the roots, then each node's children when it is
 expanded, a page of 20 at a time."""
 import uuid
@@ -12,7 +12,7 @@ from app.errors import ErrorResponse, error
 from app.hierarchy import service
 from app.hierarchy.schemas import ChildrenOut, HierarchyOut, NodeDetailOut, SearchOut
 
-router = APIRouter(prefix="/api/repositories/{repository_id}/hierarchy", tags=["Structure"])
+router = APIRouter(prefix="/api/repositories/{repository_id}/hierarchy", tags=["Dependency graph"])
 
 _NOT_FOUND = {"model": ErrorResponse, "description": "No repository, or no node, exists with this id."}
 _NOT_SCANNED = {"model": ErrorResponse, "description": "dependency-hierarchy has not run yet for this repository."}

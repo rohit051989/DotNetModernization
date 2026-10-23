@@ -199,7 +199,7 @@ public static class TestCoverageCli
                 new StepOutput
                 {
                     ArtifactType = ArtifactType,
-                    ArtifactVersion = ArtifactVersion,
+                    ArtifactVersion = ArtifactUri.DeclaredVersion(outputPath),
                     Uri = ArtifactUri.FromLocalPath(outputPath),
                     Checksum = checksum,
                     Metadata = new Dictionary<string, object?>

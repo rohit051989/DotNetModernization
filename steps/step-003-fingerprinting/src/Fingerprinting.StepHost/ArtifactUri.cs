@@ -28,6 +28,29 @@ public static class ArtifactUri
 
     public static string FromLocalPath(string path) => new Uri(Path.GetFullPath(path)).AbsoluteUri;
 
+    /// <summary>
+    /// The version the written artifact declares — its top-level <c>artifactVersion</c> (or <c>artifact_version</c>),
+    /// or, for a SARIF log, its <c>version</c>. A step reports this, never a second constant: the version it reports is
+    /// then the version it wrote. The engine checks the same thing (app/workflow/adapters/base.py).
+    /// </summary>
+    public static string DeclaredVersion(string path)
+    {
+        using var stream = File.OpenRead(path);
+        using var document = System.Text.Json.JsonDocument.Parse(stream);
+        var root = document.RootElement;
+        foreach (var name in new[] { "artifactVersion", "artifact_version" })
+        {
+            if (root.TryGetProperty(name, out var value) && value.GetString() is { Length: > 0 } version) return version;
+        }
+
+        if (root.TryGetProperty("runs", out _) && root.TryGetProperty("version", out var sarif) && sarif.GetString() is { Length: > 0 } sarifVersion)
+        {
+            return sarifVersion;
+        }
+
+        throw new InvalidOperationException($"{path} declares no artifact version");
+    }
+
     public static string Sha256File(string path)
     {
         using var stream = File.OpenRead(path);

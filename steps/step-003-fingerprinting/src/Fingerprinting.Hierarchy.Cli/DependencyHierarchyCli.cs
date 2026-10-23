@@ -17,7 +17,6 @@ namespace Fingerprinting.Hierarchy.Cli;
 public static class DependencyHierarchyCli
 {
     public const string ArtifactType = "dependency-hierarchy";
-    public const string ArtifactVersion = "1.0.0";
     public const string OutputFileName = "dependency-hierarchy.json";
 
     private const string InventoryType = "solution-project-inventory";
@@ -184,7 +183,7 @@ public static class DependencyHierarchyCli
                 new StepOutput
                 {
                     ArtifactType = ArtifactType,
-                    ArtifactVersion = ArtifactVersion,
+                    ArtifactVersion = ArtifactUri.DeclaredVersion(outputPath),
                     Uri = ArtifactUri.FromLocalPath(outputPath),
                     Checksum = checksum,
                     Metadata = new Dictionary<string, object?>

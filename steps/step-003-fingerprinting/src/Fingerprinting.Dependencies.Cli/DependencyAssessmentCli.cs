@@ -201,8 +201,8 @@ public static class DependencyAssessmentCli
                 new StepOutput
                 {
                     ArtifactType = ArtifactType,
-                    // The version the artifact itself carries (1.7.1): a second constant here had drifted to 1.5.0.
-                    ArtifactVersion = artifact.ArtifactVersion,
+                    // The version the written artifact declares (1.7.1): a second constant here had drifted to 1.5.0.
+                    ArtifactVersion = ArtifactUri.DeclaredVersion(outputPath),
                     Uri = ArtifactUri.FromLocalPath(outputPath),
                     Checksum = checksum,
                     // Volatile fields, kept out of the file so the checksum is

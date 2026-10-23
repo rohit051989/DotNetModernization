@@ -20,7 +20,6 @@ namespace Fingerprinting.Impact.Cli;
 public static class ImpactCli
 {
     public const string ArtifactType = "impact-analysis";
-    public const string ArtifactVersion = ImpactPipeline.ArtifactVersion;
     public const string OutputFileName = "impact-analysis.json";
 
     private static readonly (string Type, string Range)[] Inputs =
@@ -172,7 +171,7 @@ public static class ImpactCli
             [
                 new StepOutput
                 {
-                    ArtifactType = ArtifactType, ArtifactVersion = ArtifactVersion, Uri = ArtifactUri.FromLocalPath(outputPath), Checksum = checksum,
+                    ArtifactType = ArtifactType, ArtifactVersion = ArtifactUri.DeclaredVersion(outputPath), Uri = ArtifactUri.FromLocalPath(outputPath), Checksum = checksum,
                     Metadata = new Dictionary<string, object?> { ["generated_at"] = DateTimeOffset.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.ffffffZ", CultureInfo.InvariantCulture) },
                 },
             ],

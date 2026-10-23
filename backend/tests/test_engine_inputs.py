@@ -680,32 +680,36 @@ class RealRepository(unittest.TestCase):
         from app.db import SessionLocal
         from app.engine.inputs.collect import collect
 
+        from tests.support import scanned_sample
+
         db = SessionLocal()
         self.addCleanup(db.close)
         checked = 0
-        for slug in ("eshoponweb", "accountsapi-net10", "accountsapi-net8"):
-            repository = (db.query(models.Repository).filter_by(slug=slug).filter(models.Repository.deleted_at.is_(None))
-                          .order_by(models.Repository.created_at).first())
-            if repository is None or not Path(repository.local_path).is_dir():
+        for folder in ("eShopOnWeb", "AccountsApi.Net10", "AccountsApi.Net8"):
+            sample = scanned_sample(folder)                                # scanned in this run's own schema
+            if sample is None:
                 continue
+            repository = db.get(models.Repository, sample.id)
             model_ = collect(db, repository)
             files = inputs.build(model_, Path(repository.local_path))   # raises NotSelfContained on any finding
-            self.assertEqual(selfcontained.check(files, model_["vocabulary"], Path(repository.local_path)), [], slug)
+            self.assertEqual(selfcontained.check(files, model_["vocabulary"], Path(repository.local_path)), [], folder)
             checked += 1
         if not checked:
-            self.skipTest("no experiment application is registered on this machine")
+            self.skipTest("no experiment application is in sampleapps on this machine")
 
     def test_eshoponweb_inputs_hold_no_secret_value(self):
         from app import models
         from app.db import SessionLocal
         from app.engine.inputs.collect import collect
 
+        from tests.support import scanned_sample
+
         db = SessionLocal()
         self.addCleanup(db.close)
-        repository = (db.query(models.Repository).filter_by(slug="eshoponweb").filter(models.Repository.deleted_at.is_(None))
-                      .order_by(models.Repository.created_at).first())
-        if repository is None or not Path(repository.local_path).is_dir():
-            self.skipTest("eShopOnWeb is not registered on this machine")
+        sample = scanned_sample("eShopOnWeb")                              # scanned in this run's own schema
+        if sample is None:
+            self.skipTest("eShopOnWeb is not in sampleapps on this machine")
+        repository = db.get(models.Repository, sample.id)
         root = Path(repository.local_path)
         self.assertGreater(len(secrets.repository_values(root)), 0)    # there is something to leak
         files = inputs.build(collect(db, repository), root)            # raises SecretFound on any leak

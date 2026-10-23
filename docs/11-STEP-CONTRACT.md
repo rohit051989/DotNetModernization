@@ -156,6 +156,12 @@ Rules:
 
 - `exit_status` is required. Everything else optional.
 - `checksum` on outputs is required — the engine verifies it and refuses mismatches.
+- `artifact_version` on an output must be the version the artifact declares in itself — its top-level
+  `artifactVersion` or `artifact_version` (a SARIF log: `version`). The engine reads the file and fails the step on
+  a difference (`ARTIFACT_VERSION_MISMATCH`, release 7): a step reports the version it wrote, never a second constant.
+  The C# steps report what `ArtifactUri.DeclaredVersion` reads back from the file they wrote.
+  `backend/tests/test_platform_scale.py` checks every registered step that produces artifacts, in real runs: the
+  version reported, the version the file declares and the version registered are the same.
   This is how a corrupt or truncated artifact is caught at the boundary.
 - `next` is only honoured for steps declared as deciders. Ignored otherwise.
 - `job_context_updates` is shallow-merged into job context. Steps cannot delete keys

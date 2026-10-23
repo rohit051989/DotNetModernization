@@ -199,6 +199,23 @@ unrelated processes on the dev machine, so the backend binds 8001 and the
 frontend binds 5174 instead. Run the frontend with
 `npm run dev -- --port 5174 --strictPort`.
 
+### Running the tests
+
+```powershell
+cd backend; .\.venv\Scripts\Activate.ps1; python -m unittest discover -s tests -t .
+cd frontend; npm test
+```
+
+The backend tests never touch the database a running platform uses (release 7). Each run creates a schema of its own
+in the same database (`test_run_<time>_<id>`), stands it up from the repository the way a new environment is stood up
+(migrate, then `python -m app.seed`), points `RUNS_DIR` and `REPOS_DIR` at a scratch folder, and drops both at the
+end (`backend/tests/__init__.py`). A rescan, a reseed or a person working in the UI cannot make a test fail, and no
+test changes their data. A schema left by a run that was killed is dropped by a later run once it is a day old.
+Creating it needs CREATE on the database, as `python -m app.seed.reproduce` does.
+
+`tests/test_platform_scale.py` generates the synthetic 170-project repository into a scratch folder and runs both
+discovery jobs on it, with the published step programs (stage 6 of `scripts/bootstrap.ps1`); it takes a few minutes.
+
 ## 7. Verification checklist
 
 Before moving on, confirm all of these:

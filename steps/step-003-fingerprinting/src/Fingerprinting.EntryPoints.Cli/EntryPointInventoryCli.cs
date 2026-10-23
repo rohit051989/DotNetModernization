@@ -16,7 +16,6 @@ namespace Fingerprinting.EntryPoints.Cli;
 public static class EntryPointInventoryCli
 {
     public const string ArtifactType = "entry-point-inventory";
-    public const string ArtifactVersion = "2.2.0";
     public const string OutputFileName = "entry-point-inventory.json";
 
     private const string InventoryType = "solution-project-inventory";
@@ -195,7 +194,7 @@ public static class EntryPointInventoryCli
                 new StepOutput
                 {
                     ArtifactType = ArtifactType,
-                    ArtifactVersion = ArtifactVersion,
+                    ArtifactVersion = ArtifactUri.DeclaredVersion(outputPath),
                     Uri = ArtifactUri.FromLocalPath(outputPath),
                     Checksum = checksum,
                     // generated_at is kept out of the file itself so unchanged

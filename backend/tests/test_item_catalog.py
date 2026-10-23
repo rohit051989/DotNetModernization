@@ -345,12 +345,18 @@ class DecisionTests(ItemCatalogTestCase):
 
 
 class OccurrenceTableTests(ItemCatalogTestCase):
+    @classmethod
+    def setUpClass(cls):
+        from tests.support import scanned_sample
+
+        scanned_sample("eShopOnWeb")                    # discovered projects, in this run's own schema
+
     def test_file_path_only_on_found_occurrence_rows(self):
         from sqlalchemy.exc import IntegrityError
 
         project = self.db.query(models.Project).first()
         if project is None:
-            self.skipTest("no projects discovered in this database")
+            self.skipTest("no projects discovered: the eShopOnWeb sample is not on this machine")
         self.create_item("t-app", "application", {"match": {"all": [{"signal": {"name": "SVC_FILE"}}]}})
         row = models.ItemOccurrence(
             repository_id=project.repository_id, project_id=project.id, item_id="t-app", scope="application",

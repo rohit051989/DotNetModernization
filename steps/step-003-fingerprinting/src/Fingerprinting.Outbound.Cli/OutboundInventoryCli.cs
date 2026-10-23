@@ -16,7 +16,6 @@ namespace Fingerprinting.Outbound.Cli;
 public static class OutboundInventoryCli
 {
     public const string ArtifactType = "outbound-invocation-inventory";
-    public const string ArtifactVersion = "1.5.0";
     public const string OutputFileName = "outbound-invocation-inventory.json";
 
     private const string InventoryType = "solution-project-inventory";
@@ -291,7 +290,7 @@ public static class OutboundInventoryCli
                 new StepOutput
                 {
                     ArtifactType = ArtifactType,
-                    ArtifactVersion = ArtifactVersion,
+                    ArtifactVersion = ArtifactUri.DeclaredVersion(outputPath),
                     Uri = ArtifactUri.FromLocalPath(outputPath),
                     Checksum = checksum,
                     // generated_at is kept out of the file itself so unchanged
