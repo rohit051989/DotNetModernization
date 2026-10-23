@@ -1366,6 +1366,11 @@ is added:
   master, and `PLATFORM_SOURCE.json` records the release (Part 2). The first update made with an older copy of the
   script still pulls master;
 - the WCF client platform matrix is 1.2.1: wording only, no verdict changed;
+- the platform folder has a `README.md` for someone who has only the client's repository, and a release can be
+  delivered from our machine when the client's environment cannot reach our git ("Delivering a release from our
+  machine"). `update-platform.ps1` now refuses a source folder that looks like a working repository;
+- catalog descriptions no longer cite findings from a client's code (`serilog-file-sink`, `wcf-nettcp-client`): an
+  unedited catalog takes the new wording at stage 8; one edited in the UI keeps its own;
 - repositories scanned before the upgrade show no dependency graph until they are rescanned: **Rescan** each one.
 
 **What release 6 changes on a release 5 installation.** Nothing in the database changes, and no setting is
