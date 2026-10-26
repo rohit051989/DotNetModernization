@@ -519,7 +519,8 @@ def _catalog_export_summary(db: Session) -> CatalogExportSummary:
     status = catalog_export.cached_status(db)   # a cache read unless the catalog changed
     last = status["last_export"]
     return CatalogExportSummary(is_current=status["is_current"], changed=status["changed"],
-                                last_exported_at=last["exported_at"] if last else None)
+                                last_exported_at=last["exported_at"] if last else None,
+                                installation=status["installation"])
 
 
 @router.get(

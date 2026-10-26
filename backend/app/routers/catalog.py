@@ -107,16 +107,17 @@ def _serialize(obj, fields: list[str], include_timestamps: bool) -> dict:
 @router.get(
     "/export/items/status",
     response_model=item_schemas.CatalogExportStatus,
-    summary="Item catalog changes since the last export into the repository",
+    summary="Item catalog items that differ from the export files",
     operation_id="get_item_catalog_export_status",
 )
 def get_item_catalog_export_status(db: Session = Depends(get_db)):
-    """Compares the database with the last export recorded by
-    `python -m app.items.catalog_export export` into catalog/items/: which
-    items were added, edited or deleted since. Read-only. Nothing exports
-    automatically — writing into the repository from a web request would
-    couple the running server to the working tree; a person exports and
-    commits (28-ITEM Part W)."""
+    """Compares the database's items with the content of the export files in
+    catalog/items/: which items were added, edited or deleted. Read-only.
+    Nothing exports automatically — writing into the repository from a web
+    request would couple the running server to the working tree; in our
+    repository a person exports and commits. On an installation the changes
+    are local edits, exported outside the platform folder to send upstream,
+    never committed there (28-ITEM Part W)."""
     from app.items import catalog_export
 
     return catalog_export.cached_status(db)
@@ -130,7 +131,11 @@ def get_item_catalog_export_status(db: Session = Depends(get_db)):
     response_class=Response,
     responses={200: {"content": {"application/zip": {}}}},
 )
-def export_item_catalog(db: Session = Depends(get_db)):
+def export_item_catalog(
+    changed_only: bool = Query(False, description="Only the items that differ from the export files and are still in "
+                                                  "the database: on an installation, its local edits, to send upstream."),
+    db: Session = Depends(get_db),
+):
     """The item catalog — items, their resolutions, and each resolution's
     derivations — for review and history in git (app/items/catalog_export.py,
     28-ITEM Part W). Deterministic: sorted keys, resolutions by id,
@@ -141,10 +146,12 @@ def export_item_catalog(db: Session = Depends(get_db)):
     repository by `python -m app.items.catalog_export export`."""
     from app.items import catalog_export
 
+    files = catalog_export.changed_files(db) if changed_only else catalog_export.export_files(db)
+    name = "catalog-edits.zip" if changed_only else "catalog-items.zip"
     return Response(
-        content=catalog_export.zip_bytes(catalog_export.export_files(db)),
+        content=catalog_export.zip_bytes(files),
         media_type="application/zip",
-        headers={"Content-Disposition": 'attachment; filename="catalog-items.zip"'},
+        headers={"Content-Disposition": f'attachment; filename="{name}"'},
     )
 
 

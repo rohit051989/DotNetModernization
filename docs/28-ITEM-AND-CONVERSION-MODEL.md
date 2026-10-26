@@ -1556,17 +1556,34 @@ edits in the UI. To stop git silently drifting while it looks like the record:
 - **Recording.** Each export into the repository's `catalog/items/` records a
   `catalog_exports` row (migration `b4e8c1a73d50`): the time, a hash of the whole catalog,
   and a hash and deleted flag per item. An export to any other directory is not recorded.
-- **Status.** `GET /api/catalog/export/items/status` compares the database with the last
-  record. It lists each changed item as one of:
-  - `added`: not in the last export;
-  - `deleted`: soft-deleted since, or no longer in the database;
+- **Status.** `GET /api/catalog/export/items/status` compares the database's items with
+  the content of the export files in `catalog/items/`: each file parsed, against what the
+  item's file would hold. Timestamps and the export record play no part, so an item that
+  matches its file never counts as changed, however it came to match: an export, an update
+  that shipped the files, or a seed that corrected the database to the shipped wording. It
+  lists each changed item as one of:
+  - `added`: no file for it;
+  - `deleted`: soft-deleted while its file is not, or a file whose item is not in the
+    database at all;
   - `edited`: its file would differ, including a change to one of its resolutions or
     derivations, or a restore.
 
-  With no export recorded, every item is listed as not in git.
+  The record still gives the time of the last export.
+- **Installations.** A platform folder with a `PLATFORM_SOURCE.json` is an installation in
+  a client's repository, not our development repository. Its files change only through
+  updates, and a commit there would make the next update refuse. So on an installation:
+  - the status says `installation: true`, and the items that differ are local edits;
+  - nothing is ever exported into the platform folder: the export command refuses, and
+    the view never offers to export and commit;
+  - the local edits are exported outside it, to send upstream: "Download the edited items"
+    (`GET /api/catalog/export/items?changed_only=true`), or
+    `python -m app.items.catalog_export export --changed`, which writes to
+    `RUNS_DIR\catalog-edits` unless `--out` names another folder outside the platform.
 - **Master catalog view.** Beside the export link it shows "Export is current", or "N items
-  changed since the last export" with the items, their change type, and the command to
-  run.
+  differ from the exported files" with the items, their change type, and the command to
+  run and commit. On an installation: "Matches the platform's catalog files", or "N items
+  edited on this installation" with the items, the download and the command to export them
+  outside the platform folder.
 - **Dashboard.** The dashboard summary carries the same count (`catalog_export`) on a
   "Catalog export" card. It is master-catalog data, the same for every engagement.
 - **Cost.** Computing status renders every item from three bulk queries, about 0.2 s on
@@ -1575,7 +1592,9 @@ edits in the UI. To stop git silently drifting while it looks like the record:
   - **What bumps it.** A statement-level trigger on `catalog_items`, `item_resolutions`,
     `resolution_derivations` and `catalog_exports` bumps the counter on every write, from
     any process: the API, the seed or the export command. It catches ORM writes, bulk
-    updates and raw SQL alike.
+    updates and raw SQL alike. The export files' listing (name, size, modification time)
+    is part of the cache key too, so files an update brings recompute it; it decides only
+    when to recompute, never what counts as changed.
   - **Why a counter, not a sequence.** The bump is inside the writer's transaction, so the
     new version becomes visible together with the rows. Reading it before computing means
     a stale status is never cached under a current version. A sequence (`c7f2a9d41e86`,

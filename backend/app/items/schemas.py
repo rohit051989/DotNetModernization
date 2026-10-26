@@ -490,15 +490,16 @@ class CatalogExportLast(BaseModel):
 
 
 class CatalogExportStatus(BaseModel):
-    """How far the database has drifted from the last export into the
-    repository's catalog/items/. Nothing exports automatically."""
+    """Which items in the database differ from the content of the export files
+    in catalog/items/. Nothing exports automatically."""
 
-    last_export: CatalogExportLast | None = Field(description="Null: no export into the repository has been recorded.")
-    current_hash: str = Field(description="What the export would hash to now; equal to last_export.catalog_hash when current.")
-    is_current: bool
-    changed: int = Field(description="Items added, edited or deleted since the last export (every item when none is recorded).")
+    last_export: CatalogExportLast | None = Field(description="The last export recorded into the repository, for its time; null when none. Changes are measured against the files, not this record.")
+    current_hash: str = Field(description="What the export would hash to now.")
+    is_current: bool = Field(description="True when every item matches its file.")
+    changed: int = Field(description="Items whose content differs from the export files: added, edited or deleted.")
     changes: list[CatalogExportChange]
-    command: str = Field(description="The command that exports into the repository, for a person to run and commit.")
+    installation: bool = Field(description="True on an installation (PLATFORM_SOURCE.json in the platform folder): its files change only through updates, so the changes are local edits, never exported into the platform folder or committed.")
+    command: str = Field(description="Our repository: the command that exports into catalog/items, to run and commit. An installation: the command that exports the local edits to a folder outside the platform folder, to send upstream.")
 
 
 class CatalogExportSummary(BaseModel):
@@ -507,6 +508,7 @@ class CatalogExportSummary(BaseModel):
     is_current: bool
     changed: int
     last_exported_at: datetime.datetime | None
+    installation: bool = Field(description="True on an installation: the changes are local edits, to send upstream.")
 
 
 # ---------- coverage (Part H) ----------

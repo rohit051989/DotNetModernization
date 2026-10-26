@@ -10,9 +10,11 @@ Run from backend/:  python -m unittest tests.test_catalog_export -v
 
 import copy
 import shutil
+import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import yaml
 from fastapi import Response
@@ -209,14 +211,106 @@ class StalenessTests(TempExportDirCase):
         catalog_export.write(self.db, self.out)
         self.assertTrue(catalog_export.status(self.db)["is_current"])
 
-    def test_with_no_export_recorded_every_item_is_listed_as_added(self):
+    def test_with_no_files_every_item_is_listed_as_added(self):
+        status = catalog_export.status(self.db)
+        self.assertFalse(status["is_current"])
+        self.assertEqual(status["changed"], self.db.query(models.CatalogItem).count())
+        self.assertEqual(set(self.changes().values()), {"added"})
+
+    def test_items_matching_the_files_are_current_with_no_export_recorded(self):
+        catalog_export.write(self.db, self.out)
         self.db.query(models.CatalogExport).delete()
         self.db.flush()
         status = catalog_export.status(self.db)
         self.assertIsNone(status["last_export"])
-        self.assertFalse(status["is_current"])
-        self.assertEqual(status["changed"], self.db.query(models.CatalogItem).count())
-        self.assertEqual(set(self.changes().values()), {"added"})
+        self.assertEqual((status["is_current"], status["changed"]), (True, 0))
+
+    def test_an_item_the_files_already_hold_is_not_changed_whatever_the_export_record_says(self):
+        """An update ships corrected wording in the files and the seed corrects the database to match (the two
+        catalog descriptions corrected in release 7): the item matches its file, though it differs from the
+        last export recorded, so it is not changed."""
+        catalog_export.write(self.db, self.out)
+        item = self.db.get(models.CatalogItem, "t-export")
+        catalog_items.update_item("t-export", s.CatalogItemWrite(
+            name=item.name, description="Corrected wording, shipped.", scope=item.scope, category=item.category,
+            detection=item.detection, excluded_roles=item.excluded_roles, owner_team=item.owner_team,
+            status=item.status), db=self.db)
+        self.assertEqual(self.changes(), {"t-export": "edited"})
+        # The update brings the file with the same wording; nothing records an export.
+        (self.out / "t-export.yaml").write_text(catalog_export.export_files(self.db)["t-export.yaml"], encoding="utf-8")
+        self.assertEqual(self.changes(), {})
+        self.assertTrue(catalog_export.status(self.db)["is_current"])
+
+    def test_content_is_compared_not_bytes(self):
+        catalog_export.write(self.db, self.out)
+        path = self.out / "t-export.yaml"
+        path.write_bytes(path.read_bytes().replace(b"\n", b"\r\n"))      # a checkout that converted line endings
+        self.assertEqual(self.changes(), {})
+
+    def test_a_file_for_an_item_the_database_lacks_is_listed_as_deleted(self):
+        catalog_export.write(self.db, self.out)
+        (self.out / "t-export-gone.yaml").write_text("id: t-export-gone\n", encoding="utf-8")
+        self.assertEqual(self.changes()["t-export-gone"], "deleted")
+
+
+class InstallationTests(TempExportDirCase):
+    """An installation (PLATFORM_SOURCE.json in the platform folder): nothing is exported into the platform folder,
+    and local edits are exported outside it, to send upstream."""
+
+    def setUp(self):
+        super().setUp()
+        patcher = mock.patch.object(catalog_export, "installation", return_value=True)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.elsewhere = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.elsewhere, ignore_errors=True)
+
+    def edit(self):
+        catalog_export.write(self.db, self.out)        # the shipped files (the temporary folder is outside the platform)
+        item = self.db.get(models.CatalogItem, "t-export")
+        catalog_items.update_item("t-export", s.CatalogItemWrite(
+            name=item.name, description="Edited on the installation.", scope=item.scope, category=item.category,
+            detection=item.detection, excluded_roles=item.excluded_roles, owner_team=item.owner_team,
+            status=item.status), db=self.db)
+
+    def test_the_status_says_installation_and_offers_no_export_into_the_repository(self):
+        self.edit()
+        status = catalog_export.status(self.db)
+        self.assertTrue(status["installation"])
+        self.assertEqual(status["changes"], [{"item_id": "t-export", "item_name": self.db.get(models.CatalogItem, "t-export").name,
+                                              "change": "edited"}])
+        self.assertIn("--changed", status["command"])
+        self.assertIn(str(catalog_export.changed_dir()), status["command"])
+
+    def test_an_export_into_the_platform_folder_is_refused(self):
+        for inside in (catalog_export.REPO_ROOT / "catalog" / "items", catalog_export.REPO_ROOT / "backend" / "x"):
+            with self.assertRaisesRegex(ValueError, "inside the platform folder of an installation"):
+                catalog_export.write(self.db, inside)
+            with self.assertRaisesRegex(ValueError, "inside the platform folder of an installation"):
+                catalog_export.write_changed(self.db, inside)
+        self.assertFalse((catalog_export.REPO_ROOT / "backend" / "x").exists())
+
+    def test_only_the_local_edits_are_exported_outside_it(self):
+        self.edit()
+        self.assertEqual(catalog_export.write_changed(self.db, self.elsewhere), ["t-export.yaml"])
+        self.assertEqual(sorted(p.name for p in self.elsewhere.iterdir()), ["t-export.yaml"])
+        self.assertIn("Edited on the installation.", (self.elsewhere / "t-export.yaml").read_text(encoding="utf-8"))
+        self.assertEqual(sorted(catalog_export.changed_files(self.db)), ["t-export.yaml"])
+
+    def test_the_command_line_refuses_an_export_into_the_repository(self):
+        with mock.patch.object(sys, "argv", ["catalog_export", "export"]):
+            with self.assertRaises(SystemExit) as raised:
+                catalog_export.main()
+        self.assertIn("is an installation", str(raised.exception))
+        self.assertIn("--changed", str(raised.exception))
+
+
+class DevelopmentRepositoryTests(TempExportDirCase):
+    def test_our_repository_is_not_an_installation(self):
+        self.assertFalse((catalog_export.REPO_ROOT / catalog_export.SOURCE_FILE).exists())
+        status = catalog_export.status(self.db)
+        self.assertFalse(status["installation"])
+        self.assertEqual(status["command"], catalog_export.EXPORT_COMMAND)
 
 
 class StatusCacheTests(TempExportDirCase):
@@ -249,6 +343,16 @@ class StatusCacheTests(TempExportDirCase):
         catalog_export.write(self.db, self.out)
         self.assertFalse(catalog_export.status(self.db)["changes"])
         self.assertTrue(catalog_export.cached_status(self.db)["is_current"])
+
+    def test_a_file_written_by_an_update_recomputes(self):
+        catalog_export.write(self.db, self.out)
+        self.assertTrue(catalog_export.cached_status(self.db)["is_current"])
+        count = self.computed()
+        path = self.out / "t-export.yaml"
+        path.write_text(path.read_text(encoding="utf-8").replace("deleted: false", "deleted: true"), encoding="utf-8")
+        status = catalog_export.cached_status(self.db)
+        self.assertEqual(self.computed(), count + 1)
+        self.assertEqual([c["item_id"] for c in status["changes"]], ["t-export"])
 
     def test_a_bulk_update_bypassing_the_orm_still_recomputes(self):
         catalog_export.write(self.db, self.out)

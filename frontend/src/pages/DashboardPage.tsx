@@ -236,15 +236,17 @@ export function DashboardPage({ engagementId, onNavigateToRepositories, onNaviga
           {summary.catalog_export.is_current ? (
             <>
               <p className="text-2xl font-semibold text-emerald-700">Current</p>
-              <p className="text-xs text-neutral-400">git matches the catalog</p>
+              <p className="text-xs text-neutral-400">
+                {summary.catalog_export.installation ? 'matches the platform’s catalog files' : 'git matches the catalog'}
+              </p>
             </>
           ) : (
             <>
               <p className="text-2xl font-semibold text-amber-700">{summary.catalog_export.changed}</p>
               <p className="text-xs text-neutral-500">
-                {summary.catalog_export.last_exported_at
-                  ? `item${summary.catalog_export.changed === 1 ? '' : 's'} changed since the last export`
-                  : 'items not in git: no export recorded'}
+                {summary.catalog_export.installation
+                  ? `item${summary.catalog_export.changed === 1 ? '' : 's'} edited on this installation, to send upstream`
+                  : `item${summary.catalog_export.changed === 1 ? '' : 's'} differ${summary.catalog_export.changed === 1 ? 's' : ''} from the exported files`}
               </p>
               <p className="text-xs text-neutral-400">listed in the Catalog tab</p>
             </>

@@ -10,10 +10,12 @@ const CHANGE_STYLE: Record<CatalogExportChange['change'], string> = {
   deleted: 'border-red-200 bg-red-50 text-red-700',
 }
 
-/** The export link and whether git is behind the database (28-ITEM Part W).
+/** The export link and which items differ from the catalog files (28-ITEM Part W).
  * Master view only. Never exports: writing into the repository from a web
- * request would couple the server to the working tree, so a person runs the
- * export command and commits. */
+ * request would couple the server to the working tree, so in our repository a
+ * person runs the export command and commits. On an installation the items
+ * that differ are local edits: never exported into the platform folder or
+ * committed there, only downloaded or exported outside it, to send upstream. */
 export function CatalogExportPanel({ refreshToken, onSelectItem }: { refreshToken: number; onSelectItem: (itemId: string) => void }) {
   const [status, setStatus] = useState<CatalogExportStatus | null>(null)
   const [failed, setFailed] = useState(false)
@@ -50,19 +52,24 @@ export function CatalogExportPanel({ refreshToken, onSelectItem }: { refreshToke
         {!failed && !status && <p className="text-neutral-400">Checking the export…</p>}
         {status?.is_current && (
           <p className="text-emerald-700">
-            <span className="font-medium">Export is current</span>
-            {status.last_export && <span className="text-neutral-500"> · exported {new Date(status.last_export.exported_at).toLocaleString()}</span>}
+            <span className="font-medium">{status.installation ? 'Matches the platform’s catalog files' : 'Export is current'}</span>
+            {!status.installation && status.last_export && (
+              <span className="text-neutral-500"> · exported {new Date(status.last_export.exported_at).toLocaleString()}</span>
+            )}
           </p>
         )}
         {status && !status.is_current && (
           <>
             <p className="font-medium text-amber-800">
-              {status.last_export
-                ? `${status.changed} item${status.changed === 1 ? '' : 's'} changed since the last export`
-                : `No export recorded — ${status.changed} item${status.changed === 1 ? '' : 's'} not in git`}
+              {status.installation
+                ? `${status.changed} item${status.changed === 1 ? '' : 's'} edited on this installation`
+                : `${status.changed} item${status.changed === 1 ? '' : 's'} differ${status.changed === 1 ? 's' : ''} from the exported files`}
             </p>
-            {status.last_export && (
-              <p className="text-neutral-500">last exported {new Date(status.last_export.exported_at).toLocaleString()}</p>
+            {status.installation && (
+              <p className="text-neutral-500">
+                These differ from the catalog files the platform was updated with. The platform folder changes only through
+                updates, so they are not exported into it: send them upstream.
+              </p>
             )}
             <LimitedList items={status.changes} name={(c) => [c.item_id, c.item_name]} noun="changed items" className="mt-1">
               {(visible) => (
@@ -82,12 +89,24 @@ export function CatalogExportPanel({ refreshToken, onSelectItem }: { refreshToke
                 </ul>
               )}
             </LimitedList>
-            <p className="mt-1 text-neutral-500">
-              Export into the repository and commit (from <span className="font-mono">backend/</span>):
-              <code className="mt-0.5 block break-all rounded bg-neutral-100 px-1 py-0.5 font-mono text-[11px] text-neutral-800">
-                {status.command}
-              </code>
-            </p>
+            {status.installation ? (
+              <p className="mt-1 text-neutral-500">
+                <a href={apiUrl('/api/catalog/export/items?changed_only=true')} download="catalog-edits.zip" className="font-medium text-violet-700 hover:underline">
+                  Download the edited items
+                </a>{' '}
+                to send upstream, or export them to a folder outside the platform folder (from <span className="font-mono">backend/</span>):
+                <code className="mt-0.5 block break-all rounded bg-neutral-100 px-1 py-0.5 font-mono text-[11px] text-neutral-800">
+                  {status.command}
+                </code>
+              </p>
+            ) : (
+              <p className="mt-1 text-neutral-500">
+                Export into the repository and commit (from <span className="font-mono">backend/</span>):
+                <code className="mt-0.5 block break-all rounded bg-neutral-100 px-1 py-0.5 font-mono text-[11px] text-neutral-800">
+                  {status.command}
+                </code>
+              </p>
+            )}
           </>
         )}
       </div>

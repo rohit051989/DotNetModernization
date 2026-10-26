@@ -17,14 +17,25 @@ version), no timestamps. A soft-deleted row is exported with
 change. Engagement data
 (decisions, scope) is client data, not catalog content, and never exported.
 
-**Staleness.** Each export into the repository's catalog/items/ is
-recorded (catalog_exports) with a hash per item. `status` compares the
-database against the last one — which items were added, edited or deleted
-since — for the master catalog view and the dashboard, cached against a change
-sequence the database advances on every catalog write (`cached_status`), so
-a dashboard poll is a cache read. Nothing exports
-automatically: writing into the repository from a web request would couple
-the running server to the working tree, so a person exports and commits.
+**Staleness.** `status` compares the database's items with the content of
+the export files in catalog/items/ — what the files say, not when they were
+written — so an item that matches the files never counts as changed, however
+it got there (an export, an update that shipped the files, a seed that
+corrected the database). For the master catalog view and the dashboard, cached
+against a change counter the database advances on every catalog write and the
+files' own listing (`cached_status`), so a dashboard poll is a cache read.
+Each export into the repository is still recorded (catalog_exports), for the
+time it ran. Nothing exports automatically: writing into the repository from a
+web request would couple the running server to the working tree, so a person
+exports and commits.
+
+**Installations.** A platform folder with a PLATFORM_SOURCE.json is an
+installation, not our development repository (app.experiment.instrument). Its
+files change only through updates: a commit in the client's repository would
+make the next update refuse. So there, nothing exports into the platform
+folder; items edited on the installation are listed as local edits, and
+exported to a folder outside it (`--changed`, default RUNS_DIR/catalog-edits),
+to send upstream.
 
 **One-way.** The export is for review and history, not a second place to
 edit. `import` exists to bootstrap a new environment: onto an empty catalog
@@ -34,6 +45,8 @@ edited since they were seeded, and reporting a conflict on an edited row,
 never overwriting it.
 
     python -m app.items.catalog_export export [--out DIR]           # default: <repo>/catalog/items
+    python -m app.items.catalog_export export --changed [--out DIR] # only the items that differ from the files;
+                                                                    # on an installation, the only export allowed
     python -m app.items.catalog_export import [--from DIR] [--dry-run]
     python -m app.items.catalog_export roundtrip                    # export, import into a fresh database, export, compare
 """
@@ -58,6 +71,8 @@ from app.items.detection import validate_detection
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 EXPORT_COMMAND = "python -m app.items.catalog_export export"
+CHANGED_COMMAND = "python -m app.items.catalog_export export --changed"
+SOURCE_FILE = "PLATFORM_SOURCE.json"     # app.experiment.instrument.SOURCE_FILE
 DEFAULT_DIR = REPO_ROOT / "catalog" / "items"
 ZIP_PREFIX = "catalog/items/"
 IMPORTED_BY = "catalog import"
@@ -136,11 +151,41 @@ def _sha(text_: str) -> str:
     return hashlib.sha256(text_.encode("utf-8")).hexdigest()
 
 
+def installation() -> bool:
+    """True on an installation: a platform folder with a PLATFORM_SOURCE.json (written by every copy of the platform
+    into a client's repository, never present in our development repository). Its files change only through
+    updates, so nothing is ever exported into it."""
+    return (REPO_ROOT / SOURCE_FILE).is_file()
+
+
+def changed_dir() -> Path:
+    """Where an installation's local edits are exported by default: outside the platform folder, under RUNS_DIR."""
+    from app.config import settings
+
+    return settings.runs_path / "catalog-edits"
+
+
 def item_states(db: Session) -> dict[str, dict]:
-    """{item_id: {"hash", "deleted", "name"}}: the hash is of the item's
-    exported file, so it changes exactly when its file would."""
-    return {item.id: {"hash": _sha(render(document)), "deleted": item.deleted_at is not None, "name": item.name}
-            for item, document in documents(db)}
+    """{item_id: {"content", "hash", "deleted", "name"}}: the content is the item's exported file, parsed back, so
+    it compares with a file's content whatever its line endings or formatting."""
+    states = {}
+    for item, document in documents(db):
+        rendered = render(document)
+        states[item.id] = {"content": yaml.safe_load(rendered), "hash": _sha(rendered),
+                           "deleted": item.deleted_at is not None, "name": item.name}
+    return states
+
+
+def file_contents(in_dir: Path) -> dict[str, dict]:
+    """{item_id: parsed content} of every <item-id>.yaml in the export folder. A file that does not parse counts as
+    content no item can match."""
+    contents = {}
+    for path in sorted(in_dir.glob("*.yaml")) if in_dir.is_dir() else []:
+        try:
+            contents[path.stem] = yaml.safe_load(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, yaml.YAMLError):
+            contents[path.stem] = {"unreadable": str(path)}
+    return contents
 
 
 def catalog_hash(states: dict[str, dict]) -> str:
@@ -158,38 +203,45 @@ def record_export(db: Session, out_dir: Path, states: dict[str, dict]) -> models
 
 
 def status(db: Session) -> dict:
-    """How far the database has drifted from the last export into the
-    repository. Read-only — never exports. Each changed item is `added` (not
-    in the last export), `deleted` (soft-deleted since, or no longer in the
-    database) or `edited` (its file would differ; a restore is an edit)."""
+    """Which items differ from the content of the export files in catalog/items/. Read-only — never exports. Each
+    changed item is `added` (no file), `deleted` (soft-deleted, its file not; or a file with no item at all) or
+    `edited` (its file would differ; a restore is an edit). Timestamps and the export record play no part: an item
+    that matches its file is never changed. On an installation the changes are the operator's local edits, and the
+    command exports them outside the platform folder."""
     last = db.query(models.CatalogExport).order_by(models.CatalogExport.id.desc()).first()
     current = item_states(db)
-    exported = last.items if last is not None else {}
+    files = file_contents(DEFAULT_DIR)
     changes = []
     for item_id, state in sorted(current.items()):
-        before = exported.get(item_id)
-        if before is None:
+        content = files.get(item_id)
+        if content is None:
             change = "added"
-        elif state["deleted"] and not before["deleted"]:
-            change = "deleted"
-        elif state["hash"] != before["hash"]:
-            change = "edited"
-        else:
+        elif state["content"] == content:
             continue
+        elif state["deleted"] and not (isinstance(content, dict) and content.get("deleted")):
+            change = "deleted"
+        else:
+            change = "edited"
         changes.append({"item_id": item_id, "item_name": state["name"], "change": change})
-    for item_id in sorted(set(exported) - set(current)):
+    for item_id in sorted(set(files) - set(current)):
         changes.append({"item_id": item_id, "item_name": None, "change": "deleted"})
     changes.sort(key=lambda c: c["item_id"])
+    on_installation = installation()
     return {
         "last_export": None if last is None else {
             "exported_at": last.exported_at, "catalog_hash": last.catalog_hash, "item_count": last.item_count,
         },
         "current_hash": catalog_hash(current),
-        "is_current": last is not None and not changes,
+        "is_current": not changes,
         "changed": len(changes),
         "changes": changes,
-        "command": EXPORT_COMMAND,
+        "installation": on_installation,
+        "command": f'{CHANGED_COMMAND} --out "{changed_dir()}"' if on_installation else EXPORT_COMMAND,
     }
+
+
+def _inside_platform(out_dir: Path) -> bool:
+    return out_dir.resolve().is_relative_to(REPO_ROOT.resolve())
 
 
 def write(db: Session, out_dir: Path = DEFAULT_DIR) -> dict:
@@ -197,8 +249,12 @@ def write(db: Session, out_dir: Path = DEFAULT_DIR) -> dict:
     for an item that no longer exists is removed. Bytes are written as-is
     (LF line endings), so an unchanged catalog leaves every file untouched.
     An export into the repository's catalog/items/ is recorded
-    (catalog_exports), which is what staleness is measured against; an
-    export anywhere else is not. Flushes; the caller commits."""
+    (catalog_exports), for the time it ran; an export anywhere else is not.
+    On an installation, an export anywhere inside the platform folder is
+    refused (ValueError). Flushes; the caller commits."""
+    if installation() and _inside_platform(out_dir):
+        raise ValueError(f"{out_dir} is inside the platform folder of an installation, whose files change only through "
+                         f"updates. Export the items edited here to a folder outside it instead: {CHANGED_COMMAND}")
     files = export_files(db)
     out_dir.mkdir(parents=True, exist_ok=True)
     report = {"written": [], "unchanged": 0, "removed": []}
@@ -222,6 +278,26 @@ def write(db: Session, out_dir: Path = DEFAULT_DIR) -> dict:
     return report
 
 
+def changed_files(db: Session) -> dict[str, str]:
+    """{"<item-id>.yaml": text} for the items that differ from the export files and are still in the database: on
+    an installation, the operator's local edits, to send upstream."""
+    changed = {c["item_id"] for c in status(db)["changes"] if c["item_name"] is not None}
+    return {name: text_ for name, text_ in export_files(db).items() if name[: -len(".yaml")] in changed}
+
+
+def write_changed(db: Session, out_dir: Path) -> list[str]:
+    """Writes only the changed items' files into `out_dir`, outside the platform folder on an installation
+    (ValueError otherwise). Removes nothing, records nothing. The names written."""
+    if installation() and _inside_platform(out_dir):
+        raise ValueError(f"{out_dir} is inside the platform folder of an installation, whose files change only "
+                         f"through updates. Choose a folder outside it.")
+    files = changed_files(db)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    for name, content in files.items():
+        (out_dir / name).write_bytes(content.encode("utf-8"))
+    return sorted(files)
+
+
 def zip_bytes(files: dict[str, str]) -> bytes:
     """The export as a zip with fixed timestamps and order: the same catalog
     gives the same bytes."""
@@ -237,14 +313,16 @@ def zip_bytes(files: dict[str, str]) -> bytes:
 
 # ---------- cached status ----------
 
-# The status is a function of the catalog tables and catalog_exports only,
-# and they change only when a person edits the catalog or runs the export.
-# catalog_change_counter is bumped by a trigger on every statement that
+# The status is a function of the catalog tables and the export files. The
+# tables change when a person edits the catalog, a seed runs or the export
+# runs: catalog_change_counter is bumped by a trigger on every statement that
 # writes any of them, from any process (migration d3b8e5f07a29), inside the
 # writer's transaction — so the new version becomes visible together with
-# the rows it describes. A poll reads one number and recomputes only when it
-# moved. Per server process; sync endpoints run on a thread pool, hence the
-# lock.
+# the rows it describes. The files change when an export or an update writes
+# them: their listing (name, size, modification time) is part of the key. That
+# listing only decides when to recompute; the status itself compares content.
+# A poll reads one number and lists one folder. Per server process; sync
+# endpoints run on a thread pool, hence the lock.
 _cache_lock = threading.Lock()
 _cache: dict = {"version": None, "status": None, "computed": 0}
 
@@ -255,12 +333,19 @@ def catalog_version(db: Session) -> int:
     return int(db.execute(text("SELECT version FROM catalog_change_counter WHERE id = 1")).scalar_one())
 
 
+def _files_listing(in_dir: Path) -> tuple:
+    try:
+        return tuple((path.name, path.stat().st_size, path.stat().st_mtime_ns) for path in sorted(in_dir.glob("*.yaml")))
+    except OSError:
+        return ()
+
+
 def cached_status(db: Session) -> dict:
-    """`status`, recomputed only when a catalog row was written or an export
-    ran since the last computation. The version is read before computing: a
+    """`status`, recomputed only when a catalog row was written, or an export
+    file written, since the last computation. The version is read before computing: a
     write committed during the computation moves the version, so the next
     poll recomputes; a stale status is never stored under a current version."""
-    version = catalog_version(db)
+    version = (catalog_version(db), _files_listing(DEFAULT_DIR))
     with _cache_lock:
         if _cache["version"] == version and _cache["status"] is not None:
             return _cache["status"]
@@ -395,7 +480,11 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Export the item catalog for review in git; import only to bootstrap.")
     commands = parser.add_subparsers(dest="command", required=True)
     export = commands.add_parser("export", help="Write catalog/items/<item-id>.yaml")
-    export.add_argument("--out", type=Path, default=DEFAULT_DIR)
+    export.add_argument("--out", type=Path, default=None,
+                        help="Default: catalog/items in the repository; with --changed, RUNS_DIR/catalog-edits.")
+    export.add_argument("--changed", action="store_true",
+                        help="Only the items that differ from the files in catalog/items, to send upstream. On an "
+                             "installation, the only export allowed, and only outside the platform folder.")
     imported = commands.add_parser("import", help="Import an export; never overwrites an edited row")
     imported.add_argument("--from", dest="source", type=Path, default=DEFAULT_DIR)
     imported.add_argument("--dry-run", action="store_true", help="Report what would change and write nothing.")
@@ -405,8 +494,24 @@ def main() -> None:
     if args.command == "roundtrip":
         sys.exit(0 if roundtrip() else 1)
     with SessionLocal() as db:
+        if args.command == "export" and (args.changed or installation()):
+            if not args.changed:
+                raise SystemExit("This platform folder is an installation (it has a PLATFORM_SOURCE.json): its files "
+                                 "change only through updates, so nothing is exported into it, and nothing is "
+                                 "committed. To send the items edited here upstream, export them outside it:\n  "
+                                 f'{CHANGED_COMMAND} --out "{changed_dir()}"')
+            out = args.out or changed_dir()
+            try:
+                names = write_changed(db, out)
+            except ValueError as exc:
+                raise SystemExit(str(exc)) from exc
+            print(f"Exported {len(names)} item(s) that differ from catalog/items to {out}" +
+                  (": send them upstream." if names else ": none differ."))
+            for name in names:
+                print(f"  {name}")
+            return
         if args.command == "export":
-            report = write(db, args.out)
+            report = write(db, args.out or DEFAULT_DIR)
             db.commit()
             print(f"Exported to {args.out}: {len(report['written'])} written, {report['unchanged']} unchanged, "
                   f"{len(report['removed'])} removed" + ("; recorded as the current export" if report["recorded"] else

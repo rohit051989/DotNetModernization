@@ -98,7 +98,7 @@ export interface DashboardSummary {
   capabilities: DashboardCapabilities
   recent_executions: DashboardRecentExecution[]
   /** Master catalog: items changed since the last export into the repository's catalog/items/. */
-  catalog_export: { is_current: boolean; changed: number; last_exported_at: string | null }
+  catalog_export: { is_current: boolean; changed: number; last_exported_at: string | null; installation: boolean }
 }
 
 export interface DashboardStepBrief {

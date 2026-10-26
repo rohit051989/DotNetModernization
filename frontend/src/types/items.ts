@@ -402,14 +402,19 @@ export interface CatalogExportChange {
   change: 'added' | 'edited' | 'deleted'
 }
 
-/** How far the database has drifted from the last export into the
- * repository's catalog/items/. Nothing exports automatically. */
+/** Which items in the database differ from the content of the export files
+ * in catalog/items/. Nothing exports automatically. */
 export interface CatalogExportStatus {
+  /** The last export recorded into the repository, for its time. Changes are measured against the files. */
   last_export: { exported_at: string; catalog_hash: string; item_count: number } | null
   current_hash: string
   is_current: boolean
   changed: number
   changes: CatalogExportChange[]
-  /** The command a person runs to export into the repository, then commits. */
+  /** An installation (PLATFORM_SOURCE.json in the platform folder): its files change only through updates, so the
+   * changes are local edits, never exported into the platform folder or committed. */
+  installation: boolean
+  /** Our repository: export into catalog/items, then commit. An installation: export the local edits outside the
+   * platform folder, to send upstream. */
   command: string
 }
