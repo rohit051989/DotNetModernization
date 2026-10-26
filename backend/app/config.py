@@ -80,6 +80,11 @@ class Settings(BaseSettings):
     # itself always runs in backend/.venv. Unset: python on PATH.
     python: str = ""
 
+    # File links in Visual Studio (app.editors, 04-FRONTEND-SPEC.md "File links"). Both optional. VISUAL_STUDIO=off
+    # removes the option; VISUAL_STUDIO_PATH names one devenv.exe to use, in place of what vswhere finds.
+    visual_studio: str = ""
+    visual_studio_path: str = ""
+
     # The single machine this platform runs on (CLAUDE.md's operating model).
     # A relative `command` or `cwd` in a process-adapter step's adapter_config
     # is resolved against this, never against the backend process's own

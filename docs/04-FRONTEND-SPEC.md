@@ -349,18 +349,37 @@ Every link to a file in a repository (a handler, a call site, a package referenc
 component, `frontend/src/pages/repositories/SourceLink.tsx`. Clicking it does what the person chose; ▾ beside it
 opens a menu with every other way.
 
-Each person chooses an editor for file links: **VS Code**, **Visual Studio** or **Copy only**. The choice is
-remembered in the browser (`localStorage`, key `file-links:editor`), changed from the menu beside any file link,
-and every link on the page follows it. Only editors found on the machine the platform runs on are offered
-(`GET /api/editors`): VS Code when `code` is on PATH, Visual Studio when vswhere finds an installation. Copying is
-always offered. Until a person chooses, links use the first editor found, else copy. A remembered editor that is no
-longer installed falls back the same way.
+Each person chooses an editor for file links: **VS Code**, one of the **Visual Studio** installations, or **Copy
+only**. The choice is remembered in the browser (`localStorage`, key `file-links:editor`: `vscode`,
+`visual_studio:<installation>` or `copy`), changed from the menu beside any file link, and every link on the page
+follows it. Only editors found on the machine the platform runs on are offered (`GET /api/editors`), VS Code first,
+then each Visual Studio installation by its full name, newest first ("Visual Studio Enterprise 2026", "Visual
+Studio Enterprise 2022"). Copying is always offered. Until a person chooses, links use the first editor found, else
+copy. A remembered Visual Studio that is no longer installed, or the plain `visual_studio` remembered before
+installations were told apart, becomes the newest Visual Studio; any other remembered editor that is gone falls back
+to the first.
+
+**Which Visual Studio** (`app/editors.py`). VS Code is offered when `code` is on PATH. Visual Studio: every
+installation `vswhere -all -prerelease -products *` lists that is an edition — product id
+`Microsoft.VisualStudio.Product.Community`, `.Professional` or `.Enterprise` — that vswhere also lists with
+`-requires Microsoft.VisualStudio.Component.CoreEditor`, whose program (`productPath`) is `devenv.exe`, from version
+17 (2022) on with no upper bound, complete and launchable. Everything else is refused, whatever its shell: SQL Server
+Management Studio 22 is built on the Visual Studio 2026 shell, installed through the Visual Studio Installer, and
+listed by vswhere, and on one machine used to be launched in place of Visual Studio 2026. Two settings, both
+optional: `VISUAL_STUDIO_PATH` names one `devenv.exe` in place of detection (its name and version from vswhere when
+it lists it, else the file's version), and `VISUAL_STUDIO=off` offers none. `python -m app.editors` prints what
+detection finds — each installation with its name, version, program, and accepted or why not — and opens nothing
+(`VDI-SETUP.md` "Checking which Visual Studio is used").
 
 - **VS Code** opens through its `vscode://file/<path>:<line>` link, at the file and line. The browser opens it.
-- **Visual Studio** cannot be opened by a browser, so the backend opens it (`POST /api/editors/visual-studio/open`):
-  it runs on the same machine, in the person's session (CLAUDE.md "Operating model"). It hands the file to the
-  Visual Studio already running, through Visual Studio's automation object (DTE), and moves the caret to the line.
-  With none running, it starts one (`devenv /Edit`) and moves to the line once it is ready, up to 90 seconds. A
+- **Visual Studio** cannot be opened by a browser, so the backend opens it (`POST /api/editors/visual-studio/open`,
+  with the chosen `installation`; the newest when omitted): it runs on the same machine, in the person's session
+  (CLAUDE.md "Operating model"). It hands the file to a running instance of that installation, through the
+  installation's own versioned automation object (DTE), and moves the caret to the line. The instance is found in the
+  running object table under its versioned name (`!VisualStudio.DTE.18.0:<process id>` for 2026, `.17.0` for 2022)
+  and used only when its program is that installation's `devenv.exe`. A version-independent registration, which
+  another product such as SSMS may own, is never read. With none running, it starts that `devenv.exe /Edit` and
+  moves to the line once it is ready, up to 90 seconds. A
   toast gives the answer. When the line could not be set (an instance that never became ready, or one running as
   administrator, which a backend that is not cannot reach), the file is still open, and the toast says plainly that
   it is not at the line: "It could not be moved to line N: go there with Ctrl+G."

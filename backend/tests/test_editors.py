@@ -4,6 +4,7 @@
 Uses stdlib unittest, same rationale as test_repository_ingest.py.
 """
 
+import json
 import tempfile
 from datetime import datetime, timezone
 import unittest
@@ -119,6 +120,160 @@ class OpenInVisualStudioTests(unittest.TestCase):
     def test_the_automation_object_name_follows_the_major_version(self):
         self.assertEqual(editors.VisualStudio("d", "17.14.37", "n").prog_id, "VisualStudio.DTE.17.0")
         self.assertEqual(editors.VisualStudio("d", "18.0.1", "n").prog_id, "VisualStudio.DTE.18.0")
+
+
+class DetectionTests(unittest.TestCase):
+    """Which installations vswhere lists are offered, for every combination people have: Visual Studio 2022, 2026 or
+    both, with or without SQL Server Management Studio 22 (built on the Visual Studio 2026 shell, installed through
+    the Visual Studio Installer), Build Tools, and the two settings. vswhere's answers are given; nothing is started."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        base = Path(self.tmp.name)
+        self.file = base / "repo" / "Service.cs"
+        self.file.parent.mkdir()
+        self.file.write_text("class Service {}\n", encoding="utf-8")
+
+        def program(*parts):
+            path = base.joinpath(*parts)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("", encoding="utf-8")
+            return str(path)
+
+        self.vs2022 = {"instanceId": "vs2022", "productId": "Microsoft.VisualStudio.Product.Enterprise",
+                       "displayName": "Visual Studio Enterprise 2022", "installationVersion": "17.14.37516.0",
+                       "productPath": program("2022", "Enterprise", "Common7", "IDE", "devenv.exe"), "isComplete": True}
+        self.vs2026 = {"instanceId": "vs2026", "productId": "Microsoft.VisualStudio.Product.Enterprise",
+                       "displayName": "Visual Studio Enterprise 2026", "installationVersion": "18.0.11205.157",
+                       "productPath": program("18", "Enterprise", "Common7", "IDE", "devenv.exe"), "isComplete": True}
+        # SSMS 22 is installed through the Visual Studio Installer, on the 2026 shell, and has the core editor.
+        self.ssms22 = {"instanceId": "ssms22", "productId": "Microsoft.SqlServer.ManagementStudio",
+                       "displayName": "SQL Server Management Studio 22", "installationVersion": "22.0.11205.157",
+                       "productPath": program("SSMS 22", "Common7", "IDE", "Ssms.exe"), "isComplete": True}
+        self.build_tools = {"instanceId": "bt2022", "productId": "Microsoft.VisualStudio.Product.BuildTools",
+                            "displayName": "Visual Studio Build Tools 2022", "installationVersion": "17.14.37516.0",
+                            "productPath": "", "isComplete": True}
+        self.core_editor = {"vs2022", "vs2026", "ssms22"}
+        self.entries = []
+        for patcher in (mock.patch.object(editors, "_vswhere", side_effect=self.vswhere),
+                        mock.patch.object(editors, "VSWHERE", mock.Mock(is_file=mock.Mock(return_value=True))),
+                        mock.patch.object(editors.shutil, "which", return_value=None),
+                        mock.patch.object(editors.settings, "visual_studio", ""),
+                        mock.patch.object(editors.settings, "visual_studio_path", ""),
+                        mock.patch.object(editors, "allowed_roots", return_value=[base / "repo"])):
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        editors._installations.cache_clear()
+        self.addCleanup(editors._installations.cache_clear)
+
+    def vswhere(self, *arguments):
+        if "-requires" in arguments:
+            return [e for e in self.entries if e["instanceId"] in self.core_editor]
+        return list(self.entries)
+
+    def offered(self, *entries):
+        self.entries = list(entries)
+        editors._installations.cache_clear()
+        return [(e["label"], e["installation"]) for e in editors.available()]
+
+    def test_2022_only(self):
+        self.assertEqual(self.offered(self.vs2022), [("Visual Studio Enterprise 2022", "vs2022")])
+
+    def test_2026_only(self):
+        self.assertEqual(self.offered(self.vs2026), [("Visual Studio Enterprise 2026", "vs2026")])
+
+    def test_both_are_offered_by_full_name_newest_first(self):
+        self.assertEqual(self.offered(self.vs2022, self.vs2026),
+                         [("Visual Studio Enterprise 2026", "vs2026"), ("Visual Studio Enterprise 2022", "vs2022")])
+        self.assertEqual(editors.visual_studio().id, "vs2026")
+        self.assertEqual(editors.visual_studio("vs2022").devenv, self.vs2022["productPath"])
+
+    def test_a_later_version_is_accepted_with_no_upper_bound(self):
+        later = {**self.vs2026, "instanceId": "vs2028", "displayName": "Visual Studio Enterprise 2028",
+                 "installationVersion": "19.0.1"}
+        self.core_editor.add("vs2028")
+        self.assertEqual(self.offered(self.vs2026, later)[0], ("Visual Studio Enterprise 2028", "vs2028"))
+        self.assertEqual(editors.visual_studio().prog_id, "VisualStudio.DTE.19.0")
+
+    def test_2026_with_ssms_22_offers_visual_studio_only(self):
+        self.assertEqual(self.offered(self.ssms22, self.vs2026), [("Visual Studio Enterprise 2026", "vs2026")])
+        refused = [f for f in editors.found_installations() if not f.accepted]
+        self.assertEqual([(f.id, f.reason) for f in refused],
+                         [("ssms22", "SQL Server Management Studio, not Visual Studio (it is built on the Visual Studio shell)")])
+
+    def test_2026_with_ssms_22_opens_visual_studio_2026_at_the_line(self):
+        """The case seen on an installation: SSMS 22 is the newest product vswhere lists, and used to be launched.
+        Now Visual Studio 2026 is: its own devenv.exe, through its own versioned automation object."""
+        self.offered(self.ssms22, self.vs2026)
+        calls = []
+
+        def helper_run(command, timeout):
+            calls.append(command)
+            state = "not_running" if len(calls) == 1 else "at_line"
+            return mock.Mock(stdout=json.dumps({"state": state, "reason": ""}), stderr="", stopped_why=None)
+
+        with mock.patch.object(editors.processes, "run", side_effect=helper_run), \
+                mock.patch.object(editors.subprocess, "Popen") as popen:
+            answer = editors.open_in_visual_studio(None, str(self.file), 42)
+        self.assertEqual((answer["opened"], answer["at_line"]), (True, True))
+        self.assertEqual(answer["message"], "Opened Service.cs at line 42 in Visual Studio Enterprise 2026.")
+        self.assertEqual(popen.call_args.args[0], [self.vs2026["productPath"], "/Edit", str(self.file.resolve())])
+        for command in calls:
+            self.assertEqual(command[command.index("-ProgId") + 1], "VisualStudio.DTE.18.0")
+            self.assertEqual(command[command.index("-Devenv") + 1], self.vs2026["productPath"])
+            self.assertEqual(command[command.index("-Line") + 1], "42")
+        self.assertNotIn("Ssms", " ".join(" ".join(c) for c in calls))
+
+    def test_ssms_alone_is_not_offered(self):
+        self.assertEqual(self.offered(self.ssms22), [])
+        with self.assertRaises(editors.EditorNotAvailable):
+            editors.open_in_visual_studio(None, str(self.file), 1)
+
+    def test_build_tools_alone_are_not_offered(self):
+        self.assertEqual(self.offered(self.build_tools), [])
+        self.assertEqual([f.reason for f in editors.found_installations()], ["Build Tools: no editor"])
+
+    def test_an_edition_without_the_core_editor_or_devenv_is_not_offered(self):
+        self.core_editor.discard("vs2022")
+        self.assertEqual(self.offered(self.vs2022), [])
+        self.assertIn("core editor", editors.found_installations()[0].reason)
+        self.core_editor.add("vs2022")
+        other = {**self.vs2022, "productPath": str(Path(self.vs2022["productPath"]).with_name("other.exe"))}
+        self.assertEqual(self.offered(other), [])
+
+    def test_visual_studio_2019_is_not_offered(self):
+        old = {**self.vs2022, "instanceId": "vs2019", "installationVersion": "16.11.5", "displayName": "Visual Studio 2019"}
+        self.core_editor.add("vs2019")
+        self.assertEqual(self.offered(old), [])
+
+    def test_visual_studio_off_removes_the_option(self):
+        with mock.patch.object(editors.settings, "visual_studio", "off"):
+            self.assertEqual(self.offered(self.vs2022, self.vs2026), [])
+            self.assertIn("none (VISUAL_STUDIO=off)", editors.report())
+
+    def test_visual_studio_path_overrides_detection(self):
+        with mock.patch.object(editors.settings, "visual_studio_path", self.vs2022["productPath"]):
+            self.assertEqual(self.offered(self.vs2022, self.vs2026, self.ssms22),
+                             [("Visual Studio Enterprise 2022", editors.OVERRIDE_ID)])
+            self.assertEqual(editors.visual_studio().prog_id, "VisualStudio.DTE.17.0")
+
+    def test_visual_studio_path_that_is_not_devenv_or_missing_offers_nothing(self):
+        for path in (self.ssms22["productPath"], str(Path(self.tmp.name) / "missing" / "devenv.exe")):
+            with mock.patch.object(editors.settings, "visual_studio_path", path):
+                self.assertEqual(self.offered(self.vs2026), [])
+                self.assertIn("VISUAL_STUDIO_PATH", editors.report())
+
+    def test_the_report_lists_each_installation_accepted_or_why_not(self):
+        self.entries = [self.vs2022, self.vs2026, self.ssms22, self.build_tools]
+        text = editors.report()
+        self.assertIn("Installations vswhere lists (4):", text)
+        self.assertIn("ACCEPTED  Visual Studio Enterprise 2026  18.0.11205.157", text)
+        self.assertIn("ACCEPTED  Visual Studio Enterprise 2022  17.14.37516.0", text)
+        self.assertIn("REFUSED   SQL Server Management Studio 22", text)
+        self.assertIn("why: Build Tools: no editor", text)
+        self.assertIn("Offered in the UI, newest first (2):", text)
+        self.assertIn("(automation VisualStudio.DTE.18.0)", text)
 
 
 class AllowedRootsTests(unittest.TestCase):

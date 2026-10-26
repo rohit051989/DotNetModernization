@@ -72,7 +72,7 @@ Install these first. None needs administrator rights if installed per user ("Acc
 | **npm** | **7.0.0 or later** | Every Node.js above ships a newer one |
 | **.NET SDK** | **any .NET 10 SDK, 10.0.100 or later** (tested: 10.0.203 and 10.0.302) | Any feature band (1xx, 2xx, 3xx). The .NET 9 SDK alone is not enough |
 | **git** | **2.17.0 or later** (tested: 2.55.0) | |
-| Visual Studio with GitHub Copilot | the client's standard | Only for running a conversion ("Registering a client repository"); the platform does not need it. When installed, file links in the UI can open in it, at the line (`04-FRONTEND-SPEC.md` "File links") |
+| Visual Studio with GitHub Copilot | the client's standard | Only for running a conversion ("Registering a client repository"); the platform does not need it. When installed (2022 or later, Community, Professional or Enterprise), file links in the UI can open in it, at the line, each installation by its own name (`04-FRONTEND-SPEC.md` "File links"). SQL Server Management Studio and Build Tools are never used, though the Visual Studio Installer lists them |
 | VS Code | any | Optional. When `code` is on PATH, file links in the UI can open in it, at the line. Without either editor, file links copy the path and line |
 
 #### Access needed
@@ -420,6 +420,8 @@ notepad C:\MP\client\modernization-platform\backend\.env
 | `COMPARE_PUBLIC_NUGET_FEED` | Whether dependency assessment also asks nuget.org which versions exist publicly. `false` where nuget.org is unreachable | `false` | no |
 | `PYTHON` | The Python bootstrap and preflight use, as a full path. Empty: `python` on `PATH`. (The backend itself always runs in `backend\.venv`, which bootstrap builds with this Python) | `C:\MP\tools\python314\python.exe` | no |
 | `DOTNET_ROOT` | **Only when .NET is installed per user** ("Account settings"): the folder it was installed into. The platform puts it first on `PATH` and sets `DOTNET_ROOT` for every process it starts. **Leave it empty** when the client installed .NET machine-wide | `C:\MP\tools\dotnet` | no |
+| `VISUAL_STUDIO` | Optional. `off` removes "Open in Visual Studio" from file links. Empty: every Visual Studio 2022 or later edition found is offered ("Troubleshooting", "Checking which Visual Studio is used") | `off` | no |
+| `VISUAL_STUDIO_PATH` | Optional. The `devenv.exe` of one Visual Studio installation, used in place of what detection finds: for a machine where detection picks the wrong one, or an installation the Visual Studio Installer does not list | `C:\Program Files\Microsoft Visual Studio\18\Enterprise\Common7\IDE\devenv.exe` | no |
 
 Every key added later is optional and has a default, so an upgrade never requires editing this file ("Upgrade
 notes" names each new one).
@@ -1223,7 +1225,28 @@ there is recorded with the reason, within its own time limit.
 | Registering by URL: **"... exists and is not empty"** or **"is already a clone of another repository"** | The target folder holds something else | Choose another target folder, or empty it. An existing clone of the same URL is used as it is |
 | Rescan of a cloned repository: **"has local changes"**, **"is on ... but this repository is registered on ..."**, **"cannot be fast-forwarded"** | Someone edited the clone, switched its branch, or committed in it | Commit, stash or discard the change, switch back, or resolve the divergence, outside the platform; then **Rescan** ("Registering a client repository"). Nothing was changed |
 | Delete: **"Some files could not be removed, so nothing was deleted from the database"** | A program holds a file under `RUNS_DIR` open, usually Visual Studio with a conversion's worktree | Close it and delete again; it picks up where it stopped ("Deleting a repository or an engagement") |
+| **"Open in Visual Studio"** opens another program, fails, or is missing | Detection found another installation than expected, or none | Run the detection report ("Checking which Visual Studio is used", below). Set `VISUAL_STUDIO_PATH` to the `devenv.exe` to use, and restart the backend |
 | Registering: **"This checkout is already registered in engagement ..."** | One folder (or a worktree of it) is in another engagement already | Clone the repository again into another folder and register that ("More than one person") |
+
+#### Checking which Visual Studio is used
+
+File links offer each Visual Studio installation the Visual Studio Installer lists that is a real edition
+(Community, Professional or Enterprise) of 2022 or later, with the editor, whose program is `devenv.exe`. Other
+products the installer lists are never used, even those built on the Visual Studio shell: SQL Server Management Studio
+22, Build Tools. With several editions, the menu beside a file link lists each by its full name ("Visual Studio
+Enterprise 2026", "Visual Studio Enterprise 2022"); the one chosen is remembered in the browser, and the newest is the
+default. A file opens in a running instance of that installation, found through its own versioned automation (for
+2026, `VisualStudio.DTE.18.0`), or in a new one.
+
+To see what detection finds on a machine, without opening anything:
+
+```powershell
+cd C:\MP\client\modernization-platform\backend; .venv\Scripts\python.exe -m app.editors
+```
+
+It lists each installation with its name, version and program, `ACCEPTED`, or `REFUSED` with why, then what the UI
+offers, newest first. If it picks the wrong one, or misses one, set `VISUAL_STUDIO_PATH` in `backend\.env` to the
+`devenv.exe` to use; to remove the option, `VISUAL_STUDIO=off` ("backend\.env"). Restart the backend after either.
 
 #### Replacing a pre-release Python
 

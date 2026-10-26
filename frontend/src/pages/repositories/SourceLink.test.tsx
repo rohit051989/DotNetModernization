@@ -11,8 +11,13 @@ vi.mock('../../api/editors', () => ({
   openInVisualStudio: api.openInVisualStudio,
 }))
 
-const VSCODE: Editor = { id: 'vscode', label: 'VS Code', opens_at_line: true }
-const VISUAL_STUDIO: Editor = { id: 'visual_studio', label: 'Visual Studio Professional 2022', opens_at_line: true }
+const VSCODE: Editor = { id: 'vscode', kind: 'vscode', label: 'VS Code', opens_at_line: true }
+const VISUAL_STUDIO: Editor = {
+  id: 'visual_studio:vs2022', kind: 'visual_studio', label: 'Visual Studio Professional 2022', opens_at_line: true, installation: 'vs2022', version: '17.14.37516.0',
+}
+const VISUAL_STUDIO_2026: Editor = {
+  id: 'visual_studio:vs2026', kind: 'visual_studio', label: 'Visual Studio Enterprise 2026', opens_at_line: true, installation: 'vs2026', version: '18.0.11205.157',
+}
 
 function renderLink() {
   return render(
@@ -51,9 +56,9 @@ describe('SourceLink', () => {
     renderLink()
     await openMenu()
     expect(screen.queryByRole('menuitem', { name: 'Open in VS Code' })).toBeNull()
-    expect(screen.getByRole('menuitem', { name: 'Open in Visual Studio' })).toBeTruthy()
+    expect(screen.getByRole('menuitem', { name: 'Open in Visual Studio Professional 2022' })).toBeTruthy()
     expect(screen.getByRole('menuitem', { name: 'Copy path and line' })).toBeTruthy()
-    expect(screen.getAllByRole('radio').map((r) => r.parentElement?.textContent)).toEqual(['Visual Studio', 'Copy only'])
+    expect(screen.getAllByRole('radio').map((r) => r.parentElement?.textContent)).toEqual(['Visual Studio Professional 2022', 'Copy only'])
     expect(screen.getByText(/VS Code was not found on this/)).toBeTruthy()
   })
 
@@ -73,18 +78,18 @@ describe('SourceLink', () => {
     api.openInVisualStudio.mockResolvedValue({ opened: true, at_line: true, message: 'Opened Order Service.cs at line 42 in Visual Studio.' })
     renderLink()
     await openMenu()
-    fireEvent.click(screen.getByRole('radio', { name: 'Visual Studio' }))
-    expect(window.localStorage.getItem('file-links:editor')).toBe('visual_studio')
+    fireEvent.click(screen.getByRole('radio', { name: 'Visual Studio Professional 2022' }))
+    expect(window.localStorage.getItem('file-links:editor')).toBe('visual_studio:vs2022')
 
     await act(async () => {
       fireEvent.click(screen.getByRole('link', { name: 'OrderService' }))
     })
-    expect(api.openInVisualStudio).toHaveBeenCalledWith('D:\\repos\\shop\\src\\Web\\Order Service.cs', 42)
+    expect(api.openInVisualStudio).toHaveBeenCalledWith('D:\\repos\\shop\\src\\Web\\Order Service.cs', 42, 'vs2022')
     expect(screen.getAllByRole('status').map((s) => s.textContent)).toContain('Opened Order Service.cs at line 42 in Visual Studio.')
   })
 
   it('a remembered editor that is not on this machine falls back to the first one that is', async () => {
-    window.localStorage.setItem('file-links:editor', 'visual_studio')
+    window.localStorage.setItem('file-links:editor', 'visual_studio:vs2022')
     api.installed = [VSCODE]
     renderLink()
     await act(async () => {})
@@ -97,11 +102,47 @@ describe('SourceLink', () => {
     renderLink()
     await openMenu()
     await act(async () => {
-      fireEvent.click(screen.getByRole('menuitem', { name: 'Open in Visual Studio' }))
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Open in Visual Studio Professional 2022' }))
     })
     expect(screen.getAllByRole('status').map((s) => s.textContent)).toContain(
       'D:\\elsewhere\\x.cs is outside every registered repository, conversion worktree and RUNS_DIR: not opened',
     )
+  })
+
+  it('lists each Visual Studio installation by its full name, newest first, and opens the one chosen', async () => {
+    api.installed = [VSCODE, VISUAL_STUDIO_2026, VISUAL_STUDIO]
+    api.openInVisualStudio.mockResolvedValue({ opened: true, at_line: true, message: 'Opened.' })
+    renderLink()
+    await openMenu()
+    expect(screen.getAllByRole('menuitem').map((m) => m.textContent)).toEqual([
+      'Open in VS Code',
+      'Open in Visual Studio Enterprise 2026',
+      'Open in Visual Studio Professional 2022',
+      'Copy path and line',
+    ])
+    expect(screen.queryByText(/was not found/)).toBeNull()
+    fireEvent.click(screen.getByRole('radio', { name: 'Visual Studio Professional 2022' }))
+    expect(window.localStorage.getItem('file-links:editor')).toBe('visual_studio:vs2022')
+    await act(async () => {
+      fireEvent.click(screen.getByRole('link', { name: 'OrderService' }))
+    })
+    expect(api.openInVisualStudio).toHaveBeenLastCalledWith('D:\\repos\\shop\\src\\Web\\Order Service.cs', 42, 'vs2022')
+  })
+
+  it('a Visual Studio remembered before installations were told apart, or no longer installed, becomes the newest', async () => {
+    api.installed = [VSCODE, VISUAL_STUDIO_2026, VISUAL_STUDIO]
+    api.openInVisualStudio.mockResolvedValue({ opened: true, at_line: true, message: 'Opened.' })
+    for (const remembered of ['visual_studio', 'visual_studio:removed-install']) {
+      cleanup()
+      resetEditorChoiceForTests()
+      window.localStorage.setItem('file-links:editor', remembered)
+      renderLink()
+      await act(async () => {})
+      await act(async () => {
+        fireEvent.click(screen.getByRole('link', { name: 'OrderService' }))
+      })
+      expect(api.openInVisualStudio).toHaveBeenLastCalledWith('D:\\repos\\shop\\src\\Web\\Order Service.cs', 42, 'vs2026')
+    }
   })
 
   it('with no local path, shows the text without a link or menu', () => {

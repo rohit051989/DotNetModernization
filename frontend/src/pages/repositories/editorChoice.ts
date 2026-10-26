@@ -1,7 +1,8 @@
 import { useEffect, useSyncExternalStore, useState } from 'react'
 import { listEditors, type Editor, type EditorId } from '../../api/editors'
 
-/** What a file link does when clicked: open in one of the editors on this machine, or copy the path and line. */
+/** What a file link does when clicked: open in one of the editors on this machine (by its id: 'vscode', or
+ * 'visual_studio:<installation>'), or copy the path and line. */
 export type EditorChoice = EditorId | 'copy'
 
 const STORAGE_KEY = 'file-links:editor'
@@ -9,8 +10,7 @@ const listeners = new Set<() => void>()
 
 function stored(): EditorChoice | null {
   try {
-    const value = window.localStorage.getItem(STORAGE_KEY)
-    return value === 'vscode' || value === 'visual_studio' || value === 'copy' ? value : null
+    return window.localStorage.getItem(STORAGE_KEY) || null
   } catch {
     return null
   }
@@ -52,7 +52,9 @@ export function resetEditorChoiceForTests() {
 }
 
 /** The editors on this machine (null while being asked), and the choice in effect: the remembered one when that
- * editor is installed, else the first installed editor, else copying. */
+ * editor is installed; a remembered Visual Studio that is not (or the 'visual_studio' remembered before
+ * installations were told apart) becomes the newest Visual Studio installed; else the first installed editor, else
+ * copying. */
 export function useEditorChoice(): { editors: Editor[] | null; choice: EditorChoice } {
   const [editors, setEditors] = useState<Editor[] | null>(null)
   const choice = useSyncExternalStore(subscribe, () => remembered ?? stored())
@@ -65,6 +67,8 @@ export function useEditorChoice(): { editors: Editor[] | null; choice: EditorCho
   }, [])
   if (editors === null) return { editors, choice: choice ?? 'vscode' }
   if (choice === 'copy' || editors.some((e) => e.id === choice)) return { editors, choice: choice! }
+  const newestVisualStudio = editors.find((e) => e.kind === 'visual_studio')
+  if (choice?.startsWith('visual_studio') && newestVisualStudio) return { editors, choice: newestVisualStudio.id }
   return { editors, choice: editors[0]?.id ?? 'copy' }
 }
 

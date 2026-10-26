@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react'
-import { openInVisualStudio } from '../../api/editors'
+import { openInVisualStudio, type Editor } from '../../api/editors'
 import { useToast } from '../../components/Toast'
 import { copyText, fullPath, setEditorChoice, useEditorChoice, type EditorChoice } from './editorChoice'
 import { sourceHref } from './sourceHref'
@@ -48,7 +48,8 @@ function EditorLink({ localPath, filePath, line, className, title, children }: S
 
   const path = fullPath(localPath, filePath)
   const vscodeHref = sourceHref(localPath, filePath, line)
-  const visualStudio = editors?.find((e) => e.id === 'visual_studio')
+  const visualStudios = (editors ?? []).filter((e) => e.kind === 'visual_studio')
+  const hasVsCode = editors?.some((e) => e.kind === 'vscode') ?? false
 
   async function copy() {
     const text = `${path}:${line}`
@@ -56,10 +57,10 @@ function EditorLink({ localPath, filePath, line, className, title, children }: S
     else showToast('error', `The browser would not copy to the clipboard. The path is ${text}`)
   }
 
-  async function openVisualStudio() {
-    showToast('success', `Opening ${filePath.split(/[\\/]/).pop()} in Visual Studio…`)
+  async function openVisualStudio(editor: Editor) {
+    showToast('success', `Opening ${filePath.split(/[\\/]/).pop()} in ${editor.label}…`)
     try {
-      const result = await openInVisualStudio(path, line)
+      const result = await openInVisualStudio(path, line, editor.installation)
       showToast(result.opened ? 'success' : 'error', result.message)
     } catch (err) {
       showToast('error', err instanceof Error ? err.message : 'Visual Studio did not open the file')
@@ -68,8 +69,9 @@ function EditorLink({ localPath, filePath, line, className, title, children }: S
 
   function act(action: EditorChoice) {
     setMenuOpen(false)
+    const visualStudio = visualStudios.find((e) => e.id === action)
     if (action === 'copy') void copy()
-    else if (action === 'visual_studio') void openVisualStudio()
+    else if (visualStudio) void openVisualStudio(visualStudio)
     else window.location.href = vscodeHref
   }
 
@@ -79,9 +81,10 @@ function EditorLink({ localPath, filePath, line, className, title, children }: S
     act(choice)
   }
 
-  const verb = choice === 'copy' ? 'copies its path and line' : `opens in ${choice === 'vscode' ? 'VS Code' : 'Visual Studio'}`
+  const chosen = editors?.find((e) => e.id === choice)
+  const verb = choice === 'copy' ? 'copies its path and line' : `opens in ${chosen?.label ?? 'VS Code'}`
   const choices: { id: EditorChoice; label: string }[] = [
-    ...(editors ?? []).map((e) => ({ id: e.id as EditorChoice, label: e.id === 'vscode' ? 'VS Code' : 'Visual Studio' })),
+    ...(editors ?? []).map((e) => ({ id: e.id, label: e.label })),
     { id: 'copy', label: 'Copy only' },
   ]
 
@@ -116,16 +119,16 @@ function EditorLink({ localPath, filePath, line, className, title, children }: S
           <span className="truncate px-3 pb-1 font-mono text-[10px] text-neutral-400" title={`${path}:${line}`}>
             {filePath}:{line}
           </span>
-          {editors?.some((e) => e.id === 'vscode') && (
+          {hasVsCode && (
             <button type="button" role="menuitem" onClick={() => act('vscode')} className="px-3 py-1 text-left hover:bg-neutral-50">
               Open in VS Code
             </button>
           )}
-          {visualStudio && (
-            <button type="button" role="menuitem" onClick={() => act('visual_studio')} className="px-3 py-1 text-left hover:bg-neutral-50" title={visualStudio.label}>
-              Open in Visual Studio
+          {visualStudios.map((vs) => (
+            <button key={vs.id} type="button" role="menuitem" onClick={() => act(vs.id)} className="px-3 py-1 text-left hover:bg-neutral-50" title={`${vs.label} ${vs.version ?? ''}`.trim()}>
+              Open in {vs.label}
             </button>
-          )}
+          ))}
           <button type="button" role="menuitem" onClick={() => act('copy')} className="px-3 py-1 text-left hover:bg-neutral-50">
             Copy path and line
           </button>
@@ -138,9 +141,9 @@ function EditorLink({ localPath, filePath, line, className, title, children }: S
               {c.label}
             </label>
           ))}
-          {editors !== null && editors.length < 2 && (
+          {editors !== null && (!hasVsCode || visualStudios.length === 0) && (
             <span className="px-3 pt-1 text-[10px] text-neutral-400">
-              {editors.length === 0 ? 'Neither VS Code nor Visual Studio was found' : `${editors[0].id === 'vscode' ? 'Visual Studio' : 'VS Code'} was not found`} on this
+              {!hasVsCode && visualStudios.length === 0 ? 'Neither VS Code nor Visual Studio was found' : `${hasVsCode ? 'Visual Studio' : 'VS Code'} was not found`} on this
               machine.
             </span>
           )}
