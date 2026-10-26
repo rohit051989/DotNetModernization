@@ -41,12 +41,13 @@ also work in, on their own branches. You work on your own branch. Our `.git` nev
 | ["Registering a client repository"](#registering-a-client-repository) | by git URL; what discovery produces |
 | ["Moving an existing install that carries our .git"](#moving-an-existing-install-that-carries-our-git) | keeping its database, RUNS_DIR, REPOS_DIR and .env |
 | **Part 2. Ongoing** | |
-| ["Updating the platform"](#updating-the-platform) | stop, update-platform.ps1, bootstrap, start |
-| ["Delivering a release from our machine"](#delivering-a-release-from-our-machine) | when the client's environment cannot reach our git: files only, never our history |
+| ["Updating the platform"](#updating-the-platform) | stop, update-platform.ps1 (our master), bootstrap, start |
+| ["Delivering to a client from our machine"](#delivering-to-a-client-from-our-machine) | when the client's environment cannot reach our git: master's files only, never our history |
 | ["More than one person"](#more-than-one-person) | one platform per schema, a stale heartbeat, one checkout per engagement |
 | ["Deleting a repository or an engagement"](#deleting-a-repository-or-an-engagement) | hard delete, the audit |
 | ["Troubleshooting"](#troubleshooting) | |
-| ["Appendix: upgrading from a release bundle"](#appendix-upgrading-from-a-release-bundle) | our own installs only |
+| ["Appendix: upgrading from a bundle of master"](#appendix-upgrading-from-a-bundle-of-master) | our own installs only |
+| ["Upgrade notes"](#upgrade-notes) | newest first: what needs doing after an update, besides bootstrap |
 
 Reference material this guide points to, in `01-ENVIRONMENT-SETUP.md` section 10: the full list of network
 destinations, how NuGet feeds resolve for scanned repositories, and what stays inside the platform's database
@@ -288,18 +289,19 @@ the source folder, make your branch and the platform folder in the client's repo
 #### 1. Clone our repository into the source folder
 
 ```powershell
-git clone -c core.longpaths=true --branch release-7 https://git.ourcompany.com/modernization-platform.git C:\MP\source
+git clone -c core.longpaths=true --branch master https://git.ourcompany.com/modernization-platform.git C:\MP\source
 ```
 
-(The address and the release tag come with the release. When the release arrives as a bundle instead, clone the
-bundle: `git clone -c core.longpaths=true --branch release-7 C:\MP\delivery\release-7.bundle C:\MP\source`,
-after checking its hash as in "Appendix: upgrading from a release bundle".)
+Installations follow our **master**: every commit on it has passed the full test suites. Tags are reference points
+we create by hand for bigger milestones; nothing installs one. When master arrives as a bundle instead, clone the
+bundle: `git clone -c core.longpaths=true --branch master C:\MP\delivery\master-<commit>.bundle C:\MP\source`,
+after checking its hash as in "Appendix: upgrading from a bundle of master".
 
-From now on, the source folder is only ever copied from (rule 1).
+From now on, the source folder is only ever copied from (rule 1), and stays on master.
 
 **When the client's environment cannot reach our git**, none of Part 1's copying happens on the client's machine: we
 deliver the platform folder into the client's repository from our own machine, and the client's environment only
-pulls its branch ("Delivering a release from our machine", Part 2).
+pulls its branch ("Delivering to a client from our machine", Part 2).
 
 #### 2. Your branch and the platform folder in the client's repository
 
@@ -340,7 +342,8 @@ holds. Every preparation and verification names it, beside the client repository
 cd C:\MP\client\modernization-platform; powershell -ExecutionPolicy Bypass -File .\scripts\write-platform-source.ps1 -Source C:\MP\source
 ```
 
-It writes `PLATFORM_SOURCE.json` (our commit, its tag, the date) into the platform folder, and prints the commit.
+It writes `PLATFORM_SOURCE.json` (our commit, a tag only if one happens to point at it, the date) into the platform
+folder, and prints the commit.
 
 #### "detected dubious ownership"
 
@@ -418,8 +421,8 @@ notepad C:\MP\client\modernization-platform\backend\.env
 | `PYTHON` | The Python bootstrap and preflight use, as a full path. Empty: `python` on `PATH`. (The backend itself always runs in `backend\.venv`, which bootstrap builds with this Python) | `C:\MP\tools\python314\python.exe` | no |
 | `DOTNET_ROOT` | **Only when .NET is installed per user** ("Account settings"): the folder it was installed into. The platform puts it first on `PATH` and sets `DOTNET_ROOT` for every process it starts. **Leave it empty** when the client installed .NET machine-wide | `C:\MP\tools\dotnet` | no |
 
-Every key added by a later release is optional and has a default, so an upgrade never requires editing this file
-("Appendix: upgrading from a release bundle").
+Every key added later is optional and has a default, so an upgrade never requires editing this file ("Upgrade
+notes" names each new one).
 
 `DB_USER` and `DB_PASSWORD` may instead be set as account environment variables, and then left out of the file.
 The platform never writes them anywhere else, never logs them, and removes them from any error message. Do not
@@ -466,7 +469,7 @@ git -C C:\MP\client add -A -- modernization-platform
 ```
 
 ```powershell
-git -C C:\MP\client commit -m "Modernization platform release-7" -- modernization-platform
+git -C C:\MP\client commit -m "Modernization platform: first copy" -- modernization-platform
 ```
 
 ```powershell
@@ -503,8 +506,8 @@ Tools
 ```
 
 Besides `PRESENT` and `MISSING`:
-- `WARNING` lines are worth knowing, but never fail. For example, a Python older than the one the release was tested
-  on, 3.14.8.
+- `WARNING` lines are worth knowing, but never fail. For example, a Python older than the one the full suite was
+  tested on, 3.14.8.
 - The **Proxy** lines show `HTTPS_PROXY`, `HTTP_PROXY` and `NO_PROXY`, any proxy set in pip's or npm's own
   configuration, and the Windows system proxy.
 - Each **package source** line says where its address came from (`backend\.env`, or the tool's own
@@ -514,8 +517,9 @@ Besides `PRESENT` and `MISSING`:
 - Once the schema exists, the **platform** line says whether a platform holds it: `WARNING ... a platform holds this
   schema` while one runs (yours too: stop it before an upgrade), or a `NOTE` that the last one stopped without
   shutting down and its heartbeat has expired. "More than one person", "A stale heartbeat".
-- **existing data** lines report data an older release allowed and a newer rule would refuse, such as one checkout
-  registered in two engagements. They are left working and never changed ("Appendix: upgrading from a release bundle").
+- **existing data** lines report data an older version allowed and a newer rule would refuse, such as one checkout
+  registered in two engagements. They are left working and never changed ("Appendix: upgrading from a bundle of
+  master").
 
 Before bootstrap, the database section reports the database driver as missing: that is expected, bootstrap
 installs it.
@@ -801,7 +805,7 @@ names the platform's own folder, so they carry over unchanged.
    both must be outside the client's repository. Leave the database keys as they are: the schema is the same one.
 4. **Commit and push** ("Committing the platform folder and pushing your branch"). `.env` is not committed.
 5. **Preflight and bootstrap** in the new folder ("Preflight", "Bootstrap"). Bootstrap applies any migrations the
-   new release brings to the same schema, and republishes the step programs.
+   newer commit brings to the same schema, and republishes the step programs.
 6. **Start the new platform** ("Starting the backend and the frontend") and check: the engagements, their
    repositories and their conversions are all there, and **Rescan** and **Verify** work.
 7. **Delete the old folder**, only after that check, and only when no window has a file in it open:
@@ -816,79 +820,67 @@ names the platform's own folder, so they carry over unchanged.
 
 ### Updating the platform
 
-How a new release of ours reaches the platform folder. The client's environment installs releases, never the tip of
-our master: a release is a tag, `release-<n>` (releases 1 to 6 carry an older tag of the form
-`<prefix>-release-<n>`, which works the same way). Four steps, every time:
+How our newer work reaches the platform folder. Installations follow our **master**, the tip of it: every commit on
+master has passed the full test suites, and unfinished work stays on a branch of ours until it does. Tags are only
+reference points we create by hand for bigger milestones; the update neither needs nor installs one. Five steps,
+every time:
 
 1. **Stop the backend and the frontend.** Wait until no discovery or verification is running (the **Executions**
    tab), then press **Ctrl+C** in both windows. One still running when the backend stops is marked "orphaned by
    engine restart" the next time it starts, and must be started again.
-2. **Run the update script**, from the platform folder (never from the source folder):
+2. **Run the update script.** It works the same run from the platform folder or from the source folder:
 
    ```powershell
    powershell -ExecutionPolicy Bypass -File C:\MP\client\modernization-platform\scripts\update-platform.ps1 -Source C:\MP\source -Platform C:\MP\client\modernization-platform -Branch rohit/modernization-platform
    ```
 
-   It installs the newest release. To install a particular one, add `-Release` with its tag:
-
    ```powershell
-   powershell -ExecutionPolicy Bypass -File C:\MP\client\modernization-platform\scripts\update-platform.ps1 -Source C:\MP\source -Platform C:\MP\client\modernization-platform -Branch rohit/modernization-platform -Release release-7
+   powershell -ExecutionPolicy Bypass -File C:\MP\source\scripts\update-platform.ps1 -Source C:\MP\source -Platform C:\MP\client\modernization-platform -Branch rohit/modernization-platform
    ```
 
-   Add `-Push` to push your branch afterwards. The script:
+   (Use one of them. The second runs the script as master has it, which the first update after a change to the
+   script needs: see "Upgrade notes".) Add `-Push` to push your branch afterwards. The script:
    - stops, changing nothing, if the client's repository is not on your branch, or if the platform folder has
      uncommitted changes; it names the branch, or lists the files;
-   - fetches our releases into the source folder and checks out the release: the newest by its number, or the one
-     `-Release` names. It stops if `-Release` names something that is not a release, or if the source folder has
-     no release at all: the platform is never installed from master;
-   - updates your branch with `git pull --ff-only`;
+   - stops, changing nothing, unless the source folder is a clone of ours on `master`, following `origin/master`,
+     with no commits of its own and no changes: the source folder is never a working repository;
+   - fetches our master and **never goes backwards**: it stops, changing nothing in either folder, when master does
+     not descend from the commit the platform folder holds (its `PLATFORM_SOURCE.json`) or from the source folder's
+     own master. That means our history was rewritten, or the platform was installed from another branch or
+     repository; the message says which, and lists the commits that would be lost. Ask us why before going on.
+     `-AllowDowngrade` installs master anyway, after listing what is lost;
+   - brings the source folder to master's tip with `git pull --ff-only`, and updates your branch with
+     `git pull --ff-only`;
    - copies the source into the platform folder with robocopy, leaving out `.git`, `.venv`, `node_modules` and
-     `.env`, and removes the files we deleted or renamed since the commit the folder held (from its
-     `PLATFORM_SOURCE.json`);
-   - writes the new `PLATFORM_SOURCE.json`, which names the release installed (`release`) and its commit;
-   - stages and commits only the platform folder, with the release and our source commit in the message; with
-     `-Push`, pushes only your branch.
-
-   **The first update made with an older script still pulls master.** The script that runs is the one already in
-   the platform folder, from the release installed before. A copy older than this change pulls the source folder's
-   branch, which is master, and installs its tip. Once that update has copied this script in, every later update
-   installs a release. To install a release on that first update instead, check it out in the source folder before
-   running the script, and run the script with `-Source` as usual:
-
-   ```powershell
-   git -C C:\MP\source fetch --tags origin; git -C C:\MP\source checkout release-7
-   ```
-
-   The older script then stops with "Pulling the source folder failed" (a release is not a branch), having changed
-   nothing. Copy the new script from the source folder over the one in the platform folder, commit only that file
-   to your branch, and run the update again:
-
-   ```powershell
-   Copy-Item C:\MP\source\scripts\update-platform.ps1 C:\MP\client\modernization-platform\scripts\update-platform.ps1
-   ```
-
-   ```powershell
-   git -C C:\MP\client commit -m "Modernization platform: update script" -- modernization-platform/scripts/update-platform.ps1
-   ```
+     `.env`, and removes every file the platform folder holds that our master no longer has (the files we deleted
+     or renamed);
+   - writes the new `PLATFORM_SOURCE.json`: our commit, the one before (`previousCommit`), and a tag only if one
+     happens to point at the commit;
+   - stages and commits only the platform folder, with our source commit in the message; with `-Push`, pushes only
+     your branch. Run again with nothing new on master, it commits nothing.
 
    Your local files are never touched: `backend\.env`, `frontend\.env`, `.venv`, `node_modules`, the published
    step programs, and anything you changed elsewhere in the client's repository (which stays uncommitted).
-3. **Run bootstrap** ("Bootstrap"). It brings the dependencies, the step programs, the schema and the seed up to
-   date with the new release, and skips everything else.
-4. **Start the backend and the frontend** ("Starting the backend and the frontend").
+3. **Read the "Upgrade notes"** for every entry newer than the commit you had (`previousCommit` in the new
+   `PLATFORM_SOURCE.json`). They list what needs doing besides bootstrap: a package your mirror must carry, a new
+   setting, a rescan. Most updates need nothing more.
+4. **Run bootstrap** ("Bootstrap"). It brings the dependencies, the step programs, the schema and the seed up to
+   date with the new commit, and skips everything else.
+5. **Start the backend and the frontend** ("Starting the backend and the frontend"), and do any rescan the notes
+   asked for.
 
-Every release can be applied this way to an installation of any earlier one, keeping all its data (`CLAUDE.md`
-rule 15); a release that cannot says so in its notes.
+Every commit on master can be applied this way to an installation of any earlier one, keeping all its data
+(`CLAUDE.md` rule 15), with no need to go through the commits between; an upgrade note says so when one cannot.
 
 #### Restarting
 
 Run the two commands of "Starting the backend and the frontend" again. Nothing else is needed: the database and
 `RUNS_DIR` keep everything.
 
-### Delivering a release from our machine
+### Delivering to a client from our machine
 
-A client's environment may have no access to our company git. Then a release reaches it through the client's own
-repository: on **our** machine, `update-platform.ps1` copies the release into a local clone of the client's
+A client's environment may have no access to our company git. Then our master reaches it through the client's own
+repository: on **our** machine, `update-platform.ps1` copies master's files into a local clone of the client's
 repository, commits only the platform folder on the client's branch, and pushes that branch with `-Push`. The
 client's environment then pulls the branch and runs bootstrap, as the platform folder's `README.md` says.
 
@@ -897,8 +889,8 @@ client's environment then pulls the branch and runs bootstrap, as the platform f
   engagements, and the platform's own history, which is ours, not the client's (CLAUDE.md rule 18);
 - once pushed into a client's repository, history cannot be taken back: every clone, mirror and backup of that
   repository keeps it;
-- a client needs the release, not how it was made: `PLATFORM_SOURCE.json` records which of our commits and which
-  release the folder holds, which is enough to trace any question back to us.
+- a client needs the platform, not how it was made: `PLATFORM_SOURCE.json` records which of our commits the folder
+  holds, which is enough to trace any question back to us.
 
 So the source is a separate clone used only to copy from, the script copies files and never `.git`, and it pushes only
 the client's branch (`refs/heads/<branch>`), never tags or any other ref. Never `git push --tags`, `--mirror` or
@@ -909,7 +901,7 @@ Two folders on our machine, short paths as in "Why paths must be short":
 
 | Folder | What it is | Never |
 |---|---|---|
-| `C:\MPD\source` | **a separate, pristine clone of our repository**, used only to copy releases from. The script checks releases out in it | the repository we work in: the script refuses a source whose branch follows nothing on origin or has commits not on origin |
+| `C:\MPD\source` | **a separate, pristine clone of our repository**, on master, used only to copy from. The script pulls master in it | the repository we work in: the script refuses a source that is not on master following `origin/master`, or has commits or changes of its own |
 | `C:\MPD\client-a` | a local clone of the client's repository, on the client's branch for the platform | anything of ours committed outside the platform folder |
 
 #### First time
@@ -917,7 +909,7 @@ Two folders on our machine, short paths as in "Why paths must be short":
 1. **The source clone**, once:
 
    ```powershell
-   git clone -c core.longpaths=true https://git.ourcompany.com/modernization-platform.git C:\MPD\source
+   git clone -c core.longpaths=true --branch master https://git.ourcompany.com/modernization-platform.git C:\MPD\source
    ```
 
 2. **The client's repository and its branch.** Clone it with the access the client gave us, and create the branch the
@@ -931,11 +923,11 @@ Two folders on our machine, short paths as in "Why paths must be short":
    git -C C:\MPD\client-a switch -c platform/modernization origin/main
    ```
 
-3. **The platform folder, with the release in it, committed.** As Part 1's "Copy the source in", from the source
-   clone at the release:
+3. **The platform folder, with master's files in it, committed.** As Part 1's "Copy the source in", from the source
+   clone at master's tip:
 
    ```powershell
-   git -C C:\MPD\source checkout release-7
+   git -C C:\MPD\source pull --ff-only
    ```
 
    ```powershell
@@ -951,7 +943,7 @@ Two folders on our machine, short paths as in "Why paths must be short":
    ```
 
    ```powershell
-   git -C C:\MPD\client-a add -A -- modernization-platform; git -C C:\MPD\client-a commit -m "Modernization platform: release-7" -- modernization-platform
+   git -C C:\MPD\client-a add -A -- modernization-platform; git -C C:\MPD\client-a commit -m "Modernization platform: first copy" -- modernization-platform
    ```
 
 4. **Push only the branch**, then check what the client's repository received: no tag of ours, and no commit
@@ -973,7 +965,7 @@ Two folders on our machine, short paths as in "Why paths must be short":
 5. **On the client's environment**, someone with access clones or pulls the branch and follows the platform folder's
    `README.md`: `.env`, preflight, bootstrap, start. Part 1 of this guide is the detail.
 
-#### Each release after that
+#### Each delivery after that
 
 1. Bring the client's branch up to date and make sure the platform folder is clean (the script checks both):
 
@@ -981,20 +973,21 @@ Two folders on our machine, short paths as in "Why paths must be short":
    git -C C:\MPD\client-a switch platform/modernization; git -C C:\MPD\client-a pull --ff-only
    ```
 
-2. **Run the update script** from the platform folder in the client's clone, with the pristine source, and `-Push`:
+2. **Run the update script** from the source clone, with `-Push`:
 
    ```powershell
-   powershell -ExecutionPolicy Bypass -File C:\MPD\client-a\modernization-platform\scripts\update-platform.ps1 -Source C:\MPD\source -Platform C:\MPD\client-a\modernization-platform -Branch platform/modernization -Push
+   powershell -ExecutionPolicy Bypass -File C:\MPD\source\scripts\update-platform.ps1 -Source C:\MPD\source -Platform C:\MPD\client-a\modernization-platform -Branch platform/modernization -Push
    ```
 
-   It fetches our releases into the source clone and checks out the newest (or `-Release`), copies files only,
-   removes what we deleted or renamed, writes `PLATFORM_SOURCE.json`, commits only the platform folder, and pushes
-   only the branch ("Updating the platform" lists every check).
-3. Check what went, as in step 4 above, then tell the client the release is on the branch. On their environment:
-   stop the platform, `git pull` the branch, run bootstrap, start it again (the platform folder's `README.md`).
+   It pulls master into the source clone, refuses to go backwards, copies files only, removes what we deleted or
+   renamed, writes `PLATFORM_SOURCE.json`, commits only the platform folder, and pushes only the branch ("Updating
+   the platform" lists every check).
+3. Check what went, as in step 4 above, then tell the client the update is on the branch, with any "Upgrade notes"
+   entries newer than the commit they had. On their environment: stop the platform, `git pull` the branch, run
+   bootstrap, start it again (the platform folder's `README.md`).
 
-Nothing is run from the client's clone on our machine: no bootstrap, no backend. It exists only to receive the
-release and push it.
+Nothing is run from the client's clone on our machine: no bootstrap, no backend. It exists only to receive master's
+files and push them.
 
 ### More than one person
 
@@ -1202,6 +1195,8 @@ there is recorded with the reason, within its own time limit.
 | Updating: **"Stopped: the client repository ... is on branch '...', not '...'"** | The client's repository is on another branch that does carry the platform folder | Switch to your own branch, as the message says. Never update or commit on anyone else's branch |
 | Updating: **"Stopped: the platform folder has uncommitted changes"** | A file in the platform folder was edited by hand (the message lists them) | The platform folder only ever changes through the update. Discard the edit (`git -C C:\MP\client checkout -- modernization-platform/<file>`), or commit it to your branch if it must stay, then update again |
 | Updating: **"Stopped: the source folder has changes"** | Something was run or edited in the source folder | Discard it as the message says. Nothing is ever run in the source folder |
+| Updating: **"Stopped: the source folder is on a commit of its own (...), not master"** | An older copy of the update script left the source folder at a release tag | Put it back on master, `git -C C:\MP\source switch master`, and run the update from the source folder ("Upgrade notes", 2026-10-26) |
+| Updating: **"Stopped: master (...) does not descend from the installed commit ..."**, or **"... is not in our repository"** | Our master's history was rewritten, or the platform was installed from another branch or repository. Nothing was changed | Ask us why, with the commits the message lists. Only when we confirm, run the update again with `-AllowDowngrade` |
 | Updating: **"... failed: git pull --ff-only"** | Your branch on the server has commits this machine does not, which cannot be fast-forwarded | Ask whoever else pushed to your branch; nobody else should. Then `git -C C:\MP\client pull --rebase` and update again |
 | A feed answers **401** (preflight "HTTP 401", bootstrap stage 6, or a package marked "unknown ... 401 (Unauthorized)" in Dependencies) | The feed needs a login and none was supplied | Add the feed with its login to the account's NuGet configuration: `dotnet nuget add source <address> -n <name> -u <user> -p <token>`; for a feed a scanned repository names, `dotnet nuget update source <name> -u <user> -p <token>`, or install the client's credential provider and sign in once. Leave `NUGET_SOURCES` empty when the login is in the NuGet configuration |
 | A feed answers **403** | The login is known but has no right to that feed | Ask the feed's owner for read access for that account; the address and the login are right |
@@ -1273,24 +1268,24 @@ installation, or to install a .NET 10 SDK machine-wide through Software Center. 
 
 ---
 
-### Appendix: upgrading from a release bundle
+### Appendix: upgrading from a bundle of master
 
 For **our own installs only**: a platform folder that is itself a clone of our repository (with our `.git`),
 such as `C:\MP\code`. A client install, in a folder of the client's repository, is updated with
 `scripts\update-platform.ps1` ("Updating the platform").
 
-**Every release upgrades an existing installation in place and keeps all its data**: the database schema, `RUNS_DIR`,
-the clones, `backend\.env` and `frontend\.env`. Its migrations only add to the schema or extend it, never drop or
-rewrite what is there, and every new setting is optional with a default, so `backend\.env` needs no edit. Data an
-older release allowed and a newer rule would refuse (such as one checkout registered in two engagements before
-release 4) is reported by preflight and in the backend's log, and left working, never changed or deleted. A
-release that cannot upgrade in place says so in its release notes, with the reason; none so far.
+**Every commit on master upgrades an existing installation in place and keeps all its data**: the database schema,
+`RUNS_DIR`, the clones, `backend\.env` and `frontend\.env`. Its migrations only add to the schema or extend it, never
+drop or rewrite what is there, and every new setting is optional with a default, so `backend\.env` needs no edit.
+Data an older version allowed and a newer rule would refuse (such as one checkout registered in two engagements
+before release 2) is reported by preflight and in the backend's log, and left working, never changed or deleted.
+An upgrade that cannot be made in place says so in "Upgrade notes", with the reason; none so far.
 
-A release arrives as a git bundle, `release-<n>.bundle`, with `release-<n>.bundle.sha256` beside it. Releases are tagged
-`release-<n>` from release 7 on; releases 1 to 6 carry an older tag of the form `<prefix>-release-<n>`, and every
-script and check accepts both. The commands below upgrade `C:\MP\code` to release-7 from `C:\MP\delivery`; for another release, change the
-names. An installation of any earlier release is upgraded straight to the newest: there is no need to go through
-the ones between. Run them in one PowerShell window, in order.
+When the machine cannot reach our git, master arrives as a git bundle, `master-<commit>.bundle`, with
+`master-<commit>.bundle.sha256` beside it. We make one from master when asked (`scripts\master-bundle.ps1`). The
+commands below upgrade `C:\MP\code` from `C:\MP\delivery`, with the bundle's name in place of
+`master-<commit>.bundle`. An installation of any earlier commit, release tags included, is upgraded straight to the
+bundle's: there is no need to go through the ones between. Run them in one PowerShell window, in order.
 
 1. **Stop the platform.** Wait until no discovery or verification is running (the **Executions** tab), then press
    **Ctrl+C** in the backend's window and in the frontend's.
@@ -1299,11 +1294,11 @@ the ones between. Run them in one PowerShell window, in order.
 3. **Check the bundle arrived intact.** The two lines must be identical:
 
    ```powershell
-   (Get-FileHash -Algorithm SHA256 C:\MP\delivery\release-7.bundle).Hash.ToLower()
+   (Get-FileHash -Algorithm SHA256 C:\MP\delivery\master-<commit>.bundle).Hash.ToLower()
    ```
 
    ```powershell
-   (Get-Content C:\MP\delivery\release-7.bundle.sha256).Split(' ')[0]
+   (Get-Content C:\MP\delivery\master-<commit>.bundle.sha256).Split(' ')[0]
    ```
 
 4. **Check the platform folder has nothing of yours in it.** git must print nothing (your `.env` files, `.venv`,
@@ -1314,23 +1309,32 @@ the ones between. Run them in one PowerShell window, in order.
    ```
 
    If it lists files, they were edited by hand: copy them aside, then `git -C C:\MP\code checkout -- .`.
-5. **Bring the release in and switch to it:**
+5. **Bring master in, never backwards:**
 
    ```powershell
-   git -C C:\MP\code fetch C:\MP\delivery\release-7.bundle "refs/tags/release-7:refs/tags/release-7"
+   git -C C:\MP\code fetch C:\MP\delivery\master-<commit>.bundle master
    ```
 
    ```powershell
-   git -C C:\MP\code -c core.longpaths=true checkout release-7
+   git -C C:\MP\code merge-base --is-ancestor HEAD FETCH_HEAD; $LASTEXITCODE
+   ```
+
+   The second command must print `0`: the bundle's master descends from what is installed. `1` means installing it
+   would go backwards (our history was rewritten, or this install came from another branch): stop, and ask us.
+   Then switch to it:
+
+   ```powershell
+   git -C C:\MP\code -c core.longpaths=true switch -C master FETCH_HEAD
    ```
 
    ```powershell
    git -C C:\MP\code log -1 --format="%h %d"
    ```
 
-   The last command shows the release's commit and `tag: release-7`. git says it is in "detached HEAD" state:
-   that is expected for a release.
-6. **Preflight:**
+   The last command shows the bundle's commit and `HEAD -> master`. An install made from a release tag was in
+   "detached HEAD" state; from now on it is on master.
+6. **Read the "Upgrade notes"** for every entry newer than the commit you had.
+7. **Preflight:**
 
    ```powershell
    cd C:\MP\code; C:\MP\tools\python314\python.exe scripts\preflight.py
@@ -1338,115 +1342,93 @@ the ones between. Run them in one PowerShell window, in order.
 
    (your `PYTHON`, as in "Preflight"). Fix anything `MISSING` ("Preflight"). Read any `WARNING ... existing data` line:
    it is reported, not a failure.
-7. **Bootstrap:**
+8. **Bootstrap:**
 
    ```powershell
    cd C:\MP\code; powershell -ExecutionPolicy Bypass -File .\scripts\bootstrap.ps1
    ```
 
-   It updates only what the release changed and skips the rest. It ends with `Bootstrap complete`.
-8. **Start the platform** ("Starting the backend and the frontend"). Your engagements, repositories, conversions and verifications are all there.
+   It updates only what changed and skips the rest. It ends with `Bootstrap complete`.
+9. **Start the platform** ("Starting the backend and the frontend"), and do any rescan the notes asked for. Your
+   engagements, repositories, conversions and verifications are all there.
 
-**What release 7 changes on a release 6 installation.** Nothing existing in the database changes, and no setting
-is added:
-- **stage 5** installs the frontend's packages again: the dependency graph uses React Flow (`@xyflow/react`) and
-  dagre (`@dagrejs/dagre`), both MIT, which must be available from `NPM_REGISTRY` like the others ("Package sources");
-- **stage 6** publishes a new step program, `dependency-hierarchy` (`publish\dependency-hierarchy`), and republishes
-  the others: each now reports the artifact version it wrote, which the engine checks;
-- **stage 7** adds two tables, `hierarchy_nodes` and `hierarchy_edges`;
-- **stage 8** registers `dependency-hierarchy` and activates `phase0-repository-discovery` version 18, which runs it
-  after `dependency-assessment`; later lifecycle steps move up one number, their names unchanged. It also reseeds
-  `solution-discovery` 2.1.2 (a ProjectReference declared twice is recorded once, where it used to fail the run) and
-  `dependency-assessment` 1.7.1;
-- a repository's page shows one tab at a time, in four groups, each tab at its own address
-  (`/repositories/<id>/<tab>`); old links to a section open its tab. The Structure section is now the **Dependency
-  graph** tab, and "Structure & fingerprint" is **Projects & fingerprint**; file links offer VS Code, Visual Studio or
-  copying, by each person's choice;
-- `scripts\update-platform.ps1` installs the newest release tag (or the one `-Release` names), never the tip of
-  master, and `PLATFORM_SOURCE.json` records the release (Part 2). The first update made with an older copy of the
-  script still pulls master;
-- the WCF client platform matrix is 1.2.1: wording only, no verdict changed;
-- the platform folder has a `README.md` for someone who has only the client's repository, and a release can be
-  delivered from our machine when the client's environment cannot reach our git ("Delivering a release from our
-  machine"). `update-platform.ps1` now refuses a source folder that looks like a working repository;
-- catalog descriptions no longer cite findings from a client's code (`serilog-file-sink`, `wcf-nettcp-client`).
-  Stage 8 applies the corrected wording to an existing catalog: an item nobody has edited takes it; an item edited
-  in the UI keeps its edit, and stage 8 prints `CONFLICT catalog_items <item>` with both versions. Then open the item
-  in the catalog and rewrite its description in general terms yourself;
-- repositories scanned before the upgrade show no dependency graph until they are rescanned: **Rescan** each one.
-
-**What release 6 changes on a release 5 installation.** Nothing in the database changes, and no setting is
-added; only the frontend changes. **Stage 5** installs its packages again, because the frontend now has component
-tests: their development packages (vitest, jsdom, @testing-library/react, @testing-library/dom,
-@testing-library/user-event) must be available from `NPM_REGISTRY` like the others ("Package sources"):
-- every list the UI shows from data — projects, entry points, invocations, SOAP calls, backend calls, work items,
-  packages, conversions, executions, the estate views, catalog items and the rest — shows its first 20 items, then
-  "+N more", or "Show 20 more · N remaining" and "Show all", and "Show less"; a list of more than 20 gets a filter box
-  matching on the names it shows;
-- on a repository's page, every section of the Surface tab folds on its own and says what is in it while folded; a
-  bar at the top of the tab jumps to each section and expands or collapses them all. Each section's state is kept in
-  this browser, per repository; a section listing more than 50 rows starts folded the first time it is seen;
-- projects with no request entry points are one line that opens to list them, with their lifecycle hooks shown for
-  all of them or per project; projects with no outbound invocations, and applications with no inbound operations, the
-  same.
-
-**What release 5 changes on a release 4 installation.** Nothing existing in the database changes:
-- **stage 6** republishes the step programs: every discovery step reports progress and writes a timing profile;
-  each project's own files are read once (a project folder holding another project no longer reads it again);
-  `outbound-invocation-inventory` analyses projects in parallel and no longer searches the whole repository per
-  project or per call; a project or file over its own time limit is recorded "not checked" and the step carries on;
-- **stage 7** adds two columns to step executions (`progress`, `progress_at`) and the table `step_time_limits`;
-- **stage 8** reseeds the step registrations whose versions changed (`solution-discovery`,
-  `application-fingerprinting`, `entry-point-inventory`, `outbound-invocation-inventory`, `dependency-assessment`,
-  `test-coverage-assessment`, `impact-analysis`). Their fixed time limits are gone: every step now takes its limit
-  from the settings;
-- new, optional settings `STEP_TIMEOUT_SECONDS` (3600, as before), `STEP_STALL_SECONDS`, `STEP_PROJECT_SECONDS`
-  and `STEP_FILE_SECONDS` ("backend\.env"), and per-step and per-repository overrides ("Large repositories:
-  progress, time limits and stopped steps");
-- the **Executions** tab shows a running step's phase, items done out of the total and elapsed time; a step that
-  timed out, stalled or was stopped ends with everything it started, and a rerun continues from the last project it
-  completed;
-- repositories scanned before the upgrade keep their results until they are rescanned. A web project holding other
-  projects in its subfolders no longer counts their entry points, calls and findings as its own, so **Rescan** each
-  repository: its counts may go down, by the duplicates. Surface says a scan used an older entry-point manifest
-  (1.3.0) until then.
-
-**What release 4 changes on a release 3 installation.** Nothing in the database changes, and no setting is
-added:
-- the platform can run in a folder of a client's shared repository, with `scripts\update-platform.ps1` to update it
-  and `scripts\write-platform-source.ps1` to record our source commit (Part 1 and Part 2 of this guide). An install
-  that is its own clone of our repository, like this one, keeps working as it is, and can move into the client's
-  repository later ("Moving an existing install that carries our .git");
-- preparations and verifications record our source commit (and tag) beside the host repository's commit and
-  branch, when the platform is in a folder of a host repository;
-- preflight reports where the platform runs and its source commit, and warns when `RUNS_DIR` or `REPOS_DIR` is
-  inside the host repository.
-
-**What release 3 changes on a release 2 installation** (upgrade with the commands above). Nothing in the database changes, and no setting is added:
-- **stage 6** republishes the step programs: `outbound-invocation-inventory` now reads WCF client platform matrix
-  1.2.0;
-- the UI: a **Reason** column in Dependencies, a **Why** beside each SOAP verdict (also in the CSV export, as
-  `runtime_why` and `platform_why`), and what **Confirmed** means wherever it is shown;
-- platform matrix 1.2.0 adds specific Linux entries for basicHttpsBinding Transport/None and Transport/Certificate,
-  confirmed by Rohit Khanna (decision RK-2026-10-17-a). Their note: in the probes the server was trusted by pinning
-  its certificate's thumbprint; in production the container must trust the services' issuing certificate
-  authority. Repositories scanned before the upgrade keep their verdicts until they are rescanned: the SOAP
-  report then says the run used an older matrix than the newest. **Rescan** each repository with SOAP calls.
-
-**What release 2 changes on a release 1 installation:**
-- **stage 3** installs the exact versions in `backend\requirements.lock`; packages may move to the locked versions;
-- **stage 6** republishes the step programs whose sources changed;
-- **stage 7** adds the tables `platform_heartbeat` ("More than one person") and `deletion_audit` ("Deleting a repository or an engagement"), and lets a
-  repository's status be `cloning` with a `clone_progress` column ("Registering a client repository"). Nothing existing changes;
-- **stage 8** reseeds, which never overwrites a catalog edit made in the UI;
-- new, optional setting `REPOS_DIR` ("backend\.env"): without it, registering by URL asks for the target folder;
-- new in the UI: **Git URL** registration ("Registering a client repository"), **Delete engagement…** and a hard **Delete** on a
-  repository's page ("Deleting a repository or an engagement"); a checkout already registered in two engagements is reported ("More than one person").
-
-If the platform folder was installed without `.git` (step 5 fails with "not a git repository"), clone the release
-into a new folder instead, copy `backend\.env` and `frontend\.env` into it, run steps 6 to 8 there, and start the
+If the platform folder was installed without `.git` (step 5 fails with "not a git repository"), clone the bundle
+into a new folder instead, copy `backend\.env` and `frontend\.env` into it, run steps 6 to 9 there, and start the
 platform from the new folder. It uses the same schema and `RUNS_DIR`, so the data is the same:
 
 ```powershell
-git clone -c core.longpaths=true --branch release-7 C:\MP\delivery\release-7.bundle C:\MP\code2
+git clone -c core.longpaths=true --branch master C:\MP\delivery\master-<commit>.bundle C:\MP\code2
 ```
+
+---
+
+## Upgrade notes
+
+Newest first. Each entry is dated and names the commit of ours that brought the change. It lists only what needs
+doing after an update besides bootstrap: a rescan, a package your mirror must carry, a setting, an edit to make by
+hand. Everything else an update brings, bootstrap applies by itself. Apply every entry newer than the commit you
+had (`previousCommit` in `PLATFORM_SOURCE.json` after the update; in our own installs, the commit before step 5 of
+the appendix), oldest of them first. Entries up to 2026-10-23 were the notes of releases 2 to 7, which are named so.
+
+#### 2026-10-26, c16f9c1: installations follow master
+
+- **The first update after this change runs from the source folder.** The copy of `update-platform.ps1` in the
+  platform folder still looks for release tags, and an update made with it left the source folder at one. Put the
+  source folder back on master, then run the script from the source folder, which has the new one ("Updating the
+  platform", the second command):
+
+  ```powershell
+  git -C C:\MP\source switch master; git -C C:\MP\source pull --ff-only
+  ```
+
+  ```powershell
+  powershell -ExecutionPolicy Bypass -File C:\MP\source\scripts\update-platform.ps1 -Source C:\MP\source -Platform C:\MP\client\modernization-platform -Branch rohit/modernization-platform
+  ```
+
+  After that, either folder's copy works. `-Release` is gone; the newest master is always installed, never
+  backwards.
+- **Delivering from our machine**: the same, with `C:\MPD\source` ("Delivering to a client from our machine").
+- **Our own installs**: bundles are made from master now, and installed as in "Appendix: upgrading from a bundle of
+  master"; an install made from a release tag moves onto master there.
+
+#### 2026-10-23, e58db01: catalog wording that cited a client's findings
+
+- If bootstrap's stage 8 prints `CONFLICT catalog_items serilog-file-sink` or `CONFLICT catalog_items
+  wcf-nettcp-client`, that item's description was edited in the UI, so the corrected wording was not applied. Open
+  the item in the catalog and rewrite its description in general terms yourself. An item nobody edited takes the
+  corrected wording by itself.
+
+#### 2026-10-23, e98ed48 (release 7): the dependency graph
+
+- **Packages**: bootstrap's stage 5 installs React Flow (`@xyflow/react`) and dagre (`@dagrejs/dagre`), both MIT.
+  They must be available from `NPM_REGISTRY` like the others ("Package sources").
+- **Rescan** each repository scanned before the update: it shows no dependency graph until then.
+
+#### 2026-10-21, 81e188a (release 6): frontend component tests
+
+- **Packages**: bootstrap's stage 5 installs the frontend's test packages (vitest, jsdom, @testing-library/react,
+  @testing-library/dom, @testing-library/user-event). They must be available from `NPM_REGISTRY` like the others
+  ("Package sources").
+
+#### 2026-10-19, b79a96e (release 5): progress and time limits
+
+- **Settings**, optional: `STEP_TIMEOUT_SECONDS` (3600, as before), `STEP_STALL_SECONDS`, `STEP_PROJECT_SECONDS`
+  and `STEP_FILE_SECONDS` ("backend\.env"), with per-step and per-repository overrides ("Large repositories:
+  progress, time limits and stopped steps"). Set them only for repositories that need longer.
+- **Rescan** each repository scanned before the update. A web project holding other projects in its subfolders no
+  longer counts their entry points, calls and findings as its own, so its counts may go down, by the duplicates.
+  Until then, Surface says the scan used an older entry-point manifest (1.3.0).
+
+#### 2026-10-17, 24eef78 (release 3): WCF client platform matrix 1.2.0
+
+- **Rescan** each repository with SOAP calls: until then its SOAP report says the run used an older matrix than the
+  newest. Matrix 1.2.0's Linux entries for basicHttpsBinding Transport/None and Transport/Certificate were confirmed
+  with the server trusted by pinning its certificate's thumbprint; in production the container must trust the
+  services' issuing certificate authority.
+
+#### 2026-10-16, 78c9cd8 (release 2): locked packages, registering by URL
+
+- **Packages**: bootstrap's stage 3 installs the exact versions in `backend\requirements.lock`, which your pip
+  mirror must carry.
+- **Setting**, optional: `REPOS_DIR` ("backend\.env"). Without it, registering a repository by its git URL asks
+  for the target folder each time.

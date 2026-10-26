@@ -175,14 +175,17 @@ modernization-platform/
     `WcfClientProbe make-certificates`, `ProbeServices`). If a task truly needs
     a machine change, ask first, saying exactly what changes and how to undo it.
 
-15. **Every release upgrades an existing installation in place, keeping all its data.** Migrations keep
+15. **Every commit on master upgrades an existing installation in place, keeping all its data.** Migrations keep
     existing data intact: they add or extend, never drop or rewrite what a client's schema holds (rule 4 still
     applies). Every new setting is optional with a default, so an upgrade never requires editing `.env`.
     Existing data a new rule would refuse (one checkout registered in two engagements before release 2) is
     reported — in preflight, the backend's startup log and the UI — and left working, never broken or deleted;
-    code that acts on such data, a hard delete included, must not damage the other side of it. A release that
-    cannot upgrade in place says so explicitly, with the reason. `docs/VDI-SETUP.md` "Appendix: upgrading from a release bundle" holds the exact
-    upgrade commands; prove a release by upgrading an installation of the previous one with them.
+    code that acts on such data, a hard delete included, must not damage the other side of it. A change that
+    cannot upgrade in place says so explicitly, with the reason, in `docs/VDI-SETUP.md` "Upgrade notes". Every
+    change that touches the database, step registrations or settings proves it: upgrade an installation of the
+    previous master commit, with data in it, as "Updating the platform" (a client install) or "Appendix: upgrading
+    from a bundle of master" (our own) says. A change that needs an action after updating (a rescan, a package a
+    mirror must carry, a new setting) adds a dated entry, naming its commit, at the top of "Upgrade notes".
 
 16. **The platform may run in a folder of someone else's repository.** A client keeps it in a subfolder of a
     shared repository, without our `.git`, on the operator's own branch (`docs/VDI-SETUP.md`, Part 1). Every git
@@ -192,11 +195,12 @@ modernization-platform/
     Nothing the platform or its scripts do commits outside its folder or to another branch:
     `scripts/update-platform.ps1` stages and commits with `-- <folder>` only.
 
-17. **master never falls behind a release.** After every release is tagged, fast-forward master to the tagged commit
-    (`git checkout master; git merge --ff-only release-<n>`). master always holds the latest release, or later
-    work built on it. If master cannot be fast-forwarded, stop and ask; never merge, rebase or reset master to
-    make it fit. Every release report states master's commit next to the tag's. Release tags are `release-<n>`
-    (release-7 onward); releases 1 to 6 keep their older tags, which every script and check still accepts.
+17. **master is always deployable.** Every installation follows master (`scripts/update-platform.ps1` pulls it),
+    so every commit on master passes the full test suites: backend, frontend and C#. Unfinished work stays on a
+    branch until it does. Commit on master with neutral messages, and never rewrite its history: an update refuses
+    to go backwards. **Never create, move or delete a tag; the owner does**, by hand, as a reference point for a
+    bigger milestone. Nothing installs a tag. Bundles for our own installs are made from master
+    (`scripts/master-bundle.ps1`), only when asked.
 
 18. **No client's name, anywhere.** This platform serves many clients. No client's name, business unit,
     application or repository code, or host name appears in it: not in code, comments, tests, test data,

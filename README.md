@@ -5,11 +5,11 @@ contains, finds the patterns that need to change (WCF, Windows-only code, outdat
 how to resolve each one, and prepares and verifies each conversion. It runs on one machine, for one operator, with
 its own PostgreSQL schema.
 
-This folder is the platform. It arrives as releases: each one is committed to this folder on the platform's branch
-of your repository. **Do not edit the files in this folder**: the next release replaces them, and your changes would
-be lost or would block it. What belongs to your machine (`backend\.env`, `frontend\.env`, the Python environment,
-`node_modules`, the published step programs, and the data in `RUNS_DIR`) is never part of a release and is never
-touched by one.
+This folder is the platform. It arrives as updates from the platform's own master branch: each one is committed to
+this folder on the platform's branch of your repository. **Do not edit the files in this folder**: the next update
+replaces them, and your changes would be lost or would block it. What belongs to your machine (`backend\.env`,
+`frontend\.env`, the Python environment, `node_modules`, the published step programs, and the data in `RUNS_DIR`) is
+never part of an update and is never touched by one.
 
 The full guide is [`docs/VDI-SETUP.md`](docs/VDI-SETUP.md). This page is the short version. The commands assume this
 folder is `C:\MP\client\modernization-platform`; use your own path.
@@ -80,9 +80,9 @@ cd C:\MP\client\modernization-platform\backend; .venv\Scripts\python.exe -m app.
 
 Then register the repositories to modernize (the guide's "Registering a client repository").
 
-## 6. Updating to a new release
+## 6. Updating
 
-A new release arrives as a commit to this folder on the platform's branch. To install it:
+An update arrives as a commit to this folder on the platform's branch. To install it:
 
 1. Stop the backend and the frontend (**Ctrl+C** in each window), once no discovery or verification is running (the
    repository's **Executions** tab).
@@ -92,16 +92,19 @@ A new release arrives as a commit to this folder on the platform's branch. To in
    git -C C:\MP\client pull --ff-only
    ```
 
-3. Run bootstrap again. It updates only what the release changed, and keeps all your data.
+3. Read the guide's "Upgrade notes" for every entry newer than the commit you had (`previousCommit` in
+   `PLATFORM_SOURCE.json`). They say what needs doing besides bootstrap: a package your mirror must carry, a new
+   setting, a rescan. Most updates need nothing more.
+4. Run bootstrap again. It updates only what the update changed, and keeps all your data.
 
    ```powershell
    cd C:\MP\client\modernization-platform; powershell -ExecutionPolicy Bypass -File .\scripts\bootstrap.ps1
    ```
 
-4. Start the backend and the frontend again.
+5. Start the backend and the frontend again, and do any rescan the notes asked for.
 
-Never update by editing the platform's files: changes arrive with each release. `PLATFORM_SOURCE.json` records which
-release this folder holds. What each release changes is in the guide's "Appendix: upgrading from a release bundle".
+Never update by editing the platform's files: changes arrive with each update. `PLATFORM_SOURCE.json` records which
+commit of the platform this folder holds (`commit`), and the tag when one happens to point at it.
 
 ## More
 
