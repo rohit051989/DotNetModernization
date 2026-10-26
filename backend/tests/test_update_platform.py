@@ -205,15 +205,70 @@ class UpdatePlatform(unittest.TestCase):
         self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
         self.assertEqual((self.platform / "changed.txt").read_text(), "v2\n")
 
-    def test_an_installed_commit_unknown_to_our_repository_is_refused(self):
+    def test_the_clients_own_files_in_the_platform_folder_are_kept_and_listed(self):
+        """Only files in the installed commit and not in the new one are removed; a file the client committed in the
+        platform folder is in neither, so it stays, and is listed."""
+        (self.platform / "client-notes.md").write_text("ours, not the platform's\n")
+        (self.platform / "docs" / "client-runbook.md").write_text("also ours\n")
+        git(self.client, "add", "-A", "--", FOLDER); git(self.client, "commit", "-q", "-m", "client files", "--", FOLDER)
+        self.upstream()
+        for run_from in (self.platform, self.source):
+            done = self.update(run_from=run_from)
+            self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+            self.assertEqual((self.platform / "client-notes.md").read_text(), "ours, not the platform's\n")
+            self.assertEqual((self.platform / "docs" / "client-runbook.md").read_text(), "also ours\n")
+            self.assertIn("Kept, not part of the platform (2):", done.stdout)
+            self.assertIn("client-notes.md", done.stdout)
+            self.assertIn("docs/client-runbook.md", done.stdout)
+            self.commit_upstream("v3\n" if run_from == self.platform else "v4\n")
+        # The deletion and the rename upstream were applied all the same.
+        self.assertFalse((self.platform / "deleted.txt").exists())
+        self.assertFalse((self.platform / "docs" / "old-name.md").exists())
+        self.assertTrue((self.platform / "docs" / "new-name.md").exists())
+        self.assertIn("client-notes.md", git(self.client, "ls-files", "--", FOLDER))
+
+    def assert_refused_and_unchanged(self, done: subprocess.CompletedProcess, *said: str):
+        self.assertEqual(done.returncode, 1, done.stdout)
+        for text in said:
+            self.assertIn(text, done.stdout)
+        self.assertIn("Nothing was committed", done.stdout)
+        self.assertEqual(git(self.client, "rev-parse", "HEAD"), self.head)
+        self.assertEqual(git(self.client, "status", "--porcelain", "--", FOLDER), "")
+        self.assertEqual(git(self.source, "rev-parse", "HEAD"), self.v1)
+        self.assertEqual((self.platform / "changed.txt").read_text(), "v1\n")
+        self.assertTrue((self.platform / "deleted.txt").exists())
+
+    def test_an_installed_platform_without_platform_source_json_is_refused_changing_nothing(self):
+        git(self.client, "rm", "-q", "--", f"{FOLDER}/PLATFORM_SOURCE.json")
+        git(self.client, "commit", "-q", "-m", "no record", "--", FOLDER)
+        self.head = git(self.client, "rev-parse", "HEAD")
+        self.upstream()
+        self.assert_refused_and_unchanged(self.update(run_from=self.source), "no PLATFORM_SOURCE.json",
+                                          "write-platform-source.ps1")
+
+    def test_an_installed_commit_the_source_folder_lacks_is_refused_changing_nothing(self):
         record = self.record()
         record["commit"] = "0123456789abcdef0123456789abcdef01234567"
         (self.platform / "PLATFORM_SOURCE.json").write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
         git(self.client, "commit", "-q", "-m", "platform from elsewhere", "--", FOLDER)
+        self.head = git(self.client, "rev-parse", "HEAD")
         self.upstream()
-        done = self.update()
-        self.assertEqual(done.returncode, 1, done.stdout)
-        self.assertIn("is not in our repository", done.stdout)
+        self.assert_refused_and_unchanged(self.update(), "which the source folder does not contain")
+        # -AllowDowngrade does not get past it: deletions cannot be worked out without the commit.
+        self.assert_refused_and_unchanged(self.update("-AllowDowngrade"), "which the source folder does not contain")
+
+    def test_a_first_install_into_an_empty_folder_needs_no_installed_commit(self):
+        empty = self.client / "mp2"
+        empty.mkdir()
+        new = self.upstream()
+        done = ps(self.source / "scripts" / "update-platform.ps1", "-Source", str(self.source), "-Platform", str(empty),
+                  "-Branch", BRANCH)
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertIn("nothing installed", done.stdout)
+        record = json.loads((empty / "PLATFORM_SOURCE.json").read_text(encoding="utf-8"))
+        self.assertEqual((record["commit"], record["previousCommit"]), (new, None))
+        self.assertEqual((empty / "changed.txt").read_text(), "v2\n")
+        self.assertIn("Previous source commit: none (first install)", git(self.client, "log", "-1", "--format=%B"))
 
     def test_a_source_folder_left_at_a_tag_by_an_older_script_is_refused_with_the_way_back(self):
         """An older update-platform.ps1 checked out a release tag; the first update after the change to master is

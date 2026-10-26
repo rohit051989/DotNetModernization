@@ -844,16 +844,20 @@ every time:
      uncommitted changes; it names the branch, or lists the files;
    - stops, changing nothing, unless the source folder is a clone of ours on `master`, following `origin/master`,
      with no commits of its own and no changes: the source folder is never a working repository;
-   - fetches our master and **never goes backwards**: it stops, changing nothing in either folder, when master does
-     not descend from the commit the platform folder holds (its `PLATFORM_SOURCE.json`) or from the source folder's
-     own master. That means our history was rewritten, or the platform was installed from another branch or
-     repository; the message says which, and lists the commits that would be lost. Ask us why before going on.
-     `-AllowDowngrade` installs master anyway, after listing what is lost;
+   - fetches our master and stops, changing nothing, when it cannot tell which of our commits the platform folder
+     holds: no `PLATFORM_SOURCE.json`, or a commit the source folder does not contain. The message says how to go
+     on. (An empty platform folder is a first install, and needs none.);
+   - **never goes backwards**: it stops, changing nothing in either folder, when master does not descend from the
+     commit the platform folder holds or from the source folder's own master. That means our history was
+     rewritten, or the platform was installed from another branch; the message says which, and lists the commits
+     that would be lost. Ask us why before going on. `-AllowDowngrade` installs master anyway, after listing what
+     is lost;
    - brings the source folder to master's tip with `git pull --ff-only`, and updates your branch with
      `git pull --ff-only`;
    - copies the source into the platform folder with robocopy, leaving out `.git`, `.venv`, `node_modules` and
-     `.env`, and removes every file the platform folder holds that our master no longer has (the files we deleted
-     or renamed);
+     `.env`, and removes only the files we deleted or renamed: those in the installed commit and not in the new
+     one. A file you committed in the platform folder is in neither: it is kept, and listed as "not part of the
+     platform";
    - writes the new `PLATFORM_SOURCE.json`: our commit, the one before (`previousCommit`), and a tag only if one
      happens to point at the commit;
    - stages and commits only the platform folder, with our source commit in the message; with `-Push`, pushes only
@@ -1196,7 +1200,8 @@ there is recorded with the reason, within its own time limit.
 | Updating: **"Stopped: the platform folder has uncommitted changes"** | A file in the platform folder was edited by hand (the message lists them) | The platform folder only ever changes through the update. Discard the edit (`git -C C:\MP\client checkout -- modernization-platform/<file>`), or commit it to your branch if it must stay, then update again |
 | Updating: **"Stopped: the source folder has changes"** | Something was run or edited in the source folder | Discard it as the message says. Nothing is ever run in the source folder |
 | Updating: **"Stopped: the source folder is on a commit of its own (...), not master"** | An older copy of the update script left the source folder at a release tag | Put it back on master, `git -C C:\MP\source switch master`, and run the update from the source folder ("Upgrade notes", 2026-10-26) |
-| Updating: **"Stopped: master (...) does not descend from the installed commit ..."**, or **"... is not in our repository"** | Our master's history was rewritten, or the platform was installed from another branch or repository. Nothing was changed | Ask us why, with the commits the message lists. Only when we confirm, run the update again with `-AllowDowngrade` |
+| Updating: **"Stopped: master (...) does not descend from the installed commit ..."** | Our master's history was rewritten, or the platform was installed from another branch. Nothing was changed | Ask us why, with the commits the message lists. Only when we confirm, run the update again with `-AllowDowngrade` |
+| Updating: **"Stopped: the platform folder has files but no PLATFORM_SOURCE.json"**, or **"... which the source folder does not contain"** | The update cannot tell which of our commits the folder holds, so it cannot tell a file we deleted from one of yours. Nothing was changed | Do what the message says: record the commit the folder was copied from (ask us which), or bring that commit into the source folder; then update again. `-AllowDowngrade` does not get past this |
 | Updating: **"... failed: git pull --ff-only"** | Your branch on the server has commits this machine does not, which cannot be fast-forwarded | Ask whoever else pushed to your branch; nobody else should. Then `git -C C:\MP\client pull --rebase` and update again |
 | A feed answers **401** (preflight "HTTP 401", bootstrap stage 6, or a package marked "unknown ... 401 (Unauthorized)" in Dependencies) | The feed needs a login and none was supplied | Add the feed with its login to the account's NuGet configuration: `dotnet nuget add source <address> -n <name> -u <user> -p <token>`; for a feed a scanned repository names, `dotnet nuget update source <name> -u <user> -p <token>`, or install the client's credential provider and sign in once. Leave `NUGET_SOURCES` empty when the login is in the NuGet configuration |
 | A feed answers **403** | The login is known but has no right to that feed | Ask the feed's owner for read access for that account; the address and the login are right |

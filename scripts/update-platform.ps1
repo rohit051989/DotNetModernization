@@ -26,16 +26,20 @@
          (both are named when not).
       2. The source folder must be a clone of our repository on master, following origin/master, with no local
          commits or changes. Our master is fetched.
-      3. Never backwards: origin's master must descend from the installed commit (PLATFORM_SOURCE.json) and from
-         the source folder's own master. A rewritten history, or a platform installed from another branch or
-         repository, is refused, saying why, with both folders left as they were. -AllowDowngrade installs it
+      3. The installed commit must be known: a platform folder that already has files needs a PLATFORM_SOURCE.json
+         whose commit the source folder holds, or the update is refused, changing nothing (an empty folder is a
+         first install and needs none). Never backwards: origin's master must descend from the installed commit
+         and from the source folder's own master. A rewritten history, or a platform installed from another
+         branch, is refused, saying why, with both folders left as they were. -AllowDowngrade installs it
          anyway, after listing what will be lost. Then the source folder is brought to origin's master with
          git pull --ff-only (with -AllowDowngrade over a rewritten history, git reset --hard to it).
       4. The client branch is updated with git pull --ff-only.
       5. The source is copied into the platform folder with robocopy, leaving out .git, .venv, node_modules and
          .env files. robocopy's exit codes 0 to 7 mean success.
-      6. Files we deleted or renamed are removed: every file the client's repository tracks in the platform folder
-         that our master no longer has (PLATFORM_SOURCE.json aside).
+      6. Files we deleted or renamed are removed: only files that were in the installed commit and are not in the
+         new one, worked out in the source folder, which holds both (a rename deletes the old name). A file in
+         the platform folder that is in neither commit is the client's own: it is kept, and listed as "not part of
+         the platform".
       7. PLATFORM_SOURCE.json is written (scripts\write-platform-source.ps1): the commit, and a tag only if one
          happens to point at it.
       8. Only the platform folder is staged and committed: git add -A -- <folder>, then git commit -- <folder>,
@@ -44,7 +48,7 @@
     Then it tells you to run bootstrap and restart the backend.
 
     Local files are never touched: .env, .venv, node_modules, the published step programs, and anything else not
-    in our source. RUNS_DIR and REPOS_DIR live outside the client's repository.
+    in our source, committed or not. RUNS_DIR and REPOS_DIR live outside the client's repository.
 
 .PARAMETER Source
     The source folder: the pristine clone of our repository, on master.
@@ -149,32 +153,50 @@ if ([int]$ahead -gt 0) {
 $sourceBefore = @(Invoke-Git $Source @('rev-parse', 'HEAD') 'Reading the source commit')[0]
 $installed = $null
 $record = Join-Path $Platform 'PLATFORM_SOURCE.json'
-if (Test-Path $record) { $installed = "$((Get-Content $record -Raw | ConvertFrom-Json).commit)".Trim() }
+if (Test-Path $record) {
+    try { $installed = "$((Get-Content $record -Raw | ConvertFrom-Json).commit)".Trim() } catch { $installed = $null }
+}
+# An empty platform folder is a first install. Anything else is an installed platform, whose commit must be known:
+# deletions are worked out from it, and without it a client's own file cannot be told from one we deleted.
+$firstInstall = -not (Get-ChildItem -LiteralPath $Platform -Recurse -File -Force -ErrorAction SilentlyContinue |
+    Where-Object { $_.Name -ne '.env' } | Select-Object -First 1)
 # Fetch first and check, then pull: a refused update leaves the source folder as it found it. --refmap= keeps
 # origin/master where it was (master goes only to FETCH_HEAD) until the update is accepted. The owner's tags come
 # along as they are on origin, to name the commit when one points at it.
 Invoke-Git $Source @('fetch', '--quiet', '--refmap=', 'origin', 'master', '+refs/tags/*:refs/tags/*') 'Fetching our master' | Out-Null
 $new = @(Invoke-Git $Source @('rev-parse', 'FETCH_HEAD') 'Reading origin''s master')[0]
-$old = $(if ($installed) { $installed } else { $sourceBefore })
 $tag = & git -C $Source describe --tags --exact-match $new 2>$null
 $tag = $(if ($LASTEXITCODE -eq 0 -and $tag) { "$tag".Trim() } else { $null })
-Write-Host "Source $Source`: master $($old.Substring(0, [Math]::Min(12, $old.Length))) -> $($new.Substring(0, 12))$(if ($tag) { " ($tag)" })$(if (-not $installed) { ' (no PLATFORM_SOURCE.json: the old commit is the source folder''s before the pull)' })"
 
-# ---- 3. Never backwards
+# ---- 3. The installed commit, and never backwards
+if (-not $firstInstall) {
+    if (-not $installed) {
+        Stop-Update ("the platform folder has files but no PLATFORM_SOURCE.json naming the commit of ours it holds. Without " +
+            "it, a file we deleted cannot be told from the client's own, so nothing was changed. Ask us which of our " +
+            "commits the folder was copied from, then record it: check that commit out in the source folder " +
+            "(git -C `"$Source`" checkout <commit>), run scripts\write-platform-source.ps1 -Source `"$Source`" from the " +
+            "platform folder, commit PLATFORM_SOURCE.json to your branch, put the source folder back on master " +
+            "(git -C `"$Source`" switch master) and run the update again.")
+    }
+    if (-not (Test-Commit $Source $installed)) {
+        Stop-Update ("the platform folder holds commit $installed (PLATFORM_SOURCE.json), which the source folder does not " +
+            "contain: our history was rewritten, or the platform was installed from another repository. Without it, a " +
+            "file we deleted cannot be told from the client's own, so nothing was changed. Ask us why; once the source " +
+            "folder holds that commit (git -C `"$Source`" fetch origin, or the commit's branch), run the update again.")
+    }
+}
+$old = $(if ($installed -and -not $firstInstall) { $installed } else { $null })
+Write-Host "Source $Source`: master $(if ($old) { $old.Substring(0, 12) } else { 'nothing installed' }) -> $($new.Substring(0, 12))$(if ($tag) { " ($tag)" })"
+
 # Both the installed commit and the source folder's own master must be in master's history: a commit that is not
-# was installed from another branch or repository, or our history was rewritten.
+# was installed from another branch, or our history was rewritten.
 $why = @()
 $lost = @()
-if ($installed -and $installed -ne $new) {
-    if (-not (Test-Commit $Source $installed)) {
-        $why += "the installed commit $installed is not in our repository: our history was rewritten, or the platform was installed from another repository."
-        $lost += '(the installed commit''s own changes cannot be listed: it is not in the source folder)'
-    } else {
-        & git -C $Source merge-base --is-ancestor $installed $new
-        if ($LASTEXITCODE -ne 0) {
-            $why += "master ($($new.Substring(0, 12))) does not descend from the installed commit $($installed.Substring(0, 12)): our history was rewritten, or the platform was installed from another branch."
-            $lost += @(Invoke-Git $Source @('log', '--oneline', '--no-decorate', "$new..$installed") 'Listing the installed commits master lacks')
-        }
+if ($old -and $old -ne $new) {
+    & git -C $Source merge-base --is-ancestor $old $new
+    if ($LASTEXITCODE -ne 0) {
+        $why += "master ($($new.Substring(0, 12))) does not descend from the installed commit $($old.Substring(0, 12)): our history was rewritten, or the platform was installed from another branch."
+        $lost += @(Invoke-Git $Source @('log', '--oneline', '--no-decorate', "$new..$old") 'Listing the installed commits master lacks')
     }
 }
 & git -C $Source merge-base --is-ancestor $sourceBefore $new
@@ -213,31 +235,47 @@ $copied = $LASTEXITCODE
 if ($copied -ge 8) { Stop-Update "robocopy failed (exit code $copied): the platform folder may be partly copied. Fix the cause and run the update again." }
 Write-Host "Copied (robocopy exit code $copied)"
 
-# ---- 6. Files we deleted or renamed: tracked in the platform folder, gone from our master
-$ours = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
-foreach ($path in @(Invoke-Git $Source @('-c', 'core.quotepath=false', 'ls-files') 'Listing our files')) { [void]$ours.Add($path) }
+# ---- 6. Files we deleted or renamed: in the installed commit, not in the new one
+# Worked out in the source folder, which holds both commits, whichever folder this script runs from. With
+# --no-renames a rename is the deletion of the old name and the addition of the new. Nothing else is ever removed.
 $removed = 0
-foreach ($tracked in @(Invoke-Git $top @('-c', 'core.quotepath=false', 'ls-files', '--', $folder) 'Listing the platform folder''s files')) {
-    $path = $tracked.Substring($folder.Length + 1)
-    if ($path -eq 'PLATFORM_SOURCE.json' -or $ours.Contains($path) -or ($path -split '/')[-1] -eq '.env') { continue }
-    $target = Join-Path $Platform ($path.Replace('/', '\'))
-    if (Test-Path -LiteralPath $target -PathType Leaf) {
-        Remove-Item -LiteralPath $target -Force
-        $removed++
-        $parent = Split-Path -Parent $target
-        while ($parent.Length -gt $Platform.Length -and -not (Get-ChildItem -LiteralPath $parent -Force)) {
-            Remove-Item -LiteralPath $parent -Force
-            $parent = Split-Path -Parent $parent
+if ($old -and $old -ne $new) {
+    foreach ($path in @(Invoke-Git $Source @('-c', 'core.quotepath=false', 'diff', '--name-only', '--no-renames', '--diff-filter=D', $old, $new) 'Listing the files we deleted or renamed')) {
+        $target = Join-Path $Platform ($path.Replace('/', '\'))
+        if (Test-Path -LiteralPath $target -PathType Leaf) {
+            Remove-Item -LiteralPath $target -Force
+            $removed++
+            $parent = Split-Path -Parent $target
+            while ($parent.Length -gt $Platform.Length -and -not (Get-ChildItem -LiteralPath $parent -Force)) {
+                Remove-Item -LiteralPath $parent -Force
+                $parent = Split-Path -Parent $parent
+            }
         }
     }
 }
 Write-Host "Removed $removed file(s) we deleted or renamed"
 
+# The client's own files: committed in the platform folder, in neither the installed commit nor the new one. Kept.
+$platformFiles = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+foreach ($commit in @($old, $new) | Where-Object { $_ }) {
+    foreach ($path in @(Invoke-Git $Source @('-c', 'core.quotepath=false', 'ls-tree', '-r', '--name-only', $commit) 'Listing our files')) {
+        [void]$platformFiles.Add($path)
+    }
+}
+$theirs = @()
+foreach ($tracked in @(Invoke-Git $top @('-c', 'core.quotepath=false', 'ls-files', '--', $folder) 'Listing the platform folder''s files')) {
+    $path = $tracked.Substring($folder.Length + 1)
+    if ($path -ne 'PLATFORM_SOURCE.json' -and -not $platformFiles.Contains($path)) { $theirs += $path }
+}
+if ($theirs.Count -gt 0) {
+    Write-Host "Kept, not part of the platform ($($theirs.Count)):`n  $($theirs -join "`n  ")"
+}
+
 # ---- 7. Which of our commits this is
 # The copy just placed in the platform folder, whichever folder this script was started from.
 # Kept as it is when the commit has not changed: a run with nothing new commits nothing.
 if ($installed -ne $new) {
-    & (Join-Path $Platform 'scripts\write-platform-source.ps1') -Source $Source -Platform $Platform -Previous $old
+    & (Join-Path $Platform 'scripts\write-platform-source.ps1') -Source $Source -Platform $Platform -Previous "$old"
     if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) { Stop-Update 'writing PLATFORM_SOURCE.json failed.' }
 }
 
@@ -248,7 +286,7 @@ if ($staged.Count -eq 0) {
     Write-Host 'Nothing changed in the platform folder: no commit.'
 } else {
     $title = "Modernization platform: update to $($new.Substring(0, 12))$(if ($tag) { " ($tag)" })"
-    $message = "$title`n`nSource commit: $new`nPrevious source commit: $old$(if ($tag) { "`nTag: $tag" })`nFiles: $($staged.Count) changed in $folder"
+    $message = "$title`n`nSource commit: $new`nPrevious source commit: $(if ($old) { $old } else { 'none (first install)' })$(if ($tag) { "`nTag: $tag" })`nFiles: $($staged.Count) changed in $folder"
     Invoke-Git $top @('commit', '-q', '-m', $message, '--', $folder) 'Committing the platform folder' | Out-Null
     $commit = @(Invoke-Git $top @('rev-parse', '--short', 'HEAD') 'Reading the commit')[0]
     Write-Host "Committed $commit on $Branch`: $($staged.Count) file(s) in $folder"
