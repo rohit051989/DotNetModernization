@@ -4,8 +4,8 @@
 
 .DESCRIPTION
     The platform folder of a client install carries no .git of ours (docs\VDI-SETUP.md Part 1). This file is how
-    every preparation and verification names our release: the source commit, its tag when it has one, and the date
-    the copy was made (app\experiment\instrument.py reads it). scripts\update-platform.ps1 writes it on every update;
+    every preparation and verification names what is installed: the source commit (installations follow our master),
+    a tag only if one happens to point at that commit, and the date the copy was made (app\experiment\instrument.py reads it). scripts\update-platform.ps1 writes it on every update;
     run this once by hand after the first copy.
 
     Reads the source folder with git; changes nothing there.
@@ -20,8 +20,8 @@
     The source commit the platform folder held before this copy, when there was one (recorded, for the history).
 
 .PARAMETER Release
-    The release installed (its tag), as scripts\update-platform.ps1 chose it. Default: the release tag of the source
-    folder's commit, if it has one.
+    Ignored. Older copies of scripts\update-platform.ps1, which installed release tags, pass it; installations now
+    follow master, and the tag recorded is whichever tag points at the commit, if any.
 
 .EXAMPLE
     .\scripts\write-platform-source.ps1 -Source C:\MP\source
@@ -43,17 +43,15 @@ if ($LASTEXITCODE -ne 0 -or -not $commit) {
     exit 1
 }
 $commit = "$commit".Trim()
-# Its release tag: release-N, or the older <prefix>-release-N of releases 1 to 6. Any other tag is not a release.
-$tag = & git -C $Source describe --tags --exact-match --match 'release-*' --match '*-release-*' HEAD 2>$null
+# A tag, only if one happens to point at this commit: the owner tags milestones by hand; installations follow master.
+$tag = & git -C $Source describe --tags --exact-match HEAD 2>$null
 if ($LASTEXITCODE -ne 0 -or -not $tag) { $tag = $null } else { $tag = "$tag".Trim() }
-if ($Release) { $tag = $Release }
 $branch = "$(& git -C $Source rev-parse --abbrev-ref HEAD)".Trim()
-if ($branch -eq 'HEAD') { $branch = $null }   # a release checked out: no branch
+if ($branch -eq 'HEAD') { $branch = $null }   # a commit checked out on its own: no branch
 
 $record = [ordered]@{
     commit         = $commit
     tag            = $tag
-    release        = $tag
     branch         = $branch
     date           = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
     previousCommit = $(if ($Previous) { $Previous } else { $null })

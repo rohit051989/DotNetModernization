@@ -86,17 +86,19 @@ class PlatformInASubfolder(unittest.TestCase):
         state = instrument.platform_state(own)
         self.assertEqual((state["commit"], state["source"]["tag"], state["host"]), (git(own, "rev-parse", "HEAD"), "release-9", None))
 
-    def test_release_tags_of_either_form_are_read_and_other_tags_are_not(self):
+    def test_any_tag_on_the_commit_is_named_and_an_untagged_commit_has_none(self):
         own = Path(self.tmp.name) / "own"
         own.mkdir()
         (own / "f.txt").write_text("x")
-        git(own, "init", "-q", "-b", "main")
+        git(own, "init", "-q", "-b", "master")
         git(own, "add", "-A")
         git(own, "commit", "-q", "-m", "ours")
-        git(own, "tag", "experiment-before-demo")
-        self.assertIsNone(instrument.platform_state(own)["source"]["tag"])      # not a release tag
-        git(own, "tag", "old-release-6")
-        self.assertEqual(instrument.platform_state(own)["source"]["tag"], "old-release-6")   # releases 1 to 6
+        self.assertIsNone(instrument.platform_state(own)["source"]["tag"])      # installations follow master
+        git(own, "tag", "milestone-a")
+        self.assertEqual(instrument.platform_state(own)["source"]["tag"], "milestone-a")
+        (own / "f.txt").write_text("y")
+        git(own, "commit", "-q", "-am", "after the milestone")
+        self.assertIsNone(instrument.platform_state(own)["source"]["tag"])
 
 
 if __name__ == "__main__":

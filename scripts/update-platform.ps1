@@ -1,43 +1,53 @@
 <#
 .SYNOPSIS
-    Updates the platform folder inside a client's repository from our source folder, and commits only that folder
+    Updates the platform folder inside a client's repository to the tip of our master, and commits only that folder
     to your own branch (docs\VDI-SETUP.md Part 2).
 
 .DESCRIPTION
     Two folders on the machine:
-      - the source folder: a separate, pristine clone of our repository, used only as the source of copies. Never
-        the repository we work in: the script checks releases out in it, and stops when it looks like a working
-        repository (a branch following nothing on origin, or with commits not on origin).
+      - the source folder: a separate, pristine clone of our repository, on master, used only as the source of
+        copies. Never the repository we work in: the script stops unless the source folder is on master, follows
+        origin/master, and has no local commits or changes.
       - the platform folder: a folder inside the client's repository, which other people also work in, on their
         own branches. Our .git never goes there.
 
+    Installations follow our master: every commit on master passes the full test suites (CLAUDE.md rule 17). Tags
+    are reference points the owner creates by hand; the script neither needs nor installs one.
+
     It runs on the client's machine, or on ours when the client's environment cannot reach our git: then the
-    client's repository is a local clone on our machine and -Push delivers the release (docs\VDI-SETUP.md,
-    "Delivering a release from our machine"). Either way only files are copied: our history and tags never go into
-    the client's repository, and only -Branch is pushed.
+    client's repository is a local clone on our machine and -Push delivers master's files to the client's branch
+    (docs\VDI-SETUP.md, "Delivering to a client from our machine"). Either way only files are copied: our history
+    and tags never go into the client's repository, and only -Branch is pushed.
+
+    It works the same whether it is run from the source folder or from the platform folder.
 
     In order, stopping with a plain message at the first problem:
       1. The client repository must be on -Branch, and the platform folder must have no uncommitted changes
          (both are named when not).
-      2. The source folder fetches our release tags and checks out a release: the newest by default, or the one
-         -Release names. A release is installed, never the tip of master. The old commit is the one the platform
-         folder holds (its PLATFORM_SOURCE.json), else the source folder's commit before the checkout.
-      3. The client branch is updated with git pull --ff-only.
-      4. The source is copied into the platform folder with robocopy, leaving out .git, .venv, node_modules and
+      2. The source folder must be a clone of our repository on master, following origin/master, with no local
+         commits or changes. Our master is fetched.
+      3. Never backwards: origin's master must descend from the installed commit (PLATFORM_SOURCE.json) and from
+         the source folder's own master. A rewritten history, or a platform installed from another branch or
+         repository, is refused, saying why, with both folders left as they were. -AllowDowngrade installs it
+         anyway, after listing what will be lost. Then the source folder is brought to origin's master with
+         git pull --ff-only (with -AllowDowngrade over a rewritten history, git reset --hard to it).
+      4. The client branch is updated with git pull --ff-only.
+      5. The source is copied into the platform folder with robocopy, leaving out .git, .venv, node_modules and
          .env files. robocopy's exit codes 0 to 7 mean success.
-      5. Files deleted upstream are removed from the platform folder, including the old names of renamed files:
-         git diff --name-only --no-renames --diff-filter=D <old> <new>, in the source folder.
-      6. PLATFORM_SOURCE.json is written (scripts\write-platform-source.ps1), naming the release installed.
-      7. Only the platform folder is staged and committed: git add -A -- <folder>, then git commit -- <folder>,
+      6. Files we deleted or renamed are removed: every file the client's repository tracks in the platform folder
+         that our master no longer has (PLATFORM_SOURCE.json aside).
+      7. PLATFORM_SOURCE.json is written (scripts\write-platform-source.ps1): the commit, and a tag only if one
+         happens to point at it.
+      8. Only the platform folder is staged and committed: git add -A -- <folder>, then git commit -- <folder>,
          with our source commit in the message. Nothing outside the folder is ever staged or committed.
-      8. With -Push, only -Branch is pushed.
+      9. With -Push, only -Branch is pushed.
     Then it tells you to run bootstrap and restart the backend.
 
     Local files are never touched: .env, .venv, node_modules, the published step programs, and anything else not
     in our source. RUNS_DIR and REPOS_DIR live outside the client's repository.
 
 .PARAMETER Source
-    The source folder: the clone of our repository.
+    The source folder: the pristine clone of our repository, on master.
 
 .PARAMETER Platform
     The platform folder inside the client's repository.
@@ -45,27 +55,24 @@
 .PARAMETER Branch
     Your own branch in the client's repository. The script stops if the repository is on any other.
 
-.PARAMETER Release
-    The release to install, by its tag: release-N (release-7 onward), or the older <prefix>-release-N of releases 1
-    to 6. Default: the newest release, by its number.
-
 .PARAMETER Push
     Push -Branch (and only it) to origin after committing.
 
+.PARAMETER AllowDowngrade
+    Install master even when it does not descend from the installed commit, after listing what will be lost.
+    Only when you know why our history changed.
+
 .EXAMPLE
-    powershell -ExecutionPolicy Bypass -File C:\Client\Repo\modernization-platform\scripts\update-platform.ps1 -Source C:\MP\source -Platform C:\Client\Repo\modernization-platform -Branch rohit/modernization-platform
+    powershell -ExecutionPolicy Bypass -File C:\MP\source\scripts\update-platform.ps1 -Source C:\MP\source -Platform C:\Client\Repo\modernization-platform -Branch rohit/modernization-platform
 #>
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][string]$Source,
     [Parameter(Mandatory)][string]$Platform,
     [Parameter(Mandatory)][string]$Branch,
-    [string]$Release = '',
-    [switch]$Push
+    [switch]$Push,
+    [switch]$AllowDowngrade
 )
-
-# A release tag: release-N, or the older <prefix>-release-N of releases 1 to 6.
-$ReleaseTag = '^(?:[a-z0-9]+-)?release-(\d+)$'
 
 $ErrorActionPreference = 'Continue'   # git writes progress to stderr; every exit code is checked instead
 
@@ -85,6 +92,11 @@ function Invoke-Git([string]$folder, [string[]]$arguments, [string]$what) {
         Stop-Update "$what failed: git $($arguments -join ' ')`n$(($output | Out-String).Trim())"
     }
     return @($output | ForEach-Object { "$_" })
+}
+
+function Test-Commit([string]$folder, [string]$commit) {
+    $type = & git -C $folder cat-file -t $commit 2>$null
+    return $LASTEXITCODE -eq 0 -and "$type".Trim() -eq 'commit'
 }
 
 $Source = (Resolve-Path -LiteralPath $Source).Path.TrimEnd('\')
@@ -109,64 +121,105 @@ if ($changed.Count -gt 0) {
 }
 Write-Host "Client repository $top, branch $Branch, platform folder $folder"
 
-# ---- 2. The source folder
+# ---- 2. The source folder: a pristine clone of ours, on master, following origin/master
 $sourcePrefix = "$(@(Invoke-Git $Source @('rev-parse', '--show-prefix') 'Reading the source folder')[0])"
 if ($sourcePrefix) { Stop-Update "$Source is not the root of a clone of our repository." }
-$sourceChanged = @(Invoke-Git $Source @('status', '--porcelain') 'Checking the source folder')
-if ($sourceChanged.Count -gt 0) {
-    Stop-Update ("the source folder has changes, and nothing is ever run or edited there:`n  " + ($sourceChanged -join "`n  ") +
-        "`nDiscard them (git -C `"$Source`" checkout -- . ; git -C `"$Source`" clean -fd) and run the update again.")
-}
-# A pristine clone, never the working repository: the script checks releases out in it. Its HEAD is a release checked
-# out (detached) or a branch with nothing of its own beyond origin's; a branch with no upstream, or with commits not
-# on origin, is someone's working repository.
 $sourceTop = @(Invoke-Git $Source @('rev-parse', '--show-toplevel') 'Reading the source folder')[0]
 if ($sourceTop -eq $top) { Stop-Update "the source folder is the client's repository. The source is a separate clone of our repository." }
+$sourceChanged = @(Invoke-Git $Source @('status', '--porcelain') 'Checking the source folder')
+if ($sourceChanged.Count -gt 0) {
+    Stop-Update ("the source folder has changes, and nothing is ever edited there:`n  " + ($sourceChanged -join "`n  ") +
+        "`nDiscard them (git -C `"$Source`" checkout -- . ; git -C `"$Source`" clean -fd) and run the update again.")
+}
 $sourceBranch = @(Invoke-Git $Source @('rev-parse', '--abbrev-ref', 'HEAD') 'Reading the source branch')[0]
-if ($sourceBranch -ne 'HEAD') {
-    $upstream = & git -C $Source rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>$null
-    if ($LASTEXITCODE -ne 0 -or -not $upstream) {
-        Stop-Update "the source folder is on branch '$sourceBranch', which follows nothing on origin: it looks like a working repository. Use a separate, pristine clone of our repository as the source (docs\VDI-SETUP.md, `"Delivering a release from our machine`")."
-    }
-    $ahead = @(Invoke-Git $Source @('rev-list', '--count', '@{u}..HEAD') 'Comparing the source with origin')[0]
-    if ([int]$ahead -gt 0) {
-        Stop-Update "the source folder's branch '$sourceBranch' has $ahead commit(s) not on origin: it is a working repository. Use a separate, pristine clone of our repository as the source (docs\VDI-SETUP.md, `"Delivering a release from our machine`")."
-    }
+if ($sourceBranch -ne 'master') {
+    $where = $(if ($sourceBranch -eq 'HEAD') { "a commit of its own ($((@(Invoke-Git $Source @('describe', '--tags', '--always') 'Reading the source commit'))[0]))" } else { "branch '$sourceBranch'" })
+    Stop-Update ("the source folder is on $where, not master. Installations follow master. An update made with an older " +
+        "script leaves the source folder at a release tag; put it back on master and run the update again:`n" +
+        "  git -C `"$Source`" switch master")
+}
+$upstream = & git -C $Source rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>$null
+if ($LASTEXITCODE -ne 0 -or "$upstream".Trim() -ne 'origin/master') {
+    Stop-Update "the source folder's master follows $(if ($upstream) { "'$upstream'" } else { 'nothing' }), not origin/master: it looks like a working repository. Use a separate, pristine clone of our repository (docs\VDI-SETUP.md, `"The source folder and the platform folder`")."
+}
+$ahead = @(Invoke-Git $Source @('rev-list', '--count', '@{u}..HEAD') 'Comparing the source with origin')[0]
+if ([int]$ahead -gt 0) {
+    Stop-Update "the source folder's master has $ahead commit(s) not on origin: it is a working repository. Use a separate, pristine clone of our repository (docs\VDI-SETUP.md, `"The source folder and the platform folder`")."
 }
 $sourceBefore = @(Invoke-Git $Source @('rev-parse', 'HEAD') 'Reading the source commit')[0]
 $installed = $null
 $record = Join-Path $Platform 'PLATFORM_SOURCE.json'
-if (Test-Path $record) { $installed = (Get-Content $record -Raw | ConvertFrom-Json).commit }
-# The client installs releases, never the tip of master: fetch the tags, choose the release, check it out.
-Invoke-Git $Source @('fetch', '--quiet', '--tags', '--force', 'origin') 'Fetching our releases' | Out-Null
-$releases = @(Invoke-Git $Source @('tag', '--list') 'Listing our releases') | Where-Object { $_ -match $ReleaseTag }
-if ($Release) {
-    if ($Release -notmatch $ReleaseTag) { Stop-Update "$Release is not a release: releases are tagged release-N, such as release-7." }
-    if ($releases -notcontains $Release) { Stop-Update "there is no release $Release in the source folder. Releases there: $(($releases | Sort-Object) -join ', ')" }
-} else {
-    $Release = $releases | Sort-Object { [int]([regex]::Match($_, $ReleaseTag).Groups[1].Value) } | Select-Object -Last 1
-    if (-not $Release) { Stop-Update "the source folder has no release (a tag release-N). Ask for one; the platform is never installed from master." }
-}
-Invoke-Git $Source @('-c', 'advice.detachedHead=false', 'checkout', '--quiet', "refs/tags/$Release") "Checking out $Release in the source folder" | Out-Null
-$new = @(Invoke-Git $Source @('rev-parse', 'HEAD') 'Reading the source commit')[0]
+if (Test-Path $record) { $installed = "$((Get-Content $record -Raw | ConvertFrom-Json).commit)".Trim() }
+# Fetch first and check, then pull: a refused update leaves the source folder as it found it. --refmap= keeps
+# origin/master where it was (master goes only to FETCH_HEAD) until the update is accepted. The owner's tags come
+# along as they are on origin, to name the commit when one points at it.
+Invoke-Git $Source @('fetch', '--quiet', '--refmap=', 'origin', 'master', '+refs/tags/*:refs/tags/*') 'Fetching our master' | Out-Null
+$new = @(Invoke-Git $Source @('rev-parse', 'FETCH_HEAD') 'Reading origin''s master')[0]
 $old = $(if ($installed) { $installed } else { $sourceBefore })
-& git -C $Source cat-file -e "$old^{commit}" 2>$null
-if ($LASTEXITCODE -ne 0) { Stop-Update "the platform folder's recorded source commit $old is not in the source folder's history." }
-Write-Host "Source $Source`: $Release, $($old.Substring(0, 12)) -> $($new.Substring(0, 12))$(if (-not $installed) { ' (no PLATFORM_SOURCE.json: the old commit is the source folder''s before the checkout)' })"
+$tag = & git -C $Source describe --tags --exact-match $new 2>$null
+$tag = $(if ($LASTEXITCODE -eq 0 -and $tag) { "$tag".Trim() } else { $null })
+Write-Host "Source $Source`: master $($old.Substring(0, [Math]::Min(12, $old.Length))) -> $($new.Substring(0, 12))$(if ($tag) { " ($tag)" })$(if (-not $installed) { ' (no PLATFORM_SOURCE.json: the old commit is the source folder''s before the pull)' })"
 
-# ---- 3. The client branch
+# ---- 3. Never backwards
+# Both the installed commit and the source folder's own master must be in master's history: a commit that is not
+# was installed from another branch or repository, or our history was rewritten.
+$why = @()
+$lost = @()
+if ($installed -and $installed -ne $new) {
+    if (-not (Test-Commit $Source $installed)) {
+        $why += "the installed commit $installed is not in our repository: our history was rewritten, or the platform was installed from another repository."
+        $lost += '(the installed commit''s own changes cannot be listed: it is not in the source folder)'
+    } else {
+        & git -C $Source merge-base --is-ancestor $installed $new
+        if ($LASTEXITCODE -ne 0) {
+            $why += "master ($($new.Substring(0, 12))) does not descend from the installed commit $($installed.Substring(0, 12)): our history was rewritten, or the platform was installed from another branch."
+            $lost += @(Invoke-Git $Source @('log', '--oneline', '--no-decorate', "$new..$installed") 'Listing the installed commits master lacks')
+        }
+    }
+}
+& git -C $Source merge-base --is-ancestor $sourceBefore $new
+$sourceForward = $LASTEXITCODE -eq 0
+if (-not $sourceForward) {
+    $why += "origin's master ($($new.Substring(0, 12))) does not descend from the source folder's master ($($sourceBefore.Substring(0, 12))): our master's history was rewritten."
+    foreach ($line in @(Invoke-Git $Source @('log', '--oneline', '--no-decorate', "$new..$sourceBefore") 'Listing the commits master lost')) {
+        if ($lost -notcontains $line) { $lost += $line }
+    }
+}
+if ($why.Count -gt 0) {
+    if (-not $AllowDowngrade) {
+        Stop-Update (($why -join "`n") + "`nCommits that would be lost ($($lost.Count)):`n  " + ($lost -join "`n  ") +
+            "`nThe source folder and the platform folder are unchanged. Ask why our master changed; to install it anyway, losing those, run again with -AllowDowngrade.")
+    }
+    Write-Host ('Going backwards (-AllowDowngrade): ' + ($why -join "`n  ")) -ForegroundColor Yellow
+    Write-Host "These will be lost from the platform folder ($($lost.Count)):`n  $($lost -join "`n  ")" -ForegroundColor Yellow
+}
+if ($sourceForward) {
+    Invoke-Git $Source @('pull', '--ff-only', '--quiet', 'origin', 'master') 'Bringing the source folder to origin/master (git pull --ff-only)' | Out-Null
+} else {
+    # Only with -AllowDowngrade. The source folder holds nothing of its own (checked above), so nothing of ours is lost here.
+    Invoke-Git $Source @('fetch', '--quiet', 'origin') 'Fetching origin''s rewritten master' | Out-Null
+    Invoke-Git $Source @('reset', '--hard', '--quiet', $new) 'Moving the source folder to origin''s rewritten master' | Out-Null
+}
+if (@(Invoke-Git $Source @('rev-parse', 'HEAD') 'Reading the source commit')[0] -ne $new) {
+    Stop-Update "the source folder did not reach origin's master $new."
+}
+
+# ---- 4. The client branch
 Invoke-Git $top @('pull', '--ff-only') "Updating $Branch (git pull --ff-only)" | Out-Null
 
-# ---- 4. Copy
+# ---- 5. Copy
 & robocopy $Source $Platform /E /XD .git .venv node_modules /XF .env /R:1 /W:1 /NFL /NDL /NJH /NJS /NP | Out-Null
 $copied = $LASTEXITCODE
 if ($copied -ge 8) { Stop-Update "robocopy failed (exit code $copied): the platform folder may be partly copied. Fix the cause and run the update again." }
 Write-Host "Copied (robocopy exit code $copied)"
 
-# ---- 5. Files deleted upstream, renamed files' old names included
+# ---- 6. Files we deleted or renamed: tracked in the platform folder, gone from our master
+$ours = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+foreach ($path in @(Invoke-Git $Source @('-c', 'core.quotepath=false', 'ls-files') 'Listing our files')) { [void]$ours.Add($path) }
 $removed = 0
-foreach ($path in @(Invoke-Git $Source @('diff', '--name-only', '--no-renames', '--diff-filter=D', $old, $new) 'Listing deleted files')) {
-    if (-not $path) { continue }
+foreach ($tracked in @(Invoke-Git $top @('-c', 'core.quotepath=false', 'ls-files', '--', $folder) 'Listing the platform folder''s files')) {
+    $path = $tracked.Substring($folder.Length + 1)
+    if ($path -eq 'PLATFORM_SOURCE.json' -or $ours.Contains($path) -or ($path -split '/')[-1] -eq '.env') { continue }
     $target = Join-Path $Platform ($path.Replace('/', '\'))
     if (Test-Path -LiteralPath $target -PathType Leaf) {
         Remove-Item -LiteralPath $target -Force
@@ -178,27 +231,30 @@ foreach ($path in @(Invoke-Git $Source @('diff', '--name-only', '--no-renames', 
         }
     }
 }
-Write-Host "Removed $removed file(s) deleted or renamed upstream"
+Write-Host "Removed $removed file(s) we deleted or renamed"
 
-# ---- 6. Which of our commits this is
-# The copy just placed in the platform folder: nothing is ever run from the source folder.
-& (Join-Path $Platform 'scripts\write-platform-source.ps1') -Source $Source -Platform $Platform -Previous $old -Release $Release
-if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) { Stop-Update 'writing PLATFORM_SOURCE.json failed.' }
+# ---- 7. Which of our commits this is
+# The copy just placed in the platform folder, whichever folder this script was started from.
+# Kept as it is when the commit has not changed: a run with nothing new commits nothing.
+if ($installed -ne $new) {
+    & (Join-Path $Platform 'scripts\write-platform-source.ps1') -Source $Source -Platform $Platform -Previous $old
+    if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) { Stop-Update 'writing PLATFORM_SOURCE.json failed.' }
+}
 
-# ---- 7. Commit only the platform folder
+# ---- 8. Commit only the platform folder
 Invoke-Git $top @('add', '-A', '--', $folder) 'Staging the platform folder' | Out-Null
 $staged = @(Invoke-Git $top @('diff', '--cached', '--name-only', '--', $folder) 'Listing the staged files')
 if ($staged.Count -eq 0) {
     Write-Host 'Nothing changed in the platform folder: no commit.'
 } else {
-    $title = "Modernization platform: update to $Release ($($new.Substring(0, 12)))"
-    $message = "$title`n`nRelease: $Release`nSource commit: $new`nPrevious source commit: $old`nFiles: $($staged.Count) changed in $folder"
+    $title = "Modernization platform: update to $($new.Substring(0, 12))$(if ($tag) { " ($tag)" })"
+    $message = "$title`n`nSource commit: $new`nPrevious source commit: $old$(if ($tag) { "`nTag: $tag" })`nFiles: $($staged.Count) changed in $folder"
     Invoke-Git $top @('commit', '-q', '-m', $message, '--', $folder) 'Committing the platform folder' | Out-Null
     $commit = @(Invoke-Git $top @('rev-parse', '--short', 'HEAD') 'Reading the commit')[0]
     Write-Host "Committed $commit on $Branch`: $($staged.Count) file(s) in $folder"
 }
 
-# ---- 8. Push, only your branch
+# ---- 9. Push, only your branch
 if ($Push) {
     Invoke-Git $top @('push', 'origin', "refs/heads/$Branch`:refs/heads/$Branch") "Pushing $Branch" | Out-Null
     Write-Host "Pushed $Branch"

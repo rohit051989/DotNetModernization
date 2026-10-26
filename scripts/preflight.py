@@ -249,9 +249,10 @@ def platform_location(cfg: dict[str, str]) -> None:
     if top is None:
         note("location", f"{ROOT}, not in a git repository")
     elif top == ROOT.resolve():
-        # The release tag, release-N or the older <prefix>-release-N, else the commit.
-        code, head = run("git", "-C", str(ROOT), "describe", "--tags", "--always", "--match", "release-*", "--match", "*-release-*", "HEAD")
-        note("location", f"{ROOT}, its own repository, at {head.strip()}")
+        # The commit, and a tag when one happens to point at it (installations follow master).
+        code, head = run("git", "-C", str(ROOT), "rev-parse", "--short=12", "HEAD")
+        code, tag = run("git", "-C", str(ROOT), "describe", "--tags", "--exact-match", "HEAD")
+        note("location", f"{ROOT}, its own repository, at {head.strip()}{' (' + tag.strip() + ')' if code == 0 and tag.strip() else ''}")
     else:
         folder = ROOT.resolve().relative_to(top).as_posix()
         code, branch = run("git", "-C", str(top), "rev-parse", "--abbrev-ref", "HEAD")

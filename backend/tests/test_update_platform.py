@@ -1,6 +1,7 @@
 """scripts/update-platform.ps1 on small repositories (docs/VDI-SETUP.md, "Updating the platform"): a client repository
-with its own history and someone else's branch, our source with a change, a delete and a rename. Runs the script as
-the guide does, with Windows PowerShell."""
+with its own history and someone else's branch, our source with a change, a delete and a rename. Installations
+follow our master. Runs the script as the guide does, with Windows PowerShell, from the platform folder or the
+source folder."""
 import json
 import shutil
 import subprocess
@@ -38,8 +39,7 @@ class UpdatePlatform(unittest.TestCase):
         (work / "docs").mkdir()
         (work / "docs" / "old-name.md").write_text("renamed upstream\n")
         (work / ".gitignore").write_text("backend/.env\n")
-        git(work, "init", "-q", "-b", "main"); git(work, "add", "-A"); git(work, "commit", "-q", "-m", "ours v1")
-        git(work, "tag", "release-1")                    # the client installs releases, never the tip of master
+        git(work, "init", "-q", "-b", "master"); git(work, "add", "-A"); git(work, "commit", "-q", "-m", "ours v1")
         self.ours = root / "ours.git"
         subprocess.run(["git", "clone", "-q", "--bare", str(work), str(self.ours)], check=True)
         self.work = root / "ours-dev"
@@ -72,32 +72,34 @@ class UpdatePlatform(unittest.TestCase):
         (self.platform / "backend").mkdir()
         (self.platform / "backend" / ".env").write_text("DB_PASSWORD=local\n")          # local: never touched
         self.other_before = git(self.remote, "rev-parse", OTHER)
+        self.v1 = git(self.work, "rev-parse", "HEAD")
 
     def tearDown(self):
         self.tmp.cleanup()
 
-    def update(self, *extra: str) -> subprocess.CompletedProcess:
-        return ps(self.platform / "scripts" / "update-platform.ps1", "-Source", str(self.source), "-Platform",
-                  str(self.platform), "-Branch", BRANCH, *extra)
+    def update(self, *extra: str, run_from: Path | None = None) -> subprocess.CompletedProcess:
+        """Runs the update as the guide does, from the platform folder unless `run_from` names another."""
+        return ps((run_from or self.platform) / "scripts" / "update-platform.ps1", "-Source", str(self.source),
+                  "-Platform", str(self.platform), "-Branch", BRANCH, *extra)
 
-    def upstream(self, tag: str | None = "release-2"):
+    def record(self) -> dict:
+        return json.loads((self.platform / "PLATFORM_SOURCE.json").read_text(encoding="utf-8"))
+
+    def upstream(self) -> str:
         (self.work / "changed.txt").write_text("v2\n")
         git(self.work, "rm", "-q", "deleted.txt")
         git(self.work, "mv", "docs/old-name.md", "docs/new-name.md")
         git(self.work, "commit", "-q", "-am", "ours v2: change, delete, rename")
-        return self.publish(tag)
+        return self.publish()
 
-    def publish(self, tag: str | None) -> str:
-        """Pushes main, and tags the commit as a release when `tag` is given."""
-        if tag:
-            git(self.work, "tag", tag)
-        git(self.work, "push", "-q", "--tags", "origin", "main")
+    def publish(self, force: bool = False) -> str:
+        git(self.work, "push", "-q", *(["--force"] if force else []), "origin", "master")
         return git(self.work, "rev-parse", "HEAD")
 
-    def commit_upstream(self, text: str, tag: str | None) -> str:
+    def commit_upstream(self, text: str) -> str:
         (self.work / "changed.txt").write_text(text)
         git(self.work, "commit", "-q", "-am", f"ours {text.strip()}")
-        return self.publish(tag)
+        return self.publish()
 
     def test_an_update_copies_removes_records_and_commits_only_the_platform_folder(self):
         new = self.upstream()
@@ -111,55 +113,123 @@ class UpdatePlatform(unittest.TestCase):
         self.assertFalse((self.platform / "docs" / "old-name.md").exists())
         self.assertTrue((self.platform / "docs" / "new-name.md").exists())
         self.assertEqual((self.platform / "backend" / ".env").read_text(), "DB_PASSWORD=local\n")
-        record = json.loads((self.platform / "PLATFORM_SOURCE.json").read_text(encoding="utf-8"))
-        self.assertEqual(record["commit"], new)
-        self.assertNotEqual(record["previousCommit"], new)
+        record = self.record()
+        self.assertEqual((record["commit"], record["previousCommit"], record["tag"], record["branch"]),
+                         (new, self.v1, None, "master"))
+        self.assertNotIn("release", record)
         files = git(self.client, "show", "--name-only", "--format=", "HEAD").splitlines()
         self.assertTrue(files and all(f.startswith(FOLDER + "/") for f in files), files)
-        self.assertEqual(record["release"], "release-2")
-        self.assertIn(f"Source commit: {new}", git(self.client, "log", "-1", "--format=%B"))
-        self.assertIn("Release: release-2", git(self.client, "log", "-1", "--format=%B"))
+        message = git(self.client, "log", "-1", "--format=%B")
+        self.assertIn(f"Source commit: {new}", message)
+        self.assertNotIn("Tag:", message)
         self.assertEqual(git(self.client, "rev-parse", "HEAD~1"), head)
         self.assertEqual(git(self.client, "status", "--porcelain", "--", "README.md"), "M README.md")
         self.assertEqual(git(self.remote, "rev-parse", BRANCH), git(self.client, "rev-parse", "HEAD"))
         self.assertEqual(git(self.remote, "rev-parse", OTHER), self.other_before)
 
-    def test_the_newest_release_is_installed_never_the_tip_of_master(self):
-        release = self.upstream("release-2")
-        self.commit_upstream("v3, not released\n", tag=None)
-        done = self.update()
+    def test_three_updates_in_a_row_from_the_source_folder_as_each_left_it(self):
+        """Each update runs the script in the source folder, which the previous update left at master's tip; the
+        source is never touched in between. The second commit happens to carry a tag, which is recorded."""
+        expected = []
+        for n, text in enumerate(("v2\n", "v3\n", "v4\n"), start=1):
+            new = self.upstream() if n == 1 else self.commit_upstream(text)
+            if n == 2:
+                git(self.work, "tag", "milestone-a"); git(self.work, "push", "-q", "origin", "milestone-a")
+            before = self.record()["commit"]
+            done = self.update(run_from=self.source)
+            self.assertEqual(done.returncode, 0, f"update {n}\n" + done.stdout + done.stderr)
+            self.assertEqual((self.platform / "changed.txt").read_text(), text)
+            record = self.record()
+            self.assertEqual((record["commit"], record["previousCommit"]), (new, before), f"update {n}")
+            self.assertEqual(record["tag"], "milestone-a" if n == 2 else None, f"update {n}")
+            self.assertEqual(git(self.source, "rev-parse", "HEAD"), new)
+            self.assertEqual(git(self.source, "status", "--porcelain"), "")
+            self.assertEqual(git(self.source, "rev-parse", "--abbrev-ref", "HEAD"), "master")
+            self.assertEqual(git(self.client, "status", "--porcelain", "--", FOLDER), "")
+            expected.append(f"Modernization platform: update to {new[:12]}" + (" (milestone-a)" if n == 2 else ""))
+        subjects = git(self.client, "log", "-3", "--format=%s").splitlines()
+        self.assertEqual(subjects, list(reversed(expected)))
+        # A fourth run with nothing new commits nothing.
+        done = self.update(run_from=self.source)
         self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
-        self.assertEqual((self.platform / "changed.txt").read_text(), "v2\n")
-        record = json.loads((self.platform / "PLATFORM_SOURCE.json").read_text(encoding="utf-8"))
-        self.assertEqual((record["commit"], record["release"], record["branch"]), (release, "release-2", None))
+        self.assertIn("Nothing changed in the platform folder", done.stdout)
 
-    def test_release_names_a_specific_release_of_either_tag_form(self):
-        self.upstream("old-release-2")                     # the older tag form of releases 1 to 6
-        self.commit_upstream("v3\n", tag="release-3")
-        done = self.update("-Release", "old-release-2")
-        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
-        self.assertEqual((self.platform / "changed.txt").read_text(), "v2\n")
-        record = json.loads((self.platform / "PLATFORM_SOURCE.json").read_text(encoding="utf-8"))
-        self.assertEqual(record["release"], "old-release-2")
-        done = self.update()                               # by default, the newest by its number
-        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
-        self.assertEqual((self.platform / "changed.txt").read_text(), "v3\n")
-
-    def test_a_name_that_is_not_a_release_is_refused(self):
+    def test_a_rewritten_history_is_refused_and_both_folders_are_left_as_they_were(self):
         self.upstream()
-        done = self.update("-Release", "main")
-        self.assertNotEqual(done.returncode, 0)
-        self.assertIn("main is not a release", done.stdout)
-        self.assertEqual((self.platform / "changed.txt").read_text(), "v1\n")
-
-    def test_a_source_with_no_release_is_refused(self):
-        git(self.ours, "tag", "-d", "release-1")
-        git(self.source, "tag", "-d", "release-1")
-        git(self.work, "tag", "-d", "release-1")
-        self.upstream(tag=None)
+        installed = self.commit_upstream("v3\n")
+        self.assertEqual(self.update().returncode, 0)
+        # Our master is rewritten: v3 replaced by another commit on top of v2.
+        git(self.work, "reset", "-q", "--hard", "HEAD~1")
+        (self.work / "changed.txt").write_text("v3, rewritten\n")
+        git(self.work, "commit", "-q", "-am", "ours v3 rewritten")
+        rewritten = self.publish(force=True)
+        head = git(self.client, "rev-parse", "HEAD")
         done = self.update()
-        self.assertNotEqual(done.returncode, 0)
-        self.assertIn("never installed from master", done.stdout)
+        self.assertEqual(done.returncode, 1, done.stdout)
+        self.assertIn(f"does not descend from the installed commit {installed[:12]}", done.stdout)
+        self.assertIn("history was rewritten", done.stdout)
+        self.assertIn("ours v3", done.stdout)                                   # what would be lost
+        self.assertIn("-AllowDowngrade", done.stdout)
+        self.assertEqual(git(self.source, "rev-parse", "HEAD"), installed)
+        self.assertEqual(git(self.client, "rev-parse", "HEAD"), head)
+        self.assertEqual(self.record()["commit"], installed)
+        # -AllowDowngrade installs it, saying what is lost.
+        done = self.update("-AllowDowngrade")
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertIn("Going backwards (-AllowDowngrade)", done.stdout)
+        self.assertIn("These will be lost from the platform folder", done.stdout)
+        self.assertEqual(self.record()["commit"], rewritten)
+        self.assertEqual(git(self.source, "rev-parse", "HEAD"), rewritten)
+        self.assertEqual((self.platform / "changed.txt").read_text(), "v3, rewritten\n")
+
+    def test_a_platform_installed_from_another_branch_is_refused(self):
+        # The platform holds a commit of another branch of ours, which master does not contain.
+        git(self.work, "switch", "-q", "-c", "experiment")
+        (self.work / "changed.txt").write_text("experiment\n")
+        git(self.work, "commit", "-q", "-am", "ours experiment")
+        git(self.work, "push", "-q", "origin", "experiment")
+        experiment = git(self.work, "rev-parse", "HEAD")
+        git(self.work, "switch", "-q", "master")
+        record = self.record()
+        record["commit"] = experiment
+        (self.platform / "PLATFORM_SOURCE.json").write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+        git(self.client, "commit", "-q", "-m", "platform from experiment", "--", FOLDER)
+        self.upstream()
+        git(self.source, "fetch", "-q", "origin")                               # the source has seen the branch
+        done = self.update()
+        self.assertEqual(done.returncode, 1, done.stdout)
+        self.assertIn("installed from another branch", done.stdout)
+        self.assertIn("ours experiment", done.stdout)
+        self.assertEqual((self.platform / "changed.txt").read_text(), "v1\n")
+        done = self.update("-AllowDowngrade")
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertEqual((self.platform / "changed.txt").read_text(), "v2\n")
+
+    def test_an_installed_commit_unknown_to_our_repository_is_refused(self):
+        record = self.record()
+        record["commit"] = "0123456789abcdef0123456789abcdef01234567"
+        (self.platform / "PLATFORM_SOURCE.json").write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+        git(self.client, "commit", "-q", "-m", "platform from elsewhere", "--", FOLDER)
+        self.upstream()
+        done = self.update()
+        self.assertEqual(done.returncode, 1, done.stdout)
+        self.assertIn("is not in our repository", done.stdout)
+
+    def test_a_source_folder_left_at_a_tag_by_an_older_script_is_refused_with_the_way_back(self):
+        """An older update-platform.ps1 checked out a release tag; the first update after the change to master is
+        run from the source folder, once it is back on master (docs/VDI-SETUP.md, "Upgrade notes")."""
+        new = self.upstream()
+        git(self.work, "tag", "release-1", self.v1); git(self.work, "push", "-q", "origin", "release-1")
+        git(self.source, "fetch", "-q", "--tags", "origin")
+        git(self.source, "switch", "-q", "--detach", "release-1")
+        done = self.update()
+        self.assertEqual(done.returncode, 1, done.stdout)
+        self.assertIn("a commit of its own (release-1), not master", done.stdout)
+        self.assertIn("switch master", done.stdout)
+        git(self.source, "switch", "-q", "master")
+        done = self.update(run_from=self.source)
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertEqual(self.record()["commit"], new)
 
     def test_it_stops_on_the_wrong_branch(self):
         # Another branch that carries the platform folder: the script is there, and stops naming the branch.
@@ -169,7 +239,7 @@ class UpdatePlatform(unittest.TestCase):
         self.assertIn(f"is on branch 'rohit/older-work', not '{BRANCH}'", done.stdout)
         self.assertIn("Nothing was committed", done.stdout)
         # A branch without the platform folder (the client's main): the script itself is not there to run, which
-        # the guide's troubleshooting explains.
+        # the guide's troubleshooting explains; run it from the source folder instead.
         git(self.client, "switch", "-q", "main")
         self.assertFalse((self.platform / "scripts" / "update-platform.ps1").exists())
 
@@ -188,12 +258,11 @@ class UpdatePlatform(unittest.TestCase):
         self.assertEqual(done.returncode, 1)
         self.assertIn("is the root of a git repository", done.stdout)
 
-
     def test_delivery_pushes_files_only_never_our_history_or_tags(self):
-        """Delivery from our machine (docs/VDI-SETUP.md, "Delivering a release from our machine"): after -Push, the
-        client's repository holds the platform folder's files, and none of our commits or tags."""
-        ours = [git(self.work, "rev-parse", "HEAD")]
-        ours.append(self.upstream())
+        """Delivery from our machine (docs/VDI-SETUP.md, "Delivering to a client from our machine"): after -Push,
+        the client's repository holds the platform folder's files, and none of our commits or tags."""
+        git(self.work, "tag", "milestone-a"); git(self.work, "push", "-q", "origin", "milestone-a")
+        ours = [self.v1, self.upstream()]
         done = self.update("-Push")
         self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
         self.assertEqual(git(self.remote, "tag", "--list"), "")
@@ -208,15 +277,21 @@ class UpdatePlatform(unittest.TestCase):
 
     def test_a_working_repository_as_the_source_is_refused(self):
         self.upstream()
-        git(self.source, "switch", "-q", "main")
         (self.source / "changed.txt").write_text("work in progress\n")
+        done = self.update()
+        self.assertEqual(done.returncode, 1)
+        self.assertIn("the source folder has changes", done.stdout)
         git(self.source, "commit", "-q", "-am", "local work")
         done = self.update()
-        self.assertNotEqual(done.returncode, 0)
-        self.assertIn("is a working repository", done.stdout)
+        self.assertEqual(done.returncode, 1)
+        self.assertIn("commit(s) not on origin: it is a working repository", done.stdout)
         git(self.source, "switch", "-q", "-c", "my-feature")
         done = self.update()
-        self.assertIn("follows nothing on origin", done.stdout)
+        self.assertIn("branch 'my-feature', not master", done.stdout)
+        git(self.source, "switch", "-q", "master"); git(self.source, "reset", "-q", "--hard", "origin/master")
+        git(self.source, "branch", "-q", "--unset-upstream")
+        done = self.update()
+        self.assertIn("follows nothing, not origin/master", done.stdout)
 
 
 if __name__ == "__main__":

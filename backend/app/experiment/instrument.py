@@ -12,13 +12,13 @@ item, a different verifier rule, a fixed detector), two runs are no longer measu
 - `report` and `calibrate` flag any verification made at another commit, or from a changed tree.
 
 Where the platform's identity comes from (docs/VDI-SETUP.md, "Part 1"):
-- the platform folder is its own git repository (our development checkout, or an install made from a release
-  bundle): its HEAD, and `git status` of that repository;
+- the platform folder is its own git repository (our development checkout, or an install made from a bundle
+  of our master): its HEAD, and `git status` of that repository;
 - the platform folder is a subfolder of someone else's repository (a client keeps the platform in a folder of a
   shared repository, without our .git): the commit of OUR source it was copied from, read from PLATFORM_SOURCE.json
   (written by scripts/update-platform.ps1), and `git status` limited to the platform folder, run from the host
   repository's real root. The host repository's own commit and branch are recorded beside it, so every record
-  traces back both to our release and to the client's commit that carried it.
+  traces back both to our commit and to the client's commit that carried it.
 Run output (RUNS_DIR) lives outside the platform folder, so it never makes the tree dirty.
 """
 import json
@@ -61,11 +61,6 @@ def location(root: Path = PLATFORM_ROOT) -> dict:
     return {"kind": "subfolder" if folder else "repository", "top": str(top_path), "folder": folder}
 
 
-# A release tag: release-N (release 7 onward), or the older <prefix>-release-N of releases 1 to 6. Any other tag on the
-# commit is not a release, and is not reported as one.
-RELEASE_TAGS = ("--match", "release-*", "--match", "*-release-*")
-
-
 def platform_state(root: Path = PLATFORM_ROOT) -> dict:
     """{"commit": our source commit the platform runs, "dirty": whether the platform's own files differ from what is
     committed, "source": {commit, tag, date} with where it was read from, "host": the host repository's commit and
@@ -73,7 +68,8 @@ def platform_state(root: Path = PLATFORM_ROOT) -> dict:
     where = location(root)
     if where["kind"] == "repository":
         commit = _git(root, "rev-parse", "HEAD").strip()
-        tag = (_git(root, "describe", "--tags", "--exact-match", *RELEASE_TAGS, "HEAD", check=False) or "").strip() or None
+        # Installations follow master; a tag is named only when one of the owner's happens to point at the commit.
+        tag = (_git(root, "describe", "--tags", "--exact-match", "HEAD", check=False) or "").strip() or None
         dirty = bool(_git(root, "status", "--porcelain").strip())
         return {"commit": commit, "dirty": dirty, "source": {"commit": commit, "tag": tag, "from": "git"}, "host": None}
     record = source_record(root) or {}
