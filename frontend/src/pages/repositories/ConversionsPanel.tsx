@@ -36,8 +36,11 @@ function running(job: JobRef | null) {
   return !!job && RUNNING.includes(job.batch_status)
 }
 
+/** In local time, as every other time on the page: the stored times are UTC. */
 function when(iso: string | null | undefined) {
-  return iso ? iso.slice(0, 16).replace('T', ' ') : ''
+  if (!iso) return ''
+  const date = new Date(iso)
+  return Number.isNaN(date.getTime()) ? iso : date.toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })
 }
 
 function Pre({ text }: { text: string }) {

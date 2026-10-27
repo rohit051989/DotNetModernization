@@ -348,9 +348,9 @@ export function RepositoryDetailPage({
               hint="Packages referenced at more than one version across projects (dependency-assessment): consolidate before upgrading"
             />
             <Tile
-              label="Items found"
+              label="Item findings"
               value={occurrences ? num(work.found) - num(work.possible_only_found) : dash}
-              hint="Catalog items found by item-detection, per project. Findings resting only on ambiguous evidence (possible) are not counted."
+              hint="Catalog items found by item-detection, counted once per project (the repository list counts each item once). Findings resting only on ambiguous evidence (possible) are not counted."
             />
             <Tile label="Last scanned" value={formatRelative(repo.last_scanned_at)} />
           </div>

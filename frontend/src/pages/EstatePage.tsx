@@ -3,6 +3,7 @@ import { ApiError } from '../api/client'
 import { getEstate, putEndpointAnnotation, putEstateSettings } from '../api/estate'
 import { estateDependencies, estatePackages, getContextMap, integrationApplications, integrationList, registerHosts, registerUnresolved } from '../api/results'
 import { launchJob } from '../api/workflow'
+import { ADMIN_ONLY, useIsAdmin } from '../auth/AuthContext'
 import { LimitedList } from '../components/LimitedList'
 import { PagedList, type Page, type PageLoader } from '../components/PagedList'
 import { useToast } from '../components/Toast'
@@ -105,6 +106,8 @@ export function EstatePage({
   onFocusShown?: () => void
 }) {
   const { showToast } = useToast()
+  // Launching a job is an admin's (app.auth.policy).
+  const isAdmin = useIsAdmin()
   const [estate, setEstate] = useState<EstateView | null>(null)
   const [loading, setLoading] = useState(true)
   const [running, setRunning] = useState(false)
@@ -162,7 +165,8 @@ export function EstatePage({
         <button
           type="button"
           onClick={runEstate}
-          disabled={running}
+          disabled={running || !isAdmin}
+          title={isAdmin ? undefined : ADMIN_ONLY}
           className="rounded border border-violet-300 bg-violet-50 px-3 py-1.5 text-sm font-medium text-violet-800 hover:bg-violet-100 disabled:opacity-50"
         >
           {running ? 'Running…' : estate?.run ? 'Rerun estate consolidation' : 'Run estate consolidation'}
