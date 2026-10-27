@@ -1,26 +1,75 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { ApiError } from '../../api/client'
-import { createUser, listUsers, resetPassword, updateUser, type User } from '../../api/users'
+import {
+  ACCESS_REQUESTS_CHANGED,
+  approveAccessRequest,
+  createUser,
+  listAccessRequests,
+  listUsers,
+  promoteUser,
+  rejectAccessRequest,
+  resetPassword,
+  updateUser,
+  type AccessRequest,
+  type User,
+} from '../../api/users'
+import { LimitedList } from '../../components/LimitedList'
 import { useToast } from '../../components/Toast'
 
-const EMPTY = { login: '', name: '', windows_account: '', role: 'developer' as const, hosts: '', temporary_password: '' }
+const EMPTY = { login: '', name: '', windows_account: '', hosts: '', temporary_password: '' }
 
 function hostList(text: string): string[] {
   return text.split(/[,\s]+/).map((h) => h.trim()).filter(Boolean)
 }
 
-/** Users, for admins (docs/VDI-SETUP.md, "Users and sign-in"): who may sign in, under which Windows account, from which
- * machines, with which role. A password set here is temporary: the person chooses their own at their next sign-in. */
+/** Users, for admins (docs/VDI-SETUP.md, "Users and sign-in"): the access requests waiting for a decision, then who may
+ * sign in, under which Windows account, from which machines, with which role. Approving a request, or registering
+ * someone here, makes a developer; Make admin is the one way to make an admin, and is recorded. A password set here is
+ * temporary: the person chooses their own at their next sign-in. */
 export function UsersPage() {
   const { showToast } = useToast()
   const [users, setUsers] = useState<User[] | null>(null)
-  const [form, setForm] = useState<{ login: string; name: string; windows_account: string; role: 'admin' | 'developer'; hosts: string; temporary_password: string }>(EMPTY)
+  const [requests, setRequests] = useState<AccessRequest[] | null>(null)
+  const [form, setForm] = useState<{ login: string; name: string; windows_account: string; hosts: string; temporary_password: string }>(EMPTY)
   const [error, setError] = useState<string | null>(null)
   const [editingHosts, setEditingHosts] = useState<{ id: string; text: string } | null>(null)
 
   const reload = useCallback(() => {
     listUsers().then(setUsers, () => setUsers([]))
+    listAccessRequests().then(setRequests, () => setRequests([]))
   }, [])
+
+  async function decide(request: AccessRequest, approve: boolean) {
+    let reason: string | null = null
+    if (!approve) {
+      const given = window.prompt(`Reject ${request.name}'s request. A reason, shown on their sign-in page (optional):`)
+      if (given === null) return
+      reason = given.trim() || null
+    }
+    try {
+      if (approve) await approveAccessRequest(request.id)
+      else await rejectAccessRequest(request.id, reason)
+      showToast('success', approve
+        ? request.kind === 'machine' ? `${request.hostname} added to ${request.name}'s machines.` : `${request.name} can sign in as ${request.login}, as a developer.`
+        : `${request.name}'s request rejected.`)
+      reload()
+      // The header's count (AppShell) updates now, not at its next poll.
+      window.dispatchEvent(new Event(ACCESS_REQUESTS_CHANGED))
+    } catch (err) {
+      showToast('error', err instanceof ApiError ? err.message : 'Could not decide the request.')
+    }
+  }
+
+  async function promote(user: User) {
+    if (!window.confirm(`Make ${user.name} an admin? Admins change everything: the master catalog, users, every repository.`)) return
+    try {
+      await promoteUser(user.id)
+      showToast('success', `${user.name} is an admin now.`)
+      reload()
+    } catch (err) {
+      showToast('error', err instanceof ApiError ? err.message : 'Could not make them an admin.')
+    }
+  }
   useEffect(reload, [reload])
 
   async function add(event: FormEvent) {
@@ -68,6 +117,7 @@ export function UsersPage() {
 
   return (
     <div className="mx-auto max-w-5xl space-y-6 p-6">
+      <AccessRequests requests={requests} onDecide={decide} />
       <section>
         <h2 className="text-base font-semibold text-neutral-900">Users</h2>
         <p className="text-xs text-neutral-500">
@@ -106,13 +156,19 @@ export function UsersPage() {
                       </button>
                     )}
                   </td>
-                  <td>
-                    <select value={user.role} aria-label={`Role of ${user.name}`}
-                      onChange={(e) => void change(user, { role: e.target.value as User['role'] }, `${user.name} is now a ${e.target.value}.`)}
-                      className="rounded border border-neutral-300 px-1 py-0.5 text-xs">
-                      <option value="developer">developer</option>
-                      <option value="admin">admin</option>
-                    </select>
+                  <td className="text-xs">
+                    {user.role}
+                    {user.role === 'developer' && user.active && (
+                      <button type="button" className="ml-2 text-violet-700 hover:underline" onClick={() => void promote(user)}>
+                        Make admin
+                      </button>
+                    )}
+                    {user.role === 'admin' && (
+                      <button type="button" className="ml-2 text-neutral-600 hover:underline"
+                        onClick={() => void change(user, { role: 'developer' }, `${user.name} is a developer now.`)}>
+                        Make developer
+                      </button>
+                    )}
                   </td>
                   <td className="text-xs">{user.repositories_owned}</td>
                   <td className="space-x-2 whitespace-nowrap text-xs">
@@ -130,19 +186,15 @@ export function UsersPage() {
       </section>
       <section className="rounded border border-neutral-200 bg-white p-4">
         <h3 className="text-sm font-semibold text-neutral-900">Register a user</h3>
+        <p className="text-xs text-neutral-500">
+          Usually people ask for access from the sign-in page of their own platform instead. Either way they are registered as
+          a developer; Make admin, above, makes an admin.
+        </p>
         <form onSubmit={add} className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
           {field('name', 'Full name')}
           {field('login', 'Sign-in name')}
           {field('windows_account', 'Windows account (DOMAIN\\user)', { placeholder: 'CORP\\jdoe' })}
           {field('hosts', 'Machines (hostnames, comma-separated)', { placeholder: 'DEVBOX-07' })}
-          <label className="block text-xs text-neutral-600">
-            Role
-            <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value as 'admin' | 'developer' })}
-              className="mt-0.5 w-full rounded border border-neutral-300 px-2 py-1 text-sm">
-              <option value="developer">developer</option>
-              <option value="admin">admin</option>
-            </select>
-          </label>
           {field('temporary_password', 'Temporary password (12+ characters)', { type: 'password', autoComplete: 'new-password' })}
           {error && <p role="alert" className="text-sm text-red-700 sm:col-span-3">{error}</p>}
           <div className="sm:col-span-3">
@@ -153,5 +205,67 @@ export function UsersPage() {
         </form>
       </section>
     </div>
+  )
+}
+
+/** The requests from people's own sign-in pages: pending ones to decide, then the decided ones. */
+function AccessRequests({ requests, onDecide }: { requests: AccessRequest[] | null; onDecide: (request: AccessRequest, approve: boolean) => void }) {
+  if (requests === null) return null
+  const pending = requests.filter((r) => r.status === 'pending')
+  const decided = requests.filter((r) => r.status !== 'pending')
+  return (
+    <section aria-label="Access requests">
+      <h2 className="text-base font-semibold text-neutral-900">
+        Access requests <span className="font-normal text-neutral-500">({pending.length} pending)</span>
+      </h2>
+      <p className="text-xs text-neutral-500">
+        Asked from the sign-in page of each person's own platform: their Windows account and machine come from that machine.
+        Approving registers them as a developer, or adds the machine to their registration.
+      </p>
+      {pending.length === 0 ? (
+        <p className="mt-2 text-sm text-neutral-400">No request is waiting.</p>
+      ) : (
+        <ul className="mt-2 divide-y divide-neutral-100 rounded border border-neutral-200 bg-white">
+          {pending.map((r) => (
+            <li key={r.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-sm">
+              <span>
+                <span className="font-medium text-neutral-900">{r.name}</span>{' '}
+                <span className="text-neutral-500">
+                  {r.kind === 'machine' ? `asks to add ${r.hostname}` : `asks for access, as ${r.login}`} · <span className="font-mono text-xs">{r.windows_account}</span> on{' '}
+                  <span className="font-mono text-xs">{r.hostname}</span> · {new Date(r.requested_at).toLocaleString()}
+                </span>
+              </span>
+              <span className="space-x-2 text-xs">
+                <button type="button" onClick={() => onDecide(r, true)} className="rounded bg-violet-600 px-2 py-1 font-medium text-white hover:bg-violet-700">
+                  Approve
+                </button>
+                <button type="button" onClick={() => onDecide(r, false)} className="rounded border border-neutral-300 px-2 py-1 text-neutral-700 hover:bg-neutral-50">
+                  Reject
+                </button>
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {decided.length > 0 && (
+        <details className="mt-2 text-xs text-neutral-600">
+          <summary className="cursor-pointer">Decided ({decided.length})</summary>
+          <LimitedList items={decided} name={(r) => [r.name, r.windows_account, r.hostname]} noun="requests" className="mt-1">
+            {(visible) => (
+              <ul className="space-y-0.5">
+                {visible.map((r) => (
+                  <li key={r.id}>
+                    {r.name} ({r.kind === 'machine' ? `add ${r.hostname}` : 'access'}): <span className="font-medium">{r.status}</span>
+                    {r.decided_by && ` by ${r.decided_by}`}
+                    {r.decided_at && `, ${new Date(r.decided_at).toLocaleString()}`}
+                    {r.reason && ` — ${r.reason}`}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </LimitedList>
+        </details>
+      )}
+    </section>
   )
 }

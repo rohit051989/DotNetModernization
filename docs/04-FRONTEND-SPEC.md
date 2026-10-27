@@ -477,11 +477,22 @@ the backend would refuse.
   when it is refused. A password set by an admin asks for a new one there. Before any admin exists, the page says how
   the first one is created. Any call answered 401 `SIGNED_OUT` (a session that ended or expired) returns to it. The
   header shows the person, their role, **Sign out**, and **N online** (who is signed in, on which machine).
+- **Asking for access.** Once an admin exists, someone not registered sees **Request access** under the sign-in form
+  (`GET /api/auth/machine` says `registration: none`): their full name and a chosen password, twice. A registered user
+  on a machine their registration does not name (`other_machines`) sees **Ask to add this machine**: their password
+  only. The Windows account and machine are never typed. The page then shows how the request stands
+  (`GET /api/auth/access-request`): pending, with the sign-in name it will have; rejected, with the reason, and they
+  may ask again; or approved, with the sign-in name filled in.
+- **Deciding requests.** For admins, the header shows **N access requests** while any are pending
+  (`pending_access_requests` from `/api/auth/me`, polled each minute and refreshed as soon as one is decided); it
+  opens the **Users** tab, whose **Access requests** section lists the pending ones with **Approve** and **Reject**
+  (an optional reason), and the decided ones beneath. Approving makes a developer. **Make admin** in the role column
+  is the only way to make an admin (after a confirmation); **Register a user** has no role choice.
 - **Everyone signed in sees everything**: the master catalog and every engagement, repository and result.
 - **Admins** change everything. The **Users** tab and **Workflow Administration** show to admins only.
 - **Developers** register repositories and act on the ones they own. The master catalog's edit controls are hidden
-  from them, with "Read-only: only an admin changes the master catalog." **+ New engagement** and **Delete
-  engagement…** are disabled for them, titled "Only an admin can do this."
+  from them, with "Read-only: only an admin changes the master catalog." **+ New engagement**, **Delete
+  engagement…** and **Run estate consolidation** are disabled for them, titled "Only an admin can do this."
 - **A repository's owner** shows on its page ("Owner: Alice", or "No owner: admins only"); an admin assigns or changes
   it there. For anyone who may not act on it (not its owner, or not on the machine it was registered on), **Rescan**,
   **Verify path**, **Edit**, **Delete** and the conversion buttons are disabled, each titled with the backend's reason

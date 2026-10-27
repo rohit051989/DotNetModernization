@@ -686,8 +686,9 @@ cd C:\MP\client\modernization-platform\backend; .venv\Scripts\python.exe -m app.
 ```
 
 It registers the Windows account running it and this machine's name; `--windows-account` and `--host` (repeatable)
-name others. It refuses once an admin exists. Then start the platform and sign in at `http://localhost:5174/` with
-that name and password. The admin registers everyone else (Part 2, "Users and sign-in").
+name others. It refuses once an admin exists: after that, nobody makes themselves an admin by any route. Then start the
+platform and sign in at `http://localhost:5174/` with that name and password. Everyone else asks for access from the
+sign-in page of their own platform, and an admin approves it (Part 2, "Users and sign-in").
 
 ### Creating the engagement
 
@@ -1158,19 +1159,55 @@ folder and run output are there). Everyone else sees it read-only: the repositor
 those actions, saying why. The backend enforces the same rules for every call, whatever the UI shows. A repository
 registered before sign-in existed has **no owner** until an admin assigns one; until then only admins act on it.
 
-**Registering a developer** (admins): the **Users** tab, **Register a user**: their full name, the name they sign in
-with, their Windows account (`DOMAIN\user`, the account their own platform runs under: `whoami` in their PowerShell
-window prints it), the machines they sign in from (`hostname` prints it), their role, and a temporary password. They
-choose their own password at their first sign-in. Or from the command line, as an admin on your own machine:
+**Asking for access.** Someone not registered starts their own platform and, on its sign-in page, chooses **Request
+access**: they give their full name and choose a password (12 characters or more). Their Windows account and machine
+are their platform's, taken from the machine, never typed; they sign in with their Windows user name (`asmith` for
+`CORP\asmith`), which the page shows. Until an admin decides, they reach nothing, and the sign-in page says the request
+is pending, or that it was rejected and why (they may then ask again). One request per Windows account waits at a
+time.
+
+A registered user on a **machine their registration does not name** asks the same way, **Ask to add this machine**,
+giving their current password. Approving it adds the machine to their registration.
+
+**Deciding requests** (admins): the header shows **N access requests** while any wait; it opens the **Users** tab,
+where each request has **Approve** and **Reject** (with an optional reason, shown on the requester's sign-in page).
+Approving always registers a **developer**. From the command line:
 
 ```powershell
-cd C:\MP\client\modernization-platform\backend; .venv\Scripts\python.exe -m app.users add --login asmith --name "Alex Smith" --windows-account CORP\asmith --host DEVBOX-07 --role developer
+cd C:\MP\client\modernization-platform\backend; .venv\Scripts\python.exe -m app.users requests
 ```
 
-**Changing a user** (admins): in the Users tab, change their machines, their role, reset their password (temporary,
-replaced at their next sign-in; their sessions end), or deactivate them. The command line does the same:
-`python -m app.users set --login asmith --host DEVBOX-07 --host LAPTOP-12`, `reset-password --login asmith`,
-`set --login asmith --deactivate`, and `list`. The last admin cannot be demoted or deactivated.
+```powershell
+cd C:\MP\client\modernization-platform\backend; .venv\Scripts\python.exe -m app.users approve --request 3f2a
+```
+
+```powershell
+cd C:\MP\client\modernization-platform\backend; .venv\Scripts\python.exe -m app.users reject --request 3f2a --reason "Not on this programme"
+```
+
+`--request` takes the id `requests` prints, or its first characters; `requests --all` lists decided ones too.
+
+**Making an admin** (admins): only an admin makes another user an admin, as an action of its own, recorded: **Make
+admin** beside them in the Users tab, or `python -m app.users promote --login asmith`. No other route makes an admin:
+registering, approving and editing a user always leave or make a developer.
+
+**Registering a developer directly** (admins), for someone who cannot reach their sign-in page: the **Users** tab,
+**Register a user**: their full name, the name they sign in with, their Windows account (`DOMAIN\user`, the account
+their own platform runs under: `whoami` in their PowerShell window prints it), the machines they sign in from
+(`hostname` prints it), and a temporary password. They choose their own password at their first sign-in. Or from the
+command line, as an admin on your own machine:
+
+```powershell
+cd C:\MP\client\modernization-platform\backend; .venv\Scripts\python.exe -m app.users add --login asmith --name "Alex Smith" --windows-account CORP\asmith --host DEVBOX-07
+```
+
+**Changing a user** (admins): in the Users tab, change their machines, make an admin a developer again (**Make
+developer**), reset their password (temporary, replaced at their next sign-in; their sessions end), or deactivate them.
+The command line does the same: `python -m app.users set --login asmith --host DEVBOX-07 --host LAPTOP-12`,
+`set --login asmith --role developer`, `reset-password --login asmith`, `set --login asmith --deactivate`, and `list`.
+The last admin cannot be made a developer or deactivated.
+
+Every request, approval, rejection and promotion is recorded with who and when ("Who did what", below).
 
 **Assigning owners** (admins): on a repository's page, **Assign** (or **Change**) beside its owner; or list the
 repositories and their owners, those with none first, and assign one:
@@ -1272,9 +1309,9 @@ type `clear` while it is still live, and refuses outright while its process is s
 #### A second developer
 
 Each developer sets up the platform on their own machine as in Part 1, with the **same database settings and schema**
-(`DB_HOST` ... `DB_SCHEMA`) and their own `RUNS_DIR` and `REPOS_DIR`, on their machine. An admin registers them first
-("Users and sign-in"), with their Windows account and machine. They do not run `create-first-admin`: the first admin
-exists already. Then they start their platform and sign in.
+(`DB_HOST` ... `DB_SCHEMA`) and their own `RUNS_DIR` and `REPOS_DIR`, on their machine. They do not run
+`create-first-admin`: the first admin exists already. They start their platform, choose **Request access** on its
+sign-in page, and sign in once an admin approves it ("Users and sign-in").
 
 ### Deleting a repository or an engagement
 

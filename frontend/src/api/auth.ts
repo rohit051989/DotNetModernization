@@ -6,6 +6,21 @@ export interface MachineInfo {
   hostname: string
   /** True until the first admin is created (python -m app.users create-first-admin). */
   first_admin_needed: boolean
+  /** This Windows account's registration: none, registered but not for this machine, or for this machine. */
+  registration: 'none' | 'other_machines' | 'this_machine'
+}
+
+/** A request for access from this machine (app.auth.requests), as it stands. */
+export interface AccessRequestStatus {
+  /** access: to be registered; machine: to add this machine to a registration. */
+  kind: 'access' | 'machine'
+  status: 'pending' | 'approved' | 'rejected'
+  /** The name to sign in with once approved. */
+  login: string
+  hostname: string
+  reason: string | null
+  requested_at: string
+  decided_at: string | null
 }
 
 export interface Me {
@@ -18,6 +33,8 @@ export interface Me {
   hostname: string
   hosts: string[]
   must_change_password: boolean
+  /** For an admin: access requests waiting for a decision. Null for anyone else. */
+  pending_access_requests?: number | null
 }
 
 export function getMachine() {
@@ -28,6 +45,17 @@ export function getMachine() {
  * PASSWORD_CHANGE_REQUIRED when the password was set by an admin and `newPassword` is needed. */
 export function signIn(login: string, password: string, newPassword?: string) {
   return api.post<Me>('/api/auth/sign-in', { login, password, new_password: newPassword ?? null })
+}
+
+/** The newest request from this machine's Windows account, or null. Open without a session. */
+export function getAccessRequest() {
+  return api.get<AccessRequestStatus | null>('/api/auth/access-request')
+}
+
+/** Asks for access from this machine: the Windows account and hostname are taken from it, never typed. To add this
+ * machine to a registration, `password` is the current one and `name` is not needed. */
+export function requestAccess(name: string, password: string) {
+  return api.post<AccessRequestStatus>('/api/auth/access-request', { name, password })
 }
 
 export function signOut() {

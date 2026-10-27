@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { getHealth } from '../api/catalog'
-import { listOnline, type OnlineEntry } from '../api/users'
+import { getMe } from '../api/auth'
+import { ACCESS_REQUESTS_CHANGED, listOnline, type OnlineEntry } from '../api/users'
 import { ADMIN_ONLY, useAuth, useIsAdmin } from '../auth/AuthContext'
 import type { Engagement } from '../types/catalog'
 import { NewEngagementDrawer } from './NewEngagementDrawer'
@@ -95,6 +96,7 @@ export function AppShell({
           >
             + New engagement
           </button>
+          {isAdmin && <RequestsPill onOpen={() => onSelectTab('users')} />}
           <OnlinePill />
           <UserMenu />
         </div>
@@ -117,6 +119,30 @@ export function AppShell({
 }
 
 const ONLINE_POLL_INTERVAL_MS = 60_000
+
+/** For admins: access requests waiting for a decision, opening the Users tab. Nothing when none wait. */
+function RequestsPill({ onOpen }: { onOpen: () => void }) {
+  const [count, setCount] = useState(0)
+  useEffect(() => {
+    let cancelled = false
+    const poll = () => getMe().then((me) => !cancelled && setCount(me.pending_access_requests ?? 0), () => undefined)
+    poll()
+    const interval = setInterval(poll, ONLINE_POLL_INTERVAL_MS)
+    window.addEventListener(ACCESS_REQUESTS_CHANGED, poll)
+    return () => {
+      cancelled = true
+      clearInterval(interval)
+      window.removeEventListener(ACCESS_REQUESTS_CHANGED, poll)
+    }
+  }, [])
+  if (count === 0) return null
+  return (
+    <button type="button" onClick={onOpen} title="Access requests waiting for a decision (Users)"
+      className="whitespace-nowrap rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-900 hover:bg-amber-200">
+      {count} access request{count === 1 ? '' : 's'}
+    </button>
+  )
+}
 
 /** Who is online, and on which machine: each machine with a running platform, and who is signed in there. */
 function OnlinePill() {

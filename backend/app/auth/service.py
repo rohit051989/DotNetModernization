@@ -111,6 +111,9 @@ def update_user(db: Session, user: models.User, *, name: str | None = None, role
     if role is not None:
         if role not in actors.ROLES:
             raise Refused(f"A role is one of {', '.join(actors.ROLES)}.", "INVALID_ROLE")
+        if role == actors.ADMIN and user.role != actors.ADMIN:
+            raise Refused("Making someone an admin is an action of its own: promote them (app.auth.requests.promote).",
+                          "PROMOTE_SEPARATELY")
         if user.role == actors.ADMIN and role != actors.ADMIN and _last_admin(db, user):
             raise Refused("This is the last admin: make another user an admin first.", "LAST_ADMIN")
         user.role = role

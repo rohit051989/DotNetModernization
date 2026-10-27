@@ -3163,3 +3163,32 @@ class ConversionResult(Base):
     last_prepare: Mapped[dict | None] = mapped_column(JSONB)
     published_host: Mapped[str | None] = mapped_column(Text)
     published_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+class AccessRequest(Base):
+    """A person's request for access, from the sign-in page of their own platform (app.auth.requests): 'access' from
+    someone not registered, with their name and a chosen password (its salted hash only); 'machine' from a registered
+    user, to add the machine they are on. Pending until an admin approves or rejects it."""
+
+    __tablename__ = "access_requests"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid())
+    kind: Mapped[str] = mapped_column(Text, nullable=False)
+    windows_account: Mapped[str] = mapped_column(Text, nullable=False)
+    hostname: Mapped[str] = mapped_column(Text, nullable=False)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    login: Mapped[str] = mapped_column(Text, nullable=False)
+    password_hash: Mapped[str | None] = mapped_column(Text)
+    user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"))
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default="pending")
+    reason: Mapped[str | None] = mapped_column(Text)
+    requested_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    decided_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
+    decided_by_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+
+    __table_args__ = (
+        CheckConstraint("kind IN ('access', 'machine')", name="ck_access_requests_kind"),
+        CheckConstraint("status IN ('pending', 'approved', 'rejected')", name="ck_access_requests_status"),
+        Index("uq_access_requests_pending", text("lower(windows_account)"), unique=True,
+              postgresql_where=text("status = 'pending'")),
+        Index("ix_access_requests_account", text("lower(windows_account)"), "requested_at"),
+    )

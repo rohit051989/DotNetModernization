@@ -14,19 +14,34 @@ export interface User {
   repositories_owned: number
 }
 
+/** A new user is a developer: an admin makes someone an admin with promoteUser, an action of its own. */
 export interface UserInput {
   login: string
   name: string
   windows_account: string
-  role: 'admin' | 'developer'
   hosts: string[]
   temporary_password: string
+}
+
+export interface AccessRequest {
+  id: string
+  kind: 'access' | 'machine'
+  status: 'pending' | 'approved' | 'rejected'
+  name: string
+  login: string
+  windows_account: string
+  hostname: string
+  reason: string | null
+  requested_at: string
+  decided_at: string | null
+  decided_by: string | null
 }
 
 export interface UserUpdate {
   name?: string
   windows_account?: string
-  role?: 'admin' | 'developer'
+  /** Only to make an admin a developer: making an admin is promoteUser's. */
+  role?: 'developer'
   hosts?: string[]
   active?: boolean
 }
@@ -56,6 +71,29 @@ export function updateUser(userId: string, payload: UserUpdate) {
 /** Admins only. The password works once: the user sets their own at their next sign-in. */
 export function resetPassword(userId: string, temporaryPassword: string) {
   return api.post<User>(`/api/users/${encodeURIComponent(userId)}/reset-password`, { temporary_password: temporaryPassword })
+}
+
+/** Admins only. Makes the user an admin: the one way anyone but the first admin becomes one, recorded. */
+export function promoteUser(userId: string) {
+  return api.post<User>(`/api/users/${encodeURIComponent(userId)}/promote`)
+}
+
+/** A window event: an access request was decided, so the header's count is stale. */
+export const ACCESS_REQUESTS_CHANGED = 'access-requests-changed'
+
+/** Admins only: pending first, then the rest, newest first. */
+export function listAccessRequests() {
+  return api.get<AccessRequest[]>('/api/access-requests')
+}
+
+/** Admins only. Always as a developer. */
+export function approveAccessRequest(requestId: string) {
+  return api.post<AccessRequest>(`/api/access-requests/${encodeURIComponent(requestId)}/approve`)
+}
+
+/** Admins only. The reason, if given, is shown on the requester's sign-in page. */
+export function rejectAccessRequest(requestId: string, reason: string | null) {
+  return api.post<AccessRequest>(`/api/access-requests/${encodeURIComponent(requestId)}/reject`, { reason })
 }
 
 /** The machines with a running platform, and who is signed in on each. */

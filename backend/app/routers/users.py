@@ -3,13 +3,13 @@ the activity record."""
 import datetime
 import uuid
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app import heartbeat, models
-from app.auth import service
+from app.auth import requests, service
 from app.db import get_db
 from app.errors import ErrorResponse, error
 
@@ -33,7 +33,8 @@ class UserIn(BaseModel):
     login: str = Field(min_length=1, description="The name the person signs in with.")
     name: str = Field(min_length=1)
     windows_account: str = Field(min_length=3, description="DOMAIN\\user: the account their own platform runs under.")
-    role: str = Field(description="'admin' or 'developer'.")
+    role: str = Field(default="developer", description="'developer', always: an admin makes someone an admin with "
+                                                       "POST /api/users/{id}/promote, an action of its own.")
     hosts: list[str] = Field(min_length=1, description="The machines (hostnames) they sign in from.")
     temporary_password: str = Field(min_length=1, description="Works once: they choose their own at the first sign-in.")
 
@@ -110,7 +111,11 @@ def list_users(db: Session = Depends(get_db)):
 @router.post("/users", response_model=UserOut, status_code=201, summary="Register a user", operation_id="create_user",
              responses={422: {"model": ErrorResponse, "description": "A field is invalid or already taken."}})
 def create_user(payload: UserIn, db: Session = Depends(get_db)):
-    """Admins only. The temporary password works once: the user sets their own at the first sign-in."""
+    """Admins only. The temporary password works once: the user sets their own at the first sign-in. Registers a
+    developer: making someone an admin is promote's, a separate action."""
+    if payload.role != "developer":
+        raise error(422, "A new user is a developer: make them an admin afterwards with Make admin (promote), an action "
+                         "of its own.", field="role", code="PROMOTE_SEPARATELY")
     try:
         user = service.create_user(db, login=payload.login, name=payload.name, windows_account=payload.windows_account,
                                    role=payload.role, host_names=payload.hosts, password=payload.temporary_password)
@@ -144,6 +149,111 @@ def reset_password(user_id: str, payload: ResetIn, db: Session = Depends(get_db)
         service.reset_password(db, user, payload.temporary_password)
     except service.Refused as refused:
         raise _refused(refused) from None
+    db.commit()
+    return _out(db, user)
+
+
+class AccessRequestOut(BaseModel):
+    id: str
+    kind: str = Field(description="'access': to be registered; 'machine': to add a machine to a registration.")
+    status: str = Field(description="pending, approved or rejected.")
+    name: str
+    login: str = Field(description="The name they sign in with once approved.")
+    windows_account: str = Field(description="As their platform runs, taken from their machine: never typed.")
+    hostname: str = Field(description="Their machine, taken from it: never typed.")
+    reason: str | None
+    requested_at: datetime.datetime
+    decided_at: datetime.datetime | None
+    decided_by: str | None
+
+
+class RejectIn(BaseModel):
+    reason: str | None = Field(default=None, description="Optional: shown to the requester on their sign-in page.")
+
+
+def _request_out(db: Session, row: models.AccessRequest) -> AccessRequestOut:
+    decider = db.get(models.User, row.decided_by_user_id) if row.decided_by_user_id else None
+    return AccessRequestOut(id=str(row.id), kind=row.kind, status=row.status, name=row.name, login=row.login,
+                            windows_account=row.windows_account, hostname=row.hostname, reason=row.reason,
+                            requested_at=row.requested_at, decided_at=row.decided_at,
+                            decided_by=decider.name if decider else None)
+
+
+def _access_request(db: Session, request_id: str) -> models.AccessRequest:
+    try:
+        row = db.get(models.AccessRequest, uuid.UUID(request_id))
+    except ValueError:
+        row = None
+    if row is None:
+        raise error(404, f"No access request '{request_id}'", code="NOT_FOUND")
+    return row
+
+
+def _admin(request: Request):
+    person = request.state.actor
+    if not person.is_admin:
+        raise error(403, "Only an admin sees access requests.", code="NOT_ALLOWED")
+    return person
+
+
+@router.get("/access-requests", response_model=list[AccessRequestOut], summary="Access requests, newest first",
+            operation_id="list_access_requests")
+def list_access_requests(request: Request, status: str | None = Query(None, pattern="^(pending|approved|rejected)$"),
+                         db: Session = Depends(get_db)):
+    """Admins only. Pending first, then the rest, newest first."""
+    _admin(request)
+    query = db.query(models.AccessRequest)
+    if status:
+        query = query.filter(models.AccessRequest.status == status)
+    rows = query.order_by((models.AccessRequest.status != "pending"), models.AccessRequest.requested_at.desc()).all()
+    return [_request_out(db, r) for r in rows]
+
+
+@router.post("/access-requests/{request_id}/approve", response_model=AccessRequestOut,
+             summary="Approve an access request: always as a developer", operation_id="approve_access_request",
+             responses={404: {"model": ErrorResponse, "description": "No such request."},
+                        409: {"model": ErrorResponse, "description": "Decided already, or its account is registered."}})
+def approve_access_request(request_id: str, request: Request, db: Session = Depends(get_db)):
+    """Admins only. Registers them as a developer, with the password they chose, or adds the machine to their
+    registration. Making someone an admin is promote's, a separate action."""
+    row = _access_request(db, request_id)
+    try:
+        requests.approve(db, row, request.state.actor)
+    except service.Refused as refused:
+        db.rollback()
+        raise error(409, refused.message, code=refused.code) from None
+    db.commit()
+    return _request_out(db, row)
+
+
+@router.post("/access-requests/{request_id}/reject", response_model=AccessRequestOut, summary="Reject an access request",
+             operation_id="reject_access_request",
+             responses={404: {"model": ErrorResponse, "description": "No such request."},
+                        409: {"model": ErrorResponse, "description": "Decided already."}})
+def reject_access_request(request_id: str, payload: RejectIn, request: Request, db: Session = Depends(get_db)):
+    """Admins only. The reason, if given, is shown on the requester's sign-in page. They may ask again."""
+    row = _access_request(db, request_id)
+    try:
+        requests.reject(db, row, request.state.actor, payload.reason)
+    except service.Refused as refused:
+        db.rollback()
+        raise error(409, refused.message, code=refused.code) from None
+    db.commit()
+    return _request_out(db, row)
+
+
+@router.post("/users/{user_id}/promote", response_model=UserOut, summary="Make a user an admin",
+             operation_id="promote_user",
+             responses={404: {"model": ErrorResponse, "description": "No such user."},
+                        409: {"model": ErrorResponse, "description": "An admin already, or deactivated."}})
+def promote_user(user_id: str, request: Request, db: Session = Depends(get_db)):
+    """Admins only: the one way anyone but the first admin becomes an admin, recorded with who did it."""
+    user = _user(db, user_id)
+    try:
+        requests.promote(db, user, request.state.actor)
+    except service.Refused as refused:
+        db.rollback()
+        raise error(409, refused.message, code=refused.code) from None
     db.commit()
     return _out(db, user)
 

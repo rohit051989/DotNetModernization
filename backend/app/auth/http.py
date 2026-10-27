@@ -5,7 +5,8 @@
 2. a password reset by an admin must be replaced first: until then only changing it and signing out are allowed;
 3. the policy (app.auth.policy): who may make this call; else 403 NOT_ALLOWED, saying why;
 4. the person, set as the current actor for the work the call does;
-5. once the call has succeeded, a change is recorded: who, from which machine, which action, on what.
+5. once the call has succeeded, a change is recorded: who, from which machine, which action, on what; unless the
+   call recorded it itself, in its own words (app.auth.activity.record).
 
 An async dependency, so the actor it sets is the context the route runs in, even a synchronous route on the
 thread pool. Its database work is a few small queries on a session of its own.
@@ -17,9 +18,9 @@ from app.auth import actor as actors
 from app.db import SessionLocal
 from app.errors import error
 
-# Open without a session: signing in, what this machine and account are (the sign-in page shows them), the health
-# check, and the API's own documentation.
-OPEN = ("/api/auth/sign-in", "/api/auth/machine", "/api/health")
+# Open without a session: signing in, what this machine and account are (the sign-in page shows them), asking for
+# access from this machine and seeing how that request stands, the health check, and the API's own documentation.
+OPEN = ("/api/auth/sign-in", "/api/auth/machine", "/api/auth/access-request", "/api/health")
 OPEN_PREFIXES = ("/docs", "/redoc", "/openapi.json")
 # Allowed while a reset password still has to be replaced.
 PASSWORD_CHANGE = ("/api/auth/password", "/api/auth/sign-out", "/api/auth/me")
@@ -54,7 +55,7 @@ async def guard(request: Request):
     request.state.actor = person
     try:
         yield
-        if method not in policy.READ_METHODS and path not in PASSWORD_CHANGE:
+        if method not in policy.READ_METHODS and path not in PASSWORD_CHANGE and not about.get("recorded"):
             route = request.scope.get("route")
             subject_type, subject_id = about.get("subject") or activity.subject_of(dict(request.path_params))
             with SessionLocal() as db:

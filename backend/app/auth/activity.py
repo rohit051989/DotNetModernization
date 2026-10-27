@@ -59,6 +59,9 @@ def record(db: Session, action: str, subject_type: str | None = None, subject_id
     """Adds one record for the acting person (the current actor, else the platform itself). Flushes; the caller
     commits."""
     who = actor or actors.current() or actors.SYSTEM
+    holder = _about.get()
+    if holder is not None:
+        holder["recorded"] = True   # the call recorded what it did: the guard adds no second record
     row = models.ActivityRecord(user_id=who.user_id, actor=who.label(), hostname=who.hostname, action=action,
                                 subject_type=subject_type, subject_id=subject_id, summary=summary)
     db.add(row)

@@ -257,7 +257,9 @@ Do not scaffold these "for later".
 
 **Sign-in, roles and ownership exist** (`app/auth/`; `04-FRONTEND-SPEC.md` "Sign-in and roles"; `docs/VDI-SETUP.md`
 "Users and sign-in"). Every API call needs a signed-in session and passes `app.auth.policy`: admins change everything;
-a developer registers repositories and acts on the ones they own. A new route that changes something is admins-only
+a developer registers repositories and acts on the ones they own. People ask for access from their own platform's
+sign-in page and an admin approves them as developers (`app.auth.requests`); after `create-first-admin`, only an
+admin's `promote` makes an admin, and no other route may. A new route that changes something is admins-only
 until the policy names it: list it there, with its rule, when developers or owners should reach it. Edits to shared
 records carry a version check (`app.auth.versions`); every change is recorded with who and from which machine
 (`app.auth.activity`). Command-line tools act as the registered user running them (`service.cli_actor`).

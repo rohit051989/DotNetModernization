@@ -2,8 +2,18 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ApiError } from '../api/client'
 
-const api = vi.hoisted(() => ({ signIn: vi.fn(), machine: { windows_account: 'CORP\\alice', hostname: 'DEVBOX-A', first_admin_needed: false } }))
-vi.mock('../api/auth', () => ({ getMachine: () => Promise.resolve(api.machine), signIn: api.signIn }))
+const api = vi.hoisted(() => ({
+  signIn: vi.fn(),
+  requestAccess: vi.fn(),
+  request: null as unknown,
+  machine: { windows_account: 'CORP\\alice', hostname: 'DEVBOX-A', first_admin_needed: false, registration: 'none' },
+}))
+vi.mock('../api/auth', () => ({
+  getMachine: () => Promise.resolve(api.machine),
+  getAccessRequest: () => Promise.resolve(api.request),
+  requestAccess: api.requestAccess,
+  signIn: api.signIn,
+}))
 
 import { SignInPage } from './SignInPage'
 
@@ -20,6 +30,9 @@ async function fill(login: string, password: string) {
 afterEach(() => {
   cleanup()
   api.signIn.mockReset()
+  api.requestAccess.mockReset()
+  api.request = null
+  api.machine = { ...api.machine, registration: 'none' }
 })
 
 describe('SignInPage', () => {
@@ -62,5 +75,45 @@ describe('SignInPage', () => {
     await act(async () => {})
     expect(screen.getByRole('note').textContent).toContain('-m app.users create-first-admin')
     api.machine = { ...api.machine, first_admin_needed: false }
+  })
+
+  it('someone not registered asks for access, and is told it is pending', async () => {
+    const pending = { kind: 'access', status: 'pending', login: 'alice', hostname: 'DEVBOX-A', reason: null, requested_at: '2026-10-27T10:00:00Z', decided_at: null }
+    api.requestAccess.mockResolvedValue(pending)
+    render(<SignInPage onSignedIn={() => {}} />)
+    await act(async () => {})
+    fireEvent.click(screen.getByRole('button', { name: 'Request access' }))
+    fireEvent.change(screen.getByLabelText('Your full name'), { target: { value: 'Alice Example' } })
+    fireEvent.change(screen.getByLabelText('Choose a password (12 characters or more)'), { target: { value: 'my-own-long-password' } })
+    fireEvent.change(screen.getByLabelText('The password, again'), { target: { value: 'my-own-long-password' } })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Request access' }))
+    })
+    expect(api.requestAccess).toHaveBeenCalledWith('Alice Example', 'my-own-long-password')
+    expect(screen.getByRole('status').textContent).toContain('Your request for access is pending')
+    expect(screen.queryByRole('button', { name: 'Request access' })).toBeNull()
+  })
+
+  it('a rejected request says why, and may be made again', async () => {
+    api.request = { kind: 'access', status: 'rejected', login: 'alice', hostname: 'DEVBOX-A', reason: 'Not on this programme.', requested_at: '2026-10-27T10:00:00Z', decided_at: '2026-10-27T11:00:00Z' }
+    render(<SignInPage onSignedIn={() => {}} />)
+    await act(async () => {})
+    expect(screen.getByRole('status').textContent).toContain(': Not on this programme.')
+    expect(screen.getByRole('button', { name: 'Request access' })).toBeTruthy()
+  })
+
+  it('a registered user on a new machine asks to add it, with their password only', async () => {
+    api.machine = { ...api.machine, registration: 'other_machines' }
+    api.requestAccess.mockResolvedValue({ kind: 'machine', status: 'pending', login: 'alice', hostname: 'DEVBOX-A', reason: null, requested_at: '2026-10-27T10:00:00Z', decided_at: null })
+    render(<SignInPage onSignedIn={() => {}} />)
+    await act(async () => {})
+    fireEvent.click(screen.getByRole('button', { name: 'Ask to add this machine' }))
+    expect(screen.queryByLabelText('Your full name')).toBeNull()
+    fireEvent.change(screen.getByLabelText('Your password'), { target: { value: 'my-own-long-password' } })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Ask to add this machine' }))
+    })
+    expect(api.requestAccess).toHaveBeenCalledWith('', 'my-own-long-password')
+    expect(screen.getByRole('status').textContent).toContain('to add DEVBOX-A to your registration is pending')
   })
 })
