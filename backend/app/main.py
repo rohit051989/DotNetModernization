@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError
 
+from app import platform_version
 from app.auth import machine
 from app.auth.http import guard
 from app.config import settings
@@ -115,6 +116,13 @@ def _report_existing_data() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # This copy must be at the database's version (app.platform_version): the admin updates the database first, then
+    # every developer pulls the update and restarts. Checked before anything is touched.
+    try:
+        running = platform_version.check_at_start()
+    except platform_version.VersionMismatch as refused:
+        logging.getLogger("app.platform_version").error(str(refused))
+        raise
     # One backend per machine (app.heartbeat): checked before anything else, because the reconciliation below fails
     # this machine's running jobs, and another backend's must not be among them.
     beat = Heartbeat()
@@ -123,11 +131,15 @@ async def lifespan(app: FastAPI):
     except AnotherPlatform as refused:
         logging.getLogger("app.heartbeat").error(str(refused))
         raise
+    # While it runs, the admin may update: from then on, this backend refuses changes, and the UI says so.
+    watch = platform_version.Watch(running)
+    watch.start()
     _reconcile_orphaned_executions()
     _report_existing_data()
     try:
         yield
     finally:
+        watch.stop()
         beat.stop()
 
 app = FastAPI(

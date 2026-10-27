@@ -12,6 +12,8 @@ import { useToast } from '../../components/Toast'
 import { usePolling } from '../../hooks/usePolling'
 import { StepTimeline } from './StepTimeline'
 import { ArtifactViewerDrawer } from './ArtifactViewerDrawer'
+import { RepositoryFiles } from '../repositories/SourceLink'
+import type { RepositoryDetail } from '../../types/repositories'
 
 const POLL_INTERVAL_MS = 2000
 
@@ -34,7 +36,9 @@ export function ExecutionDetail({ executionId, onBack }: ExecutionDetailProps) {
   const [notFound, setNotFound] = useState(false)
   const [busy, setBusy] = useState(false)
   const [viewingArtifactId, setViewingArtifactId] = useState<string | null>(null)
-  const [localPath, setLocalPath] = useState<string | null>(null)
+  const [repository, setRepository] = useState<RepositoryDetail | null>(null)
+  // File links open from the viewer's own clone on this machine (none recorded: they offer to record one).
+  const localPath = repository?.my_clone_path ?? null
 
   const load = useCallback(async () => {
     try {
@@ -58,15 +62,15 @@ export function ExecutionDetail({ executionId, onBack }: ExecutionDetailProps) {
     load()
   }, [load])
 
-  // Source links in the readable views resolve against the repository's
-  // folder on this machine; without one they show as plain text.
+  // Source links in the readable views resolve against the viewer's own clone of the repository; an execution of no
+  // repository (the estate's) shows them as plain text.
   const repositoryId = typeof execution?.parameters.repository_id === 'string' ? execution.parameters.repository_id : null
   useEffect(() => {
     if (!repositoryId) return
     let cancelled = false
     getRepository(repositoryId)
       .then((repo) => {
-        if (!cancelled) setLocalPath(repo.local_path)
+        if (!cancelled) setRepository(repo)
       })
       .catch(() => undefined)
     return () => {
@@ -109,7 +113,7 @@ export function ExecutionDetail({ executionId, onBack }: ExecutionDetailProps) {
     return acc
   }, {})
 
-  return (
+  const page = (
     <div className="mx-auto max-w-5xl space-y-6 p-6">
       <button type="button" onClick={onBack} className="text-sm text-violet-600 hover:underline">
         ← Back to executions
@@ -245,5 +249,12 @@ export function ExecutionDetail({ executionId, onBack }: ExecutionDetailProps) {
 
       {viewingArtifactId && <ArtifactViewerDrawer artifactId={viewingArtifactId} localPath={localPath} onClose={() => setViewingArtifactId(null)} />}
     </div>
+  )
+  return repository ? (
+    <RepositoryFiles repository={repository} onRecorded={setRepository}>
+      {page}
+    </RepositoryFiles>
+  ) : (
+    page
   )
 }

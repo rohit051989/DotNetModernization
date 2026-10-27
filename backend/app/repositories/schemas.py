@@ -153,7 +153,7 @@ class RegisterGitCloneRequest(BaseModel):
             "examples": [
                 {
                     "source_type": "git_clone",
-                    "clone_url": "https://git.client.com/team/order-management.git",
+                    "clone_url": "https://git.client-a.example/team/order-management.git",
                     "branch": "main",
                     "target_folder": None,
                     "name": "Order Management",
@@ -268,6 +268,12 @@ class RepositorySummary(BaseModel):
     files_held_on: str | None = Field(default=None, description="When it was registered on another machine: where its "
                                                                 "files, worktrees and run output are, as \"on Ann's machine "
                                                                 "(PC-17)\". Its results are read from the database.")
+    my_clone_path: str | None = Field(default=None, description="The signed-in person's own clone of it on this machine: "
+                                                                "the folder file links open from. The owner's is the "
+                                                                "folder it was registered from; null when they have "
+                                                                "recorded none (POST /api/repositories/{id}/clone).")
+    clone_command: str | None = Field(default=None, description="The git command that makes a clone of it on this "
+                                                                "machine, to record afterwards; null without a remote URL.")
 
 
 class RepositoryDetail(RepositorySummary):

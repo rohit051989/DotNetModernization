@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from app import models
 from app.config import settings
-from app.repositories import git_source
+from app.repositories import clones, git_source
 from app.repositories.schemas import (
     DuplicateConflict,
     InspectPathResponse,
@@ -595,6 +595,7 @@ def register_local_path(
     )
     db.add(repo)
     db.flush()
+    clones.record_registered(db, repo)
     return repo
 
 
@@ -737,6 +738,7 @@ def register_git_clone(db: Session, engagement: models.Engagement, payload: Regi
     )
     db.add(repo)
     db.flush()
+    clones.record_registered(db, repo)
     return repo
 
 

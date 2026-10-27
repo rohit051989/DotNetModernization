@@ -30,6 +30,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app import models
@@ -229,6 +230,14 @@ def allowed_roots(db: Session) -> list[Path]:
     """Where a file may be opened: every registered repository, every conversion worktree, and RUNS_DIR."""
     roots = [settings.runs_path]
     roots += [Path(r.local_path) for r in db.query(models.Repository).filter(models.Repository.deleted_at.is_(None))]
+    # Each person's own clones on this machine (app.repositories.clones), of repositories not deleted: file links
+    # open from them.
+    from app.auth import machine
+
+    roots += [Path(p) for (p,) in db.query(models.RepositoryClone.local_path)
+              .join(models.Repository, models.Repository.id == models.RepositoryClone.repository_id)
+              .filter(func.lower(models.RepositoryClone.hostname) == machine.hostname().lower(),
+                      models.Repository.deleted_at.is_(None))]
     roots += [Path(p) for (p,) in db.query(models.ConversionPlan.worktree_path)]
     roots += [Path(p) for (p,) in db.query(models.EngineRun.worktree_path).filter(models.EngineRun.worktree_path.isnot(None))]
     return roots

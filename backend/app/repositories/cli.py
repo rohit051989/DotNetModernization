@@ -1,7 +1,7 @@
 """Register repositories and run discovery from the command line — the same service calls the API makes
 (app/routers/repositories.py), run synchronously in this process, so the backend does not need to be running.
 
-    python -m app.repositories.cli register-url --engagement test-client-a --url https://git.client.com/team/OrderService.git [--branch main] [--target D:\\repos\\OrderService]
+    python -m app.repositories.cli register-url --engagement test-client-a --url https://git.client-a.example/team/OrderService.git [--branch main] [--target D:\\repos\\OrderService]
     python -m app.repositories.cli register --engagement test-client-a --path D:\\...\\AccountsApi.Net10 --clone-url https://...
     python -m app.repositories.cli discover --engagement test-client-a --repository accountsapi-net10
     python -m app.repositories.cli consolidate --engagement test-client-a

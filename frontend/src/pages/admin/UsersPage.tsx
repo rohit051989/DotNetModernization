@@ -4,6 +4,12 @@ import {
   ACCESS_REQUESTS_CHANGED,
   approveAccessRequest,
   createUser,
+  deleteUser,
+  disableUser,
+  enableUser,
+  listUserRepositories,
+  removeUserMachine,
+  type OwnedRepository,
   listAccessRequests,
   listUsers,
   promoteUser,
@@ -13,6 +19,7 @@ import {
   type AccessRequest,
   type User,
 } from '../../api/users'
+import { useAuth } from '../../auth/AuthContext'
 import { LimitedList } from '../../components/LimitedList'
 import { useToast } from '../../components/Toast'
 
@@ -28,6 +35,7 @@ function hostList(text: string): string[] {
  * temporary: the person chooses their own at their next sign-in. */
 export function UsersPage() {
   const { showToast } = useToast()
+  const { me } = useAuth()
   const [users, setUsers] = useState<User[] | null>(null)
   const [requests, setRequests] = useState<AccessRequest[] | null>(null)
   const [form, setForm] = useState<{ login: string; name: string; windows_account: string; hosts: string; temporary_password: string }>(EMPTY)
@@ -95,6 +103,67 @@ export function UsersPage() {
     }
   }
 
+  async function disable(user: User) {
+    let owned: OwnedRepository[] = []
+    try {
+      owned = await listUserRepositories(user.id)
+    } catch {
+      // the confirmation then names no repositories; the backend still refuses what it must
+    }
+    const keeps = owned.length
+      ? `\n\nThey keep the repositories they own, which you may reassign at any time from each repository's page:\n${owned.map((r) => `  ${r.name} (${r.engagement_name})`).join('\n')}`
+      : ''
+    if (!window.confirm(`Disable ${user.name}? Their open sessions end now, and signing in is refused until they are enabled. Their history stays.${keeps}`)) return
+    try {
+      await disableUser(user.id)
+      showToast('success', `${user.name} is disabled: their sessions have ended.`)
+      reload()
+    } catch (err) {
+      showToast('error', err instanceof ApiError ? err.message : 'Could not disable them.')
+    }
+  }
+
+  async function enable(user: User) {
+    try {
+      await enableUser(user.id)
+      showToast('success', `${user.name} is enabled: they may sign in again.`)
+      reload()
+    } catch (err) {
+      showToast('error', err instanceof ApiError ? err.message : 'Could not enable them.')
+    }
+  }
+
+  async function remove(user: User) {
+    if (!window.confirm(`Delete ${user.name} (${user.login})? This cannot be undone. The activity record keeps their name against everything they did.`)) return
+    try {
+      await deleteUser(user.id)
+      showToast('success', `${user.name} is deleted.`)
+      reload()
+    } catch (err) {
+      // Refused while they own a repository: the message lists each one to reassign.
+      showToast('error', err instanceof ApiError ? err.message : 'Could not delete them.')
+    }
+  }
+
+  async function removeMachine(user: User, host: string) {
+    if (!window.confirm(`Remove ${host} from ${user.name}'s machines? Their sessions there end.`)) return
+    try {
+      await removeUserMachine(user.id, host)
+      showToast('success', `${host} removed from ${user.name}'s machines.`)
+      reload()
+    } catch (err) {
+      showToast('error', err instanceof ApiError ? err.message : 'Could not remove the machine.')
+    }
+  }
+
+  // Nobody disables or deletes themselves, nor the last admin (app.auth.management): said here, refused there too.
+  const activeAdmins = (users ?? []).filter((u) => u.role === 'admin' && u.active).length
+  function guarded(user: User): string | null {
+    if (user.id === me?.id) return 'You cannot do this to yourself: ask another admin.'
+    if (user.role === 'admin' && user.active && activeAdmins <= 1) return `${user.name} is the last admin: make another user an admin first.`
+    return null
+  }
+
   async function reset(user: User) {
     const temporary = window.prompt(`A temporary password for ${user.name} (12 characters or more). It works once: they choose their own at their next sign-in.`)
     if (!temporary) return
@@ -138,7 +207,7 @@ export function UsersPage() {
                 <tr key={user.id} className={`border-t border-neutral-100 align-top ${user.active ? '' : 'text-neutral-400'}`}>
                   <td className="py-1.5">
                     {user.name}
-                    {!user.active && <span className="ml-1 text-xs">(deactivated)</span>}
+                    {!user.active && <span className="ml-1 text-xs">(disabled)</span>}
                     {user.must_change_password && <span className="ml-1 text-xs text-amber-700">(new password due)</span>}
                   </td>
                   <td className="font-mono text-xs">{user.login}</td>
@@ -150,10 +219,23 @@ export function UsersPage() {
                           className="w-40 rounded border border-neutral-300 px-1 py-0.5 font-mono" aria-label={`Machines for ${user.name}`} />
                       </form>
                     ) : (
-                      <button type="button" className="font-mono hover:underline" title="Change the machines"
-                        onClick={() => setEditingHosts({ id: user.id, text: user.hosts.join(', ') })}>
-                        {user.hosts.join(', ')}
-                      </button>
+                      <span className="space-y-0.5">
+                        {user.hosts.map((host) => (
+                          <span key={host} className="block whitespace-nowrap font-mono">
+                            {host}
+                            {user.hosts.length > 1 && (
+                              <button type="button" className="ml-1 text-neutral-400 hover:text-red-700" aria-label={`Remove ${host} from ${user.name}'s machines`}
+                                title="Remove this machine" onClick={() => void removeMachine(user, host)}>
+                                ×
+                              </button>
+                            )}
+                          </span>
+                        ))}
+                        <button type="button" className="text-[11px] text-violet-700 hover:underline" title="Change the machines"
+                          onClick={() => setEditingHosts({ id: user.id, text: user.hosts.join(', ') })}>
+                          change
+                        </button>
+                      </span>
                     )}
                   </td>
                   <td className="text-xs">
@@ -173,9 +255,17 @@ export function UsersPage() {
                   <td className="text-xs">{user.repositories_owned}</td>
                   <td className="space-x-2 whitespace-nowrap text-xs">
                     <button type="button" className="text-violet-700 hover:underline" onClick={() => void reset(user)}>Reset password</button>
-                    <button type="button" className="text-neutral-600 hover:underline"
-                      onClick={() => void change(user, { active: !user.active }, `${user.name} ${user.active ? 'deactivated' : 'reactivated'}.`)}>
-                      {user.active ? 'Deactivate' : 'Reactivate'}
+                    {user.active ? (
+                      <button type="button" className="text-neutral-600 hover:underline disabled:cursor-not-allowed disabled:text-neutral-300 disabled:no-underline"
+                        disabled={guarded(user) !== null} title={guarded(user) ?? undefined} onClick={() => void disable(user)}>
+                        Disable
+                      </button>
+                    ) : (
+                      <button type="button" className="text-violet-700 hover:underline" onClick={() => void enable(user)}>Enable</button>
+                    )}
+                    <button type="button" className="text-red-700 hover:underline disabled:cursor-not-allowed disabled:text-neutral-300 disabled:no-underline"
+                      disabled={guarded(user) !== null} title={guarded(user) ?? 'Refused while they own a repository'} onClick={() => void remove(user)}>
+                      Delete
                     </button>
                   </td>
                 </tr>

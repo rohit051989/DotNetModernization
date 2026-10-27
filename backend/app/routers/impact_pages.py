@@ -114,6 +114,9 @@ def get_repository_impact_summary(repository_id: uuid.UUID, db: Session = Depend
                (select count(*) from (select distinct item_id, project_path from impact_summaries
                                       where repository_id = :r and stale) s) as stale
     """), {"r": repository_id, "changes": changes}).one()
+    pairs = {(r.item_id, r.project_path) for r in db.execute(text(
+        "select distinct item_id, project_path from impact_summaries where repository_id = :r"), {"r": repository_id})}
+    possible_work_items = len(pairs & impact.possible_only(db, repository_id))
     by_action = {a: row.by_action.get(a, 0) for a in impact.ACTIONS}
     rule_conflicts, work_item_conflicts = _conflicts(db, repo)
     totals = ImpactTotalsOut(
@@ -126,6 +129,7 @@ def get_repository_impact_summary(repository_id: uuid.UUID, db: Session = Depend
         rule_conflict_work_items=sum(g.work_items for g in rule_conflicts),
         work_item_conflicts=len(work_item_conflicts),
         stale_work_items=row.stale,
+        possible_work_items=possible_work_items,
     )
     return ImpactSummaryOut(totals=totals, client_impact_note=impact.CLIENT_NOTE,
                             counts={"hotspots": row.hotspots, "rule_conflicts": len(rule_conflicts),
@@ -172,6 +176,7 @@ def list_impact_work_items(repository_id: uuid.UUID, paging: PageParams = Depend
     """
     result = page(db, source, {"r": repository_id}, paging, order="k_item, k_project")
     item_name, resolution_name = impact._names(db)
+    possible_only = impact.possible_only(db, repository_id)
     items = []
     for key in result.items:
         summaries = (db.query(models.ImpactSummary)
@@ -180,7 +185,8 @@ def list_impact_work_items(repository_id: uuid.UUID, paging: PageParams = Depend
                              models.ImpactSummary.project_path == key["project_path"])
                      .order_by(models.ImpactSummary.resolution_id).all())
         w = WorkItemSummaryOut(item_id=key["item_id"], item_name=item_name(key["item_id"]), project_path=key["project_path"],
-                               effective_resolution_id="", stale=False, resolutions=[])
+                               effective_resolution_id="", stale=False, resolutions=[],
+                               possible_only=(key["item_id"], key["project_path"]) in possible_only)
         for s in summaries:
             w.resolutions.append(ResolutionSummaryOut(**impact._summary_fields(s, resolution_name(s.resolution_id))))
             w.stale = w.stale or s.stale

@@ -272,6 +272,10 @@ class SharedResults(unittest.TestCase):
         self.assertEqual(ann["impact-files"]["items"], whole["files"])
         self.assertEqual(ann["hotspots"]["items"], whole["hotspots"])
         self.assertEqual(ann["impact-work-items"]["items"], whole["work_items"])
+        # Impact states the work list's figures: its "plus N possible" are the work list's, each marked.
+        possible = content["item-occurrences"]["summary"]["possible_only_found"]
+        self.assertEqual(whole["totals"]["possible_work_items"], possible)
+        self.assertEqual(sum(1 for w in whole["work_items"] if w["possible_only"]), possible)
         whole = self.get("ann", f"/api/repositories/{repo.id}/tests")
         self.assertEqual(ann["tests:source-files"]["items"], whole["source_files"])
         self.assertEqual(ann["tests:projects"]["items"], whole["projects"])

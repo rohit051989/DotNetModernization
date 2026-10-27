@@ -198,7 +198,7 @@ class RegisterByUrlTests(unittest.TestCase):
     def test_a_credential_in_the_url_is_refused(self):
         with self.assertRaises(repositories_service.RegistrationError):
             repositories_service.register_git_clone(self.db, self.engagement, RegisterGitCloneRequest(
-                source_type="git_clone", clone_url="https://jdoe:secret@git.client.com/team/Orders.git",
+                source_type="git_clone", clone_url="https://jdoe:secret@git.client-a.example/team/Orders.git",
                 target_folder=str(self.root / "x")))
 
 

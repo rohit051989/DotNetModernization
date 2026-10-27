@@ -9,7 +9,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app import heartbeat, models
-from app.auth import requests, service
+from app.auth import management, requests, service
 from app.db import get_db
 from app.errors import ErrorResponse, error
 
@@ -127,14 +127,109 @@ def create_user(payload: UserIn, db: Session = Depends(get_db)):
 
 @router.put("/users/{user_id}", response_model=UserOut, summary="Change a user", operation_id="update_user",
             responses={404: {"model": ErrorResponse, "description": "No such user."}})
-def update_user(user_id: str, payload: UserUpdate, db: Session = Depends(get_db)):
-    """Admins only. Only the fields sent change. Deactivating a user ends their sessions."""
+def update_user(user_id: str, payload: UserUpdate, request: Request, db: Session = Depends(get_db)):
+    """Admins only. Only the fields sent change. `active` disables or enables them, as POST .../disable and
+    .../enable do, with the same rules."""
     user = _user(db, user_id)
     try:
         service.update_user(db, user, name=payload.name, role=payload.role, windows_account=payload.windows_account,
-                            host_names=payload.hosts, active=payload.active)
+                            host_names=payload.hosts)
+        if payload.active is not None and payload.active != (user.deactivated_at is None):
+            if payload.active:
+                management.enable(db, user, request.state.actor)
+            else:
+                management.disable(db, user, request.state.actor)
     except service.Refused as refused:
+        db.rollback()
         raise _refused(refused) from None
+    db.commit()
+    return _out(db, user)
+
+
+class OwnedRepositoryOut(BaseModel):
+    id: str
+    name: str
+    engagement_id: str
+    engagement_name: str
+
+
+class DisabledOut(BaseModel):
+    user: UserOut
+    owned_repositories: list[OwnedRepositoryOut] = Field(description="Still theirs: an admin may reassign each at any "
+                                                                      "time (PUT /api/repositories/{id}/owner).")
+
+
+def _owned_out(owned) -> list[OwnedRepositoryOut]:
+    return [OwnedRepositoryOut(id=str(r.id), name=r.name, engagement_id=r.engagement_id, engagement_name=e) for r, e in owned]
+
+
+_MANAGE_RESPONSES = {404: {"model": ErrorResponse, "description": "No such user."},
+                     409: {"model": ErrorResponse, "description": "Refused: yourself, the last admin, owned "
+                                                                  "repositories, or nothing to change; the message says which."}}
+
+
+@router.get("/users/{user_id}/repositories", response_model=list[OwnedRepositoryOut],
+            summary="The repositories a user owns", operation_id="list_user_repositories",
+            responses={404: {"model": ErrorResponse, "description": "No such user."}})
+def list_user_repositories(user_id: str, db: Session = Depends(get_db)):
+    """What disabling leaves with them, and what must be reassigned before they can be deleted."""
+    return _owned_out(management.owned_repositories(db, _user(db, user_id)))
+
+
+@router.post("/users/{user_id}/disable", response_model=DisabledOut, summary="Disable a user",
+             operation_id="disable_user", responses=_MANAGE_RESPONSES)
+def disable_user(user_id: str, request: Request, db: Session = Depends(get_db)):
+    """Admins only. At once: their sessions end and their sign-in is refused. Their history and repositories stay.
+    Never yourself, nor the last admin."""
+    user = _user(db, user_id)
+    try:
+        owned = management.disable(db, user, request.state.actor)
+    except service.Refused as refused:
+        db.rollback()
+        raise error(409, refused.message, code=refused.code) from None
+    db.commit()
+    return DisabledOut(user=_out(db, user), owned_repositories=_owned_out(owned))
+
+
+@router.post("/users/{user_id}/enable", response_model=UserOut, summary="Enable a disabled user",
+             operation_id="enable_user", responses=_MANAGE_RESPONSES)
+def enable_user(user_id: str, request: Request, db: Session = Depends(get_db)):
+    """Admins only. They may sign in again."""
+    user = _user(db, user_id)
+    try:
+        management.enable(db, user, request.state.actor)
+    except service.Refused as refused:
+        db.rollback()
+        raise error(409, refused.message, code=refused.code) from None
+    db.commit()
+    return _out(db, user)
+
+
+@router.delete("/users/{user_id}", status_code=204, summary="Delete a user", operation_id="delete_user",
+               responses=_MANAGE_RESPONSES)
+def delete_user(user_id: str, request: Request, db: Session = Depends(get_db)):
+    """Admins only. Refused while they own a repository: the message lists each, to be given a new owner first. The
+    activity record keeps their name against everything they did. Never yourself, nor the last admin."""
+    user = _user(db, user_id)
+    try:
+        management.delete(db, user, request.state.actor)
+    except service.Refused as refused:
+        db.rollback()
+        raise error(409, refused.message, code=refused.code) from None
+    db.commit()
+
+
+@router.delete("/users/{user_id}/machines/{hostname}", response_model=UserOut,
+               summary="Remove one machine from a user's registration", operation_id="remove_user_machine",
+               responses=_MANAGE_RESPONSES)
+def remove_user_machine(user_id: str, hostname: str, request: Request, db: Session = Depends(get_db)):
+    """Admins only. Their sessions on that machine end. Their only machine stays: disable them instead."""
+    user = _user(db, user_id)
+    try:
+        management.remove_machine(db, user, request.state.actor, hostname)
+    except service.Refused as refused:
+        db.rollback()
+        raise error(404 if refused.code == "NOT_FOUND" else 409, refused.message, code=refused.code) from None
     db.commit()
     return _out(db, user)
 

@@ -39,10 +39,33 @@ function SignedIn() {
   return <PlatformApp />
 }
 
+// A reload keeps the engagement and tab the person was in: kept for this browser tab only.
+const VIEW_KEY = 'platform:view'
+
+function rememberedView(): { engagementId: string | null; tab: TabKey } {
+  try {
+    const saved = JSON.parse(window.sessionStorage.getItem(VIEW_KEY) ?? 'null')
+    if (saved && typeof saved === 'object') {
+      return { engagementId: typeof saved.engagementId === 'string' ? saved.engagementId : null, tab: saved.tab ?? 'catalog' }
+    }
+  } catch {
+    // no storage, or not ours: start from the master catalog
+  }
+  return { engagementId: null, tab: 'catalog' }
+}
+
 function PlatformApp() {
-  const [selectedEngagementId, setSelectedEngagementId] = useState<string | null>(null)
+  const [selectedEngagementId, setSelectedEngagementId] = useState<string | null>(() => rememberedView().engagementId)
   const [engagements, setEngagements] = useState<Engagement[]>([])
-  const [activeTab, setActiveTab] = useState<TabKey>('catalog')
+  const [activeTab, setActiveTab] = useState<TabKey>(() => rememberedView().tab)
+
+  useEffect(() => {
+    try {
+      window.sessionStorage.setItem(VIEW_KEY, JSON.stringify({ engagementId: selectedEngagementId, tab: activeTab }))
+    } catch {
+      // storage unavailable: a reload starts from the master catalog
+    }
+  }, [selectedEngagementId, activeTab])
   // A repository page's SOAP call, to open at its row in the Estate tab's SOAP report.
   const [estateSoapFocus, setEstateSoapFocus] = useState<string | null>(null)
   const [selectedExecutionId, setSelectedExecutionId] = useState<string | null>(null)
@@ -52,7 +75,15 @@ function PlatformApp() {
 
   useEffect(() => {
     listEngagements()
-      .then(setEngagements)
+      .then((found) => {
+        setEngagements(found)
+        // A remembered engagement deleted since: back to the master catalog.
+        const remembered = rememberedView().engagementId
+        if (remembered && !found.some((e) => e.id === remembered) && !parseRepositoryIdFromLocation() && !parseExecutionIdFromLocation()) {
+          setSelectedEngagementId(null)
+          setActiveTab('catalog')
+        }
+      })
       .catch(() => setEngagements([]))
   }, [])
 

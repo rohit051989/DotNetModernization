@@ -84,6 +84,17 @@ export function verifyRepositoryPath(repositoryId: string) {
   return api.post<VerifyPathResult>(`/api/repositories/${encodeURIComponent(repositoryId)}/verify-path`)
 }
 
+/** Records the signed-in person's own clone on this machine, once the backend has checked it is a clone of this
+ * repository (the same remote URL). File links then open from it. */
+export function recordRepositoryClone(repositoryId: string, localPath: string) {
+  return api.post<RepositoryDetail>(`/api/repositories/${encodeURIComponent(repositoryId)}/clone`, { local_path: localPath })
+}
+
+/** Forgets it on this machine; nothing on disk changes. */
+export function forgetRepositoryClone(repositoryId: string) {
+  return api.delete<RepositoryDetail>(`/api/repositories/${encodeURIComponent(repositoryId)}/clone`)
+}
+
 export function listRepositoryExecutions(repositoryId: string) {
   return api.get<JobExecution[]>(`/api/repositories/${encodeURIComponent(repositoryId)}/executions`)
 }

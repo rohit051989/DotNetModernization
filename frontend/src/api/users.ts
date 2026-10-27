@@ -43,7 +43,6 @@ export interface UserUpdate {
   /** Only to make an admin a developer: making an admin is promoteUser's. */
   role?: 'developer'
   hosts?: string[]
-  active?: boolean
 }
 
 export interface OnlineEntry {
@@ -76,6 +75,37 @@ export function resetPassword(userId: string, temporaryPassword: string) {
 /** Admins only. Makes the user an admin: the one way anyone but the first admin becomes one, recorded. */
 export function promoteUser(userId: string) {
   return api.post<User>(`/api/users/${encodeURIComponent(userId)}/promote`)
+}
+
+export interface OwnedRepository {
+  id: string
+  name: string
+  engagement_id: string
+  engagement_name: string
+}
+
+/** The repositories a user owns: they stay theirs when disabled, and need a new owner before the user is deleted. */
+export function listUserRepositories(userId: string) {
+  return api.get<OwnedRepository[]>(`/api/users/${encodeURIComponent(userId)}/repositories`)
+}
+
+/** Admins only. At once: their sessions end and their sign-in is refused. Never yourself, nor the last admin. */
+export function disableUser(userId: string) {
+  return api.post<{ user: User; owned_repositories: OwnedRepository[] }>(`/api/users/${encodeURIComponent(userId)}/disable`)
+}
+
+export function enableUser(userId: string) {
+  return api.post<User>(`/api/users/${encodeURIComponent(userId)}/enable`)
+}
+
+/** Admins only. Refused while they own a repository; the message lists them. */
+export function deleteUser(userId: string) {
+  return api.delete<void>(`/api/users/${encodeURIComponent(userId)}`)
+}
+
+/** Admins only. Their sessions there end; their only machine stays. */
+export function removeUserMachine(userId: string, hostname: string) {
+  return api.delete<User>(`/api/users/${encodeURIComponent(userId)}/machines/${encodeURIComponent(hostname)}`)
 }
 
 /** A window event: an access request was decided, so the header's count is stale. */

@@ -330,7 +330,7 @@ Clone the client's repository, if it is not on the machine yet, then create your
 client names (here `main`), or check it out when it exists already:
 
 ```powershell
-git clone -c core.longpaths=true https://git.client.com/team/shared.git C:\MP\client
+git clone -c core.longpaths=true https://git.client-a.example/team/shared.git C:\MP\client
 ```
 
 ```powershell
@@ -722,13 +722,13 @@ sign-in prompt either, so a clone that needs a sign-in fails at once and says so
 platform, in your own PowerShell window:
 
 ```powershell
-git ls-remote https://git.client.com/team/OrderService.git
+git ls-remote https://git.client-a.example/team/OrderService.git
 ```
 
 - **https:** Git Credential Manager opens its sign-in window (the client's single sign-on, or a personal access
   token if the git host asks for one). It remembers the sign-in for your account, so every later clone and fetch,
   including the platform's, uses it. The command then lists the repository's branches.
-- **SSH** (`git@git.client.com:team/OrderService.git`): the first time, answer `yes` to the host's key. A key with a
+- **SSH** (`git@git.client-a.example:team/OrderService.git`): the first time, answer `yes` to the host's key. A key with a
   passphrase must be loaded into the ssh-agent (`ssh-add`), because the platform cannot type a passphrase.
 
 When a clone fails with "needs a sign-in the platform cannot give", do this, then press **Rescan** on the
@@ -739,7 +739,7 @@ repository's page (or register again).
 In the UI, choose the engagement in **View**, then **Repositories** → **+ Register Repository**. **Git URL** is
 selected:
 
-1. **Git URL:** `https://git.client.com/team/OrderService.git` (or `git@...`, `ssh://...`; a URL must not contain a
+1. **Git URL:** `https://git.client-a.example/team/OrderService.git` (or `git@...`, `ssh://...`; a URL must not contain a
    user name or password, and one that does is refused). A repository in a folder or on a share can be given as
    `file:///C:/mirror/OrderService.git`.
 2. **Branch** (optional): the branch to clone and follow. Empty: the repository's default branch.
@@ -752,7 +752,7 @@ selected:
 From the command line (the backend need not be running):
 
 ```powershell
-cd C:\MP\client\modernization-platform\backend; .venv\Scripts\python.exe -m app.repositories.cli register-url --engagement client-a --url https://git.client.com/team/OrderService.git
+cd C:\MP\client\modernization-platform\backend; .venv\Scripts\python.exe -m app.repositories.cli register-url --engagement client-a --url https://git.client-a.example/team/OrderService.git
 ```
 
 `--branch` and `--target C:\MP\repos\client-a\OrderService` are optional, as in the form.
@@ -783,7 +783,7 @@ changes of the clone.
 Choose **Local folder path** in the form instead:
 
 ```powershell
-git clone -c core.longpaths=true https://git.client.com/team/OrderService.git C:\MP\repos\OrderService
+git clone -c core.longpaths=true https://git.client-a.example/team/OrderService.git C:\MP\repos\OrderService
 ```
 
 1. **Local folder path:** `C:\MP\repos\OrderService`, then leave the field. The form inspects the folder and fills
@@ -929,7 +929,8 @@ every time:
    `PLATFORM_SOURCE.json`). They list what needs doing besides bootstrap: a package your mirror must carry, a new
    setting, a rescan. Most updates need nothing more.
 4. **Run bootstrap** ("Bootstrap"). It brings the dependencies, the step programs, the schema and the seed up to
-   date with the new commit, and skips everything else.
+   date with the new commit, and skips everything else. Only the admin's bootstrap changes the database, and records
+   its new version; a developer's checks that their copy is at that version (below).
 5. **Start the backend and the frontend** ("Starting the backend and the frontend"), and do any rescan the notes
    asked for.
 
@@ -940,6 +941,37 @@ Every commit on master can be applied this way to an installation of any earlier
 
 Run the two commands of "Starting the backend and the frontend" again. Nothing else is needed: the database and
 `RUNS_DIR` keep everything.
+
+#### Several developers: the admin updates first
+
+Everyone's platform uses one database, so it has one version: our commit, recorded by the **admin's** bootstrap after
+it migrates and seeds (`PLATFORM_SOURCE.json`'s on an installation, `HEAD` in our own repository). Every copy must be
+at that version. So, every time:
+
+1. **The admin updates first**: the five steps above. Their bootstrap migrates the database, seeds it, and records
+   the new version.
+2. **Then every developer** pulls the same update (steps 1 to 3), runs bootstrap and restarts. A developer's
+   bootstrap never changes the database: it checks the version, and has nothing more to do.
+
+What each one is told when the versions differ, by bootstrap and, in the same words, by a backend that refuses to
+start:
+
+| Message | Means | Do |
+|---|---|---|
+| "The admin has updated the platform: the database is at ... Pull the update first" | The database is newer than your copy | Pull the update, run bootstrap, start again |
+| "This copy of the platform (...) is newer than the database (...): ask the admin to update first" | You pulled before the admin updated | Ask the admin to update; then run bootstrap again |
+| "... at different versions, and which is newer cannot be told here" | Neither git nor the commit dates say | Ask the admin which to use, and update so they match |
+
+**While a backend runs**, it checks the database's version every 30 seconds. When the admin updates, the page shows a
+banner, "The platform has been updated", saying what to do, and that backend refuses every change (409
+`PLATFORM_UPDATED`) until its person pulls the update and restarts: reading, and signing in and out, go on.
+
+A **first installation**, before any admin exists, migrates and seeds as the admin's does. An admin whose copy is
+older than the database is stopped too: an older copy never takes the database back. To see both versions:
+
+```powershell
+cd C:\MP\client\modernization-platform\backend; .venv\Scripts\python.exe -m app.platform_version show
+```
 
 ### Delivering to a client from our machine
 
@@ -1201,13 +1233,31 @@ command line, as an admin on your own machine:
 cd C:\MP\client\modernization-platform\backend; .venv\Scripts\python.exe -m app.users add --login asmith --name "Alex Smith" --windows-account CORP\asmith --host DEVBOX-07
 ```
 
-**Changing a user** (admins): in the Users tab, change their machines, make an admin a developer again (**Make
-developer**), reset their password (temporary, replaced at their next sign-in; their sessions end), or deactivate them.
-The command line does the same: `python -m app.users set --login asmith --host DEVBOX-07 --host LAPTOP-12`,
-`set --login asmith --role developer`, `reset-password --login asmith`, `set --login asmith --deactivate`, and `list`.
-The last admin cannot be made a developer or deactivated.
+**Changing a user** (admins): in the Users tab, change their machines (**change**, or **×** beside one machine to
+remove just that one; their sessions there end), make an admin a developer again (**Make developer**), or reset their
+password (temporary, replaced at their next sign-in; their sessions end). The command line does the same:
+`python -m app.users set --login asmith --host DEVBOX-07 --host LAPTOP-12`, `remove-machine --login asmith --host
+LAPTOP-12`, `set --login asmith --role developer`, `reset-password --login asmith`, and `list`. Their only machine
+cannot be removed: disable them instead.
 
-Every request, approval, rejection and promotion is recorded with who and when ("Who did what", below).
+**Disabling, enabling and deleting** (admins):
+
+- **Disable** takes effect at once: their open sessions end, and signing in is refused with "Your account is
+  disabled: ask an admin to enable it". Their history and the repositories they own stay; the confirmation lists
+  those, and you may give any of them a new owner at any time (**Assign** on its page). **Enable** restores access.
+- **Delete** is refused while they own a repository: the refusal lists each one, to be given a new owner first.
+  Afterwards the activity record still shows their name against everything they did.
+- Nobody disables or deletes themselves, and nobody disables or deletes the last admin.
+
+```powershell
+cd C:\MP\client\modernization-platform\backend; .venv\Scripts\python.exe -m app.users disable --login asmith
+```
+
+`enable --login asmith` and `delete --login asmith` likewise; `set --deactivate` and `set --activate` still work, as
+disable and enable.
+
+Every request, approval, rejection, promotion, disabling, enabling, deletion and removed machine is recorded with who
+and when ("Who did what", below).
 
 **Assigning owners** (admins): on a repository's page, **Assign** (or **Change**) beside its owner; or list the
 repositories and their owners, those with none first, and assign one:
@@ -1265,7 +1315,7 @@ copy of its files and no clone needed.
 - **What stays on the owner's machine.** Raw outputs no view reads: logs, timing profiles, SARIF exports and other
   intermediate files; a conversion's worktree and evidence files; the repository's own files. On another machine,
   wherever the UI offers one of those, it says where it is, **"on Ann's machine (DEVBOX-07)"**, instead of a link that
-  cannot work. A file link in a repository scanned elsewhere says the same when clicked.
+  cannot work. The repository's own files are opened from your own clone ("Your own clone of a repository", below).
 - **A page at a time.** Every list that grows with a repository (entry points, invocations, packages, the work list
   and its occurrences, projects, impact work items and files, tests and test mappings, the estate's hosts, calls and
   packages) is served by the database 20 at a time, with its filter box matched there. A tab never loads a whole
@@ -1286,6 +1336,31 @@ copy of its files and no clone needed.
   `--repository <slug>` copies one repository (and its engagement's estate); `--dry-run` says what it would copy. A
   repository whose owner never runs it shows its results after its next scan: until then its page says that its
   results are only on its owner's machine.
+
+#### Your own clone of a repository
+
+The platform stores every file location relative to its repository (`src/Web/OrderService.cs`). Each person records
+where their own clone of a repository is, on their own machine, and every file link on its page, and on its
+executions' pages, joins that folder with the file's path: the owner and everyone else each open the same file from
+their own clone. The owner's clone is the folder the repository was registered from; nothing to do.
+
+Anyone else, on a repository's page:
+
+1. The line under the header says **"No clone of yours is recorded on this machine"**, and a file link offers
+   **Record your clone…** or **Copy the relative path**.
+2. **Record your clone…** shows the command that makes one under `REPOS_DIR`, for example:
+
+   ```powershell
+   git clone -c core.longpaths=true https://git.client-a.example/team/OrderService.git "C:\MP\repos\OrderService"
+   ```
+
+3. Give the clone's folder, and **Record**. The platform checks that it is the top of a git clone of the **same
+   repository** (the same remote URL; one cloned over https and one over ssh are the same) before recording it. A
+   clone of another repository is refused, saying what it is a clone of.
+
+From then on, file links open from your clone; **Change** beside the line records another folder, and **Forget my
+clone here** removes the record (nothing on disk changes). Updating your clone is yours (`git pull`): a link opens
+whatever your clone holds at that path.
 
 #### A stale heartbeat
 
@@ -1310,8 +1385,10 @@ type `clear` while it is still live, and refuses outright while its process is s
 
 Each developer sets up the platform on their own machine as in Part 1, with the **same database settings and schema**
 (`DB_HOST` ... `DB_SCHEMA`) and their own `RUNS_DIR` and `REPOS_DIR`, on their machine. They do not run
-`create-first-admin`: the first admin exists already. They start their platform, choose **Request access** on its
-sign-in page, and sign in once an admin approves it ("Users and sign-in").
+`create-first-admin`: the first admin exists already. Their copy must be at the database's version, the admin's
+latest update (`python -m app.platform_version show` says both), or bootstrap stops saying so ("Several developers:
+the admin updates first"). They start their platform, choose **Request access** on its sign-in page, and sign in
+once an admin approves it ("Users and sign-in").
 
 ### Deleting a repository or an engagement
 

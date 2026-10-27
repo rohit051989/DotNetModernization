@@ -30,4 +30,6 @@ export interface HealthStatus {
   status: string
   database: 'connected' | 'error'
   version: string
+  /** Set once the admin has updated the database while this backend runs: what to do. It refuses changes until then. */
+  platform_update?: string | null
 }

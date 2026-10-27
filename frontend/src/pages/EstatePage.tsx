@@ -32,7 +32,7 @@ function staleOr(err: unknown, fallback: string): string {
   return err instanceof ApiError && (err.code === 'STALE_COPY' || err.code === 'NOT_ALLOWED') ? err.message : fallback
 }
 
-// The Estate tab — lifecycle step 11, 31-DEPENDENCY-AND-CONTEXT-MAP.md
+// The Estate tab — dependency-and-context-map, 31-DEPENDENCY-AND-CONTEXT-MAP.md
 // Part H. Five views over the newest run's artifacts; coverage on each, since
 // a register built from part of the estate is provisional.
 
@@ -890,7 +890,7 @@ function IntegrationView({ engagementId, reloads, data, onOpenRepository }: { en
         </label>
       </div>
       <p className="text-xs text-neutral-500">
-        Matched from what step 5 recorded each call site invoking to what step 4 found each entry point serving: SOAP by contract and operation, HTTP by verb and
+        Matched from what outbound-invocation-inventory recorded each call site invoking to what entry-point-inventory found each entry point serving: SOAP by contract and operation, HTTP by verb and
         route template (on a local address, or a host annotated with its serving repository), gRPC by service and method. "No internal caller found" is not
         "unused" — callers outside the estate are not visible here. The filter matches an application or any operation it calls or serves.
       </p>

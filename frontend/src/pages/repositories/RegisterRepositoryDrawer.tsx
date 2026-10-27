@@ -220,7 +220,7 @@ export function RegisterRepositoryDrawer({ engagementId, onClose, onRegistered }
                   value={gitUrl}
                   onChange={(event) => setGitUrl(event.target.value)}
                   onBlur={handleUrlBlur}
-                  placeholder="https://git.client.com/team/repo.git , git@host:org/repo.git or ssh://host/org/repo.git"
+                  placeholder="https://git.client-a.example/team/repo.git , git@host:org/repo.git or ssh://host/org/repo.git"
                   className={inputClass(!!fieldErrors.clone_url)}
                 />
                 <p className="mt-1 text-xs text-neutral-400">

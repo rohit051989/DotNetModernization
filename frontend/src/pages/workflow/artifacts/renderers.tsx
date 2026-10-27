@@ -3,6 +3,7 @@ import { listCatalogItems } from '../../../api/items'
 import { InboundProjectList, localInboundSource } from '../../repositories/RepositorySurfaceSection'
 import { OutboundProjectList, localOutboundSource } from '../../repositories/RepositoryOutboundPanel'
 import { SourceLink } from '../../repositories/SourceLink'
+import { workItemFigures, workItemsLine } from '../../repositories/workItemFigures'
 import { LimitedList } from '../../../components/LimitedList'
 import { entryPointProjects, list, num, obj, outboundProjects, str, type Json } from './adapters'
 import type { WorkListDecisions } from '../../../types/items'
@@ -956,9 +957,6 @@ const possibleOnly = (g: WorkGroup) => g.files.length > 0 && g.files.every((f) =
  * follows and drives — and what another item's decision subsumes (Part S). */
 export function ItemOccurrencesView({ data, localPath, decisions }: ArtifactRendererProps & { decisions?: WorkListDecisions | null }) {
   const [showAll, setShowAll] = useState(false)
-  // Possible occurrences rest only on ambiguous evidence: shown, but left
-  // out of the totals unless the reader asks for them.
-  const [countPossible, setCountPossible] = useState(false)
   const [names, setNames] = useState<Record<string, string>>({})
   // occurrence_source.group_by per item: value-grouped items are listed by
   // value under their file, since their occurrences share files.
@@ -1033,31 +1031,21 @@ export function ItemOccurrencesView({ data, localPath, decisions }: ArtifactRend
   // unlocated found item is one occurrence.
   const occurrenceCount = found.reduce((n, g) => n + Math.max(g.files.length, 1), 0)
   const possibleCount = found.reduce((n, g) => n + g.files.filter((f) => f.certainty === 'possible').length, 0)
-  const countedRows = countPossible ? occurrenceCount : occurrenceCount - possibleCount
-  const countedFound = num(summary.found) - (countPossible ? 0 : num(summary.possible_only_found))
+  const { workItems, possible } = workItemFigures(summary)
 
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap items-center gap-1.5">
-        <Chip tone="teal" title="Item and project pairs where the item was found">
-          {countedFound} found
+        <Chip tone="teal" title="Item and project pairs where the item was found: the same figures as the Impact tab's">
+          {workItemsLine(workItems, possible)}
         </Chip>
-        <Chip title="Found occurrences, one per file: the work list's size">{countedRows} occurrences</Chip>
-        {possibleCount > 0 && (
-          <Chip title="Occurrences whose every piece of evidence is ambiguous (e.g. a call an unchanged overload could take). Shown below, not counted unless you include them.">
-            {possibleCount} possible {countPossible ? '(counted)' : '(not counted)'}
-          </Chip>
-        )}
+        <Chip title="Found occurrences, one per file">
+          {occurrenceCount - possibleCount} occurrences{possibleCount > 0 ? `, plus ${possibleCount} possible` : ''}
+        </Chip>
         {num(summary.not_checked) > 0 && <Chip tone="amber">{num(summary.not_checked)} not checked</Chip>}
         <Chip>{num(summary.checked_absent)} checked absent</Chip>
         {num(summary.excluded) > 0 && <Chip>{num(summary.excluded)} excluded by role</Chip>}
         <div className="ml-auto flex flex-wrap items-center gap-3">
-          {possibleCount > 0 && (
-            <label className="flex items-center gap-1.5 text-[11px] text-neutral-500">
-              <input type="checkbox" checked={countPossible} onChange={(e) => setCountPossible(e.target.checked)} />
-              Count possible in totals
-            </label>
-          )}
           <label className="flex items-center gap-1.5 text-[11px] text-neutral-500">
             <input type="checkbox" checked={showAll} onChange={(e) => setShowAll(e.target.checked)} />
             Show checked-absent and excluded

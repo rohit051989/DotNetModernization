@@ -78,7 +78,7 @@ def request_access(db: Session, *, name: str, password: str, account: str, host:
     user = service.by_account(db, account)
     if user is not None:
         if user.deactivated_at is not None:
-            raise Refused(f"{user.name}'s registration is deactivated: ask an admin to reactivate it.", "DEACTIVATED")
+            raise Refused(f"{user.name}'s account is disabled: ask an admin to enable it.", "DEACTIVATED")
         if any(h.lower() == host.strip().lower() for h in service.hosts(db, user)):
             raise Refused(f"You are registered for this machine ({host}) already: sign in as '{user.login}'.",
                           "ALREADY_REGISTERED")
@@ -157,7 +157,7 @@ def promote(db: Session, user: models.User, admin: actors.Actor) -> None:
     if not admin.is_admin:
         raise Refused("Only an admin makes another user an admin.", "NOT_ALLOWED")
     if user.deactivated_at is not None:
-        raise Refused(f"{user.name} is deactivated: reactivate them first.", "DEACTIVATED")
+        raise Refused(f"{user.name} is disabled: enable them first.", "DEACTIVATED")
     if user.role == actors.ADMIN:
         raise Refused(f"{user.name} is an admin already.", "ALREADY_ADMIN")
     user.role = actors.ADMIN

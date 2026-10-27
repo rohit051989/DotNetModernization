@@ -144,6 +144,8 @@ class WorkItemSummaryOut(BaseModel):
     effective_resolution_id: str
     stale: bool
     resolutions: list[ResolutionSummaryOut]
+    possible_only: bool = Field(default=False, description="Found only on possible evidence (item-detection): counted "
+                                                           "apart, as the work list does.")
 
 
 class ImpactTotalsOut(BaseModel):
@@ -168,6 +170,8 @@ class ImpactTotalsOut(BaseModel):
     rule_conflict_work_items: int
     work_item_conflicts: int
     stale_work_items: int
+    possible_work_items: int = Field(default=0, description="Of `work_items`, those found only on possible evidence: "
+                                                            "the work list's \"plus N possible\".")
 
 
 class RepositoryImpactOut(BaseModel):

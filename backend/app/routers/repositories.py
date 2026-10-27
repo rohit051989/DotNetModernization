@@ -1,11 +1,14 @@
 import uuid
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Query
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app import models
-from app.auth import activity, policy
+from app.auth import activity, machine, policy
 from app.auth import actor as actors
+from app.auth.service import Refused
+from app.repositories import clones
 from app.db import get_db
 from app.errors import ErrorResponse, error, errors
 from app.repositories import service as repositories_service
@@ -101,7 +104,9 @@ def _ownership(db: Session, repo: models.Repository) -> dict:
     return {"owner_user_id": repo.owner_user_id, "owner_name": policy.owner_name(db, repo),
             "registered_host": repo.registered_host, "can_act": reason is None, "cannot_act_reason": reason,
             "cannot_edit_reason": edit_reason,
-            "files_held_on": held.repository_where(db, repo) if held.elsewhere(repo.registered_host) else None}
+            "files_held_on": held.repository_where(db, repo) if held.elsewhere(repo.registered_host) else None,
+            "my_clone_path": clones.path_for(db, repo, person, machine.hostname()),
+            "clone_command": clones.clone_command(repo)}
 
 
 def _repository_out(db: Session, repo: models.Repository, detail: bool = False):
@@ -424,3 +429,44 @@ def list_repository_executions(
         db, repository_id=str(repo.id), limit=limit, offset=offset
     )
     return [runtime_service.to_execution_out(db, e) for e in executions]
+
+class CloneIn(BaseModel):
+    local_path: str = Field(min_length=1, description="The full path of your clone's folder on this machine: the top of "
+                                                      "a git clone of this repository.")
+
+
+@router.post(
+    "/repositories/{repository_id}/clone",
+    response_model=RepositoryDetail,
+    summary="Record your own clone of a repository, on this machine",
+    operation_id="record_repository_clone",
+    responses={404: _REPOSITORY_NOT_FOUND,
+               422: {"model": ErrorResponse, "description": "Not a folder, not the top of a git clone, or a clone of a "
+                                                            "different repository (another remote URL)."}},
+)
+def record_repository_clone(repository_id: uuid.UUID, payload: CloneIn, db: Session = Depends(get_db)):
+    """Anyone signed in, for themselves: file links then open from this folder. Checked first: the folder is the top
+    of a git clone whose remote is this repository's own."""
+    repo = _get_repository(db, repository_id)
+    try:
+        clones.record(db, repo, actors.current(), machine.hostname(), payload.local_path)
+    except Refused as refused:
+        db.rollback()
+        raise error(422, refused.message, field="local_path", code=refused.code) from None
+    db.commit()
+    return _repository_out(db, repo, detail=True)
+
+
+@router.delete(
+    "/repositories/{repository_id}/clone",
+    response_model=RepositoryDetail,
+    summary="Forget your own clone of a repository, on this machine",
+    operation_id="forget_repository_clone",
+    responses={404: _REPOSITORY_NOT_FOUND},
+)
+def forget_repository_clone(repository_id: uuid.UUID, db: Session = Depends(get_db)):
+    """Anyone signed in, for themselves. Nothing on disk changes."""
+    repo = _get_repository(db, repository_id)
+    clones.forget(db, repo, actors.current(), machine.hostname())
+    db.commit()
+    return _repository_out(db, repo, detail=True)

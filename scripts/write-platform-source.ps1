@@ -48,12 +48,17 @@ $tag = & git -C $Source describe --tags --exact-match HEAD 2>$null
 if ($LASTEXITCODE -ne 0 -or -not $tag) { $tag = $null } else { $tag = "$tag".Trim() }
 $branch = "$(& git -C $Source rev-parse --abbrev-ref HEAD)".Trim()
 if ($branch -eq 'HEAD') { $branch = $null }   # a commit checked out on its own: no branch
+# When the commit was made: how a copy without our .git tells whether it is newer or older than the database's version
+# (app\platform_version.py).
+$committedAt = "$(& git -C $Source show -s --format=%cI HEAD)".Trim()
+if (-not $committedAt) { $committedAt = $null }
 
 $record = [ordered]@{
     commit         = $commit
     tag            = $tag
     branch         = $branch
     date           = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+    committedAt    = $committedAt
     previousCommit = $(if ($Previous) { $Previous } else { $null })
     note           = 'Written by scripts\update-platform.ps1 (or write-platform-source.ps1): the commit of our source this folder was copied from. Do not edit.'
 }

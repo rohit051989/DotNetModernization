@@ -117,6 +117,8 @@ export interface WorkItemSummary {
   effective_resolution_id: string
   stale: boolean
   resolutions: ResolutionSummary[]
+  /** Found only on possible evidence: counted apart, as the work list does. */
+  possible_only?: boolean
 }
 
 export interface RepositoryImpact {
@@ -140,6 +142,8 @@ export interface RepositoryImpact {
     rule_conflict_work_items: number
     work_item_conflicts: number
     stale_work_items: number
+    /** Of work_items, those found only on possible evidence: the work list's "plus N possible". */
+    possible_work_items?: number
   }
   hotspots: FileRollup[]
   rule_conflicts: RuleConflict[]

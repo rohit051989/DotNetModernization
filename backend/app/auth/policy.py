@@ -34,6 +34,9 @@ RULES: dict[tuple[str, str], str] = {
     ("POST", "/api/editors/visual-studio/open"): ANY,
     # Registering a repository: anyone signed in, who then owns it.
     ("POST", "/api/engagements/{engagement_id}/repositories/register"): ANY,
+    # Each person's own clone of a repository, on their own machine: theirs to record or forget, whoever owns it.
+    ("POST", "/api/repositories/{repository_id}/clone"): ANY,
+    ("DELETE", "/api/repositories/{repository_id}/clone"): ANY,
     # The owner's repository.
     ("PUT", "/api/repositories/{repository_id}"): OWNER,
     ("DELETE", "/api/repositories/{repository_id}"): OWNER,

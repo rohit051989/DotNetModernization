@@ -5,6 +5,10 @@ const BASE_URL = ''
 /** Fired when the backend says there is no signed-in session: the app shows the sign-in page. */
 export const SIGNED_OUT_EVENT = 'platform:signed-out'
 
+/** Fired, with the backend's message as its detail, when a change is refused because the admin has updated the
+ * database while this backend runs (409 PLATFORM_UPDATED): the app shows a banner to update and restart. */
+export const PLATFORM_UPDATED_EVENT = 'platform:updated'
+
 /** For places that need a real URL rather than a fetch() call — e.g. a
  * download link the browser navigates to directly. */
 export function apiUrl(path: string): string {
@@ -80,6 +84,9 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     const { message, fieldErrors, rawDetail } = await parseErrorDetail(response)
     const error = new ApiError(response.status, message, fieldErrors, rawDetail)
     if (response.status === 401 && error.code === 'SIGNED_OUT') window.dispatchEvent(new Event(SIGNED_OUT_EVENT))
+    if (response.status === 409 && error.code === 'PLATFORM_UPDATED') {
+      window.dispatchEvent(new CustomEvent(PLATFORM_UPDATED_EVENT, { detail: message }))
+    }
     throw error
   }
 

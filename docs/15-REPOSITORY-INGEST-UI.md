@@ -398,7 +398,7 @@ POST /api/engagements/{eid}/repositories/register
 POST /api/engagements/{eid}/repositories/register
 {
   "source_type": "git_clone",
-  "clone_url": "https://git.client.com/team/order-management.git",
+  "clone_url": "https://git.client-a.example/team/order-management.git",
   "branch": "main",
   "target_folder": null,
   "name": "Order Management"

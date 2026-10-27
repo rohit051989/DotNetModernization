@@ -16,7 +16,13 @@
       6. The six C# step programs, built and published   each skipped when its sources, the SDK version and
                                                          NUGET_SOURCES are unchanged since it was published
       7. Migration into DB_SCHEMA                        alembic upgrade head; nothing to do when at head
-      8. Seed: platform configuration and the catalog    a reseed changes only what changed (CLAUDE.md rule 10)
+      8. Seed: platform configuration and the catalog    a reseed changes only what changed (CLAUDE.md rule 10);
+                                                         then the database records this platform version
+
+    Stages 7 and 8 change the database, so only the admin's bootstrap runs them (and a first installation's, before
+    any admin exists). A developer's checks that this copy is at the database's platform version instead, and stops
+    with a plain message when it is not: pull the update when the admin has updated; ask the admin to update first
+    when this copy is newer (app\platform_version.py; docs\VDI-SETUP.md, "Updating the platform").
 
     What a stage last did is recorded in a small stamp file beside its output (backend\.venv\.bootstrap-stamp,
     frontend\node_modules\.bootstrap-stamp, steps\step-003-fingerprinting\publish\...\.bootstrap-stamp). -Force
@@ -240,26 +246,53 @@ if (Run 6) {
     Done "$published published, $($programs.Count - $published) up to date"
 }
 
+# Only the admin's bootstrap (or a first installation's, before any admin exists) migrates and seeds; a developer's
+# never changes the database: it checks that this copy is at the database's version (app.platform_version).
+$script:gate = $null
+function Gate([int]$n) {
+    if ($null -ne $script:gate) { return $script:gate }
+    Push-Location $backend
+    try {
+        & $venvPython -m app.platform_version gate | Out-Host
+        $code = $LASTEXITCODE
+    } finally { Pop-Location }
+    if ($code -eq 1) { Fail $n 'this copy is not at the database''s platform version (said above; docs\VDI-SETUP.md, "Updating the platform").' }
+    if ($code -ne 0 -and $code -ne 10) { Fail $n 'python -m app.platform_version gate failed (see the message above).' }
+    $script:gate = $code
+    return $code
+}
+
 if (Run 7) {
     Header 7 'Migration'
     NeedVenv 7
-    Push-Location $backend
-    try {
-        & $venvPython -m alembic upgrade head
-        if ($LASTEXITCODE -ne 0) { Fail 7 'alembic upgrade head failed (see the message above).' }
-    } finally { Pop-Location }
-    Done 'at head'
+    if ((Gate 7) -eq 10) {
+        Done 'nothing to do: the database is at this version'
+    } else {
+        Push-Location $backend
+        try {
+            & $venvPython -m alembic upgrade head
+            if ($LASTEXITCODE -ne 0) { Fail 7 'alembic upgrade head failed (see the message above).' }
+        } finally { Pop-Location }
+        Done 'at head'
+    }
 }
 
 if (Run 8) {
     Header 8 'Seed: platform configuration and the catalog'
     NeedVenv 8
-    Push-Location $backend
-    try {
-        & $venvPython -m app.seed
-        if ($LASTEXITCODE -ne 0) { Fail 8 'python -m app.seed failed (see the message above).' }
-    } finally { Pop-Location }
-    Done 'seeded'
+    if ((Gate 8) -eq 10) {
+        Done 'nothing to do: the database is at this version'
+    } else {
+        Push-Location $backend
+        try {
+            & $venvPython -m app.seed
+            if ($LASTEXITCODE -ne 0) { Fail 8 'python -m app.seed failed (see the message above).' }
+            # The database is at this version now: every developer pulls it and restarts.
+            & $venvPython -m app.platform_version record
+            if ($LASTEXITCODE -ne 0) { Fail 8 'python -m app.platform_version record failed (see the message above).' }
+        } finally { Pop-Location }
+        Done 'seeded'
+    }
 }
 
 Write-Host ''

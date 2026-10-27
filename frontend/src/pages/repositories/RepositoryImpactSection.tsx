@@ -7,6 +7,7 @@ import { PagedList, type Page } from '../../components/PagedList'
 import type { ImpactSummary } from '../../types/results'
 import type { FileRollup, ImpactAction, ImpactConflict, ImpactEntry, ResolutionImpact, RollupWorkItem, RuleConflict, RuleSide, WorkItemImpact, WorkItemSummary } from '../../types/impact'
 import { SourceLink } from './SourceLink'
+import { workItemsLine } from './workItemFigures'
 
 /** The order actions are listed in, strongest first (33-IMPACT-ANALYSIS Part F). */
 const ACTIONS: ImpactAction[] = ['delete', 'rewrite', 'update', 'create', 'review']
@@ -426,7 +427,8 @@ export function RepositoryImpactSection({ repositoryId, localPath, refreshToken 
       <div>
         <p>
           <span className="font-medium">{t.changes}</span> change(s) across <span className="font-medium">{t.files_changed}</span> distinct file(s) by{' '}
-          {t.work_items} work item(s) under their effective resolutions{t.client_changes > 0 && <>, {t.client_changes} of the changes as clients</>}.
+          {workItemsLine(t.work_items - (t.possible_work_items ?? 0), t.possible_work_items ?? 0)} under their effective resolutions
+          {t.client_changes > 0 && <>, {t.client_changes} of the changes as clients</>}.
         </p>
         <div className="mt-1 flex flex-wrap items-baseline gap-1.5">
           {(['rewrite', 'update', 'delete'] as ImpactAction[]).map((a) => (
@@ -491,7 +493,17 @@ export function RepositoryImpactSection({ repositoryId, localPath, refreshToken 
               return (
                 <Fragment key={key}>
                   <tr className="border-t border-neutral-100 align-top">
-                    <td className="py-1 pr-3 font-medium">{w.item_name}</td>
+                    <td className="py-1 pr-3 font-medium">
+                      {w.item_name}
+                      {w.possible_only && (
+                        <span
+                          className="ml-1.5 whitespace-nowrap rounded border border-dashed border-violet-300 bg-white px-1.5 py-0.5 text-[10px] font-semibold text-violet-600"
+                          title="Found only on possible evidence: the code may not use what changed. Counted apart, as in the work list."
+                        >
+                          possible
+                        </span>
+                      )}
+                    </td>
                     <td className="py-1 pr-3 font-mono text-neutral-500">{w.project_path}</td>
                     <td className="py-1 pr-3">
                       <LimitedList items={w.resolutions} name={(r) => r.name} noun="resolutions">

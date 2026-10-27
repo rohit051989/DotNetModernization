@@ -21,7 +21,7 @@ import { CriticalityBadge, CloneUrlVerificationBadge, IngestStatusBadge, Retirem
 import { BatchStatusBadge, ExitStatusBadge } from '../../components/WorkflowBadges'
 import { formatBytes } from '../workflow/artifacts/renderers'
 import { StoredDependenciesView, StoredFingerprintView, StoredWorkListView } from './StoredResultViews'
-import { FilesHeldOn } from './SourceLink'
+import { RepositoryFiles, useAskForClone } from './SourceLink'
 import { num, obj } from '../workflow/artifacts/adapters'
 import { RepositoryStructureSection } from './RepositoryStructureSection'
 import { RepositorySurfaceSection } from './RepositorySurfaceSection'
@@ -34,6 +34,7 @@ import { StructureSection } from './structure/StructureSection'
 import { useLatestArtifacts, type LatestArtifact } from './useLatestArtifacts'
 import { RepositoryOverview } from './RepositoryOverview'
 import { useRepositorySummary } from './useRepositorySummary'
+import { workItemFigures, workItemsLine } from './workItemFigures'
 import { parseRepositoryRoute, setRepositoryTabRoute } from '../../routing'
 import {
   GROUPS,
@@ -298,6 +299,7 @@ export function RepositoryDetailPage({
   const outbound = obj(artifacts['outbound-invocation-inventory']?.data.summary)
   const verdicts = obj(outbound.countByVerdict)
   const work = obj(artifacts['item-occurrences']?.data.summary)
+  const workFigures = workItemFigures(work)
   const dependencies = artifacts['dependency-assessment']
   const dependencySummary = obj(dependencies?.data.summary)
   const dependencyOutcomes = obj(dependencySummary.countByOutcome)
@@ -433,7 +435,7 @@ export function RepositoryDetailPage({
       <Panel
         summary={
           occurrences
-            ? `${num(work.found) - num(work.possible_only_found)} found · ${num(work.not_checked)} not checked${num(work.possible_occurrence_rows) > 0 ? ` · ${num(work.possible_occurrence_rows)} possible (not counted)` : ''}`
+            ? `${workItemsLine(workFigures.workItems, workFigures.possible)} · ${num(work.not_checked)} not checked`
             : undefined
         }
       >
@@ -653,20 +655,20 @@ export function RepositoryDetailPage({
           {results.not_copied_note}
         </p>
       )}
-      {repo.files_held_on && (
-        <p className="rounded border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-600" data-testid="files-held-on">
-          Scanned {repo.files_held_on}: its results are read from the database. Its files, worktrees, logs and evidence stay there, so
-          file links show where they are instead of opening.
-        </p>
-      )}
+      <RepositoryFiles repository={repo} onRecorded={setRepo}>
+        {repo.files_held_on && (
+          <p className="rounded border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-600" data-testid="files-held-on">
+            Scanned {repo.files_held_on}: its results are read from the database. Its worktrees, logs and evidence stay there.
+          </p>
+        )}
+        <YourClone path={repo.my_clone_path ?? null} />
 
-      <FilesHeldOn value={repo.files_held_on ?? null}>
         {TABS.filter((t) => visited.has(t.slug)).map((t) => (
           <div key={t.slug} id={`repo-panel-${t.slug}`} role="tabpanel" aria-label={t.label} hidden={t.slug !== tab}>
             {content[t.slug]()}
           </div>
         ))}
-      </FilesHeldOn>
+      </RepositoryFiles>
 
       {showDeleteConfirm && (
         <HardDeleteDialog
@@ -883,5 +885,26 @@ function EditForm({
         </button>
       </div>
     </div>
+  )
+}
+
+/** Where this person's file links open from: their own clone on this machine, or an offer to record one. */
+function YourClone({ path }: { path: string | null }) {
+  const askForClone = useAskForClone()
+  return (
+    <p className="text-xs text-neutral-500" data-testid="your-clone">
+      {path ? (
+        <>
+          File links open from your clone: <span className="font-mono text-neutral-700">{path}</span>{' '}
+        </>
+      ) : (
+        <>No clone of yours is recorded on this machine: file links offer to record one, or copy the relative path. </>
+      )}
+      {askForClone && (
+        <button type="button" onClick={askForClone} className="text-violet-700 hover:underline">
+          {path ? 'Change' : 'Record your clone'}
+        </button>
+      )}
+    </p>
   )
 }

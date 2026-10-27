@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { getHealth } from '../api/catalog'
+import { PLATFORM_UPDATED_EVENT } from '../api/client'
 import { getMe } from '../api/auth'
 import { ACCESS_REQUESTS_CHANGED, listOnline, type OnlineEntry } from '../api/users'
 import { ADMIN_ONLY, useAuth, useIsAdmin } from '../auth/AuthContext'
@@ -32,6 +33,8 @@ export function AppShell({
   onSelectTab,
 }: AppShellProps) {
   const [healthy, setHealthy] = useState<boolean | null>(null)
+  // Set once the admin has updated the database while this backend runs: it refuses changes until updated and restarted.
+  const [platformUpdate, setPlatformUpdate] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
   const isAdmin = useIsAdmin()
 
@@ -41,17 +44,23 @@ export function AppShell({
     async function pollHealth() {
       try {
         const result = await getHealth()
-        if (!cancelled) setHealthy(result.status === 'ok' && result.database === 'connected')
+        if (cancelled) return
+        setHealthy(result.status === 'ok' && result.database === 'connected')
+        setPlatformUpdate(result.platform_update ?? null)
       } catch {
         if (!cancelled) setHealthy(false)
       }
     }
 
+    // A change refused for it shows the banner at once, before the next poll.
+    const refused = (event: Event) => setPlatformUpdate((event as CustomEvent<string>).detail)
+    window.addEventListener(PLATFORM_UPDATED_EVENT, refused)
     pollHealth()
     const interval = setInterval(pollHealth, HEALTH_POLL_INTERVAL_MS)
     return () => {
       cancelled = true
       clearInterval(interval)
+      window.removeEventListener(PLATFORM_UPDATED_EVENT, refused)
     }
   }, [])
 
@@ -101,6 +110,11 @@ export function AppShell({
           <UserMenu />
         </div>
       </header>
+      {platformUpdate && (
+        <div role="alert" data-testid="platform-update" className="border-b border-amber-300 bg-amber-50 px-4 py-2 text-sm text-amber-900 sm:px-6">
+          <span className="font-medium">The platform has been updated.</span> {platformUpdate}
+        </div>
+      )}
       <TabBar activeTab={activeTab} onSelectTab={onSelectTab} isMaster={isMaster} isAdmin={isAdmin} />
       {/* The one page scroller: bounded, so a page's sticky bars and its
           panes' own scrollers (h-full + overflow-y-auto) work as designed. */}

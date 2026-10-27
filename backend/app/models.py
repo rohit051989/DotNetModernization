@@ -3192,3 +3192,39 @@ class AccessRequest(Base):
               postgresql_where=text("status = 'pending'")),
         Index("ix_access_requests_account", text("lower(windows_account)"), "requested_at"),
     )
+
+class RepositoryClone(Base):
+    """Where one person's clone of a repository is, on one of their machines (app.repositories.clones). File
+    locations are stored relative to the repository; an editor link joins the viewer's own clone with them. The owner's
+    is the folder the repository was registered from. Recorded only after checking the folder is a clone of the same
+    repository: the same remote URL."""
+
+    __tablename__ = "repository_clones"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid())
+    repository_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("repositories.id", ondelete="CASCADE"),
+                                                     nullable=False)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    hostname: Mapped[str] = mapped_column(Text, nullable=False)
+    local_path: Mapped[str] = mapped_column(Text, nullable=False)
+    recorded_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    __table_args__ = (
+        Index("uq_repository_clones_person_machine", "repository_id", "user_id", text("lower(hostname)"), unique=True),
+    )
+
+
+class PlatformVersion(Base):
+    """The platform version the database is at (app.platform_version): recorded by an admin's bootstrap, after its
+    migration and seed. The newest row is the current one; every backend and every developer's bootstrap must match
+    it."""
+
+    __tablename__ = "platform_version"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    commit: Mapped[str] = mapped_column(Text, nullable=False)
+    committed_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
+    migration: Mapped[str | None] = mapped_column(Text)
+    recorded_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    recorded_by: Mapped[str] = mapped_column(Text, nullable=False)
+    hostname: Mapped[str | None] = mapped_column(Text)

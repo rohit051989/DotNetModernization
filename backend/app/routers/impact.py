@@ -17,6 +17,7 @@ the Estate tab, and across engagements for the master catalog view.
 import uuid
 
 from fastapi import APIRouter, Depends, Query
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app import models
@@ -101,6 +102,18 @@ def _summaries(db: Session, repository_id: uuid.UUID) -> list[models.ImpactSumma
     )
 
 
+def possible_only(db: Session, repository_id: uuid.UUID) -> set[tuple[str, str]]:
+    """The repository's work items (item, project path) found only on possible evidence: every occurrence
+    item-detection found for the item in that project is 'possible'. The work list counts them apart ("46 work items,
+    plus 2 possible"); so does Impact."""
+    rows = db.execute(text("""
+        select o.item_id, p.relative_path as project_path from item_occurrences o join projects p on p.id = o.project_id
+        where o.repository_id = :r and o.detection_state = 'found'
+        group by o.item_id, p.relative_path having bool_and(o.certainty = 'possible')
+    """), {"r": repository_id})
+    return {(r.item_id, r.project_path) for r in rows}
+
+
 @router.get(
     "/repositories/{repository_id}/impact",
     response_model=RepositoryImpactOut,
@@ -122,12 +135,14 @@ def get_repository_impact(repository_id: uuid.UUID, db: Session = Depends(get_db
         raise error(409, "Impact analysis has not run yet for this repository.", code="NOT_SCANNED")
     item_name, resolution_name = _names(db)
 
+    possible = possible_only(db, repository_id)
     work_items: dict[tuple[str, str], WorkItemSummaryOut] = {}
     for s in summaries:
         key = (s.item_id, s.project_path)
         if key not in work_items:
             work_items[key] = WorkItemSummaryOut(item_id=s.item_id, item_name=item_name(s.item_id), project_path=s.project_path,
-                                                 effective_resolution_id="", stale=False, resolutions=[])
+                                                 effective_resolution_id="", stale=False, resolutions=[],
+                                                 possible_only=key in possible)
         w = work_items[key]
         w.resolutions.append(ResolutionSummaryOut(**_summary_fields(s, resolution_name(s.resolution_id))))
         w.stale = w.stale or s.stale
@@ -198,6 +213,7 @@ def get_repository_impact(repository_id: uuid.UUID, db: Session = Depends(get_db
         rule_conflict_work_items=sum(g.work_items for g in rule_conflicts),   # estate-wide
         work_item_conflicts=len(work_item_conflicts),
         stale_work_items=sum(1 for w in work_items.values() if w.stale),
+        possible_work_items=sum(1 for w in work_items.values() if w.possible_only),
     )
     return RepositoryImpactOut(totals=totals, hotspots=[f for f in files if f.hotspot], rule_conflicts=rule_conflicts,
                                work_item_conflicts=work_item_conflicts,

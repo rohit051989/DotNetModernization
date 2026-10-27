@@ -4,6 +4,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import text
 
+from app import platform_version
 from app.db import SessionLocal
 
 router = APIRouter(prefix="/api", tags=["Health"])
@@ -19,6 +20,9 @@ class HealthStatus(BaseModel):
         description="Result of a real `SELECT 1` against the database, checked on every call."
     )
     version: str = Field(description="The running API version.")
+    platform_update: str | None = Field(default=None, description="Set once the admin has updated the database while "
+                                                                  "this backend runs (app.platform_version): what to do. "
+                                                                  "Until then, this backend refuses changes.")
 
 
 @router.get(
@@ -44,4 +48,6 @@ def health() -> HealthStatus:
     finally:
         db.close()
 
-    return HealthStatus(status="ok", database=database_status, version="0.3.0")
+    changed = platform_version.updated()
+    return HealthStatus(status="ok", database=database_status, version="0.3.0",
+                        platform_update=changed["message"] if changed else None)

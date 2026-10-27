@@ -9,6 +9,10 @@
     python -m app.users promote --login asmith
     python -m app.users reset-password --login asmith
     python -m app.users set --login asmith [--role developer] [--host DEVBOX-07 --host LAPTOP-12] [--windows-account CORP\\asmith] [--deactivate | --activate]
+    python -m app.users disable --login asmith
+    python -m app.users enable --login asmith
+    python -m app.users delete --login asmith
+    python -m app.users remove-machine --login asmith --host LAPTOP-12
     python -m app.users owners [--engagement test-client-a]
     python -m app.users assign-owner --engagement test-client-a --repository orderservice --login asmith
 
@@ -30,7 +34,7 @@ import sys
 from sqlalchemy import String, func
 
 from app import models
-from app.auth import activity, machine, requests, service
+from app.auth import activity, machine, management, requests, service
 from app.auth import actor as actors
 
 
@@ -72,7 +76,7 @@ def _repository(db, engagement: str, repository: str) -> models.Repository:
 
 
 def _show(db, user: models.User) -> str:
-    state = "" if user.deactivated_at is None else "  (deactivated)"
+    state = "" if user.deactivated_at is None else "  (disabled)"
     reset = "  (must set a new password)" if user.must_change_password else ""
     return (f"{user.login:16} {user.role:10} {user.name}  {user.windows_account}  on {', '.join(service.hosts(db, user))}"
             f"{state}{reset}")
@@ -113,8 +117,15 @@ def main(argv: list[str] | None = None) -> int:
     change.add_argument("--role", choices=actors.ROLES)
     change.add_argument("--windows-account")
     change.add_argument("--host", action="append", help="replaces their machines; repeat for several")
-    change.add_argument("--deactivate", action="store_true")
-    change.add_argument("--activate", action="store_true")
+    change.add_argument("--deactivate", action="store_true", help="as disable")
+    change.add_argument("--activate", action="store_true", help="as enable")
+    for command, what in (("disable", "disable a user: their sessions end, and they cannot sign in (admins)"),
+                          ("enable", "enable a disabled user (admins)"),
+                          ("delete", "delete a user who owns no repository (admins)")):
+        sub.add_parser(command, help=what).add_argument("--login", required=True)
+    removing = sub.add_parser("remove-machine", help="remove one machine from a user's registration (admins)")
+    removing.add_argument("--login", required=True)
+    removing.add_argument("--host", required=True)
     owners = sub.add_parser("owners", help="repositories and their owners; those with none first")
     owners.add_argument("--engagement")
     assign = sub.add_parser("assign-owner", help="give a repository its owner (admins)")
@@ -199,12 +210,47 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"Reset. {user.name} sets a new password at their next sign-in; their sessions have ended.")
                 return 0
             if args.command == "set":
-                service.cli_actor(db, admin=True)
+                admin = service.cli_actor(db, admin=True)
                 user = _user(db, args.login)
-                active = True if args.activate else False if args.deactivate else None
                 service.update_user(db, user, name=args.name, role=args.role, windows_account=args.windows_account,
-                                    host_names=args.host, active=active)
+                                    host_names=args.host)
                 activity.record(db, "update_user", "user", str(user.id), f"Changed {user.name}")
+                # --deactivate and --activate, as before: disabling and enabling, with their rules.
+                if args.deactivate and user.deactivated_at is None:
+                    management.disable(db, user, admin)
+                if args.activate and user.deactivated_at is not None:
+                    management.enable(db, user, admin)
+                db.commit()
+                print(_show(db, user))
+                return 0
+            if args.command == "disable":
+                admin = service.cli_actor(db, admin=True)
+                user = _user(db, args.login)
+                owned = management.disable(db, user, admin)
+                db.commit()
+                print(f"Disabled {user.name}: their sessions have ended, and they cannot sign in until enabled.")
+                if owned:
+                    print(f"They still own {management.describe_owned(owned)}: reassign any with assign-owner.")
+                return 0
+            if args.command == "enable":
+                admin = service.cli_actor(db, admin=True)
+                user = _user(db, args.login)
+                management.enable(db, user, admin)
+                db.commit()
+                print(f"Enabled {user.name}: they may sign in again.")
+                return 0
+            if args.command == "delete":
+                admin = service.cli_actor(db, admin=True)
+                user = _user(db, args.login)
+                name = user.name
+                management.delete(db, user, admin)
+                db.commit()
+                print(f"Deleted {name}. The activity record keeps their name against what they did.")
+                return 0
+            if args.command == "remove-machine":
+                admin = service.cli_actor(db, admin=True)
+                user = _user(db, args.login)
+                management.remove_machine(db, user, admin, args.host)
                 db.commit()
                 print(_show(db, user))
                 return 0

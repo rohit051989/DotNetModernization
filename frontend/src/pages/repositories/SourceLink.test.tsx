@@ -3,12 +3,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Editor } from '../../api/editors'
 import { ToastProvider } from '../../components/Toast'
 import { fullPath, resetEditorChoiceForTests } from './editorChoice'
-import { SourceLink } from './SourceLink'
+import { RepositoryFiles, SourceLink } from './SourceLink'
+import type { RepositoryDetail } from '../../types/repositories'
 
-const api = vi.hoisted(() => ({ installed: [] as Editor[], openInVisualStudio: vi.fn() }))
+const api = vi.hoisted(() => ({ installed: [] as Editor[], openInVisualStudio: vi.fn(), recordRepositoryClone: vi.fn(), forgetRepositoryClone: vi.fn() }))
 vi.mock('../../api/editors', () => ({
   listEditors: () => Promise.resolve({ editors: api.installed }),
   openInVisualStudio: api.openInVisualStudio,
+}))
+vi.mock('../../api/repositories', () => ({
+  recordRepositoryClone: api.recordRepositoryClone,
+  forgetRepositoryClone: api.forgetRepositoryClone,
 }))
 
 const VSCODE: Editor = { id: 'vscode', kind: 'vscode', label: 'VS Code', opens_at_line: true }
@@ -153,6 +158,69 @@ describe('SourceLink', () => {
     )
     expect(screen.queryByRole('link')).toBeNull()
     expect(screen.queryByRole('button')).toBeNull()
+  })
+})
+
+describe('SourceLink inside a repository: each person opens files from their own clone', () => {
+  const SHOP = { id: 'r', name: 'Shop', clone_command: 'git clone -c core.longpaths=true https://git.client-a.example/team/Shop.git "C:\\MP\\repos\\Shop"' }
+
+  function renderIn(clonePath: string | null, onRecorded = vi.fn()) {
+    render(
+      <ToastProvider>
+        <RepositoryFiles repository={{ ...SHOP, my_clone_path: clonePath }} onRecorded={onRecorded}>
+          <SourceLink localPath="D:\owners\shop" filePath="src/Web/Orders.cs" line={7}>
+            Orders
+          </SourceLink>
+        </RepositoryFiles>
+      </ToastProvider>,
+    )
+    return onRecorded
+  }
+
+  it("opens from the viewer's own clone, not the owner's folder", async () => {
+    api.installed = [VSCODE]
+    renderIn('E:\\ben\\Shop')
+    await act(async () => {})
+    expect(screen.getByRole('link', { name: 'Orders' }).getAttribute('href')).toBe('vscode://file/E:/ben/Shop/src/Web/Orders.cs:7')
+  })
+
+  it('with no clone recorded, offers to record one, with the git clone command, or to copy the relative path', async () => {
+    api.installed = [VSCODE]
+    const onRecorded = renderIn(null)
+    await act(async () => {})
+    expect(screen.queryByRole('link')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Orders' }))
+    await act(async () => {
+      fireEvent.click(screen.getByRole('menuitem', { name: /Copy the relative path/ }))
+    })
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith('src/Web/Orders.cs:7')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Orders' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Record your clone…' }))
+    const dialog = screen.getByRole('dialog', { name: 'Your clone of Shop' })
+    expect(dialog.textContent).toContain(SHOP.clone_command)
+    // The folder the command clones into is the default answer.
+    expect((screen.getByLabelText("Your clone's folder") as HTMLInputElement).value).toBe('C:\\MP\\repos\\Shop')
+
+    const recorded = { ...SHOP, my_clone_path: 'C:\\MP\\repos\\Shop' } as RepositoryDetail
+    api.recordRepositoryClone.mockResolvedValue(recorded)
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Record' }))
+    })
+    expect(api.recordRepositoryClone).toHaveBeenCalledWith('r', 'C:\\MP\\repos\\Shop')
+    expect(onRecorded).toHaveBeenCalledWith(recorded)
+  })
+
+  it("says plainly why a folder is refused: a clone of another repository", async () => {
+    renderIn(null)
+    await act(async () => {})
+    fireEvent.click(screen.getByRole('button', { name: 'Orders' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Record your clone…' }))
+    api.recordRepositoryClone.mockRejectedValue(new Error('E:\\other is a clone of https://git.client-a.example/team/other, not of Shop: not recorded.'))
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Record' }))
+    })
+    expect(screen.getByRole('alert').textContent).toContain('not of Shop: not recorded.')
   })
 })
 

@@ -104,8 +104,9 @@ def create_user(db: Session, *, login: str, name: str, windows_account: str, rol
 
 
 def update_user(db: Session, user: models.User, *, name: str | None = None, role: str | None = None,
-                windows_account: str | None = None, host_names: list[str] | None = None,
-                active: bool | None = None) -> models.User:
+                windows_account: str | None = None, host_names: list[str] | None = None) -> models.User:
+    """Name, role (to developer: promote makes an admin), Windows account and machines. Disabling and enabling are
+    app.auth.management's, with their own rules."""
     if name is not None:
         user.name = name.strip() or user.name
     if role is not None:
@@ -127,12 +128,6 @@ def update_user(db: Session, user: models.User, *, name: str | None = None, role
         db.query(models.UserHost).filter_by(user_id=user.id).delete()
         for host in _clean_hosts(host_names):
             db.add(models.UserHost(user_id=user.id, hostname=host))
-    if active is not None:
-        if not active and user.role == actors.ADMIN and _last_admin(db, user):
-            raise Refused("This is the last admin: make another user an admin first.", "LAST_ADMIN")
-        user.deactivated_at = None if active else _now()
-        if not active:
-            end_sessions(db, user)
     user.updated_at = _now()
     db.flush()
     return user
@@ -191,8 +186,11 @@ def sign_in(db: Session, login: str, password: str, new_password: str | None = N
     account = account or machine.windows_account()
     host = host or machine.hostname()
     user = by_login(db, login)
-    if user is None or user.deactivated_at is not None or not passwords.verify(password, user.password_hash):
+    if user is None or not passwords.verify(password, user.password_hash):
         raise Refused("The sign-in name or password is wrong.", "WRONG_PASSWORD")
+    if user.deactivated_at is not None:
+        raise Refused(f"Your account ({user.login}) is disabled, since {user.deactivated_at:%Y-%m-%d %H:%M} UTC: ask an "
+                      "admin to enable it.", "DISABLED")
     if problem := registration_problem(db, user, account, host):
         raise Refused(problem, "NOT_REGISTERED_HERE")
     if user.must_change_password:

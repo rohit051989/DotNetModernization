@@ -27,6 +27,11 @@ an owner and a machine: only its owner (or an admin) acts on it, and only from t
 its folder and run output are. One backend runs per machine (`app.heartbeat`); a backend runs only the jobs queued on
 its own machine, and at startup fails only its own machine's jobs left `STARTED`.
 
+File locations are stored relative to the repository; each person records their own clone of it on their own machine
+(`app.repositories.clones`), and a file link joins the two. The database has one platform version, recorded by the
+admin's bootstrap (`app.platform_version`): only that bootstrap migrates and seeds, and every developer's copy and
+backend must be at the same version. The admin updates first; then every developer pulls and restarts.
+
 Everyone sees every repository's results in full from the database, without the owner's machine (`app.results`):
 every result a view reads is copied into the database when its step registers it (the newest `RESULTS_KEEP` of each
 kind kept), and every list that grows with a repository is served a page at a time. Raw outputs no view reads (logs,

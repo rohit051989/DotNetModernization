@@ -1,5 +1,7 @@
 """The guard every API call passes through (a dependency of the whole app, app.main):
 
+0. once the admin has updated the database while this backend runs, no change: 409 PLATFORM_UPDATED, saying to
+   update and restart (app.platform_version);
 1. a signed-in session: the HttpOnly cookie, live (not signed out, not idle past SESSION_IDLE_MINUTES), made on
    this machine; else 401 SIGNED_OUT. Only signing in, the machine's own identity and the health check are open;
 2. a password reset by an admin must be replaced first: until then only changing it and signing out are allowed;
@@ -13,6 +15,7 @@ thread pool. Its database work is a few small queries on a session of its own.
 """
 from fastapi import Request
 
+from app import platform_version
 from app.auth import activity, machine, policy, service
 from app.auth import actor as actors
 from app.db import SessionLocal
@@ -24,6 +27,8 @@ OPEN = ("/api/auth/sign-in", "/api/auth/machine", "/api/auth/access-request", "/
 OPEN_PREFIXES = ("/docs", "/redoc", "/openapi.json")
 # Allowed while a reset password still has to be replaced.
 PASSWORD_CHANGE = ("/api/auth/password", "/api/auth/sign-out", "/api/auth/me")
+# Allowed after the admin has updated the database while this backend runs.
+UPDATE_ALLOWED = ("/api/auth/sign-in", "/api/auth/sign-out")
 
 
 def _route_path(request: Request) -> str:
@@ -33,6 +38,11 @@ def _route_path(request: Request) -> str:
 
 async def guard(request: Request):
     path = request.url.path
+    # Once the admin has updated the database while this backend runs, it changes nothing until the person updates
+    # and restarts (app.platform_version); reading, and signing in and out, go on.
+    if (request.method.upper() not in policy.READ_METHODS and path not in UPDATE_ALLOWED
+            and (changed := platform_version.updated())):
+        raise error(409, changed["message"], code="PLATFORM_UPDATED")
     if path in OPEN or path.startswith(OPEN_PREFIXES) or not path.startswith("/api"):
         yield
         return

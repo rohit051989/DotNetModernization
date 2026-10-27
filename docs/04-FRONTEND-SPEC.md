@@ -443,11 +443,18 @@ Overview's links.
 ## Results on another machine
 
 A repository's results are read from the database (backend `app.results`), so every tab shows the same on every
-machine, whoever scanned it. Its files are on the machine that scanned it: there, file links open in the chosen
-editor; anywhere else, the repository page says "Scanned on Ann's machine (DEVBOX-07): its results are read from the
-database ..." under its header, and every file link inside shows the path and, when clicked, says where the file is
-(`FilesHeldOn` in `SourceLink.tsx`, from the repository's `files_held_on`). An evidence file of a conversion, and an
-artifact no view reads (a SARIF export, a log), say the same instead of linking. The Conversion tab shows the
+machine, whoever scanned it. On another machine, the repository page says "Scanned on Ann's machine (DEVBOX-07): its
+results are read from the database ..." under its header.
+
+File locations are relative to the repository, and every file link on a repository's page and its executions' pages
+opens from the **viewer's own clone** on this machine (`RepositoryFiles` in `SourceLink.tsx`, from the repository's
+`my_clone_path`; the owner's is the folder it was registered from). A line under the header says which folder ("File
+links open from your clone: ...", with **Change**). With none recorded it says so, and each file link, clicked, offers
+**Record your clone…** or **Copy the relative path**. Recording shows the repository's `clone_command` to make one,
+with **Copy**, and a field for the folder (the command's own target by default); the backend refuses a folder that is
+not the top of a clone of the same repository, and the dialog shows its message. **Forget my clone here** removes the
+record. An evidence file of a conversion, and an artifact no view reads (a SARIF export, a log), are only on the
+owner's machine, and say so instead of linking. The Conversion tab shows the
 conversions as their owner's machine last published them, with when. A repository scanned before results were shared
 says so under its header, with the command its owner runs to copy them.
 
@@ -488,6 +495,14 @@ the backend would refuse.
   opens the **Users** tab, whose **Access requests** section lists the pending ones with **Approve** and **Reject**
   (an optional reason), and the decided ones beneath. Approving makes a developer. **Make admin** in the role column
   is the only way to make an admin (after a confirmation); **Register a user** has no role choice.
+- **Managing users.** In the Users tab, each user's machines are listed one per line, with **×** to remove one (not
+  their only one) and **change** to edit the list. **Disable** asks first, listing the repositories they own (which
+  stay theirs), and ends their sessions at once; a disabled user shows "(disabled)" and **Enable**. **Delete** asks
+  first; while they own a repository the backend refuses, and the toast names each one to reassign. Both are disabled,
+  titled why, on your own row and on the last admin's.
+- **The platform updated.** Once the admin has updated the database while this backend runs, a banner under the
+  header ("The platform has been updated", from `/api/health`'s `platform_update`, or at once from any change refused
+  409 `PLATFORM_UPDATED`) says to pull the update and restart; until then every change is refused.
 - **Everyone signed in sees everything**: the master catalog and every engagement, repository and result.
 - **Admins** change everything. The **Users** tab and **Workflow Administration** show to admins only.
 - **Developers** register repositories and act on the ones they own. The master catalog's edit controls are hidden

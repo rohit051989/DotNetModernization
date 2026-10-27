@@ -49,6 +49,10 @@ export interface RepositorySummary {
   cannot_edit_reason?: string | null
   /** Registered on another machine: where its files, worktrees and run output are ("on Ann's machine (PC-17)"). */
   files_held_on?: string | null
+  /** The signed-in person's own clone on this machine, where file links open from; null when they recorded none. */
+  my_clone_path?: string | null
+  /** The git command that makes a clone of it here, to record afterwards; null without a remote URL. */
+  clone_command?: string | null
 }
 
 export interface RepositoryDetail extends RepositorySummary {

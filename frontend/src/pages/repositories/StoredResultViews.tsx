@@ -27,6 +27,7 @@ import {
   type WorkFile,
 } from '../workflow/artifacts/renderers'
 import { SourceLink } from './SourceLink'
+import { workItemFigures, workItemsLine } from './workItemFigures'
 
 // The repository page's fingerprint, dependencies and work list, read from the stored result (backend app.results)
 // a page at a time: the header from the artifact's summary, each list from the database 20 at a time, filtered there.
@@ -448,8 +449,6 @@ interface FileValues {
 
 export function StoredWorkListView({ artifactId, head, localPath, withDecisions = true }: StoredViewProps & { withDecisions?: boolean }) {
   const [showAll, setShowAll] = useState(false)
-  // Possible occurrences rest only on ambiguous evidence: shown, but left out of the totals unless asked for.
-  const [countPossible, setCountPossible] = useState(false)
   const [totals, setTotals] = useState<{ occurrence_rows: number; possible_rows: number } | null>(null)
   const summary = obj(head.summary)
 
@@ -462,32 +461,22 @@ export function StoredWorkListView({ artifactId, head, localPath, withDecisions 
   }, [artifactId])
 
   const occurrences = totals?.occurrence_rows ?? 0
-  const possible = totals?.possible_rows ?? 0
-  const countedRows = countPossible ? occurrences : occurrences - possible
-  const countedFound = num(summary.found) - (countPossible ? 0 : num(summary.possible_only_found))
+  const possibleRows = totals?.possible_rows ?? 0
+  const { workItems: counted, possible } = workItemFigures(summary)
 
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap items-center gap-1.5">
-        <Chip tone="teal" title="Item and project pairs where the item was found">
-          {countedFound} found
+        <Chip tone="teal" title="Item and project pairs where the item was found: the same figures as the Impact tab's">
+          {workItemsLine(counted, possible)}
         </Chip>
-        <Chip title="Found occurrences, one per file: the work list's size">{countedRows} occurrences</Chip>
-        {possible > 0 && (
-          <Chip title="Occurrences whose every piece of evidence is ambiguous (e.g. a call an unchanged overload could take). Shown below, not counted unless you include them.">
-            {possible} possible {countPossible ? '(counted)' : '(not counted)'}
-          </Chip>
-        )}
+        <Chip title="Found occurrences, one per file">
+          {occurrences - possibleRows} occurrences{possibleRows > 0 ? `, plus ${possibleRows} possible` : ''}
+        </Chip>
         {num(summary.not_checked) > 0 && <Chip tone="amber">{num(summary.not_checked)} not checked</Chip>}
         <Chip>{num(summary.checked_absent)} checked absent</Chip>
         {num(summary.excluded) > 0 && <Chip>{num(summary.excluded)} excluded by role</Chip>}
         <div className="ml-auto flex flex-wrap items-center gap-3">
-          {possible > 0 && (
-            <label className="flex items-center gap-1.5 text-[11px] text-neutral-500">
-              <input type="checkbox" checked={countPossible} onChange={(e) => setCountPossible(e.target.checked)} />
-              Count possible in totals
-            </label>
-          )}
           <label className="flex items-center gap-1.5 text-[11px] text-neutral-500">
             <input type="checkbox" checked={showAll} onChange={(e) => setShowAll(e.target.checked)} />
             Show checked-absent and excluded
