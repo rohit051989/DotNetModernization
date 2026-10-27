@@ -207,14 +207,17 @@ class UpdatePlatform(unittest.TestCase):
 
     def test_the_clients_own_files_in_the_platform_folder_are_kept_and_listed(self):
         """Only files in the installed commit and not in the new one are removed; a file the client committed in the
-        platform folder is in neither, so it stays, and is listed."""
+        platform folder is in neither, so it stays, and is listed. The client's commit was never imported, so the
+        delivery needs -Force, and lists it."""
         (self.platform / "client-notes.md").write_text("ours, not the platform's\n")
         (self.platform / "docs" / "client-runbook.md").write_text("also ours\n")
         git(self.client, "add", "-A", "--", FOLDER); git(self.client, "commit", "-q", "-m", "client files", "--", FOLDER)
         self.upstream()
         for run_from in (self.platform, self.source):
-            done = self.update(run_from=run_from)
+            done = self.update("-Force", run_from=run_from)
             self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+            self.assertIn("Delivering anyway (-Force)", done.stdout)
+            self.assertIn("client files", done.stdout)
             self.assertEqual((self.platform / "client-notes.md").read_text(), "ours, not the platform's\n")
             self.assertEqual((self.platform / "docs" / "client-runbook.md").read_text(), "also ours\n")
             self.assertIn("Kept, not part of the platform (2):", done.stdout)

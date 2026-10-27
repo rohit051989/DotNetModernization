@@ -6,10 +6,15 @@ how to resolve each one, and prepares and verifies each conversion. It runs on o
 its own PostgreSQL schema.
 
 This folder is the platform. It arrives as updates from the platform's own master branch: each one is committed to
-this folder on the platform's branch of your repository. **Do not edit the files in this folder**: the next update
-replaces them, and your changes would be lost or would block it. What belongs to your machine (`backend\.env`,
+this folder on the platform's branch of your repository. What belongs to your machine (`backend\.env`,
 `frontend\.env`, the Python environment, `node_modules`, the published step programs, and the data in `RUNS_DIR`) is
 never part of an update and is never touched by one.
+
+**Changes to the platform may be made here**, committed on the platform's branch (or on a branch such as
+`release/<feature>`) and pushed. The platform's team imports them into the platform's own repository, and they come
+back to this folder, and to every other installation, with the next update. Until they are imported, no update is
+delivered over them: the update waits, so nothing you committed is overwritten. Tell the platform's team when there
+is something to import. Never commit secrets, `.env` files or large binaries: the import refuses them.
 
 The full guide is [`docs/VDI-SETUP.md`](docs/VDI-SETUP.md). This page is the short version. The commands assume this
 folder is `C:\MP\client\modernization-platform`; use your own path.
@@ -103,8 +108,9 @@ An update arrives as a commit to this folder on the platform's branch. To instal
 
 5. Start the backend and the frontend again, and do any rescan the notes asked for.
 
-Never update by editing the platform's files: changes arrive with each update. `PLATFORM_SOURCE.json` records which
-commit of the platform this folder holds (`commit`), and the tag when one happens to point at it.
+Updates arrive as commits; changes made here go back the other way, through the import (above). Never edit
+`PLATFORM_SOURCE.json`: it records which commit of the platform this folder holds (`commit`), and the tag when one
+happens to point at it, and the import starts from it.
 
 ## More
 

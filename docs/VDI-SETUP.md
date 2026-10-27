@@ -43,6 +43,7 @@ also work in, on their own branches. You work on your own branch. Our `.git` nev
 | **Part 2. Ongoing** | |
 | ["Updating the platform"](#updating-the-platform) | stop, update-platform.ps1 (our master), bootstrap, start |
 | ["Delivering to a client from our machine"](#delivering-to-a-client-from-our-machine) | when the client's environment cannot reach our git: master's files only, never our history |
+| ["Importing a client's changes"](#importing-a-clients-changes) | changes made in the client's copy come back into our repository: the deny-list, branch mapping, merge rule; import first, then deliver |
 | ["More than one person"](#more-than-one-person) | one platform per schema, a stale heartbeat, one checkout per engagement |
 | ["Deleting a repository or an engagement"](#deleting-a-repository-or-an-engagement) | hard delete, the audit |
 | ["Troubleshooting"](#troubleshooting) | |
@@ -846,6 +847,9 @@ every time:
      uncommitted changes; it names the branch, or lists the files;
    - stops, changing nothing, unless the source folder is a clone of ours on `master`, following `origin/master`,
      with no commits of its own and no changes: the source folder is never a working repository;
+   - updates your branch with `git pull --ff-only`, then stops, listing them, while it has commits in the platform
+     folder that our repository has not imported: a delivery would overwrite them. Import them first ("Importing a
+     client's changes"); `-Force` delivers anyway, listing what is lost. Deliveries do not count;
    - fetches our master and stops, changing nothing, when it cannot tell which of our commits the platform folder
      holds: no `PLATFORM_SOURCE.json`, or a commit the source folder does not contain. The message says how to go
      on. (An empty platform folder is a first install, and needs none.);
@@ -854,8 +858,7 @@ every time:
      rewritten, or the platform was installed from another branch; the message says which, and lists the commits
      that would be lost. Ask us why before going on. `-AllowDowngrade` installs master anyway, after listing what
      is lost;
-   - brings the source folder to master's tip with `git pull --ff-only`, and updates your branch with
-     `git pull --ff-only`;
+   - brings the source folder to master's tip with `git pull --ff-only`;
    - copies the source into the platform folder with robocopy, leaving out `.git`, `.venv`, `node_modules` and
      `.env`, and removes only the files we deleted or renamed: those in the installed commit and not in the new
      one. A file you committed in the platform folder is in neither: it is kept, and listed as "not part of the
@@ -979,7 +982,10 @@ Two folders on our machine, short paths as in "Why paths must be short":
    git -C C:\MPD\client-a switch platform/modernization; git -C C:\MPD\client-a pull --ff-only
    ```
 
-2. **Run the update script** from the source clone, with `-Push`:
+2. **Import first.** If the client committed changes in the platform folder, import them into our repository
+   ("Importing a client's changes", below), and let master take them, before delivering. The update script refuses
+   to deliver over changes that were never imported, and lists them.
+3. **Run the update script** from the source clone, with `-Push`:
 
    ```powershell
    powershell -ExecutionPolicy Bypass -File C:\MPD\source\scripts\update-platform.ps1 -Source C:\MPD\source -Platform C:\MPD\client-a\modernization-platform -Branch platform/modernization -Push
@@ -988,12 +994,87 @@ Two folders on our machine, short paths as in "Why paths must be short":
    It pulls master into the source clone, refuses to go backwards, copies files only, removes what we deleted or
    renamed, writes `PLATFORM_SOURCE.json`, commits only the platform folder, and pushes only the branch ("Updating
    the platform" lists every check).
-3. Check what went, as in step 4 above, then tell the client the update is on the branch, with any "Upgrade notes"
+4. Check what went, as in step 4 above, then tell the client the update is on the branch, with any "Upgrade notes"
    entries newer than the commit they had. On their environment: stop the platform, `git pull` the branch, run
    bootstrap, start it again (the platform folder's `README.md`).
 
 Nothing is run from the client's clone on our machine: no bootstrap, no backend. It exists only to receive master's
-files and push them.
+files and push them, and to import the client's changes.
+
+### Importing a client's changes
+
+A client may change the platform in its own copy: a fix on the platform's branch, or a feature on a branch such as
+`release/<feature>`. Those changes come back into our repository with `scripts\import-client-changes.ps1`, on our
+machine, so our repository holds every feature, ours and every client's, and every installation receives them with
+its next update. **The order is always: import first, then deliver.** A delivery refuses while the client's branch
+has commits in the platform folder that were never imported, and lists them, because it would overwrite them
+(`-Force` delivers anyway, listing what is lost).
+
+**The deny-list.** A plain text file on this machine, **outside** every repository (for example
+`C:\MPD\deny-list.txt`): the terms that must never enter our repository, one per line, matched without regard to
+case. Put in every client's name and short names, business units, application and repository codes, and host
+names (CLAUDE.md rule 18). Lines starting with `#` are comments. The import refuses to run without it, with it
+inside our repository, or with it empty.
+
+**What it needs.** A local clone of the client's repository, on the branch to import, matching its remote, with a
+clean platform folder (here `C:\MPD\client-a`, as in "Delivering to a client from our machine"), and our working
+repository with no uncommitted changes. For the client's main branch, our working repository must be on master.
+
+```powershell
+git -C C:\MPD\client-a switch platform/modernization; git -C C:\MPD\client-a pull --ff-only
+```
+
+```powershell
+powershell -ExecutionPolicy Bypass -File D:\work\modernization-platform\scripts\import-client-changes.ps1 -Platform C:\MPD\client-a\modernization-platform -Repository D:\work\modernization-platform -DenyList C:\MPD\deny-list.txt -Push
+```
+
+**Branch mapping.** The client clone's current branch decides where the changes go:
+
+| Client's branch | Our branch |
+|---|---|
+| `main` or `master` | `master` |
+| anything else, such as `release/<feature>` | the branch of the same name: updated when it exists, created from the commit the client received when not |
+
+A branch name holding a deny-listed term is refused: it would enter our repository as a branch name.
+
+**The merge rule.** Never a plain copy over our branch: it may hold work the client has not received yet, such as
+a feature built for another installation, and a copy would revert it. Instead the import:
+1. reads the commit the client received from `PLATFORM_SOURCE.json` (our repository must have it);
+2. on a temporary branch from that commit, copies the client's committed folder over it, leaving out
+   `PLATFORM_SOURCE.json`, `.env` files, `.venv`, `node_modules`, build output and everything else local-only, and
+   removes the files the client deleted;
+3. scans everything coming in (below), then commits it;
+4. merges that commit into our branch. Where both sides changed the same lines, **the client's version wins**: the
+   client is the source in this direction. Every file where that happened is listed, so it can be checked.
+
+When an earlier import already took part of the client's changes, the next one starts from that import's commit, so
+only what changed since comes in. The commit's subject is the client's latest commit message, its body lists the
+client's other commits since the previous import, and a `Client-Commit:` trailer records the client's commit: the
+next import starts there, and the update script knows what was imported.
+
+**The scan.** Everything coming in is scanned: the added and changed lines, file names, the branch name and the
+commit messages. It refuses, listing each finding with its file and line (a secret's value is never printed):
+- secrets: sensitive keys with values (passwords, secrets, API keys, tokens), connection strings with passwords, URLs
+  with passwords, private keys and known token formats;
+- `.env` files committed in the platform folder (a local, ignored `.env` is simply never copied);
+- binary files over 1 MB;
+- every deny-list term.
+
+Have the client remove what was found on their branch, rewriting the commit message if that is where it was, then
+import again.
+
+**master stays deployable.** When the target is master, the import runs every suite on the merged result
+(`scripts\run-suites.ps1`: backend, frontend, C#, the step programs), and with `-Push` pushes master only when they
+all pass. Otherwise master keeps the merge locally, unpushed, and the script says so: fix it with a commit on top,
+run `scripts\run-suites.ps1`, then push. Any other branch is pushed once the scan passes. Without `-Push` nothing is
+pushed.
+
+**The report.** What was added, changed and deleted, every file where the client's version won, the commit, and
+whether it was pushed. When the client has nothing new since the last import (or only our deliveries), it says so,
+and changes nothing.
+
+Then deliver as usual ("Delivering to a client from our machine", or "Updating the platform" on the client's
+machine): the delivery brings the client's changes back to them together with everything else on master.
 
 ### More than one person
 
@@ -1199,7 +1280,8 @@ there is recorded with the reason, within its own time limit.
 |---|---|---|
 | Updating: **"The argument '...\update-platform.ps1' to the -File parameter does not exist"** | The client's repository is on a branch that has no platform folder (often `main`), so the script is not on disk | Switch back to your own branch, `git -C C:\MP\client switch rohit/modernization-platform`, and run the update again ("Updating the platform") |
 | Updating: **"Stopped: the client repository ... is on branch '...', not '...'"** | The client's repository is on another branch that does carry the platform folder | Switch to your own branch, as the message says. Never update or commit on anyone else's branch |
-| Updating: **"Stopped: the platform folder has uncommitted changes"** | A file in the platform folder was edited by hand (the message lists them) | The platform folder only ever changes through the update. Discard the edit (`git -C C:\MP\client checkout -- modernization-platform/<file>`), or commit it to your branch if it must stay, then update again |
+| Updating: **"Stopped: the platform folder has uncommitted changes"** | A file in the platform folder was edited and not committed (the message lists them) | Commit it to your branch if it must stay (it is then imported into the platform: "Importing a client's changes"), or discard it (`git -C C:\MP\client checkout -- modernization-platform/<file>`), then update again |
+| Updating: **"Stopped: the client's branch has N commit(s) in the platform folder that our repository has not imported"** | Changes were committed in the platform folder since the last import; a delivery would overwrite them | Import them first ("Importing a client's changes"), then update again. `-Force` delivers anyway, losing them |
 | Updating: **"Stopped: the source folder has changes"** | Something was run or edited in the source folder | Discard it as the message says. Nothing is ever run in the source folder |
 | Updating: **"Stopped: the source folder is on a commit of its own (...), not master"** | An older copy of the update script left the source folder at a release tag | Put it back on master, `git -C C:\MP\source switch master`, and run the update from the source folder ("Upgrade notes", 2026-10-26) |
 | Updating: **"Stopped: master (...) does not descend from the installed commit ..."** | Our master's history was rewritten, or the platform was installed from another branch. Nothing was changed | Ask us why, with the commits the message lists. Only when we confirm, run the update again with `-AllowDowngrade` |

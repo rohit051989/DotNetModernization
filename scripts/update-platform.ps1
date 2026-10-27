@@ -23,9 +23,12 @@
 
     In order, stopping with a plain message at the first problem:
       1. The client repository must be on -Branch, and the platform folder must have no uncommitted changes
-         (both are named when not).
+         (both are named when not). The client branch is updated with git pull --ff-only.
       2. The source folder must be a clone of our repository on master, following origin/master, with no local
-         commits or changes. Our master is fetched.
+         commits or changes. Our master is fetched. Then nothing is delivered while the client's branch has
+         commits in the platform folder that our repository has not imported (scripts\import-client-changes.ps1
+         records each import's client commit in a Client-Commit trailer); they are listed, since a delivery would
+         overwrite them. Deliveries, which write PLATFORM_SOURCE.json, do not count. -Force delivers anyway.
       3. The installed commit must be known: a platform folder that already has files needs a PLATFORM_SOURCE.json
          whose commit the source folder holds, or the update is refused, changing nothing (an empty folder is a
          first install and needs none). Never backwards: origin's master must descend from the installed commit
@@ -33,18 +36,17 @@
          branch, is refused, saying why, with both folders left as they were. -AllowDowngrade installs it
          anyway, after listing what will be lost. Then the source folder is brought to origin's master with
          git pull --ff-only (with -AllowDowngrade over a rewritten history, git reset --hard to it).
-      4. The client branch is updated with git pull --ff-only.
-      5. The source is copied into the platform folder with robocopy, leaving out .git, .venv, node_modules and
+      4. The source is copied into the platform folder with robocopy, leaving out .git, .venv, node_modules and
          .env files. robocopy's exit codes 0 to 7 mean success.
-      6. Files we deleted or renamed are removed: only files that were in the installed commit and are not in the
+      5. Files we deleted or renamed are removed: only files that were in the installed commit and are not in the
          new one, worked out in the source folder, which holds both (a rename deletes the old name). A file in
          the platform folder that is in neither commit is the client's own: it is kept, and listed as "not part of
          the platform".
-      7. PLATFORM_SOURCE.json is written (scripts\write-platform-source.ps1): the commit, and a tag only if one
+      6. PLATFORM_SOURCE.json is written (scripts\write-platform-source.ps1): the commit, and a tag only if one
          happens to point at it.
-      8. Only the platform folder is staged and committed: git add -A -- <folder>, then git commit -- <folder>,
+      7. Only the platform folder is staged and committed: git add -A -- <folder>, then git commit -- <folder>,
          with our source commit in the message. Nothing outside the folder is ever staged or committed.
-      9. With -Push, only -Branch is pushed.
+      8. With -Push, only -Branch is pushed.
     Then it tells you to run bootstrap and restart the backend.
 
     Local files are never touched: .env, .venv, node_modules, the published step programs, and anything else not
@@ -66,6 +68,10 @@
     Install master even when it does not descend from the installed commit, after listing what will be lost.
     Only when you know why our history changed.
 
+.PARAMETER Force
+    Deliver even while the client's branch has commits in the platform folder that have not been imported, after
+    listing them: their changes to our files are overwritten. Import them first instead whenever possible.
+
 .EXAMPLE
     powershell -ExecutionPolicy Bypass -File C:\MP\source\scripts\update-platform.ps1 -Source C:\MP\source -Platform C:\Client\Repo\modernization-platform -Branch rohit/modernization-platform
 #>
@@ -75,7 +81,8 @@ param(
     [Parameter(Mandatory)][string]$Platform,
     [Parameter(Mandatory)][string]$Branch,
     [switch]$Push,
-    [switch]$AllowDowngrade
+    [switch]$AllowDowngrade,
+    [switch]$Force
 )
 
 $ErrorActionPreference = 'Continue'   # git writes progress to stderr; every exit code is checked instead
@@ -124,6 +131,8 @@ if ($changed.Count -gt 0) {
         "`nCommit or discard them (only in $folder) and run the update again.")
 }
 Write-Host "Client repository $top, branch $Branch, platform folder $folder"
+# The client's branch as its remote holds it: changes made there since the last delivery are checked below.
+Invoke-Git $top @('pull', '--ff-only') "Updating $Branch (git pull --ff-only)" | Out-Null
 
 # ---- 2. The source folder: a pristine clone of ours, on master, following origin/master
 $sourcePrefix = "$(@(Invoke-Git $Source @('rev-parse', '--show-prefix') 'Reading the source folder')[0])"
@@ -167,6 +176,33 @@ Invoke-Git $Source @('fetch', '--quiet', '--refmap=', 'origin', 'master', '+refs
 $new = @(Invoke-Git $Source @('rev-parse', 'FETCH_HEAD') 'Reading origin''s master')[0]
 $tag = & git -C $Source describe --tags --exact-match $new 2>$null
 $tag = $(if ($LASTEXITCODE -eq 0 -and $tag) { "$tag".Trim() } else { $null })
+
+# ---- 2b. Changes on the client's branch that our repository has not imported
+# The client's commits in the platform folder, other than deliveries (a delivery writes PLATFORM_SOURCE.json), that no
+# import has taken: each import records the client commit it took in a Client-Commit trailer, on any of our branches
+# (scripts\import-client-changes.ps1). A delivery now would overwrite them, so it waits for the import.
+if (-not $firstInstall) {
+    Invoke-Git $Source @('fetch', '--quiet', '--refmap=', 'origin', '+refs/heads/*:refs/platform-import/heads/*') 'Fetching our branches, for what has been imported' | Out-Null
+    $imported = @(& git -C $Source log '--glob=refs/platform-import/heads/*' '--format=%(trailers:key=Client-Commit,valueonly,separator=%x2C)' 2>$null |
+        ForEach-Object { "$_" -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ } | Select-Object -Unique)
+    $known = @($imported | Where-Object { Test-Commit $top $_ })
+    $notImported = @()
+    $range = @('HEAD') + $(if ($known.Count -gt 0) { @('--not') + $known } else { @() })
+    foreach ($line in @(Invoke-Git $top (@('log', '--no-merges', '--format=%H %s') + $range + @('--', $folder)) 'Listing the client''s commits')) {
+        $commit = $line.Substring(0, 40)
+        $delivery = @(Invoke-Git $top @('diff-tree', '--no-commit-id', '--name-only', '-r', $commit, '--', "$folder/PLATFORM_SOURCE.json") 'Reading a commit')
+        if ($delivery.Count -eq 0) { $notImported += "$($commit.Substring(0, 12)) $($line.Substring(41))" }
+    }
+    if ($notImported.Count -gt 0) {
+        $listed = "  " + ($notImported -join "`n  ")
+        if (-not $Force) {
+            Stop-Update ("the client's branch has $($notImported.Count) commit(s) in the platform folder that our repository has not imported:`n" +
+                "$listed`nA delivery now would overwrite them. Import them first, on our machine (scripts\import-client-changes.ps1, " +
+                "docs\VDI-SETUP.md `"Importing a client's changes`"), then deliver. To deliver anyway, losing them, run again with -Force.")
+        }
+        Write-Host "Delivering anyway (-Force): these client commits were never imported, and their changes to our files will be overwritten:`n$listed" -ForegroundColor Yellow
+    }
+}
 
 # ---- 3. The installed commit, and never backwards
 if (-not $firstInstall) {
@@ -226,16 +262,13 @@ if (@(Invoke-Git $Source @('rev-parse', 'HEAD') 'Reading the source commit')[0] 
     Stop-Update "the source folder did not reach origin's master $new."
 }
 
-# ---- 4. The client branch
-Invoke-Git $top @('pull', '--ff-only') "Updating $Branch (git pull --ff-only)" | Out-Null
-
-# ---- 5. Copy
+# ---- 4. Copy
 & robocopy $Source $Platform /E /XD .git .venv node_modules /XF .env /R:1 /W:1 /NFL /NDL /NJH /NJS /NP | Out-Null
 $copied = $LASTEXITCODE
 if ($copied -ge 8) { Stop-Update "robocopy failed (exit code $copied): the platform folder may be partly copied. Fix the cause and run the update again." }
 Write-Host "Copied (robocopy exit code $copied)"
 
-# ---- 6. Files we deleted or renamed: in the installed commit, not in the new one
+# ---- 5. Files we deleted or renamed: in the installed commit, not in the new one
 # Worked out in the source folder, which holds both commits, whichever folder this script runs from. With
 # --no-renames a rename is the deletion of the old name and the addition of the new. Nothing else is ever removed.
 $removed = 0
@@ -271,7 +304,7 @@ if ($theirs.Count -gt 0) {
     Write-Host "Kept, not part of the platform ($($theirs.Count)):`n  $($theirs -join "`n  ")"
 }
 
-# ---- 7. Which of our commits this is
+# ---- 6. Which of our commits this is
 # The copy just placed in the platform folder, whichever folder this script was started from.
 # Kept as it is when the commit has not changed: a run with nothing new commits nothing.
 if ($installed -ne $new) {
@@ -279,7 +312,7 @@ if ($installed -ne $new) {
     if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) { Stop-Update 'writing PLATFORM_SOURCE.json failed.' }
 }
 
-# ---- 8. Commit only the platform folder
+# ---- 7. Commit only the platform folder
 Invoke-Git $top @('add', '-A', '--', $folder) 'Staging the platform folder' | Out-Null
 $staged = @(Invoke-Git $top @('diff', '--cached', '--name-only', '--', $folder) 'Listing the staged files')
 if ($staged.Count -eq 0) {
@@ -292,7 +325,7 @@ if ($staged.Count -eq 0) {
     Write-Host "Committed $commit on $Branch`: $($staged.Count) file(s) in $folder"
 }
 
-# ---- 9. Push, only your branch
+# ---- 8. Push, only your branch
 if ($Push) {
     Invoke-Git $top @('push', 'origin', "refs/heads/$Branch`:refs/heads/$Branch") "Pushing $Branch" | Out-Null
     Write-Host "Pushed $Branch"
