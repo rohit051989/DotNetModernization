@@ -78,10 +78,20 @@ cd C:\MP\client\modernization-platform\frontend; npm run dev -- --port 5174 --st
 
 Open `http://localhost:5174/`. The header shows a green **connected** badge when the frontend reaches the backend.
 
-## 5. Create an engagement
+## 5. The first admin, and an engagement
 
-An engagement is one client program. In the UI: **+ New engagement**, beside the **View** selector. Or from the
-command line:
+Once, at installation, create the first admin: the person setting the platform up, on this machine (it asks for a
+password, 12 characters or more). Then sign in at `http://localhost:5174/` with it:
+
+```powershell
+cd C:\MP\client\modernization-platform\backend; .venv\Scripts\python.exe -m app.users create-first-admin --login jdoe --name "Jane Doe"
+```
+
+The admin registers everyone else, in the **Users** tab: each person's Windows account and machines; they sign in on
+their own machine, with their own platform, against the same database (the guide's "Users and sign-in").
+
+An engagement is one client program, created by an admin. In the UI: **+ New engagement**, beside the **View**
+selector. Or from the command line:
 
 ```powershell
 cd C:\MP\client\modernization-platform\backend; .venv\Scripts\python.exe -m app.engagements.cli create --name "Client A" --target-framework net10.0

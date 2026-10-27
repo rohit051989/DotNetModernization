@@ -54,8 +54,8 @@ property, not decoration: master edits are global; client edits are scoped to
 one engagement. Get this wrong and the two-view separation this document exists
 to describe stops meaning anything.
 
-`// TODO: gate the Master Catalog entry behind an admin check once auth exists`
-— non-admins should not see it at all. See "Future: access control" below.
+Everyone signed in sees the Master Catalog entry; only admins change the master catalog. See "Sign-in and roles"
+below.
 
 Tab bar:
 
@@ -109,8 +109,7 @@ filter chips.
 Header block: pattern name, `id` in monospace, category and status badges,
 **Edit**, **Deprecate** and **Delete** buttons.
 
-`// TODO: gate Edit/Deprecate/Delete behind an admin check once auth exists` —
-see "Future: access control" below.
+Edit, Deprecate and Delete are admins' (hidden from developers): see "Sign-in and roles" below.
 
 Then three stacked sections, all editable:
 
@@ -187,9 +186,8 @@ badge when this engagement has deferred it. Actions: **Defer** / **Reactivate**
 (whichever applies) and **Delete**. No Edit button anywhere in the client view —
 there is nothing here to edit except this engagement's own overlay and decision.
 
-`// TODO: gate Delete behind an admin check once auth exists` — see "Future:
-access control" below. Defer/Reactivate are not gated even in the future design;
-they're a normal engagement-team action, not an administrative one.
+Defer, Reactivate and Delete are admins' (developers see them read-only): a developer registers repositories and acts
+on the ones they own, and the client catalog is engagement-wide. See "Sign-in and roles" below.
 
 Then the same three stacked sections as the master view — **Definition**,
 **Detection rules**, **Target state options** — rendered identically but
@@ -292,14 +290,8 @@ Decision panel.
   `POST .../deprecate`, and the record disappears from the UI entirely rather than
   moving behind the status filter.
 
-  Delete is intended to become a role-gated action once authentication and roles
-  exist — non-admins should not see or be able to trigger it. No such check exists
-  yet anywhere in this build (see `CLAUDE.md`'s out-of-scope list), so the button
-  is currently reachable by anyone. Leave a clear `// TODO: gate behind admin role
-  once auth exists` marker directly on the Delete button/handler in the component,
-  so the gap is visible in the code and not just in this document. This applies to
-  the master view's Delete; the client view's Delete is scoped to one engagement
-  and is not planned to be admin-gated (see "Future: access control").
+  Delete is an admin's: hidden from developers, and refused by the backend for anyone else
+  (see "Sign-in and roles").
 - **Client-scoped Delete** — always via `ConfirmDialog`, wording: "Delete this
   pattern from {engagement name}'s catalog? It will be removed from this
   engagement's view and can only be restored by an administrator. The master
@@ -450,27 +442,31 @@ short:
 
 Tests: `frontend/src/pages/repositories/structure/*.test.tsx`.
 
-## Future: access control
+## Sign-in and roles
 
-Not implemented. Recorded here so the intent is visible before auth exists, and
-so the TODO markers scattered through this document and the code have something
-to point at.
+Several developers each run their own platform against one database (docs/VDI-SETUP.md, "Users and sign-in"). The
+backend enforces every rule below for every call (`app.auth.policy`); the UI follows it, so nobody is offered an action
+the backend would refuse.
 
-- **Admin users** see the Master Catalog entry in the view switcher and every
-  engagement; they can perform every master-scoped mutation (create, edit,
-  deprecate, delete, restore patterns and target state options).
-- **Non-admin users** never see the Master Catalog entry at all — not disabled,
-  not greyed out, simply absent from the switcher. They see only their own
-  engagement's client catalog view (however "their own" ends up being determined
-  — out of scope to decide here). They can defer/reactivate, delete/restore, and
-  record decisions within that engagement; they have no path to any master-scoped
-  action.
-- Every `// TODO: gate ... once auth exists` marker left in this document and in
-  the component code (the view switcher's Master Catalog entry, and each
-  master-scoped mutation: pattern/target-state Edit, Deprecate, Delete) is where
-  that check belongs. Do not implement the check now — there is no auth system to
-  check against (see `CLAUDE.md`'s out-of-scope list) — but do not remove or
-  "simplify away" these markers either; they are the map for when auth lands.
+- **Sign-in.** Until there is a session, the app shows the sign-in page (`SignInPage.tsx`): the machine and the
+  Windows account the sign-in is checked against, the sign-in name and password, and the backend's own plain message
+  when it is refused. A password set by an admin asks for a new one there. Before any admin exists, the page says how
+  the first one is created. Any call answered 401 `SIGNED_OUT` (a session that ended or expired) returns to it. The
+  header shows the person, their role, **Sign out**, and **N online** (who is signed in, on which machine).
+- **Everyone signed in sees everything**: the master catalog and every engagement, repository and result.
+- **Admins** change everything. The **Users** tab and **Workflow Administration** show to admins only.
+- **Developers** register repositories and act on the ones they own. The master catalog's edit controls are hidden
+  from them, with "Read-only: only an admin changes the master catalog." **+ New engagement** and **Delete
+  engagement…** are disabled for them, titled "Only an admin can do this."
+- **A repository's owner** shows on its page ("Owner: Alice", or "No owner: admins only"); an admin assigns or changes
+  it there. For anyone who may not act on it (not its owner, or not on the machine it was registered on), **Rescan**,
+  **Verify path**, **Edit**, **Delete** and the conversion buttons are disabled, each titled with the backend's reason
+  (`cannot_act_reason`), and a line under the header says "Read-only for you: ...".
+- **A stale copy.** Edits of shared records send the version of the copy shown in `If-Match`: catalog items
+  (`edit_version`) and their resolutions, item decisions, and an engagement's estate settings. A 409 `STALE_COPY`
+  shows the backend's message: who changed it first, and that nothing was overwritten.
+- **The frontend reaches the backend through its own dev server** (`vite.config.ts` proxies `/api` to the backend in
+  `frontend\.env`), so the session cookie is the page's own.
 
 ## Visual direction
 

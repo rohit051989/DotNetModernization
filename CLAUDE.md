@@ -17,21 +17,18 @@ nothing behind them.
 
 ## Operating model
 
-The platform runs on a single machine, operated by one person per client engagement.
-The orchestration engine, the database, the UI and the repositories it registers all
-live on that machine. Every lifecycle step executes locally against local paths.
+Each developer runs their own platform, backend and frontend, on their own machine, against **one shared database**,
+so everyone sees the same engagements and repositories. The orchestration engine, the UI and the repositories a
+developer registers live on that developer's machine; every lifecycle step executes locally against local paths.
 
-This assumption is what justifies: local filesystem paths as first-class API input,
-in-process background execution (`BackgroundTasks`, not a job queue), no object
-storage, no distributed workers, and no per-user access control.
+This is what justifies local filesystem paths as first-class API input, in-process background execution
+(`BackgroundTasks`, not a job queue), no object storage and no distributed workers. It is also why a repository has
+an owner and a machine: only its owner (or an admin) acts on it, and only from the machine it was registered on, where
+its folder and run output are. One backend runs per machine (`app.heartbeat`); a backend runs only the jobs queued on
+its own machine, and at startup fails only its own machine's jobs left `STARTED`.
 
-When it changes — multiple operators, a shared server, containerised deployment —
-the things that break first are local path validity (a path is only meaningful on
-the machine that registered it), `BackgroundTasks` durability (in-memory; does not
-survive a process restart, hence the startup reconciliation that fails anything left
-`STARTED`), and the absence of user scoping (nothing today distinguishes which
-operator registered what). See `15-REPOSITORY-INGEST-UI.md`'s "Operating model"
-section for the source of this note.
+Matching a person's Windows account and machine at sign-in deters shared credentials; it is not a hard security
+boundary, since the platform runs on the user's own machine.
 
 ## Tech stack (fixed — do not substitute)
 
@@ -249,17 +246,12 @@ Use these terms exactly and consistently in code, APIs, and UI copy.
 
 ## Out of scope for this build
 
-Authentication, RBAC, multi-user concurrency, audit logging, repository scanning,
-dependency graphs, wave planning, orchestration, engine integration, deployment.
+Repository scanning beyond the lifecycle steps, wave planning, engine integration beyond what is built, deployment.
 Do not scaffold these "for later".
 
-**Access control is parked, not forgotten.** The intent — admins see the master
-catalog and every engagement; non-admins see only their own engagement, with the
-master view hidden entirely — is recorded in `04-FRONTEND-SPEC.md`'s "Future:
-access control" section, with `// TODO: gate ... once auth exists` markers left
-at the view switcher and every master-scoped mutation. Leave those markers alone;
-they're the map for when auth lands. Do not implement the checks now.
-
-Never start the backend as a background process. The user runs it from their own
-terminal so they can read its logs and it survives the session. If a check needs a
-running backend, ask the user to start it.
+**Sign-in, roles and ownership exist** (`app/auth/`; `04-FRONTEND-SPEC.md` "Sign-in and roles"; `docs/VDI-SETUP.md`
+"Users and sign-in"). Every API call needs a signed-in session and passes `app.auth.policy`: admins change everything;
+a developer registers repositories and acts on the ones they own. A new route that changes something is admins-only
+until the policy names it: list it there, with its rule, when developers or owners should reach it. Edits to shared
+records carry a version check (`app.auth.versions`); every change is recorded with who and from which machine
+(`app.auth.activity`). Command-line tools act as the registered user running them (`service.cli_actor`).

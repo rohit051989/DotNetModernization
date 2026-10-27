@@ -55,6 +55,7 @@ folder, and leave out the folder name in `git add` and `git commit`.
 | ["Preflight"](#preflight) | running it, fixing each MISSING |
 | ["Bootstrap"](#bootstrap) | stage by stage |
 | ["Starting the backend and the frontend"](#starting-the-backend-and-the-frontend) | commands, ports |
+| ["The first admin, and signing in"](#the-first-admin-and-signing-in) | `create-first-admin`, once |
 | ["Creating the engagement"](#creating-the-engagement) | UI or command |
 | ["Registering a client repository"](#registering-a-client-repository) | by git URL; what discovery produces |
 | ["Moving an existing install that carries our .git"](#moving-an-existing-install-that-carries-our-git) | keeping its database, RUNS_DIR, REPOS_DIR and .env |
@@ -62,7 +63,8 @@ folder, and leave out the folder name in `git add` and `git commit`.
 | ["Updating the platform"](#updating-the-platform) | stop, update-platform.ps1 (our master), bootstrap, start |
 | ["Delivering to a client from our machine"](#delivering-to-a-client-from-our-machine) | when the client's environment cannot reach our git: master's files only, never our history |
 | ["Importing a client's changes"](#importing-a-clients-changes) | changes made in the client's copy come back into our repository: the deny-list, branch mapping, merge rule; import first, then deliver |
-| ["More than one person"](#more-than-one-person) | one platform per schema, a stale heartbeat, one checkout per engagement |
+| ["Users and sign-in"](#users-and-sign-in) | for admins: registering developers, roles, owners, resets; who did what |
+| ["More than one person"](#more-than-one-person) | one shared database, one backend per machine, jobs on their machine |
 | ["Deleting a repository or an engagement"](#deleting-a-repository-or-an-engagement) | hard delete, the audit |
 | ["Troubleshooting"](#troubleshooting) | |
 | ["Appendix: upgrading from a bundle of master"](#appendix-upgrading-from-a-bundle-of-master) | our own installs only |
@@ -455,6 +457,7 @@ notepad C:\MP\client\modernization-platform\backend\.env
 | `COMPARE_PUBLIC_NUGET_FEED` | Whether dependency assessment also asks nuget.org which versions exist publicly. `false` where nuget.org is unreachable | `false` | no |
 | `PYTHON` | The Python bootstrap and preflight use, as a full path. Empty: `python` on `PATH`. (The backend itself always runs in `backend\.venv`, which bootstrap builds with this Python) | `C:\MP\tools\python314\python.exe` | no |
 | `DOTNET_ROOT` | **Only when .NET is installed per user** ("Account settings"): the folder it was installed into. The platform puts it first on `PATH` and sets `DOTNET_ROOT` for every process it starts. **Leave it empty** when the client installed .NET machine-wide | `C:\MP\tools\dotnet` | no |
+| `SESSION_IDLE_MINUTES` | Optional, `240`. A signed-in session ends after this many minutes without use ("Users and sign-in") | `240` | no |
 | `VISUAL_STUDIO` | Optional. `off` removes "Open in Visual Studio" from file links. Empty: every Visual Studio 2022 or later edition found is offered ("Troubleshooting", "Checking which Visual Studio is used") | `off` | no |
 | `VISUAL_STUDIO_PATH` | Optional. The `devenv.exe` of one Visual Studio installation, used in place of what detection finds: for a machine where detection picks the wrong one, or an installation the Visual Studio Installer does not list | `C:\Program Files\Microsoft Visual Studio\18\Enterprise\Common7\IDE\devenv.exe` | no |
 
@@ -671,10 +674,24 @@ It is up when it prints `Local: http://localhost:5174/`. Open that address in th
 **Modernization Platform** with a green **connected** badge. A red **unreachable** badge means the backend is not
 running, or `frontend\.env` points at another port.
 
+### The first admin, and signing in
+
+Every person signs in, and the platform knows who does what (Part 2, "Users and sign-in"). Once, at installation,
+after bootstrap and before anyone signs in, create the first admin: the person setting the platform up, on this
+machine. It asks for a password twice (12 characters or more):
+
+```powershell
+cd C:\MP\client\modernization-platform\backend; .venv\Scripts\python.exe -m app.users create-first-admin --login jdoe --name "Jane Doe"
+```
+
+It registers the Windows account running it and this machine's name; `--windows-account` and `--host` (repeatable)
+name others. It refuses once an admin exists. Then start the platform and sign in at `http://localhost:5174/` with
+that name and password. The admin registers everyone else (Part 2, "Users and sign-in").
+
 ### Creating the engagement
 
 
-An engagement is one client program. Create it once, either way:
+An engagement is one client program, created by an admin, once, either way:
 
 - **In the UI:** **+ New engagement**, beside the **View** selector at the top right. Fill in the client name and
   the target framework (the .NET version the estate moves to, such as `net10.0`); the id is filled in from the
@@ -1114,16 +1131,82 @@ and changes nothing.
 Then deliver as usual ("Delivering to a client from our machine", or "Updating the platform" on the client's
 machine): the delivery brings the client's changes back to them together with everything else on master.
 
+### Users and sign-in
+
+Several developers each run their own platform (backend and frontend) on their own machine, against **one shared
+database and schema**, so everyone sees the same engagements and repositories. Each person signs in, and every action
+is recorded with who did it and from which machine.
+
+**Signing in** needs three things to match the person's registration: their password, the Windows account their
+platform's backend runs under, and their machine's name. Otherwise it is refused with a plain message, such as "This
+account is not registered for this machine (DEVBOX-07) — ask the admin." **This deters shared credentials; it is not a
+hard security boundary**: the platform runs on the person's own machine, which they control. A session ends when the
+person signs out, or after `SESSION_IDLE_MINUTES` without use (240 by default, "backend\.env").
+
+**Roles.**
+
+| Role | May |
+|---|---|
+| **admin** | Everything: the master catalog, users, engagements, decisions, confirmations, workflow administration, and every repository |
+| **developer** | Register repositories, and act on the ones they own. Everything else is read-only |
+
+**Owners.** Whoever registers a repository owns it. Only its owner, or an admin, may rescan it, edit it, prepare and
+verify its conversions, or delete it, and those that touch its folder only from the machine it was registered on (its
+folder and run output are there). Everyone else sees it read-only: the repository page names the owner and disables
+those actions, saying why. The backend enforces the same rules for every call, whatever the UI shows. A repository
+registered before sign-in existed has **no owner** until an admin assigns one; until then only admins act on it.
+
+**Registering a developer** (admins): the **Users** tab, **Register a user**: their full name, the name they sign in
+with, their Windows account (`DOMAIN\user`, the account their own platform runs under: `whoami` in their PowerShell
+window prints it), the machines they sign in from (`hostname` prints it), their role, and a temporary password. They
+choose their own password at their first sign-in. Or from the command line, as an admin on your own machine:
+
+```powershell
+cd C:\MP\client\modernization-platform\backend; .venv\Scripts\python.exe -m app.users add --login asmith --name "Alex Smith" --windows-account CORP\asmith --host DEVBOX-07 --role developer
+```
+
+**Changing a user** (admins): in the Users tab, change their machines, their role, reset their password (temporary,
+replaced at their next sign-in; their sessions end), or deactivate them. The command line does the same:
+`python -m app.users set --login asmith --host DEVBOX-07 --host LAPTOP-12`, `reset-password --login asmith`,
+`set --login asmith --deactivate`, and `list`. The last admin cannot be demoted or deactivated.
+
+**Assigning owners** (admins): on a repository's page, **Assign** (or **Change**) beside its owner; or list the
+repositories and their owners, those with none first, and assign one:
+
+```powershell
+cd C:\MP\client\modernization-platform\backend; .venv\Scripts\python.exe -m app.users owners
+```
+
+```powershell
+cd C:\MP\client\modernization-platform\backend; .venv\Scripts\python.exe -m app.users assign-owner --engagement client-a --repository orderservice --login asmith
+```
+
+**Command-line tools** act as the registered user whose Windows account and machine run them, and refuse otherwise:
+registering and rescanning repositories, creating engagements, deletions, time limits, the engine allowlist and the
+catalog export follow the same roles and ownership as the UI. Only `create-first-admin`, bootstrap, the seed and
+preflight run without a registered user.
+
+**Two people editing one record.** Decisions, item decisions, catalog items, matrix confirmations and an engagement's
+settings carry a version. When two people edit the same one, the second to save is told that someone else changed it
+first, who and when, and nothing is overwritten: reload, and make the change again.
+
+**Who did what.** Every change (registrations, scans, decisions, confirmations, catalog edits, deletions, sign-ins)
+is recorded with the person and their machine (`GET /api/activity`). Actions from before sign-in existed show as made
+"before sign-in".
+
 ### More than one person
 
+Each developer runs their own platform on their own machine; all of them use the same database and schema:
 
-The platform runs for one person, on one machine (`CLAUDE.md`, "Operating model"). It runs its jobs inside its own
-process, and when it starts it fails every job still marked as running, assuming a previous process of its own
-stopped. Two platforms on one schema would fail each other's running jobs, then run each other's work. So:
-
-- **One platform per schema.** A running platform keeps a heartbeat in its schema. A second platform started on the
-  same schema, whether someone else's or a second one of yours, refuses to start before it touches anything. It says
-  who holds the schema, from which machine and folder, and when it was last seen.
+- **One platform backend per machine.** A running backend keeps a heartbeat for its machine. A second backend started
+  on the same machine refuses to start before it touches anything, saying which process has it; backends on
+  different machines run side by side. The header's **online** shows each machine with a running platform, and who
+  is signed in there.
+- **Jobs stay on their machine.** Every job records the machine that queued it, and a backend runs only its own
+  machine's jobs. A backend that starts fails only its own machine's jobs left running. A job is resumed from the
+  machine that queued it.
+- **Each developer's own folders.** `RUNS_DIR`, `REPOS_DIR` and the clones they register are on their own machine:
+  a repository's folder is only meaningful on the machine that registered it.
 - **One checkout per engagement.** The platform creates its conversion branches (`conversion/1`, ...) and their
   worktrees in the registered checkout's git. So a checkout, or a worktree of it, is registered in one engagement
   only. Registering it in a second is refused, with the engagement that has it. To use the same repository in a
@@ -1131,14 +1214,11 @@ stopped. Two platforms on one schema would fail each other's running jobs, then 
 
 #### A stale heartbeat
 
-A running platform renews its heartbeat every 20 seconds, and **a heartbeat expires 90 seconds after it was last
-renewed**. So a platform that stopped without shutting down (its VDI session closed, its process killed, its
-machine restarted) blocks the next start for at most 90 seconds. On the same machine there is no wait at all: a
-heartbeat whose process no longer exists is taken over at once. The age is measured on the database server's clock,
-so machines whose clocks disagree cannot keep a heartbeat alive.
-
-When the platform refuses to start, its message says who holds the schema and how many seconds are left. Wait that
-long and start again, or, when you know that platform has stopped, clear its heartbeat:
+A running backend renews its heartbeat every 20 seconds, and **a heartbeat expires 90 seconds after it was last
+renewed**. A heartbeat whose process no longer exists on the machine (a restart, a killed process) is taken over at
+once. The age is measured on the database server's clock. When a backend refuses to start, its message says which
+process holds the machine and how many seconds are left. Wait that long and start again, or, when you know that
+backend has stopped, clear this machine's heartbeat:
 
 ```powershell
 cd C:\MP\client\modernization-platform\backend; .venv\Scripts\python.exe -m app.heartbeat show
@@ -1148,33 +1228,15 @@ cd C:\MP\client\modernization-platform\backend; .venv\Scripts\python.exe -m app.
 cd C:\MP\client\modernization-platform\backend; .venv\Scripts\python.exe -m app.heartbeat clear
 ```
 
-`show` says who holds it and whether it is live or expired. `clear` asks you to type `clear` while the heartbeat
-is still live, and refuses outright when its process is still running on this machine. Preflight reports the
-heartbeat too ("Preflight").
+`show` lists the machines online and says whether this machine's heartbeat is live or expired. `clear` asks you to
+type `clear` while it is still live, and refuses outright while its process is still running.
 
-#### A second person on the same VDI or database
+#### A second developer
 
-Each person sets up their own platform; nothing is shared but the database server:
-
-1. **Their own copy of the code**, in their own short folder, for example `C:\MP2\code` ("The source folder and the platform folder").
-2. **Their own schema**, in the same database. Ask the database administrator for a second login with the same
-   rights ("Database"), or use the same login with a second schema name. The schema name follows the rules in
-   "Database", for example `modplatform_asmith`. The platform creates the schema on first use.
-3. **Their own `backend\.env`**, copied from the first person's and changed:
-
-   | Key | First person | Second person |
-   |---|---|---|
-   | `DB_SCHEMA` | `modplatform` | `modplatform_asmith` |
-   | `DB_USER`, `DB_PASSWORD` | theirs | theirs, if they have their own login |
-   | `RUNS_DIR` | `C:\MP\runs` | `C:\MP2\runs` (never shared: it holds each person's worktrees and conversions) |
-   | `API_PORT` | `8001` | `8002`, if both run on the same machine at once |
-   | `CORS_ORIGINS` | `http://localhost:5174,...` | `http://localhost:5175,http://127.0.0.1:5175` |
-
-4. **Their own clones of the client repositories** ("Registering a client repository"): never the first person's folders.
-5. Preflight and bootstrap as in "Preflight" and "Bootstrap". Then start their frontend on their port:
-   `npm run dev -- --port 5175 --strictPort`.
-
-Each platform then sees only its own engagements; the catalog is seeded into each schema.
+Each developer sets up the platform on their own machine as in Part 1, with the **same database settings and schema**
+(`DB_HOST` ... `DB_SCHEMA`) and their own `RUNS_DIR` and `REPOS_DIR`, on their machine. An admin registers them first
+("Users and sign-in"), with their Windows account and machine. They do not run `create-first-admin`: the first admin
+exists already. Then they start their platform and sign in.
 
 ### Deleting a repository or an engagement
 
@@ -1340,13 +1402,19 @@ there is recorded with the reason, within its own time limit.
 | The UI loads, but every request fails | `frontend\.env` points at another port, or the frontend is not on 5174 (`CORS_ORIGINS`) | Start the frontend exactly as in "Starting the backend and the frontend" |
 | A job shows **"orphaned by engine restart"** | The backend was stopped while it ran | Rescan the repository (or Verify again) |
 | Preflight: **"Python: 3.14.0b2 ... is a pre-release"** | Software Center (or a download) gave an alpha, beta or release candidate | Replace it with a final release: "Replacing a pre-release Python", below |
-| The backend does not start: **"Another Modernization Platform is already running on ..."** | Someone else's platform (or a second one of yours) uses the same schema, or one that stopped without shutting down less than 90 s ago | Each person needs their own schema: "More than one person". If that platform has stopped (its VDI session closed, its machine restarted), start again after the seconds the message gives, or clear it: "More than one person", "A stale heartbeat" |
 | Registering by URL: **"... needs a sign-in the platform cannot give"** | git has no stored sign-in for that host, or no SSH key it can use without a passphrase | Sign in once outside the platform ("Registering a client repository", "Signing in to the client's git host, once"), then **Rescan** |
 | Registering by URL: **"... exists and is not empty"** or **"is already a clone of another repository"** | The target folder holds something else | Choose another target folder, or empty it. An existing clone of the same URL is used as it is |
 | Rescan of a cloned repository: **"has local changes"**, **"is on ... but this repository is registered on ..."**, **"cannot be fast-forwarded"** | Someone edited the clone, switched its branch, or committed in it | Commit, stash or discard the change, switch back, or resolve the divergence, outside the platform; then **Rescan** ("Registering a client repository"). Nothing was changed |
 | Delete: **"Some files could not be removed, so nothing was deleted from the database"** | A program holds a file under `RUNS_DIR` open, usually Visual Studio with a conversion's worktree | Close it and delete again; it picks up where it stopped ("Deleting a repository or an engagement") |
 | **"Open in Visual Studio"** opens another program, fails, or is missing | Detection found another installation than expected, or none | Run the detection report ("Checking which Visual Studio is used", below). Set `VISUAL_STUDIO_PATH` to the `devenv.exe` to use, and restart the backend |
 | Catalog page: **"N items edited on this installation"** | Catalog items were edited in the UI here, so they differ from the catalog files the platform was updated with | Nothing is broken. The platform folder changes only through updates, so these are never exported into it or committed. To have them in the platform for everyone, **Download the edited items** (or run the command the page shows) and send the files to us |
+| Sign-in: **"This account is not registered for this machine (...) — ask the admin."** | The machine's name is not among the person's machines | An admin adds it: Users tab, or `python -m app.users set --login <name> --host <machine>` (every machine they use) |
+| Sign-in: **"This account is registered for the Windows account ..., and this platform runs as ..."** | The platform was started under another Windows account than the person's, or someone is signing in on another person's platform | Each person signs in only on the platform running under their own Windows account. If their account changed, an admin updates it ("Users and sign-in") |
+| A button is disabled: **"Only this repository's owner, ..., or an admin may do this."** | The repository is someone else's | Ask its owner, or an admin to change its owner ("Users and sign-in") |
+| **"This repository was registered on ...: its folder and run output are on that machine"** | Rescans, conversions and deletion touch the repository's folder, which is on the machine that registered it | Do it from the platform on that machine |
+| **"Not saved: someone else changed ... first"** | Two people edited the same record; the other saved first | Reload, and make the change again: nothing was overwritten |
+| A command: **"No user is registered for the Windows account ..."** | Command-line tools act as the registered user running them | Register the person ("Users and sign-in"), with this machine |
+| The backend: **"Another Modernization Platform backend is already running on this machine"** | A second backend on the same machine | Use the one running, or stop it first ("More than one person", "A stale heartbeat") |
 | Registering: **"This checkout is already registered in engagement ..."** | One folder (or a worktree of it) is in another engagement already | Clone the repository again into another folder and register that ("More than one person") |
 
 #### Checking which Visual Studio is used
@@ -1518,6 +1586,30 @@ doing after an update besides bootstrap: a rescan, a package your mirror must ca
 hand. Everything else an update brings, bootstrap applies by itself. Apply every entry newer than the commit you
 had (`previousCommit` in `PLATFORM_SOURCE.json` after the update; in our own installs, the commit before step 5 of
 the appendix), oldest of them first. Entries up to 2026-10-23 were the notes of releases 2 to 7, which are named so.
+
+#### 2026-10-27, 647d809: sign-in, roles and repository owners
+
+After updating and running bootstrap, nobody can use the platform until these are done, in this order:
+
+1. **Create the first admin**, once, on the machine where the platform runs (it asks for a password, 12 characters
+   or more), then start the platform and sign in with it ("The first admin, and signing in"):
+
+   ```powershell
+   cd C:\MP\client\modernization-platform\backend; .venv\Scripts\python.exe -m app.users create-first-admin --login jdoe --name "Jane Doe"
+   ```
+
+2. **Register every developer**: the **Users** tab, with each person's Windows account and machines, or
+   `python -m app.users add` ("Users and sign-in"). Command-line tools, such as registering or rescanning a repository,
+   also need the person running them to be registered.
+3. **Assign owners to existing repositories.** Repositories registered before this update have no owner, so only
+   admins can rescan them, prepare and verify their conversions, or delete them, until an admin assigns one: on each
+   repository's page (**Assign**), or `python -m app.users owners`, then `python -m app.users assign-owner` for each.
+   Preflight says how many have none.
+
+Nothing else needs doing: existing data is kept, earlier actions are recorded as made "before sign-in", `backend\.env`
+needs no edit (`SESSION_IDLE_MINUTES` is optional), and the existing `frontend\.env` keeps working. Several people
+can now share one database and schema, each on their own machine ("More than one person"); people who had a schema
+each before keep working as they were.
 
 #### 2026-10-26, c16f9c1: installations follow master
 
