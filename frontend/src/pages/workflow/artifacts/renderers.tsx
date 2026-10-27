@@ -1,11 +1,10 @@
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import { listCatalogItems } from '../../../api/items'
-import { InboundProjectPanel, NoRequestProjects } from '../../repositories/RepositorySurfaceSection'
-import { OutboundProjectPanel } from '../../repositories/RepositoryOutboundPanel'
+import { InboundProjectList, localInboundSource } from '../../repositories/RepositorySurfaceSection'
+import { OutboundProjectList, localOutboundSource } from '../../repositories/RepositoryOutboundPanel'
 import { SourceLink } from '../../repositories/SourceLink'
 import { LimitedList } from '../../../components/LimitedList'
 import { entryPointProjects, list, num, obj, outboundProjects, str, type Json } from './adapters'
-import type { ProjectEntryPoints } from '../../../types/surface'
 import type { WorkListDecisions } from '../../../types/items'
 
 export interface ArtifactRendererProps {
@@ -38,7 +37,7 @@ function Fact({ label, children }: { label: string; children: React.ReactNode })
   )
 }
 
-function Chip({ children, tone = 'neutral', title }: { children: React.ReactNode; tone?: 'neutral' | 'amber' | 'red' | 'teal'; title?: string }) {
+export function Chip({ children, tone = 'neutral', title }: { children: React.ReactNode; tone?: 'neutral' | 'amber' | 'red' | 'teal'; title?: string }) {
   const style = {
     neutral: 'border-neutral-200 bg-neutral-50 text-neutral-600',
     amber: 'border-amber-200 bg-amber-50 text-amber-800',
@@ -52,7 +51,7 @@ function Chip({ children, tone = 'neutral', title }: { children: React.ReactNode
   )
 }
 
-function Table({ head, children, minWidth = 560 }: { head: string[]; children: React.ReactNode; minWidth?: number }) {
+export function Table({ head, children, minWidth = 560 }: { head: string[]; children: React.ReactNode; minWidth?: number }) {
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-left text-xs" style={{ minWidth }}>
@@ -331,21 +330,15 @@ export function FingerprintView({ data }: ArtifactRendererProps) {
 
 // ---------- entry-point-inventory ----------
 
-/** One item of the entry-point list: a project's panel, or the one grouped line for the projects with no request
- * entry point, which counts as a single item. */
-type EntryPointListItem = { kind: 'project'; project: ProjectEntryPoints } | { kind: 'no-requests'; projects: ProjectEntryPoints[] }
-
 export function EntryPointsView({ data, localPath }: ArtifactRendererProps) {
   const projects = useMemo(() => entryPointProjects(data), [data])
+  // The whole artifact is in hand: its lists are paged in memory, by the same panels as the repository page's.
+  const source = useMemo(() => localInboundSource(projects, `artifact|${projects.length}`), [projects])
   const summary = obj(data.summary)
-  // Projects with a request entry point each get a panel; the rest are one grouped line (release 6).
   const withEntries = projects.filter((p) => p.request_entry_point_count > 0)
   const noRequests = projects.filter((p) => p.request_entry_point_count === 0)
   const empty = projects.filter((p) => p.entry_points.length === 0).length
-  const items: EntryPointListItem[] = [
-    ...withEntries.map((project) => ({ kind: 'project' as const, project })),
-    ...(noRequests.length > 0 ? [{ kind: 'no-requests' as const, projects: noRequests }] : []),
-  ]
+  const hooks = noRequests.reduce((n, p) => n + p.entry_points.filter((e) => e.entry_class === 'lifecycle').length, 0)
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap gap-1.5">
@@ -354,47 +347,20 @@ export function EntryPointsView({ data, localPath }: ArtifactRendererProps) {
         {num(summary.noDeclaredAuthenticationCount) > 0 && <Chip tone="amber">{num(summary.noDeclaredAuthenticationCount)} no declared authentication</Chip>}
         {empty > 0 && <Chip>{empty} project(s) with none</Chip>}
       </div>
-      {withEntries.length === 0 && <p className="text-xs text-neutral-400">No request entry points found.</p>}
-      <LimitedList
-        items={items}
-        name={(item) => (item.kind === 'project' ? item.project.project_path : item.projects.map((p) => p.project_path))}
-        noun="projects"
-      >
-        {(visibleItems) => (
-          <div className="space-y-2">
-            {visibleItems.map((item) =>
-              item.kind === 'project' ? (
-                <InboundProjectPanel key={item.project.project_id} project={item.project} localPath={localPath} />
-              ) : (
-                <NoRequestProjects key="no-requests" projects={item.projects} localPath={localPath} />
-              ),
-            )}
-          </div>
-        )}
-      </LimitedList>
+      <InboundProjectList source={source} withRequests={withEntries.length} withoutRequests={noRequests.length} hooks={hooks} localPath={localPath} />
     </div>
   )
 }
 
 // ---------- outbound-invocation-inventory ----------
 
-const VERDICT_RANK: Record<string, number> = { incompatible: 0, requires_change: 1, unknown: 2, compatible: 3 }
-
 export function OutboundView({ data, localPath }: ArtifactRendererProps) {
-  const projects = useMemo(
-    () =>
-      outboundProjects(data)
-        .filter((p) => p.invocations.length > 0)
-        .sort(
-          (a, b) =>
-            Math.min(...a.invocations.map((i) => (i.usage === 'unused' ? 9 : VERDICT_RANK[i.linux_verdict]))) -
-              Math.min(...b.invocations.map((i) => (i.usage === 'unused' ? 9 : VERDICT_RANK[i.linux_verdict]))) ||
-            a.project_path.localeCompare(b.project_path),
-        ),
-    [data],
-  )
+  const projects = useMemo(() => outboundProjects(data), [data])
+  // The whole artifact is in hand: its lists are paged in memory, by the same panels as the repository page's.
+  const source = useMemo(() => localOutboundSource(projects, `artifact|${projects.length}`), [projects])
   const summary = obj(data.summary)
   const verdicts = obj(summary.countByVerdict) as Record<string, number>
+  const withInvocations = projects.filter((p) => p.invocations.length > 0).length
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap gap-1.5">
@@ -405,20 +371,7 @@ export function OutboundView({ data, localPath }: ArtifactRendererProps) {
         {(verdicts.compatible ?? 0) > 0 && <Chip tone="teal">{verdicts.compatible} compatible</Chip>}
         {num(summary.unusedCount) > 0 && <Chip>{num(summary.unusedCount)} unused (not counted)</Chip>}
       </div>
-      <LimitedList
-        items={projects}
-        name={(p) => p.project_path}
-        noun="projects"
-        empty={<p className="text-xs text-neutral-400">No outbound invocations found.</p>}
-      >
-        {(visibleProjects) => (
-          <div className="space-y-2">
-            {visibleProjects.map((project) => (
-              <OutboundProjectPanel key={project.project_id} project={project} localPath={localPath} />
-            ))}
-          </div>
-        )}
-      </LimitedList>
+      <OutboundProjectList source={source} withInvocations={withInvocations} without={0} localPath={localPath} />
     </div>
   )
 }
@@ -443,7 +396,7 @@ const OUTCOME_LABEL: Record<string, string> = {
 }
 const OUTCOME_ORDER = ['no_compatible_version', 'upgrade_breaking', 'framework_provided', 'unknown', 'upgrade_safe', 'current']
 
-interface ProjectUse {
+export interface ProjectUse {
   project: string
   pkg: Json
 }
@@ -475,7 +428,7 @@ const worst = (uses: ProjectUse[]) => uses.slice().sort((a, b) => packageRank(a.
 
 /** The project file, prefixed by its top-level folder: two solutions in one
  * repository often hold projects with the same file name. */
-function shortProjectPath(path: string): string {
+export function shortProjectPath(path: string): string {
   const parts = path.split('/')
   return parts.length > 2 ? `${parts[0]}/…/${parts[parts.length - 1]}` : path
 }
@@ -483,7 +436,7 @@ function shortProjectPath(path: string): string {
 /** A breaking package whose call sites are all ambiguous is "possibly breaking". */
 const possiblyOnly = (pkg: Json) => str(pkg.breakingEvidence) === 'ambiguous_call_sites_only'
 
-function OutcomeBadge({ pkg }: { pkg: Json }) {
+export function OutcomeBadge({ pkg }: { pkg: Json }) {
   const outcome = str(pkg.outcome) ?? ''
   const label = outcome === 'upgrade_breaking' && possiblyOnly(pkg) ? 'possibly breaking' : (OUTCOME_LABEL[outcome] ?? outcome)
   return (
@@ -508,7 +461,7 @@ function advisoryName(url: string | null): string {
  * dependency-assessment artifact's own fields. "Vulnerable" is always about the version in use; the recommended
  * version is the newest that supports the target framework and has no known advisory.
  */
-function packageReasons(pkg: Json, targetFramework: string | null): string[] {
+export function packageReasons(pkg: Json, targetFramework: string | null): string[] {
   const reasons: string[] = []
   const outcome = str(pkg.outcome)
   const reason = str(pkg.outcomeReason) ?? ''
@@ -887,7 +840,7 @@ function VersionRowView({
 
 /** One project's assessment of the package: reason, changed members and call
  * sites, confirmed and possible (ambiguous) sites kept visibly apart. */
-function ProjectUseDetail({ use, localPath }: { use: ProjectUse; localPath: string | null }) {
+export function ProjectUseDetail({ use, localPath }: { use: ProjectUse; localPath: string | null }) {
   const pkg = use.pkg
   const declaredAt = obj(pkg.declaredAt)
   const members = list(pkg.breakingMembers)
@@ -963,7 +916,7 @@ function ProjectUseDetail({ use, localPath }: { use: ProjectUse; localPath: stri
 // ---------- item-occurrences (item-detection): the work list ----------
 
 const STATE_RANK: Record<string, number> = { found: 0, not_checked: 1, excluded: 2, checked_absent: 3, skipped: 4 }
-const STATE_STYLE: Record<string, string> = {
+export const STATE_STYLE: Record<string, string> = {
   found: 'border-violet-200 bg-violet-50 text-violet-700',
   not_checked: 'border-amber-200 bg-amber-50 text-amber-800',
   excluded: 'border-neutral-200 bg-neutral-50 text-neutral-500',
@@ -972,7 +925,7 @@ const STATE_STYLE: Record<string, string> = {
 
 /** One located occurrence: item_occurrences stays per file (conversion
  * batches per file); the work list only groups them for display. */
-interface WorkFile {
+export interface WorkFile {
   filePath: string
   line: number | null
   value: string | null
@@ -1136,7 +1089,7 @@ export function ItemOccurrencesView({ data, localPath, decisions }: ArtifactRend
   )
 }
 
-function CertaintyTag({ certainty }: { certainty: string }) {
+export function CertaintyTag({ certainty }: { certainty: string }) {
   return (
     <span
       className={`ml-1.5 rounded border px-1 font-sans text-[10px] ${certainty === 'possible' ? 'border-dashed border-violet-300 text-violet-600' : 'border-violet-200 text-violet-700'}`}
@@ -1198,6 +1151,15 @@ const DECISION_STATUS_STYLE: Record<string, string> = {
 function DecisionCell({ group: g, decisions }: { group: WorkGroup; decisions: WorkListDecisions }) {
   const decision = decisions.decisions[g.itemId]
   const note = decisions.projects.find((p) => p.project_id === g.projectId)?.items[g.itemId]
+  return <ItemDecisionCell decision={decision} note={note} />
+}
+
+type ItemDecision = WorkListDecisions['decisions'][string]
+type ItemNote = WorkListDecisions['projects'][number]['items'][string]
+
+/** The decision behind one work-list row: the item's decision, and what another decision means for it on the row's
+ * project. */
+export function ItemDecisionCell({ decision, note }: { decision: ItemDecision | undefined | null; note: ItemNote | undefined | null }) {
   if (note?.subsumed_by) {
     return (
       <td className="py-1.5 text-[11px]">

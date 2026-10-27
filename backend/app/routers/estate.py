@@ -3,7 +3,9 @@
 The register, package estate, dependency graph, context map, integration
 map and SOAP backend compatibility report are read from the newest completed
 run's artifacts, so a view is always one consistent snapshot with its
-coverage. Endpoint annotations and the estate settings (the production
+coverage. They are read from the database (app.results), never from the run
+folder of the machine that ran the consolidation, and each view's lists are
+served a page at a time (app.routers.estate_pages). Endpoint annotations and the estate settings (the production
 environment) are human data, read and written here live; they take effect on
 the next run. The SOAP report's matrix confirmations are read live too, from
 the WCF client runtime and platform matrix files (Part J), with the probe
@@ -17,7 +19,6 @@ import csv
 import io
 
 import datetime
-import json
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, Header
@@ -31,7 +32,7 @@ from app.auth import versions
 from app.db import get_db
 from app.errors import ErrorResponse, error
 from app.estate import engagement_matrix, soap_compatibility, wcf_matrix
-from app.workflow.adapters.base import local_path_from_uri
+from app.results import store as results_store
 
 router = APIRouter(prefix="/api/engagements", tags=["Estate"])
 
@@ -110,13 +111,28 @@ class EstateRunOut(BaseModel):
     exit_message: str | None
 
 
+class RegisterCountsOut(BaseModel):
+    """The register's hosts that require a backend change, with how their conversations stand (the annotations, live)."""
+
+    backend: int
+    another_team: int
+    this_migration: int
+    under_way: int
+    not_started: int
+    done: int
+
+
 class EstateOut(BaseModel):
     engagement_id: str
     run: EstateRunOut | None = Field(description="The newest completed dependency-and-context-map run; null if it has never run for this engagement.")
     artifacts: dict[str, Any] = Field(
-        description="endpoint-register, package-estate, dependency-graph and context-map, as that run wrote them. Each carries coverage."
+        description="Each of that run's artifacts without its lists: summary, coverage and settings it was built with. The "
+                    "lists come a page at a time (/estate/...). The SOAP report's summary and matrix are live."
     )
-    annotations: list[AnnotationOut] = Field(description="Every host's annotation, live — including hosts no longer called.")
+    artifact_ids: dict[str, str] = Field(default_factory=dict, description="The artifacts' ids, by kind.")
+    register_counts: RegisterCountsOut | None = None
+    served_by_pending: bool = Field(default=False, description="A served-by annotation differs from what the register "
+                                                               "was built with: the next run applies it.")
     settings: EstateSettingsOut = Field(description="The estate settings, live: the next run uses them.")
 
 
@@ -160,8 +176,9 @@ def _settings_out(db: Session, engagement: models.Engagement, slugs: dict) -> Es
                              environments=sorted(environments, key=str.lower), repositories=sorted(slugs.values()))
 
 
-def _latest_run(db: Session, engagement_id: str) -> tuple[Any, dict[str, Any]]:
-    """The newest completed dependency-and-context-map run of the engagement, and its artifacts."""
+def _latest_run(db: Session, engagement_id: str, contents: bool = True) -> tuple[Any, dict[str, Any]]:
+    """The newest completed dependency-and-context-map run of the engagement, and its artifacts' contents, from the
+    database (app.results): the run may have been made on another machine. contents=False: the run only."""
     row = db.execute(text("""
         select s.id, s.job_execution_id, s.ended_at, s.exit_message
         from wf_step_executions s
@@ -172,13 +189,9 @@ def _latest_run(db: Session, engagement_id: str) -> tuple[Any, dict[str, Any]]:
         order by s.ended_at desc limit 1
     """), {"step": STEP_NAME, "e": engagement_id}).first()
     artifacts: dict[str, Any] = {}
-    if row is not None:
-        for artifact in db.query(models.WfArtifact).filter(models.WfArtifact.step_execution_id == row.id):
-            if artifact.artifact_type in ARTIFACT_TYPES:
-                try:
-                    artifacts[artifact.artifact_type] = json.loads(local_path_from_uri(artifact.uri).read_text(encoding="utf-8"))
-                except OSError:
-                    continue
+    if row is not None and contents:
+        for kind, stored in results_store.latest_estate(db, engagement_id, row.id).items():
+            artifacts[kind] = results_store.content(db, stored.artifact_id)
     return row, artifacts
 
 
@@ -288,25 +301,59 @@ def _soap_report(report: dict, annotations: list, engagement: models.Engagement,
     responses={404: _NOT_FOUND},
 )
 def get_estate(engagement_id: str, db: Session = Depends(get_db)):
+    """The run, each artifact's summary and coverage, the register's counts and the settings. Each view's lists come a
+    page at a time from its own endpoint."""
     engagement = _engagement(db, engagement_id)
-    row, artifacts = _latest_run(db, engagement_id)
+    row, _ = _latest_run(db, engagement_id, contents=False)
+    slugs = _repository_slugs(db, engagement_id)
     run = None
+    heads: dict[str, Any] = {}
+    ids: dict[str, str] = {}
+    counts, pending = None, False
     if row is not None:
         run = EstateRunOut(step_execution_id=str(row.id), job_execution_id=str(row.job_execution_id),
                            completed_at=row.ended_at, exit_message=row.exit_message)
+        for kind, stored in results_store.latest_estate(db, engagement_id, row.id).items():
+            ids[kind] = str(stored.artifact_id)
+            heads[kind] = results_store.stored_head(db, stored.artifact_id)
+        if "soap-backend-compatibility" in ids:
+            heads["soap-backend-compatibility"] = soap_head(db, engagement, ids["soap-backend-compatibility"])
+        if "endpoint-register" in ids:
+            counts = _register_counts(db, engagement_id, ids["endpoint-register"])
+            served = heads["endpoint-register"].get("servedByAnnotations") or {}
+            pending = any(slugs.get(a.served_by_repository_id) != served.get(a.host)
+                          for a in db.query(models.EndpointAnnotation).filter(models.EndpointAnnotation.engagement_id == engagement_id))
+    return EstateOut(engagement_id=engagement_id, run=run, artifacts=heads, artifact_ids=ids, register_counts=counts,
+                     served_by_pending=pending, settings=_settings_out(db, engagement, slugs))
 
-    annotations = (
-        db.query(models.EndpointAnnotation)
-        .filter(models.EndpointAnnotation.engagement_id == engagement_id)
-        .order_by(models.EndpointAnnotation.host)
-        .all()
-    )
-    slugs = _repository_slugs(db, engagement_id)
-    if "soap-backend-compatibility" in artifacts:
-        artifacts["soap-backend-compatibility"] = _soap_report(artifacts["soap-backend-compatibility"], annotations, engagement,
-                                                              engagement_matrix.overlay(db, engagement_id))
-    return EstateOut(engagement_id=engagement_id, run=run, artifacts=artifacts,
-                     annotations=[_annotation_out(a, slugs) for a in annotations], settings=_settings_out(db, engagement, slugs))
+
+def _register_counts(db: Session, engagement_id: str, artifact_id: str) -> RegisterCountsOut:
+    row = db.execute(text("""
+        select count(*) filter (where backend) as backend,
+               count(*) filter (where backend and owner = 'this_migration') as this_migration,
+               count(*) filter (where backend and status in ('in_progress', 'agreed')) as under_way,
+               count(*) filter (where backend and status = 'not_started') as not_started
+        from (
+            select coalesce((h->>'requiresBackendChange')::boolean, false) as backend, h->>'backendChangeOwner' as owner,
+                   coalesce(a.conversation_status, 'not_started') as status
+            from result_artifacts r join result_contents c on c.checksum = r.checksum,
+                 jsonb_array_elements(coalesce(c.content->'hosts', '[]')) h
+            left join endpoint_annotations a on a.engagement_id = :e and a.host = h->>'host'
+            where r.artifact_id = :a
+        ) x
+    """), {"e": engagement_id, "a": artifact_id}).one()
+    return RegisterCountsOut(backend=row.backend, another_team=row.backend - row.this_migration,
+                             this_migration=row.this_migration, under_way=row.under_way, not_started=row.not_started,
+                             done=row.backend - row.under_way - row.not_started)
+
+
+def soap_head(db: Session, engagement: models.Engagement, artifact_id: str) -> dict:
+    """The SOAP report without its hosts, with its summary and matrix as they stand now: confirmations, probes and
+    the targeted WCF client are read live, over every host, so the totals are the report's whole."""
+    annotations = db.query(models.EndpointAnnotation).filter(models.EndpointAnnotation.engagement_id == engagement.id).all()
+    report = _soap_report(results_store.content(db, artifact_id), annotations, engagement,
+                          engagement_matrix.overlay(db, engagement.id))
+    return {k: v for k, v in report.items() if k != "hosts"}
 
 
 @router.put(

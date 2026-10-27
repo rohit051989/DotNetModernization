@@ -457,18 +457,39 @@ export interface SoapCompatibilityArtifact {
   }
 }
 
+/** The register's hosts that require a backend change, with how their conversations stand. */
+export interface RegisterCounts {
+  backend: number
+  another_team: number
+  this_migration: number
+  under_way: number
+  not_started: number
+  done: number
+}
+
+/** A row of the register as listed: a host the estate calls, or one no longer called whose annotation is kept, each
+ * with its annotation (the host's own, else one carried from a host it replaced). */
+export type RegisterRow =
+  | { host: RegisterHost; noLongerCalled?: undefined; annotation: EndpointAnnotation | null }
+  | { host?: undefined; noLongerCalled: string; annotation: EndpointAnnotation | null }
+
+/** The estate view: each artifact without its lists (summary, coverage, settings it was built with); the lists come
+ * a page at a time. The SOAP report's summary and matrix are live. */
 export interface EstateView {
   engagement_id: string
   run: { step_execution_id: string; job_execution_id: string; completed_at: string | null; exit_message: string | null } | null
   artifacts: {
-    'endpoint-register'?: EndpointRegisterArtifact
-    'package-estate'?: PackageEstateArtifact
-    'dependency-graph'?: DependencyGraphArtifact
-    'context-map'?: ContextMapArtifact
-    'integration-map'?: IntegrationMapArtifact
-    'soap-backend-compatibility'?: SoapCompatibilityArtifact
+    'endpoint-register'?: Omit<EndpointRegisterArtifact, 'hosts' | 'unresolved' | 'noLongerCalled' | 'carriedAnnotations'>
+    'package-estate'?: Omit<PackageEstateArtifact, 'packages'>
+    'dependency-graph'?: Omit<DependencyGraphArtifact, 'nodes' | 'edges' | 'sharedLibraries' | 'cycles' | 'originReconciliations'>
+    'context-map'?: Omit<ContextMapArtifact, 'systems' | 'relationships'>
+    'integration-map'?: Omit<IntegrationMapArtifact, 'applications' | 'edges' | 'entryPoints' | 'unmatched'>
+    'soap-backend-compatibility'?: Omit<SoapCompatibilityArtifact, 'hosts'>
   }
-  annotations: EndpointAnnotation[]
+  artifact_ids: Record<string, string>
+  register_counts: RegisterCounts | null
+  /** A served-by annotation differs from what the register was built with: the next run applies it. */
+  served_by_pending: boolean
   settings: EstateSettings
 }
 

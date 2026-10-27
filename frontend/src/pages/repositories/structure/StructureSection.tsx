@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { searchHierarchy } from '../../../api/hierarchy'
 import type { HierarchySearch, HierarchySearchMatch, HierarchyShow } from '../../../types/hierarchy'
-import type { Json } from '../../workflow/artifacts/adapters'
 import { StructureDetails } from './StructureDetails'
 import { StructureGraph } from './StructureGraph'
 import { StructureTree } from './StructureTree'
@@ -12,8 +11,8 @@ interface StructureSectionProps {
   repositoryId: string
   localPath: string | null
   refreshToken: number
-  /** dependency-assessment's artifact, for the details panel's status and reason. */
-  assessment: Json | undefined
+  /** The stored dependency-assessment, for the details panel's status and reason; null when it has not run. */
+  assessmentId: string | null
 }
 
 const SHOW_LABELS: Record<HierarchyShow, string> = {
@@ -38,7 +37,7 @@ function readViewMode(): 'graph' | 'tree' {
  * from the roots, or the same as an indented tree. It opens showing only the roots; + and − expand and collapse a
  * node, whose children load when it is expanded, 20 at a time.
  */
-export function StructureSection({ repositoryId, localPath, refreshToken, assessment }: StructureSectionProps) {
+export function StructureSection({ repositoryId, localPath, refreshToken, assessmentId }: StructureSectionProps) {
   const { view, setView, overview, load, state, graph, toggle, more, reveal } = useStructure(repositoryId, refreshToken)
   const [mode, setMode] = useState<'graph' | 'tree'>(readViewMode)
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -137,7 +136,7 @@ export function StructureSection({ repositoryId, localPath, refreshToken, assess
             localPath={localPath}
             nodeId={selectedId}
             view={view}
-            assessment={assessment}
+            assessmentId={assessmentId}
             onSelect={setSelectedId}
             onClose={() => setSelectedId(null)}
           />

@@ -3112,3 +3112,54 @@ class PlatformBackend(Base):
     api_port: Mapped[int | None] = mapped_column(Integer)
     started_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     beat_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class ResultContent(Base):
+    """One result artifact's JSON, stored once per checksum (app.results): what every view on another machine reads.
+    `head` is its top-level fields other than lists."""
+
+    __tablename__ = "result_contents"
+
+    checksum: Mapped[str] = mapped_column(Text, primary_key=True)
+    content: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    head: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    size_bytes: Mapped[int | None] = mapped_column(BigInteger)
+    stored_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class ResultArtifact(Base):
+    """A result artifact whose content is in the database (app.results): the newest RESULTS_KEEP of each kind, per
+    repository, and per engagement for the estate's."""
+
+    __tablename__ = "result_artifacts"
+
+    artifact_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("wf_artifacts.id", ondelete="CASCADE"),
+                                                   primary_key=True)
+    checksum: Mapped[str] = mapped_column(Text, ForeignKey("result_contents.checksum"), nullable=False)
+    artifact_type: Mapped[str] = mapped_column(Text, nullable=False)
+    repository_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    engagement_id: Mapped[str | None] = mapped_column(Text)
+    job_execution_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    stored_by_host: Mapped[str | None] = mapped_column(Text)
+    stored_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    __table_args__ = (
+        Index("ix_result_artifacts_repository", "repository_id", "artifact_type", "created_at"),
+        Index("ix_result_artifacts_engagement", "engagement_id", "artifact_type", "created_at"),
+        Index("ix_result_artifacts_checksum", "checksum"),
+    )
+
+
+class ConversionResult(Base):
+    """A repository's conversions as its owner's machine last saw them (app.results.conversions), with each one's
+    runbook and VERIFICATION.md: what the Conversion tab shows on every other machine."""
+
+    __tablename__ = "conversion_results"
+
+    repository_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("repositories.id", ondelete="CASCADE"),
+                                                     primary_key=True)
+    conversions: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    last_prepare: Mapped[dict | None] = mapped_column(JSONB)
+    published_host: Mapped[str | None] = mapped_column(Text)
+    published_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)

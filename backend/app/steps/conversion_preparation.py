@@ -24,6 +24,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app import models
 from app.db import make_engine
+from app.results import conversions as shared_conversions
 from app.workflow.contract import StepContext, StepResult
 
 LAST_PREPARE = "last-prepare.json"
@@ -70,6 +71,7 @@ def run(context: StepContext) -> StepResult:
                            + (f"; package step skipped: {step['skipped']}" if step.get("skipped") else
                               f"; package step {step.get('cycles', 0)} cycle(s)" if result["action"] != "kept" else "")))
         record_attempt(repository.engagement_id, repository.slug, attempt)
+        shared_conversions.publish_after_step(db, repository)
         return StepResult(exit_status="COMPLETED", exit_message=attempt["message"])
     except Exception as error:   # never fails the discovery run: recorded, and the step completes
         db.rollback()
@@ -80,6 +82,7 @@ def run(context: StepContext) -> StepResult:
                 record_attempt(repository.engagement_id, repository.slug, attempt)
             except OSError:
                 pass
+            shared_conversions.publish_after_step(db, repository)
         return StepResult(exit_status="COMPLETED", exit_message=f"conversion not prepared: {attempt['message']}"[:2000])
     finally:
         db.close()

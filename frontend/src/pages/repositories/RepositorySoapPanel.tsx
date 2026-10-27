@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react'
 import { ApiError } from '../../api/client'
+import { getSoapSummary, soapCalls } from '../../api/results'
 import { CollapsibleSection } from '../../components/CollapsibleSection'
-import { LimitedList, useLimitedList } from '../../components/LimitedList'
+import { useLimitedList } from '../../components/LimitedList'
+import { PagedList } from '../../components/PagedList'
 import { surfaceSectionId } from './surfaceSections'
-import { getRepositorySoapCompatibility } from '../../api/surface'
-import type { RepositorySoap, SoapVerdictLive } from '../../types/surface'
+import type { SoapSummary } from '../../types/results'
+import type { RepositorySoapCall, SoapVerdictLive } from '../../types/surface'
 import { CONFIRMED_HELP, UNDER_REVIEW, UNDER_REVIEW_LABEL } from '../../types/estate'
-import { needsChange } from './soapNeedsChange'
 
 // The repository's own view of the SOAP backend compatibility report
 // (31-DEPENDENCY-AND-CONTEXT-MAP.md Part J): each used SOAP client, per
@@ -55,7 +56,7 @@ function Verdict({ live }: { live: SoapVerdictLive }) {
 }
 
 export function RepositorySoapPanel({ repositoryId, refreshToken, onOpenEstateSoap }: RepositorySoapPanelProps) {
-  const [data, setData] = useState<RepositorySoap | null>(null)
+  const [data, setData] = useState<SoapSummary | null>(null)
   const [notScanned, setNotScanned] = useState(false)
   const [failed, setFailed] = useState(false)
 
@@ -63,7 +64,7 @@ export function RepositorySoapPanel({ repositoryId, refreshToken, onOpenEstateSo
     let cancelled = false
     setNotScanned(false)
     setFailed(false)
-    getRepositorySoapCompatibility(repositoryId)
+    getSoapSummary(repositoryId)
       .then((result) => {
         if (!cancelled) setData(result)
       })
@@ -77,15 +78,16 @@ export function RepositorySoapPanel({ repositoryId, refreshToken, onOpenEstateSo
     }
   }, [repositoryId, refreshToken])
 
-  if (notScanned || (data && data.calls.length === 0 && data.unused_count === 0)) return null
-  const rows = data ? data.calls.reduce((n, c) => n + c.environments.length, 0) : undefined
-  const needChange = data ? data.calls.filter((c) => c.environments.some(needsChange)).length : 0
-  const unknown = data ? data.calls.filter((c) => !c.environments.some(needsChange) && c.environments.some(undecided)).length : 0
+  if (notScanned || (data && data.calls === 0 && data.unused_count === 0)) return null
+  // Counted by the server over every call, with the verdicts as they stand now; the calls come a page at a time.
+  const rows = data?.environments
+  const needChange = data?.need_change ?? 0
+  const unknown = data?.undecided ?? 0
   const summary = failed
     ? 'could not be loaded'
     : !data
       ? 'loading…'
-      : `${data.calls.length} call${data.calls.length === 1 ? '' : 's'}, ${needChange} need${needChange === 1 ? 's' : ''} change` +
+      : `${data.calls} call${data.calls === 1 ? '' : 's'}, ${needChange} need${needChange === 1 ? 's' : ''} change` +
         (unknown > 0 ? `, ${unknown} unknown` : '') +
         (data.unused_count > 0 ? ` · ${data.unused_count} unused not listed` : '')
   return (
@@ -106,7 +108,7 @@ export function RepositorySoapPanel({ repositoryId, refreshToken, onOpenEstateSo
             </p>
           )}
           <p className="text-neutral-500">
-            {data.calls.length} SOAP call{data.calls.length === 1 ? '' : 's'}, both verdicts per environment, from the last scan
+            {data.calls} SOAP call{data.calls === 1 ? '' : 's'}, both verdicts per environment, from the last scan
             {data.scanned_at ? ` (${new Date(data.scanned_at).toLocaleString()})` : ''}; matrix confirmations read live. Target WCF client{' '}
             {data.target_wcf_client_version ?? '?'}.
             {data.unused_count > 0 && ` ${data.unused_count} unused client${data.unused_count === 1 ? '' : 's'} not listed.`}
@@ -116,7 +118,7 @@ export function RepositorySoapPanel({ repositoryId, refreshToken, onOpenEstateSo
             </span>
           </p>
           {/* Calls are the list's items; a call's rows, one per environment file, stay together. */}
-          <LimitedList items={data.calls} name={(call) => [call.contract, call.clientType, call.endpoint, call.projectPath]} noun="SOAP calls">
+          <PagedList<RepositorySoapCall> load={soapCalls(repositoryId)} resetKey={`${repositoryId}|${refreshToken}`} noun="SOAP calls">
             {(shown) => (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[1200px] text-left">
@@ -135,7 +137,7 @@ export function RepositorySoapPanel({ repositoryId, refreshToken, onOpenEstateSo
             </table>
           </div>
             )}
-          </LimitedList>
+          </PagedList>
         </div>
       )}
     </CollapsibleSection>
@@ -144,7 +146,7 @@ export function RepositorySoapPanel({ repositoryId, refreshToken, onOpenEstateSo
 
 /** One SOAP call: a row per environment file, the call's own cells on the first. Its environments are limited like
  * any list, with the list hook, since they are rows of the calls table. */
-function CallRows({ call, data, onOpenEstateSoap }: { call: RepositorySoap['calls'][number]; data: RepositorySoap; onOpenEstateSoap?: (invocationId: string) => void }) {
+function CallRows({ call, data, onOpenEstateSoap }: { call: RepositorySoapCall; data: SoapSummary; onOpenEstateSoap?: (invocationId: string) => void }) {
   const list = useLimitedList(call.environments, { name: (env) => [env.environment, env.address], noun: 'environments' })
   return (
     <>
@@ -196,9 +198,4 @@ function CallRows({ call, data, onOpenEstateSoap }: { call: RepositorySoap['call
       )}
     </>
   )
-}
-
-/** A verdict not yet decided in some environment: unknown, not assessed, or under review. */
-function undecided(env: RepositorySoap['calls'][number]['environments'][number]): boolean {
-  return [env.runtime.verdict, env.platform.verdict].some((v) => v === null || v === 'unknown' || v === 'not_assessed' || v === UNDER_REVIEW)
 }

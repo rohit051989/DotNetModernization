@@ -12,6 +12,7 @@ type ContentState =
   | { kind: 'not_json' }
   | { kind: 'mismatch'; message: string }
   | { kind: 'missing'; message: string }
+  | { kind: 'elsewhere'; message: string }
   | { kind: 'error'; message: string }
 
 /** Loads an artifact's content, reporting the failure modes the content
@@ -31,6 +32,7 @@ export function useArtifactContent(artifactId: string): ContentState {
           if (err.status === 413) setContent({ kind: 'too_large' })
           else if (err.status === 415) setContent({ kind: 'not_json' })
           else if (err.status === 409) setContent({ kind: 'mismatch', message: err.message })
+          else if (err.status === 404 && err.code === 'LOCAL_ONLY') setContent({ kind: 'elsewhere', message: err.message })
           else if (err.status === 404) setContent({ kind: 'missing', message: err.message })
           else setContent({ kind: 'error', message: err.message })
         } else {
@@ -73,6 +75,7 @@ export function ArtifactContentView({ artifactId, artifactType, localPath, jsonM
   }
   if (content.kind === 'mismatch') return <p className="text-xs text-red-700">Checksum mismatch: {content.message}</p>
   if (content.kind === 'missing') return <p className="text-xs text-amber-700">File missing on disk: {content.message}</p>
+  if (content.kind === 'elsewhere') return <p className="text-xs text-neutral-600">{content.message}</p>
   if (content.kind === 'error') return <p className="text-xs text-red-600">{content.message}</p>
 
   const isObject = content.data !== null && typeof content.data === 'object' && !Array.isArray(content.data)

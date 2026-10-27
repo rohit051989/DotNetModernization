@@ -16,6 +16,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app import models
 from app.db import make_engine
+from app.results import conversions as shared_conversions
 from app.workflow.contract import StepContext, StepResult
 
 
@@ -39,6 +40,8 @@ def run(context: StepContext) -> StepResult:
         if refusal:
             return StepResult(exit_status="FAILED", exit_message=refusal)
         report = convert.verify(db, repository.engagement_id, repository.slug, record["branch"])
+        # Everyone on another machine sees the verdict and VERIFICATION.md (app.results.conversions).
+        shared_conversions.publish_after_step(db, repository)
         return StepResult(exit_status="COMPLETED",
                           exit_message=f"{report['label']}: {report['verdict']}"
                           + "".join(f"; {r}" for r in report["reasons"][:3]))

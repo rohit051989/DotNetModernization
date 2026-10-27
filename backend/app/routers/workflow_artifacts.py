@@ -3,6 +3,11 @@
 `content` and `download` both re-verify the on-disk checksum against
 `wf_artifacts.checksum` before serving anything — an artifact that has
 drifted from its recorded checksum is a real finding, never served silently.
+
+A result a view reads is in the database too (app.results): where its file is
+not on this machine — it was scanned on its owner's — the stored copy is
+served. Anything else produced on another machine is answered with where it
+is (404 LOCAL_ONLY), never a broken link.
 """
 
 import json
@@ -15,6 +20,8 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.db import get_db
 from app.errors import ErrorResponse, error
+from app.results import held
+from app.results import store as results_store
 from app.workflow.adapters.base import local_path_from_uri
 from app.workflow.runtime import artifacts as artifacts_service
 from app.workflow.runtime import service as execution_service
@@ -97,7 +104,10 @@ def get_artifact_content(artifact_id: uuid.UUID, db: Session = Depends(get_db)):
     try:
         artifacts_service.verify_on_disk(artifact)
     except artifacts_service.ArtifactFileMissing as exc:
-        raise error(404, f"Artifact file is missing: {exc}", code="ARTIFACT_FILE_MISSING") from exc
+        stored = results_store.content(db, artifact.id)
+        if stored is not None:
+            return Response(content=json.dumps(stored), media_type="application/json")
+        _missing(db, artifact, exc)
     except artifacts_service.ArtifactChecksumMismatch as exc:
         raise error(
             409,
@@ -135,7 +145,12 @@ def download_artifact(artifact_id: uuid.UUID, db: Session = Depends(get_db)):
     try:
         artifacts_service.verify_on_disk(artifact)
     except artifacts_service.ArtifactFileMissing as exc:
-        raise error(404, f"Artifact file is missing: {exc}", code="ARTIFACT_FILE_MISSING") from exc
+        stored = results_store.content(db, artifact.id)
+        if stored is not None:
+            name = artifact.uri.replace("\\", "/").rsplit("/", 1)[-1] or f"{artifact.artifact_type}.json"
+            return Response(content=json.dumps(stored, indent=2), media_type="application/octet-stream",
+                            headers={"Content-Disposition": f'attachment; filename="{name}"'})
+        _missing(db, artifact, exc)
     except artifacts_service.ArtifactChecksumMismatch as exc:
         raise error(
             409,
@@ -145,3 +160,12 @@ def download_artifact(artifact_id: uuid.UUID, db: Session = Depends(get_db)):
 
     path = local_path_from_uri(artifact.uri)
     return FileResponse(path, filename=path.name, media_type="application/octet-stream")
+
+
+def _missing(db: Session, artifact, exc: Exception):
+    """No file here and no copy in the database: where it is, when another machine produced it; else missing."""
+    host, where = held.artifact_where(db, artifact)
+    if held.elsewhere(host):
+        raise error(404, f"This {artifact.artifact_type} is {where}: only the results the views read are kept in the "
+                         "database, and this is not one of them.", code=held.LOCAL_ONLY) from exc
+    raise error(404, f"Artifact file is missing: {exc}", code="ARTIFACT_FILE_MISSING") from exc

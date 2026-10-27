@@ -49,7 +49,10 @@ def to_artifact_detail(db: Session, artifact: models.WfArtifact) -> ArtifactDeta
         resolved_path = None
         file_exists = False
 
+    from app.results import held, store
+
     summary = to_artifact_summary(db, artifact)
+    host, where = held.artifact_where(db, artifact)
     return ArtifactDetail(
         **summary.model_dump(),
         job_execution_id=artifact.job_execution_id,
@@ -57,6 +60,8 @@ def to_artifact_detail(db: Session, artifact: models.WfArtifact) -> ArtifactDeta
         resolved_path=resolved_path,
         file_exists=file_exists,
         metadata=artifact.artifact_metadata,
+        in_database=store.is_stored(db, artifact.id),
+        held_on=where if not file_exists and held.elsewhere(host) else None,
     )
 
 

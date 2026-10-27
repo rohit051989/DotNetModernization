@@ -87,6 +87,9 @@ class Settings(BaseSettings):
 
     # Sign-in (app.auth): a session ends after this many minutes without a request. Optional.
     session_idle_minutes: int = 240
+    # Central results (app.results): how many of each kind of result the database keeps per repository (and per
+    # engagement for the estate's), newest first. Older ones are pruned; run folders are never touched. Optional.
+    results_keep: int = 3
 
     # The single machine this platform runs on (CLAUDE.md's operating model).
     # A relative `command` or `cwd` in a process-adapter step's adapter_config

@@ -3,30 +3,16 @@ import type {
   EngagementStructureSummary,
   ProjectDetail,
   ProjectReference,
-  ProjectSummary,
-  RepositoryArtifact,
   RepositoryStructure,
-  Solution,
 } from '../types/structure'
 
-export function getRepositoryStructure(repositoryId: string) {
-  return api.get<RepositoryStructure>(`/api/repositories/${encodeURIComponent(repositoryId)}/structure`)
-}
-
-export function listRepositorySolutions(repositoryId: string) {
-  return api.get<Solution[]>(`/api/repositories/${encodeURIComponent(repositoryId)}/solutions`)
-}
-
-export function listRepositoryProjects(repositoryId: string) {
-  return api.get<ProjectSummary[]>(`/api/repositories/${encodeURIComponent(repositoryId)}/projects`)
+/** warnings false: without parse_warnings (parse_warning_count still says how many), which the UI pages. */
+export function getRepositoryStructure(repositoryId: string, warnings = true) {
+  return api.get<RepositoryStructure>(`/api/repositories/${encodeURIComponent(repositoryId)}/structure${warnings ? '' : '?warnings=false'}`)
 }
 
 export function listRepositoryProjectReferences(repositoryId: string) {
   return api.get<ProjectReference[]>(`/api/repositories/${encodeURIComponent(repositoryId)}/project-references`)
-}
-
-export function listRepositoryArtifacts(repositoryId: string) {
-  return api.get<RepositoryArtifact[]>(`/api/repositories/${encodeURIComponent(repositoryId)}/artifacts`)
 }
 
 export function getProjectDetail(projectId: string) {

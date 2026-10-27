@@ -56,6 +56,7 @@ class RepositoryStructureOut(BaseModel):
     framework_families: dict[str, int] = Field(description="Project count per normalised framework family.")
     artifact_counts: dict[str, int] = Field(description="Supporting-file count per category.")
     parse_warnings: list[ParseWarning] = Field(description="Every parse limitation hit during the scan, across solutions and projects.")
+    parse_warning_count: int = Field(default=0, description="How many parse_warnings there are, also when they are left out.")
     scanned_at: datetime.datetime | None = Field(description="When solution-discovery last ran against this repository.")
 
 

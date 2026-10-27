@@ -1437,7 +1437,8 @@ superseded with nothing in its place.
 - **On a decision:** `derived_from` (the leading decision, `derivation_reason`, and for an
   override `would_derive`) and `followers`.
 - **On the work list:** `GET /api/repositories/{id}/work-list-decisions` gives per-project
-  notes:
+  notes (the repository page reads them with each page of the work list, `GET /api/results/{artifact}/work-items`,
+  for that page's rows only):
   - `subsumed_by`;
   - for a dependent, the leader it `follows`, the `action` and whether it `applies` there;
   - a note with the reason ("Not derived: the wcf-service decision (CoreWCF on .NET 10)

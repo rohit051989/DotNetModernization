@@ -237,3 +237,7 @@ class ArtifactDetail(ArtifactSummary):
     resolved_path: str | None = Field(description="Local filesystem path resolved from uri. Null if the URI scheme is unsupported.")
     file_exists: bool = Field(description="Whether the file currently exists on disk. False does not mean the record is wrong — run directories can be cleaned up.")
     metadata: dict[str, Any] | None = Field(description="Step-reported metadata not part of the hashed file content, e.g. generated_at.")
+    in_database: bool = Field(default=False, description="Whether its content is also in the database (app.results): a "
+                              "result a view reads, readable from every machine.")
+    held_on: str | None = Field(default=None, description="When its file is on another machine: where, as \"on Ann's "
+                                "machine (PC-17)\". Null when it was produced on this one.")

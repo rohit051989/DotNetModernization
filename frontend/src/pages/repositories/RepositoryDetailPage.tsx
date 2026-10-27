@@ -11,8 +11,6 @@ import {
 } from '../../api/repositories'
 import type { Criticality, RepositoryDetail, RetirementStatus } from '../../types/repositories'
 import type { JobExecution } from '../../types/workflow'
-import type { WorkListDecisions } from '../../types/items'
-import { getWorkListDecisions } from '../../api/items'
 import { ApiError } from '../../api/client'
 import { EmptyState } from '../../components/EmptyState'
 import { LimitedList } from '../../components/LimitedList'
@@ -21,7 +19,9 @@ import { TagInput } from '../../components/TagInput'
 import { useToast } from '../../components/Toast'
 import { CriticalityBadge, CloneUrlVerificationBadge, IngestStatusBadge, RetirementBadge } from '../../components/RepositoryBadges'
 import { BatchStatusBadge, ExitStatusBadge } from '../../components/WorkflowBadges'
-import { DependenciesView, FingerprintView, ItemOccurrencesView, formatBytes } from '../workflow/artifacts/renderers'
+import { formatBytes } from '../workflow/artifacts/renderers'
+import { StoredDependenciesView, StoredFingerprintView, StoredWorkListView } from './StoredResultViews'
+import { FilesHeldOn } from './SourceLink'
 import { num, obj } from '../workflow/artifacts/adapters'
 import { RepositoryStructureSection } from './RepositoryStructureSection'
 import { RepositorySurfaceSection } from './RepositorySurfaceSection'
@@ -112,22 +112,8 @@ export function RepositoryDetailPage({
   const [busy, setBusy] = useState(false)
 
   const [localRefresh, setLocalRefresh] = useState(0)
-  const { artifacts } = useLatestArtifacts(repositoryId, refreshToken + localRefresh)
-  // Part S: the decision behind each work-list item, derived or manual.
-  const [workListDecisions, setWorkListDecisions] = useState<WorkListDecisions | null>(null)
-  useEffect(() => {
-    let cancelled = false
-    getWorkListDecisions(repositoryId)
-      .then((result) => {
-        if (!cancelled) setWorkListDecisions(result)
-      })
-      .catch(() => {
-        if (!cancelled) setWorkListDecisions(null)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [repositoryId, refreshToken, localRefresh])
+  // The newest stored result of each kind, without its lists: each view asks for its own, a page at a time.
+  const { artifacts, results } = useLatestArtifacts(repositoryId, refreshToken + localRefresh)
 
   useEffect(() => {
     let cancelled = false
@@ -401,7 +387,7 @@ export function RepositoryDetailPage({
             {fingerprint ? (
               <>
                 <Provenance artifact={fingerprint} onNavigateToExecution={onNavigateToExecution} />
-                <FingerprintView data={fingerprint.data} localPath={repo.local_path} />
+                <StoredFingerprintView artifactId={fingerprint.artifactId} head={fingerprint.data} localPath={repo.local_path} />
               </>
             ) : (
               <p className="text-sm text-neutral-400">Application fingerprinting (application-fingerprinting) hasn't run for this repository yet.</p>
@@ -421,7 +407,7 @@ export function RepositoryDetailPage({
         {dependencies ? (
           <div className="space-y-2">
             <Provenance artifact={dependencies} onNavigateToExecution={onNavigateToExecution} />
-            <DependenciesView data={dependencies.data} localPath={repo.local_path} />
+            <StoredDependenciesView artifactId={dependencies.artifactId} head={dependencies.data} localPath={repo.local_path} />
           </div>
         ) : (
           <p className="text-sm text-neutral-400">Dependency assessment (dependency-assessment) hasn't run for this repository yet.</p>
@@ -430,7 +416,7 @@ export function RepositoryDetailPage({
     ),
     'dependency-graph': () => (
       <Panel summary="projects, packages and assembly references, from the roots down">
-        <StructureSection repositoryId={repo.id} localPath={repo.local_path} refreshToken={localRefresh} assessment={dependencies?.data} />
+        <StructureSection repositoryId={repo.id} localPath={repo.local_path} refreshToken={localRefresh} assessmentId={dependencies?.artifactId ?? null} />
       </Panel>
     ),
     impact: () => (
@@ -454,7 +440,7 @@ export function RepositoryDetailPage({
         {occurrences ? (
           <div className="space-y-2">
             <Provenance artifact={occurrences} onNavigateToExecution={onNavigateToExecution} />
-            <ItemOccurrencesView data={occurrences.data} localPath={repo.local_path} decisions={workListDecisions} />
+            <StoredWorkListView artifactId={occurrences.artifactId} head={occurrences.data} localPath={repo.local_path} />
           </div>
         ) : (
           <p className="text-sm text-neutral-400">Item detection (item-detection) hasn't run for this repository yet.</p>
@@ -662,11 +648,25 @@ export function RepositoryDetailPage({
         </p>
       )}
 
-      {TABS.filter((t) => visited.has(t.slug)).map((t) => (
-        <div key={t.slug} id={`repo-panel-${t.slug}`} role="tabpanel" aria-label={t.label} hidden={t.slug !== tab}>
-          {content[t.slug]()}
-        </div>
-      ))}
+      {results?.not_copied_note && (
+        <p className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800" data-testid="not-copied-note">
+          {results.not_copied_note}
+        </p>
+      )}
+      {repo.files_held_on && (
+        <p className="rounded border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-600" data-testid="files-held-on">
+          Scanned {repo.files_held_on}: its results are read from the database. Its files, worktrees, logs and evidence stay there, so
+          file links show where they are instead of opening.
+        </p>
+      )}
+
+      <FilesHeldOn value={repo.files_held_on ?? null}>
+        {TABS.filter((t) => visited.has(t.slug)).map((t) => (
+          <div key={t.slug} id={`repo-panel-${t.slug}`} role="tabpanel" aria-label={t.label} hidden={t.slug !== tab}>
+            {content[t.slug]()}
+          </div>
+        ))}
+      </FilesHeldOn>
 
       {showDeleteConfirm && (
         <HardDeleteDialog

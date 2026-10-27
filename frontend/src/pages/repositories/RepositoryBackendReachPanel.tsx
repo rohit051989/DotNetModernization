@@ -1,11 +1,13 @@
 import { Fragment, useEffect, useState } from 'react'
 import { ApiError } from '../../api/client'
-import { CollapsibleSection, GroupedItems } from '../../components/CollapsibleSection'
+import { backendApplications, backendOperations, getBackendSummary } from '../../api/results'
+import { CollapsibleSection } from '../../components/CollapsibleSection'
 import { LimitedList, useLimitedList } from '../../components/LimitedList'
+import { PagedList } from '../../components/PagedList'
 import { surfaceSectionId } from './surfaceSections'
-import { getRepositoryEntryPointBackend } from '../../api/surface'
 import { SourceLink } from './SourceLink'
-import type { BackendCall, BackendHost, BackendStatus, EntryPointBackend, EntryPointBackendRow } from '../../types/surface'
+import type { BackendApplication, BackendSummary } from '../../types/results'
+import type { BackendCall, BackendHost, BackendStatus, EntryPointBackendRow } from '../../types/surface'
 
 // Inbound operations → backend calls — step 5 1.3.0 (29-ENTRY-POINT-AND-OUTBOUND-INVENTORIES Part C9).
 // Per application, every request entry point and the outbound call sites it
@@ -168,15 +170,14 @@ function Row({ row, localPath }: { row: EntryPointBackendRow; localPath: string 
   )
 }
 
-type Application = EntryPointBackend['applications'][number]
-
 /** A list of at most this many panels opens them all at first; a longer one starts with each folded. */
 const FEW_OPEN = 3
 
-/** Open at first only when it is one of a few: its header line already gives its counts (release 6). */
-function Application({ app, localPath, defaultOpen = true }: { app: Application; localPath: string; defaultOpen?: boolean }) {
+/** Open at first only when it is one of a few: its header line already gives its counts (release 6). Its operations
+ * come a page at a time. */
+function Application({ repositoryId, app, localPath, refreshToken, defaultOpen = true }: { repositoryId: string; app: BackendApplication; localPath: string; refreshToken: number; defaultOpen?: boolean }) {
   const [expanded, setExpanded] = useState(defaultOpen)
-  const count = (s: BackendStatus) => app.rows.filter((r) => r.status === s).length
+  const count = (s: BackendStatus) => app.counts[s] ?? 0
   return (
     <div className="rounded border border-neutral-200">
       <button
@@ -187,7 +188,7 @@ function Application({ app, localPath, defaultOpen = true }: { app: Application;
       >
         <span className="min-w-0 break-all font-mono text-xs text-neutral-800">{app.project_path}</span>
         <span className="flex flex-wrap gap-2 text-xs text-neutral-400">
-          {app.rows.length} operation{app.rows.length === 1 ? '' : 's'}
+          {app.operations} operation{app.operations === 1 ? '' : 's'}
           <span className="text-violet-700">{count('yes')} call backend</span>
           <span>{count('no')} no</span>
           {count('unresolved') > 0 && <span className="text-amber-700">{count('unresolved')} unresolved</span>}
@@ -197,7 +198,7 @@ function Application({ app, localPath, defaultOpen = true }: { app: Application;
       </button>
       {expanded && (
         <div className="border-t border-neutral-100 px-3 py-2">
-        <LimitedList items={app.rows} name={(row) => [row.service, row.operation, row.handler.type, row.handler.member]} noun="operations">
+        <PagedList<EntryPointBackendRow> load={backendOperations(repositoryId, app.project_id)} resetKey={`${repositoryId}|${refreshToken}|${app.project_id}`} noun="operations">
           {(shown) => (
         <div className="overflow-x-auto">
           <table className="w-full min-w-[1000px] text-left text-xs">
@@ -220,7 +221,7 @@ function Application({ app, localPath, defaultOpen = true }: { app: Application;
           </table>
         </div>
           )}
-        </LimitedList>
+        </PagedList>
         </div>
       )}
     </div>
@@ -228,7 +229,7 @@ function Application({ app, localPath, defaultOpen = true }: { app: Application;
 }
 
 export function RepositoryBackendReachPanel({ repositoryId, localPath, refreshToken }: { repositoryId: string; localPath: string; refreshToken: number }) {
-  const [data, setData] = useState<EntryPointBackend | null>(null)
+  const [data, setData] = useState<BackendSummary | null>(null)
   const [notScanned, setNotScanned] = useState(false)
   const [failed, setFailed] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -238,7 +239,7 @@ export function RepositoryBackendReachPanel({ repositoryId, localPath, refreshTo
     setLoading(true)
     setNotScanned(false)
     setFailed(false)
-    getRepositoryEntryPointBackend(repositoryId)
+    getBackendSummary(repositoryId)
       .then((result) => {
         if (!cancelled) setData(result)
       })
@@ -255,18 +256,16 @@ export function RepositoryBackendReachPanel({ repositoryId, localPath, refreshTo
     }
   }, [repositoryId, refreshToken])
 
-  const apps = data?.applications ?? []
-  const withRows = apps.filter((a) => a.rows.length > 0)
-  const withoutRows = apps.filter((a) => a.rows.length === 0)
-  const operations = apps.reduce((n, a) => n + a.rows.length, 0)
-  const count = (status: BackendStatus) => apps.reduce((n, a) => n + a.rows.filter((r) => r.status === status).length, 0)
+  const operations = data?.operations ?? 0
+  const applications = data?.applications ?? 0
+  const count = (status: BackendStatus) => data?.count_by_status[status] ?? 0
   const summary = loading
     ? 'loading…'
     : failed
       ? 'could not be loaded'
       : notScanned || !data
         ? 'not scanned yet'
-        : `${operations} operation${operations === 1 ? '' : 's'} in ${withRows.length} application${withRows.length === 1 ? '' : 's'} · ` +
+        : `${operations} operation${operations === 1 ? '' : 's'} in ${applications} application${applications === 1 ? '' : 's'} · ` +
           `${count('yes')} call backend` +
           (count('unresolved') > 0 ? `, ${count('unresolved')} unresolved` : '')
 
@@ -295,37 +294,18 @@ export function RepositoryBackendReachPanel({ repositoryId, localPath, refreshTo
             make backend calls are shown as not followed, never guessed. The endpoint is the{' '}
             {data.production_environment ? `${data.production_environment} environment's host` : 'host as found (no production environment is set)'}.
           </p>
-          {withRows.length === 0 && <p className="text-sm text-neutral-400">No request entry points in this repository.</p>}
-          {/* One list: an application per project with inbound operations, and the grouped line for the rest, which counts as one. */}
-          <LimitedList<Application | 'without'>
-            items={[...withRows, ...(withoutRows.length > 0 ? (['without'] as const) : [])]}
-            name={(a) => (a === 'without' ? withoutRows.map((w) => w.project_path) : a.project_path)}
-            noun="applications"
-          >
-            {(shown) => (
-              <div className="space-y-2">
-                {shown.map((app) =>
-                  app === 'without' ? (
-                    <GroupedItems key="without" label={`${withoutRows.length} application${withoutRows.length === 1 ? '' : 's'} with no inbound operations`}>
-                      <LimitedList items={withoutRows} name={(w) => w.project_path} noun="applications">
-                        {(rows) => (
-                          <ul className="space-y-0.5 text-xs text-neutral-500">
-                            {rows.map((w) => (
-                              <li key={w.project_id} className="break-all font-mono">
-                                {w.project_path}
-                              </li>
-                            ))}
-                          </ul>
-                        )}
-                      </LimitedList>
-                    </GroupedItems>
-                  ) : (
-                    <Application key={app.project_id} app={app} localPath={localPath} defaultOpen={withRows.length <= FEW_OPEN} />
-                  ),
-                )}
-              </div>
-            )}
-          </LimitedList>
+          {applications === 0 && <p className="text-sm text-neutral-400">No request entry points in this repository.</p>}
+          {applications > 0 && (
+            <PagedList<BackendApplication> load={backendApplications(repositoryId)} resetKey={`${repositoryId}|${refreshToken}`} noun="applications">
+              {(shown) => (
+                <div className="space-y-2">
+                  {shown.map((app) => (
+                    <Application key={app.project_id} repositoryId={repositoryId} app={app} localPath={localPath} refreshToken={refreshToken} defaultOpen={applications <= FEW_OPEN} />
+                  ))}
+                </div>
+              )}
+            </PagedList>
+          )}
         </div>
       )}
     </CollapsibleSection>

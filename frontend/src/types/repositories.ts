@@ -47,6 +47,8 @@ export interface RepositorySummary {
   cannot_act_reason?: string | null
   /** Why the person may not edit its details (owners and admins may, from any machine). */
   cannot_edit_reason?: string | null
+  /** Registered on another machine: where its files, worktrees and run output are ("on Ann's machine (PC-17)"). */
+  files_held_on?: string | null
 }
 
 export interface RepositoryDetail extends RepositorySummary {

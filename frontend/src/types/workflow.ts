@@ -212,6 +212,10 @@ export interface ArtifactDetail extends ArtifactSummary {
   uri: string
   resolved_path: string | null
   file_exists: boolean
+  /** Its content is also in the database (backend app.results): readable from every machine. */
+  in_database?: boolean
+  /** Its file is on another machine: where, as "on Ann's machine (PC-17)". */
+  held_on?: string | null
   metadata: Record<string, unknown> | null
 }
 

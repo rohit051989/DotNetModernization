@@ -26,6 +26,14 @@ export interface EvidenceLink {
   sha256: string
   url: string
   project: string | null
+  /** The file is on another machine: where, instead of a link that cannot work. */
+  held_on?: string | null
+}
+
+/** Set when the conversions are on another machine: what is shown is what that machine last published. */
+export interface ConversionsHeld {
+  held_on: string
+  as_of: string | null
 }
 
 /** One unit-test project's results: counts and the names of failing tests. */
@@ -206,4 +214,5 @@ export interface Conversions {
   discovery_job: JobRef | null
   verification_job: JobRef | null
   other_plans: PlanRef[]
+  held?: ConversionsHeld | null
 }

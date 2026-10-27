@@ -74,7 +74,7 @@ async function renderSection(mode: 'graph' | 'tree') {
   window.localStorage.setItem('structure:view', mode)
   render(
     <ToastProvider>
-      <StructureSection repositoryId="r" localPath="D:\repo" refreshToken={0} assessment={undefined} />
+      <StructureSection repositoryId="r" localPath="D:\repo" refreshToken={0} assessmentId={null} />
     </ToastProvider>,
   )
   await screen.findByRole('button', { name: 'Expand Web' })

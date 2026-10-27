@@ -20,12 +20,12 @@ vi.mock('./RepositoryImpactSection', () => ({ RepositoryImpactSection: standIn('
 vi.mock('./RepositoryTestsSection', () => ({ RepositoryTestsSection: standIn('tests') }))
 vi.mock('./ConversionsPanel', () => ({ ConversionsPanel: standIn('conversion') }))
 vi.mock('./structure/StructureSection', () => ({ StructureSection: standIn('dependency-graph') }))
-vi.mock('../workflow/artifacts/renderers', () => ({
-  DependenciesView: standIn('dependencies'),
-  FingerprintView: standIn('fingerprint'),
-  ItemOccurrencesView: standIn('work-list'),
-  formatBytes: (n: number) => `${n} B`,
+vi.mock('./StoredResultViews', () => ({
+  StoredDependenciesView: standIn('dependencies'),
+  StoredFingerprintView: standIn('fingerprint'),
+  StoredWorkListView: standIn('work-list'),
 }))
+vi.mock('../workflow/artifacts/renderers', () => ({ formatBytes: (n: number) => `${n} B` }))
 
 const artifacts = vi.hoisted(() => ({
   'item-occurrences': { data: { summary: { found: 28, possible_only_found: 0, not_checked: 0 } }, executionId: 'e', createdAt: '2026-10-23T00:00:00Z' },
@@ -36,7 +36,7 @@ const artifacts = vi.hoisted(() => ({
     createdAt: '2026-10-23T00:00:00Z',
   },
 }))
-vi.mock('./useLatestArtifacts', () => ({ useLatestArtifacts: () => ({ artifacts, loading: false }) }))
+vi.mock('./useLatestArtifacts', () => ({ useLatestArtifacts: () => ({ artifacts, results: null, loading: false }) }))
 // What the backend says about ownership, for the signed-in person (app.auth.policy): set per test.
 const ownership = vi.hoisted(() => ({ current: {} as Record<string, unknown> }))
 vi.mock('../../api/repositories', () => ({
@@ -54,11 +54,10 @@ vi.mock('../../api/repositories', () => ({
   updateRepository: vi.fn(),
   verifyRepositoryPath: vi.fn(),
 }))
-vi.mock('../../api/items', () => ({ getWorkListDecisions: () => Promise.resolve(null) }))
 vi.mock('../../api/conversion', () => ({
   listConversions: () => Promise.resolve({ conversions: [{ number: 1, branch: 'conversion/1', state: 'prepared' }], next: { number: 2 } }),
 }))
-vi.mock('../../api/surface', () => ({ getRepositorySoapCompatibility: () => Promise.reject(new Error('none')) }))
+vi.mock('../../api/results', () => ({ getSoapSummary: () => Promise.reject(new Error('none')) }))
 vi.mock('../../api/deletion', () => ({ deleteRepositoryHard: vi.fn(), getRepositoryDeletionPlan: vi.fn() }))
 
 import { RepositoryDetailPage } from './RepositoryDetailPage'
@@ -123,6 +122,14 @@ describe('RepositoryDetailPage tabs', () => {
       expect(screen.getByRole('button', { name }).hasAttribute('disabled')).toBe(false)
     }
     expect(screen.queryByTestId('read-only-note')).toBeNull()
+    expect(screen.queryByTestId('files-held-on')).toBeNull()
+    ownership.current = {}
+  })
+
+  it('a repository scanned on another machine says whose machine has its files', async () => {
+    ownership.current = { owner_name: 'Alice', owner_user_id: 'u1', registered_host: 'DEVBOX-A', files_held_on: "on Alice's machine (DEVBOX-A)" }
+    await open('/repositories/r')
+    expect(screen.getByTestId('files-held-on').textContent).toContain("Scanned on Alice's machine (DEVBOX-A): its results are read from the database.")
     ownership.current = {}
   })
 

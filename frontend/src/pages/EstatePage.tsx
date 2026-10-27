@@ -1,8 +1,10 @@
-import { Fragment, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { Fragment, useCallback, useEffect, useState, type ReactNode } from 'react'
 import { ApiError } from '../api/client'
 import { getEstate, putEndpointAnnotation, putEstateSettings } from '../api/estate'
+import { estateDependencies, estatePackages, getContextMap, integrationApplications, integrationList, registerHosts, registerUnresolved } from '../api/results'
 import { launchJob } from '../api/workflow'
 import { LimitedList } from '../components/LimitedList'
+import { PagedList, type Page, type PageLoader } from '../components/PagedList'
 import { useToast } from '../components/Toast'
 import { SoapCompatibilityView } from './SoapCompatibilityView'
 import { EstateRuleConflictsView } from './RuleConflictsViews'
@@ -12,13 +14,15 @@ import type {
   Coverage,
   DependencyGraphArtifact,
   EndpointAnnotation,
-  EndpointRegisterArtifact,
   EstateSettings,
   EstateView,
   IntegrationApplication,
-  IntegrationMapArtifact,
-  PackageEstateArtifact,
+  PackageEstateRow,
+  ProjectRef,
+  RegisterCounts,
   RegisterHost,
+  RegisterRow,
+  UnresolvedEndpoint,
 } from '../types/estate'
 import { UNDER_REVIEW, UNDER_REVIEW_LABEL } from '../types/estate'
 
@@ -105,11 +109,14 @@ export function EstatePage({
   const [loading, setLoading] = useState(true)
   const [running, setRunning] = useState(false)
   const [view, setView] = useState<View>(focusSoapInvocation ? 'soap' : 'register')
+  // Bumped on every reload, so each view's paged lists start again with what changed.
+  const [reloads, setReloads] = useState(0)
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
       setEstate(await getEstate(engagementId))
+      setReloads((n) => n + 1)
     } catch {
       setEstate(null)
       showToast('error', 'Could not load the estate view.')
@@ -187,8 +194,10 @@ export function EstatePage({
           {view === 'register' && register && (
             <RegisterView
               engagementId={engagementId}
+              reloads={reloads}
               register={register}
-              annotations={estate.annotations}
+              counts={estate.register_counts}
+              servedByPending={estate.served_by_pending}
               settings={estate.settings}
               onOpenRepository={onOpenRepository}
               onSaved={load}
@@ -196,15 +205,15 @@ export function EstatePage({
           )}
           {view === 'integration' &&
             (estate.artifacts['integration-map'] ? (
-              <IntegrationView data={estate.artifacts['integration-map']} onOpenRepository={onOpenRepository} />
+              <IntegrationView engagementId={engagementId} reloads={reloads} data={estate.artifacts['integration-map']} onOpenRepository={onOpenRepository} />
             ) : (
               <p className="rounded border border-neutral-200 bg-white px-4 py-6 text-sm text-neutral-500">
                 This estate run predates the integration map. Rerun estate consolidation to build it.
               </p>
             ))}
-          {view === 'packages' && estate.artifacts['package-estate'] && <PackagesView data={estate.artifacts['package-estate']} />}
-          {view === 'dependencies' && estate.artifacts['dependency-graph'] && <DependenciesView data={estate.artifacts['dependency-graph']} />}
-          {view === 'context' && estate.artifacts['context-map'] && <ContextView data={estate.artifacts['context-map']} />}
+          {view === 'packages' && estate.artifacts['package-estate'] && <PackagesView engagementId={engagementId} reloads={reloads} data={estate.artifacts['package-estate']} />}
+          {view === 'dependencies' && estate.artifacts['dependency-graph'] && <DependenciesView engagementId={engagementId} reloads={reloads} data={estate.artifacts['dependency-graph']} />}
+          {view === 'context' && estate.artifacts['context-map'] && <ContextLoader engagementId={engagementId} reloads={reloads} />}
           {view === 'rule-conflicts' && <EstateRuleConflictsView engagementId={engagementId} onOpenRepository={onOpenRepository} />}
           {view === 'soap' && (
             <SoapCompatibilityView
@@ -222,31 +231,21 @@ export function EstatePage({
 
 // ---------- endpoint register ----------
 
-/** A row of the register: a host the estate calls, or one no longer called whose annotation is kept. */
-type RegisterRow = { host: RegisterHost; noLongerCalled?: undefined } | { host?: undefined; noLongerCalled: string }
-
-/** The names a person sees on a register row, for its filter box. */
-function registerRowNames(row: RegisterRow): string[] {
-  if (!row.host) return [row.noLongerCalled]
-  return [
-    row.host.host,
-    ...row.host.otherHosts.map((o) => o.host),
-    ...row.host.services.flatMap((s) => [s.path, s.contract ?? '']),
-    ...row.host.callingRepositories,
-  ]
-}
-
 function RegisterView({
   engagementId,
+  reloads,
   register,
-  annotations,
+  counts,
+  servedByPending,
   settings,
   onOpenRepository,
   onSaved,
 }: {
   engagementId: string
-  register: EndpointRegisterArtifact
-  annotations: EndpointAnnotation[]
+  reloads: number
+  register: NonNullable<EstateView['artifacts']['endpoint-register']>
+  counts: RegisterCounts | null
+  servedByPending: boolean
   settings: EstateSettings
   onOpenRepository: (repositoryId: string) => void
   onSaved: () => void
@@ -254,19 +253,16 @@ function RegisterView({
   const { showToast } = useToast()
   const [open, setOpen] = useState<Record<string, boolean>>({})
   const [showUnresolved, setShowUnresolved] = useState(false)
-  const byHost = useMemo(() => Object.fromEntries(annotations.map((a) => [a.host, a])), [annotations])
-  const status = (host: string): ConversationStatus => byHost[host]?.conversation_status ?? 'not_started'
 
-  const backend = register.hosts.filter((h) => h.requiresBackendChange)
-  const underWay = backend.filter((h) => ['in_progress', 'agreed'].includes(status(h.host))).length
-  const notStarted = backend.filter((h) => status(h.host) === 'not_started').length
-  const done = backend.length - underWay - notStarted
-  const rows: RegisterRow[] = [...register.hosts.map((host) => ({ host })), ...register.noLongerCalled.map((noLongerCalled) => ({ noLongerCalled }))]
+  // Counted by the server over every host, with the annotations as they stand now; the hosts come a page at a time.
+  const backend = counts?.backend ?? 0
+  const underWay = counts?.under_way ?? 0
+  const notStarted = counts?.not_started ?? 0
+  const done = counts?.done ?? 0
 
   // Settings and served-by annotations take effect on the next run: say so
   // when what is stored differs from what this register was built with.
   const productionPending = (settings.production_environment ?? null) !== (register.productionEnvironment ?? null)
-  const servedByPending = annotations.some((a) => (a.served_by_repository ?? undefined) !== register.servedByAnnotations?.[a.host])
 
   async function setProduction(value: string) {
     try {
@@ -355,13 +351,12 @@ function RegisterView({
       </div>
 
       <div className="flex flex-wrap items-center gap-2 rounded border border-neutral-200 bg-white px-3 py-2 text-sm">
-        <span className={backend.length > 0 ? 'font-semibold text-red-700' : 'text-neutral-600'}>
-          {backend.length} host{backend.length === 1 ? ' requires' : 's require'} backend change
+        <span className={backend > 0 ? 'font-semibold text-red-700' : 'text-neutral-600'}>
+          {backend} host{backend === 1 ? ' requires' : 's require'} backend change
         </span>
-        {backend.length > 0 && (
+        {backend > 0 && (
           <span className="text-neutral-600">
-            ({backend.filter((h) => h.backendChangeOwner !== 'this_migration').length} another team's service,{' '}
-            {backend.filter((h) => h.backendChangeOwner === 'this_migration').length} a service inside this migration)
+            ({counts?.another_team ?? 0} another team's service, {counts?.this_migration ?? 0} a service inside this migration)
           </span>
         )}
         <span className="text-neutral-500">
@@ -376,7 +371,7 @@ function RegisterView({
         </span>
       </div>
 
-      <LimitedList items={rows} name={registerRowNames} noun="hosts">
+      <PagedList<RegisterRow> load={registerHosts(engagementId)} resetKey={`${engagementId}|${reloads}`} noun="hosts">
         {(visible) => (
       <div className="overflow-x-auto rounded border border-neutral-200 bg-white">
         <table className="w-full min-w-[1100px] text-left text-xs">
@@ -390,14 +385,14 @@ function RegisterView({
             </tr>
           </thead>
           <tbody>
-            {visible.map(({ host, noLongerCalled }) =>
+            {visible.map(({ host, noLongerCalled, annotation }) =>
               host ? (
               <HostRow
                 key={host.host}
                 engagementId={engagementId}
                 host={host}
                 repositories={settings.repositories}
-                annotation={byHost[host.host] ?? (host.annotationCarriedFrom ?? []).map((h) => byHost[h]).find(Boolean)}
+                annotation={annotation ?? undefined}
                 expanded={!!open[host.host]}
                 onToggle={() => setOpen((o) => ({ ...o, [host.host]: !o[host.host] }))}
                 onOpenRepository={onOpenRepository}
@@ -410,7 +405,7 @@ function RegisterView({
                 host={null}
                 hostName={noLongerCalled}
                 repositories={settings.repositories}
-                annotation={byHost[noLongerCalled]}
+                annotation={annotation ?? undefined}
                 expanded={false}
                 onToggle={() => undefined}
                 onOpenRepository={onOpenRepository}
@@ -422,9 +417,9 @@ function RegisterView({
         </table>
       </div>
         )}
-      </LimitedList>
+      </PagedList>
 
-      {register.unresolved.length > 0 && (
+      {register.summary.unresolved > 0 && (
         <div className="rounded border border-neutral-200 bg-white">
           <button
             type="button"
@@ -433,15 +428,15 @@ function RegisterView({
             className="flex w-full items-center justify-between px-3 py-2 text-left text-sm"
           >
             <span>
-              <span className="font-medium text-neutral-800">Unresolved endpoints ({register.unresolved.length})</span>
+              <span className="font-medium text-neutral-800">Unresolved endpoints ({register.summary.unresolved})</span>
               <span className="text-neutral-500"> — the address is decided at runtime or in configuration the scan could not read; never guessed into a host.</span>
             </span>
             <span className="text-neutral-400">{showUnresolved ? '▲' : '▼'}</span>
           </button>
           {showUnresolved && (
-            <LimitedList
-              items={register.unresolved}
-              name={(u) => [`${u.repositorySlug}:${u.projectPath}`, u.contract, u.placeholder ?? u.resolution]}
+            <PagedList<UnresolvedEndpoint>
+              load={registerUnresolved(engagementId)}
+              resetKey={`${engagementId}|${reloads}`}
               noun="unresolved endpoints"
               className="border-t border-neutral-100 px-3 py-2"
             >
@@ -458,7 +453,7 @@ function RegisterView({
               ))}
             </ul>
               )}
-            </LimitedList>
+            </PagedList>
           )}
         </div>
       )}
@@ -858,19 +853,18 @@ function site(s: { filePath: string | null; lineStart: number | null }) {
  * point it reaches or why none was found, and the operations of its that the
  * estate calls. An operation nothing in the estate calls is "no internal
  * caller found" — never unused: it may be called from outside the estate. */
-function IntegrationView({ data, onOpenRepository }: { data: IntegrationMapArtifact; onOpenRepository: (repositoryId: string) => void }) {
-  const [query, setQuery] = useState('')
+/** An application as the integration map lists it: its counts, and the first page of each of its lists. */
+type ListedApplication = Omit<IntegrationApplication, 'calls' | 'exposes'> & {
+  counts: { calls: number; exposes: number; called: number; uncalled: number }
+  calls: Page<IntegrationEdgeCall>
+  called: Page<IntegrationExposed>
+  uncalled: Page<IntegrationExposed>
+}
+type IntegrationEdgeCall = IntegrationApplication['calls'][number]
+type IntegrationExposed = IntegrationApplication['exposes'][number]
+
+function IntegrationView({ engagementId, reloads, data, onOpenRepository }: { engagementId: string; reloads: number; data: NonNullable<EstateView['artifacts']['integration-map']>; onOpenRepository: (repositoryId: string) => void }) {
   const [exposed, setExposed] = useState<'called' | 'all'>('called')
-  const q = query.trim().toLowerCase()
-  const apps = data.applications.filter((a) => {
-    if (a.calls.length === 0 && (exposed === 'called' ? !a.exposes.some((e) => e.callers.length > 0) : a.exposes.length === 0)) return false
-    if (!q) return true
-    return (
-      `${a.repositorySlug}:${a.projectPath}`.toLowerCase().includes(q) ||
-      a.calls.some((c) => c.operation.toLowerCase().includes(q)) ||
-      a.exposes.some((e) => e.operation.toLowerCase().includes(q))
-    )
-  })
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
@@ -890,38 +884,42 @@ function IntegrationView({ data, onOpenRepository }: { data: IntegrationMapArtif
             <option value="all">with any entry point</option>
           </select>
         </label>
-        <input
-          aria-label="Filter applications and operations"
-          className="w-full rounded border border-neutral-200 px-2 py-1 text-xs sm:w-56"
-          placeholder="filter application or operation"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-        />
       </div>
       <p className="text-xs text-neutral-500">
         Matched from what step 5 recorded each call site invoking to what step 4 found each entry point serving: SOAP by contract and operation, HTTP by verb and
         route template (on a local address, or a host annotated with its serving repository), gRPC by service and method. "No internal caller found" is not
-        "unused" — callers outside the estate are not visible here.
+        "unused" — callers outside the estate are not visible here. The filter matches an application or any operation it calls or serves.
       </p>
-      {/* The filter above is this list's own, so the list is limited without a second filter box. */}
-      <LimitedList
-        items={apps}
+      <PagedList<ListedApplication>
+        load={integrationApplications(engagementId, exposed)}
+        resetKey={`${engagementId}|${reloads}|${exposed}`}
         noun="applications"
         className="space-y-3"
         empty={<p className="rounded border border-neutral-200 bg-white px-4 py-6 text-sm text-neutral-500">No application matches.</p>}
       >
-        {(visible) => visible.map((a) => (
-          <ApplicationCard key={`${a.repositorySlug}:${a.projectPath}`} app={a} showUncalled={exposed === 'all'} onOpenRepository={onOpenRepository} />
-        ))}
-      </LimitedList>
+        {(visible) => (
+          <div className="space-y-3">
+            {visible.map((a) => (
+              <ApplicationCard
+                key={`${a.repositorySlug}:${a.projectPath}`}
+                engagementId={engagementId}
+                reloads={reloads}
+                app={a}
+                showUncalled={exposed === 'all'}
+                onOpenRepository={onOpenRepository}
+              />
+            ))}
+          </div>
+        )}
+      </PagedList>
     </div>
   )
 }
 
-function ApplicationCard({ app, showUncalled, onOpenRepository }: { app: IntegrationApplication; showUncalled: boolean; onOpenRepository: (repositoryId: string) => void }) {
-  const called = app.exposes.filter((e) => e.callers.length > 0)
-  const uncalled = app.exposes.filter((e) => e.callers.length === 0)
+function ApplicationCard({ engagementId, reloads, app, showUncalled, onOpenRepository }: { engagementId: string; reloads: number; app: ListedApplication; showUncalled: boolean; onOpenRepository: (repositoryId: string) => void }) {
   const [showAll, setShowAll] = useState(false)
+  const list = (which: 'calls' | 'called' | 'uncalled') => integrationList(engagementId, app.repositorySlug, app.projectPath, which)
+  const key = `${engagementId}|${reloads}|${app.repositorySlug}:${app.projectPath}`
   return (
     <div className="rounded border border-neutral-200 bg-white">
       <div className="flex flex-wrap items-baseline gap-2 border-b border-neutral-100 px-3 py-2">
@@ -929,15 +927,16 @@ function ApplicationCard({ app, showUncalled, onOpenRepository }: { app: Integra
           {app.repositorySlug}:{app.projectPath}
         </button>
         <span className="text-[11px] text-neutral-500">
-          calls {app.calls.length} operation{app.calls.length === 1 ? '' : 's'} · {called.length} of {app.exposes.length} of its entry points called from the estate
+          calls {app.counts.calls} operation{app.counts.calls === 1 ? '' : 's'} · {app.counts.called} of {app.counts.exposes} of its entry points called from the estate
         </span>
       </div>
       <div className="grid gap-3 px-3 py-2 lg:grid-cols-2">
         <div className="min-w-0">
           <h4 className="text-[11px] font-medium uppercase tracking-wide text-neutral-400">Operations it calls</h4>
-          <LimitedList
-            items={app.calls}
-            name={(c) => [c.operation, site(c.callSite), ...c.targets.map((t) => `${t.calleeRepositorySlug}:${t.calleeProjectPath}`)]}
+          <PagedList<IntegrationEdgeCall>
+            load={list('calls')}
+            initial={app.calls}
+            resetKey={`${key}|calls`}
             noun="calls"
             className="mt-1"
             empty={<p className="mt-1 text-xs text-neutral-500">No SOAP, HTTP or gRPC call recorded.</p>}
@@ -964,17 +963,13 @@ function ApplicationCard({ app, showUncalled, onOpenRepository }: { app: Integra
               ))}
             </ul>
             )}
-          </LimitedList>
+          </PagedList>
         </div>
         <div className="min-w-0">
           <h4 className="text-[11px] font-medium uppercase tracking-wide text-neutral-400">Its operations others call</h4>
-          {called.length === 0 && <p className="mt-1 text-xs text-neutral-500">{app.exposes.length === 0 ? 'No entry point a call can reach.' : 'No internal caller found for any of its entry points.'}</p>}
-          <LimitedList
-            items={called}
-            name={(e) => [e.operation, ...e.callers.map((c) => `${c.callerRepositorySlug}:${c.callerProjectPath}`)]}
-            noun="operations"
-            className="mt-1"
-          >
+          {app.counts.called === 0 && <p className="mt-1 text-xs text-neutral-500">{app.counts.exposes === 0 ? 'No entry point a call can reach.' : 'No internal caller found for any of its entry points.'}</p>}
+          {app.counts.called > 0 && (
+          <PagedList<IntegrationExposed> load={list('called')} initial={app.called} resetKey={`${key}|called`} noun="operations" className="mt-1">
             {(visibleCalled) => (
           <ul className="space-y-1.5 text-xs">
             {visibleCalled.map((e) => (
@@ -995,9 +990,10 @@ function ApplicationCard({ app, showUncalled, onOpenRepository }: { app: Integra
             ))}
           </ul>
             )}
-          </LimitedList>
-          {uncalled.length > 0 && (showUncalled || showAll) && (
-            <LimitedList items={uncalled} name={(e) => e.operation} noun="operations" className="mt-1.5">
+          </PagedList>
+          )}
+          {app.counts.uncalled > 0 && (showUncalled || showAll) && (
+            <PagedList<IntegrationExposed> load={list('uncalled')} initial={app.uncalled} resetKey={`${key}|uncalled`} noun="operations" className="mt-1.5">
               {(visible) => (
             <ul className="space-y-0.5 text-xs">
               {visible.map((e) => (
@@ -1010,11 +1006,11 @@ function ApplicationCard({ app, showUncalled, onOpenRepository }: { app: Integra
               ))}
             </ul>
               )}
-            </LimitedList>
+            </PagedList>
           )}
-          {uncalled.length > 0 && !showUncalled && (
+          {app.counts.uncalled > 0 && !showUncalled && (
             <button type="button" onClick={() => setShowAll((v) => !v)} className="mt-1 text-[11px] text-violet-700 hover:underline">
-              {showAll ? 'Hide' : 'Show'} {uncalled.length} with no internal caller found
+              {showAll ? 'Hide' : 'Show'} {app.counts.uncalled} with no internal caller found
             </button>
           )}
         </div>
@@ -1025,13 +1021,9 @@ function ApplicationCard({ app, showUncalled, onOpenRepository }: { app: Integra
 
 // ---------- packages ----------
 
-function PackagesView({ data }: { data: PackageEstateArtifact }) {
+function PackagesView({ engagementId, reloads, data }: { engagementId: string; reloads: number; data: NonNullable<EstateView['artifacts']['package-estate']> }) {
   const [driftOnly, setDriftOnly] = useState(false)
-  const [query, setQuery] = useState('')
   const [open, setOpen] = useState<Record<string, boolean>>({})
-  const rows = data.packages.filter(
-    (p) => (!driftOnly || p.estateDrift) && (!query || p.packageId.toLowerCase().includes(query.toLowerCase())),
-  )
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap items-center gap-2">
@@ -1046,16 +1038,9 @@ function PackagesView({ data }: { data: PackageEstateArtifact }) {
           <input type="checkbox" checked={driftOnly} onChange={(e) => setDriftOnly(e.target.checked)} />
           Estate drift only
         </label>
-        <input
-          aria-label="Filter packages"
-          className="w-48 rounded border border-neutral-200 px-2 py-1 text-xs"
-          placeholder="filter packages"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-        />
       </div>
-      {/* The filter above is this table's own, so the rows are limited without a second filter box. */}
-      <LimitedList items={rows} noun="packages">
+      {/* The filter box matches the package id, in the database. */}
+      <PagedList<PackageEstateRow> load={estatePackages(engagementId, driftOnly)} resetKey={`${engagementId}|${reloads}|${driftOnly}`} noun="packages">
         {(visible) => (
       <div className="overflow-x-auto rounded border border-neutral-200 bg-white">
         <table className="w-full min-w-[900px] text-left text-xs">
@@ -1149,16 +1134,21 @@ function PackagesView({ data }: { data: PackageEstateArtifact }) {
         </table>
       </div>
         )}
-      </LimitedList>
+      </PagedList>
     </div>
   )
 }
 
 // ---------- dependencies ----------
 
-function DependenciesView({ data }: { data: DependencyGraphArtifact }) {
-  const cross = data.edges.filter((e) => e.crossRepository)
-  const ref = (p: { repositorySlug: string; projectPath: string }) => `${p.repositorySlug}:${p.projectPath}`
+type GraphEdge = DependencyGraphArtifact['edges'][number]
+type SharedLibrary = DependencyGraphArtifact['sharedLibraries'][number]
+type Cycle = DependencyGraphArtifact['cycles'][number]
+type Reconciliation = DependencyGraphArtifact['originReconciliations'][number]
+
+function DependenciesView({ engagementId, reloads, data }: { engagementId: string; reloads: number; data: NonNullable<EstateView['artifacts']['dependency-graph']> }) {
+  const ref = (p: ProjectRef) => `${p.repositorySlug}:${p.projectPath}`
+  const key = `${engagementId}|${reloads}`
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap gap-2">
@@ -1169,11 +1159,12 @@ function DependenciesView({ data }: { data: DependencyGraphArtifact }) {
         <Pill className={data.summary.cycles > 0 ? 'border-red-200 bg-red-50 text-red-700' : ''}>{data.summary.cycles} cycles</Pill>
         <Pill>{data.summary.originReconciliations} origin reconciliations</Pill>
       </div>
-      <Section
+      <Section<SharedLibrary>
         title="Shared libraries"
+        count={data.summary.sharedLibraries}
         empty="No project is depended on from two or more repositories."
-        items={data.sharedLibraries}
-        name={(s) => ref(s.project)}
+        load={estateDependencies(engagementId, 'shared-libraries')}
+        resetKey={key}
         noun="shared libraries"
       >
         {(visible) => visible.map((s) => (
@@ -1185,11 +1176,12 @@ function DependenciesView({ data }: { data: DependencyGraphArtifact }) {
           </li>
         ))}
       </Section>
-      <Section
+      <Section<Cycle>
         title="Cycles"
+        count={data.summary.cycles}
         empty="No cycles: every dependency chain has a project that can migrate first."
-        items={data.cycles}
-        name={(c) => c.members.map(ref)}
+        load={estateDependencies(engagementId, 'cycles')}
+        resetKey={key}
         noun="cycles"
       >
         {(visible) => visible.map((c) => (
@@ -1199,11 +1191,12 @@ function DependenciesView({ data }: { data: DependencyGraphArtifact }) {
           </li>
         ))}
       </Section>
-      <Section
+      <Section<GraphEdge>
         title="Cross-repository dependencies"
+        count={data.summary.crossRepositoryEdges}
         empty="No package reference names a project in another repository of the engagement."
-        items={cross}
-        name={(e) => [ref(e.from), ref(e.to), e.via]}
+        load={estateDependencies(engagementId, 'cross-repository')}
+        resetKey={key}
         noun="dependencies"
       >
         {(visible) => visible.map((e) => (
@@ -1216,11 +1209,12 @@ function DependenciesView({ data }: { data: DependencyGraphArtifact }) {
           </li>
         ))}
       </Section>
-      <Section
+      <Section<Reconciliation>
         title="Origin reconciliations"
+        count={data.summary.originReconciliations}
         empty="No framework-origin entry point turned out to be declared in another repository."
-        items={data.originReconciliations}
-        name={(r) => [r.entryPointId.slice(0, 12), r.originalOrigin, r.reconciledOrigin, r.reason]}
+        load={estateDependencies(engagementId, 'origin-reconciliations')}
+        resetKey={key}
         noun="origin reconciliations"
       >
         {(visible) => visible.map((r) => (
@@ -1233,32 +1227,51 @@ function DependenciesView({ data }: { data: DependencyGraphArtifact }) {
   )
 }
 
-/** A titled list of the dependency graph: limited, with a filter on the names its rows show. */
+/** A titled list of the dependency graph, a page at a time, with a filter on the names its rows show. */
 function Section<T>({
   title,
+  count,
   empty,
-  items,
-  name,
+  load,
+  resetKey,
   noun,
   children,
 }: {
   title: string
+  count: number
   empty: string
-  items: T[]
-  name: (item: T) => string | (string | null)[]
+  load: PageLoader<T>
+  resetKey: string
   noun: string
   children: (visible: T[]) => ReactNode
 }) {
   return (
     <div className="rounded border border-neutral-200 bg-white px-3 py-2">
       <h3 className="text-sm font-semibold text-neutral-900">
-        {title} <span className="font-normal text-neutral-400">({items.length})</span>
+        {title} <span className="font-normal text-neutral-400">({count})</span>
       </h3>
-      <LimitedList items={items} name={name} noun={noun} className="mt-1" empty={<p className="mt-1 text-xs text-neutral-500">{empty}</p>}>
+      <PagedList<T> load={load} resetKey={resetKey} noun={noun} className="mt-1" empty={<p className="mt-1 text-xs text-neutral-500">{empty}</p>}>
         {(visible) => <ul className="space-y-1 break-all text-xs">{children(visible)}</ul>}
-      </LimitedList>
+      </PagedList>
     </div>
   )
+}
+
+/** The context map is drawn whole: it is fetched when its view is opened. */
+function ContextLoader({ engagementId, reloads }: { engagementId: string; reloads: number }) {
+  const [data, setData] = useState<ContextMapArtifact | null>(null)
+  const [failed, setFailed] = useState(false)
+  useEffect(() => {
+    let live = true
+    setFailed(false)
+    getContextMap(engagementId).then((r) => live && setData(r), () => live && setFailed(true))
+    return () => {
+      live = false
+    }
+  }, [engagementId, reloads])
+  if (failed) return <p className="text-sm text-red-600">Could not load the context map.</p>
+  if (!data) return <p className="text-sm text-neutral-400">Loading…</p>
+  return <ContextView data={data} />
 }
 
 // ---------- context ----------

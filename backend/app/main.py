@@ -12,6 +12,7 @@ from app.auth import machine
 from app.auth.http import guard
 from app.config import settings
 from app.heartbeat import AnotherPlatform, Heartbeat
+from app.results import views as results_views
 from app.routers import (
     catalog,
     catalog_items,
@@ -22,10 +23,12 @@ from app.routers import (
     hierarchy,
     decisions,
     estate,
+    estate_pages,
     engagement_patterns,
     engagements,
     health,
     impact,
+    impact_pages,
     item_decisions,
     patterns,
     repositories,
@@ -33,6 +36,7 @@ from app.routers import (
     step_policies,
     structure,
     surface,
+    surface_pages,
     target_states,
     test_coverage,
     time_limits,
@@ -371,11 +375,15 @@ app.include_router(workflow_artifacts.router)
 app.include_router(repositories.router)
 app.include_router(structure.router)
 app.include_router(surface.router)
+app.include_router(surface_pages.router)
 app.include_router(dashboard.router)
 app.include_router(estate.router)
+app.include_router(estate_pages.router)
 app.include_router(test_coverage.router)
 app.include_router(impact.router)
+app.include_router(impact_pages.router)
 app.include_router(conversion.router)
 app.include_router(deletion.router)
 app.include_router(editors.router)
 app.include_router(hierarchy.router)
+app.include_router(results_views.router)

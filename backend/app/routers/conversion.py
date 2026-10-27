@@ -7,9 +7,13 @@ Evidence is files under the plan's directory, each recorded with its sha256
 (app/conversion/evidence.py). The evidence endpoint serves only a path the
 plan records, and only while the file still has the recorded hash — a link is
 never more than the evidence it points at.
+
+Conversions live on the machine their repository was registered on. Every
+other machine reads them from the database (app.results.conversions), as that
+machine last published them, and is told where the evidence is instead of being
+given links that cannot work.
 """
 
-import json
 import mimetypes
 import uuid
 from pathlib import Path
@@ -24,6 +28,7 @@ from app import models
 from app.conversion import evidence as evidence_files
 from app.db import get_db
 from app.errors import ErrorResponse, error
+from app.results import conversions as shared, held
 
 router = APIRouter(prefix="/api", tags=["Conversion"])
 
@@ -34,6 +39,7 @@ class EvidenceLinkOut(BaseModel):
     sha256: str
     url: str
     project: str | None = None
+    held_on: str | None = None          # the file is on another machine: where, instead of a link that cannot work
 
 
 class TestTotalsOut(BaseModel):
@@ -116,10 +122,15 @@ class RepositoryConversionOut(BaseModel):
     plans: list[PlanSummaryOut]
 
 
-def _links(plan: models.ConversionPlan, records: list[dict]) -> list[EvidenceLinkOut]:
+def _links(plan: models.ConversionPlan, records: list[dict], held_on: str | None = None) -> list[EvidenceLinkOut]:
     return [EvidenceLinkOut(kind=r["kind"], path=r["path"], sha256=r["sha256"], project=r.get("project"),
-                            url=f"/api/conversion/plans/{plan.id}/evidence?path={quote(r['path'])}")
+                            url=f"/api/conversion/plans/{plan.id}/evidence?path={quote(r['path'])}", held_on=held_on)
             for r in records if r.get("path") and r.get("sha256")]
+
+
+def _held_on(db: Session, repo: models.Repository) -> str | None:
+    """Where the repository's conversion files are, when that is another machine."""
+    return held.repository_where(db, repo) if held.elsewhere(repo.registered_host) else None
 
 
 def _tests(records: list[dict]) -> dict[str, TestTotalsOut]:
@@ -154,7 +165,8 @@ def _repository(db: Session, repository_id: uuid.UUID) -> models.Repository:
                409: {"model": ErrorResponse, "description": "No conversion plan for this repository yet."}},
 )
 def get_repository_conversion(repository_id: uuid.UUID, plan_id: uuid.UUID | None = Query(None), db: Session = Depends(get_db)):
-    _repository(db, repository_id)
+    repo = _repository(db, repository_id)
+    where = _held_on(db, repo)
     plans = (db.query(models.ConversionPlan).filter_by(repository_id=repository_id)
              .order_by(models.ConversionPlan.created_at.desc()).all())
     if not plans:
@@ -178,7 +190,7 @@ def get_repository_conversion(repository_id: uuid.UUID, plan_id: uuid.UUID | Non
             together_because=(u.target or {}).get("group_reason"), status=u.status,
             status_reason=u.status_reason, order_reason=u.order_reason,
             depends_on=[UnitDependencyOut(**d) for d in (u.depends_on or [])], commit_sha=u.commit_sha,
-            tests={p: f"{t.passed}/{t.total}" for p, t in tests.items()} or None, evidence=_links(plan, u.evidence or [])))
+            tests={p: f"{t.passed}/{t.total}" for p, t in tests.items()} or None, evidence=_links(plan, u.evidence or [], where)))
 
     baseline = None
     if plan.baseline:
@@ -187,7 +199,7 @@ def get_repository_conversion(repository_id: uuid.UUID, plan_id: uuid.UUID | Non
         baseline = BaselineOut(
             commit=b.get("commit"), sequence=None, framework=ordering.get("from"), tests=tests,
             total=sum(t.total for t in tests.values()), passed=sum(t.passed for t in tests.values()),
-            evidence=_links(plan, b.get("evidence") or []), passed_baseline=bool(b.get("passed")), failure=b.get("failure"))
+            evidence=_links(plan, b.get("evidence") or [], where), passed_baseline=bool(b.get("passed")), failure=b.get("failure"))
 
     committed = [u for u in units if u.status == "committed"]
     retargeted = any(u.approach_id == "retarget-tfm" and u.status == "committed" for u in units)
@@ -198,7 +210,7 @@ def get_repository_conversion(repository_id: uuid.UUID, plan_id: uuid.UUID | Non
         tests = _tests(last.evidence or [])
         latest = TestRunOut(commit=last.commit_sha, sequence=last.sequence, framework=tip_framework, tests=tests,
                             total=sum(t.total for t in tests.values()), passed=sum(t.passed for t in tests.values()),
-                            evidence=_links(plan, [r for r in last.evidence or [] if r.get("kind") in ("test_results", "test_log")]))
+                            evidence=_links(plan, [r for r in last.evidence or [] if r.get("kind") in ("test_results", "test_log")], where))
 
     return RepositoryConversionOut(
         plan=PlanOut(id=plan.id, status=plan.status, status_reason=plan.status_reason, branch=plan.branch,
@@ -230,6 +242,11 @@ def get_conversion_evidence(plan_id: uuid.UUID, path: str = Query(..., min_lengt
     plan_dir = Path(plan.worktree_path).parent
     file = (plan_dir / record["path"]).resolve()
     if plan_dir.resolve() not in file.parents or not file.is_file():
+        repo = db.get(models.Repository, plan.repository_id)
+        where = _held_on(db, repo) if repo is not None else None
+        if where:
+            raise error(404, f"{record['path']} is {where}: evidence stays with the conversion it proves.",
+                        code=held.LOCAL_ONLY)
         raise error(404, f"Evidence file is missing: {record['path']}", code="EVIDENCE_FILE_MISSING")
     if not evidence_files.verify(record, plan_dir):
         raise error(409, f"{record['path']} no longer has the recorded sha256 {record['sha256']}", code="CHECKSUM_MISMATCH")
@@ -289,6 +306,7 @@ class CurrentConversionOut(BaseModel):
     verification_job: JobRefOut | None = None
     last_prepare: PrepareAttemptOut | None = None
     discovery_job: JobRefOut | None = None
+    held: "ConversionsHeldOut | None" = None
 
 
 class LaunchedOut(BaseModel):
@@ -344,6 +362,7 @@ class ConversionsOut(BaseModel):
     discovery_job: JobRefOut | None = None
     verification_job: JobRefOut | None = None
     other_plans: list[PlanRefOut] = []       # package-step plans not tied to a conversion (experiments)
+    held: "ConversionsHeldOut | None" = None  # on another machine: as it last published them
 
 
 def _job_ref(db: Session, job_name: str, repository_id: uuid.UUID) -> JobRefOut | None:
@@ -374,6 +393,33 @@ def _launch(db: Session, background_tasks: BackgroundTasks, job_name: str, param
     return str(job_execution.id)
 
 
+class ConversionsHeldOut(BaseModel):
+    """Set when the conversions are on another machine: what is shown is what that machine last published."""
+    held_on: str
+    as_of: str | None = None
+
+
+CurrentConversionOut.model_rebuild()
+ConversionsOut.model_rebuild()
+
+
+def _snapshot(db: Session, repo: models.Repository) -> tuple[dict, ConversionsHeldOut | None]:
+    """The conversions from this machine's files (published for everyone else as they are read), or, for a
+    repository registered on another machine, as that machine last published them."""
+    where = _held_on(db, repo)
+    if where is None:
+        snapshot = shared.publish(db, repo)
+        db.commit()
+        return snapshot, None
+    snapshot, row = shared.stored_snapshot(db, repo)
+    return snapshot, ConversionsHeldOut(held_on=where, as_of=row.published_at.isoformat() if row is not None else None)
+
+
+def _prepare_attempt(snapshot: dict) -> PrepareAttemptOut | None:
+    last = snapshot.get("last_prepare")
+    return PrepareAttemptOut(**{k: v for k, v in last.items() if k in PrepareAttemptOut.model_fields}) if last else None
+
+
 @router.get(
     "/repositories/{repository_id}/conversions/current",
     response_model=CurrentConversionOut,
@@ -382,51 +428,25 @@ def _launch(db: Session, background_tasks: BackgroundTasks, job_name: str, param
     responses={404: {"model": ErrorResponse, "description": "Repository not found."}},
 )
 def get_current_conversion(repository_id: uuid.UUID, db: Session = Depends(get_db)):
-    from app.engine import convert
-    from app.steps.conversion_preparation import LAST_PREPARE
-
     repo = _repository(db, repository_id)
-    home = convert.conversions_dir(repo.engagement_id, repo.slug)
-    last = home / LAST_PREPARE
+    snapshot, held_out = _snapshot(db, repo)
     out = CurrentConversionOut(
-        last_prepare=PrepareAttemptOut(**{k: v for k, v in json.loads(last.read_text(encoding="utf-8")).items()
-                                          if k in PrepareAttemptOut.model_fields}) if last.exists() else None,
+        last_prepare=_prepare_attempt(snapshot),
         discovery_job=_job_ref(db, _DISCOVERY_JOB, repository_id),
-        verification_job=_job_ref(db, _VERIFICATION_JOB, repository_id))
-    records = convert.records(repo.engagement_id, repo.slug)
-    if not records:
+        verification_job=_job_ref(db, _VERIFICATION_JOB, repository_id),
+        held=held_out)
+    if not snapshot["entries"]:
         return out
-    rec = records[-1]
-    s = convert.status(rec)
-    runbook = Path(rec["runbook"])
-    v = s["verification"]
-    out.number, out.state, out.branch = rec["number"], s["state"], rec["branch"]
-    out.worktree, out.baseline, out.head = rec["worktree"], rec["baseline"], s["head"]
-    out.commits_beyond_inputs, out.uncommitted = s["commitsBeyondInputs"], s["uncommitted"]
-    out.runbook_path = str(runbook)
-    out.runbook = runbook.read_text(encoding="utf-8") if runbook.exists() else None
-    out.opening_message = convert.opening_message(rec["goal"], rec.get("solution"))
-    out.prepared_at = rec.get("preparedAt")
-    out.package_step, out.left_for_agent = rec.get("packageStep") or {}, rec.get("leftForAgent") or {}
-    out.verify_refusal = convert.verify_refusal(rec)
-    if v:
-        md = convert.planner.RUNS / rec["engagement"] / rec["repository"] / "verification" / v["label"] / "VERIFICATION.md"
-        out.verification = VerificationOut(verdict=v["verdict"], reasons=v["reasons"], verifiedAt=v["verifiedAt"],
-                                           tip=v["tip"], markdown=md.read_text(encoding="utf-8") if md.exists() else "",
-                                           current=s["verificationIsCurrent"])
+    e = snapshot["entries"][0]
+    out.number, out.state, out.branch = e["number"], e["state"], e["branch"]
+    out.worktree, out.baseline, out.head = e["worktree"], e["baseline"], e["head"]
+    out.commits_beyond_inputs, out.uncommitted = e["commits_beyond_inputs"], e["uncommitted"]
+    out.runbook_path, out.runbook = e["runbook_path"], e["runbook"]
+    out.opening_message, out.prepared_at = e["opening_message"], e["prepared_at"]
+    out.package_step, out.left_for_agent = e["package_step"], e["left_for_agent"]
+    out.verify_refusal = e["verify_refusal"]
+    out.verification = VerificationOut(**e["verification"]) if e["verification"] else None
     return out
-
-
-def _verification_out(rec: dict, s: dict) -> VerificationOut | None:
-    from app.engine import convert
-
-    v = s["verification"]
-    if not v:
-        return None
-    md = convert.planner.RUNS / rec["engagement"] / rec["repository"] / "verification" / v["label"] / "VERIFICATION.md"
-    return VerificationOut(verdict=v["verdict"], reasons=v["reasons"], verifiedAt=v["verifiedAt"], tip=v["tip"],
-                           markdown=md.read_text(encoding="utf-8") if md.exists() else "",
-                           current=s["verificationIsCurrent"])
 
 
 @router.get(
@@ -437,13 +457,12 @@ def _verification_out(rec: dict, s: dict) -> VerificationOut | None:
     responses={404: {"model": ErrorResponse, "description": "Repository not found."}},
 )
 def list_conversions(repository_id: uuid.UUID, db: Session = Depends(get_db)):
-    from app.conversion import gitops
-    from app.engine import convert
-    from app.steps.conversion_preparation import LAST_PREPARE
+    """From this machine's conversion records, runbooks and VERIFICATION.md, or, for a repository registered on
+    another machine, as that machine last published them (`held` says whose and when)."""
     from app.workflow.runtime import service as runtime_service
 
     repo = _repository(db, repository_id)
-    records = convert.records(repo.engagement_id, repo.slug)
+    snapshot, held_out = _snapshot(db, repo)
     plans = (db.query(models.ConversionPlan).filter_by(repository_id=repository_id)
              .order_by(models.ConversionPlan.created_at.desc()).all())
     ref = lambda p: PlanRefOut(id=str(p.id), status=p.status, created_at=p.created_at.isoformat())  # noqa: E731
@@ -455,40 +474,28 @@ def list_conversions(repository_id: uuid.UUID, db: Session = Depends(get_db)):
                         .get("conversion"))
 
     entries, tied = [], set()
-    for rec in reversed(records):
-        s = convert.status(rec)
-        mine = [p for p in plans if p.branch == rec["branch"]]
-        current = next((p for p in mine if str(p.id) == rec.get("planId")), None) if rec.get("planId") else (mine[0] if mine else None)
+    for e in snapshot["entries"]:
+        mine = [p for p in plans if p.branch == e["branch"]]
+        current = next((p for p in mine if str(p.id) == e.get("plan_id")), None) if e.get("plan_id") else (mine[0] if mine else None)
         tied.update(str(p.id) for p in mine)
-        runbook = Path(rec["runbook"])
         entries.append(ConversionEntryOut(
-            number=rec["number"], branch=rec["branch"], state=s["state"], baseline=rec["baseline"],
-            baseline_from=rec.get("baselineFrom"), scanned_at=rec.get("scannedAt"), head=s["head"],
-            commits_beyond_inputs=s["commitsBeyondInputs"], uncommitted=s["uncommitted"], worktree=rec["worktree"],
-            prepared_at=rec.get("preparedAt"), runbook_path=str(runbook),
-            runbook=runbook.read_text(encoding="utf-8") if runbook.exists() else None,
-            opening_message=convert.opening_message(rec["goal"], rec.get("solution")),
-            package_step=rec.get("packageStep") or {}, left_for_agent=rec.get("leftForAgent") or {},
-            verify_refusal=convert.verify_refusal(rec), verification=_verification_out(rec, s),
-            verifying=verifying == str(rec["number"]),
+            **{k: v for k, v in e.items() if k in ConversionEntryOut.model_fields and k not in ("verification", "plan")},
+            verification=VerificationOut(**e["verification"]) if e["verification"] else None,
+            verifying=verifying == str(e["number"]),
             plan=ref(current) if current else None,
             superseded_plans=[ref(p) for p in mine if p is not current]))
 
-    root = Path(repo.local_path)
-    head = gitops.git(root, "rev-parse", "HEAD", check=False).strip() if root.exists() else ""
-    subject = gitops.git(root, "log", "-1", "--format=%s", check=False).strip() if head else ""
-    number = (records[-1]["number"] + 1) if records else 1
-    last = convert.conversions_dir(repo.engagement_id, repo.slug) / LAST_PREPARE
+    number = (snapshot["entries"][0]["number"] + 1) if snapshot["entries"] else 1
     return ConversionsOut(
         conversions=entries,
-        next=NextConversionOut(number=number, branch=f"conversion/{number}", starts_from=head or None,
-                               starts_from_subject=subject or None, last_scanned=repo.ingest_commit_sha,
+        next=NextConversionOut(number=number, branch=f"conversion/{number}", starts_from=snapshot["next"]["starts_from"],
+                               starts_from_subject=snapshot["next"]["starts_from_subject"], last_scanned=repo.ingest_commit_sha,
                                last_scanned_at=repo.last_scanned_at.isoformat() if repo.last_scanned_at else None),
-        last_prepare=PrepareAttemptOut(**{k: v for k, v in json.loads(last.read_text(encoding="utf-8")).items()
-                                          if k in PrepareAttemptOut.model_fields}) if last.exists() else None,
+        last_prepare=_prepare_attempt(snapshot),
         discovery_job=_job_ref(db, _DISCOVERY_JOB, repository_id),
         verification_job=_job_ref(db, _VERIFICATION_JOB, repository_id),
-        other_plans=[ref(p) for p in plans if str(p.id) not in tied])
+        other_plans=[ref(p) for p in plans if str(p.id) not in tied],
+        held=held_out)
 
 
 @router.post(

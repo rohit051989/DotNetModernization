@@ -38,6 +38,8 @@ export interface RepositoryStructure {
   framework_families: Record<string, number>
   artifact_counts: Record<string, number>
   parse_warnings: ParseWarning[]
+  /** How many parse_warnings there are, also when the summary leaves them out (the UI pages them). */
+  parse_warning_count: number
   scanned_at: string | null
 }
 

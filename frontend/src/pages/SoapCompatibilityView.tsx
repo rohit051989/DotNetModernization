@@ -1,6 +1,8 @@
 import { Fragment, useEffect, useState } from 'react'
 import { soapCompatibilityCsvUrl } from '../api/estate'
+import { locateSoapCall, soapCallers, soapHosts } from '../api/results'
 import { LimitedList, useLimitedList } from '../components/LimitedList'
+import { PagedList, localPages, type Page, type PageLoader } from '../components/PagedList'
 import type { MatrixProbe, RuntimeVerdict, SoapBackendHost, SoapCaller, SoapCompatibilityArtifact, SoapEnvironment } from '../types/estate'
 import { CONFIRMED_HELP, UNDER_REVIEW, UNDER_REVIEW_LABEL } from '../types/estate'
 
@@ -268,11 +270,14 @@ function CallerRows({
   )
 }
 
-function HostTable({ host, target, highlight }: { host: SoapBackendHost; target: string | null; highlight: string | null }) {
+/** A backend host as the report lists it: its first page of callers, and how many there are. */
+type ListedHost = Omit<SoapBackendHost, 'callers'> & { callers: Page<SoapCaller>; callerCount: number }
+
+/** A host's calls, a page at a time, each with a row per environment. */
+function HostTable({ load, initial, resetKey, target, highlight }: { load: PageLoader<SoapCaller>; initial: Page<SoapCaller> | null; resetKey: string; target: string | null; highlight: string | null }) {
   const [open, setOpen] = useState<string | null>(null)
-  const highlighted = host.callers.find((caller) => caller.invocationId === highlight)
   return (
-    <LimitedList items={host.callers} name={(caller) => [caller.application, caller.contract, caller.projectPath]} noun="SOAP calls" className="overflow-x-auto">
+    <PagedList<SoapCaller> load={load} initial={initial} resetKey={resetKey} noun="SOAP calls" className="overflow-x-auto">
       {(visible) => (
       <table className="w-full min-w-[1400px] text-left text-xs">
         <thead className="text-neutral-400">
@@ -284,14 +289,26 @@ function HostTable({ host, target, highlight }: { host: SoapBackendHost; target:
           </tr>
         </thead>
         <tbody>
-          {/* A call opened from its repository page is shown even when it lies past the limit, so it can be scrolled to. */}
-          {(highlighted && !visible.includes(highlighted) ? [...visible, highlighted] : visible).map((caller) => (
+          {visible.map((caller) => (
             <CallerRows key={caller.invocationId} caller={caller} target={target} highlight={highlight} open={open} setOpen={setOpen} />
           ))}
         </tbody>
       </table>
       )}
-    </LimitedList>
+    </PagedList>
+  )
+}
+
+function HostHeading({ host }: { host: Omit<SoapBackendHost, 'callers'> }) {
+  return (
+    <div className="mb-2 flex flex-wrap items-center gap-2">
+      <h4 className="font-mono text-sm text-neutral-800">{host.host}</h4>
+      <Chip className={RUNTIME_STYLE[host.worstRuntime]}>runtime: {verdictLabel(host.worstRuntime)}</Chip>
+      <Chip className={PLATFORM_STYLE[host.worstPlatform] ?? PLATFORM_STYLE.unknown}>platform: {verdictLabel(host.worstPlatform)}</Chip>
+      {(host.underReview ?? 0) > 0 && <Chip className={PLATFORM_STYLE.under_review}>{host.underReview} {UNDER_REVIEW_LABEL}</Chip>}
+      <span className="text-xs text-neutral-400">backend owner:</span>
+      <Owner host={host as SoapBackendHost} />
+    </div>
   )
 }
 
@@ -301,15 +318,25 @@ export function SoapCompatibilityView({
   focusInvocationId = null,
   onFocusShown,
 }: {
-  data: SoapCompatibilityArtifact | undefined
+  /** The report without its hosts: its summary and matrix, live. The hosts come a page at a time. */
+  data: Omit<SoapCompatibilityArtifact, 'hosts'> | undefined
   engagementId: string
-  /** A call opened from its repository page: scrolled to and highlighted. */
+  /** A call opened from its repository page: shown first, scrolled to and highlighted. */
   focusInvocationId?: string | null
   onFocusShown?: () => void
 }) {
   const [highlight] = useState(focusInvocationId)
+  const [focused, setFocused] = useState<(SoapBackendHost & { callerCount: number }) | null>(null)
   useEffect(() => {
     if (!data || !highlight) return
+    let live = true
+    locateSoapCall(engagementId, highlight).then((r) => live && setFocused(r.host as (SoapBackendHost & { callerCount: number }) | null), () => undefined)
+    return () => {
+      live = false
+    }
+  }, [data, engagementId, highlight])
+  useEffect(() => {
+    if (!focused || !highlight) return
     // After the page has laid out: the tab's other content settles a moment later, so once more then.
     const scroll = () => document.getElementById(`soap-call-${highlight}`)?.scrollIntoView({ block: 'center' })
     const frame = requestAnimationFrame(scroll)
@@ -320,12 +347,10 @@ export function SoapCompatibilityView({
       window.clearTimeout(settle)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, highlight])
+  }, [focused, highlight])
   if (!data) {
     return <p className="text-sm text-neutral-400">No SOAP compatibility report yet: run the estate consolidation.</p>
   }
-  // The host of a call opened from its repository page is shown even when it lies past the limit.
-  const highlightedHost = data.hosts.find((host) => host.callers.some((caller) => caller.invocationId === highlight))
   const chart = data.matrix.sources.find((s) => s.id.startsWith('chart-'))
   return (
     <div className="space-y-4 text-sm">
@@ -383,23 +408,38 @@ export function SoapCompatibilityView({
           Export CSV{data.matrix.readyForClient ? '' : ' (draft)'}
         </a>
       </div>
-      <LimitedList items={data.hosts} name={(host) => [host.host, ...host.servedBy, host.owningTeam]} noun="SOAP backends" className="space-y-4">
-        {(visible) => (highlightedHost && !visible.includes(highlightedHost) ? [...visible, highlightedHost] : visible).map((host) => (
-        <section key={host.host} className="rounded border border-neutral-200 p-3">
-          <div className="mb-2 flex flex-wrap items-center gap-2">
-            <h4 className="font-mono text-sm text-neutral-800">{host.host}</h4>
-            <Chip className={RUNTIME_STYLE[host.worstRuntime]}>runtime: {verdictLabel(host.worstRuntime)}</Chip>
-            <Chip className={PLATFORM_STYLE[host.worstPlatform] ?? PLATFORM_STYLE.unknown}>platform: {verdictLabel(host.worstPlatform)}</Chip>
-            {(host.underReview ?? 0) > 0 && (
-              <Chip className={PLATFORM_STYLE.under_review}>{host.underReview} {UNDER_REVIEW_LABEL}</Chip>
-            )}
-            <span className="text-xs text-neutral-400">backend owner:</span>
-            <Owner host={host} />
-          </div>
-          <HostTable host={host} target={data.matrix.targetWcfClientVersion} highlight={highlight} />
+      {/* A call opened from its repository page: its host and that call, first, wherever they are in the list. */}
+      {focused && (
+        <section className="rounded border border-violet-300 p-3" data-testid="soap-focused">
+          <p className="mb-1 text-[11px] text-violet-700">
+            Opened from its repository page{focused.callerCount > 1 ? ` — 1 of this backend's ${focused.callerCount} calls; the list below has them all` : ''}.
+          </p>
+          <HostHeading host={focused} />
+          <HostTable
+            load={localPages(focused.callers, (c) => [c.application, c.contract, c.projectPath])}
+            initial={null}
+            resetKey={`focus|${highlight}`}
+            target={data.matrix.targetWcfClientVersion}
+            highlight={highlight}
+          />
         </section>
-        ))}
-      </LimitedList>
+      )}
+      <PagedList<ListedHost> load={soapHosts(engagementId)} resetKey={engagementId} noun="SOAP backends" className="space-y-4">
+        {(visible) =>
+          visible.map((host) => (
+            <section key={host.host} className="rounded border border-neutral-200 p-3">
+              <HostHeading host={host} />
+              <HostTable
+                load={soapCallers(engagementId, host.host)}
+                initial={host.callers}
+                resetKey={`${engagementId}|${host.host}`}
+                target={data.matrix.targetWcfClientVersion}
+                highlight={null}
+              />
+            </section>
+          ))
+        }
+      </PagedList>
     </div>
   )
 }

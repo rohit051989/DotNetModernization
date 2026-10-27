@@ -352,11 +352,27 @@ def get_work_list_decisions(repository_id: uuid.UUID, db: Session = Depends(get_
     repository = db.get(models.Repository, repository_id)
     if repository is None or repository.deleted_at is not None:
         raise error(404, f"Repository '{repository_id}' not found", code="NOT_FOUND")
+    return work_list_decisions(db, repository_id)
+
+
+def work_list_decisions(db: Session, repository_id: uuid.UUID, project_ids=None) -> item_schemas.WorkListDecisionsOut:
+    """The decisions behind the work list; with `project_ids`, only those projects' (a page of the work list,
+    app.results.views)."""
+    repository = db.get(models.Repository, repository_id)
     engagement_id = repository.engagement_id
 
     found: dict[uuid.UUID, set[str]] = {}
-    for occurrence in db.query(models.ItemOccurrence).filter(
-            models.ItemOccurrence.repository_id == repository_id, models.ItemOccurrence.detection_state == "found"):
+    query = db.query(models.ItemOccurrence).filter(
+        models.ItemOccurrence.repository_id == repository_id, models.ItemOccurrence.detection_state == "found")
+    if project_ids is not None:
+        wanted = []
+        for project_id in project_ids:
+            try:
+                wanted.append(uuid.UUID(str(project_id)))
+            except ValueError:
+                continue
+        query = query.filter(models.ItemOccurrence.project_id.in_(wanted))
+    for occurrence in query:
         found.setdefault(occurrence.project_id, set()).add(occurrence.item_id)
     items = sorted({i for ids in found.values() for i in ids})
 

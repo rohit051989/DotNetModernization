@@ -265,6 +265,9 @@ class RepositorySummary(BaseModel):
     can_act: bool = Field(default=True, description="Whether the signed-in person may rescan it, prepare and verify its conversions, or delete it.")
     cannot_act_reason: str | None = Field(default=None, description="Why not, when can_act is false.")
     cannot_edit_reason: str | None = Field(default=None, description="Why the signed-in person may not edit its details (owners and admins may, from any machine); null when they may.")
+    files_held_on: str | None = Field(default=None, description="When it was registered on another machine: where its "
+                                                                "files, worktrees and run output are, as \"on Ann's machine "
+                                                                "(PC-17)\". Its results are read from the database.")
 
 
 class RepositoryDetail(RepositorySummary):

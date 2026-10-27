@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import { openInVisualStudio, type Editor } from '../../api/editors'
 import { useToast } from '../../components/Toast'
 import { copyText, fullPath, setEditorChoice, useEditorChoice, type EditorChoice } from './editorChoice'
@@ -13,10 +13,21 @@ type SourceLinkProps = {
   children: ReactNode
 }
 
+/** Where a repository's files are when it was registered on another machine ("on Ann's machine (PC-17)"), for every
+ * file link inside: its results are read from the database, but its files are not here. */
+const HeldOn = createContext<string | null>(null)
+
+export function FilesHeldOn({ value, children }: { value: string | null; children: ReactNode }) {
+  return <HeldOn.Provider value={value}>{children}</HeldOn.Provider>
+}
+
 /** A link that opens the file at its line in the person's chosen editor (04-FRONTEND-SPEC.md "File links"), with a
  * menu beside it to open it in another editor, copy its path and line, or change the choice. With no local path to
- * resolve it against (an artifact viewed outside its repository), the same text without a link. */
+ * resolve it against (an artifact viewed outside its repository), the same text without a link. For a repository
+ * registered on another machine, the text says where the file is when clicked, instead of a link that cannot work. */
 export function SourceLink({ localPath, ...props }: SourceLinkProps) {
+  const heldOn = useContext(HeldOn)
+  if (heldOn) return <HeldFile heldOn={heldOn} {...props} />
   if (!localPath) {
     return (
       <span className={props.className} title={props.title ?? `${props.filePath}:${props.line}`}>
@@ -25,6 +36,26 @@ export function SourceLink({ localPath, ...props }: SourceLinkProps) {
     )
   }
   return <EditorLink localPath={localPath} {...props} />
+}
+
+function HeldFile({ heldOn, filePath, line, className, title, children }: Omit<SourceLinkProps, 'localPath'> & { heldOn: string }) {
+  const { showToast } = useToast()
+  const where = `${filePath}:${line} is ${heldOn}: the repository was scanned there, and its files are not on this machine.`
+  return (
+    <span
+      role="button"
+      tabIndex={0}
+      onClick={(event) => {
+        event.stopPropagation()
+        showToast('success', where)
+      }}
+      onKeyDown={(event) => event.key === 'Enter' && showToast('success', where)}
+      className={`${className ?? ''} cursor-help decoration-dotted hover:underline`}
+      title={title ? `${title} — ${heldOn}` : where}
+    >
+      {children}
+    </span>
+  )
 }
 
 function EditorLink({ localPath, filePath, line, className, title, children }: SourceLinkProps & { localPath: string }) {

@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { getHierarchyNode } from '../../../api/hierarchy'
+import { dependencyUses, getDependencyProject } from '../../../api/results'
+import { PagedList } from '../../../components/PagedList'
 import type { HierarchyNodeDetail, HierarchyView } from '../../../types/hierarchy'
-import type { Json } from '../../workflow/artifacts/adapters'
 import { SourceLink } from '../SourceLink'
 import { NodeBadges } from './NodeBadges'
 import { EDGE_STYLES, LOOKS, lookOf } from './nodeStyle'
@@ -11,21 +12,20 @@ interface DetailsProps {
   localPath: string | null
   nodeId: string
   view: HierarchyView
-  /** dependency-assessment's artifact, which the repository page already holds: each project's status and reason,
-   * and each declared package's outcome and reason. */
-  assessment: Json | undefined
+  /** The stored dependency-assessment (backend app.results), whose word on the node is read when it is shown: a
+   * project's status and reason, or each declared package's outcome and reason. Null when it has not run. */
+  assessmentId: string | null
   onSelect: (nodeId: string) => void
   onClose: () => void
 }
 
 type Rec = Record<string, unknown>
 const rec = (v: unknown): Rec => (v && typeof v === 'object' ? (v as Rec) : {})
-const list = (v: unknown): Rec[] => (Array.isArray(v) ? v.map(rec) : [])
 const str = (v: unknown): string | null => (typeof v === 'string' ? v : null)
 
 /** A node's details: its path with the editor link, framework, origin, parents, work items, and its
  * dependency-assessment status with the reason. */
-export function StructureDetails({ repositoryId, localPath, nodeId, view, assessment, onSelect, onClose }: DetailsProps) {
+export function StructureDetails({ repositoryId, localPath, nodeId, view, assessmentId, onSelect, onClose }: DetailsProps) {
   const [detail, setDetail] = useState<HierarchyNodeDetail | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -51,7 +51,7 @@ export function StructureDetails({ repositoryId, localPath, nodeId, view, assess
       </div>
       {error && <p className="text-red-600">{error}</p>}
       {!detail && !error && <p className="text-neutral-400">Loading…</p>}
-      {detail && <Body detail={detail} localPath={localPath} assessment={assessment} onSelect={onSelect} />}
+      {detail && <Body detail={detail} localPath={localPath} assessmentId={assessmentId} onSelect={onSelect} />}
     </aside>
   )
 }
@@ -65,7 +65,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   )
 }
 
-function Body({ detail, localPath, assessment, onSelect }: { detail: HierarchyNodeDetail; localPath: string | null; assessment: Json | undefined; onSelect: (id: string) => void }) {
+function Body({ detail, localPath, assessmentId, onSelect }: { detail: HierarchyNodeDetail; localPath: string | null; assessmentId: string | null; onSelect: (id: string) => void }) {
   const { node } = detail
   const d = rec(detail.detail)
   const project = rec(d.project)
@@ -194,52 +194,84 @@ function Body({ detail, localPath, assessment, onSelect }: { detail: HierarchyNo
       </Field>
 
       <Field label="Dependency assessment">
-        <AssessmentStatus node={detail.node} projectPath={str(project.path)} packageId={str(pkg.packageId)} assessment={assessment} />
+        <AssessmentStatus node={detail.node} projectPath={str(project.path)} packageId={str(pkg.packageId)} assessmentId={assessmentId} />
       </Field>
     </div>
   )
 }
 
-/** dependency-assessment's word on the node, from its artifact: a project's status with its reason, or a declared
+/** dependency-assessment's word on the node, from its stored result: a project's status with its reason, or a declared
  * package's outcome with its reason, per project that declares it. */
-function AssessmentStatus({ node, projectPath, packageId, assessment }: { node: HierarchyNodeDetail['node']; projectPath: string | null; packageId: string | null; assessment: Json | undefined }) {
-  if (!assessment) return <span className="text-neutral-400">dependency-assessment has not run for this repository.</span>
-  const projects = list(rec(assessment).projects)
+function AssessmentStatus({ node, projectPath, packageId, assessmentId }: { node: HierarchyNodeDetail['node']; projectPath: string | null; packageId: string | null; assessmentId: string | null }) {
+  if (!assessmentId) return <span className="text-neutral-400">dependency-assessment has not run for this repository.</span>
   if (node.type === 'assembly') return <span className="text-neutral-500">Not assessed: dependency-assessment assesses NuGet packages, not assembly references.</span>
-  if (node.type === 'project') {
-    const p = projects.find((x) => x.projectPath === projectPath)
-    if (!p) return <span className="text-neutral-500">Not assessed: the project is not in dependency-assessment’s artifact.</span>
-    const counts = Object.entries(rec(rec(p.summary).countByOutcome)).map(([k, v]) => `${v} ${k.replace(/_/g, ' ')}`)
-    return (
-      <span>
-        {str(p.status)?.toLowerCase()}
-        {str(p.skipReason) ? `: ${str(p.skipReason)}` : ''}
-        {counts.length > 0 && <span className="text-neutral-500"> · {counts.join(', ')}</span>}
-      </span>
-    )
-  }
+  if (node.type === 'project') return <ProjectAssessment assessmentId={assessmentId} projectPath={projectPath} />
   if (node.transitive) {
     return <span className="text-neutral-500">Not assessed: dependency-assessment assesses the packages a project declares, and only another package depends on this one.</span>
   }
-  const all = projects.flatMap((p) =>
-    list(p.packages)
-      .filter((k) => str(k.packageId)?.toLowerCase() === packageId?.toLowerCase())
-      .map((k) => ({ project: str(p.projectPath), version: str(k.currentVersion), outcome: str(k.outcome), reason: str(k.outcomeReason), recommended: str(k.recommendedVersion) })),
-  )
-  // This version's rows; every version's when restore chose a version other than the declared one.
-  const exact = all.filter((r) => r.version === node.version)
-  const rows = exact.length > 0 ? exact : all
-  if (rows.length === 0) return <span className="text-neutral-500">Not in dependency-assessment’s artifact.</span>
+  return <PackageAssessment assessmentId={assessmentId} packageId={packageId ?? ''} version={node.version ?? null} />
+}
+
+function ProjectAssessment({ assessmentId, projectPath }: { assessmentId: string; projectPath: string | null }) {
+  const [p, setP] = useState<Rec | null | undefined>(undefined)
+  useEffect(() => {
+    let live = true
+    setP(undefined)
+    if (!projectPath) setP(null)
+    else getDependencyProject(assessmentId, projectPath).then((r) => live && setP(r ? rec(r) : null), () => live && setP(null))
+    return () => {
+      live = false
+    }
+  }, [assessmentId, projectPath])
+  if (p === undefined) return <span className="text-neutral-400">Loading…</span>
+  if (!p) return <span className="text-neutral-500">Not assessed: the project is not in dependency-assessment’s artifact.</span>
+  const counts = Object.entries(rec(rec(p.summary).countByOutcome)).map(([k, v]) => `${v} ${k.replace(/_/g, ' ')}`)
   return (
-    <ul className="space-y-1">
-      {rows.map((r) => (
-        <li key={r.project}>
-          <span className="font-medium">{r.outcome?.replace(/_/g, ' ')}</span>
-          {r.recommended && <span className="text-neutral-500"> → {r.recommended}</span>}
-          {r.reason && <div className="text-neutral-600">{r.reason}</div>}
-          <div className="font-mono text-[10px] text-neutral-400">{r.project}</div>
-        </li>
-      ))}
-    </ul>
+    <span>
+      {str(p.status)?.toLowerCase()}
+      {str(p.skipReason) ? `: ${str(p.skipReason)}` : ''}
+      {counts.length > 0 && <span className="text-neutral-500"> · {counts.join(', ')}</span>}
+    </span>
+  )
+}
+
+interface PackageUse {
+  project: string
+  pkg: Rec
+}
+
+/** This version's rows; every version's when restore chose a version other than the declared one. */
+function PackageAssessment({ assessmentId, packageId, version }: { assessmentId: string; packageId: string; version: string | null }) {
+  const [exact, setExact] = useState<boolean | null>(null)
+  useEffect(() => {
+    let live = true
+    setExact(null)
+    if (!version) setExact(false)
+    else dependencyUses(assessmentId, packageId, version)('', 0, 1).then((page) => live && setExact(page.total > 0), () => live && setExact(false))
+    return () => {
+      live = false
+    }
+  }, [assessmentId, packageId, version])
+  if (exact === null) return <span className="text-neutral-400">Loading…</span>
+  return (
+    <PagedList<PackageUse>
+      load={dependencyUses(assessmentId, packageId, exact ? version : null)}
+      resetKey={`${assessmentId}|${packageId}|${exact ? version : '*'}`}
+      noun="projects"
+      empty={<span className="text-neutral-500">Not in dependency-assessment’s artifact.</span>}
+    >
+      {(rows) => (
+        <ul className="space-y-1">
+          {rows.map((r) => (
+            <li key={`${r.project}|${str(r.pkg.currentVersion)}`}>
+              <span className="font-medium">{str(r.pkg.outcome)?.replace(/_/g, ' ')}</span>
+              {str(r.pkg.recommendedVersion) && <span className="text-neutral-500"> → {str(r.pkg.recommendedVersion)}</span>}
+              {str(r.pkg.outcomeReason) && <div className="text-neutral-600">{str(r.pkg.outcomeReason)}</div>}
+              <div className="font-mono text-[10px] text-neutral-400">{r.project}</div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </PagedList>
   )
 }

@@ -60,14 +60,26 @@ export function ArtifactViewerDrawer({ artifactId, localPath = null, onClose }: 
               Produced by <span className="font-medium text-neutral-800">{detail.step_name}</span> at{' '}
               {new Date(detail.created_at).toLocaleString()}
             </p>
-            {!detail.file_exists && (
+            {!detail.file_exists && detail.in_database && (
+              <p className="text-neutral-600">
+                {detail.held_on ? `Its file is ${detail.held_on}; ` : 'Its file is not on this machine; '}this is the copy kept in the database.
+              </p>
+            )}
+            {!detail.file_exists && !detail.in_database && detail.held_on && (
+              <p className="font-medium text-neutral-700">
+                This artifact is {detail.held_on}: only the results the views read are kept in the database, and this is not one of them.
+              </p>
+            )}
+            {!detail.file_exists && !detail.in_database && !detail.held_on && (
               <p className="font-medium text-amber-600">
                 The file backing this artifact is missing on disk. The run directory may have been cleaned up.
               </p>
             )}
-            <a href={artifactDownloadUrl(artifactId)} className="inline-block font-medium text-violet-600 hover:underline">
-              Download
-            </a>
+            {(detail.file_exists || detail.in_database) && (
+              <a href={artifactDownloadUrl(artifactId)} className="inline-block font-medium text-violet-600 hover:underline">
+                Download
+              </a>
+            )}
           </div>
           <ArtifactContentView artifactId={artifactId} artifactType={detail.artifact_type} localPath={localPath} jsonMaxHeight="60vh" />
         </>

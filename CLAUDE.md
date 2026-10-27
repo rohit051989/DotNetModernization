@@ -27,6 +27,12 @@ an owner and a machine: only its owner (or an admin) acts on it, and only from t
 its folder and run output are. One backend runs per machine (`app.heartbeat`); a backend runs only the jobs queued on
 its own machine, and at startup fails only its own machine's jobs left `STARTED`.
 
+Everyone sees every repository's results in full from the database, without the owner's machine (`app.results`):
+every result a view reads is copied into the database when its step registers it (the newest `RESULTS_KEEP` of each
+kind kept), and every list that grows with a repository is served a page at a time. Raw outputs no view reads (logs,
+timing profiles, SARIF, evidence files) stay in the owner's `RUNS_DIR`; elsewhere the UI names whose machine has them.
+A new view reads the database, never another machine's files; a new list that grows with a repository is paged.
+
 Matching a person's Windows account and machine at sign-in deters shared credentials; it is not a hard security
 boundary, since the platform runs on the user's own machine.
 

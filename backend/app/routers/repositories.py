@@ -96,9 +96,12 @@ def _ownership(db: Session, repo: models.Repository) -> dict:
     if person is not None:
         edit_reason = policy.repository_refusal(db, person, repo)
         reason = policy.machine_refusal(repo, person.hostname) or edit_reason
+    from app.results import held
+
     return {"owner_user_id": repo.owner_user_id, "owner_name": policy.owner_name(db, repo),
             "registered_host": repo.registered_host, "can_act": reason is None, "cannot_act_reason": reason,
-            "cannot_edit_reason": edit_reason}
+            "cannot_edit_reason": edit_reason,
+            "files_held_on": held.repository_where(db, repo) if held.elsewhere(repo.registered_host) else None}
 
 
 def _repository_out(db: Session, repo: models.Repository, detail: bool = False):

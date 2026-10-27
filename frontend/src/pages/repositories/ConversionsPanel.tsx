@@ -292,6 +292,12 @@ export function ConversionsPanel({ repositoryId, refreshToken, refusal = null }:
 
   return (
     <div className="space-y-3 text-sm" data-testid="conversions">
+      {data.held && (
+        <p className="rounded border border-neutral-200 bg-neutral-50 px-2 py-1 text-xs text-neutral-600" data-testid="conversions-held">
+          These conversions are {data.held.held_on}: shown as that machine last published them
+          {data.held.as_of ? ` (${when(data.held.as_of)})` : ''}. Their worktrees and evidence stay there.
+        </p>
+      )}
       {running(data.discovery_job) && (
         <p className="rounded border border-sky-200 bg-sky-50 px-2 py-1 text-xs text-sky-800">
           Discovery is running; it prepares the conversion when it ends.

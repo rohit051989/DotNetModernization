@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { ApiError } from '../../api/client'
-import { getRepositoryTests } from '../../api/surface'
+import { getTestsSummary, testClasses, testCoverageProjects, testProjects, testSourceFiles } from '../../api/results'
 import { LimitedList } from '../../components/LimitedList'
-import type { RepositoryTests, SourceFileRow, TestBucket, TestType } from '../../types/tests'
+import { PagedList } from '../../components/PagedList'
+import type { TestsSummary } from '../../types/results'
+import type { ProjectCoverage, SourceFileRow, TestBucket, TestClassRow, TestProject, TestType } from '../../types/tests'
 import { SourceLink } from './SourceLink'
 
 const TYPE_STYLE: Record<TestType, string> = {
@@ -26,24 +28,6 @@ const CACHE_LABEL: Record<string, string> = {
   uncommitted_changes: 'computed — uncommitted changes, cache not used',
 }
 
-/** Every not-measured reason in the data, numbered in the order the tables show them — per project (unit, then
- * integration), then per source file — so a cell shows "not measured" with its note number and the reasons read in
- * full below: never a percentage for unknown, and never hidden behind a hover. Worked out from the data before
- * anything renders, over every row (not just the rows a limited list shows), so a note keeps its number whichever
- * rows or bucket are on screen. */
-function notMeasuredNotes(data: RepositoryTests): string[] {
-  const notes: string[] = []
-  const add = (pct: number | null, reason: string | null) => {
-    if (pct === null && reason && !notes.includes(reason)) notes.push(reason)
-  }
-  for (const p of data.projects) {
-    add(p.unit_line_pct, p.unit_not_measured_reason)
-    add(p.integration_line_pct, p.integration_not_measured_reason)
-  }
-  for (const f of data.source_files) add(f.line_pct, f.not_measured_reason)
-  return notes
-}
-
 function Pct({ value, reason, note }: { value: number | null; reason: string | null; note: (reason: string) => number }) {
   if (value !== null) return <span className="font-mono">{value.toFixed(1)}%</span>
   return (
@@ -65,7 +49,7 @@ function TypeChip({ type, count }: { type: TestType; count?: number }) {
 /** test-coverage-assessment's Tests section (32-TEST-COVERAGE-ASSESSMENT Part K): CI maturity, test projects
  * and classes by type, the per-project table, and the per-file table. */
 export function RepositoryTestsSection({ repositoryId, localPath, refreshToken }: { repositoryId: string; localPath: string | null; refreshToken: number }) {
-  const [data, setData] = useState<RepositoryTests | null>(null)
+  const [data, setData] = useState<TestsSummary | null>(null)
   const [state, setState] = useState<'loading' | 'ready' | 'not_scanned' | 'error'>('loading')
   const [bucket, setBucket] = useState<TestBucket | 'all'>('all')
   const [showClasses, setShowClasses] = useState(false)
@@ -74,7 +58,7 @@ export function RepositoryTestsSection({ repositoryId, localPath, refreshToken }
   useEffect(() => {
     let cancelled = false
     setState('loading')
-    getRepositoryTests(repositoryId)
+    getTestsSummary(repositoryId)
       .then((result) => {
         if (cancelled) return
         setData(result)
@@ -88,14 +72,16 @@ export function RepositoryTestsSection({ repositoryId, localPath, refreshToken }
     }
   }, [repositoryId, refreshToken])
 
-  const files = useMemo(() => (data ? data.source_files.filter((f) => bucket === 'all' || f.bucket === bucket) : []), [data, bucket])
-  const notes = useMemo(() => (data ? notMeasuredNotes(data) : []), [data])
 
   if (state === 'loading') return <div className="h-16 animate-pulse rounded bg-neutral-100" />
   if (state === 'not_scanned') return <p className="text-sm text-neutral-400">Test coverage (test-coverage-assessment) hasn't run for this repository yet.</p>
   if (state === 'error' || !data) return <p className="text-sm text-red-600">Could not load the tests.</p>
 
+  // Every not-measured reason, numbered by the server in the order the tables show them — per project (unit, then
+  // integration), then per source file — over every row, so a note keeps its number on every page.
+  const notes = data.not_measured_reasons
   const number = (reason: string) => notes.indexOf(reason) + 1
+  const key = `${repositoryId}|${refreshToken}`
   const ci = data.ci_maturity
   const byType = data.summary.testClassesByType
   const byBucket = data.summary.sourceFilesByBucket
@@ -171,9 +157,9 @@ export function RepositoryTestsSection({ repositoryId, localPath, refreshToken }
         <h4 className="mb-1 text-[11px] font-medium uppercase tracking-wide text-neutral-400">
           Tests — {data.summary.testClasses ?? 0} classes, {data.summary.testMethods ?? 0} test methods
         </h4>
-        <LimitedList
-          items={data.test_projects}
-          name={(p) => p.project_path}
+        <PagedList<TestProject>
+          load={testProjects(repositoryId)}
+          resetKey={key}
           noun="test projects"
           empty={<p className="text-xs text-neutral-400">No test project found.</p>}
         >
@@ -191,17 +177,17 @@ export function RepositoryTestsSection({ repositoryId, localPath, refreshToken }
             ))}
           </ul>
           )}
-        </LimitedList>
+        </PagedList>
         {byType && (byType.unclassified ?? 0) > 0 && (
           <p className="mt-1 text-xs text-neutral-500">Unclassified means the evidence conflicted or there was none — never guessed.</p>
         )}
-        {data.test_classes.length > 0 && (
+        {data.counts.test_classes > 0 && (
           <button type="button" onClick={() => setShowClasses((v) => !v)} className="mt-1 text-xs text-violet-600 hover:underline">
-            {showClasses ? 'hide test classes' : `show the ${data.test_classes.length} test classes and why each is classified`}
+            {showClasses ? 'hide test classes' : `show the ${data.counts.test_classes} test classes and why each is classified`}
           </button>
         )}
         {showClasses && (
-          <LimitedList items={data.test_classes} name={(c) => [c.class_name, c.file_path]} noun="test classes" className="mt-1">
+          <PagedList<TestClassRow> load={testClasses(repositoryId)} resetKey={key} noun="test classes" className="mt-1">
             {(visible) => (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[640px] text-left text-xs">
@@ -231,14 +217,14 @@ export function RepositoryTestsSection({ repositoryId, localPath, refreshToken }
             </table>
           </div>
             )}
-          </LimitedList>
+          </PagedList>
         )}
       </div>
 
       {/* Per project, Part K */}
       <div className="overflow-x-auto">
         <h4 className="mb-1 text-[11px] font-medium uppercase tracking-wide text-neutral-400">Per project</h4>
-        <LimitedList items={data.projects} name={(p) => p.project_path} noun="projects">
+        <PagedList<ProjectCoverage> load={testCoverageProjects(repositoryId)} resetKey={key} noun="projects">
           {(visible) => (
         <table className="w-full min-w-[640px] text-left text-xs">
           <thead className="text-neutral-400">
@@ -267,7 +253,7 @@ export function RepositoryTestsSection({ repositoryId, localPath, refreshToken }
           </tbody>
         </table>
           )}
-        </LimitedList>
+        </PagedList>
       </div>
 
       {/* Per source file, Part K */}
@@ -282,12 +268,12 @@ export function RepositoryTestsSection({ repositoryId, localPath, refreshToken }
               aria-pressed={bucket === b}
               className={`rounded border px-1.5 py-0.5 text-[11px] ${bucket === b ? 'border-violet-300 bg-violet-50 text-violet-800' : 'border-neutral-200 text-neutral-600 hover:bg-neutral-50'}`}
             >
-              {b === 'all' ? `all ${data.source_files.length}` : `${byBucket?.[b] ?? 0} ${BUCKET_LABEL[b]}`}
+              {b === 'all' ? `all ${data.counts.source_files}` : `${byBucket?.[b] ?? 0} ${BUCKET_LABEL[b]}`}
             </button>
           ))}
         </div>
-        {/* Keyed by bucket: a new bucket starts again at its first 20 files. */}
-        <LimitedList key={bucket} items={files} name={(f) => f.file_path} noun="source files">
+        {/* A new bucket starts again at its first 20 files. */}
+        <PagedList<SourceFileRow> load={testSourceFiles(repositoryId, bucket === 'all' ? null : bucket)} resetKey={`${key}|${bucket}`} noun="source files">
           {(visible) => (
         <div className="overflow-x-auto">
           <table className="w-full min-w-[760px] text-left text-xs">
@@ -309,7 +295,7 @@ export function RepositoryTestsSection({ repositoryId, localPath, refreshToken }
           </table>
         </div>
           )}
-        </LimitedList>
+        </PagedList>
       </div>
 
       {notes.length > 0 && (

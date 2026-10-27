@@ -1,8 +1,10 @@
-import { Fragment, useEffect, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import { ApiError } from '../../api/client'
+import { getOutboundSummary, outboundInvocations, outboundProjects } from '../../api/results'
 import { CollapsibleSection, GroupedItems } from '../../components/CollapsibleSection'
-import { getRepositoryOutboundInvocations } from '../../api/surface'
-import type { LinuxVerdict, OutboundInventory, OutboundInvocation, OutboundMechanism, ProjectOutbound } from '../../types/surface'
+import { PagedList, localPages, type PageLoader } from '../../components/PagedList'
+import type { MechanismCount, OutboundSummary } from '../../types/results'
+import type { LinuxVerdict, OutboundInvocation, OutboundMechanism, ProjectOutbound } from '../../types/surface'
 import { SourceLink } from './SourceLink'
 import { surfaceSectionId } from './surfaceSections'
 import { LimitedList } from '../../components/LimitedList'
@@ -302,23 +304,67 @@ function InvocationRow({ invocation, localPath }: { invocation: OutboundInvocati
   )
 }
 
-/** Mechanism groups, worst verdict first; within a group the API's order
- * (incompatible first). */
-function MechanismGroups({ invocations, localPath }: { invocations: OutboundInvocation[]; localPath: string | null }) {
-  const groups = new Map<OutboundMechanism, OutboundInvocation[]>()
-  for (const i of invocations) groups.set(i.mechanism, [...(groups.get(i.mechanism) ?? []), i])
-  const ordered = [...groups.entries()].sort(([a, x], [b, y]) => {
-    const worst = (list: OutboundInvocation[]) => Math.min(...list.map(rank))
-    return worst(x) - worst(y) || MECHANISM_LABEL[a].localeCompare(MECHANISM_LABEL[b])
-  })
+/** A project of the outbound list, without its invocations: its counts and its mechanisms (with how many and the worst
+ * verdict among them), each listed a page at a time. */
+export type OutboundProject = Omit<ProjectOutbound, 'invocations'> & { invocation_count: number; mechanisms: MechanismCount[] }
+
+/** Where the outbound lists come from: the server a page at a time (the repository page), or a whole artifact in hand
+ * (an execution's artifact viewer). */
+export interface OutboundSource {
+  key: string
+  projects: PageLoader<OutboundProject>
+  without: PageLoader<OutboundProject>
+  invocations: (projectId: string, mechanism: string) => PageLoader<OutboundInvocation>
+}
+
+function serverOutboundSource(repositoryId: string, refreshToken: number): OutboundSource {
+  return {
+    key: `${repositoryId}|${refreshToken}`,
+    projects: outboundProjects(repositoryId, true),
+    without: outboundProjects(repositoryId, false),
+    invocations: (projectId, mechanism) => outboundInvocations(repositoryId, projectId, mechanism),
+  }
+}
+
+/** The same lists over an inventory in hand, paged in memory, in the server's order. */
+export function localOutboundSource(projects: ProjectOutbound[], key: string): OutboundSource {
+  const strip = (p: ProjectOutbound): OutboundProject => {
+    const groups = new Map<string, MechanismCount>()
+    for (const i of p.invocations) {
+      const g = groups.get(i.mechanism) ?? { mechanism: i.mechanism, count: 0, worst_rank: 9 }
+      groups.set(i.mechanism, { ...g, count: g.count + 1, worst_rank: Math.min(g.worst_rank, rank(i)) })
+    }
+    const { invocations, ...rest } = p
+    return { ...rest, invocation_count: invocations.length, mechanisms: [...groups.values()] }
+  }
+  const worst = (p: ProjectOutbound) => Math.min(...p.invocations.map(rank))
+  const withInvocations = projects
+    .filter((p) => p.invocations.length > 0)
+    .sort((a, b) => worst(a) - worst(b) || a.project_path.localeCompare(b.project_path))
+  const byId = new Map(projects.map((p) => [p.project_id, p]))
+  return {
+    key,
+    projects: localPages(withInvocations.map(strip), (p) => p.project_path),
+    without: localPages(projects.filter((p) => p.invocations.length === 0).map(strip), (p) => p.project_path),
+    invocations: (projectId, mechanism) =>
+      localPages((byId.get(projectId)?.invocations ?? []).filter((i) => i.mechanism === mechanism), (i) => [endpointText(i), describe(i)]),
+  }
+}
+
+/** Mechanism groups, worst verdict first; within a group the server's order (used before unused, incompatible
+ * first), a page at a time. */
+function MechanismGroups({ project, source, localPath }: { project: OutboundProject; source: OutboundSource; localPath: string | null }) {
+  const ordered = [...project.mechanisms].sort(
+    (a, b) => a.worst_rank - b.worst_rank || (MECHANISM_LABEL[a.mechanism as OutboundMechanism] ?? a.mechanism).localeCompare(MECHANISM_LABEL[b.mechanism as OutboundMechanism] ?? b.mechanism),
+  )
   return (
     <div className="space-y-3">
-      {ordered.map(([mechanism, list]) => (
+      {ordered.map(({ mechanism, count }) => (
         <div key={mechanism}>
           <h5 className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-neutral-400">
-            {MECHANISM_LABEL[mechanism]} <span className="font-normal normal-case">({list.length})</span>
+            {MECHANISM_LABEL[mechanism as OutboundMechanism] ?? mechanism} <span className="font-normal normal-case">({count})</span>
           </h5>
-          <LimitedList items={list} name={(i) => [endpointText(i), describe(i)]} noun="invocations">
+          <PagedList<OutboundInvocation> load={source.invocations(project.project_id, mechanism)} resetKey={`${source.key}|${project.project_id}|${mechanism}`} noun="invocations">
             {(shown) => (
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs">
@@ -338,7 +384,7 @@ function MechanismGroups({ invocations, localPath }: { invocations: OutboundInvo
                 </table>
               </div>
             )}
-          </LimitedList>
+          </PagedList>
         </div>
       ))}
     </div>
@@ -348,10 +394,10 @@ function MechanismGroups({ invocations, localPath }: { invocations: OutboundInvo
 /** One project's invocations grouped by mechanism, incompatible first.
  * Shared by the repository Surface panel and the
  * outbound-invocation-inventory artifact renderer. */
-export function OutboundProjectPanel({ project, localPath }: { project: ProjectOutbound; localPath: string | null }) {
+export function OutboundProjectPanel({ project, source, localPath }: { project: OutboundProject; source: OutboundSource; localPath: string | null }) {
   const incompatible = project.count_by_verdict.incompatible ?? 0
   const requiresChange = project.count_by_verdict.requires_change ?? 0
-  const used = project.invocations.length - project.unused_count
+  const used = project.invocation_count - project.unused_count
   const [open, setOpen] = useState(incompatible > 0)
   return (
     <div className="rounded border border-neutral-200">
@@ -371,8 +417,45 @@ export function OutboundProjectPanel({ project, localPath }: { project: ProjectO
       </button>
       {open && (
         <div className="border-t border-neutral-100 px-3 py-3">
-          <MechanismGroups invocations={project.invocations} localPath={localPath} />
+          <MechanismGroups project={project} source={source} localPath={localPath} />
         </div>
+      )}
+    </div>
+  )
+}
+
+/** The outbound projects: a panel per project with invocations, the most incompatible first, a page at a time, then
+ * one grouped line for every other project. */
+export function OutboundProjectList({ source, withInvocations, without, localPath }: { source: OutboundSource; withInvocations: number; without: number; localPath: string | null }) {
+  return (
+    <div className="space-y-2">
+      {withInvocations === 0 && <p className="text-sm text-neutral-400">No outbound invocations found in any project.</p>}
+      {withInvocations > 0 && (
+        <PagedList<OutboundProject> load={source.projects} resetKey={`${source.key}|invocations`} noun="projects">
+          {(shown) => (
+            <div className="space-y-2">
+              {shown.map((project) => (
+                <OutboundProjectPanel key={project.project_id} project={project} source={source} localPath={localPath} />
+              ))}
+            </div>
+          )}
+        </PagedList>
+      )}
+      {without > 0 && (
+        <GroupedItems label={`${without} project${without === 1 ? '' : 's'} with no outbound invocations`}>
+          <PagedList<OutboundProject> load={source.without} resetKey={`${source.key}|without`} noun="projects">
+            {(rows) => (
+              <ul className="space-y-0.5 text-xs text-neutral-500">
+                {rows.map((w) => (
+                  <li key={w.project_id}>
+                    <span className="break-all font-mono">{w.project_path}</span>
+                    {w.status !== 'SCANNED' && <span className="text-neutral-400"> — {w.skip_reason ?? w.status.toLowerCase()}</span>}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </PagedList>
+        </GroupedItems>
       )}
     </div>
   )
@@ -392,17 +475,18 @@ function Stat({ label, value, verdict }: { label: string; value: number; verdict
  * invocations grouped by mechanism, a verdict badge on each, environment
  * bindings expandable, incompatible first. */
 export function RepositoryOutboundPanel({ repositoryId, localPath, refreshToken }: RepositoryOutboundPanelProps) {
-  const [inventory, setInventory] = useState<OutboundInventory | null>(null)
+  const [inventory, setInventory] = useState<OutboundSummary | null>(null)
   const [notScanned, setNotScanned] = useState(false)
   const [failed, setFailed] = useState(false)
   const [loading, setLoading] = useState(true)
+  const source = useMemo(() => serverOutboundSource(repositoryId, refreshToken), [repositoryId, refreshToken])
 
   useEffect(() => {
     let cancelled = false
     setLoading(true)
     setNotScanned(false)
     setFailed(false)
-    getRepositoryOutboundInvocations(repositoryId)
+    getOutboundSummary(repositoryId)
       .then((result) => {
         if (!cancelled) setInventory(result)
       })
@@ -419,15 +503,6 @@ export function RepositoryOutboundPanel({ repositoryId, localPath, refreshToken 
     }
   }, [repositoryId, refreshToken])
 
-  // Projects with an incompatible invocation first — the list someone will act on.
-  const withInvocations = (inventory?.projects.filter((p) => p.invocations.length > 0) ?? []).sort(
-    (a, b) =>
-      Math.min(...a.invocations.map(rank)) - Math.min(...b.invocations.map(rank)) ||
-      a.project_path.localeCompare(b.project_path),
-  )
-  const without = inventory?.projects.filter((p) => p.invocations.length === 0) ?? []
-
-  const projects = inventory?.projects ?? []
   const used = inventory ? inventory.invocation_count - inventory.unused_count : 0
   const incompatible = inventory?.count_by_verdict.incompatible ?? 0
   const requiresChange = inventory?.count_by_verdict.requires_change ?? 0
@@ -437,7 +512,7 @@ export function RepositoryOutboundPanel({ repositoryId, localPath, refreshToken 
       ? 'could not be loaded'
       : notScanned || !inventory
         ? 'not scanned yet'
-        : `${projects.length} project${projects.length === 1 ? '' : 's'}, ${withInvocations.length} with outbound calls · ` +
+        : `${inventory.project_count} project${inventory.project_count === 1 ? '' : 's'}, ${inventory.projects_with_invocations} with outbound calls · ` +
           `${used} invocation${used === 1 ? '' : 's'}` +
           (incompatible > 0 ? `, ${incompatible} incompatible` : '') +
           (requiresChange > 0 ? `, ${requiresChange} requires change` : '')
@@ -447,7 +522,7 @@ export function RepositoryOutboundPanel({ repositoryId, localPath, refreshToken 
       id={surfaceSectionId(repositoryId, 'outbound')}
       title="Outbound"
       summary={summary}
-      rowCount={inventory ? projects.length : undefined}
+      rowCount={inventory ? inventory.project_count : undefined}
       persist="browser"
       variant="nested"
     >
@@ -476,38 +551,12 @@ export function RepositoryOutboundPanel({ repositoryId, localPath, refreshToken 
             its query and fragment are never stored — and a value from configuration shows its key, with one binding per environment file.
             Credentials are shown by kind and key path only. {inventory.auth_declared_scope}
           </p>
-          {withInvocations.length === 0 && <p className="text-sm text-neutral-400">No outbound invocations found in any project.</p>}
-          {/* One list: a panel per project with invocations, and the grouped line for the rest, which counts as one. */}
-          <LimitedList<ProjectOutbound | 'without'>
-            items={[...withInvocations, ...(without.length > 0 ? (['without'] as const) : [])]}
-            name={(p) => (p === 'without' ? without.map((w) => w.project_path) : p.project_path)}
-            noun="projects"
-          >
-            {(shown) => (
-              <div className="space-y-2">
-                {shown.map((project) =>
-                  project === 'without' ? (
-                    <GroupedItems key="without" label={`${without.length} project${without.length === 1 ? '' : 's'} with no outbound invocations`}>
-                      <LimitedList items={without} name={(w) => w.project_path} noun="projects">
-                        {(rows) => (
-                          <ul className="space-y-0.5 text-xs text-neutral-500">
-                            {rows.map((w) => (
-                              <li key={w.project_id}>
-                                <span className="break-all font-mono">{w.project_path}</span>
-                                {w.status !== 'SCANNED' && <span className="text-neutral-400"> — {w.skip_reason ?? w.status.toLowerCase()}</span>}
-                              </li>
-                            ))}
-                          </ul>
-                        )}
-                      </LimitedList>
-                    </GroupedItems>
-                  ) : (
-                    <OutboundProjectPanel key={project.project_id} project={project} localPath={localPath} />
-                  ),
-                )}
-              </div>
-            )}
-          </LimitedList>
+          <OutboundProjectList
+            source={source}
+            withInvocations={inventory.projects_with_invocations}
+            without={inventory.project_count - inventory.projects_with_invocations}
+            localPath={localPath}
+          />
         </div>
       )}
     </CollapsibleSection>

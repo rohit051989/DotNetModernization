@@ -49,10 +49,18 @@ function EvidenceLinks({ evidence }: { evidence: EvidenceLink[] }) {
         <ul className="space-y-0.5">
           {visible.map((e) => (
             <li key={e.path}>
+              {e.held_on ? (
+                // On the machine that made it: where, instead of a link that cannot work.
+                <span className="font-mono text-neutral-600" title={`${e.path} is ${e.held_on}`}>
+                  {e.kind.replace('_', ' ')}
+                  {e.project ? ` · ${e.project.split('/').pop()}` : ''} <span className="font-sans text-[10px] text-neutral-400">{e.held_on}</span>
+                </span>
+              ) : (
               <a href={evidenceHref(e.url)} target="_blank" rel="noreferrer" className="font-mono text-violet-700 hover:underline">
                 {e.kind.replace('_', ' ')}
                 {e.project ? ` · ${e.project.split('/').pop()}` : ''}
-              </a>{' '}
+              </a>
+              )}{' '}
               <span className="font-mono text-[10px] text-neutral-400" title={e.sha256}>
                 sha256 {e.sha256.slice(0, 12)}
               </span>

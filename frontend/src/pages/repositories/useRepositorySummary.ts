@@ -1,12 +1,11 @@
 import { useEffect, useState } from 'react'
 import { listConversions } from '../../api/conversion'
 import { listRepositoryExecutions } from '../../api/repositories'
-import { getRepositorySoapCompatibility } from '../../api/surface'
+import { getSoapSummary } from '../../api/results'
 import type { Conversions } from '../../types/conversion'
-import type { RepositorySoap } from '../../types/surface'
+import type { SoapSummary } from '../../types/results'
 import type { JobExecution } from '../../types/workflow'
 import { num, obj } from '../workflow/artifacts/adapters'
-import { needsChange } from './soapNeedsChange'
 import type { LatestArtifact, PageArtifactType } from './useLatestArtifacts'
 
 /** One key figure: a number or word, what it is, and whether it calls for attention. Undefined while unknown. */
@@ -39,13 +38,13 @@ export function useRepositorySummary(
   artifacts: Partial<Record<PageArtifactType, LatestArtifact>>,
   refreshToken: number,
 ): RepositorySummary {
-  const [soap, setSoap] = useState<RepositorySoap | null | undefined>(undefined)
+  const [soap, setSoap] = useState<SoapSummary | null | undefined>(undefined)
   const [conversions, setConversions] = useState<Conversions | null | undefined>(undefined)
   const [executions, setExecutions] = useState<JobExecution[] | undefined>(undefined)
 
   useEffect(() => {
     let live = true
-    getRepositorySoapCompatibility(repositoryId).then((r) => live && setSoap(r), () => live && setSoap(null))
+    getSoapSummary(repositoryId).then((r) => live && setSoap(r), () => live && setSoap(null))
     listConversions(repositoryId).then((r) => live && setConversions(r), () => live && setConversions(null))
     listRepositoryExecutions(repositoryId).then((r) => live && setExecutions(r), () => live && setExecutions([]))
     return () => {
@@ -75,8 +74,9 @@ export function useRepositorySummary(
     }
   }
   if (soap) {
-    const change = soap.calls.filter((c) => c.environments.some(needsChange)).length
-    summary.soapCallsNeedingChange = { value: change, detail: `of ${soap.calls.length} SOAP call${soap.calls.length === 1 ? '' : 's'}`, tone: change > 0 ? 'amber' : undefined }
+    // Counted by the server over every call, with the verdicts as they stand now (a runtime or Linux verdict asking for a change).
+    const change = soap.need_change
+    summary.soapCallsNeedingChange = { value: change, detail: `of ${soap.calls} SOAP call${soap.calls === 1 ? '' : 's'}`, tone: change > 0 ? 'amber' : undefined }
   }
   if (conversions) {
     const newest = conversions.conversions[0]

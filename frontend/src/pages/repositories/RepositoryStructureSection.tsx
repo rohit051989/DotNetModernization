@@ -1,13 +1,10 @@
 import { useEffect, useState } from 'react'
 import { ApiError } from '../../api/client'
-import {
-  getRepositoryStructure,
-  listRepositoryArtifacts,
-  listRepositoryProjects,
-  listRepositorySolutions,
-} from '../../api/structure'
-import type { ProjectSummary, RepositoryArtifact, RepositoryStructure, Solution } from '../../types/structure'
+import { artifactsPage, projectsPage, solutionMembers, solutionsPage, structureWarnings } from '../../api/results'
+import { getRepositoryStructure } from '../../api/structure'
+import type { ParseWarning, ProjectSummary, RepositoryArtifact, RepositoryStructure, Solution, SolutionProjectMember } from '../../types/structure'
 import { LimitedList } from '../../components/LimitedList'
+import { PagedList } from '../../components/PagedList'
 
 interface RepositoryStructureSectionProps {
   repositoryId: string
@@ -56,7 +53,7 @@ function FrameworkBars({ families }: { families: Record<string, number> }) {
   )
 }
 
-function SolutionRow({ solution }: { solution: Solution }) {
+function SolutionRow({ repositoryId, solution, refreshToken }: { repositoryId: string; solution: Solution; refreshToken: number }) {
   const [expanded, setExpanded] = useState(false)
   return (
     <div className="rounded border border-neutral-200">
@@ -78,7 +75,7 @@ function SolutionRow({ solution }: { solution: Solution }) {
         <div className="border-t border-neutral-100 px-3 py-2">
           <p className="mb-1 font-mono text-xs text-neutral-400">{solution.relative_path}</p>
           {solution.parse_error && <p className="mb-1 text-xs text-red-600">{solution.parse_error}</p>}
-          <LimitedList items={solution.projects} name={(member) => member.relative_path ?? member.raw_path} noun="projects">
+          <PagedList<SolutionProjectMember> load={solutionMembers(repositoryId, solution.id)} resetKey={`${repositoryId}|${refreshToken}|${solution.id}`} noun="projects">
             {(visible) => (
               <ul className="space-y-1">
                 {visible.map((member) => (
@@ -93,29 +90,26 @@ function SolutionRow({ solution }: { solution: Solution }) {
                 ))}
               </ul>
             )}
-          </LimitedList>
+          </PagedList>
         </div>
       )}
     </div>
   )
 }
 
-function ArtifactCounts({ artifacts }: { artifacts: RepositoryArtifact[] }) {
+/** The counts per category are the scan's own (artifact_counts); the paths come a page at a time. */
+function ArtifactCounts({ repositoryId, counts, refreshToken }: { repositoryId: string; counts: Record<string, number>; refreshToken: number }) {
   const [expanded, setExpanded] = useState(false)
-  const byCategory = artifacts.reduce<Record<string, RepositoryArtifact[]>>((acc, artifact) => {
-    ;(acc[artifact.category] ??= []).push(artifact)
-    return acc
-  }, {})
-  const categories = Object.entries(byCategory).sort((a, b) => b[1].length - a[1].length)
+  const categories = Object.entries(counts).filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1])
 
   if (categories.length === 0) return <p className="text-sm text-neutral-400">No supporting artifacts found.</p>
 
   return (
     <div>
       <div className="flex flex-wrap gap-2">
-        {categories.map(([category, items]) => (
+        {categories.map(([category, count]) => (
           <span key={category} className="rounded border border-neutral-200 bg-neutral-50 px-2 py-1 text-xs text-neutral-600">
-            {category} · {items.length}
+            {category} · {count}
           </span>
         ))}
       </div>
@@ -123,7 +117,7 @@ function ArtifactCounts({ artifacts }: { artifacts: RepositoryArtifact[] }) {
         {expanded ? 'Hide paths' : 'Show paths'}
       </button>
       {expanded && (
-        <LimitedList items={artifacts} name={(artifact) => artifact.relative_path} noun="artifacts" className="mt-2">
+        <PagedList<RepositoryArtifact> load={artifactsPage(repositoryId)} resetKey={`${repositoryId}|${refreshToken}`} noun="artifacts" className="mt-2">
           {(visible) => (
             <ul className="max-h-40 space-y-0.5 overflow-y-auto break-all font-mono text-xs text-neutral-500">
               {visible.map((artifact) => (
@@ -131,7 +125,7 @@ function ArtifactCounts({ artifacts }: { artifacts: RepositoryArtifact[] }) {
               ))}
             </ul>
           )}
-        </LimitedList>
+        </PagedList>
       )}
     </div>
   )
@@ -139,9 +133,6 @@ function ArtifactCounts({ artifacts }: { artifacts: RepositoryArtifact[] }) {
 
 export function RepositoryStructureSection({ repositoryId, refreshToken }: RepositoryStructureSectionProps) {
   const [structure, setStructure] = useState<RepositoryStructure | null>(null)
-  const [solutions, setSolutions] = useState<Solution[]>([])
-  const [projects, setProjects] = useState<ProjectSummary[]>([])
-  const [artifacts, setArtifacts] = useState<RepositoryArtifact[]>([])
   const [notScanned, setNotScanned] = useState(false)
   const [loading, setLoading] = useState(true)
   const [warningsExpanded, setWarningsExpanded] = useState(false)
@@ -151,19 +142,10 @@ export function RepositoryStructureSection({ repositoryId, refreshToken }: Repos
     setLoading(true)
     setNotScanned(false)
 
-    getRepositoryStructure(repositoryId)
-      .then(async (result) => {
-        if (cancelled) return
-        setStructure(result)
-        const [solutionResult, projectResult, artifactResult] = await Promise.all([
-          listRepositorySolutions(repositoryId),
-          listRepositoryProjects(repositoryId),
-          listRepositoryArtifacts(repositoryId),
-        ])
-        if (cancelled) return
-        setSolutions(solutionResult)
-        setProjects(projectResult)
-        setArtifacts(artifactResult)
+    // The summary without its warnings; the solutions, projects, artifacts and warnings come a page at a time.
+    getRepositoryStructure(repositoryId, false)
+      .then((result) => {
+        if (!cancelled) setStructure(result)
       })
       .catch((err) => {
         if (cancelled) return
@@ -189,8 +171,6 @@ export function RepositoryStructureSection({ repositoryId, refreshToken }: Repos
       </div>
     )
   }
-
-  const standaloneProjects = projects.filter((p) => p.is_standalone)
 
   return (
     <div className="space-y-4">
@@ -222,29 +202,29 @@ export function RepositoryStructureSection({ repositoryId, refreshToken }: Repos
 
       <div>
         <h4 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-neutral-400">Solutions</h4>
-        <LimitedList
-          items={solutions}
-          name={(solution) => [solution.name, solution.relative_path]}
+        <PagedList<Solution>
+          load={solutionsPage(repositoryId)}
+          resetKey={`${repositoryId}|${refreshToken}`}
           noun="solutions"
           empty={<p className="text-sm text-neutral-400">No .sln files found.</p>}
         >
           {(visible) => (
             <div className="space-y-1.5">
               {visible.map((solution) => (
-                <SolutionRow key={solution.id} solution={solution} />
+                <SolutionRow key={solution.id} repositoryId={repositoryId} solution={solution} refreshToken={refreshToken} />
               ))}
             </div>
           )}
-        </LimitedList>
+        </PagedList>
       </div>
 
       <div>
         <h4 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-neutral-400">
-          Standalone projects ({standaloneProjects.length})
+          Standalone projects ({structure.standalone_project_count ?? 0})
         </h4>
-        <LimitedList
-          items={standaloneProjects}
-          name={(project) => project.relative_path}
+        <PagedList<ProjectSummary>
+          load={projectsPage(repositoryId, true)}
+          resetKey={`${repositoryId}|${refreshToken}|standalone`}
           noun="projects"
           empty={<p className="text-sm text-neutral-400">Every project belongs to at least one solution.</p>}
         >
@@ -255,25 +235,25 @@ export function RepositoryStructureSection({ repositoryId, refreshToken }: Repos
               ))}
             </ul>
           )}
-        </LimitedList>
+        </PagedList>
       </div>
 
       <div>
         <h4 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-neutral-400">Supporting artifacts</h4>
-        <ArtifactCounts artifacts={artifacts} />
+        <ArtifactCounts repositoryId={repositoryId} counts={structure.artifact_counts} refreshToken={refreshToken} />
       </div>
 
-      {structure.parse_warnings.length > 0 && (
+      {structure.parse_warning_count > 0 && (
         <div>
           <button
             type="button"
             onClick={() => setWarningsExpanded((v) => !v)}
             className="text-xs font-semibold uppercase tracking-wide text-amber-600 hover:underline"
           >
-            Discovery warnings ({structure.parse_warnings.length}) {warningsExpanded ? '▲' : '▼'}
+            Discovery warnings ({structure.parse_warning_count}) {warningsExpanded ? '▲' : '▼'}
           </button>
           {warningsExpanded && (
-            <LimitedList items={structure.parse_warnings} name={(warning) => warning.path} noun="warnings" className="mt-2">
+            <PagedList<ParseWarning> load={structureWarnings(repositoryId)} resetKey={`${repositoryId}|${refreshToken}`} noun="warnings" className="mt-2">
               {(visible) => (
                 <ul className="space-y-1 text-xs text-neutral-600">
                   {visible.map((warning, index) => (
@@ -283,7 +263,7 @@ export function RepositoryStructureSection({ repositoryId, refreshToken }: Repos
                   ))}
                 </ul>
               )}
-            </LimitedList>
+            </PagedList>
           )}
         </div>
       )}

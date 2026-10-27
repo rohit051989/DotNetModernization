@@ -97,8 +97,8 @@ export function LimitedList<T>({ items, children, name, noun, empty, className }
   )
 }
 
-/** The controls below a limited list. */
-function ListControls({
+/** The controls below a limited list (and a paged one, PagedList). */
+export function ListControls({
   remaining,
   expanded,
   onMore,

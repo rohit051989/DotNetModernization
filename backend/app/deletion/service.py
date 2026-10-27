@@ -384,6 +384,9 @@ def _delete_rows(db: Session, plan: dict) -> None:
         for table in ENGAGEMENT_NO_CASCADE:
             db.execute(text(f'DELETE FROM "{table}" WHERE engagement_id = :eid'), p)
         db.execute(text("DELETE FROM engagements WHERE id = :eid"), p)               # and everything that cascades
+    # Stored result contents (app.results) no artifact refers to any more; one another repository shares stays.
+    db.execute(text("DELETE FROM result_contents c WHERE NOT EXISTS "
+                    "(SELECT 1 FROM result_artifacts a WHERE a.checksum = c.checksum)"))
     left = row_counts(db, scope)
     if left:
         raise RuntimeError(f"rows would be left behind, so nothing was deleted: {left}")

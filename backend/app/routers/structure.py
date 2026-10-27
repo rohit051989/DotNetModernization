@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from app import models
 from app.db import get_db
 from app.errors import ErrorResponse, error
+from app.results.paging import PageOut, PageParams, page
 from app.structure import service as structure_service
 from app.structure.schemas import (
     EngagementStructureSummaryOut,
@@ -56,7 +57,12 @@ def _get_engagement(db: Session, engagement_id: str) -> models.Engagement:
     operation_id="get_repository_structure",
     responses={404: _REPOSITORY_NOT_FOUND, 409: _NOT_SCANNED},
 )
-def get_repository_structure(repository_id: uuid.UUID, db: Session = Depends(get_db)):
+def get_repository_structure(
+    repository_id: uuid.UUID,
+    warnings: bool = Query(True, description="false: leave parse_warnings out (parse_warning_count still says how many); "
+                                             "the UI pages them from /structure/warnings."),
+    db: Session = Depends(get_db),
+):
     """
     Rendered only when this exists; the UI shows an empty state naming step 2
     otherwise (Part I) — modelled here as 409 rather than a null-filled 200,
@@ -67,7 +73,136 @@ def get_repository_structure(repository_id: uuid.UUID, db: Session = Depends(get
     structure = structure_service.get_structure(db, repository_id)
     if structure is None:
         raise error(409, "Solution discovery has not run yet for this repository.", code="NOT_SCANNED")
-    return RepositoryStructureOut.model_validate(structure)
+    out = RepositoryStructureOut.model_validate(structure)
+    out.parse_warning_count = len(out.parse_warnings)
+    if not warnings:
+        out.parse_warnings = []
+    return out
+
+
+# ---------- the Projects tab's lists, a page at a time (app.results.paging) ----------
+
+
+@router.get(
+    "/repositories/{repository_id}/structure/warnings",
+    response_model=PageOut,
+    summary="Get a page of a repository's discovery warnings",
+    operation_id="list_structure_warnings",
+    responses={404: _REPOSITORY_NOT_FOUND},
+)
+def list_structure_warnings(repository_id: uuid.UUID, paging: PageParams = Depends(), db: Session = Depends(get_db)):
+    """Items: {path, warning}, in the scan's order. The filter matches the path."""
+    _get_repository(db, repository_id)
+    source = """
+        select w as item, n as k, lower(w->>'path') as search
+        from repository_structure s, jsonb_array_elements(coalesce(s.parse_warnings, '[]')) with ordinality t(w, n)
+        where s.repository_id = :r
+    """
+    return page(db, source, {"r": repository_id}, paging, order="k")
+
+
+@router.get(
+    "/repositories/{repository_id}/solutions/page",
+    response_model=PageOut,
+    summary="Get a page of a repository's solutions, without their members",
+    operation_id="list_repository_solutions_page",
+    responses={404: _REPOSITORY_NOT_FOUND},
+)
+def list_repository_solutions_page(repository_id: uuid.UUID, paging: PageParams = Depends(), db: Session = Depends(get_db)):
+    """Items as SolutionOut with `projects` empty and `member_count` set: the members come a page at a time from
+    /solutions/{id}/members. By path; the filter matches the name and the path."""
+    _get_repository(db, repository_id)
+    source = """
+        select jsonb_build_object('id', s.id, 'name', s.name, 'relative_path', s.relative_path,
+                                  'format_version', s.format_version, 'visual_studio_version', s.visual_studio_version,
+                                  'minimum_vs_version', s.minimum_vs_version, 'project_count', s.project_count,
+                                  'resolved_project_count', s.resolved_project_count,
+                                  'missing_project_count', s.missing_project_count,
+                                  'solution_folder_count', s.solution_folder_count,
+                                  'shared_project_count', s.shared_project_count, 'parse_status', s.parse_status,
+                                  'parse_error', s.parse_error, 'projects', '[]'::jsonb,
+                                  'member_count', (select count(*) from solution_projects m where m.solution_id = s.id)) as item,
+               s.relative_path as k, lower(concat_ws(' ', s.name, s.relative_path)) as search
+        from solutions s where s.repository_id = :r
+    """
+    return page(db, source, {"r": repository_id}, paging, order='k collate "C"')
+
+
+@router.get(
+    "/repositories/{repository_id}/solutions/{solution_id}/members",
+    response_model=PageOut,
+    summary="Get a page of one solution's member projects",
+    operation_id="list_solution_members",
+    responses={404: _REPOSITORY_NOT_FOUND},
+)
+def list_solution_members(repository_id: uuid.UUID, solution_id: uuid.UUID, paging: PageParams = Depends(),
+                          db: Session = Depends(get_db)):
+    """Items as SolutionProjectMemberOut, by raw path. The filter matches the resolved path, or the raw one."""
+    _get_repository(db, repository_id)
+    source = """
+        select jsonb_build_object('raw_path', m.raw_path, 'project_id', m.project_id, 'relative_path', p.relative_path,
+                                  'project_guid', m.project_guid, 'project_type_guid', m.project_type_guid,
+                                  'solution_folder', m.solution_folder, 'resolution_status', m.resolution_status) as item,
+               m.raw_path as k, lower(coalesce(p.relative_path, m.raw_path)) as search
+        from solution_projects m
+        join solutions s on s.id = m.solution_id
+        left join projects p on p.id = m.project_id
+        where s.repository_id = :r and m.solution_id = :s
+    """
+    return page(db, source, {"r": repository_id, "s": solution_id}, paging, order='k collate "C"')
+
+
+@router.get(
+    "/repositories/{repository_id}/projects/page",
+    response_model=PageOut,
+    summary="Get a page of a repository's projects",
+    operation_id="list_repository_projects_page",
+    responses={404: _REPOSITORY_NOT_FOUND},
+)
+def list_repository_projects_page(
+    repository_id: uuid.UUID,
+    standalone: bool | None = Query(None, description="Only projects with (false) or without (true) solution membership."),
+    paging: PageParams = Depends(),
+    db: Session = Depends(get_db),
+):
+    """Items as ProjectSummaryOut, by path. The filter matches the path."""
+    _get_repository(db, repository_id)
+    source = """
+        select jsonb_build_object('id', p.id, 'repository_id', p.repository_id, 'name', p.name,
+                                  'relative_path', p.relative_path, 'extension', p.extension,
+                                  'structural_type', p.structural_type, 'project_format', p.project_format,
+                                  'language', p.language, 'framework_family', p.framework_family,
+                                  'framework_version', p.framework_version, 'is_multi_targeting', p.is_multi_targeting,
+                                  'solution_membership_count', p.solution_membership_count, 'is_standalone', p.is_standalone,
+                                  'project_reference_count', p.project_reference_count,
+                                  'package_reference_count', p.package_reference_count,
+                                  'package_management_style', p.package_management_style,
+                                  'has_packages_config', p.has_packages_config, 'parse_status', p.parse_status) as item,
+               p.relative_path as k, lower(p.relative_path) as search, p.is_standalone
+        from projects p where p.repository_id = :r
+    """
+    where = "true" if standalone is None else ("is_standalone" if standalone else "not is_standalone")
+    return page(db, source, {"r": repository_id}, paging, order='k collate "C"', where=where)
+
+
+@router.get(
+    "/repositories/{repository_id}/artifacts/page",
+    response_model=PageOut,
+    summary="Get a page of a repository's supporting artifacts",
+    operation_id="list_repository_artifacts_page",
+    responses={404: _REPOSITORY_NOT_FOUND},
+)
+def list_repository_artifacts_page(repository_id: uuid.UUID, paging: PageParams = Depends(), db: Session = Depends(get_db)):
+    """Items as RepositoryArtifactOut, by path. The filter matches the path. The counts per category are the
+    structure's artifact_counts."""
+    _get_repository(db, repository_id)
+    source = """
+        select jsonb_build_object('id', a.id, 'category', a.category, 'relative_path', a.relative_path,
+                                  'file_name', a.file_name) as item,
+               a.relative_path as k, lower(a.relative_path) as search
+        from repository_artifacts a where a.repository_id = :r
+    """
+    return page(db, source, {"r": repository_id}, paging, order='k collate "C"')
 
 
 @router.get(

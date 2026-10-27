@@ -36,6 +36,7 @@ from app import models
 from app.config import settings
 from app.workflow import progress, semver, time_limits
 from app.workflow.adapters import create_adapter
+from app.results import store as results_store
 from app.workflow.adapters.base import local_path_from_uri
 from app.workflow.contract import ArtifactRef, StepContext, StepResult
 from app.workflow.definition.model import JobDefinitionFile, StepNode
@@ -281,24 +282,28 @@ def _register_artifacts(
     # outputs by the time it reaches here. size_bytes is captured now, while
     # the file is known to exist, so it survives the run directory later
     # being cleaned up (11-STEP-CONTRACT.md / docs/20 Part E).
+    registered = []
     for output in outputs:
         try:
             size_bytes = local_path_from_uri(output.uri).stat().st_size
         except OSError:
             size_bytes = None
-        db.add(
-            models.WfArtifact(
-                step_execution_id=step_execution.id,
-                job_execution_id=job_execution.id,
-                artifact_type=output.artifact_type,
-                artifact_version=output.artifact_version,
-                uri=output.uri,
-                checksum=output.checksum,
-                size_bytes=size_bytes,
-                artifact_metadata=output.metadata,
-            )
+        artifact = models.WfArtifact(
+            step_execution_id=step_execution.id,
+            job_execution_id=job_execution.id,
+            artifact_type=output.artifact_type,
+            artifact_version=output.artifact_version,
+            uri=output.uri,
+            checksum=output.checksum,
+            size_bytes=size_bytes,
+            artifact_metadata=output.metadata,
         )
+        db.add(artifact)
+        registered.append(artifact)
     db.flush()
+    # Results a view reads go into the database too, for everyone on another machine (app.results).
+    for artifact in registered:
+        results_store.publish(db, artifact)
 
 
 def _resolve_batch_status(exit_status: str, stub_policy: str, on_failure: str) -> tuple[str, bool]:
@@ -520,20 +525,24 @@ def _carry_forward_step(
     db.add(new_step_execution)
     db.flush()
 
+    copies = []
     for artifact in db.query(models.WfArtifact).filter_by(step_execution_id=prior.id):
-        db.add(
-            models.WfArtifact(
-                step_execution_id=new_step_execution.id,
-                job_execution_id=job_execution.id,
-                artifact_type=artifact.artifact_type,
-                artifact_version=artifact.artifact_version,
-                uri=artifact.uri,
-                checksum=artifact.checksum,
-                size_bytes=artifact.size_bytes,
-                artifact_metadata=artifact.artifact_metadata,
-            )
+        copy = models.WfArtifact(
+            step_execution_id=new_step_execution.id,
+            job_execution_id=job_execution.id,
+            artifact_type=artifact.artifact_type,
+            artifact_version=artifact.artifact_version,
+            uri=artifact.uri,
+            checksum=artifact.checksum,
+            size_bytes=artifact.size_bytes,
+            artifact_metadata=artifact.artifact_metadata,
         )
+        db.add(copy)
+        copies.append(copy)
     db.flush()
+    # The carried result is this execution's too: stored once per checksum, it costs a row (app.results).
+    for copy in copies:
+        results_store.publish(db, copy)
     return new_step_execution
 
 

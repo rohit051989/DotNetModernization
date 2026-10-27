@@ -1,8 +1,11 @@
 import { Fragment, useEffect, useState } from 'react'
 import { ApiError } from '../../api/client'
-import { getRepositoryImpact, getWorkItemImpact } from '../../api/surface'
+import { getImpactSummary, impactFiles, impactRuleConflictInstances, impactRuleConflicts, impactWorkItemConflicts, impactWorkItems } from '../../api/results'
+import { getWorkItemImpact } from '../../api/surface'
 import { LimitedList } from '../../components/LimitedList'
-import type { FileRollup, ImpactAction, ImpactConflict, ImpactEntry, RepositoryImpact, ResolutionImpact, RollupWorkItem, RuleConflict, RuleSide, WorkItemImpact, WorkItemSummary } from '../../types/impact'
+import { PagedList, type Page } from '../../components/PagedList'
+import type { ImpactSummary } from '../../types/results'
+import type { FileRollup, ImpactAction, ImpactConflict, ImpactEntry, ResolutionImpact, RollupWorkItem, RuleConflict, RuleSide, WorkItemImpact, WorkItemSummary } from '../../types/impact'
 import { SourceLink } from './SourceLink'
 
 /** The order actions are listed in, strongest first (33-IMPACT-ANALYSIS Part F). */
@@ -55,34 +58,34 @@ function RuleSideRef({ side }: { side: RuleSide }) {
   )
 }
 
+/** A catalog rule conflict as listed: its first page of files, and how many there are. */
+type ListedRuleConflict = RuleConflict & { instance_count: number }
+
 /** Part G, grouped by the rules that produce them: a catalog rule pair
  * recurring on several pairs of work items is fixed once by catalog authors;
- * the rest are decisions about this repository's code. */
-function Conflicts({ rules, workItems, localPath }: { rules: RuleConflict[]; workItems: ImpactConflict[]; localPath: string | null }) {
-  const [open, setOpen] = useState<number | null>(null)
-  if (rules.length === 0 && workItems.length === 0) return <p className="text-xs text-neutral-400">None.</p>
+ * the rest are decisions about this repository's code. Each list a page at a time. */
+function Conflicts({ repositoryId, refreshToken, rules, workItems, localPath }: { repositoryId: string; refreshToken: number; rules: number; workItems: number; localPath: string | null }) {
+  const [open, setOpen] = useState<string | null>(null)
+  if (rules === 0 && workItems === 0) return <p className="text-xs text-neutral-400">None.</p>
+  const key = `${repositoryId}|${refreshToken}`
   return (
     <div className="space-y-2">
-      {rules.length > 0 && (
+      {rules > 0 && (
         <div>
           <p className="text-xs font-medium text-neutral-700">Catalog rule conflicts — fix once, in the catalog rules</p>
-          <LimitedList
-            items={rules}
-            name={(g) => [g.first.item_name, g.first.resolution_name, g.second.item_name, g.second.resolution_name]}
-            noun="rule conflicts"
-          >
+          <PagedList<ListedRuleConflict> load={impactRuleConflicts(repositoryId)} resetKey={key} noun="rule conflicts">
             {(visible) => (
           <ul className="space-y-1.5">
             {visible.map((g) => {
-              const index = rules.indexOf(g)
+              const first: Page<ImpactConflict> = { total: g.instance_count, matching: g.instance_count, offset: 0, items: g.instances }
               return (
-              <li key={index} className="text-xs">
+              <li key={g.rule_key} className="text-xs">
                 <span className="text-red-700">
                   1 rule conflict affecting {g.work_items} work items across {g.repositories} repositor{g.repositories === 1 ? 'y' : 'ies'}
                 </span>
                 <span className="text-neutral-500">
                   {' '}
-                  · {CONFLICT_KIND[g.kind]} on {g.instances.length} file(s) here
+                  · {CONFLICT_KIND[g.kind]} on {g.instance_count} file(s) here
                   {g.classified_by === 'repository' && ' · recurs within this repository; the next estate run classifies it across the estate'}
                 </span>
                 <ul className="ml-3">
@@ -93,11 +96,11 @@ function Conflicts({ rules, workItems, localPath }: { rules: RuleConflict[]; wor
                     <RuleSideRef side={g.second} />
                   </li>
                 </ul>
-                <button type="button" onClick={() => setOpen(open === index ? null : index)} className="ml-3 text-violet-700 hover:underline">
-                  {open === index ? 'hide files' : 'files'}
+                <button type="button" onClick={() => setOpen(open === g.rule_key ? null : g.rule_key)} className="ml-3 text-violet-700 hover:underline">
+                  {open === g.rule_key ? 'hide files' : 'files'}
                 </button>
-                {open === index && (
-                  <LimitedList items={g.instances} name={(c) => c.file_key} noun="files" className="ml-3">
+                {open === g.rule_key && (
+                  <PagedList<ImpactConflict> load={impactRuleConflictInstances(repositoryId, g.rule_key)} resetKey={`${key}|${g.rule_key}`} initial={first} noun="files" className="ml-3">
                     {(visibleInstances) => (
                       <ul>
                         {visibleInstances.map((c) => (
@@ -109,20 +112,20 @@ function Conflicts({ rules, workItems, localPath }: { rules: RuleConflict[]; wor
                         ))}
                       </ul>
                     )}
-                  </LimitedList>
+                  </PagedList>
                 )}
               </li>
               )
             })}
           </ul>
             )}
-          </LimitedList>
+          </PagedList>
         </div>
       )}
-      {workItems.length > 0 && (
+      {workItems > 0 && (
         <div>
           <p className="text-xs font-medium text-neutral-700">Work-item conflicts — a person decides</p>
-          <LimitedList items={workItems} name={(c) => [c.file_key, c.first.item_name, c.second.item_name]} noun="conflicts">
+          <PagedList<ImpactConflict> load={impactWorkItemConflicts(repositoryId)} resetKey={key} noun="conflicts">
             {(visible) => (
           <ul className="space-y-1.5">
             {visible.map((c, index) => (
@@ -143,7 +146,7 @@ function Conflicts({ rules, workItems, localPath }: { rules: RuleConflict[]; wor
             ))}
           </ul>
             )}
-          </LimitedList>
+          </PagedList>
         </div>
       )}
     </div>
@@ -389,14 +392,14 @@ function FileWorkItems({ file }: { file: FileRollup }) {
  * hotspots and conflicts, each work item with its default-versus-chosen
  * side by side, and the per-file view. */
 export function RepositoryImpactSection({ repositoryId, localPath, refreshToken }: { repositoryId: string; localPath: string | null; refreshToken: number }) {
-  const [data, setData] = useState<RepositoryImpact | null>(null)
+  const [data, setData] = useState<ImpactSummary | null>(null)
   const [state, setState] = useState<'loading' | 'ready' | 'not_scanned' | 'error'>('loading')
   const [expanded, setExpanded] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
     setState('loading')
-    getRepositoryImpact(repositoryId)
+    getImpactSummary(repositoryId)
       .then((result) => {
         if (cancelled) return
         setData(result)
@@ -415,6 +418,7 @@ export function RepositoryImpactSection({ repositoryId, localPath, refreshToken 
   if (state === 'error' || !data) return <p className="text-sm text-red-600">Could not load the impact.</p>
 
   const t = data.totals
+  const key = `${repositoryId}|${refreshToken}`
 
   return (
     <div className="space-y-4 text-sm">
@@ -442,11 +446,11 @@ export function RepositoryImpactSection({ repositoryId, localPath, refreshToken 
       </div>
 
       {/* Hotspots and conflicts, Part G */}
-      {(data.hotspots.length > 0 || data.rule_conflicts.length > 0 || data.work_item_conflicts.length > 0) && (
+      {(data.counts.hotspots > 0 || data.counts.rule_conflicts > 0 || data.counts.work_item_conflicts > 0) && (
         <div className="grid gap-3 lg:grid-cols-2">
           <div>
             <h4 className="mb-1 text-[11px] font-medium uppercase tracking-wide text-neutral-400">Hotspots — three or more work items</h4>
-            <LimitedList items={data.hotspots} name={(f) => f.file_key} noun="hotspots" empty={<p className="text-xs text-neutral-400">None.</p>}>
+            <PagedList<FileRollup> load={impactFiles(repositoryId, true)} resetKey={`${key}|hotspots`} noun="hotspots" empty={<p className="text-xs text-neutral-400">None.</p>}>
               {(visible) => (
                 <ul className="space-y-1.5">
                   {visible.map((f) => (
@@ -457,11 +461,11 @@ export function RepositoryImpactSection({ repositoryId, localPath, refreshToken 
                   ))}
                 </ul>
               )}
-            </LimitedList>
+            </PagedList>
           </div>
           <div>
             <h4 className="mb-1 text-[11px] font-medium uppercase tracking-wide text-neutral-400">Conflicts</h4>
-            <Conflicts rules={data.rule_conflicts} workItems={data.work_item_conflicts} localPath={localPath} />
+            <Conflicts repositoryId={repositoryId} refreshToken={refreshToken} rules={data.counts.rule_conflicts} workItems={data.counts.work_item_conflicts} localPath={localPath} />
           </div>
         </div>
       )}
@@ -469,7 +473,7 @@ export function RepositoryImpactSection({ repositoryId, localPath, refreshToken 
       {/* Work items */}
       <div>
         <h4 className="mb-1 text-[11px] font-medium uppercase tracking-wide text-neutral-400">Work items</h4>
-        <LimitedList items={data.work_items} name={(w) => [w.item_name, w.project_path]} noun="work items">
+        <PagedList<WorkItemSummary> load={impactWorkItems(repositoryId)} resetKey={`${key}|work-items`} noun="work items">
           {(visibleWorkItems) => (
         <table className="w-full text-xs">
           <thead>
@@ -532,13 +536,13 @@ export function RepositoryImpactSection({ repositoryId, localPath, refreshToken 
           </tbody>
         </table>
           )}
-        </LimitedList>
+        </PagedList>
       </div>
 
       {/* Per-file view */}
       <div>
         <h4 className="mb-1 text-[11px] font-medium uppercase tracking-wide text-neutral-400">Files</h4>
-        <LimitedList items={data.files} name={(f) => f.file_key} noun="files">
+        <PagedList<FileRollup> load={impactFiles(repositoryId, false)} resetKey={`${key}|files`} noun="files">
           {(visible) => (
             <ul className="divide-y divide-neutral-100">
               {visible.map((f) => (
@@ -553,7 +557,7 @@ export function RepositoryImpactSection({ repositoryId, localPath, refreshToken 
               ))}
             </ul>
           )}
-        </LimitedList>
+        </PagedList>
       </div>
     </div>
   )

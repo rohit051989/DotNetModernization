@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { listRepositoryExecutions } from '../../api/repositories'
-import { getArtifactContent, listExecutionArtifacts } from '../../api/workflow'
+import { getRepositoryResults } from '../../api/results'
+import type { RepositoryResults } from '../../types/results'
 import type { Json } from '../workflow/artifacts/adapters'
 
 /** The artifact types the repository page reads. */
@@ -16,67 +16,50 @@ export const PAGE_ARTIFACT_TYPES = [
 export type PageArtifactType = (typeof PAGE_ARTIFACT_TYPES)[number]
 
 export interface LatestArtifact {
+  artifactId: string
+  /** The artifact without its lists — its summary, counts and versions. The lists come a page at a time. */
   data: Json
   executionId: string
   createdAt: string
 }
 
-/** How many executions back to look for a type a recent run did not produce
- * (a run that failed at step 3 still has step 2's inventory). */
-const LOOKBACK = 5
-
 /**
- * The newest copy of each artifact type, across the repository's recent
- * executions — what the repository page's fingerprint summary, work list
- * and summary tiles draw. Read from the artifacts themselves, through the
- * same renderers as an execution's timeline.
+ * The newest stored copy of each artifact type (backend app.results): what the repository page's summary tiles, tab
+ * labels and each view's header read. From the database, so the same on every machine, whoever scanned the
+ * repository; each view asks for its own lists.
  */
 export function useLatestArtifacts(repositoryId: string, refreshToken: number) {
   const [artifacts, setArtifacts] = useState<Partial<Record<PageArtifactType, LatestArtifact>>>({})
+  const [results, setResults] = useState<RepositoryResults | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     let cancelled = false
-    async function load() {
-      setLoading(true)
-      try {
-        const executions = (await listRepositoryExecutions(repositoryId))
-          .slice()
-          .sort((a, b) => (b.started_at ?? '').localeCompare(a.started_at ?? ''))
-          .slice(0, LOOKBACK)
-        const found: Partial<Record<PageArtifactType, { id: string; executionId: string; createdAt: string }>> = {}
-        for (const execution of executions) {
-          if (PAGE_ARTIFACT_TYPES.every((type) => found[type])) break
-          const list = await listExecutionArtifacts(execution.id)
-          for (const artifact of list) {
-            const type = artifact.artifact_type as PageArtifactType
-            if (PAGE_ARTIFACT_TYPES.includes(type) && !found[type]) {
-              found[type] = { id: artifact.id, executionId: execution.id, createdAt: artifact.created_at }
-            }
-          }
+    setLoading(true)
+    getRepositoryResults(repositoryId)
+      .then((found) => {
+        if (cancelled) return
+        setResults(found)
+        const latest: Partial<Record<PageArtifactType, LatestArtifact>> = {}
+        for (const type of PAGE_ARTIFACT_TYPES) {
+          const stored = found.results[type]
+          if (stored) latest[type] = { artifactId: stored.artifact_id, data: stored.head, executionId: stored.job_execution_id, createdAt: stored.created_at }
         }
-        const entries = await Promise.all(
-          Object.entries(found).map(async ([type, ref]) => {
-            try {
-              const data = (await getArtifactContent(ref.id)) as Json
-              return [type, { data, executionId: ref.executionId, createdAt: ref.createdAt }] as const
-            } catch {
-              return null
-            }
-          }),
-        )
-        if (!cancelled) setArtifacts(Object.fromEntries(entries.filter((e) => e !== null)))
-      } catch {
-        if (!cancelled) setArtifacts({})
-      } finally {
+        setArtifacts(latest)
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setArtifacts({})
+          setResults(null)
+        }
+      })
+      .finally(() => {
         if (!cancelled) setLoading(false)
-      }
-    }
-    load()
+      })
     return () => {
       cancelled = true
     }
   }, [repositoryId, refreshToken])
 
-  return { artifacts, loading }
+  return { artifacts, results, loading }
 }

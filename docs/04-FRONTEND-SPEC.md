@@ -323,6 +323,19 @@ and so on — goes through one component, `frontend/src/components/LimitedList.t
 Not limited: fixed lists that are not data — table headers, `<option>`s, tabs, form fields, chips summarising
 counts, the fixed fields of one record, and a diagram laid out from every item.
 
+**A list that grows with a repository is paged by the server** (`frontend/src/components/PagedList.tsx`, backend
+`app.results.paging`): the repository page's entry points, invocations, backend calls, SOAP calls, packages and their
+projects, the work list and each row's occurrences, solutions, projects, artifacts and warnings, impact files, work
+items and conflicts, tests, test classes, coverage per project and per file, and the estate's register, unresolved
+endpoints, integration applications and their calls, packages, dependency lists and SOAP backends. It looks and works
+as above — 20, "+N more", "Show 20 more · N remaining", "Show all", "Show less", the filter box past 20 — but each
+control asks the server for what it shows, and the filter box's text is matched by the database (a moment after
+typing stops). A row's nested list that came with the row (a work-list row's first 20 occurrences) asks for nothing
+until more is wanted. What a view computed over a whole list before — its groups, counts and order, the work list's
+totals, the tests' note numbers, the register's conversation counts — the server computes and sends with the view's
+summary. A grouped line ("N projects with no request entry points") follows its list, opening its own paged list. An
+execution's artifact viewer, which has the whole artifact in hand, pages the same panels in memory (`localPages`).
+
 Inside a long list of panels (a project's entry points, an application's backend calls), a panel starts open only
 when the list has three or fewer; its header line gives its counts.
 
@@ -426,6 +439,17 @@ their own); Catalog, Dashboard, Workflow and Workflow Administration are lists o
 Tests: `frontend/src/pages/repositories/RepositoryDetailPage.test.tsx` covers the groups, switching tabs, loading on
 first open, the addresses, Back and Forward, the old section links, the remembered tab and scroll position, and
 Overview's links.
+
+## Results on another machine
+
+A repository's results are read from the database (backend `app.results`), so every tab shows the same on every
+machine, whoever scanned it. Its files are on the machine that scanned it: there, file links open in the chosen
+editor; anywhere else, the repository page says "Scanned on Ann's machine (DEVBOX-07): its results are read from the
+database ..." under its header, and every file link inside shows the path and, when clicked, says where the file is
+(`FilesHeldOn` in `SourceLink.tsx`, from the repository's `files_held_on`). An evidence file of a conversion, and an
+artifact no view reads (a SARIF export, a log), say the same instead of linking. The Conversion tab shows the
+conversions as their owner's machine last published them, with when. A repository scanned before results were shared
+says so under its header, with the command its owner runs to copy them.
 
 ## Dependency graph (repository page)
 
