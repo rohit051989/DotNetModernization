@@ -146,7 +146,7 @@ export function ItemDecisionPanel({ item, engagement, resolutions, refreshToken,
     if (!live) return
     setSuperseding(true)
     try {
-      await supersedeItemDecision(live.id)
+      await supersedeItemDecision(live.id, live.version)
       showToast('success', 'Decision superseded. Record a new one when ready.')
       setShowSupersedeConfirm(false)
       changed()

@@ -71,7 +71,7 @@ def upsert_extractor(name: str, payload: item_schemas.ExtractorDeclaration, db: 
     Rejected with 422 if the declaration drops a registered signal that
     expects this extractor from both lists — that signal would be unclaimed.
     """
-    # TODO: gate behind an admin role once auth exists.
+    # Admins only: enforced for every call by app.auth.policy.
     extractor, created = registry.upsert_extractor(db, {"name": name, **payload.model_dump()})
     readiness.assert_all_signals_claimed(db)
     propagation = readiness.refresh_readiness(db, touched_signals={*extractor.emits, *extractor.planned_emits})
@@ -132,7 +132,7 @@ def register_signal(payload: item_schemas.SignalRegistration, db: Session = Depe
     Signals shipped by step 3 arrive through `POST /api/catalog/signals/sync`
     instead.
     """
-    # TODO: gate behind an admin role once auth exists.
+    # Admins only: enforced for every call by app.auth.policy.
     if db.get(models.SignalRegistryEntry, payload.name) is not None:
         raise error(409, f"Signal '{payload.name}' is already registered", code="ALREADY_REGISTERED")
     readiness.assert_claimed(db, [(payload.name, payload.extractor)])
@@ -160,7 +160,7 @@ def sync_signal_registry(db: Session = Depends(get_db)):
     `python -m app.seed` runs. Fails without writing if any registry signal
     is not declared by its extractor.
     """
-    # TODO: gate behind an admin role once auth exists.
+    # Admins only: enforced for every call by app.auth.policy.
     result = registry.sync_from_registry_files(
         db, _load("extractors.yaml")["extractors"], _load("anticipated_signals.yaml")["signals"]
     )

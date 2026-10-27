@@ -11,6 +11,9 @@ import { DashboardPage } from './pages/DashboardPage'
 import { EstatePage } from './pages/EstatePage'
 import { WorkflowPage } from './pages/WorkflowPage'
 import { WorkflowAdministrationPage } from './pages/admin/WorkflowAdministrationPage'
+import { UsersPage } from './pages/admin/UsersPage'
+import { SignInPage } from './pages/SignInPage'
+import { AuthProvider, useAuth } from './auth/AuthContext'
 import { ToastProvider } from './components/Toast'
 import {
   parseExecutionIdFromLocation,
@@ -20,7 +23,23 @@ import {
   pushRootRoute,
 } from './routing'
 
+/** Every call needs a signed-in session (app.auth): until there is one, the sign-in page. */
 function App() {
+  return (
+    <AuthProvider>
+      <SignedIn />
+    </AuthProvider>
+  )
+}
+
+function SignedIn() {
+  const { me, setMe } = useAuth()
+  if (me === undefined) return <p className="p-6 text-sm text-neutral-400">Checking sign-in…</p>
+  if (me === null) return <SignInPage onSignedIn={setMe} />
+  return <PlatformApp />
+}
+
+function PlatformApp() {
   const [selectedEngagementId, setSelectedEngagementId] = useState<string | null>(null)
   const [engagements, setEngagements] = useState<Engagement[]>([])
   const [activeTab, setActiveTab] = useState<TabKey>('catalog')
@@ -209,6 +228,8 @@ function App() {
           />
         ) : activeTab === 'admin' && !selectedEngagementId ? (
           <WorkflowAdministrationPage />
+        ) : activeTab === 'users' ? (
+          <UsersPage />
         ) : (
           <CatalogPage engagements={engagements} selectedEngagementId={selectedEngagementId} />
         )}

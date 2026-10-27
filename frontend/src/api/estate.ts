@@ -16,8 +16,9 @@ export function putEndpointAnnotation(engagementId: string, host: string, annota
 export function putEstateSettings(
   engagementId: string,
   settings: { production_environment?: string | null; deploy_parameter_globs?: string[] | null; target_wcf_client_version?: string | null },
+  version?: number,
 ) {
-  return api.put<EstateSettings>(`/api/engagements/${encodeURIComponent(engagementId)}/estate/settings`, settings)
+  return api.put<EstateSettings>(`/api/engagements/${encodeURIComponent(engagementId)}/estate/settings`, settings, { version })
 }
 
 /** The SOAP backend compatibility report as CSV — named -DRAFT while any matrix entry it rests on is unconfirmed. */

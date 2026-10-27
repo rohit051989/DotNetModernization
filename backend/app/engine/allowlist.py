@@ -26,6 +26,10 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     db = SessionLocal()
     try:
+        from app.auth import service as auth
+
+        # An engagement's settings: changing them is for admins.
+        auth.cli_actor(db, admin=args.command != "show")
         engagement = db.get(models.Engagement, args.engagement)
         if engagement is None or engagement.deleted_at is not None:
             print(f"no engagement {args.engagement}", file=sys.stderr)

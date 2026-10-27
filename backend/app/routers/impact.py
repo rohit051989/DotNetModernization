@@ -307,8 +307,7 @@ def list_catalog_rule_conflicts(db: Session = Depends(get_db)):
     """The master catalog view's: each rule pair, with the engagements whose
     estates show it as a catalog rule conflict. Counts only — which files are
     affected is each engagement's own data, on its Estate tab."""
-    # TODO: gate behind an admin role once auth exists — counts per engagement
-    # are visible only to those who can see every engagement.
+    # Counts per engagement: everyone signed in sees every engagement (app.auth.policy), so no gate is needed.
     item_name, resolution_name = _names(db)
     names = {e.id: e.client_name for e in db.query(models.Engagement)}
     by_key: dict[str, list[models.ImpactRuleConflict]] = {}

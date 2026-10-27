@@ -281,6 +281,8 @@ export interface EstateSettings {
   deploy_parameter_globs_default: boolean
   environments: string[]
   repositories: string[]
+  /** The engagement's version: sent back as If-Match when changing the settings. */
+  version?: number
 }
 
 /** Part K: will each SOAP backend's calls still work on the target .NET? */

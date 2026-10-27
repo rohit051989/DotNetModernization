@@ -7,12 +7,15 @@ write here. Deprecate (`status: deprecated`, via PUT) and soft delete
 rule 7; nothing is hard-deleted.
 """
 
+from typing import Annotated
 import datetime
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Header, Query
 from sqlalchemy.orm import Session
 
 from app import models
+from app.auth import actor as actors
+from app.auth import versions
 from app.db import get_db
 from app.errors import ErrorResponse, error
 from app.items import readiness, signal_index
@@ -136,7 +139,7 @@ def create_item(payload: item_schemas.CatalogItemCreate, db: Session = Depends(g
     yet is accepted, computed `not_ready`, and never evaluated by detection
     until that signal exists and its extractor is implemented.
     """
-    # TODO: gate behind an admin role once auth exists.
+    # Admins only: enforced for every call by app.auth.policy.
     if db.get(models.CatalogItem, payload.id) is not None:
         raise error(409, f"Catalog item '{payload.id}' already exists", code="DUPLICATE_ID")
     detection, warnings = validate_detection(payload.scope, payload.detection, _registered_evidence_kinds(db))
@@ -157,16 +160,22 @@ def create_item(payload: item_schemas.CatalogItemCreate, db: Session = Depends(g
     operation_id="update_catalog_item",
     responses={404: _ITEM_NOT_FOUND, 422: _INVALID_DETECTION},
 )
-def update_item(item_id: str, payload: item_schemas.CatalogItemWrite, db: Session = Depends(get_db)):
+def update_item(
+    item_id: str, payload: item_schemas.CatalogItemWrite, db: Session = Depends(get_db),
+    if_match: Annotated[str | None, Header(description="The item's edit_version the edit was made on; a stale copy is refused (409 STALE_COPY).")] = None,
+):
     """Full replace. `version` is bumped when detection or scope changes.
     Setting `status: deprecated` retires the item from the master catalog
     for every engagement while keeping it visible and its decisions
     resolvable; that is not the same as soft delete."""
-    # TODO: gate behind an admin role once auth exists.
+    # Admins only: enforced for every call by app.auth.policy.
     item = _get_item(db, item_id)
+    db.refresh(item, with_for_update=True)
+    versions.check(db, item.edit_version, if_match, "catalog_item", item_id, "this catalog item")
     detection, warnings = validate_detection(payload.scope, payload.detection, _registered_evidence_kinds(db))
     if _apply_item_fields(item, payload, detection):
         item.version += 1
+    item.edit_version += 1
     readiness.recompute_item(db, item)
     db.commit()
     db.refresh(item)
@@ -190,7 +199,7 @@ def delete_item(
 ):
     """Hides the item and its resolutions everywhere until restored.
     Blocked while any engagement holds a non-superseded decision on it."""
-    # TODO: gate behind an admin role once auth exists.
+    # Admins only: enforced for every call by app.auth.policy.
     item = _get_item(db, item_id)
     live = _live_decision_count(db, item_id=item_id)
     if live:
@@ -200,7 +209,8 @@ def delete_item(
             code="REFERENCED_BY_DECISIONS",
         )
     item.deleted_at = _now()
-    item.deleted_by = deleted_by
+    item.deleted_by = deleted_by = deleted_by or _who()
+    item.edit_version += 1
     (
         db.query(models.ItemResolution)
         .filter(models.ItemResolution.item_id == item_id, models.ItemResolution.deleted_at.is_(None))
@@ -221,10 +231,11 @@ def restore_item(item_id: str, db: Session = Depends(get_db)):
     """Clears deleted_at on the item only. Its resolutions stay deleted
     until restored one by one, since some may have been deleted on purpose
     before the item was."""
-    # TODO: gate behind an admin role once auth exists.
+    # Admins only: enforced for every call by app.auth.policy.
     item = _get_item(db, item_id, include_deleted=True)
     item.deleted_at = None
     item.deleted_by = None
+    item.edit_version += 1
     item.updated_at = _now()
     db.commit()
     return item_schemas.SoftDeleteResponse(id=item.id, deleted_at=None)
@@ -370,7 +381,7 @@ def list_resolutions(
     responses={404: _ITEM_NOT_FOUND, 409: {"model": ErrorResponse, "description": "Duplicate id, name, or a second default."}},
 )
 def create_resolution(item_id: str, payload: item_schemas.ResolutionCreate, db: Session = Depends(get_db)):
-    # TODO: gate behind an admin role once auth exists.
+    # Admins only: enforced for every call by app.auth.policy.
     _get_item(db, item_id)
     if db.get(models.ItemResolution, payload.id) is not None:
         raise error(409, f"Resolution '{payload.id}' already exists", code="DUPLICATE_ID")
@@ -382,6 +393,7 @@ def create_resolution(item_id: str, payload: item_schemas.ResolutionCreate, db: 
     if _live_default(db, item_id) is None and resolution.status == "active":
         resolution.is_default = True
     db.add(resolution)
+    _bump(db, item_id)
     db.commit()
     db.refresh(resolution)
     return _resolution_out(db, resolution)
@@ -395,10 +407,13 @@ def create_resolution(item_id: str, payload: item_schemas.ResolutionCreate, db: 
     responses={404: {"model": ErrorResponse, "description": "No such item or resolution."}, 409: {"model": ErrorResponse, "description": "Duplicate name, or a second default."}},
 )
 def update_resolution(
-    item_id: str, resolution_id: str, payload: item_schemas.ResolutionWrite, db: Session = Depends(get_db)
+    item_id: str, resolution_id: str, payload: item_schemas.ResolutionWrite, db: Session = Depends(get_db),
+    if_match: Annotated[str | None, Header(description="The item's edit_version the edit was made on; a stale copy is refused (409 STALE_COPY).")] = None,
 ):
-    # TODO: gate behind an admin role once auth exists.
-    _get_item(db, item_id)
+    # Admins only: enforced for every call by app.auth.policy.
+    item = _get_item(db, item_id)
+    db.refresh(item, with_for_update=True)
+    versions.check(db, item.edit_version, if_match, "catalog_item", item_id, "this catalog item")
     resolution = db.get(models.ItemResolution, resolution_id)
     if resolution is None or resolution.item_id != item_id or resolution.deleted_at is not None:
         raise error(404, f"Resolution '{resolution_id}' not found on item '{item_id}'", code="NOT_FOUND")
@@ -406,9 +421,22 @@ def update_resolution(
     _check_default_unique(db, item_id, resolution_id, payload.is_default)
     _check_default_stays(db, resolution, unset=not payload.is_default, deactivate=payload.status != "active", remove=False)
     _apply_resolution_fields(resolution, payload)
+    item.edit_version += 1
     db.commit()
     db.refresh(resolution)
     return _resolution_out(db, resolution)
+
+
+def _bump(db: Session, item_id: str) -> None:
+    """A change to an item's resolutions is an edit of the item: a copy made before it is stale."""
+    db.query(models.CatalogItem).filter(models.CatalogItem.id == item_id).update(
+        {models.CatalogItem.edit_version: models.CatalogItem.edit_version + 1}, synchronize_session=False)
+
+
+def _who() -> str | None:
+    """The person acting, for deleted_by when the caller names nobody."""
+    person = actors.current()
+    return person.label() if person else None
 
 
 def move_default(db: Session, item_id: str, resolution_id: str) -> None:
@@ -454,7 +482,7 @@ def make_default(item_id: str, resolution_id: str, db: Session = Depends(get_db)
     same transaction, or nothing changes. Replaces unsetting and setting
     with two PUTs, where a failure between them left the item with no
     default."""
-    # TODO: gate behind an admin role once auth exists.
+    # Admins only: enforced for every call by app.auth.policy.
     _get_item(db, item_id)
     resolution = db.get(models.ItemResolution, resolution_id)
     if resolution is None or resolution.item_id != item_id or resolution.deleted_at is not None:
@@ -463,6 +491,7 @@ def make_default(item_id: str, resolution_id: str, db: Session = Depends(get_db)
         raise error(409, f"Resolution '{resolution_id}' is {resolution.status} and cannot be the default", code="NOT_ACTIVE")
 
     move_default(db, item_id, resolution_id)
+    _bump(db, item_id)
     db.commit()
     return [
         _resolution_out(db, r)
@@ -488,7 +517,7 @@ def delete_resolution(
     deleted_by: str | None = Query(None, description="Free-text identity performing the delete."),
     db: Session = Depends(get_db),
 ):
-    # TODO: gate behind an admin role once auth exists.
+    # Admins only: enforced for every call by app.auth.policy.
     resolution = db.get(models.ItemResolution, resolution_id)
     if resolution is None or resolution.item_id != item_id or resolution.deleted_at is not None:
         raise error(404, f"Resolution '{resolution_id}' not found on item '{item_id}'", code="NOT_FOUND")
@@ -501,7 +530,8 @@ def delete_resolution(
         )
     _check_default_stays(db, resolution, unset=False, deactivate=False, remove=True)
     resolution.deleted_at = _now()
-    resolution.deleted_by = deleted_by
+    resolution.deleted_by = deleted_by or _who()
+    _bump(db, item_id)
     db.commit()
     return item_schemas.SoftDeleteResponse(id=resolution.id, deleted_at=resolution.deleted_at)
 
@@ -517,7 +547,7 @@ def delete_resolution(
     },
 )
 def restore_resolution(item_id: str, resolution_id: str, db: Session = Depends(get_db)):
-    # TODO: gate behind an admin role once auth exists.
+    # Admins only: enforced for every call by app.auth.policy.
     resolution = db.get(models.ItemResolution, resolution_id)
     if resolution is None or resolution.item_id != item_id:
         raise error(404, f"Resolution '{resolution_id}' not found on item '{item_id}'", code="NOT_FOUND")
@@ -527,5 +557,6 @@ def restore_resolution(item_id: str, resolution_id: str, db: Session = Depends(g
     resolution.deleted_at = None
     resolution.deleted_by = None
     resolution.updated_at = _now()
+    _bump(db, item_id)
     db.commit()
     return item_schemas.SoftDeleteResponse(id=resolution.id, deleted_at=None)

@@ -59,11 +59,8 @@ def list_global_step_policies(db: Session = Depends(get_db)):
     },
 )
 def set_global_step_policy(payload: StepPolicyRequest, db: Session = Depends(get_db)):
-    # TODO: gate this mutation behind an admin check once auth exists — a
-    # global policy change affects every engagement, and the Master Catalog
-    # view is already noted as admin-only in a future auth model
-    # (04-FRONTEND-SPEC.md, "Future: access control";
-    # 23-WORKFLOW-ADMINISTRATION.md Part F).
+    # Admins only (app.auth.policy): a global policy change affects every engagement
+    # (23-WORKFLOW-ADMINISTRATION.md Part F).
     """
     Upserts the single global row for `step_name` (`engagement_id IS NULL`).
     Precedence is engagement beats global beats default — an engagement can
@@ -176,8 +173,7 @@ def delete_global_step_policy(
     force: bool = Query(default=False, description="Revert even if this step's required input's global producer is still disabled."),
     db: Session = Depends(get_db),
 ):
-    # TODO: gate this mutation behind an admin check once auth exists — see
-    # the identical note on set_global_step_policy above.
+    # Admins only (app.auth.policy), as set_global_step_policy above.
     """
     Deletes the global row outright. Engagement-level rows are untouched —
     any engagement already overriding this step continues exactly as

@@ -14,6 +14,8 @@ import argparse
 import sys
 
 from app import models
+from app.auth import policy
+from app.auth import service as auth
 from app.db import SessionLocal
 from app.deletion import service
 
@@ -74,6 +76,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     with SessionLocal() as db:
+        # A repository: its owner or an admin, on the machine it was registered on; an engagement: an admin.
+        person = auth.cli_actor(db, admin=args.command == "engagement")
         if args.command == "audit":
             for a in db.query(models.DeletionAudit).order_by(models.DeletionAudit.deleted_at):
                 print(f"{a.deleted_at:%Y-%m-%d %H:%M} UTC  {a.kind:10} {a.engagement_id}"
@@ -87,6 +91,9 @@ def main(argv: list[str] | None = None) -> int:
             repo = db.query(models.Repository).filter_by(engagement_id=engagement.id, slug=args.repository).one_or_none()
             if repo is None:
                 print(f"No repository {args.repository} in engagement {engagement.id}.", file=sys.stderr)
+                return 1
+            if why := policy.machine_refusal(repo, person.hostname) or policy.repository_refusal(db, person, repo):
+                print(f"Refused: {why}", file=sys.stderr)
                 return 1
             plan = service.repository_plan(db, repo)
         else:

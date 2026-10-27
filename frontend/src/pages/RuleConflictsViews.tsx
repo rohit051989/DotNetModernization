@@ -103,7 +103,7 @@ export function EstateRuleConflictsView({ engagementId, onOpenRepository }: { en
 /** The master catalog's view: each rule pair with the engagements whose
  * estates show it. Counts only; the files are each engagement's own data. */
 export function MasterRuleConflictsView({ onSelectItem }: { onSelectItem: (itemId: string) => void }) {
-  // TODO: gate behind an admin role once auth exists — per-engagement counts.
+  // Per-engagement counts: everyone signed in sees every engagement (app.auth.policy).
   const [data, setData] = useState<MasterRuleConflict[] | null>(null)
   const [failed, setFailed] = useState(false)
 

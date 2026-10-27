@@ -300,7 +300,7 @@ def delete_engagement_pattern(
 def restore_engagement_pattern(engagement_id: str, pattern_id: str, db: Session = Depends(get_db)):
     """Clears `deleted_at`/`deleted_by` on the overlay row. Admin-only in
     intent; unguarded for now — no auth system exists yet (see CLAUDE.md)."""
-    # TODO: gate behind an admin role once auth exists.
+    # Admins only: enforced for every call by app.auth.policy.
     _get_engagement(db, engagement_id)
     pattern = db.get(models.Pattern, pattern_id)
     if pattern is None:

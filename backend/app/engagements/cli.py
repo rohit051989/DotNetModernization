@@ -11,6 +11,8 @@ import argparse
 import sys
 
 from app import models
+from app.auth import activity
+from app.auth import service as auth
 from app.db import SessionLocal
 from app.engagements import service
 
@@ -18,12 +20,14 @@ from app.engagements import service
 def create(args) -> int:
     engagement_id = args.id or service.id_from_name(args.name)
     with SessionLocal() as db:
+        auth.cli_actor(db, admin=True)
         try:
             engagement = service.create(db, engagement_id, args.name, args.target_framework,
                                         description=args.description, target_platform=args.target_platform)
         except service.EngagementError as e:
             print(f"Not created: {e}", file=sys.stderr)
             return 1
+        activity.record(db, "create_engagement", "engagement", engagement.id, f"Created {engagement.client_name}")
         db.commit()
         print(f"Created engagement '{engagement.id}': {engagement.client_name}, target framework {engagement.target_framework}")
     return 0
@@ -31,6 +35,7 @@ def create(args) -> int:
 
 def list_engagements(_args) -> int:
     with SessionLocal() as db:
+        auth.cli_actor(db)
         rows = db.query(models.Engagement).filter(models.Engagement.deleted_at.is_(None)).order_by(models.Engagement.id).all()
         if not rows:
             print("No engagements.")

@@ -170,7 +170,7 @@ export function ItemDecisionForm({ item, engagement, resolutions, decision, onCl
     setSubmitting(true)
     setFieldErrors({})
     try {
-      const saved = await upsertItemDecision(engagement.id, item.id, buildPayload())
+      const saved = await upsertItemDecision(engagement.id, item.id, buildPayload(), decision?.version ?? 0)
       showToast(
         saved.warnings.length > 0 ? 'error' : 'success',
         saved.warnings.length > 0 ? `Decision saved with a warning: ${saved.warnings[0]}` : `Decision ${decision ? 'updated' : 'recorded'}.`,

@@ -464,6 +464,14 @@ def inspect_path(db: Session, engagement_id: str, raw_local_path: str) -> Inspec
 # ---------- Registration ----------
 
 
+def _owned_here() -> dict:
+    """The person registering it owns it (app.auth.policy), and it lives on this machine."""
+    from app.auth import actor, machine
+
+    person = actor.current()
+    return {"owner_user_id": person.user_id if person else None, "registered_host": machine.hostname()}
+
+
 def register_local_path(
     db: Session, engagement: models.Engagement, payload: RegisterLocalPathRequest
 ) -> models.Repository:
@@ -558,6 +566,7 @@ def register_local_path(
     now = datetime.datetime.now(datetime.timezone.utc)
     repo = models.Repository(
         id=uuid.uuid4(),
+        **_owned_here(),
         engagement_id=engagement.id,
         name=payload.name or path.name,
         root_folder_name=path.name,
@@ -699,6 +708,7 @@ def register_git_clone(db: Session, engagement: models.Engagement, payload: Regi
     now = datetime.datetime.now(datetime.timezone.utc)
     repo = models.Repository(
         id=uuid.uuid4(),
+        **_owned_here(),
         engagement_id=engagement.id,
         name=payload.name or name_from_url(url),
         root_folder_name=folder.name,

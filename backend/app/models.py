@@ -367,6 +367,8 @@ class Engagement(Base):
     )
     deleted_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
     deleted_by: Mapped[str | None] = mapped_column(Text)
+    # Bumped on every edit of the engagement's settings: an edit from a stale copy is refused (app.auth.versions).
+    version: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
 
     __table_args__ = (
         CheckConstraint(f"status IN {LIFECYCLE_STATUS}", name="ck_engagements_status"),
@@ -405,6 +407,8 @@ class DecisionRecord(Base):
     )
     deleted_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
     deleted_by: Mapped[str | None] = mapped_column(Text)
+    # Bumped on every edit: an edit from a stale copy is refused (app.auth.versions).
+    version: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
 
     __table_args__ = (
         CheckConstraint(
@@ -719,6 +723,11 @@ class WfJobExecution(Base):
     ended_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
     engine_version: Mapped[str] = mapped_column(Text, nullable=False)
     triggered_by: Mapped[str | None] = mapped_column(Text)
+    # The machine, and the person, that queued it: a backend runs only jobs queued on its own machine (several
+    # backends share one database). Null for a job queued before sign-in existed.
+    queued_by_host: Mapped[str | None] = mapped_column(Text)
+    queued_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL", name="fk_wf_job_executions_queued_by"))
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -867,6 +876,12 @@ class Repository(Base):
     last_scanned_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
     deleted_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
     deleted_by: Mapped[str | None] = mapped_column(Text)
+    # The developer who registered it: only they (and an admin) may rescan it, prepare and verify its conversions, or
+    # delete it (app.auth.policy). Null for a repository registered before sign-in existed, until an admin assigns one.
+    owner_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL", name="fk_repositories_owner"))
+    # The machine it was registered on: its local path is only meaningful there.
+    registered_host: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -1466,6 +1481,9 @@ class CatalogItem(Base):
     state_reason: Mapped[dict | None] = mapped_column(JSONB)
     version: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
     owner_team: Mapped[str | None] = mapped_column(Text)
+    # Bumped on every edit of the item or its resolutions (version is the item's own semantic version): an edit made
+    # from a stale copy is refused (app.auth.versions).
+    edit_version: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default="active")
     deleted_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
     deleted_by: Mapped[str | None] = mapped_column(Text)
@@ -1687,6 +1705,8 @@ class EngagementDecision(Base):
     updated_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+    # Bumped on every edit: an edit from a stale copy is refused (app.auth.versions).
+    version: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
 
     __table_args__ = (
         CheckConstraint(f"status IN {ENGAGEMENT_DECISION_STATUS}", name="ck_engagement_decisions_status"),
@@ -3002,3 +3022,93 @@ class StepTimeLimit(Base):
     stall_seconds: Mapped[int | None] = mapped_column(Integer)
     note: Mapped[str | None] = mapped_column(Text)
     updated_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class User(Base):
+    """A person who may sign in (app.auth): their Windows account and the machines they sign in from must match the
+    backend's own, and their password is stored only as a salted scrypt hash. Admins register users."""
+
+    __tablename__ = "users"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid())
+    login: Mapped[str] = mapped_column(Text, nullable=False)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    windows_account: Mapped[str] = mapped_column(Text, nullable=False)
+    role: Mapped[str] = mapped_column(Text, nullable=False)
+    password_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    must_change_password: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    deactivated_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        CheckConstraint("role IN ('admin', 'developer')", name="ck_users_role"),
+        Index("uq_users_login", text("lower(login)"), unique=True),
+        Index("uq_users_windows_account", text("lower(windows_account)"), unique=True),
+    )
+
+
+class UserHost(Base):
+    """A machine a user may sign in from, by its hostname."""
+
+    __tablename__ = "user_hosts"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    hostname: Mapped[str] = mapped_column(Text, primary_key=True)
+
+    __table_args__ = (Index("uq_user_hosts_hostname", "user_id", text("lower(hostname)"), unique=True),)
+
+
+class UserSession(Base):
+    """A signed-in session, known by a hash of its cookie. Ends at sign-out, or after SESSION_IDLE_MINUTES unused."""
+
+    __tablename__ = "user_sessions"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid())
+    token_hash: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    hostname: Mapped[str] = mapped_column(Text, nullable=False)
+    windows_account: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    last_seen_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    ended_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (Index("ix_user_sessions_user_id", "user_id"),)
+
+
+class ActivityRecord(Base):
+    """Who did what, from which machine (app.auth.activity). Actions from before sign-in existed carry the actor
+    'before sign-in' and no machine."""
+
+    __tablename__ = "activity_records"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    actor: Mapped[str] = mapped_column(Text, nullable=False)
+    hostname: Mapped[str | None] = mapped_column(Text)
+    action: Mapped[str] = mapped_column(Text, nullable=False)
+    subject_type: Mapped[str | None] = mapped_column(Text)
+    subject_id: Mapped[str | None] = mapped_column(Text)
+    summary: Mapped[str | None] = mapped_column(Text)
+
+    __table_args__ = (
+        Index("ix_activity_records_subject", "subject_type", "subject_id"),
+        Index("ix_activity_records_at", "at"),
+    )
+
+
+class PlatformBackend(Base):
+    """One running backend per machine (app.heartbeat): backends on different machines share the database side by
+    side; a second backend on the same machine refuses to start while this one is fresh."""
+
+    __tablename__ = "platform_backends"
+
+    host: Mapped[str] = mapped_column(Text, primary_key=True)
+    instance_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    os_user: Mapped[str] = mapped_column(Text, nullable=False)
+    pid: Mapped[int] = mapped_column(Integer, nullable=False)
+    platform_root: Mapped[str] = mapped_column(Text, nullable=False)
+    api_port: Mapped[int | None] = mapped_column(Integer)
+    started_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    beat_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)

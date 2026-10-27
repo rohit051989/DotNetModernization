@@ -15,6 +15,8 @@ const EFFORTS: EffortLevel[] = ['low', 'medium', 'high']
 interface ResolutionFormProps {
   mode: 'create' | 'edit'
   itemId: string
+  /** The item's edit_version in the copy shown: an edit made from a stale copy is refused. */
+  itemVersion?: number
   resolution?: ItemResolution
   /** The item's current default, if another resolution holds it. */
   existingDefault: ItemResolution | null
@@ -52,7 +54,7 @@ function toFormState(resolution?: ItemResolution): FormState {
   }
 }
 
-export function ResolutionForm({ mode, itemId, resolution, existingDefault, onClose, onSaved }: ResolutionFormProps) {
+export function ResolutionForm({ mode, itemId, itemVersion, resolution, existingDefault, onClose, onSaved }: ResolutionFormProps) {
   const { showToast } = useToast()
   const [form, setForm] = useState<FormState>(() => toFormState(resolution))
   const [idTouched, setIdTouched] = useState(mode === 'edit')
@@ -83,9 +85,7 @@ export function ResolutionForm({ mode, itemId, resolution, existingDefault, onCl
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault()
-    // TODO: gate behind an admin check once auth exists (04-FRONTEND-SPEC.md,
-    // "Future: access control") — creating or editing a resolution is a
-    // master-scoped mutation.
+    // Admins only (app.auth.policy): the form opens for admins only.
     setSubmitting(true)
     setFieldErrors({})
     const payload: ResolutionWriteInput = {
@@ -102,7 +102,7 @@ export function ResolutionForm({ mode, itemId, resolution, existingDefault, onCl
     }
     try {
       if (mode === 'create') await createResolution(itemId, { id: form.id.trim(), ...payload })
-      else await updateResolution(itemId, resolution!.id, payload)
+      else await updateResolution(itemId, resolution!.id, payload, itemVersion)
       showToast('success', mode === 'create' ? 'Resolution added.' : 'Resolution saved.')
       onSaved()
     } catch (err) {

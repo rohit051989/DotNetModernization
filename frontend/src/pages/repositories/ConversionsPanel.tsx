@@ -83,6 +83,7 @@ function ConversionCard({
   defaultOpen,
   verifyBusy,
   onVerify,
+  refusal,
 }: {
   repositoryId: string
   entry: ConversionEntry
@@ -90,6 +91,7 @@ function ConversionCard({
   defaultOpen: boolean
   verifyBusy: boolean
   onVerify: (number: number) => void
+  refusal: string | null
 }) {
   const step = entry.package_step ?? {}
   const items = entry.left_for_agent?.items ?? []
@@ -164,9 +166,9 @@ function ConversionCard({
             <button
               type="button"
               onClick={() => onVerify(entry.number)}
-              disabled={verifyBusy || !!entry.verify_refusal}
+              disabled={verifyBusy || !!entry.verify_refusal || !!refusal}
               className="rounded border border-violet-300 bg-violet-50 px-2 py-1 text-xs font-medium text-violet-800 hover:bg-violet-100 disabled:opacity-50"
-              title={entry.verify_refusal ?? `Verify conversion ${entry.number}, independent of the engine`}
+              title={refusal ?? entry.verify_refusal ?? `Verify conversion ${entry.number}, independent of the engine`}
             >
               Verify conversion {entry.number}
             </button>
@@ -222,7 +224,9 @@ function ConversionCard({
   )
 }
 
-export function ConversionsPanel({ repositoryId, refreshToken }: { repositoryId: string; refreshToken: number }) {
+/** `refusal`: why the signed-in person may not prepare or verify this repository's conversions (only its owner or an
+ * admin, on the machine it was registered on), shown on the disabled buttons; null when they may. */
+export function ConversionsPanel({ repositoryId, refreshToken, refusal = null }: { repositoryId: string; refreshToken: number; refusal?: string | null }) {
   const [data, setData] = useState<Conversions | null>(null)
   const [failed, setFailed] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
@@ -303,7 +307,8 @@ export function ConversionsPanel({ repositoryId, refreshToken }: { repositoryId:
         <button
           type="button"
           onClick={() => setConfirmNext(true)}
-          disabled={busy || running(data.discovery_job)}
+          disabled={busy || running(data.discovery_job) || !!refusal}
+          title={refusal ?? undefined}
           className="rounded border border-neutral-300 px-2 py-1 text-xs font-medium text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
         >
           Start the next conversion
@@ -332,6 +337,7 @@ export function ConversionsPanel({ repositoryId, refreshToken }: { repositoryId:
                 defaultOpen={entry === data.conversions[0]}
                 verifyBusy={busy || running(data.verification_job)}
                 onVerify={onVerify}
+                refusal={refusal}
               />
             ))}
           </div>

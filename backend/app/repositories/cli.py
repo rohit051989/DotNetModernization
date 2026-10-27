@@ -12,12 +12,18 @@ of it first fetches and fast-forwards its branch.
 `register` registers an existing folder and runs phase0-repository-discovery on it, as registering through the API does.
 `discover` is a rescan: a new ingest token, so a new job instance. `consolidate` runs phase0-estate-consolidation
 over the engagement's repositories.
+
+Each command acts as the registered user whose Windows account and machine run it (app.auth). Registering makes them
+the repository's owner; a rescan is for its owner or an admin, on the machine it was registered on; consolidating an
+engagement is for admins.
 """
 import argparse
 import sys
 import uuid
 
 from app import models
+from app.auth import activity, policy
+from app.auth import service as auth
 from app.repositories import service
 from app.repositories.schemas import RegisterGitCloneRequest, RegisterLocalPathRequest
 from app.workflow.runtime import service as runtime
@@ -80,6 +86,7 @@ def main(argv: list[str] | None = None) -> int:
 
     db = SessionLocal()
     try:
+        person = auth.cli_actor(db, admin=args.command == "consolidate")
         engagement = db.get(models.Engagement, args.engagement)
         if engagement is None or engagement.deleted_at is not None:
             print(f"no engagement {args.engagement}", file=sys.stderr)
@@ -91,6 +98,7 @@ def main(argv: list[str] | None = None) -> int:
             except service.RegistrationError as err:
                 print(f"refused: {err}", file=sys.stderr)
                 return 1
+            activity.record(db, "register_repository", "repository", str(repository.id), f"Registered {repository.name}")
             db.commit()
             print(f"registered {repository.slug} ({repository.id})")
             return _report(db, discover(db, repository))
@@ -102,6 +110,7 @@ def main(argv: list[str] | None = None) -> int:
             except service.RegistrationError as err:
                 print(f"refused: {err}", file=sys.stderr)
                 return 1
+            activity.record(db, "register_repository", "repository", str(repository.id), f"Registered {repository.name}")
             db.commit()
             print(f"registered {repository.slug} ({repository.id}): cloning into {repository.local_path}")
             code = _report(db, discover(db, repository))
@@ -112,6 +121,10 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "discover":
             repository = (db.query(models.Repository).filter_by(engagement_id=engagement.id, slug=args.repository)
                           .filter(models.Repository.deleted_at.is_(None)).one())
+            if why := policy.machine_refusal(repository, person.hostname) or policy.repository_refusal(db, person, repository):
+                print(f"refused: {why}", file=sys.stderr)
+                return 1
+            activity.record(db, "rescan_repository", "repository", str(repository.id), f"Rescanned {repository.name}")
             return _report(db, discover(db, repository, args.lookup_offline))
         execution = runtime.launch_job(db, CONSOLIDATION, {"engagement_id": engagement.id, "run_token": str(uuid.uuid4())},
                                        triggered_by="manual")

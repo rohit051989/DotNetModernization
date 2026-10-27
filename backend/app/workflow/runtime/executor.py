@@ -672,6 +672,20 @@ def _invoke_step(
     return step_execution, result, should_halt
 
 
+class ForeignJob(RuntimeError):
+    """A job queued on another machine: that machine's backend runs it, never this one."""
+
+
+def ensure_local(job_execution: models.WfJobExecution) -> None:
+    """Raises ForeignJob unless the job was queued on this machine (or before sign-in existed, with no host)."""
+    from app.auth import machine
+
+    host = job_execution.queued_by_host
+    if host and not machine.same(host, machine.hostname()):
+        raise ForeignJob(f"job execution {job_execution.id} was queued on {host}, not on this machine "
+                         f"({machine.hostname()}): only {host}'s backend runs it")
+
+
 def run_execution(
     db: Session,
     job_execution: models.WfJobExecution,
@@ -684,7 +698,12 @@ def run_execution(
     single-machine operating model. Mutates and returns `job_execution`.
 
     `checkpoint` is called at every step boundary (see the module
-    docstring); pass the session's commit for per-step durability."""
+    docstring); pass the session's commit for per-step durability.
+
+    Only a job queued on this machine runs here: several backends share the
+    database, and a job's repository and folders are on the machine that
+    queued it. Another machine's job raises ForeignJob, untouched."""
+    ensure_local(job_execution)
     flow_steps = _flat_step_nodes(definition.flow)
 
     def commit() -> None:

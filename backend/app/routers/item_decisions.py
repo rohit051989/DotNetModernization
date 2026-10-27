@@ -31,13 +31,15 @@ naming the resolution, until the next scan. That writes impact_summaries,
 which is engagement data, not a master table.
 """
 
+from typing import Annotated
 import datetime
 import uuid
 
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, Depends, Header, Response
 from sqlalchemy.orm import Session
 
 from app import models
+from app.auth import activity, versions
 from app.db import get_db
 from app.errors import ErrorResponse, error, errors
 from app.impact import stale as impact_stale
@@ -154,6 +156,7 @@ def _response(db: Session, decision: models.EngagementDecision) -> item_schemas.
         warnings=decision_warnings(db, decision),
         created_at=decision.created_at,
         updated_at=decision.updated_at,
+        version=decision.version,
     )
 
 
@@ -212,16 +215,16 @@ def validate_decision(db: Session, item_id: str, decision: models.EngagementDeci
         raise errors(422, problems)
 
 
-def _live_decision(db: Session, engagement_id: str, item_id: str) -> models.EngagementDecision | None:
-    return (
+def _live_decision(db: Session, engagement_id: str, item_id: str, lock: bool = False) -> models.EngagementDecision | None:
+    query = (
         db.query(models.EngagementDecision)
         .filter(
             models.EngagementDecision.engagement_id == engagement_id,
             models.EngagementDecision.item_id == item_id,
             models.EngagementDecision.status != "superseded",
         )
-        .first()
     )
+    return (query.with_for_update() if lock else query).first()
 
 
 @router.get(
@@ -273,6 +276,8 @@ def upsert_item_decision(
     payload: item_schemas.EngagementDecisionUpsert,
     response: Response,
     db: Session = Depends(get_db),
+    if_match: Annotated[str | None, Header(description="The version of the decision the edit was made on; 0 when "
+                                                            "there was none. A stale copy is refused (409 STALE_COPY).")] = None,
 ):
     """Creates the live decision (201) or updates it in place (200). An
     omitted field keeps its current value; a field sent as `null` is cleared
@@ -288,7 +293,9 @@ def upsert_item_decision(
     if item is None or item.deleted_at is not None:
         raise error(404, f"Catalog item '{item_id}' not found", code="NOT_FOUND")
 
-    decision = _live_decision(db, engagement_id, item_id)
+    decision = _live_decision(db, engagement_id, item_id, lock=True)
+    versions.check(db, decision.version if decision else None, if_match, "item_decision",
+                   decision.id if decision else None, "this decision")
     created = decision is None
     if created:
         decision = models.EngagementDecision(
@@ -315,7 +322,10 @@ def upsert_item_decision(
     if created:
         db.add(decision)
         response.status_code = 201
+    else:
+        decision.version += 1
     db.flush()
+    activity.about("item_decision", decision.id)
     # A leader's decision re-derives its followers in the same transaction.
     coupling.rederive(db, engagement_id, item_id)
     # Step 9's impact computed for another decision is stale until the next
@@ -414,10 +424,15 @@ def _dependent_note(db: Session, engagement_id: str, project_id: uuid.UUID, item
     operation_id="supersede_item_decision",
     responses={404: {"model": ErrorResponse, "description": "No decision exists with this id."}},
 )
-def supersede_item_decision(decision_id: uuid.UUID, db: Session = Depends(get_db)):
-    decision = db.get(models.EngagementDecision, decision_id)
+def supersede_item_decision(
+    decision_id: uuid.UUID, db: Session = Depends(get_db),
+    if_match: Annotated[str | None, Header(description="The version superseded; a stale copy is refused (409 STALE_COPY).")] = None,
+):
+    decision = versions.locked(db, models.EngagementDecision, decision_id)
     if decision is None:
         raise error(404, f"Decision '{decision_id}' not found", code="NOT_FOUND")
+    versions.check(db, decision.version, if_match, "item_decision", decision.id, "this decision")
+    decision.version += 1
     decision.status = "superseded"
     decision.updated_at = _now()
     db.flush()

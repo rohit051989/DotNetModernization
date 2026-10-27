@@ -259,6 +259,12 @@ class RepositorySummary(BaseModel):
     deleted_at: datetime.datetime | None = Field(description="When this repository was soft-deleted, or null if live.")
     clone_progress: str | None = Field(default=None, description="git's latest progress line while the repository is cloned (ingest_status 'cloning').")
     ingest_error: str | None = Field(default=None, description="Why the last discovery's ingest failed, if it did: a clone or fetch error says how to fix it.")
+    owner_user_id: uuid.UUID | None = Field(default=None, description="Who registered it, and so owns it; null for a repository registered before sign-in existed, until an admin assigns one.")
+    owner_name: str | None = Field(default=None, description="The owner's name.")
+    registered_host: str | None = Field(default=None, description="The machine it was registered on: its folder and run output are there.")
+    can_act: bool = Field(default=True, description="Whether the signed-in person may rescan it, prepare and verify its conversions, or delete it.")
+    cannot_act_reason: str | None = Field(default=None, description="Why not, when can_act is false.")
+    cannot_edit_reason: str | None = Field(default=None, description="Why the signed-in person may not edit its details (owners and admins may, from any machine); null when they may.")
 
 
 class RepositoryDetail(RepositorySummary):

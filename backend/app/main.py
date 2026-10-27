@@ -2,12 +2,14 @@ import datetime
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError
 
+from app.auth import machine
+from app.auth.http import guard
 from app.config import settings
 from app.heartbeat import AnotherPlatform, Heartbeat
 from app.routers import (
@@ -41,15 +43,23 @@ from app.routers import (
     workflow_jobs,
     workflow_policy,
     workflow_steps,
+    auth,
+    users,
 )
 
 
 def _reconcile_orphaned_executions() -> None:
-    """Marks any execution left `STARTING`/`STARTED` by a previous process as
+    """Marks any execution left `STARTING`/`STARTED` on this machine by a previous process as
     `FAILED`, with the step that was in flight. `BackgroundTasks` execution is in-memory and does not survive a
     process restart — without this, an execution whose background task was
     killed mid-run would show as permanently stuck rather than as a clear,
-    restartable failure. See 15-REPOSITORY-INGEST-UI.md Part E."""
+    restartable failure. See 15-REPOSITORY-INGEST-UI.md Part E.
+
+    Only this machine's: several backends share the database, each running the jobs queued on its own machine, and
+    another machine's running jobs are that backend's. A job queued before sign-in existed (no host) was this
+    single platform's, and is failed by the first backend that starts."""
+    from sqlalchemy import func, or_
+
     from app import models
     from app.db import SessionLocal
 
@@ -57,7 +67,9 @@ def _reconcile_orphaned_executions() -> None:
     try:
         orphaned = (
             db.query(models.WfJobExecution)
-            .filter(models.WfJobExecution.batch_status.in_(["STARTING", "STARTED"]))
+            .filter(models.WfJobExecution.batch_status.in_(["STARTING", "STARTED"]),
+                    or_(models.WfJobExecution.queued_by_host.is_(None),
+                        func.lower(models.WfJobExecution.queued_by_host) == machine.hostname().lower()))
             .all()
         )
         if not orphaned:
@@ -99,8 +111,8 @@ def _report_existing_data() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # One platform per schema (app.heartbeat): checked before anything else, because the reconciliation below fails
-    # every running job, and another platform's jobs must not be among them.
+    # One backend per machine (app.heartbeat): checked before anything else, because the reconciliation below fails
+    # this machine's running jobs, and another backend's must not be among them.
     beat = Heartbeat()
     try:
         beat.start()
@@ -118,6 +130,8 @@ app = FastAPI(
     title="Modernization Platform API",
     version="0.4.0",
     lifespan=lifespan,
+    # Every call needs a signed-in session, and the policy's leave (app.auth.http); only sign-in is open.
+    dependencies=[Depends(guard)],
     description=(
         "Control plane for .NET legacy modernization at fleet scale: the reusable "
         "pattern catalog, engagement-scoped decisions, and the lifecycle "
@@ -127,7 +141,11 @@ app = FastAPI(
         '```json\n{"detail": [{"field": "clone_url", "message": "...", "code": "EMBEDDED_CREDENTIALS"}]}\n```\n\n'
         "`field` is null when the error isn't about one field (a 404, or a "
         "conflict spanning several records). `code` is a short machine-readable "
-        "slug for callers that want to branch on it instead of parsing `message`."
+        "slug for callers that want to branch on it instead of parsing `message`.\n\n"
+        "**Sign-in.** Every call needs a signed-in session: `POST /api/auth/sign-in` sets an HttpOnly cookie. "
+        "401 `SIGNED_OUT` without one; 403 `NOT_ALLOWED` when the person's role, or a repository's ownership, does "
+        "not allow the change; 409 `STALE_COPY` when an edit was made from a stale copy (send the version shown in "
+        "`If-Match`)."
     ),
     openapi_tags=[
         {"name": "Health", "description": "Liveness and database connectivity check."},
@@ -330,6 +348,8 @@ async def integrity_error_handler(request: Request, exc: IntegrityError):
 
 
 app.include_router(health.router)
+app.include_router(auth.router)
+app.include_router(users.router)
 app.include_router(patterns.router)
 app.include_router(target_states.router)
 app.include_router(engagements.router)

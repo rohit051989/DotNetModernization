@@ -4,6 +4,7 @@ Callers (routers) own the transaction: this module flushes but never commits.
 """
 
 import datetime
+import logging
 import uuid
 
 from sqlalchemy.orm import Session
@@ -67,6 +68,14 @@ def _next_execution_number(db: Session, instance_id: uuid.UUID) -> int:
     return (current_max or 0) + 1
 
 
+def _queued_by() -> dict:
+    """This machine, and the person acting: a backend runs only the jobs queued on its own machine."""
+    from app.auth import actor, machine
+
+    person = actor.current()
+    return {"queued_by_host": machine.hostname(), "queued_by_user_id": person.user_id if person else None}
+
+
 def create_execution(
     db: Session, job_name: str, provided_parameters: dict, triggered_by: str = "api"
 ) -> tuple[models.WfJobExecution, models.WfJobInstance, JobDefinitionFile]:
@@ -103,6 +112,7 @@ def create_execution(
         engine_version=executor.ENGINE_VERSION,
         triggered_by=triggered_by,
         execution_context={"step_policy_snapshot": step_policy_snapshot},
+        **_queued_by(),
     )
     db.add(job_execution)
     db.flush()
@@ -145,6 +155,10 @@ def run_execution_in_background(
         definition = JobDefinitionFile.model_validate(definition_dict)
         executor.run_execution(db, job_execution, instance, definition, checkpoint=db.commit)
         db.commit()
+    except executor.ForeignJob as foreign:
+        # Another machine's job: left exactly as it is, for that machine's backend.
+        db.rollback()
+        logging.getLogger("app.workflow").error(str(foreign))
     except Exception as exc:
         db.rollback()
         job_execution = db.get(models.WfJobExecution, job_execution_id)
@@ -167,6 +181,11 @@ def resume_execution(db: Session, execution_id: uuid.UUID) -> models.WfJobExecut
             f"{' or '.join(RESUMABLE_BATCH_STATUSES)} executions can be resumed"
         )
 
+    from app.auth import machine
+
+    if prior.queued_by_host and not machine.same(prior.queued_by_host, machine.hostname()):
+        raise ValueError(f"execution '{execution_id}' was queued on {prior.queued_by_host}: its repository and folders "
+                         f"are there, so resume it from that machine's platform")
     instance = db.get(models.WfJobInstance, prior.job_instance_id)
     definition_row = db.get(models.WfJobDefinition, prior.job_definition_id)
     definition = JobDefinitionFile.model_validate(definition_row.definition)
@@ -179,6 +198,7 @@ def resume_execution(db: Session, execution_id: uuid.UUID) -> models.WfJobExecut
         engine_version=executor.ENGINE_VERSION,
         triggered_by="resume",
         execution_context=prior.execution_context or {},
+        **_queued_by(),
     )
     db.add(job_execution)
     db.flush()

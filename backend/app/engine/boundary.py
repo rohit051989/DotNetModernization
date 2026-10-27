@@ -126,6 +126,7 @@ def allow(db: Session, engagement: models.Engagement, provider: str, organisatio
     entries = [e for e in allowlist(engagement) if e.get("provider") != provider or e.get("organisation") != organisation]
     entries.append(entry)
     engagement.engine_allowlist = sorted(entries, key=lambda e: (e["provider"], e.get("organisation") or ""))
+    engagement.version += 1
     db.flush()
     return engagement.engine_allowlist
 
@@ -133,5 +134,6 @@ def allow(db: Session, engagement: models.Engagement, provider: str, organisatio
 def revoke(db: Session, engagement: models.Engagement, provider: str, organisation: str | None) -> list[dict]:
     engagement.engine_allowlist = [e for e in allowlist(engagement)
                                    if not (e.get("provider") == provider and e.get("organisation") == organisation)]
+    engagement.version += 1
     db.flush()
     return engagement.engine_allowlist

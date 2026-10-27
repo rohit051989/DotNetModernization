@@ -85,6 +85,9 @@ class Settings(BaseSettings):
     visual_studio: str = ""
     visual_studio_path: str = ""
 
+    # Sign-in (app.auth): a session ends after this many minutes without a request. Optional.
+    session_idle_minutes: int = 240
+
     # The single machine this platform runs on (CLAUDE.md's operating model).
     # A relative `command` or `cwd` in a process-adapter step's adapter_config
     # is resolved against this, never against the backend process's own

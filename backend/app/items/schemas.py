@@ -270,6 +270,7 @@ class CatalogItemOut(BaseModel):
     state: ReadinessState = Field(description="Computed. Only 'ready' items are evaluated by detection.")
     state_reason: dict | None = Field(description="Computed. Null when ready.")
     version: int = Field(description="Bumped whenever detection changes.")
+    edit_version: int = Field(default=1, description="Goes up with every edit of the item or its resolutions. Send it back in If-Match: an edit made from a stale copy is refused.")
     owner_team: str | None
     status: ItemStatus
     engine_guidance: str | None = None
@@ -429,6 +430,7 @@ class EngagementDecisionOut(BaseModel):
     )
     created_at: datetime.datetime
     updated_at: datetime.datetime
+    version: int = Field(default=1, description="Goes up with each edit. Send it back in If-Match: an edit made from a stale copy is refused.")
 
 
 class DecisionLink(BaseModel):

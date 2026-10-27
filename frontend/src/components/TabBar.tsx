@@ -1,4 +1,4 @@
-export type TabKey = 'catalog' | 'repositories' | 'applications' | 'estate' | 'waves' | 'dashboard' | 'workflow' | 'admin'
+export type TabKey = 'catalog' | 'repositories' | 'applications' | 'estate' | 'waves' | 'dashboard' | 'workflow' | 'admin' | 'users'
 
 interface Tab {
   key: TabKey
@@ -9,18 +9,17 @@ interface Tab {
   engagementOnly: boolean
   /** The mirror image: hidden whenever an engagement IS selected —
    * 23-WORKFLOW-ADMINISTRATION.md Part C: "New tab, visible only in Master
-   * Catalog view." There is nothing to gate behind auth yet
-   * (04-FRONTEND-SPEC.md "Future: access control"); see the TODO on the tab
-   * itself and at the global policy mutations. */
+   * Catalog view." */
   masterOnly: boolean
+  /** Shown to admins only: their changes are admins' (app.auth.policy), and there is nothing else to see there. */
+  adminOnly?: boolean
   implemented: boolean
 }
 
 const TABS: Tab[] = [
   { key: 'catalog', label: 'Catalog', engagementOnly: false, masterOnly: false, implemented: true },
-  // TODO: gate this tab behind an admin check once auth exists — non-admins
-  // should not see it at all (04-FRONTEND-SPEC.md, "Future: access control").
-  { key: 'admin', label: 'Workflow Administration', engagementOnly: false, masterOnly: true, implemented: true },
+  { key: 'admin', label: 'Workflow Administration', engagementOnly: false, masterOnly: true, adminOnly: true, implemented: true },
+  { key: 'users', label: 'Users', engagementOnly: false, masterOnly: false, adminOnly: true, implemented: true },
   { key: 'repositories', label: 'Repositories', engagementOnly: true, masterOnly: false, implemented: true },
   { key: 'applications', label: 'Applications', engagementOnly: true, masterOnly: false, implemented: false },
   { key: 'estate', label: 'Estate', engagementOnly: true, masterOnly: false, implemented: true },
@@ -33,10 +32,14 @@ interface TabBarProps {
   activeTab: TabKey
   onSelectTab: (tab: TabKey) => void
   isMaster: boolean
+  /** Admin-only tabs show only to admins. */
+  isAdmin?: boolean
 }
 
-export function TabBar({ activeTab, onSelectTab, isMaster }: TabBarProps) {
-  const visibleTabs = TABS.filter((tab) => (!tab.engagementOnly || !isMaster) && (!tab.masterOnly || isMaster))
+export function TabBar({ activeTab, onSelectTab, isMaster, isAdmin = true }: TabBarProps) {
+  const visibleTabs = TABS.filter(
+    (tab) => (!tab.engagementOnly || !isMaster) && (!tab.masterOnly || isMaster) && (!tab.adminOnly || isAdmin),
+  )
 
   return (
     <nav className="flex gap-1 overflow-x-auto border-b border-neutral-200 bg-white px-2 sm:px-6">

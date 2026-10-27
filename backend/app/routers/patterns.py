@@ -437,7 +437,7 @@ def restore_pattern(pattern_id: str, db: Session = Depends(get_db)):
     Admin-only in intent; unguarded for now, like every endpoint in this
     build — no auth system exists yet (see CLAUDE.md).
     """
-    # TODO: gate behind an admin role once auth exists.
+    # Admins only: enforced for every call by app.auth.policy.
     pattern = db.get(models.Pattern, pattern_id)
     if pattern is None:
         raise error(404, f"Pattern '{pattern_id}' not found", code="NOT_FOUND")

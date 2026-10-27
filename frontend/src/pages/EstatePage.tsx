@@ -1,4 +1,5 @@
 import { Fragment, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { ApiError } from '../api/client'
 import { getEstate, putEndpointAnnotation, putEstateSettings } from '../api/estate'
 import { launchJob } from '../api/workflow'
 import { LimitedList } from '../components/LimitedList'
@@ -20,6 +21,11 @@ import type {
   RegisterHost,
 } from '../types/estate'
 import { UNDER_REVIEW, UNDER_REVIEW_LABEL } from '../types/estate'
+
+/** The backend's own words for a refusal it explains (someone else changed it first; only an admin may), else ours. */
+function staleOr(err: unknown, fallback: string): string {
+  return err instanceof ApiError && (err.code === 'STALE_COPY' || err.code === 'NOT_ALLOWED') ? err.message : fallback
+}
 
 // The Estate tab — lifecycle step 11, 31-DEPENDENCY-AND-CONTEXT-MAP.md
 // Part H. Five views over the newest run's artifacts; coverage on each, since
@@ -264,10 +270,10 @@ function RegisterView({
 
   async function setProduction(value: string) {
     try {
-      await putEstateSettings(engagementId, { production_environment: value || null })
+      await putEstateSettings(engagementId, { production_environment: value || null }, settings.version)
       onSaved()
-    } catch {
-      showToast('error', 'Could not save the production environment.')
+    } catch (err) {
+      showToast('error', staleOr(err, 'Could not save the production environment.'))
     }
   }
 
@@ -275,10 +281,10 @@ function RegisterView({
     const value = text.trim()
     if (value === (settings.target_wcf_client_version ?? '')) return
     try {
-      await putEstateSettings(engagementId, { target_wcf_client_version: value || null })
+      await putEstateSettings(engagementId, { target_wcf_client_version: value || null }, settings.version)
       onSaved()
-    } catch {
-      showToast('error', 'Could not save the target WCF client version: use a version such as 8.1.2.')
+    } catch (err) {
+      showToast('error', staleOr(err, 'Could not save the target WCF client version: use a version such as 8.1.2.'))
     }
   }
 
@@ -286,10 +292,10 @@ function RegisterView({
     const globs = text.split(',').map((g) => g.trim()).filter(Boolean)
     if (globs.join(',') === settings.deploy_parameter_globs.join(',')) return
     try {
-      await putEstateSettings(engagementId, { deploy_parameter_globs: globs.length > 0 ? globs : null })
+      await putEstateSettings(engagementId, { deploy_parameter_globs: globs.length > 0 ? globs : null }, settings.version)
       onSaved()
-    } catch {
-      showToast('error', 'Could not save the SetParameters globs.')
+    } catch (err) {
+      showToast('error', staleOr(err, 'Could not save the SetParameters globs.'))
     }
   }
 

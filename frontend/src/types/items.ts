@@ -129,6 +129,8 @@ export interface CatalogItem {
   state: ReadinessState
   state_reason: ItemStateReason | null
   version: number
+  /** Goes up with every edit of the item or its resolutions: sent back as If-Match, so a stale copy is refused. */
+  edit_version: number
   owner_team: string | null
   status: ItemStatus
   deleted_at: string | null
@@ -242,6 +244,8 @@ export interface EngagementDecision {
   followers?: DecisionLink[]
   created_at: string
   updated_at: string
+  /** Goes up with each edit: sent back as If-Match, so a stale copy is refused. */
+  version?: number
 }
 
 /** One end of a Part U dependency between two decisions. */

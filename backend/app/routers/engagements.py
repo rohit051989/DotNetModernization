@@ -1,10 +1,12 @@
+from typing import Annotated
 import datetime
 from collections import Counter
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Header, Query
 from sqlalchemy.orm import Session
 
 from app import models, schemas
+from app.auth import versions
 from app.db import get_db
 from app.engagements import service as engagement_service
 from app.errors import ErrorResponse, error
@@ -88,11 +90,13 @@ def get_engagement(
     responses={404: _NOT_FOUND},
 )
 def update_engagement(
-    engagement_id: str, payload: schemas.EngagementUpdate, db: Session = Depends(get_db)
+    engagement_id: str, payload: schemas.EngagementUpdate, db: Session = Depends(get_db),
+    if_match: Annotated[str | None, Header(description="The engagement's version the edit was made on; a stale copy is refused (409 STALE_COPY).")] = None,
 ):
-    engagement = db.get(models.Engagement, engagement_id)
+    engagement = versions.locked(db, models.Engagement, engagement_id)
     if engagement is None:
         raise error(404, f"Engagement '{engagement_id}' not found", code="NOT_FOUND")
+    versions.check(db, engagement.version, if_match, "engagement", engagement_id, "this engagement's settings")
 
     engagement.client_name = payload.client_name
     engagement.description = payload.description
@@ -101,6 +105,7 @@ def update_engagement(
     engagement.target_framework = payload.target_framework
     if payload.status is not None:
         engagement.status = payload.status
+    engagement.version += 1
     engagement.updated_at = datetime.datetime.now(datetime.timezone.utc)
 
     db.commit()

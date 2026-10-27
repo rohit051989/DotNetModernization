@@ -157,9 +157,7 @@ export function ItemForm({ mode, item, onClose, onSaved }: ItemFormProps) {
       setFieldErrors([{ field: 'detection.match', message: parsed.error }])
       return
     }
-    // TODO: gate behind an admin check once auth exists (04-FRONTEND-SPEC.md,
-    // "Future: access control") — creating or editing an item is a
-    // master-scoped mutation.
+    // Admins only (app.auth.policy): the form opens for admins only.
     setSubmitting(true)
     setFieldErrors([])
     const detection: ItemDetection = { match: parsed.match }
@@ -180,7 +178,7 @@ export function ItemForm({ mode, item, onClose, onSaved }: ItemFormProps) {
       const result =
         mode === 'create'
           ? await createCatalogItem({ id: form.id.trim(), ...payload })
-          : await updateCatalogItem(item!.id, payload)
+          : await updateCatalogItem(item!.id, payload, item!.edit_version)
       showToast('success', mode === 'create' ? 'Item created.' : 'Item saved.')
       onSaved(result.item.id, result.warnings)
     } catch (err) {

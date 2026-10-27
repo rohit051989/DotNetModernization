@@ -718,6 +718,7 @@ class Engagement(BaseModel):
     status: LifecycleStatus = Field(description="Lifecycle state: 'draft', 'active', or 'deprecated'.")
     created_at: datetime.datetime = Field(description="When this engagement was created.")
     updated_at: datetime.datetime = Field(description="When this engagement was last modified.")
+    version: int = Field(default=1, description="Goes up with each edit of its settings. Send it back in If-Match: an edit made from a stale copy is refused.")
     deleted_at: datetime.datetime | None = Field(description="When this engagement was soft-deleted, or null if live.")
     deleted_by: str | None = Field(description="Free-text identity that soft-deleted this engagement, if any.")
 
@@ -889,6 +890,7 @@ class DecisionRecord(BaseModel):
     updated_at: datetime.datetime = Field(description="When this record was last modified.")
     deleted_at: datetime.datetime | None = Field(description="When this record was soft-deleted, or null if live.")
     deleted_by: str | None = Field(description="Free-text identity that soft-deleted this record, if any.")
+    version: int = Field(default=1, description="Goes up with each edit. Send it back in If-Match: an edit made from a stale copy is refused.")
 
 
 # ---------- Client-scoped patterns (engagement_patterns overlay) ----------

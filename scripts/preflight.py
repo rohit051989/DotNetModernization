@@ -595,23 +595,38 @@ def _table(c, schema: str, table: str) -> bool:
 
 
 def platform_state(c, schema: str) -> None:
-    """Who holds the schema, and existing data a later rule would refuse. Reported, never failed or changed."""
-    if _table(c, schema, "platform_heartbeat"):
-        row = c.execute(f'SELECT os_user, host, pid, platform_root, api_port, EXTRACT(EPOCH FROM now() - beat_at) '
-                        f'FROM "{schema}".platform_heartbeat WHERE id = 1').fetchone()
-        if row is None:
-            note("platform", "no platform holds this schema now")
-        else:
-            user, host, pid, root, port, age = row
-            age = int(age)
-            if age > HEARTBEAT_STALE_SECONDS:
-                note("platform", f"the last platform here ({user} on {host}, process {pid}) stopped without shutting "
-                                 f"down {age} s ago; its heartbeat has expired, so the next start takes the schema over")
-            else:
-                warn("platform", f"a platform holds this schema: {user} on {host}, process {pid}, {root}, port {port}, "
-                                 f"last heartbeat {age} s ago. A second one will not start on it. If you know that "
-                                 f"platform has stopped (its VDI session closed, its machine restarted), its heartbeat "
-                                 f"expires {HEARTBEAT_STALE_SECONDS} s after its last beat, or clear it now: {CLEAR}")
+    """The backends running on this database (one per machine), sign-in, and existing data a later rule would refuse.
+    Reported, never failed or changed."""
+    import os
+    import socket
+
+    here = (os.environ.get("COMPUTERNAME") or socket.gethostname()).strip().lower()
+    if _table(c, schema, "platform_backends"):
+        rows = c.execute(f'SELECT host, os_user, pid, platform_root, api_port, EXTRACT(EPOCH FROM now() - beat_at) '
+                         f'FROM "{schema}".platform_backends ORDER BY host').fetchall()
+        live = [r for r in rows if int(r[5]) <= HEARTBEAT_STALE_SECONDS]
+        note("platform", f"{len(live)} backend(s) running on this database, one per machine: "
+                         + (", ".join(r[0] for r in live) if live else "none"))
+        mine = next((r for r in rows if r[0] == here), None)
+        if mine is not None and int(mine[5]) <= HEARTBEAT_STALE_SECONDS:
+            warn("platform", f"a backend is running on this machine: {mine[1]}, process {mine[2]}, {mine[3]}, port "
+                             f"{mine[4]}, last heartbeat {int(mine[5])} s ago. A second one will not start here. If you "
+                             f"know it has stopped, its heartbeat expires {HEARTBEAT_STALE_SECONDS} s after its last "
+                             f"beat, or clear it now: {CLEAR}")
+    if _table(c, schema, "users"):
+        admins = c.execute(f'SELECT count(*) FROM "{schema}".users WHERE role = %s AND deactivated_at IS NULL',
+                           ("admin",)).fetchone()[0]
+        if admins == 0:
+            warn("sign-in", "no admin exists yet: nobody can sign in. Create the first admin, once, on this machine: "
+                            "cd backend; .venv\\Scripts\\python.exe -m app.users create-first-admin --login <name> "
+                            "--name \"<full name>\" (docs/VDI-SETUP.md, \"The first admin, and signing in\")")
+        if _table(c, schema, "repositories"):
+            unowned = c.execute(f'SELECT count(*) FROM "{schema}".repositories WHERE owner_user_id IS NULL '
+                                'AND deleted_at IS NULL').fetchone()[0]
+            if unowned:
+                warn("existing data", f"{unowned} repositories have no owner (registered before sign-in existed): "
+                                      "only admins act on them until an admin assigns owners (python -m app.users "
+                                      "owners; docs/VDI-SETUP.md, \"Users and sign-in\"). Left working, unchanged")
     if _table(c, schema, "repositories"):
         groups: dict[str, list[tuple[str, str, str]]] = {}
         for engagement, slug, path, normalised in c.execute(

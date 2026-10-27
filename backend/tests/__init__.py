@@ -26,6 +26,9 @@ from pathlib import Path
 
 _BACKEND = Path(__file__).resolve().parents[1]
 _PREFIX = "test_run_"
+# The test run's own admin, registered for this machine in the scratch schema only.
+TEST_ADMIN_LOGIN = "test-admin"
+TEST_ADMIN_PASSWORD = "scratch-schema-admin-only"
 _STALE_AFTER = datetime.timedelta(days=1)
 
 
@@ -77,6 +80,17 @@ def _start() -> None:
         if done.returncode != 0:
             raise SystemExit(f"Standing up the test schema {schema} failed at {' '.join(command[1:])}:\n"
                              f"{done.stdout[-3000:]}\n{done.stderr[-3000:]}")
+
+    # A registered admin for this machine and Windows account, as an installation has after create-first-admin: the
+    # command-line tools a test runs act as the registered user running them (app.auth.service.cli_actor).
+    from app.auth import machine, service
+    from app.db import SessionLocal
+
+    with SessionLocal() as db:
+        service.create_user(db, login=TEST_ADMIN_LOGIN, name="Test Admin", windows_account=machine.windows_account(),
+                            role="admin", host_names=[machine.hostname()], password=TEST_ADMIN_PASSWORD,
+                            must_change_password=False)
+        db.commit()
 
 
 _start()

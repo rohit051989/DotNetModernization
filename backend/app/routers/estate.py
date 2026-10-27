@@ -12,6 +12,7 @@ request, and the report stops being a draft once every entry it rests on is
 confirmed and no probe contradicts one.
 """
 
+from typing import Annotated
 import csv
 import io
 
@@ -19,13 +20,14 @@ import datetime
 import json
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Header
 from fastapi.responses import Response
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app import models
+from app.auth import versions
 from app.db import get_db
 from app.errors import ErrorResponse, error
 from app.estate import engagement_matrix, soap_compatibility, wcf_matrix
@@ -98,6 +100,7 @@ class EstateSettingsOut(BaseModel):
     deploy_parameter_globs_default: bool = Field(description="True when no globs are set and the defaults apply.")
     environments: list[str] = Field(description="Every environment outbound-invocation-inventory found in the estate's configuration, for choosing.")
     repositories: list[str] = Field(description="The engagement's repository slugs, for served_by_repository.")
+    version: int = Field(default=1, description="The engagement's version: send it back in If-Match when changing the settings.")
 
 
 class EstateRunOut(BaseModel):
@@ -149,7 +152,7 @@ def _settings_out(db: Session, engagement: models.Engagement, slugs: dict) -> Es
     """), {"e": engagement.id}).scalars().all()
     effective = engagement.target_wcf_client_version or wcf_matrix.target_wcf_client(
         soap_compatibility.load_matrix(), engagement.target_framework)
-    return EstateSettingsOut(production_environment=engagement.production_environment,
+    return EstateSettingsOut(version=engagement.version, production_environment=engagement.production_environment,
                              target_wcf_client_version=engagement.target_wcf_client_version,
                              target_wcf_client_version_effective=effective,
                              deploy_parameter_globs=engagement.deploy_parameter_globs or DEFAULT_DEPLOY_PARAMETER_GLOBS,
@@ -314,12 +317,17 @@ def get_estate(engagement_id: str, db: Session = Depends(get_db)):
     operation_id="put_estate_settings",
     responses={404: _NOT_FOUND},
 )
-def put_settings(engagement_id: str, payload: EstateSettingsIn, db: Session = Depends(get_db)):
+def put_settings(
+    engagement_id: str, payload: EstateSettingsIn, db: Session = Depends(get_db),
+    if_match: Annotated[str | None, Header(description="The engagement's version the edit was made on; a stale copy is refused (409 STALE_COPY).")] = None,
+):
     """The production environment groups the endpoint register by that
     environment's host (Part C1); the next dependency-and-context-map run uses it. The
     SetParameters globs say where application-fingerprinting and outbound-invocation-inventory look for Web Deploy
     parameter files; the next scan uses them. Only the fields sent change."""
     engagement = _engagement(db, engagement_id)
+    db.refresh(engagement, with_for_update=True)
+    versions.check(db, engagement.version, if_match, "engagement", engagement_id, "this engagement's settings")
     if "production_environment" in payload.model_fields_set:
         value = (payload.production_environment or "").strip()
         engagement.production_environment = value or None
@@ -328,6 +336,7 @@ def put_settings(engagement_id: str, payload: EstateSettingsIn, db: Session = De
         engagement.deploy_parameter_globs = globs or None
     if "target_wcf_client_version" in payload.model_fields_set:
         engagement.target_wcf_client_version = (payload.target_wcf_client_version or "").strip() or None
+    engagement.version += 1
     engagement.updated_at = datetime.datetime.now(datetime.timezone.utc)
     db.commit()
     db.refresh(engagement)
@@ -508,6 +517,9 @@ class MatrixRevertIn(BaseModel):
     entry_id: str = Field(min_length=1)
     by: str = Field(min_length=1)
     reason: str = Field(min_length=1)
+    confirmation_id: str | None = Field(default=None, description="The confirmation the person saw: if it has been "
+                                                                  "reverted or replaced since, the revert is refused "
+                                                                  "(409 STALE_COPY).")
 
 
 @router.get(
@@ -534,8 +546,17 @@ def get_matrix_confirmations(engagement_id: str, db: Session = Depends(get_db)):
 )
 def post_matrix_decision(engagement_id: str, payload: MatrixDecisionIn, db: Session = Depends(get_db)):
     """Confirms exactly the named entries, each on intact evidence of this
-    engagement that bears on it. The shipped matrices are not changed."""
+    engagement that bears on it. The shipped matrices are not changed. An
+    entry someone else confirmed in the meantime is refused (409
+    STALE_COPY): nothing is overwritten."""
     _engagement(db, engagement_id)
+    for entry_id in payload.entries:
+        active = (db.query(models.EngagementMatrixConfirmation)
+                  .filter_by(engagement_id=engagement_id, entry_id=entry_id, reverted_at=None).one_or_none())
+        if active is not None:
+            raise error(409, f"Not saved: {entry_id} was confirmed by {active.decided_by} first (decision "
+                             f"{active.decision_id}, {active.decided_on}). Nothing was overwritten. Reload to see it.",
+                        code="STALE_COPY")
     try:
         confirmed = engagement_matrix.record_decision(db, engagement_id, payload.model_dump())
     except ValueError as exc:
@@ -554,6 +575,15 @@ def post_matrix_decision(engagement_id: str, payload: MatrixDecisionIn, db: Sess
 )
 def revert_matrix_confirmation(engagement_id: str, payload: MatrixRevertIn, db: Session = Depends(get_db)):
     _engagement(db, engagement_id)
+    if payload.confirmation_id:
+        active = (db.query(models.EngagementMatrixConfirmation)
+                  .filter_by(engagement_id=engagement_id, entry_id=payload.entry_id, reverted_at=None)
+                  .with_for_update().one_or_none())
+        if active is None or str(active.id) != payload.confirmation_id:
+            said = ("it has been reverted since" if active is None
+                    else f"it was replaced since, by {active.decided_by}'s confirmation (decision {active.decision_id})")
+            raise error(409, f"Not saved: the confirmation of {payload.entry_id} you saw is no longer the current one: "
+                             f"{said}. Nothing was changed. Reload to see it.", code="STALE_COPY")
     try:
         engagement_matrix.revert(db, engagement_id, payload.entry_id, payload.by, payload.reason)
     except ValueError as exc:

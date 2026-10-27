@@ -146,6 +146,10 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     db = SessionLocal()
     try:
+        from app.auth import service as auth
+
+        # The limits apply to every engagement: changing them is for admins.
+        auth.cli_actor(db, admin=args.command in ("set", "clear", "retry"))
         repo = _repository(db, args.repository)
         repo_id = repo.id if repo else None
         if args.command == "retry":

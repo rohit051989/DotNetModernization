@@ -51,8 +51,9 @@ export function createCatalogItem(payload: CatalogItemCreateInput) {
   return api.post<CatalogItemWriteResult>('/api/catalog/items', payload)
 }
 
-export function updateCatalogItem(itemId: string, payload: CatalogItemWriteInput) {
-  return api.put<CatalogItemWriteResult>(itemPath(itemId), payload)
+/** `version`: the item's edit_version in the copy edited; a stale copy is refused. */
+export function updateCatalogItem(itemId: string, payload: CatalogItemWriteInput, version?: number) {
+  return api.put<CatalogItemWriteResult>(itemPath(itemId), payload, { version })
 }
 
 export function deleteCatalogItem(itemId: string, deletedBy?: string) {
@@ -76,8 +77,9 @@ export function createResolution(itemId: string, payload: ResolutionCreateInput)
   return api.post<ItemResolution>(`${itemPath(itemId)}/resolutions`, payload)
 }
 
-export function updateResolution(itemId: string, resolutionId: string, payload: ResolutionWriteInput) {
-  return api.put<ItemResolution>(`${itemPath(itemId)}/resolutions/${enc(resolutionId)}`, payload)
+/** `version`: the item's edit_version in the copy edited; a stale copy is refused. */
+export function updateResolution(itemId: string, resolutionId: string, payload: ResolutionWriteInput, version?: number) {
+  return api.put<ItemResolution>(`${itemPath(itemId)}/resolutions/${enc(resolutionId)}`, payload, { version })
 }
 
 export function deleteResolution(itemId: string, resolutionId: string, deletedBy?: string) {
@@ -131,10 +133,12 @@ export function listItemDecisions(engagementId: string) {
   return api.get<EngagementDecision[]>(`/api/engagements/${enc(engagementId)}/item-decisions`)
 }
 
-export function upsertItemDecision(engagementId: string, itemId: string, payload: EngagementDecisionUpsertInput) {
+/** `version`: the decision's version in the copy edited, 0 when there was none; a stale copy is refused. */
+export function upsertItemDecision(engagementId: string, itemId: string, payload: EngagementDecisionUpsertInput, version?: number) {
   return api.put<EngagementDecision>(
     `/api/engagements/${enc(engagementId)}/items/${enc(itemId)}/decision`,
     payload,
+    { version },
   )
 }
 
@@ -144,8 +148,8 @@ export function getWorkListDecisions(repositoryId: string) {
   return api.get<WorkListDecisions>(`/api/repositories/${enc(repositoryId)}/work-list-decisions`)
 }
 
-export function supersedeItemDecision(decisionId: string) {
-  return api.post<EngagementDecision>(`/api/item-decisions/${enc(decisionId)}/supersede`)
+export function supersedeItemDecision(decisionId: string, version?: number) {
+  return api.post<EngagementDecision>(`/api/item-decisions/${enc(decisionId)}/supersede`, undefined, { version })
 }
 
 export function getCatalogExportStatus() {

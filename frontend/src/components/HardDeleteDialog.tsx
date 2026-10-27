@@ -19,7 +19,7 @@ function mb(bytes: number) {
 /** A hard delete (docs/VDI-SETUP.md: Deleting a repository or an engagement): shows exactly what will go — rows, folders, the worktrees and branches
  * the platform made in the checkout, and every conversion that has been run, whose agent work lives only on its
  * branch — and deletes only once the repository's or engagement's name is typed. Refused while one of its jobs runs.
- * TODO: gate behind an admin check once auth exists (04-FRONTEND-SPEC.md, "Future: access control"). */
+ * Who may: a repository's owner or an admin; an engagement, an admin (app.auth.policy). */
 export function HardDeleteDialog({ title, loadPlan, onDelete, onClose, onDeleted }: HardDeleteDialogProps) {
   const [plan, setPlan] = useState<DeletionPlan | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)

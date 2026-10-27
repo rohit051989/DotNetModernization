@@ -82,7 +82,7 @@ def effective_time_limit(step_name: str = Query(...), repository_id: uuid.UUID |
 @router.put("", response_model=TimeLimits, summary="Set an override for a step, a repository, or both",
             operation_id="set_time_limit", responses={404: {"model": ErrorResponse}, 422: {"model": ErrorResponse}})
 def set_time_limit(payload: TimeLimitOverride, db: Session = Depends(get_db)):
-    # TODO: gate to admins once auth exists — the limits apply to every engagement.
+    # Admins only (app.auth.policy): the limits apply to every engagement.
     _repository(db, payload.repository_id)
     try:
         time_limits.set_limit(db, payload.step_name, payload.repository_id, payload.timeout_seconds,
@@ -97,7 +97,7 @@ def set_time_limit(payload: TimeLimitOverride, db: Session = Depends(get_db)):
                operation_id="clear_time_limit", responses={404: {"model": ErrorResponse}})
 def clear_time_limit(step_name: str | None = Query(None), repository_id: uuid.UUID | None = Query(None),
                      db: Session = Depends(get_db)):
-    # TODO: gate to admins once auth exists — the limits apply to every engagement.
+    # Admins only (app.auth.policy): the limits apply to every engagement.
     if not time_limits.clear_limit(db, step_name, repository_id):
         raise error(404, "no such override to clear", code="NOT_FOUND")
     db.commit()

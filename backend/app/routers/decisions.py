@@ -1,10 +1,12 @@
+from typing import Annotated
 import datetime
 import uuid
 
-from fastapi import APIRouter, Depends, Query, Response
+from fastapi import APIRouter, Depends, Header, Query, Response
 from sqlalchemy.orm import Session
 
 from app import models, schemas
+from app.auth import activity, versions
 from app.db import get_db
 from app.errors import ErrorResponse, error, errors
 from app.schemas import CONSUMER_IMPACT_RANK
@@ -42,6 +44,7 @@ def _decision_response(db: Session, decision: models.DecisionRecord) -> schemas.
         updated_at=decision.updated_at,
         deleted_at=decision.deleted_at,
         deleted_by=decision.deleted_by,
+        version=decision.version,
     )
 
 
@@ -264,6 +267,8 @@ def upsert_engagement_pattern_decision(
     payload: schemas.DecisionRecordUpsert,
     response: Response,
     db: Session = Depends(get_db),
+    if_match: Annotated[str | None, Header(description="The version of the decision the edit was made on; 0 when "
+                                                            "there was none. A stale copy is refused (409 STALE_COPY).")] = None,
 ):
     """
     Upsert of the singleton decision for this `(engagement, pattern)` pair —
@@ -293,8 +298,11 @@ def upsert_engagement_pattern_decision(
             models.DecisionRecord.pattern_id == pattern_id,
             models.DecisionRecord.status != "superseded",
         )
+        .with_for_update()
         .first()
     )
+    versions.check(db, existing.version if existing else None, if_match, "decision",
+                   existing.id if existing else None, "this decision")
 
     _validate_decision(
         db,
@@ -330,7 +338,10 @@ def upsert_engagement_pattern_decision(
     else:
         decision = existing
         _apply_decision_fields(decision, payload)
+        decision.version += 1
 
+    db.flush()
+    activity.about("decision", decision.id)
     db.commit()
     db.refresh(decision)
     return _decision_response(db, decision)
@@ -365,7 +376,8 @@ def get_decision(
     responses={404: _DECISION_NOT_FOUND, 422: _VALIDATION_FAILED},
 )
 def update_decision(
-    decision_id: uuid.UUID, payload: schemas.DecisionRecordUpdate, db: Session = Depends(get_db)
+    decision_id: uuid.UUID, payload: schemas.DecisionRecordUpdate, db: Session = Depends(get_db),
+    if_match: Annotated[str | None, Header(description="The version edited; a stale copy is refused (409 STALE_COPY).")] = None,
 ):
     """
     Edits one specific record by its own id — including historical
@@ -374,9 +386,10 @@ def update_decision(
     upsert route.
     """
 
-    decision = db.get(models.DecisionRecord, decision_id)
+    decision = versions.locked(db, models.DecisionRecord, decision_id)
     if decision is None:
         raise error(404, f"Decision record '{decision_id}' not found", code="NOT_FOUND")
+    versions.check(db, decision.version, if_match, "decision", decision.id, "this decision")
 
     new_status = payload.status if payload.status is not None else decision.status
     new_selected = (
@@ -417,6 +430,7 @@ def update_decision(
     )
 
     _apply_decision_fields(decision, payload)
+    decision.version += 1
 
     db.commit()
     db.refresh(decision)
@@ -431,14 +445,19 @@ def update_decision(
     operation_id="supersede_decision",
     responses={404: _DECISION_NOT_FOUND},
 )
-def supersede_decision(decision_id: uuid.UUID, db: Session = Depends(get_db)):
+def supersede_decision(
+    decision_id: uuid.UUID, db: Session = Depends(get_db),
+    if_match: Annotated[str | None, Header(description="The version edited; a stale copy is refused (409 STALE_COPY).")] = None,
+):
     """Sets `status = 'superseded'`, freeing the partial unique index so a
     new decision can be recorded for that (engagement, pattern)."""
 
-    decision = db.get(models.DecisionRecord, decision_id)
+    decision = versions.locked(db, models.DecisionRecord, decision_id)
     if decision is None:
         raise error(404, f"Decision record '{decision_id}' not found", code="NOT_FOUND")
+    versions.check(db, decision.version, if_match, "decision", decision.id, "this decision")
 
+    decision.version += 1
     decision.status = "superseded"
     decision.updated_at = datetime.datetime.now(datetime.timezone.utc)
     db.commit()

@@ -344,7 +344,7 @@ def delete_target_state(
 def restore_target_state(target_state_id: str, db: Session = Depends(get_db)):
     """Clears `deleted_at`/`deleted_by` unconditionally; `status` is untouched.
     Admin-only in intent; unguarded for now — no auth system exists yet (see CLAUDE.md)."""
-    # TODO: gate behind an admin role once auth exists.
+    # Admins only: enforced for every call by app.auth.policy.
     option = db.get(models.TargetStateOption, target_state_id)
     if option is None:
         raise error(404, f"Target state option '{target_state_id}' not found", code="NOT_FOUND")

@@ -4,6 +4,8 @@ from fastapi import APIRouter, BackgroundTasks, Depends, Query
 from sqlalchemy.orm import Session
 
 from app import models
+from app.auth import activity, policy
+from app.auth import actor as actors
 from app.db import get_db
 from app.errors import ErrorResponse, error, errors
 from app.repositories import service as repositories_service
@@ -87,16 +89,29 @@ def _launch_discovery(
     return job_execution
 
 
+def _ownership(db: Session, repo: models.Repository) -> dict:
+    """The owner, and whether the signed-in person may act on it here (app.auth.policy), for the UI to show."""
+    person = actors.current()
+    reason = edit_reason = None
+    if person is not None:
+        edit_reason = policy.repository_refusal(db, person, repo)
+        reason = policy.machine_refusal(repo, person.hostname) or edit_reason
+    return {"owner_user_id": repo.owner_user_id, "owner_name": policy.owner_name(db, repo),
+            "registered_host": repo.registered_host, "can_act": reason is None, "cannot_act_reason": reason,
+            "cannot_edit_reason": edit_reason}
+
+
 def _repository_out(db: Session, repo: models.Repository, detail: bool = False):
+    summary = RepositorySummary.model_validate(repo).model_copy(update=_ownership(db, repo))
     if not detail:
-        return RepositorySummary.model_validate(repo)
+        return summary
 
     latest = runtime_service.list_executions(
         db, job_name=_DISCOVERY_JOB, repository_id=str(repo.id), limit=1
     )
     latest_execution = runtime_service.to_execution_out(db, latest[0]) if latest else None
     return RepositoryDetail(
-        **RepositorySummary.model_validate(repo).model_dump(),
+        **summary.model_dump(),
         local_path=repo.local_path,
         clone_url=repo.clone_url,
         source_control_status=repo.source_control_status,
@@ -225,6 +240,7 @@ def register_repository(
     except RegistrationError as exc:
         raise errors(exc.status_code, exc.errors) from exc
 
+    activity.record(db, "register_repository", "repository", str(repo.id), f"Registered {repo.name}")
     job_execution = _launch_discovery(db, background_tasks, engagement_id, repo.id, repo.ingest_token)
     db.refresh(repo)
 
@@ -335,8 +351,7 @@ def delete_repository(
     responses={404: {"model": ErrorResponse, "description": "No repository exists with this id."}},
 )
 def restore_repository(repository_id: uuid.UUID, db: Session = Depends(get_db)):
-    """Admin-only in intent; unguarded for now — no auth system exists yet (see CLAUDE.md)."""
-    # TODO: gate behind an admin role once auth exists.
+    """Admins only (app.auth.policy; CLAUDE.md rule 7: restore is an admin's)."""
     repo = _get_repository(db, repository_id, include_deleted=True)
     repositories_service.restore(repo)
     db.commit()

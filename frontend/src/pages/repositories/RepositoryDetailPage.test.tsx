@@ -37,12 +37,16 @@ const artifacts = vi.hoisted(() => ({
   },
 }))
 vi.mock('./useLatestArtifacts', () => ({ useLatestArtifacts: () => ({ artifacts, loading: false }) }))
+// What the backend says about ownership, for the signed-in person (app.auth.policy): set per test.
+const ownership = vi.hoisted(() => ({ current: {} as Record<string, unknown> }))
 vi.mock('../../api/repositories', () => ({
   getRepository: () =>
     Promise.resolve({
+      ...ownership.current,
       id: 'r', name: 'shop', engagement_id: 'e', local_path: 'D:\\repos\\shop', source_type: 'local_path', clone_url: null, ingest_status: 'scanned',
       criticality: 'medium', clone_url_verification: 'verified', retirement_status: 'active', warnings: [], deleted_at: null, size_bytes: 1, file_count: 1,
       primary_languages: [], last_scanned_at: null, tags: [], technical_owner: null,
+      ...ownership.current,
     }),
   listRepositoryExecutions: () => Promise.resolve([{ id: 'x1', batch_status: 'COMPLETED', exit_status: 'COMPLETED', started_at: '2026-10-23T00:00:00Z', step_summary: { completed: 1, not_implemented: 0, total: 1 } }]),
   rescanRepository: vi.fn(),
@@ -98,6 +102,30 @@ beforeEach(() => {
 afterEach(cleanup)
 
 describe('RepositoryDetailPage tabs', () => {
+  it('someone else\'s repository is read-only, and every action says why', async () => {
+    const why = "Only this repository's owner, Alice, or an admin may do this."
+    ownership.current = { owner_name: 'Alice', owner_user_id: 'u1', registered_host: 'DEVBOX-A', can_act: false, cannot_act_reason: why, cannot_edit_reason: why }
+    await open('/repositories/r')
+    for (const name of ['Rescan', 'Verify path', 'Edit', 'Delete']) {
+      const button = screen.getByRole('button', { name })
+      expect(button.hasAttribute('disabled')).toBe(true)
+      expect(button.getAttribute('title')).toBe(why)
+    }
+    expect(screen.getByTestId('read-only-note').textContent).toBe(`Read-only for you: ${why}`)
+    expect(screen.getByText('Owner: Alice')).toBeTruthy()
+    ownership.current = {}
+  })
+
+  it('the owner\'s repository has every action enabled', async () => {
+    ownership.current = { owner_name: 'Alice', owner_user_id: 'u1', registered_host: 'DEVBOX-A', can_act: true, cannot_act_reason: null, cannot_edit_reason: null }
+    await open('/repositories/r')
+    for (const name of ['Rescan', 'Verify path', 'Edit', 'Delete']) {
+      expect(screen.getByRole('button', { name }).hasAttribute('disabled')).toBe(false)
+    }
+    expect(screen.queryByTestId('read-only-note')).toBeNull()
+    ownership.current = {}
+  })
+
   it('opens on Overview, alone in its group, with no second row, and names it in the address', async () => {
     await open('/repositories/r')
     expect(groups().getAllByRole('tab').map((t) => t.textContent)).toEqual(['Overview', 'Discovery', 'Modernization', 'Activity'])

@@ -39,6 +39,7 @@ import { ReadinessReason } from './ReadinessReason'
 import { ResolutionCard } from './ResolutionCard'
 import { ResolutionForm } from './ResolutionForm'
 import { formatDate, lowestImpactResolution } from './itemHelpers'
+import { useIsAdmin } from '../../auth/AuthContext'
 
 interface ItemDetailProps {
   itemId: string
@@ -76,6 +77,7 @@ export function ItemDetail({
   onItemSaved,
   onSelectSignal,
 }: ItemDetailProps) {
+  const isAdmin = useIsAdmin()
   const isMaster = engagement === null
   const { showToast } = useToast()
   const [item, setItem] = useState<CatalogItem | null>(null)
@@ -177,14 +179,10 @@ export function ItemDetail({
   }
 
   function handleDeleteItem() {
-    // TODO: gate behind an admin check once auth exists (04-FRONTEND-SPEC.md,
-    // "Future: access control") — soft-deleting an item is a master-scoped mutation.
     return runAction(() => deleteCatalogItem(itemId), 'Item deleted. Restore it from "Show deleted".', 'Could not delete this item.')
   }
 
   function handleRestoreItem() {
-    // TODO: gate behind an admin check once auth exists — restoring an item is a
-    // master-scoped mutation.
     return runAction(
       () => restoreCatalogItem(itemId),
       'Item restored. Its resolutions stay deleted until restored one by one.',
@@ -193,23 +191,14 @@ export function ItemDetail({
   }
 
   function handleDeleteResolution(resolution: ItemResolution) {
-    // TODO: gate behind an admin check once auth exists — soft-deleting a
-    // resolution is a master-scoped mutation.
     return runAction(() => deleteResolution(itemId, resolution.id), 'Resolution deleted.', 'Could not delete this resolution.')
   }
 
   function handleRestoreResolution(resolution: ItemResolution) {
-    // TODO: gate behind an admin check once auth exists — restoring a
-    // resolution is a master-scoped mutation.
     return runAction(() => restoreResolution(itemId, resolution.id), 'Resolution restored.', 'Could not restore this resolution.')
   }
 
   async function handleMakeDefault(resolution: ItemResolution) {
-    // TODO: gate behind an admin check once auth exists — changing the default
-    // resolution is a master-scoped mutation.
-    // One transactional call: the old default is unset and the new one set
-    // together, or nothing changes. The response is the item's live
-    // resolutions after the move; deleted ones shown here are kept as they are.
     setBusy(true)
     setActionError(null)
     try {
@@ -255,10 +244,10 @@ export function ItemDetail({
             {deleted && <DeletedBadge />}
           </div>
         </div>
-        {isMaster && (
-          // TODO: gate Edit/Delete/Restore behind an admin check once auth exists
-          // (04-FRONTEND-SPEC.md, "Future: access control"). These are
-          // master-scoped mutations — currently reachable by anyone.
+        {isMaster && !isAdmin && (
+          <p className="shrink-0 text-xs text-neutral-500">Read-only: only an admin changes the master catalog.</p>
+        )}
+        {isMaster && isAdmin && (
           <div className="flex shrink-0 gap-2">
             {deleted ? (
               <button type="button" onClick={handleRestoreItem} disabled={busy} className={secondaryButton}>
@@ -496,9 +485,7 @@ export function ItemDetail({
                     resolution={resolution}
                     isLowestImpact={lowest?.consumer_impact === resolution.consumer_impact && resolution.status === 'active'}
                     actions={
-                      isMaster && !deleted ? (
-                        // TODO: gate behind an admin check once auth exists — resolution
-                        // edit/default/delete/restore are master-scoped mutations.
+                      isMaster && isAdmin && !deleted ? (
                         resolutionDeleted ? (
                           <button type="button" disabled={busy} onClick={() => handleRestoreResolution(resolution)} className={smallButton}>
                             Restore
@@ -530,9 +517,7 @@ export function ItemDetail({
             </div>
           )}
         </LimitedList>
-        {isMaster && !deleted && (
-          // TODO: gate behind an admin check once auth exists — adding a resolution
-          // is a master-scoped mutation.
+        {isMaster && isAdmin && !deleted && (
           <button
             type="button"
             onClick={() => setResolutionForm({ kind: 'create' })}
@@ -569,6 +554,7 @@ export function ItemDetail({
         <ResolutionForm
           mode={resolutionForm.kind}
           itemId={item.id}
+          itemVersion={item.edit_version}
           resolution={resolutionForm.kind === 'edit' ? resolutionForm.resolution : undefined}
           existingDefault={currentDefault}
           onClose={() => setResolutionForm(null)}

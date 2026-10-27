@@ -15,6 +15,7 @@ import { ReadinessReason } from './ReadinessReason'
 import { detectionProfile, type DetectionProfile, type DetectionType } from './itemHelpers'
 import { ItemForm } from './ItemForm'
 import { CatalogExportPanel } from './CatalogExportPanel'
+import { useIsAdmin } from '../../auth/AuthContext'
 
 const SCOPES: { scope: ItemScope; label: string; hint: string }[] = [
   { scope: 'application', label: 'Application scope', hint: 'decided once per project' },
@@ -60,6 +61,7 @@ interface ItemListProps {
 }
 
 export function ItemList({ engagementId, selectedItemId, onSelectItem, refreshToken, onItemCreated }: ItemListProps) {
+  const isAdmin = useIsAdmin()
   const isMaster = engagementId === null
   const [items, setItems] = useState<CatalogItem[]>([])
   const [decisions, setDecisions] = useState<EngagementDecision[]>([])
@@ -157,9 +159,7 @@ export function ItemList({ engagementId, selectedItemId, onSelectItem, refreshTo
   return (
     <div className="flex h-full w-[400px] max-w-full shrink-0 flex-col border-r border-neutral-200 bg-white">
       <div className="border-b border-neutral-200 p-4">
-        {isMaster && (
-          // TODO: gate behind an admin check once auth exists (04-FRONTEND-SPEC.md,
-          // "Future: access control") — creating an item is a master-scoped mutation.
+        {isMaster && isAdmin && (
           <button
             type="button"
             onClick={() => setShowCreateForm(true)}

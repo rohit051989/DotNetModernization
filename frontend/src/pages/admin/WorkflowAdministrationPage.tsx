@@ -23,9 +23,8 @@ const SECTIONS: { key: Section; label: string }[] = [
  * (App.tsx) gates rendering on that, mirroring how engagement-only tabs are
  * gated the other way.
  *
- * TODO: gate this whole page behind an admin check once auth exists — the
- * Master Catalog view is already noted as admin-only in a future auth model
- * (04-FRONTEND-SPEC.md, "Future: access control").
+ * Admins only: the tab shows to admins only, and the backend refuses anyone
+ * else's changes (app.auth.policy; 04-FRONTEND-SPEC.md, "Sign-in and roles").
  */
 export function WorkflowAdministrationPage() {
   const [section, setSection] = useState<Section>('registry')

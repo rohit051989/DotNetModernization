@@ -1,5 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { getHealth } from '../api/catalog'
+import { listOnline, type OnlineEntry } from '../api/users'
+import { ADMIN_ONLY, useAuth, useIsAdmin } from '../auth/AuthContext'
 import type { Engagement } from '../types/catalog'
 import { NewEngagementDrawer } from './NewEngagementDrawer'
 import { TabBar, type TabKey } from './TabBar'
@@ -30,6 +32,7 @@ export function AppShell({
 }: AppShellProps) {
   const [healthy, setHealthy] = useState<boolean | null>(null)
   const [creating, setCreating] = useState(false)
+  const isAdmin = useIsAdmin()
 
   useEffect(() => {
     let cancelled = false
@@ -64,9 +67,8 @@ export function AppShell({
           <ScopePill isMaster={isMaster} />
           <label className="flex min-w-0 items-center gap-2 text-sm text-neutral-600">
             View
-            {/* TODO: gate the Master Catalog option behind an admin check once auth
-                exists — non-admins should not see it at all (04-FRONTEND-SPEC.md,
-                "Future: access control"). */}
+            {/* Everyone signed in sees the master catalog and every engagement; only admins change them, and the
+                backend enforces it (app.auth.policy). */}
             <select
               className={`min-w-0 max-w-[12rem] rounded border px-2 py-1.5 text-sm focus:outline-none sm:max-w-none ${
                 isMaster
@@ -84,18 +86,20 @@ export function AppShell({
               ))}
             </select>
           </label>
-          {/* TODO: gate creating an engagement behind an admin check once auth exists
-              (04-FRONTEND-SPEC.md, "Future: access control"). */}
           <button
             type="button"
             onClick={() => setCreating(true)}
-            className="whitespace-nowrap rounded border border-neutral-300 px-2 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50"
+            disabled={!isAdmin}
+            title={isAdmin ? undefined : ADMIN_ONLY}
+            className="whitespace-nowrap rounded border border-neutral-300 px-2 py-1.5 text-sm text-neutral-700 hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50"
           >
             + New engagement
           </button>
+          <OnlinePill />
+          <UserMenu />
         </div>
       </header>
-      <TabBar activeTab={activeTab} onSelectTab={onSelectTab} isMaster={isMaster} />
+      <TabBar activeTab={activeTab} onSelectTab={onSelectTab} isMaster={isMaster} isAdmin={isAdmin} />
       {/* The one page scroller: bounded, so a page's sticky bars and its
           panes' own scrollers (h-full + overflow-y-auto) work as designed. */}
       <main className="min-h-0 flex-1 overflow-auto">{children}</main>
@@ -109,6 +113,59 @@ export function AppShell({
         />
       )}
     </div>
+  )
+}
+
+const ONLINE_POLL_INTERVAL_MS = 60_000
+
+/** Who is online, and on which machine: each machine with a running platform, and who is signed in there. */
+function OnlinePill() {
+  const [online, setOnline] = useState<OnlineEntry[] | null>(null)
+  const [open, setOpen] = useState(false)
+  useEffect(() => {
+    let cancelled = false
+    const poll = () => listOnline().then((found) => !cancelled && setOnline(found), () => !cancelled && setOnline(null))
+    poll()
+    const interval = setInterval(poll, ONLINE_POLL_INTERVAL_MS)
+    return () => {
+      cancelled = true
+      clearInterval(interval)
+    }
+  }, [])
+  if (online === null) return null
+  return (
+    <span className="relative">
+      <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open}
+        className="whitespace-nowrap rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-800 hover:bg-emerald-100">
+        {online.length} online
+      </button>
+      {open && (
+        <span role="dialog" aria-label="Who is online" className="absolute right-0 top-full z-40 mt-1 w-72 rounded border border-neutral-200 bg-white p-2 text-xs shadow-lg">
+          {online.length === 0 && <span className="text-neutral-500">No platform is running.</span>}
+          {online.map((entry) => (
+            <span key={entry.host} className="flex justify-between gap-2 py-0.5">
+              <span className="truncate text-neutral-800">{entry.user_name ?? 'nobody signed in'}</span>
+              <span className="font-mono text-neutral-500">{entry.host}</span>
+            </span>
+          ))}
+        </span>
+      )}
+    </span>
+  )
+}
+
+function UserMenu() {
+  const { me, signOut } = useAuth()
+  if (!me) return null
+  return (
+    <span className="flex items-center gap-2 whitespace-nowrap text-xs text-neutral-600">
+      <span title={`${me.windows_account} on ${me.hostname}`}>
+        {me.name} <span className="text-neutral-400">· {me.role}</span>
+      </span>
+      <button type="button" onClick={() => void signOut()} className="rounded border border-neutral-300 px-2 py-1 hover:bg-neutral-50">
+        Sign out
+      </button>
+    </span>
   )
 }
 

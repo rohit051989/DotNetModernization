@@ -10,6 +10,7 @@ import { CriticalityBadge, CloneUrlVerificationBadge, IngestStatusBadge, Retirem
 import { DiscoveryProgressBar } from '../../components/DiscoveryProgressBar'
 import { LimitedList } from '../../components/LimitedList'
 import { RegisterRepositoryDrawer } from './RegisterRepositoryDrawer'
+import { ADMIN_ONLY, useIsAdmin } from '../../auth/AuthContext'
 
 const INGEST_STATUS_OPTIONS = ['registered', 'scanned', 'scan_failed', 'path_missing']
 const CRITICALITY_OPTIONS = ['low', 'medium', 'high', 'critical']
@@ -65,6 +66,7 @@ export function RepositoryList({
   onChanged,
   onEngagementDeleted,
 }: RepositoryListProps) {
+  const isAdmin = useIsAdmin()
   const [deletingEngagement, setDeletingEngagement] = useState(false)
   const loadEngagementPlan = useCallback(() => getEngagementDeletionPlan(engagementId), [engagementId])
   const [repositories, setRepositories] = useState<RepositorySummary[]>([])
@@ -150,11 +152,12 @@ export function RepositoryList({
       <div className="flex items-center justify-between border-b border-neutral-100 px-4 py-3">
         <h2 className="text-sm font-semibold text-neutral-900">Repositories — {engagementName}</h2>
         <div className="flex items-center gap-2">
-          {/* TODO: gate behind an admin check once auth exists (04-FRONTEND-SPEC.md, "Future: access control"). */}
           <button
             type="button"
             onClick={() => setDeletingEngagement(true)}
-            className="rounded border border-red-200 px-3 py-1.5 text-sm text-red-700 hover:bg-red-50"
+            disabled={!isAdmin}
+            title={isAdmin ? undefined : ADMIN_ONLY}
+            className="rounded border border-red-200 px-3 py-1.5 text-sm text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
           >
             Delete engagement…
           </button>

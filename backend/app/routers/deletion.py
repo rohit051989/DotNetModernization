@@ -4,7 +4,7 @@ GET shows exactly what would go. POST deletes it, given the name typed to confir
 moment, never taken from the request. Refused (409) while a job of it runs, or when the typed name does not match;
 409 too when files could not be removed, in which case nothing was deleted from the database.
 
-TODO: gate behind an admin check once auth exists (04-FRONTEND-SPEC.md, "Future: access control").
+Who may: a repository's owner, or an admin; an engagement, an admin only (app.auth.policy).
 """
 import uuid
 

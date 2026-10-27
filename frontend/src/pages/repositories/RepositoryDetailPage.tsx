@@ -28,6 +28,8 @@ import { RepositorySurfaceSection } from './RepositorySurfaceSection'
 import { RepositoryImpactSection } from './RepositoryImpactSection'
 import { RepositoryTestsSection } from './RepositoryTestsSection'
 import { ConversionsPanel } from './ConversionsPanel'
+import { RepositoryOwner } from './RepositoryOwner'
+import { ADMIN_ONLY, useIsAdmin } from '../../auth/AuthContext'
 import { StructureSection } from './structure/StructureSection'
 import { useLatestArtifacts, type LatestArtifact } from './useLatestArtifacts'
 import { RepositoryOverview } from './RepositoryOverview'
@@ -102,6 +104,7 @@ export function RepositoryDetailPage({
 }: RepositoryDetailPageProps) {
   const { showToast } = useToast()
   const [repo, setRepo] = useState<RepositoryDetail | null>(null)
+  const isAdmin = useIsAdmin()
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [editing, setEditing] = useState(false)
@@ -461,7 +464,7 @@ export function RepositoryDetailPage({
     conversion: () => (
       <Panel>
         <div className="space-y-4">
-          <ConversionsPanel repositoryId={repo.id} refreshToken={localRefresh} />
+          <ConversionsPanel repositoryId={repo.id} refreshToken={localRefresh} refusal={refusal} />
         </div>
       </Panel>
     ),
@@ -522,7 +525,11 @@ export function RepositoryDetailPage({
     ),
   }
 
-  const actionClass = 'rounded border border-neutral-300 px-2.5 py-1 text-xs text-neutral-700 hover:bg-neutral-50'
+  const actionClass =
+    'rounded border border-neutral-300 px-2.5 py-1 text-xs text-neutral-700 hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50'
+  // Read-only unless this person owns it (or is an admin), on the machine it was registered on: the backend's words.
+  const refusal = repo.can_act === false ? (repo.cannot_act_reason ?? 'Only its owner or an admin may do this.') : null
+  const ownerRefusal = repo.cannot_edit_reason ?? null
 
   return (
     <div ref={rootRef} className="space-y-3 px-4 pb-10 pt-3 sm:px-6">
@@ -539,18 +546,19 @@ export function RepositoryDetailPage({
             <CriticalityBadge criticality={repo.criticality} />
             <CloneUrlVerificationBadge verification={repo.clone_url_verification} />
             <RetirementBadge status={repo.retirement_status} />
+            <RepositoryOwner repo={repo} onChanged={refreshLocal} />
           </div>
           <div className="flex flex-wrap gap-1.5">
             {repo.deleted_at ? (
-              <button type="button" onClick={handleRestore} disabled={busy} className={actionClass}>
+              <button type="button" onClick={handleRestore} disabled={busy || !isAdmin} title={isAdmin ? undefined : ADMIN_ONLY} className={actionClass}>
                 Restore
               </button>
             ) : (
               <>
-                <button type="button" onClick={handleVerifyPath} disabled={busy} className={actionClass}>
+                <button type="button" onClick={handleVerifyPath} disabled={busy || !!refusal} title={refusal ?? undefined} className={actionClass}>
                   Verify path
                 </button>
-                <button type="button" onClick={handleRescan} disabled={busy} className={actionClass}>
+                <button type="button" onClick={handleRescan} disabled={busy || !!refusal} title={refusal ?? undefined} className={actionClass}>
                   Rescan
                 </button>
                 <button
@@ -559,6 +567,8 @@ export function RepositoryDetailPage({
                     setEditing((value) => !value)
                     show('details', true)
                   }}
+                  disabled={!!ownerRefusal}
+                  title={ownerRefusal ?? undefined}
                   className={actionClass}
                 >
                   {editing ? 'Cancel edit' : 'Edit'}
@@ -566,14 +576,22 @@ export function RepositoryDetailPage({
                 <button
                   type="button"
                   onClick={() => setShowDeleteConfirm(true)}
-                  disabled={busy}
-                  className="rounded border border-red-300 px-2.5 py-1 text-xs text-red-700 hover:bg-red-50"
+                  disabled={busy || !!refusal}
+                  title={refusal ?? undefined}
+                  className="rounded border border-red-300 px-2.5 py-1 text-xs text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   Delete
                 </button>
               </>
             )}
           </div>
+        </div>
+        {refusal && !repo.deleted_at && (
+          <p className="mt-1 text-xs text-neutral-500" data-testid="read-only-note">
+            Read-only for you: {refusal}
+          </p>
+        )}
+        <div>
         </div>
 
         <nav aria-label="Tab groups" className="mt-2 flex gap-1 overflow-x-auto" role="tablist">

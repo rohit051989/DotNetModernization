@@ -494,6 +494,10 @@ def main() -> None:
     if args.command == "roundtrip":
         sys.exit(0 if roundtrip() else 1)
     with SessionLocal() as db:
+        from app.auth import service as auth
+
+        # Writing the catalog's files, or importing them into the catalog, is for admins.
+        auth.cli_actor(db, admin=True)
         if args.command == "export" and (args.changed or installation()):
             if not args.changed:
                 raise SystemExit("This platform folder is an installation (it has a PLATFORM_SOURCE.json): its files "

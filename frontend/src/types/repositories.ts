@@ -36,6 +36,17 @@ export interface RepositorySummary {
   /** git's latest progress line while the repository is cloned or fetched (ingest_status 'cloning'). */
   clone_progress: string | null
   ingest_error: string | null
+  /** Who registered it, and so owns it; null for one registered before sign-in existed, until an admin assigns one. */
+  owner_user_id?: string | null
+  owner_name?: string | null
+  /** The machine it was registered on: its folder and run output are there. */
+  registered_host?: string | null
+  /** Whether the signed-in person may rescan it, prepare and verify its conversions, or delete it. */
+  can_act?: boolean
+  /** Why not, in the backend's words, shown on the disabled actions. */
+  cannot_act_reason?: string | null
+  /** Why the person may not edit its details (owners and admins may, from any machine). */
+  cannot_edit_reason?: string | null
 }
 
 export interface RepositoryDetail extends RepositorySummary {

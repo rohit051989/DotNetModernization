@@ -280,7 +280,8 @@ class PreflightProxiesAndLock(unittest.TestCase):
 
 
 class Heartbeat(unittest.TestCase):
-    """One platform per schema (app.heartbeat)."""
+    """One platform backend per machine (app.heartbeat): backends on different machines share the database side by
+    side; the row checked is always this machine's."""
 
     def setUp(self):
         from types import SimpleNamespace
@@ -290,29 +291,27 @@ class Heartbeat(unittest.TestCase):
         self.hb = heartbeat
         self.now = datetime.datetime(2026, 10, 16, 12, 0, tzinfo=datetime.timezone.utc)
         self.mine = heartbeat.Me(uuid.uuid4(), "VDI-1", "jdoe", 100, r"C:\MP\code", 8001)
-        self.row = lambda **k: SimpleNamespace(**{"instance_id": uuid.uuid4(), "host": "VDI-2", "os_user": "asmith",
+        self.row = lambda **k: SimpleNamespace(**{"instance_id": uuid.uuid4(), "host": "vdi-1", "os_user": "jdoe",
                                                   "pid": 200, "platform_root": r"C:\MP\code", "api_port": 8001,
                                                   "started_at": self.now, "beat_at": self.now, **k})
 
-    def test_a_fresh_heartbeat_of_another_person_refuses_and_says_what_to_do(self):
+    def test_a_second_backend_on_this_machine_refuses_and_says_what_to_do(self):
         reason = self.hb.refusal(self.row(), self.mine, datetime.timedelta(seconds=30), alive=lambda pid: True)
-        self.assertIn("by asmith on VDI-2", reason)
-        self.assertIn("Each person needs their own schema", reason)
+        self.assertIn("already running on this machine (vdi-1)", reason)
+        self.assertIn("One backend runs per machine", reason)
         # How long until it expires, and how to clear one known to be stale.
         self.assertIn("expires 90 s after its last beat", reason)
         self.assertIn("start again in 61 s", reason)
         self.assertIn("-m app.heartbeat clear", reason)
 
-    def test_a_second_platform_on_this_machine_refuses_while_the_first_runs(self):
-        row = self.row(host="VDI-1", os_user="jdoe")
+    def test_a_restart_takes_over_when_the_recorded_process_is_gone(self):
         fresh = datetime.timedelta(seconds=5)
-        self.assertIsNotNone(self.hb.refusal(row, self.mine, fresh, alive=lambda pid: True))
+        self.assertIsNotNone(self.hb.refusal(self.row(), self.mine, fresh, alive=lambda pid: True))
         # A restart, a killed process, or --reload's new worker: the recorded process is gone, so it is taken over.
-        self.assertIsNone(self.hb.refusal(row, self.mine, fresh, alive=lambda pid: False))
+        self.assertIsNone(self.hb.refusal(self.row(), self.mine, fresh, alive=lambda pid: False))
 
     def test_a_stale_heartbeat_and_no_heartbeat_are_taken_over(self):
         self.assertIsNone(self.hb.refusal(None, self.mine, None))
-        # Another machine's platform that stopped without shutting down (its VDI session closed): it expires.
         expired = self.hb.STALE + datetime.timedelta(seconds=1)
         self.assertIsNone(self.hb.refusal(self.row(), self.mine, expired, alive=lambda pid: True))
         self.assertIsNotNone(self.hb.refusal(self.row(), self.mine, self.hb.STALE, alive=lambda pid: True))
