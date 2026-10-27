@@ -50,7 +50,8 @@ class Version:
         return self.commit[:12] if self.commit else "unknown"
 
     def describe(self) -> str:
-        when = f", committed {self.committed_at:%Y-%m-%d %H:%M} UTC" if self.committed_at else ""
+        utc = self.committed_at.astimezone(datetime.timezone.utc) if self.committed_at else None
+        when = f", committed {utc:%Y-%m-%d %H:%M} UTC" if utc else ""
         return f"{self.short()}{when}"
 
 

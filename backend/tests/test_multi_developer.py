@@ -237,6 +237,11 @@ class Versions(People):
         self.assertEqual(code, platform_version.GATE_NOTHING)
         self.assertIn("nothing to migrate or seed", said)
 
+    def test_a_version_is_described_in_utc_whatever_zone_its_commit_was_made_in(self):
+        india = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
+        made = platform_version.Version("d" * 40, datetime.datetime(2026, 10, 27, 22, 28, tzinfo=india))
+        self.assertEqual(made.describe(), "dddddddddddd, committed 2026-10-27 16:58 UTC")
+
     def test_only_the_admins_bootstrap_migrates_and_records_and_never_takes_the_database_back(self):
         self.database_at(self.OLD)
         self.assertEqual(self.gate(self.admin, self.NEW)[0], platform_version.GATE_MIGRATE)
