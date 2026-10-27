@@ -216,8 +216,12 @@ class UpdatePlatform(unittest.TestCase):
         for run_from in (self.platform, self.source):
             done = self.update("-Force", run_from=run_from)
             self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
-            self.assertIn("Delivering anyway (-Force)", done.stdout)
-            self.assertIn("client files", done.stdout)
+            if run_from == self.platform:
+                self.assertIn("Delivering anyway (-Force)", done.stdout)
+                self.assertIn("client files", done.stdout)
+            else:
+                # Delivered over once, knowingly: only commits since the latest delivery are listed again.
+                self.assertNotIn("Delivering anyway", done.stdout)
             self.assertEqual((self.platform / "client-notes.md").read_text(), "ours, not the platform's\n")
             self.assertEqual((self.platform / "docs" / "client-runbook.md").read_text(), "also ours\n")
             self.assertIn("Kept, not part of the platform (2):", done.stdout)
@@ -310,12 +314,6 @@ class UpdatePlatform(unittest.TestCase):
         self.assertIn("mp/changed.txt", done.stdout)
         self.assertEqual(git(self.client, "rev-parse", "HEAD"), head)
 
-    def test_a_platform_folder_that_is_its_own_repository_is_refused(self):
-        done = ps(self.platform / "scripts" / "update-platform.ps1", "-Source", str(self.source), "-Platform",
-                  str(self.client), "-Branch", BRANCH)
-        self.assertEqual(done.returncode, 1)
-        self.assertIn("is the root of a git repository", done.stdout)
-
     def test_delivery_pushes_files_only_never_our_history_or_tags(self):
         """Delivery from our machine (docs/VDI-SETUP.md, "Delivering to a client from our machine"): after -Push,
         the client's repository holds the platform folder's files, and none of our commits or tags."""
@@ -350,6 +348,127 @@ class UpdatePlatform(unittest.TestCase):
         git(self.source, "branch", "-q", "--unset-upstream")
         done = self.update()
         self.assertIn("follows nothing, not origin/master", done.stdout)
+
+
+@unittest.skipUnless(sys.platform == "win32", "update-platform.ps1 is Windows PowerShell")
+class UpdatePlatformAtRoot(unittest.TestCase):
+    """The platform at the root of a repository dedicated to it, laid out exactly as ours: the whole repository is the
+    platform. The client's repository was created by its git host, with a README.md and .gitignore of its own."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        root = Path(self.tmp.name)
+        work = root / "ours-work"
+        (work / "scripts").mkdir(parents=True)
+        for name in ("update-platform.ps1", "write-platform-source.ps1"):
+            shutil.copy2(SCRIPTS / name, work / "scripts" / name)
+        (work / "README.md").write_text("# Modernization Platform\n")
+        (work / ".gitignore").write_text("backend/.env\n.env\n")
+        (work / ".gitattributes").write_text("*.yaml text eol=lf\n")
+        (work / "changed.txt").write_text("v1\n")
+        (work / "deleted.txt").write_text("goes upstream\n")
+        (work / "docs").mkdir()
+        (work / "docs" / "old-name.md").write_text("renamed upstream\n")
+        git(work, "init", "-q", "-b", "master"); git(work, "add", "-A"); git(work, "commit", "-q", "-m", "ours v1")
+        self.ours = root / "ours.git"
+        subprocess.run(["git", "clone", "-q", "--bare", str(work), str(self.ours)], check=True)
+        self.work = root / "ours-dev"
+        subprocess.run(["git", "clone", "-q", str(self.ours), str(self.work)], check=True)
+        self.source = root / "source"
+        subprocess.run(["git", "clone", "-q", str(self.ours), str(self.source)], check=True)
+        # As the git host creates a repository: one commit with its own README.md and .gitignore.
+        seed = root / "client-seed"
+        seed.mkdir()
+        (seed / "README.md").write_text("# platform-repository\nCreated by the git host.\n")
+        (seed / ".gitignore").write_text("*.log\n")
+        git(seed, "init", "-q", "-b", "main"); git(seed, "add", "-A"); git(seed, "commit", "-q", "-m", "Initial commit")
+        self.remote = root / "client.git"
+        subprocess.run(["git", "init", "-q", "--bare", str(self.remote)], check=True)
+        git(seed, "push", "-q", str(self.remote), "main")
+        git(self.remote, "symbolic-ref", "HEAD", "refs/heads/main")
+        self.client = root / "client"
+        subprocess.run(["git", "clone", "-q", str(self.remote), str(self.client)], check=True)
+        self.initial = git(self.client, "rev-parse", "HEAD")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def update(self, *extra: str) -> subprocess.CompletedProcess:
+        return ps(self.source / "scripts" / "update-platform.ps1", "-Source", str(self.source), "-Platform",
+                  str(self.client), "-Branch", "main", *extra)
+
+    def record(self) -> dict:
+        return json.loads((self.client / "PLATFORM_SOURCE.json").read_text(encoding="utf-8"))
+
+    def upstream(self) -> str:
+        (self.work / "changed.txt").write_text("v2\n")
+        git(self.work, "rm", "-q", "deleted.txt")
+        git(self.work, "mv", "docs/old-name.md", "docs/new-name.md")
+        git(self.work, "commit", "-q", "-am", "ours v2: change, delete, rename")
+        git(self.work, "push", "-q", "origin", "master")
+        return git(self.work, "rev-parse", "HEAD")
+
+    def test_a_first_delivery_replaces_the_hosts_readme_and_gitignore_and_lists_them(self):
+        done = self.update("-Push")
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertIn("platform at the repository root", done.stdout)
+        self.assertIn("Replaced with ours, the client's own file of the same name (2):", done.stdout)
+        self.assertIn("  .gitignore", done.stdout)
+        self.assertIn("  README.md", done.stdout)
+        self.assertEqual((self.client / "README.md").read_text(), "# Modernization Platform\n")
+        self.assertEqual((self.client / ".gitignore").read_text(), "backend/.env\n.env\n")
+        self.assertEqual((self.client / ".gitattributes").read_text(), "*.yaml text eol=lf\n")
+        self.assertEqual(self.record()["commit"], git(self.work, "rev-parse", "HEAD"))
+        # One commit over the whole repository, on top of the host's own history, which .git keeps.
+        self.assertEqual(git(self.client, "rev-parse", "HEAD~1"), self.initial)
+        self.assertEqual(git(self.client, "status", "--porcelain"), "")
+        self.assertEqual(git(self.remote, "rev-parse", "main"), git(self.client, "rev-parse", "HEAD"))
+        self.assertIn("PLATFORM_SOURCE.json", git(self.client, "show", "--name-only", "--format=", "HEAD").splitlines())
+
+    def test_a_clients_own_file_and_env_at_the_root_are_kept_through_an_update(self):
+        self.assertEqual(self.update().returncode, 0)
+        (self.client / "OPERATIONS.md").write_text("the client's own runbook\n")
+        git(self.client, "add", "OPERATIONS.md"); git(self.client, "commit", "-q", "-m", "Client runbook")
+        (self.client / ".env").write_text("SECRET=local\n")                         # local, ignored
+        self.upstream()
+        done = self.update("-Force")                                               # the runbook was never imported
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertIn("Client runbook", done.stdout)
+        self.assertIn("Kept, not part of the platform (1):\n  OPERATIONS.md", done.stdout)
+        self.assertNotIn("Replaced with ours", done.stdout)
+        self.assertEqual((self.client / "OPERATIONS.md").read_text(), "the client's own runbook\n")
+        self.assertEqual((self.client / ".env").read_text(), "SECRET=local\n")
+        self.assertEqual((self.client / "changed.txt").read_text(), "v2\n")
+
+    def test_an_update_at_the_root_applies_a_deletion_and_a_rename(self):
+        first = self.update()
+        self.assertEqual(first.returncode, 0, first.stdout + first.stderr)
+        new = self.upstream()
+        done = self.update()                    # the host's "Initial commit" predates the platform: not a client change
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertIn("Removed 2 file(s) we deleted or renamed", done.stdout)
+        self.assertFalse((self.client / "deleted.txt").exists())
+        self.assertFalse((self.client / "docs" / "old-name.md").exists())
+        self.assertTrue((self.client / "docs" / "new-name.md").exists())
+        self.assertEqual((self.client / "changed.txt").read_text(), "v2\n")
+        self.assertEqual(self.record()["commit"], new)
+        self.assertEqual(git(self.client, "status", "--porcelain"), "")
+
+    def test_uncommitted_changes_anywhere_in_the_repository_stop_it_at_the_root(self):
+        self.assertEqual(self.update().returncode, 0)
+        (self.client / "README.md").write_text("edited\n")
+        done = self.update()
+        self.assertEqual(done.returncode, 1, done.stdout)
+        self.assertIn("the platform folder has uncommitted changes", done.stdout)
+        self.assertIn("README.md", done.stdout)
+
+    def test_an_installed_root_without_platform_source_json_is_refused(self):
+        self.assertEqual(self.update().returncode, 0)
+        git(self.client, "rm", "-q", "PLATFORM_SOURCE.json"); git(self.client, "commit", "-q", "-m", "no record")
+        self.upstream()
+        done = self.update()
+        self.assertEqual(done.returncode, 1, done.stdout)
+        self.assertIn("no PLATFORM_SOURCE.json", done.stdout)
 
 
 if __name__ == "__main__":

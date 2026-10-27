@@ -75,6 +75,25 @@ class PlatformInASubfolder(unittest.TestCase):
                 instrument.require_clean()
         self.assertIn("PLATFORM_SOURCE.json", str(ctx.exception))
 
+    def test_at_the_root_of_a_dedicated_repository_identity_is_the_record_and_the_whole_repository_is_checked(self):
+        dedicated = Path(self.tmp.name) / "platform-repo"
+        (dedicated / "backend").mkdir(parents=True)
+        (dedicated / "README.md").write_text("# platform\n")
+        (dedicated / "backend" / "main.py").write_text("print('platform')\n")
+        (dedicated / instrument.SOURCE_FILE).write_text(json.dumps({"commit": "b" * 40, "tag": None, "date": "2026-10-27T10:00:00Z"}))
+        git(dedicated, "init", "-q", "-b", "main")
+        git(dedicated, "add", "-A")
+        git(dedicated, "commit", "-q", "-m", "Modernization platform: update")
+        state = instrument.platform_state(dedicated)
+        self.assertEqual(state["commit"], "b" * 40)                         # ours, from the record, not the client's HEAD
+        self.assertEqual(state["source"]["from"], instrument.SOURCE_FILE)
+        self.assertEqual(state["host"]["folder"], "")
+        self.assertEqual(state["host"]["commit"], git(dedicated, "rev-parse", "HEAD"))
+        self.assertFalse(state["dirty"])
+        self.assertIn("at the root of the host repository", instrument.describe(state))
+        (dedicated / "README.md").write_text("edited\n")
+        self.assertTrue(instrument.platform_state(dedicated)["dirty"])     # the whole repository is the platform
+
     def test_its_own_repository_is_read_from_git(self):
         own = Path(self.tmp.name) / "own"
         own.mkdir()

@@ -8,7 +8,8 @@ The platform runs on this one machine, for one person (`CLAUDE.md`, "Operating m
 the step programs, and the repositories it scans all live here; the database is the client's PostgreSQL server.
 
 **Two folders.** The client keeps the platform in a folder inside one of its own git repositories, which other people
-also work in, on their own branches. You work on your own branch. Our `.git` never goes there. So the VDI has:
+also work in, on their own branches, or at the root of a repository dedicated to it ("Two layouts", below). You work
+on your own branch. Our `.git` never goes there. So the VDI has:
 
 | Folder | Example | What it is |
 |---|---|---|
@@ -17,11 +18,28 @@ also work in, on their own branches. You work on your own branch. Our `.git` nev
 | Run output (`RUNS_DIR`) | `C:\MP\runs` | Outside both repositories |
 | Cloned client repositories (`REPOS_DIR`) | `C:\MP\repos` | Outside both repositories |
 
+**Two layouts.** The platform folder is one of these, and the scripts work out which from the path they are given:
+
+| Layout | Platform folder | When to use it |
+|---|---|---|
+| **A folder** in a shared repository | `C:\MP\client\modernization-platform`, inside `C:\MP\client` | The client keeps the platform beside other work, in a repository other people also use. Only the folder is ever checked, committed or delivered; the rest of the repository is untouched |
+| **The root** of a dedicated repository | `C:\MP\platform`, the repository itself | The client gives the platform a repository of its own, laid out exactly as ours. The whole repository is the platform |
+
+At the root, our files replace the client's files of the same name (`.gitignore`, `README.md`, `.gitattributes`,
+and any other), and each one replaced is listed. A file that was never ours is kept, and listed as "not part of the
+platform", exactly as in a folder; `.git` is never copied or touched, and `.env` files are always kept. A new
+repository from the client's git host usually holds its own `README.md` and `.gitignore`: the first delivery
+replaces them with ours, which is expected. Every check that looks at "only the platform folder" (uncommitted
+changes, the delivery commit, client changes not yet imported) looks at the whole repository instead. The examples
+in this guide use the folder layout; for the root, use the repository's own path wherever they name the platform
+folder, and leave out the folder name in `git add` and `git commit`.
+
 **The rules:**
 1. **Never run anything in the source folder.** No bootstrap, no backend, no edits. It is only copied from, and only
    `scripts\update-platform.ps1` pulls it.
-2. **Never commit outside the platform folder.** The rest of the client's repository is other people's work. Stage
-   and commit only with a path: `git add -A -- modernization-platform`, `git commit -- modernization-platform`.
+2. **Never commit outside the platform folder.** In a shared repository, the rest of it is other people's work. Stage
+   and commit only with a path: `git add -A -- modernization-platform`, `git commit -- modernization-platform`. (At
+   the root of a dedicated repository the whole repository is the platform folder.)
 3. **Only ever commit to your own branch.** Never switch to, commit to, or push anyone else's branch.
 
 | | |
@@ -327,6 +345,22 @@ folder:
 ```powershell
 New-Item -ItemType Directory C:\MP\client\modernization-platform
 ```
+
+**At the root of a dedicated repository** ("Two layouts"), there is no folder to create: clone the client's
+repository and check out its branch for the platform; the repository's root is the platform folder. The first copy
+is easiest with the update script, which works from an empty folder or from a new repository's root alike, and
+lists the host's own files it replaced:
+
+```powershell
+git clone -c core.longpaths=true https://git.client-b.example/team/platform.git C:\MP\platform
+```
+
+```powershell
+powershell -ExecutionPolicy Bypass -File C:\MP\source\scripts\update-platform.ps1 -Source C:\MP\source -Platform C:\MP\platform -Branch main
+```
+
+It copies, writes `PLATFORM_SOURCE.json` and commits, so steps 3 and "Committing the platform folder" are done; push
+the branch, then go on with "backend\.env".
 
 #### 3. Copy the source in
 
@@ -862,7 +896,8 @@ every time:
    - copies the source into the platform folder with robocopy, leaving out `.git`, `.venv`, `node_modules` and
      `.env`, and removes only the files we deleted or renamed: those in the installed commit and not in the new
      one. A file you committed in the platform folder is in neither: it is kept, and listed as "not part of the
-     platform";
+     platform". A file of yours that one of ours of the same name replaces (at a repository's root, typically the
+     host's own `README.md` and `.gitignore`) is listed as replaced;
    - writes the new `PLATFORM_SOURCE.json`: our commit, the one before (`previousCommit`), and a tag only if one
      happens to point at the commit;
    - stages and commits only the platform folder, with our source commit in the message; with `-Push`, pushes only
@@ -1003,7 +1038,10 @@ files and push them, and to import the client's changes.
 
 ### Importing a client's changes
 
-A client may change the platform in its own copy: a fix on the platform's branch, or a feature on a branch such as
+A client may change the platform in its own copy, in either layout ("Two layouts"): `-Platform` names the platform
+folder, or, for a dedicated repository, its root, where the whole repository is imported as the platform. Only the
+client's commits since the latest delivery count, so a new repository's own first commit (its host's `README.md`
+and `.gitignore`) never does. The changes may be a fix on the platform's branch, or a feature on a branch such as
 `release/<feature>`. Those changes come back into our repository with `scripts\import-client-changes.ps1`, on our
 machine, so our repository holds every feature, ours and every client's, and every installation receives them with
 its next update. **The order is always: import first, then deliver.** A delivery refuses while the client's branch

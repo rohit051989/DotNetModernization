@@ -280,6 +280,51 @@ class ImportClientChanges(unittest.TestCase):
         self.assertIn("Delivering anyway (-Force)", done.stdout)
         self.assertIn("Client: hotfix in the app", done.stdout)
 
+    # ---- the platform at the root of a client's repository
+
+    def test_an_import_from_a_root_layout(self):
+        """A second client keeps the platform at the root of a repository dedicated to it, created by its git host
+        with a README.md and .gitignore of its own. Its changes come into our master like a folder's do; the host's
+        files were replaced by ours at the first delivery, and its own history from before is not a client change."""
+        root = Path(self.tmp.name)
+        seed = root / "root-seed"
+        seed.mkdir()
+        (seed / "README.md").write_text("# platform-repository\n")
+        (seed / ".gitignore").write_text("*.log\n")
+        git(seed, "init", "-q", "-b", "main"); git(seed, "add", "-A"); git(seed, "commit", "-q", "-m", "Initial commit")
+        remote = root / "root-client.git"
+        subprocess.run(["git", "init", "-q", "--bare", str(remote)], check=True)
+        git(seed, "push", "-q", str(remote), "main")
+        git(remote, "symbolic-ref", "HEAD", "refs/heads/main")
+        client = root / "root-client"
+        subprocess.run(["git", "clone", "-q", str(remote), str(client)], check=True)
+        git(client, "config", "user.name", "client"); git(client, "config", "user.email", "client@client-b.example")
+        delivered = ps(self.source / "scripts" / "update-platform.ps1", "-Source", str(self.source), "-Platform",
+                       str(client), "-Branch", "main", "-Push")
+        self.assertEqual(delivered.returncode, 0, delivered.stdout + delivered.stderr)
+        self.assertIn("Replaced with ours, the client's own file of the same name (1):\n  .gitignore", delivered.stdout)
+        # The client changes the platform at the root, and adds a file of its own.
+        (client / "app.txt").write_text("one\ntwo, at the root\nthree\n")
+        (client / "OPERATIONS.md").write_text("how we run it\n")
+        git(client, "add", "-A"); git(client, "commit", "-q", "-m", "Client B: root changes"); git(client, "push", "-q")
+        done = ps(self.work / "scripts" / "import-client-changes.ps1", "-Platform", str(client), "-Repository",
+                  str(self.work), "-DenyList", str(self.deny), "-Push", env={"MP_TEST_SUITES": "pass"})
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertIn("platform at the repository root", done.stdout)
+        self.assertIn("Client commits since the platform arrived: 1", done.stdout)       # not the host's Initial commit
+        self.assertEqual(self.ours_file("master", "app.txt"), "one\ntwo, at the root\nthree\n")
+        self.assertEqual(self.ours_file("master", "OPERATIONS.md"), "how we run it\n")
+        self.assertEqual(self.ours_file("master", "feature.txt"), "built for another installation\n")
+        self.assertEqual(self.ours_file("master", ".gitignore"), "backend/.env\n")      # ours, never the host's
+        self.assertIsNone(self.ours_file("master", "PLATFORM_SOURCE.json"))
+        message = git(self.ours, "log", "-1", "--format=%B", "master")
+        self.assertEqual(message.splitlines()[0], "Client B: root changes")
+        # And the next delivery to that root waits for nothing: the import recorded the client's commit.
+        again = ps(self.source / "scripts" / "update-platform.ps1", "-Source", str(self.source), "-Platform",
+                   str(client), "-Branch", "main")
+        self.assertEqual(again.returncode, 0, again.stdout + again.stderr)
+        self.assertEqual((client / "feature.txt").read_text(), "built for another installation\n")
+
     # ---- refusals before anything happens
 
     def test_uncommitted_changes_in_our_repository_are_refused(self):

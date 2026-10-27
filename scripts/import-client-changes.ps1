@@ -39,7 +39,8 @@
     Our history is only ever added to: nothing is reset, rebased or force-pushed, and no tag is created.
 
 .PARAMETER Platform
-    The platform folder in a local clone of the client's repository, on the branch to import.
+    The platform folder in a local clone of the client's repository, on the branch to import: a folder inside it, or
+    its root when the repository is dedicated to the platform (then the whole repository is the platform).
 
 .PARAMETER Repository
     Our working repository.
@@ -190,8 +191,14 @@ if ($script:terms.Count -eq 0) { Stop-Import "the deny-list $DenyList has no ter
 
 $top = @(Invoke-Git $Platform @('rev-parse', '--show-toplevel') 'Finding the client''s repository')[0]
 $folder = "$(@(Invoke-Git $Platform @('rev-parse', '--show-prefix') 'Finding the platform folder')[0])".TrimEnd('/')
-if (-not $folder) { Stop-Import "$Platform is the root of a repository, not the platform folder inside the client's repository." }
-$theirChanges = @(Invoke-Git $top @('status', '--porcelain', '--', $folder) 'Checking the platform folder')
+# Two layouts, told apart by the path given: a folder inside the client's repository, or its root, where the whole
+# repository is the platform. $scope is what every check looks at: the folder, or the whole repository.
+$atRoot = -not $folder
+$scope = $(if ($atRoot) { '.' } else { $folder })
+$prefix = $(if ($atRoot) { '' } else { "$folder/" })
+$tree = $(if ($atRoot) { 'HEAD' } else { "HEAD:$folder" })
+$where = $(if ($atRoot) { 'the repository root (the whole repository is the platform)' } else { $folder })
+$theirChanges = @(Invoke-Git $top @('status', '--porcelain', '--', $scope) 'Checking the platform folder')
 if ($theirChanges.Count -gt 0) {
     Stop-Import ("the platform folder in the client's clone has uncommitted changes; only committed work is imported:`n  " +
         ($theirChanges -join "`n  "))
@@ -207,7 +214,7 @@ if ($clientHead -ne $remoteHead) {
     $counts = @(Invoke-Git $top @('rev-list', '--left-right', '--count', 'HEAD...@{u}') 'Comparing with the remote')[0] -split '\s+'
     Stop-Import "the client's branch '$branch' does not match $upstream ($($counts[0]) commit(s) only here, $($counts[1]) only on the remote). Pull or push it first: the import takes what the client's remote holds."
 }
-Write-Host "Client's clone $top, branch $branch at $($clientHead.Substring(0, 12)), platform folder $folder"
+Write-Host "Client's clone $top, branch $branch at $($clientHead.Substring(0, 12)), platform at $where"
 
 # ---- 2. Where it goes
 $target = $(if ($branch -in @('main', 'master')) { 'master' } else { $branch })
@@ -257,10 +264,14 @@ foreach ($commit in $imported) {
     $depth = [int]@(Invoke-Git $top @('rev-list', '--count', $commit) 'Counting')[0]
     if ($depth -gt $previousDepth) { $previous = $commit; $previousDepth = $depth }
 }
-$range = @('HEAD') + $(if ($previous) { @('--not', $previous) } else { @() })
+# Only since the latest delivery as well: what came before it was imported, or knowingly delivered over. At the root
+# this also leaves out the repository's own history from before the platform arrived.
+$lastDelivery = "$(@(Invoke-Git $top @('log', '-1', '--format=%H', 'HEAD', '--', "${prefix}PLATFORM_SOURCE.json") 'Finding the latest delivery')[0])".Trim()
+$stops = @(@($previous, $lastDelivery) | Where-Object { $_ })
+$range = @('HEAD') + $(if ($stops.Count -gt 0) { @('--not') + $stops } else { @() })
 $incoming = @()
-foreach ($commit in @(Invoke-Git $top (@('log', '--no-merges', '--format=%H') + $range + @('--', $folder)) 'Listing the client''s commits')) {
-    $delivery = @(Invoke-Git $top @('diff-tree', '--no-commit-id', '--name-only', '-r', $commit, '--', "$folder/PLATFORM_SOURCE.json") 'Reading a commit')
+foreach ($commit in @(Invoke-Git $top (@('log', '--no-merges', '--format=%H') + $range + @('--', $scope)) 'Listing the client''s commits')) {
+    $delivery = @(Invoke-Git $top @('diff-tree', '--no-commit-id', '--name-only', '-r', $commit, '--', "${prefix}PLATFORM_SOURCE.json") 'Reading a commit')
     if ($delivery.Count -eq 0) { $incoming += $commit }
 }
 if ($incoming.Count -eq 0) {
@@ -308,14 +319,14 @@ Invoke-Git $Repository @('-c', 'core.longpaths=true', 'worktree', 'add', '-q', '
 
 # The client's committed folder, exactly: nothing untracked on its disk comes along.
 $tar = Join-Path $scratch 'client.tar'
-Invoke-Git $top @('archive', '--format=tar', '-o', $tar, "HEAD:$folder") 'Exporting the client''s folder' | Out-Null
+Invoke-Git $top @('archive', '--format=tar', '-o', $tar, $tree) 'Exporting the client''s folder' | Out-Null
 $tarExe = Join-Path $env:SystemRoot 'System32\tar.exe'
 if (-not (Test-Path $tarExe)) { $tarExe = 'tar' }
 & $tarExe -xf $tar -C $extract
 if ($LASTEXITCODE -ne 0) { Stop-Import "unpacking the client's folder failed (tar exit code $LASTEXITCODE)." }
 
 $theirFiles = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
-foreach ($path in @(Invoke-Git $top @('-c', 'core.quotepath=false', 'ls-tree', '-r', '--name-only', "HEAD:$folder") 'Listing the client''s files')) {
+foreach ($path in @(Invoke-Git $top @('-c', 'core.quotepath=false', 'ls-tree', '-r', '--name-only', $tree) 'Listing the client''s files')) {
     if (Test-EnvFile $path) { Add-Finding $path 'a .env file, committed in the platform folder: never imported'; continue }
     if (-not (Test-LocalOnly $path)) { [void]$theirFiles.Add($path) }
 }

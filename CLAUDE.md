@@ -188,7 +188,9 @@ modernization-platform/
     mirror must carry, a new setting) adds a dated entry, naming its commit, at the top of "Upgrade notes".
 
 16. **The platform may run in a folder of someone else's repository.** A client keeps it in a subfolder of a
-    shared repository, without our `.git`, on the operator's own branch (`docs/VDI-SETUP.md`, Part 1). Every git
+    shared repository, without our `.git`, on the operator's own branch (`docs/VDI-SETUP.md`, Part 1), or at the
+    root of a repository dedicated to it, where the whole repository is the platform ("Two layouts"; the scripts
+    work out which from the path, and a `PLATFORM_SOURCE.json` at a root marks it as an installation). Every git
     check the platform makes of itself looks only at its own folder, from the host repository's real root
     (`git -C <top> status -- <folder>`), never at the rest of the host repository. Its identity is our source
     commit from `PLATFORM_SOURCE.json`, recorded beside the host repository's commit (`app.experiment.instrument`).

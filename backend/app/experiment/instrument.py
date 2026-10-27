@@ -12,8 +12,10 @@ item, a different verifier rule, a fixed detector), two runs are no longer measu
 - `report` and `calibrate` flag any verification made at another commit, or from a changed tree.
 
 Where the platform's identity comes from (docs/VDI-SETUP.md, "Part 1"):
-- the platform folder is its own git repository (our development checkout, or an install made from a bundle
-  of our master): its HEAD, and `git status` of that repository;
+- the platform folder is its own git repository with no PLATFORM_SOURCE.json (our development checkout, or an
+  install made from a bundle of our master): its HEAD, and `git status` of that repository;
+- the platform folder is the root of a client's repository dedicated to it (PLATFORM_SOURCE.json there): as for a
+  subfolder, below, with the whole repository as the platform's folder;
 - the platform folder is a subfolder of someone else's repository (a client keeps the platform in a folder of a
   shared repository, without our .git): the commit of OUR source it was copied from, read from PLATFORM_SOURCE.json
   (written by scripts/update-platform.ps1), and `git status` limited to the platform folder, run from the host
@@ -66,7 +68,9 @@ def platform_state(root: Path = PLATFORM_ROOT) -> dict:
     committed, "source": {commit, tag, date} with where it was read from, "host": the host repository's commit and
     branch when the platform is a subfolder of one, else None}."""
     where = location(root)
-    if where["kind"] == "repository":
+    # At the root of a repository with a PLATFORM_SOURCE.json, the platform is an installation in a client's repository
+    # dedicated to it: our commit comes from the record, as in a subfolder, and the whole repository is the platform.
+    if where["kind"] == "repository" and source_record(root) is None:
         commit = _git(root, "rev-parse", "HEAD").strip()
         # Installations follow master; a tag is named only when one of the owner's happens to point at the commit.
         tag = (_git(root, "describe", "--tags", "--exact-match", "HEAD", check=False) or "").strip() or None
@@ -80,7 +84,7 @@ def platform_state(root: Path = PLATFORM_ROOT) -> dict:
     top = Path(where["top"])
     # From the repository's real root, and only the platform's folder: other people's changes elsewhere in the host
     # repository are theirs, and never make the platform dirty.
-    dirty = bool(_git(top, "status", "--porcelain", "--", where["folder"]).strip())
+    dirty = bool(_git(top, "status", "--porcelain", "--", where["folder"] or ".").strip())
     host = {"root": where["top"], "folder": where["folder"],
             "commit": (_git(top, "rev-parse", "HEAD", check=False) or "").strip() or None,
             "branch": (_git(top, "rev-parse", "--abbrev-ref", "HEAD", check=False) or "").strip() or None}
@@ -91,7 +95,7 @@ def describe(state: dict | None) -> str:
     """One line: our source commit and tag, and the host repository's commit when the platform is a subfolder."""
     if not state or not state.get("commit"):
         if state and state.get("host"):
-            return (f"platform source unknown: no {SOURCE_FILE} in {state['host']['folder']} (run "
+            return (f"platform source unknown: no {SOURCE_FILE} in {state['host']['folder'] or 'the repository root'} (run "
                     f"scripts/update-platform.ps1); host repository at {(state['host']['commit'] or '?')[:12]}")
         return "platform commit not recorded"
     source = state.get("source") or {}
@@ -100,8 +104,8 @@ def describe(state: dict | None) -> str:
         said += " with uncommitted changes"
     host = state.get("host")
     if host:
-        said += (f", in {host['folder']}/ of the host repository at {(host['commit'] or '?')[:12]}"
-                 f" on {host['branch'] or '?'}")
+        place = f"in {host['folder']}/ of" if host["folder"] else "at the root of"
+        said += f", {place} the host repository at {(host['commit'] or '?')[:12]} on {host['branch'] or '?'}"
     return said
 
 

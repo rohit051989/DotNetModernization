@@ -9,7 +9,11 @@
         copies. Never the repository we work in: the script stops unless the source folder is on master, follows
         origin/master, and has no local commits or changes.
       - the platform folder: a folder inside the client's repository, which other people also work in, on their
-        own branches. Our .git never goes there.
+        own branches; or the root of a repository dedicated to the platform, laid out exactly as ours. The path
+        given decides which. At the root the whole repository is the platform: our files of the same name
+        (.gitignore, README.md, .gitattributes, ...) replace the client's, each listed; files that were never
+        ours are kept, and listed; .git is never copied or touched, and .env files are always kept. Our .git never
+        goes there.
 
     Installations follow our master: every commit on master passes the full test suites (CLAUDE.md rule 17). Tags
     are reference points the owner creates by hand; the script neither needs nor installs one.
@@ -56,7 +60,7 @@
     The source folder: the pristine clone of our repository, on master.
 
 .PARAMETER Platform
-    The platform folder inside the client's repository.
+    The platform folder inside the client's repository, or the root of a repository dedicated to the platform.
 
 .PARAMETER Branch
     Your own branch in the client's repository. The script stops if the repository is on any other.
@@ -118,19 +122,23 @@ $Platform = (Resolve-Path -LiteralPath $Platform).Path.TrimEnd('\')
 # a path can be written more than one way on Windows (C:\Users\ROHIT~1.KHA is C:\Users\rohit.khanna).
 $top = @(Invoke-Git $Platform @('rev-parse', '--show-toplevel') 'Finding the client repository')[0]
 $folder = "$(@(Invoke-Git $Platform @('rev-parse', '--show-prefix') 'Finding the platform folder')[0])".TrimEnd('/')
-if (-not $folder) {
-    Stop-Update "$Platform is the root of a git repository, not a folder inside the client's repository. This script updates a platform folder inside a client's repository (docs\VDI-SETUP.md Part 1)."
-}
+# Two layouts, told apart by the path given: a folder inside the client's repository, or the repository's root, where
+# the whole repository is the platform. Every check below that looks at "only the platform folder" looks at $scope:
+# the folder, or (at the root) the whole repository.
+$atRoot = -not $folder
+$scope = $(if ($atRoot) { '.' } else { $folder })
+$prefix = $(if ($atRoot) { '' } else { "$folder/" })
+$where = $(if ($atRoot) { 'the repository root (the whole repository is the platform)' } else { $folder })
 $current = @(Invoke-Git $top @('rev-parse', '--abbrev-ref', 'HEAD') 'Reading the client branch')[0]
 if ($current -ne $Branch) {
     Stop-Update "the client repository $top is on branch '$current', not '$Branch'. Switch to your own branch first: git -C `"$top`" switch $Branch"
 }
-$changed = @(Invoke-Git $top @('status', '--porcelain', '--', $folder) 'Checking the platform folder')
+$changed = @(Invoke-Git $top @('status', '--porcelain', '--', $scope) 'Checking the platform folder')
 if ($changed.Count -gt 0) {
     Stop-Update ("the platform folder has uncommitted changes:`n  " + ($changed -join "`n  ") +
-        "`nCommit or discard them (only in $folder) and run the update again.")
+        "`nCommit or discard them (only in $where) and run the update again.")
 }
-Write-Host "Client repository $top, branch $Branch, platform folder $folder"
+Write-Host "Client repository $top, branch $Branch, platform at $where"
 # The client's branch as its remote holds it: changes made there since the last delivery are checked below.
 Invoke-Git $top @('pull', '--ff-only') "Updating $Branch (git pull --ff-only)" | Out-Null
 
@@ -165,10 +173,16 @@ $record = Join-Path $Platform 'PLATFORM_SOURCE.json'
 if (Test-Path $record) {
     try { $installed = "$((Get-Content $record -Raw | ConvertFrom-Json).commit)".Trim() } catch { $installed = $null }
 }
-# An empty platform folder is a first install. Anything else is an installed platform, whose commit must be known:
+# An empty platform folder is a first install. At a repository's root, which is never empty (a new repository often
+# holds a README.md and .gitignore of its own), a first install is one with no platform in it yet: neither a
+# PLATFORM_SOURCE.json nor our scripts. Anything else is an installed platform, whose commit must be known:
 # deletions are worked out from it, and without it a client's own file cannot be told from one we deleted.
-$firstInstall = -not (Get-ChildItem -LiteralPath $Platform -Recurse -File -Force -ErrorAction SilentlyContinue |
-    Where-Object { $_.Name -ne '.env' } | Select-Object -First 1)
+if ($atRoot) {
+    $firstInstall = -not (Test-Path $record) -and -not (Test-Path (Join-Path $Platform 'scripts\update-platform.ps1'))
+} else {
+    $firstInstall = -not (Get-ChildItem -LiteralPath $Platform -Recurse -File -Force -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -ne '.env' } | Select-Object -First 1)
+}
 # Fetch first and check, then pull: a refused update leaves the source folder as it found it. --refmap= keeps
 # origin/master where it was (master goes only to FETCH_HEAD) until the update is accepted. The owner's tags come
 # along as they are on origin, to name the commit when one points at it.
@@ -186,11 +200,14 @@ if (-not $firstInstall) {
     $imported = @(& git -C $Source log '--glob=refs/platform-import/heads/*' '--format=%(trailers:key=Client-Commit,valueonly,separator=%x2C)' 2>$null |
         ForEach-Object { "$_" -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ } | Select-Object -Unique)
     $known = @($imported | Where-Object { Test-Commit $top $_ })
+    # Only since the latest delivery: anything older was imported, or knowingly delivered over with -Force. At the
+    # root this also leaves out the repository's own history from before the platform arrived.
+    $lastDelivery = "$(@(Invoke-Git $top @('log', '-1', '--format=%H', 'HEAD', '--', "${prefix}PLATFORM_SOURCE.json") 'Finding the latest delivery')[0])".Trim()
     $notImported = @()
-    $range = @('HEAD') + $(if ($known.Count -gt 0) { @('--not') + $known } else { @() })
-    foreach ($line in @(Invoke-Git $top (@('log', '--no-merges', '--format=%H %s') + $range + @('--', $folder)) 'Listing the client''s commits')) {
+    $range = @('HEAD') + $(if ($known.Count -gt 0 -or $lastDelivery) { @('--not') + $known + @($lastDelivery | Where-Object { $_ }) } else { @() })
+    foreach ($line in @(Invoke-Git $top (@('log', '--no-merges', '--format=%H %s') + $range + @('--', $scope)) 'Listing the client''s commits')) {
         $commit = $line.Substring(0, 40)
-        $delivery = @(Invoke-Git $top @('diff-tree', '--no-commit-id', '--name-only', '-r', $commit, '--', "$folder/PLATFORM_SOURCE.json") 'Reading a commit')
+        $delivery = @(Invoke-Git $top @('diff-tree', '--no-commit-id', '--name-only', '-r', $commit, '--', "${prefix}PLATFORM_SOURCE.json") 'Reading a commit')
         if ($delivery.Count -eq 0) { $notImported += "$($commit.Substring(0, 12)) $($line.Substring(41))" }
     }
     if ($notImported.Count -gt 0) {
@@ -263,10 +280,32 @@ if (@(Invoke-Git $Source @('rev-parse', 'HEAD') 'Reading the source commit')[0] 
 }
 
 # ---- 4. Copy
+# The client's own files that ours replace: committed there, never ours (not in the installed commit), and different
+# from our file of the same name. At a repository's root, typically the README.md and .gitignore it was created with.
+$ourNew = @(Invoke-Git $Source @('-c', 'core.quotepath=false', 'ls-tree', '-r', $new) 'Listing our files')
+$wasOurs = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+if ($old) {
+    foreach ($path in @(Invoke-Git $Source @('-c', 'core.quotepath=false', 'ls-tree', '-r', '--name-only', $old) 'Listing the installed files')) { [void]$wasOurs.Add($path) }
+}
+$theirBlobs = @{}
+foreach ($entry in @(Invoke-Git $top @('-c', 'core.quotepath=false', 'ls-files', '-s', '--', $scope) 'Listing the platform folder''s files')) {
+    $info, $path = $entry -split "`t", 2
+    $theirBlobs[$path.Substring($prefix.Length).ToLowerInvariant()] = ($info -split ' ')[1]
+}
+$replaced = @()
+foreach ($entry in $ourNew) {
+    $info, $path = $entry -split "`t", 2
+    $theirBlob = $theirBlobs[$path.ToLowerInvariant()]
+    if ($theirBlob -and -not $wasOurs.Contains($path) -and $theirBlob -ne ($info -split ' ')[2]) { $replaced += $path }
+}
+
 & robocopy $Source $Platform /E /XD .git .venv node_modules /XF .env /R:1 /W:1 /NFL /NDL /NJH /NJS /NP | Out-Null
 $copied = $LASTEXITCODE
 if ($copied -ge 8) { Stop-Update "robocopy failed (exit code $copied): the platform folder may be partly copied. Fix the cause and run the update again." }
 Write-Host "Copied (robocopy exit code $copied)"
+if ($replaced.Count -gt 0) {
+    Write-Host "Replaced with ours, the client's own file of the same name ($($replaced.Count)):`n  $($replaced -join "`n  ")"
+}
 
 # ---- 5. Files we deleted or renamed: in the installed commit, not in the new one
 # Worked out in the source folder, which holds both commits, whichever folder this script runs from. With
@@ -296,8 +335,8 @@ foreach ($commit in @($old, $new) | Where-Object { $_ }) {
     }
 }
 $theirs = @()
-foreach ($tracked in @(Invoke-Git $top @('-c', 'core.quotepath=false', 'ls-files', '--', $folder) 'Listing the platform folder''s files')) {
-    $path = $tracked.Substring($folder.Length + 1)
+foreach ($tracked in @(Invoke-Git $top @('-c', 'core.quotepath=false', 'ls-files', '--', $scope) 'Listing the platform folder''s files')) {
+    $path = $tracked.Substring($prefix.Length)
     if ($path -ne 'PLATFORM_SOURCE.json' -and -not $platformFiles.Contains($path)) { $theirs += $path }
 }
 if ($theirs.Count -gt 0) {
@@ -313,16 +352,16 @@ if ($installed -ne $new) {
 }
 
 # ---- 7. Commit only the platform folder
-Invoke-Git $top @('add', '-A', '--', $folder) 'Staging the platform folder' | Out-Null
-$staged = @(Invoke-Git $top @('diff', '--cached', '--name-only', '--', $folder) 'Listing the staged files')
+Invoke-Git $top @('add', '-A', '--', $scope) 'Staging the platform folder' | Out-Null
+$staged = @(Invoke-Git $top @('diff', '--cached', '--name-only', '--', $scope) 'Listing the staged files')
 if ($staged.Count -eq 0) {
     Write-Host 'Nothing changed in the platform folder: no commit.'
 } else {
     $title = "Modernization platform: update to $($new.Substring(0, 12))$(if ($tag) { " ($tag)" })"
-    $message = "$title`n`nSource commit: $new`nPrevious source commit: $(if ($old) { $old } else { 'none (first install)' })$(if ($tag) { "`nTag: $tag" })`nFiles: $($staged.Count) changed in $folder"
-    Invoke-Git $top @('commit', '-q', '-m', $message, '--', $folder) 'Committing the platform folder' | Out-Null
+    $message = "$title`n`nSource commit: $new`nPrevious source commit: $(if ($old) { $old } else { 'none (first install)' })$(if ($tag) { "`nTag: $tag" })`nFiles: $($staged.Count) changed in $(if ($atRoot) { 'the repository' } else { $folder })"
+    Invoke-Git $top @('commit', '-q', '-m', $message, '--', $scope) 'Committing the platform folder' | Out-Null
     $commit = @(Invoke-Git $top @('rev-parse', '--short', 'HEAD') 'Reading the commit')[0]
-    Write-Host "Committed $commit on $Branch`: $($staged.Count) file(s) in $folder"
+    Write-Host "Committed $commit on $Branch`: $($staged.Count) file(s) in $where"
 }
 
 # ---- 8. Push, only your branch

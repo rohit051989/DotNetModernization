@@ -248,6 +248,15 @@ def platform_location(cfg: dict[str, str]) -> None:
             source = None
     if top is None:
         note("location", f"{ROOT}, not in a git repository")
+    elif top == ROOT.resolve() and source is not None:
+        # The root of a client's repository dedicated to the platform: the whole repository is the platform.
+        code, branch = run("git", "-C", str(top), "rev-parse", "--abbrev-ref", "HEAD")
+        note("location", f"the root of the client's repository {top}, dedicated to the platform, on branch {branch.strip()}")
+        for key in ("RUNS_DIR", "REPOS_DIR"):
+            value = cfg.get(key, "").strip()
+            if value and Path(value).is_absolute() and Path(value).resolve().is_relative_to(top):
+                warn(key, f"{value} is inside the platform's repository {top}: everything written there shows as changes "
+                          "in it. Put it outside, for example C:\\MP\\runs (docs/VDI-SETUP.md Part 1)")
     elif top == ROOT.resolve():
         # The commit, and a tag when one happens to point at it (installations follow master).
         code, head = run("git", "-C", str(ROOT), "rev-parse", "--short=12", "HEAD")

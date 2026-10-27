@@ -6,7 +6,11 @@ how to resolve each one, and prepares and verifies each conversion. It runs on o
 its own PostgreSQL schema.
 
 This folder is the platform. It arrives as updates from the platform's own master branch: each one is committed to
-this folder on the platform's branch of your repository. What belongs to your machine (`backend\.env`,
+this folder on the platform's branch of your repository. The folder is either a folder inside a repository shared
+with other work, where updates touch only that folder, or the root of a repository dedicated to the platform, laid
+out exactly as the platform's own, where the whole repository is the platform: there, the platform's `README.md`,
+`.gitignore` and other root files replace any of the same name, and files of yours that were never the platform's
+are kept. The guide's "Two layouts" says when to use each. What belongs to your machine (`backend\.env`,
 `frontend\.env`, the Python environment, `node_modules`, the published step programs, and the data in `RUNS_DIR`) is
 never part of an update and is never touched by one.
 
