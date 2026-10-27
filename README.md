@@ -16,9 +16,9 @@ never part of an update and is never touched by one.
 
 **Changes to the platform may be made here**, committed on the platform's branch (or on a branch such as
 `release/<feature>`) and pushed. The platform's team imports them into the platform's own repository, and they come
-back to this folder, and to every other installation, with the next update. Until they are imported, no update is
-delivered over them: the update waits, so nothing you committed is overwritten. Tell the platform's team when there
-is something to import. Never commit secrets, `.env` files or large binaries: the import refuses them.
+back to this folder, and to every other installation, with the next update. An update delivered before they are
+imported overwrites them, and warns that it did: tell the platform's team when there is something to import. Never
+commit secrets, `.env` files or large binaries: the import refuses them.
 
 The full guide is [`docs/VDI-SETUP.md`](docs/VDI-SETUP.md). This page is the short version. The commands assume this
 folder is `C:\MP\client\modernization-platform`; use your own path.

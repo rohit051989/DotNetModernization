@@ -29,10 +29,11 @@
       1. The client repository must be on -Branch, and the platform folder must have no uncommitted changes
          (both are named when not). The client branch is updated with git pull --ff-only.
       2. The source folder must be a clone of our repository on master, following origin/master, with no local
-         commits or changes. Our master is fetched. Then nothing is delivered while the client's branch has
-         commits in the platform folder that our repository has not imported (scripts\import-client-changes.ps1
-         records each import's client commit in a Client-Commit trailer); they are listed, since a delivery would
-         overwrite them. Deliveries, which write PLATFORM_SOURCE.json, do not count. -Force delivers anyway.
+         commits or changes. Our master is fetched. When the client's branch has commits in the platform folder,
+         made since the latest delivery, that our repository has not imported (scripts\import-client-changes.ps1
+         records each import's client commit in a Client-Commit trailer), they are listed under a warning that
+         the delivery overwrites their changes to our files, and the delivery carries on. Deliveries, which write
+         PLATFORM_SOURCE.json, do not count.
       3. The installed commit must be known: a platform folder that already has files needs a PLATFORM_SOURCE.json
          whose commit the source folder holds, or the update is refused, changing nothing (an empty folder is a
          first install and needs none). Never backwards: origin's master must descend from the installed commit
@@ -73,8 +74,8 @@
     Only when you know why our history changed.
 
 .PARAMETER Force
-    Deliver even while the client's branch has commits in the platform folder that have not been imported, after
-    listing them: their changes to our files are overwritten. Import them first instead whenever possible.
+    Ignored. Kept so a command written for an earlier copy, which stopped for client commits not yet imported,
+    still runs: those commits are now listed under a warning, and the delivery carries on.
 
 .EXAMPLE
     powershell -ExecutionPolicy Bypass -File C:\MP\source\scripts\update-platform.ps1 -Source C:\MP\source -Platform C:\Client\Repo\modernization-platform -Branch rohit/modernization-platform
@@ -194,14 +195,15 @@ $tag = $(if ($LASTEXITCODE -eq 0 -and $tag) { "$tag".Trim() } else { $null })
 # ---- 2b. Changes on the client's branch that our repository has not imported
 # The client's commits in the platform folder, other than deliveries (a delivery writes PLATFORM_SOURCE.json), that no
 # import has taken: each import records the client commit it took in a Client-Commit trailer, on any of our branches
-# (scripts\import-client-changes.ps1). A delivery now would overwrite them, so it waits for the import.
+# (scripts\import-client-changes.ps1). A delivery overwrites their changes to our files: they are listed under a
+# warning, so the person delivering knows what to import, and the delivery carries on.
 if (-not $firstInstall) {
     Invoke-Git $Source @('fetch', '--quiet', '--refmap=', 'origin', '+refs/heads/*:refs/platform-import/heads/*') 'Fetching our branches, for what has been imported' | Out-Null
     $imported = @(& git -C $Source log '--glob=refs/platform-import/heads/*' '--format=%(trailers:key=Client-Commit,valueonly,separator=%x2C)' 2>$null |
         ForEach-Object { "$_" -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ } | Select-Object -Unique)
     $known = @($imported | Where-Object { Test-Commit $top $_ })
-    # Only since the latest delivery: anything older was imported, or knowingly delivered over with -Force. At the
-    # root this also leaves out the repository's own history from before the platform arrived.
+    # Only since the latest delivery: anything older was imported, or was delivered over then, and warned about. At
+    # the root this also leaves out the repository's own history from before the platform arrived.
     $lastDelivery = "$(@(Invoke-Git $top @('log', '-1', '--format=%H', 'HEAD', '--', "${prefix}PLATFORM_SOURCE.json") 'Finding the latest delivery')[0])".Trim()
     $notImported = @()
     $range = @('HEAD') + $(if ($known.Count -gt 0 -or $lastDelivery) { @('--not') + $known + @($lastDelivery | Where-Object { $_ }) } else { @() })
@@ -212,12 +214,10 @@ if (-not $firstInstall) {
     }
     if ($notImported.Count -gt 0) {
         $listed = "  " + ($notImported -join "`n  ")
-        if (-not $Force) {
-            Stop-Update ("the client's branch has $($notImported.Count) commit(s) in the platform folder that our repository has not imported:`n" +
-                "$listed`nA delivery now would overwrite them. Import them first, on our machine (scripts\import-client-changes.ps1, " +
-                "docs\VDI-SETUP.md `"Importing a client's changes`"), then deliver. To deliver anyway, losing them, run again with -Force.")
-        }
-        Write-Host "Delivering anyway (-Force): these client commits were never imported, and their changes to our files will be overwritten:`n$listed" -ForegroundColor Yellow
+        Write-Host ("Warning: the client's branch has $($notImported.Count) commit(s) in the platform folder that our repository has " +
+            "not imported. This delivery overwrites their changes to our files:`n$listed`nTo keep them, import them on our " +
+            "machine (scripts\import-client-changes.ps1, docs\VDI-SETUP.md `"Importing a client's changes`") and deliver " +
+            "again.") -ForegroundColor Yellow
     }
 }
 

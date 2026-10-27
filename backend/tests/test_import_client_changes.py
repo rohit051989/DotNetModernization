@@ -253,32 +253,33 @@ class ImportClientChanges(unittest.TestCase):
         self.assertEqual(git(self.ours, "rev-parse", "master"), self.ours_master)          # not pushed
         self.assertIn("four", (self.work / "app.txt").read_text())                         # merged locally only
 
-    # ---- the delivery waits for the import
+    # ---- a delivery over client commits not yet imported
 
-    def test_a_delivery_is_refused_while_client_commits_are_unimported_and_accepted_after_the_import(self):
+    def test_a_delivery_over_unimported_client_commits_warns_lists_them_and_carries_on(self):
         self.client_commit("Client: hotfix in the app", {"app.txt": "one\ntwo, hot-fixed\nthree\n"})
-        refused = self.deliver()
-        self.assertEqual(refused.returncode, 1, refused.stdout)
-        self.assertIn("has 1 commit(s) in the platform folder that our repository has not imported", refused.stdout)
-        self.assertIn("Client: hotfix in the app", refused.stdout)
-        self.assertEqual((self.platform / "app.txt").read_text(), "one\ntwo, hot-fixed\nthree\n")
+        delivered = self.deliver()
+        self.assertEqual(delivered.returncode, 0, delivered.stdout + delivered.stderr)
+        self.assertIn("Warning: the client's branch has 1 commit(s) in the platform folder that our repository has not imported", delivered.stdout)
+        self.assertIn("This delivery overwrites their changes to our files", delivered.stdout)
+        self.assertIn("Client: hotfix in the app", delivered.stdout)
+        # Delivered: our files, the client's fix overwritten, as the warning said.
+        self.assertEqual((self.platform / "app.txt").read_text(), "one\ntwo\nthree\n")
+        self.assertEqual((self.platform / "feature.txt").read_text(), "built for another installation\n")
+        self.assertEqual(self.record()["commit"], git(self.ours, "rev-parse", "master"))
+        # -Force, which earlier copies needed here, is still accepted, and changes nothing.
+        self.assertEqual(self.deliver("-Force").returncode, 0)
+
+    def test_after_an_import_the_delivery_brings_the_client_change_back_without_a_warning(self):
+        self.client_commit("Client: hotfix in the app", {"app.txt": "one\ntwo, hot-fixed\nthree\n"})
         done = self.import_()
         self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
         delivered = self.deliver()
         self.assertEqual(delivered.returncode, 0, delivered.stdout + delivered.stderr)
+        self.assertNotIn("Warning: the client's branch", delivered.stdout)
         # The delivery brings back the client's fix and our feature together.
         self.assertEqual((self.platform / "app.txt").read_text(), "one\ntwo, hot-fixed\nthree\n")
         self.assertEqual((self.platform / "feature.txt").read_text(), "built for another installation\n")
         self.assertEqual(self.record()["commit"], git(self.ours, "rev-parse", "master"))
-
-    def test_force_delivers_anyway_listing_what_is_lost(self):
-        self.client_commit("Client: hotfix in the app", {"app.txt": "one\ntwo, hot-fixed\nthree\n"})
-        (self.work / "app.txt").write_text("one\ntwo\nthree\nours\n")
-        git(self.work, "commit", "-q", "-am", "ours: app"); git(self.work, "push", "-q", "origin", "master")
-        done = self.deliver("-Force")
-        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
-        self.assertIn("Delivering anyway (-Force)", done.stdout)
-        self.assertIn("Client: hotfix in the app", done.stdout)
 
     # ---- the platform at the root of a client's repository
 

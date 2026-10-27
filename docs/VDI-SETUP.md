@@ -898,9 +898,10 @@ every time:
      uncommitted changes; it names the branch, or lists the files;
    - stops, changing nothing, unless the source folder is a clone of ours on `master`, following `origin/master`,
      with no commits of its own and no changes: the source folder is never a working repository;
-   - updates your branch with `git pull --ff-only`, then stops, listing them, while it has commits in the platform
-     folder that our repository has not imported: a delivery would overwrite them. Import them first ("Importing a
-     client's changes"); `-Force` delivers anyway, listing what is lost. Deliveries do not count;
+   - updates your branch with `git pull --ff-only`; when it has commits in the platform folder, made since the
+     latest delivery, that our repository has not imported, it lists them under a warning that this delivery
+     overwrites their changes to our files, and carries on. To keep them, import them first ("Importing a client's
+     changes"). Deliveries do not count;
    - fetches our master and stops, changing nothing, when it cannot tell which of our commits the platform folder
      holds: no `PLATFORM_SOURCE.json`, or a commit the source folder does not contain. The message says how to go
      on. (An empty platform folder is a first install, and needs none.);
@@ -1035,8 +1036,8 @@ Two folders on our machine, short paths as in "Why paths must be short":
    ```
 
 2. **Import first.** If the client committed changes in the platform folder, import them into our repository
-   ("Importing a client's changes", below), and let master take them, before delivering. The update script refuses
-   to deliver over changes that were never imported, and lists them.
+   ("Importing a client's changes", below), and let master take them, before delivering. The update script delivers
+   over changes that were never imported, overwriting them, and lists them under a warning.
 3. **Run the update script** from the source clone, with `-Push`:
 
    ```powershell
@@ -1061,9 +1062,9 @@ client's commits since the latest delivery count, so a new repository's own firs
 and `.gitignore`) never does. The changes may be a fix on the platform's branch, or a feature on a branch such as
 `release/<feature>`. Those changes come back into our repository with `scripts\import-client-changes.ps1`, on our
 machine, so our repository holds every feature, ours and every client's, and every installation receives them with
-its next update. **The order is always: import first, then deliver.** A delivery refuses while the client's branch
-has commits in the platform folder that were never imported, and lists them, because it would overwrite them
-(`-Force` delivers anyway, listing what is lost).
+its next update. **The order is always: import first, then deliver.** A delivery made while the client's branch has
+commits in the platform folder that were never imported overwrites their changes to our files: it lists them under a
+warning, and carries on.
 
 **The deny-list.** A plain text file on this machine, **outside** every repository (for example
 `C:\MPD\deny-list.txt`): the terms that must never enter our repository, one per line, matched without regard to
@@ -1381,7 +1382,7 @@ there is recorded with the reason, within its own time limit.
 | Updating: **"The argument '...\update-platform.ps1' to the -File parameter does not exist"** | The client's repository is on a branch that has no platform folder (often `main`), so the script is not on disk | Switch back to your own branch, `git -C C:\MP\client switch rohit/modernization-platform`, and run the update again ("Updating the platform") |
 | Updating: **"Stopped: the client repository ... is on branch '...', not '...'"** | The client's repository is on another branch that does carry the platform folder | Switch to your own branch, as the message says. Never update or commit on anyone else's branch |
 | Updating: **"Stopped: the platform folder has uncommitted changes"** | A file in the platform folder was edited and not committed (the message lists them) | Commit it to your branch if it must stay (it is then imported into the platform: "Importing a client's changes"), or discard it (`git -C C:\MP\client checkout -- modernization-platform/<file>`), then update again |
-| Updating: **"Stopped: the client's branch has N commit(s) in the platform folder that our repository has not imported"** | Changes were committed in the platform folder since the last import; a delivery would overwrite them | Import them first ("Importing a client's changes"), then update again. `-Force` delivers anyway, losing them |
+| Updating: **"Warning: the client's branch has N commit(s) in the platform folder that our repository has not imported"** | Changes were committed in the platform folder since the latest delivery, and not imported. The delivery went ahead and overwrote their changes to our files | To keep them, import them ("Importing a client's changes": the commits listed are still in the branch's history), then update again |
 | Updating: **"Stopped: the source folder has changes"** | Something was run or edited in the source folder | Discard it as the message says. Nothing is ever run in the source folder |
 | Updating: **"Stopped: the source folder is on a commit of its own (...), not master"** | An older copy of the update script left the source folder at a release tag | Put it back on master, `git -C C:\MP\source switch master`, and run the update from the source folder ("Upgrade notes", 2026-10-26) |
 | Updating: **"Stopped: master (...) does not descend from the installed commit ..."** | Our master's history was rewritten, or the platform was installed from another branch. Nothing was changed | Ask us why, with the commits the message lists. Only when we confirm, run the update again with `-AllowDowngrade` |

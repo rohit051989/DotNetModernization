@@ -207,21 +207,21 @@ class UpdatePlatform(unittest.TestCase):
 
     def test_the_clients_own_files_in_the_platform_folder_are_kept_and_listed(self):
         """Only files in the installed commit and not in the new one are removed; a file the client committed in the
-        platform folder is in neither, so it stays, and is listed. The client's commit was never imported, so the
-        delivery needs -Force, and lists it."""
+        platform folder is in neither, so it stays, and is listed. The client's commit was never imported: the
+        delivery warns about it, and carries on."""
         (self.platform / "client-notes.md").write_text("ours, not the platform's\n")
         (self.platform / "docs" / "client-runbook.md").write_text("also ours\n")
         git(self.client, "add", "-A", "--", FOLDER); git(self.client, "commit", "-q", "-m", "client files", "--", FOLDER)
         self.upstream()
         for run_from in (self.platform, self.source):
-            done = self.update("-Force", run_from=run_from)
+            done = self.update(run_from=run_from)
             self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
             if run_from == self.platform:
-                self.assertIn("Delivering anyway (-Force)", done.stdout)
+                self.assertIn("Warning: the client's branch has 1 commit(s) in the platform folder that our repository has not imported", done.stdout)
                 self.assertIn("client files", done.stdout)
             else:
-                # Delivered over once, knowingly: only commits since the latest delivery are listed again.
-                self.assertNotIn("Delivering anyway", done.stdout)
+                # Delivered over once, with a warning: only commits since the latest delivery are listed again.
+                self.assertNotIn("Warning: the client's branch", done.stdout)
             self.assertEqual((self.platform / "client-notes.md").read_text(), "ours, not the platform's\n")
             self.assertEqual((self.platform / "docs" / "client-runbook.md").read_text(), "also ours\n")
             self.assertIn("Kept, not part of the platform (2):", done.stdout)
@@ -431,8 +431,9 @@ class UpdatePlatformAtRoot(unittest.TestCase):
         git(self.client, "add", "OPERATIONS.md"); git(self.client, "commit", "-q", "-m", "Client runbook")
         (self.client / ".env").write_text("SECRET=local\n")                         # local, ignored
         self.upstream()
-        done = self.update("-Force")                                               # the runbook was never imported
+        done = self.update()                                                       # the runbook was never imported
         self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertIn("Warning: the client's branch has 1 commit(s) in the platform folder that our repository has not imported", done.stdout)
         self.assertIn("Client runbook", done.stdout)
         self.assertIn("Kept, not part of the platform (1):\n  OPERATIONS.md", done.stdout)
         self.assertNotIn("Replaced with ours", done.stdout)
