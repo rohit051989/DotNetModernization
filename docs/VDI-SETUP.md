@@ -1742,6 +1742,23 @@ hand. Everything else an update brings, bootstrap applies by itself. Apply every
 had (`previousCommit` in `PLATFORM_SOURCE.json` after the update; in our own installs, the commit before step 5 of
 the appendix), oldest of them first. Entries up to 2026-10-23 were the notes of releases 2 to 7, which are named so.
 
+#### 2026-10-27, eb3e4c5: the admin updates first; your own clone
+
+From this update on, **the admin updates first, then every developer pulls and restarts** ("Several developers: the
+admin updates first"):
+
+1. **The admin** updates and runs bootstrap. Only the admin's bootstrap migrates and seeds, and it records the
+   platform version in the database. This update's migration also moves stored file locations to paths relative to
+   the repository, and records each repository's folder as its owner's clone; nothing is lost.
+2. **Every developer** then pulls the update, runs bootstrap and restarts their backend. A developer's bootstrap
+   never changes the database: it checks the version and stops, saying "the admin has updated; pull the update first"
+   when the database is newer, or "ask the admin to update first" when their copy is newer. A backend on a different
+   version from the database's refuses to start with the same message. A backend that was running when the admin
+   updated shows a banner and refuses changes until it is restarted on the new version.
+
+To open files of a repository you do not own, record your own clone of it from its page ("Your own clone of a
+repository"). `backend\.env` needs no edit.
+
 #### 2026-10-27, ecf45ee: shared results
 
 After updating and running bootstrap, **on every machine that has scanned repositories**, copy the results of its
