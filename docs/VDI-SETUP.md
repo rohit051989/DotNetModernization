@@ -458,6 +458,7 @@ notepad C:\MP\client\modernization-platform\backend\.env
 | `PYTHON` | The Python bootstrap and preflight use, as a full path. Empty: `python` on `PATH`. (The backend itself always runs in `backend\.venv`, which bootstrap builds with this Python) | `C:\MP\tools\python314\python.exe` | no |
 | `DOTNET_ROOT` | **Only when .NET is installed per user** ("Account settings"): the folder it was installed into. The platform puts it first on `PATH` and sets `DOTNET_ROOT` for every process it starts. **Leave it empty** when the client installed .NET machine-wide | `C:\MP\tools\dotnet` | no |
 | `SESSION_IDLE_MINUTES` | Optional, `240`. A signed-in session ends after this many minutes without use ("Users and sign-in") | `240` | no |
+| `RESULTS_KEEP` | Optional, `3`. How many of each kind of result the database keeps per repository (and per engagement for the estate's), newest first; older ones are pruned. Run folders are never touched ("More than one person", "Shared results") | `3` | no |
 | `VISUAL_STUDIO` | Optional. `off` removes "Open in Visual Studio" from file links. Empty: every Visual Studio 2022 or later edition found is offered ("Troubleshooting", "Checking which Visual Studio is used") | `off` | no |
 | `VISUAL_STUDIO_PATH` | Optional. The `devenv.exe` of one Visual Studio installation, used in place of what detection finds: for a machine where detection picks the wrong one, or an installation the Visual Studio Installer does not list | `C:\Program Files\Microsoft Visual Studio\18\Enterprise\Common7\IDE\devenv.exe` | no |
 
@@ -1213,6 +1214,42 @@ Each developer runs their own platform on their own machine; all of them use the
   only. Registering it in a second is refused, with the engagement that has it. To use the same repository in a
   second engagement, clone it again into another folder and register that.
 
+#### Shared results
+
+A repository's **owner scans it on their own machine**; the run output lands in that machine's `RUNS_DIR`. Everyone
+else sees **every tab of its page, and the estate, in full**, from the database: no access to the owner's machine, no
+copy of its files and no clone needed.
+
+- **What is in the database.** Every result a tab or the estate reads is copied into the database as its step
+  finishes: the repository inventory, solutions and projects, fingerprint, entry points, outbound calls, dependency
+  assessment and graph, work list, tests, impact, and the estate's register, packages, dependencies, integration map,
+  context map and SOAP report. So are each repository's conversions as its owner's platform last saw them, with each
+  one's runbook and `VERIFICATION.md`.
+- **What stays on the owner's machine.** Raw outputs no view reads: logs, timing profiles, SARIF exports and other
+  intermediate files; a conversion's worktree and evidence files; the repository's own files. On another machine,
+  wherever the UI offers one of those, it says where it is, **"on Ann's machine (DEVBOX-07)"**, instead of a link that
+  cannot work. A file link in a repository scanned elsewhere says the same when clicked.
+- **A page at a time.** Every list that grows with a repository (entry points, invocations, packages, the work list
+  and its occurrences, projects, impact work items and files, tests and test mappings, the estate's hosts, calls and
+  packages) is served by the database 20 at a time, with its filter box matched there. A tab never loads a whole
+  repository's result.
+- **How long they are kept.** The newest **three** of each kind of result per repository (and per engagement for the
+  estate's); older ones are pruned from the database after each scan. Set `RESULTS_KEEP` in `backend\.env` to keep
+  more or fewer. The run folders on each machine are never touched.
+- **The estate.** Estate consolidation reads only the database, so it covers every scanned repository of the
+  engagement, whoever owns it and whichever machine scanned it. It remains an admin action.
+- **Scans made before results were shared** are only in the run folder of the machine that made them. Their owner runs
+  this once, on that machine, to copy them into the database (the newest `RESULTS_KEEP` of each kind; run folders are
+  not changed; running it again copies nothing twice):
+
+  ```powershell
+  cd C:\MP\client\modernization-platform\backend; .venv\Scripts\python.exe -m app.results copy-existing
+  ```
+
+  `--repository <slug>` copies one repository (and its engagement's estate); `--dry-run` says what it would copy. A
+  repository whose owner never runs it shows its results after its next scan: until then its page says that its
+  results are only on its owner's machine.
+
 #### A stale heartbeat
 
 A running backend renews its heartbeat every 20 seconds, and **a heartbeat expires 90 seconds after it was last
@@ -1397,6 +1434,9 @@ there is recorded with the reason, within its own time limit.
 | Conversion section: **"package step skipped: the baseline did not pass: ..."** | The repository does not build, or its tests fail, before any change | Nothing is lost: the conversion is prepared, and its package changes go to the agent as instructions in the runbook. Fix the build in the client repository if it should pass, then **Rescan** |
 | **"package step skipped: no package step: test-coverage-assessment found no unit test project"** | The repository has no unit tests, so package upgrades cannot be checked by running them | As above: the package changes are left to the agent, with instructions |
 | A step fails with "executable not found" | The step programs are not published | `bootstrap.ps1 -Stage 6 -Force` |
+| A repository's tabs are empty, with **"Results of scans made before they were kept in the database ... are only in the run folder of the machine that made them, on Ann's machine (DEVBOX-07)"** | It was scanned before results were shared, and its owner has not copied them yet | Its owner runs `python -m app.results copy-existing` on that machine ("Shared results"), or rescans it |
+| A file link, a log, an evidence file or an artifact says **"on Ann's machine (DEVBOX-07)"** | It is a file on the machine that scanned the repository: only the results the views read are shared | Nothing to fix. Ask its owner for the file if you need it |
+| An edit is refused with **428 "does not say which version ... it changes"** | A script or tool called the API without the version of the record it edited | Send the version you loaded in `If-Match` (the record's `version`, or `edit_version` for a catalog item); 0 when it did not exist yet |
 | A step ends **TIMED_OUT** or **STALLED** ("where it was: phase ..., 41 of 170, at ...") | The repository is larger than the step's limit allows, or one project or file is pathological | **Rescan**: it continues from the last completed project. If it stops again, raise the limit for that repository ("Large repositories: progress, time limits and stopped steps") and send us `timing-profile.json` and `stopped.json` from the step's folder |
 | A step's message says **"... not checked: not retried"** | An earlier run that stopped (a time limit, a stall, a crash) recorded that project, or was stuck on it | Deal with the cause (raise the limit for that repository), run `python -m app.workflow.time_limits retry` ("After a time limit, a stall or a crash"), then **Rescan** |
 | A step's message says **"... item(s) not checked"** | A project or file took longer than `STEP_PROJECT_SECONDS` or `STEP_FILE_SECONDS` | The rest is complete. The items and reasons are in `timing-profile.json` and in the step's warnings (`NOT_CHECKED`). Raise the limit and **Rescan** to check them |
@@ -1587,6 +1627,21 @@ doing after an update besides bootstrap: a rescan, a package your mirror must ca
 hand. Everything else an update brings, bootstrap applies by itself. Apply every entry newer than the commit you
 had (`previousCommit` in `PLATFORM_SOURCE.json` after the update; in our own installs, the commit before step 5 of
 the appendix), oldest of them first. Entries up to 2026-10-23 were the notes of releases 2 to 7, which are named so.
+
+#### 2026-10-27, ecf45ee: shared results
+
+After updating and running bootstrap, **on every machine that has scanned repositories**, copy the results of its
+earlier scans into the database, once ("More than one person", "Shared results"):
+
+```powershell
+cd C:\MP\client\modernization-platform\backend; .venv\Scripts\python.exe -m app.results copy-existing
+```
+
+Until a machine's owner runs it, someone else opening a repository scanned there sees a note that its results are
+only on that machine; the next scan of the repository stores them anyway. Nothing else needs doing: existing data and
+run folders are kept, `backend\.env` needs no edit (`RESULTS_KEEP` is optional, `3`), and every view reads the same
+results as before, now from the database and a page at a time. An edit that does not say which version it changes is
+now refused (428): the UI always says, and command-line tools read the current version and send it.
 
 #### 2026-10-27, 647d809: sign-in, roles and repository owners
 
