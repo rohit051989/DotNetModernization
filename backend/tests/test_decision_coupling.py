@@ -17,6 +17,7 @@ from app.items import schemas as s
 from app.routers import catalog_items, item_decisions
 from tests.support import TEST_ENGAGEMENT_ID
 from tests.test_item_detection import DetectionTestCase
+from tests.support import decision_version_by_id, item_decision_version
 
 # Leading resolution -> dependent -> (action, dependent resolution, applies_to).
 # The shape of the authored wcf-service table, on fixture items.
@@ -70,10 +71,13 @@ class CouplingFixture(DetectionTestCase):
         self.db.flush()
 
     def decide(self, item_id, **fields):
-        return item_decisions.upsert_item_decision(TEST_ENGAGEMENT_ID, item_id, s.EngagementDecisionUpsert(**fields), Response(), db=self.db)
+        return item_decisions.upsert_item_decision(TEST_ENGAGEMENT_ID, item_id, s.EngagementDecisionUpsert(**fields), Response(), db=self.db,
+                                                   if_match=item_decision_version(self.db, TEST_ENGAGEMENT_ID, item_id))
 
     def supersede(self, decision_id):
-        return item_decisions.supersede_item_decision(uuid.UUID(str(decision_id)), db=self.db)
+        return item_decisions.supersede_item_decision(
+            uuid.UUID(str(decision_id)), db=self.db,
+            if_match=decision_version_by_id(self.db, models.EngagementDecision, uuid.UUID(str(decision_id))))
 
     def live(self, item_id):
         return coupling.live_decision(self.db, TEST_ENGAGEMENT_ID, item_id)

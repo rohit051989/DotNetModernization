@@ -55,7 +55,7 @@ class Allowlist(unittest.TestCase):
     def test_the_conversion_engine_is_refused_until_allowed_and_only_under_its_organisation(self):
         with self.assertRaisesRegex(boundary.EngineNotAllowed, "allowlist is empty"):
             boundary.require_allowed(self.engagement, "github-copilot", "acme-corp")
-        boundary.allow(self.db, self.engagement, "github-copilot", "acme-corp")
+        boundary.allow(self.db, self.engagement, "github-copilot", "acme-corp", self.engagement.version)
         boundary.require_allowed(self.engagement, "github-copilot", "acme-corp")
         boundary.require_allowed(self.engagement, "github-copilot", "ACME-CORP")
         with self.assertRaisesRegex(boundary.EngineNotAllowed, "allows only: github-copilot under acme-corp"):
@@ -64,11 +64,11 @@ class Allowlist(unittest.TestCase):
             boundary.require_allowed(self.engagement, "github-copilot", None)
 
     def test_the_shared_llm_provider_is_refused_unless_listed(self):
-        boundary.allow(self.db, self.engagement, "github-copilot", "acme-corp")
+        boundary.allow(self.db, self.engagement, "github-copilot", "acme-corp", self.engagement.version)
         for provider in ("claude-code", "devin"):
             with self.assertRaises(boundary.EngineNotAllowed):
                 boundary.require_allowed(self.engagement, provider)
-        boundary.allow(self.db, self.engagement, "claude-code", None)
+        boundary.allow(self.db, self.engagement, "claude-code", None, self.engagement.version)
         boundary.require_allowed(self.engagement, "claude-code")
         with self.assertRaises(boundary.EngineNotAllowed):
             boundary.require_allowed(self.engagement, "devin")
@@ -78,18 +78,18 @@ class Allowlist(unittest.TestCase):
             boundary.require_allowed(self.engagement, provider)
 
     def test_revoking_refuses_again(self):
-        boundary.allow(self.db, self.engagement, "github-copilot", "acme-corp")
-        boundary.revoke(self.db, self.engagement, "github-copilot", "acme-corp")
+        boundary.allow(self.db, self.engagement, "github-copilot", "acme-corp", self.engagement.version)
+        boundary.revoke(self.db, self.engagement, "github-copilot", "acme-corp", self.engagement.version)
         with self.assertRaises(boundary.EngineNotAllowed):
             boundary.require_allowed(self.engagement, "github-copilot", "acme-corp")
 
     def test_an_unknown_provider_cannot_be_listed(self):
         with self.assertRaises(ValueError):
-            boundary.allow(self.db, self.engagement, "some-cloud-llm", None)
+            boundary.allow(self.db, self.engagement, "some-cloud-llm", None, self.engagement.version)
 
     def test_an_organisation_shaped_like_a_credential_is_refused(self):
         with self.assertRaises(boundary.CredentialRefused):
-            boundary.allow(self.db, self.engagement, "github-copilot", "ghp_" + "a" * 36)
+            boundary.allow(self.db, self.engagement, "github-copilot", "ghp_" + "a" * 36, self.engagement.version)
 
 
 class Runs(unittest.TestCase):
@@ -108,13 +108,13 @@ class Runs(unittest.TestCase):
         before = self._count()
         with self.assertRaises(boundary.EngineNotAllowed):
             runs.start(self.db, **_run_args())
-        boundary.allow(self.db, self.engagement, "github-copilot", "acme-corp")
+        boundary.allow(self.db, self.engagement, "github-copilot", "acme-corp", self.engagement.version)
         with self.assertRaises(boundary.EngineNotAllowed):
             runs.start(self.db, **_run_args(organisation="personal-account"))
         self.assertEqual(self._count(), before)
 
     def test_a_run_records_identity_organisation_model_and_engine_version(self):
-        boundary.allow(self.db, self.engagement, "github-copilot", "acme-corp")
+        boundary.allow(self.db, self.engagement, "github-copilot", "acme-corp", self.engagement.version)
         run = runs.start(self.db, **_run_args())
         self.db.refresh(run)
         self.assertEqual((run.signed_in_identity, run.organisation, run.model, run.engine_version),
@@ -124,7 +124,7 @@ class Runs(unittest.TestCase):
                 runs.start(self.db, **_run_args(label="t-boundary-" + missing, **{missing: " "}))
 
     def test_credential_shaped_values_are_refused_wherever_a_run_takes_text(self):
-        boundary.allow(self.db, self.engagement, "github-copilot", "acme-corp")
+        boundary.allow(self.db, self.engagement, "github-copilot", "acme-corp", self.engagement.version)
         shaped = ("ghp_" + "A1" * 18, "github_pat_" + "x" * 30, "sk-ant-" + "k" * 30,
                   "Bearer abcdefghijklmnopqrstuvwx", "password=hunter2", "eyJhbGciOiJIUzI1.eyJzdWIiOiIxMjM0NTY3")
         for value in shaped:

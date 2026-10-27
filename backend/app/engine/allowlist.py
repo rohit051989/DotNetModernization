@@ -38,7 +38,8 @@ def main(argv: list[str] | None = None) -> int:
             if not args.provider:
                 parser.error("--provider is required")
             change = boundary.allow if args.command == "allow" else boundary.revoke
-            change(db, engagement, args.provider, args.organisation)
+            # The engagement's settings are a versioned record: the change names the version it was made on.
+            change(db, engagement, args.provider, args.organisation, engagement.version)
             db.commit()
         print(json.dumps({"engagement": engagement.id, "engineAllowlist": boundary.allowlist(engagement)}, indent=2))
         return 0

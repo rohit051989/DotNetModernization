@@ -19,6 +19,7 @@ from app.items import defaults, pattern_migration
 from app.items import schemas as s
 from app.routers import catalog_items
 from tests.test_item_catalog import ItemCatalogTestCase
+from tests.support import item_version
 
 DETECTION = {"match": {"all": [{"signal": {"name": "SVC_FILE"}}]}}
 
@@ -36,7 +37,8 @@ class DefaultsTests(ItemCatalogTestCase):
         row = self.db.get(models.ItemResolution, rid)
         fields = {f: getattr(row, f) for f in ("name", "description", "target_description", "consumer_impact", "effort",
                                                "is_default", "linux_compatible", "container_ready", "notes", "status")}
-        return catalog_items.update_resolution("t-defaults", rid, s.ResolutionWrite(**{**fields, **changes}), db=self.db)
+        return catalog_items.update_resolution("t-defaults", rid, s.ResolutionWrite(**{**fields, **changes}), db=self.db,
+                                               if_match=item_version(self.db, "t-defaults"))
 
     def test_the_first_resolution_becomes_the_default(self):
         self.assertTrue(self.resolution("t-defaults-a").is_default)

@@ -127,3 +127,26 @@ def scanned_sample(folder: str) -> "models.Repository | None":
         return repo
     finally:
         db.close()
+
+
+# ---------- versions (app.auth.versions): an edit names the version it changes ----------
+
+
+def item_version(db: Session, item_id: str) -> str:
+    """The catalog item's edit_version, as If-Match sends it."""
+    db.flush()
+    return str(db.get(models.CatalogItem, item_id).edit_version)
+
+
+def item_decision_version(db: Session, engagement_id: str, item_id: str) -> str:
+    """The live item decision's version, or 0 when there is none, as If-Match sends it."""
+    db.flush()
+    live = (db.query(models.EngagementDecision)
+            .filter_by(engagement_id=engagement_id, item_id=item_id)
+            .filter(models.EngagementDecision.status != "superseded").one_or_none())
+    return str(live.version if live else 0)
+
+
+def decision_version_by_id(db: Session, model, decision_id) -> str:
+    db.flush()
+    return str(db.get(model, decision_id).version)

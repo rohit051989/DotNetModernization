@@ -23,6 +23,7 @@ from app.db import engine
 from tests.support import TEST_ENGAGEMENT_ID, TEST_NON_LINUX_ENGAGEMENT_ID, ensure_non_linux_engagement, ensure_test_engagement
 from app.items import schemas as s
 from app.routers import catalog_items, item_decisions, signal_registry
+from tests.support import item_decision_version, item_version
 
 # Test-only names: real anticipated signals (e.g. SERILOG_FILE_SINK_CONFIG)
 # are registered by the seed, so tests must not reuse them.
@@ -277,7 +278,8 @@ class DecisionTests(ItemCatalogTestCase):
 
     def upsert(self, engagement: str, **fields):
         return item_decisions.upsert_item_decision(
-            engagement, "t-app", s.EngagementDecisionUpsert(**fields), Response(), db=self.db
+            engagement, "t-app", s.EngagementDecisionUpsert(**fields), Response(), db=self.db,
+            if_match=item_decision_version(self.db, engagement, "t-app"),
         )
 
     def approved(self, **fields):
@@ -456,7 +458,7 @@ class PatternMigrationTests(ItemCatalogTestCase):
         resolution = self.db.get(models.ItemResolution, "windows-service-remain-windows-hosted")
         catalog_items.update_resolution("windows-service", resolution.id, s.ResolutionWrite(
             name="Stay on Windows (team wording)", consumer_impact=resolution.consumer_impact, effort=resolution.effort,
-            linux_compatible=False, container_ready=False), db=self.db)
+            linux_compatible=False, container_ready=False), db=self.db, if_match=item_version(self.db, "windows-service"))
         self.assert_revert_refused_naming(
             "item_resolutions windows-service-remain-windows-hosted has been edited since it was seeded")
 

@@ -87,6 +87,18 @@ def _entry(provider: str, organisation: str | None) -> dict:
     return {"provider": provider, "organisation": organisation}
 
 
+def _check_version(db: Session, engagement: models.Engagement, version: int) -> None:
+    from fastapi import HTTPException
+
+    from app.auth import versions
+
+    db.refresh(engagement, with_for_update=True)
+    try:
+        versions.check(db, engagement.version, str(version), "engagement", engagement.id, "this engagement's settings")
+    except HTTPException as refused:
+        raise ValueError(refused.detail[0]["message"]) from None
+
+
 def allowlist(engagement: models.Engagement) -> list[dict]:
     return list(engagement.engine_allowlist or [])
 
@@ -121,7 +133,9 @@ def require_allowed(engagement: models.Engagement, provider: str, organisation: 
     raise EngineNotAllowed(f"Refused: engagement {engagement.id}'s code may not be sent to {target}; {why}")
 
 
-def allow(db: Session, engagement: models.Engagement, provider: str, organisation: str | None) -> list[dict]:
+def allow(db: Session, engagement: models.Engagement, provider: str, organisation: str | None, version: int) -> list[dict]:
+    """`version`: the engagement's version the change was made on (app.auth.versions): a stale one is refused."""
+    _check_version(db, engagement, version)
     entry = _entry(provider, organisation)
     entries = [e for e in allowlist(engagement) if e.get("provider") != provider or e.get("organisation") != organisation]
     entries.append(entry)
@@ -131,7 +145,9 @@ def allow(db: Session, engagement: models.Engagement, provider: str, organisatio
     return engagement.engine_allowlist
 
 
-def revoke(db: Session, engagement: models.Engagement, provider: str, organisation: str | None) -> list[dict]:
+def revoke(db: Session, engagement: models.Engagement, provider: str, organisation: str | None, version: int) -> list[dict]:
+    """`version`: the engagement's version the change was made on (app.auth.versions): a stale one is refused."""
+    _check_version(db, engagement, version)
     engagement.engine_allowlist = [e for e in allowlist(engagement)
                                    if not (e.get("provider") == provider and e.get("organisation") == organisation)]
     engagement.version += 1

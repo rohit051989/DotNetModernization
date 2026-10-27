@@ -26,6 +26,7 @@ from app.items import schemas as s
 from app.routers import catalog_items, item_decisions
 from tests.support import TEST_ENGAGEMENT_ID
 from tests.test_item_catalog import ItemCatalogTestCase
+from tests.support import item_decision_version, item_version
 
 DETECTION = {"match": {"any": [{"id": "svc", "signal": {"name": "SVC_FILE"}}]}}
 
@@ -87,7 +88,8 @@ class ExportTests(ExportTestCase):
     def test_content_only_no_baseline_hash_no_computed_columns_no_engagement_data(self):
         self.db.get(models.CatalogItem, "t-export").seeded_hash = "f" * 64
         item_decisions.upsert_item_decision(TEST_ENGAGEMENT_ID, "t-export", s.EngagementDecisionUpsert(
-            resolution_id="t-export-b", rationale="client rationale"), Response(), db=self.db)
+            resolution_id="t-export-b", rationale="client rationale"), Response(), db=self.db,
+            if_match=item_decision_version(self.db, TEST_ENGAGEMENT_ID, "t-export"))
         document = self.document()
         self.assertEqual(sorted(document), ["category", "deleted", "description", "detection", "excluded_roles", "id", "name",
                                             "owner_team", "resolutions", "scope", "status"])
@@ -110,7 +112,8 @@ class ImportTests(ExportTestCase):
         item = self.db.get(models.CatalogItem, "t-export")
         catalog_items.update_item("t-export", s.CatalogItemWrite(
             name=item.name, description=description, scope=item.scope, category=item.category, detection=item.detection,
-            excluded_roles=item.excluded_roles, owner_team=item.owner_team, status=item.status), db=self.db)
+            excluded_roles=item.excluded_roles, owner_team=item.owner_team, status=item.status), db=self.db,
+            if_match=item_version(self.db, "t-export"))
 
     def test_import_inserts_a_missing_item_with_its_resolutions_and_derivations(self):
         document = copy.deepcopy(self.document())
@@ -191,7 +194,8 @@ class StalenessTests(TempExportDirCase):
         item = self.db.get(models.CatalogItem, "t-export")
         catalog_items.update_item("t-export", s.CatalogItemWrite(
             name=item.name, description="Edited in the UI.", scope=item.scope, category=item.category, detection=item.detection,
-            excluded_roles=item.excluded_roles, owner_team=item.owner_team, status=item.status), db=self.db)
+            excluded_roles=item.excluded_roles, owner_team=item.owner_team, status=item.status), db=self.db,
+            if_match=item_version(self.db, "t-export"))
         self.create_item("t-export-added", "application", DETECTION)
         catalog_items.delete_item("t-export-dependent", deleted_by="team", db=self.db)
         self.assertEqual(self.changes(), {"t-export": "edited", "t-export-added": "added", "t-export-dependent": "deleted"})
@@ -234,7 +238,7 @@ class StalenessTests(TempExportDirCase):
         catalog_items.update_item("t-export", s.CatalogItemWrite(
             name=item.name, description="Corrected wording, shipped.", scope=item.scope, category=item.category,
             detection=item.detection, excluded_roles=item.excluded_roles, owner_team=item.owner_team,
-            status=item.status), db=self.db)
+            status=item.status), db=self.db, if_match=item_version(self.db, "t-export"))
         self.assertEqual(self.changes(), {"t-export": "edited"})
         # The update brings the file with the same wording; nothing records an export.
         (self.out / "t-export.yaml").write_text(catalog_export.export_files(self.db)["t-export.yaml"], encoding="utf-8")
@@ -271,7 +275,7 @@ class InstallationTests(TempExportDirCase):
         catalog_items.update_item("t-export", s.CatalogItemWrite(
             name=item.name, description="Edited on the installation.", scope=item.scope, category=item.category,
             detection=item.detection, excluded_roles=item.excluded_roles, owner_team=item.owner_team,
-            status=item.status), db=self.db)
+            status=item.status), db=self.db, if_match=item_version(self.db, "t-export"))
 
     def test_the_status_says_installation_and_offers_no_export_into_the_repository(self):
         self.edit()

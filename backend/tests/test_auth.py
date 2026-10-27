@@ -310,6 +310,22 @@ class TwoMachines(unittest.TestCase):
         with self.as_("alice", MACHINE_A):
             self.assertEqual(alice.put(url, {"status": "parked"}, headers={"If-Match": str(version + 1)}).code, "NOT_ALLOWED")
 
+    def test_an_edit_that_does_not_say_which_version_it_changes_is_refused_with_428(self):
+        pattern_id = self.db.query(models.Pattern.id).order_by(models.Pattern.id.desc()).first()[0]
+        url = f"/api/engagements/{self.engagement.engagement.id}/patterns/{pattern_id}/decision"
+        carol = self.signed_in("carol", MACHINE_A)
+        with self.as_("carol", MACHINE_A):
+            missing = carol.put(url, {"status": "parked", "rationale": "no version"})
+            self.assertEqual((missing.status, missing.code), (428, "VERSION_REQUIRED"))
+            self.assertIn("does not say which version", missing.message)
+            # Reverting a matrix confirmation names the confirmation it saw, or is refused the same way.
+            revert = carol.post(f"/api/engagements/{self.engagement.engagement.id}/estate/matrix-confirmations/revert",
+                                {"entry_id": "some-entry", "by": "Carol", "reason": "test"})
+            self.assertEqual((revert.status, revert.code), (428, "VERSION_REQUIRED"))
+        with SessionLocal() as db:
+            self.assertEqual(db.query(models.DecisionRecord).filter_by(engagement_id=self.engagement.engagement.id,
+                                                                       pattern_id=pattern_id).count(), 0)
+
     def _remove_decision(self, decision_id: str):
         with SessionLocal() as db:
             row = db.get(models.DecisionRecord, uuid.UUID(decision_id))

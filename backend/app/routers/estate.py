@@ -517,9 +517,9 @@ class MatrixRevertIn(BaseModel):
     entry_id: str = Field(min_length=1)
     by: str = Field(min_length=1)
     reason: str = Field(min_length=1)
-    confirmation_id: str | None = Field(default=None, description="The confirmation the person saw: if it has been "
-                                                                  "reverted or replaced since, the revert is refused "
-                                                                  "(409 STALE_COPY).")
+    confirmation_id: str | None = Field(default=None, description="Required: the confirmation the person saw. If it "
+                                                                  "has been reverted or replaced since, the revert is "
+                                                                  "refused (409 STALE_COPY); without it, 428.")
 
 
 @router.get(
@@ -575,6 +575,10 @@ def post_matrix_decision(engagement_id: str, payload: MatrixDecisionIn, db: Sess
 )
 def revert_matrix_confirmation(engagement_id: str, payload: MatrixRevertIn, db: Session = Depends(get_db)):
     _engagement(db, engagement_id)
+    if not payload.confirmation_id:
+        raise error(428, f"Not saved: the revert does not say which confirmation of {payload.entry_id} it reverts. Send "
+                         "the confirmation_id you saw, so a confirmation made or reverted since is not undone by "
+                         "mistake.", field="confirmation_id", code="VERSION_REQUIRED")
     if payload.confirmation_id:
         active = (db.query(models.EngagementMatrixConfirmation)
                   .filter_by(engagement_id=engagement_id, entry_id=payload.entry_id, reverted_at=None)

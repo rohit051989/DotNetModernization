@@ -1,10 +1,23 @@
-"""Edits to shared records carry a version check: decisions, item decisions, catalog items, engagement settings, and
-matrix confirmations (by the confirmation's id). The UI sends the version of the copy it shows in an If-Match
-header; the row is locked, its version compared, and an edit made from a stale copy is refused (409 STALE_COPY),
-saying who changed it first. Nothing is overwritten. The version goes up by one with each edit.
+"""Edits to shared records carry a version check: decisions, item decisions, catalog items (edit_version) and their
+resolutions, engagement settings, and matrix confirmations (by the confirmation's id). The caller names the version of
+the copy it edited in an If-Match header (0 when the record did not exist yet); the row is locked, its version
+compared, and an edit made from a stale copy is refused (409 STALE_COPY), saying who changed it first. Nothing is
+overwritten. The version goes up by one with each edit.
 
-A caller that sends no If-Match (a script, a test calling the route function) is not checked: the UI always sends
-it."""
+An edit that does not say which version it changes is refused too (428 VERSION_REQUIRED): without it, a stale copy
+could not be told from a current one. The UI sends the version it shows; command-line tools read the current version
+and send it (python -m app.engine.allowlist).
+
+Explicitly unversioned, and why each is safe without one:
+- creating a record: a catalog item, a resolution, a pattern or target state, an engagement, a matrix confirmation (a
+  second confirmation of an entry already confirmed is refused, naming who confirmed it), a user;
+- a catalog item's or resolution's delete, restore and make-default: state changes guarded by their own checks
+  (deleting what is deleted, or a default that must stay, is refused), each bumping the item's edit_version so any
+  copy made before them is stale;
+- an engagement's hard deletion (the name must be typed) and repository changes (owner-only, not shared records);
+- the platform's own writes: the seed and catalog import (app.items.baseline, which never overwrites an edit),
+  derived decisions (app.items.coupling), readiness and impact staleness, migrations.
+"""
 from sqlalchemy.orm import Session
 
 from app.auth import activity
@@ -33,11 +46,13 @@ def locked(db: Session, model, key):
 
 def check(db: Session, current_version: int | None, if_match: str | None, subject_type: str, subject_id,
           what: str) -> None:
-    """Refuses an edit made from a stale copy. `current_version` None means the record does not exist (yet); a copy
-    of version 0 is a copy made when it did not."""
+    """Refuses an edit that names no version (428), or one made from a stale copy (409). `current_version` None means
+    the record does not exist (yet); a copy of version 0 is a copy made when it did not."""
     wanted = expected(if_match)
     if wanted is None:
-        return
+        raise error(428, f"Not saved: the edit does not say which version of {what} it changes. Send the version you "
+                         "loaded in If-Match (0 when there was none yet), so an edit made from a stale copy can be "
+                         "refused.", field="If-Match", code="VERSION_REQUIRED")
     have = current_version or 0
     if wanted == have:
         return

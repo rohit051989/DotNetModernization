@@ -17,6 +17,7 @@ from app.items import schemas as s
 from app.routers import catalog_items
 from app.seed.seed_data import upsert_authored_item
 from tests.test_item_catalog import ItemCatalogTestCase
+from tests.support import item_version
 
 ITEM = {
     "id": "t-seeded", "name": "Seeded item", "scope": "application", "category": "hosting",
@@ -51,7 +52,7 @@ class BaselineTests(ItemCatalogTestCase):
             "name": item.name, "description": item.description, "scope": item.scope, "category": item.category,
             "detection": item.detection, "excluded_roles": item.excluded_roles, "owner_team": item.owner_team,
             "status": item.status, **fields})
-        catalog_items.update_item("t-seeded", payload, db=self.db)
+        catalog_items.update_item("t-seeded", payload, db=self.db, if_match=item_version(self.db, "t-seeded"))
 
     def test_a_seeded_row_records_its_baseline(self):
         report = self.seed()
@@ -89,7 +90,8 @@ class BaselineTests(ItemCatalogTestCase):
         self.seed()
         resolution = self.db.get(models.ItemResolution, "t-seeded-b")
         catalog_items.update_resolution("t-seeded", "t-seeded-b", s.ResolutionWrite(
-            name="Option B, as the team calls it", consumer_impact=resolution.consumer_impact, effort=resolution.effort), db=self.db)
+            name="Option B, as the team calls it", consumer_impact=resolution.consumer_impact, effort=resolution.effort), db=self.db,
+            if_match=item_version(self.db, "t-seeded"))
         data = self.changed()
         data["resolutions"] = [ITEM["resolutions"][0], {**ITEM["resolutions"][1], "name": "Option B, renamed in the file"}]
         report = self.seed(data)

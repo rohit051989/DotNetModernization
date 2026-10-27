@@ -244,7 +244,7 @@ def prove_export_bootstrap() -> int:
                 catalog_items.update_item(PROOF_ITEM, item_schemas.CatalogItemWrite(
                     name=item.name, description=PROOF_DESCRIPTION, scope=item.scope, category=item.category,
                     detection=item.detection, excluded_roles=item.excluded_roles, owner_team=item.owner_team,
-                    status=item.status), db=db)
+                    status=item.status), db=db, if_match=str(item.edit_version))
                 catalog_export.write(db, export_dir)
                 db.commit()
                 exported_a = catalog_export.export_files(db)

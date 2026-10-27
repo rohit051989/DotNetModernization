@@ -21,6 +21,7 @@ from app.db import engine
 from tests.support import TEST_ENGAGEMENT_ID, ensure_test_engagement
 from app.items import schemas as s
 from app.routers import catalog_items, item_decisions, signal_registry
+from tests.support import item_decision_version
 
 
 class GovernanceTestCase(unittest.TestCase):
@@ -80,7 +81,8 @@ class SignalIndexTests(GovernanceTestCase):
 class ClearingDecisionFieldsTests(GovernanceTestCase):
     def upsert(self, body: dict):
         return item_decisions.upsert_item_decision(
-            TEST_ENGAGEMENT_ID, "msmq-usage", s.EngagementDecisionUpsert.model_validate(body), Response(), db=self.db
+            TEST_ENGAGEMENT_ID, "msmq-usage", s.EngagementDecisionUpsert.model_validate(body), Response(), db=self.db,
+            if_match=item_decision_version(self.db, TEST_ENGAGEMENT_ID, "msmq-usage"),
         )
 
     def test_moving_back_to_the_default_can_shed_the_forcing_perspective(self):
