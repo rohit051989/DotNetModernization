@@ -14,9 +14,14 @@ PLATFORM_SOURCE.json on an installation, or HEAD in our own repository (app.expe
   checks every WATCH_SECONDS; once the database moves on (the admin updated), it refuses changes (409
   PLATFORM_UPDATED) and the UI shows a banner asking the person to update and restart.
 
-Which is newer: in our own repository, git knows (one commit is an ancestor of the other); otherwise the commit
-dates (PLATFORM_SOURCE.json's `committedAt`, and the database's record). When neither tells, the message says the
-two differ and to update so they match.
+What is compared: on an installation (PLATFORM_SOURCE.json), the commit. In our own development repository, where
+commits come often, only what the database depends on (`fingerprint`): the migration head, each step registration's
+version and the seed data's hash. A commit that changes none of these needs no update, and nobody is stopped. A
+version recorded before fingerprints were is compared by commit until the admin's next bootstrap records one.
+
+Which is newer: in our own repository, git knows (one commit is an ancestor of the other), or else the migrations do;
+otherwise the commit dates (PLATFORM_SOURCE.json's `committedAt`, and the database's record). When nothing tells,
+the message says the two differ and to update so they match.
 
     python -m app.platform_version show
     python -m app.platform_version gate      (bootstrap: exit 0 migrate and seed, 10 nothing to do, 1 stop)
@@ -24,10 +29,13 @@ two differ and to update so they match.
 """
 import argparse
 import datetime
+import hashlib
+import json
 import logging
 import sys
 import threading
 from dataclasses import dataclass
+from pathlib import Path
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -40,11 +48,17 @@ SAME, DATABASE_NEWER, LOCAL_NEWER, UNKNOWN = "same", "database_newer", "local_ne
 GATE_MIGRATE, GATE_NOTHING, GATE_STOP = 0, 10, 1
 log = logging.getLogger("app.platform_version")
 
+BACKEND = Path(__file__).resolve().parents[1]
+REPO_ROOT = BACKEND.parent
+# What the seed reads (app.seed): its data, the job definitions, and the catalog export a new environment imports.
+SEED_GLOBS = ("backend/app/seed/data/*.yaml", "backend/app/jobs/*.yaml", "catalog/items/*.yaml")
+
 
 @dataclass(frozen=True)
 class Version:
     commit: str | None
     committed_at: datetime.datetime | None = None
+    fingerprint: dict | None = None
 
     def short(self) -> str:
         return self.commit[:12] if self.commit else "unknown"
@@ -72,25 +86,71 @@ def _own_repository() -> bool:
     return instrument.location()["kind"] == "repository" and instrument.source_record() is None
 
 
+def _migration_head() -> str | None:
+    from alembic.script import ScriptDirectory
+
+    return ScriptDirectory(str(BACKEND / "alembic")).get_current_head()
+
+
+def fingerprint() -> dict:
+    """What the database depends on, from this copy's files: the migration head, each step registration's version, and
+    a hash of the seed's data (line endings aside, so a checkout's settings do not change it)."""
+    from app.seed import platform as seed_platform
+
+    steps = {}
+    for path in seed_platform.registration_files():
+        declared = json.loads(path.read_text(encoding="utf-8"))
+        steps[declared["step_name"]] = declared["version"]
+    seed = hashlib.sha256()
+    for path in sorted({p for pattern in SEED_GLOBS for p in REPO_ROOT.glob(pattern)}):
+        seed.update(path.relative_to(REPO_ROOT).as_posix().encode())
+        seed.update(path.read_bytes().replace(b"\r\n", b"\n"))
+    return {"migration": _migration_head(), "steps": dict(sorted(steps.items())), "seed": seed.hexdigest()[:16]}
+
+
 def local() -> Version:
-    """This copy's version: our commit, and when it was committed."""
+    """This copy's version: our commit, when it was committed, and what the database depends on."""
     state = instrument.platform_state()
     commit = state.get("commit")
     if not commit:
         return Version(None)
     if _own_repository():
         return Version(commit, _parse((instrument._git(instrument.PLATFORM_ROOT, "show", "-s", "--format=%cI", commit,
-                                                       check=False) or "").strip()))
+                                                       check=False) or "").strip()), fingerprint())
     record = instrument.source_record() or {}
-    return Version(commit, _parse(record.get("committedAt")))
+    return Version(commit, _parse(record.get("committedAt")), fingerprint())
 
 
 def database(db: Session) -> Version | None:
-    """The database's version: the newest recorded; None before any is (or before the table exists)."""
+    """The database's version: the newest recorded; None before any is (or before the table exists). Read with plain
+    SQL, so a developer's bootstrap can read it from a database not migrated to its own copy's head."""
     if db.execute(text("SELECT to_regclass('platform_version')")).scalar() is None:
         return None
-    row = db.execute(text("SELECT commit, committed_at FROM platform_version ORDER BY id DESC LIMIT 1")).first()
-    return Version(row.commit, row.committed_at) if row else None
+    has_fingerprint = db.execute(text("SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() "
+                                      "AND table_name = 'platform_version' AND column_name = 'fingerprint'")).first()
+    columns = "commit, committed_at" + (", fingerprint" if has_fingerprint else "")
+    row = db.execute(text(f"SELECT {columns} FROM platform_version ORDER BY id DESC LIMIT 1")).first()
+    if row is None:
+        return None
+    return Version(row.commit, row.committed_at, row.fingerprint if has_fingerprint else None)
+
+
+def differences(mine: Version, theirs: Version | None) -> list[str]:
+    """What the database depends on that differs between the two, in words; empty when either has no fingerprint."""
+    if theirs is None or not mine.fingerprint or not theirs.fingerprint:
+        return []
+    a, b = mine.fingerprint, theirs.fingerprint
+    said = []
+    if a.get("migration") != b.get("migration"):
+        said.append(f"the migrations (this copy {a.get('migration')}, the database {b.get('migration')})")
+    steps_a, steps_b = a.get("steps") or {}, b.get("steps") or {}
+    changed = [f"{slug} {steps_a.get(slug, 'none')} here, {steps_b.get(slug, 'none')} in the database"
+               for slug in sorted(set(steps_a) | set(steps_b)) if steps_a.get(slug) != steps_b.get(slug)]
+    if changed:
+        said.append("the step registrations (" + "; ".join(changed) + ")")
+    if a.get("seed") != b.get("seed"):
+        said.append("the seed data")
+    return said
 
 
 def _git_order(mine: str, theirs: str) -> str | None:
@@ -108,11 +168,37 @@ def _git_order(mine: str, theirs: str) -> str | None:
     return None
 
 
+def _migration_order(mine: str | None, theirs: str | None) -> str | None:
+    """Which migration head is newer, when this copy's migrations know both: the database's head among this copy's
+    earlier revisions means this copy is newer; a head this copy does not have means the database is."""
+    from alembic.script import ScriptDirectory
+
+    if not mine or not theirs or mine == theirs:
+        return None
+    script = ScriptDirectory(str(BACKEND / "alembic"))
+    if any(rev.revision == theirs for rev in script.walk_revisions("base", mine)):
+        return LOCAL_NEWER
+    try:
+        script.get_revision(theirs)
+    except Exception:           # not one of this copy's revisions: added by a newer copy
+        return DATABASE_NEWER
+    return None
+
+
 def compare(mine: Version, theirs: Version | None) -> str:
     if theirs is None:
         return LOCAL_NEWER                       # the database records no version yet: the admin has not updated
     if not mine.commit:
         return UNKNOWN
+    if _own_repository() and mine.fingerprint and theirs.fingerprint:
+        # Our own repository: only what the database depends on, whatever the commits.
+        if mine.fingerprint == theirs.fingerprint:
+            return SAME
+        if mine.commit == theirs.commit:
+            return LOCAL_NEWER                   # this working copy changes what the database depends on
+        return (_git_order(mine.commit, theirs.commit)
+                or _migration_order(mine.fingerprint.get("migration"), theirs.fingerprint.get("migration"))
+                or UNKNOWN)
     if mine.commit == theirs.commit:
         return SAME
     order = _git_order(mine.commit, theirs.commit)
@@ -126,17 +212,20 @@ def compare(mine: Version, theirs: Version | None) -> str:
 def message(state: str, mine: Version, theirs: Version | None) -> str | None:
     if state == SAME:
         return None
+    differ = differences(mine, theirs) if _own_repository() else []
+    listed = ", ".join(differ[:-1]) + f" and {differ[-1]}" if len(differ) > 1 else "".join(differ)
+    why = f" They differ in {listed}." if differ else ""
     if state == DATABASE_NEWER:
         return (f"The admin has updated the platform: the database is at {theirs.describe()}, and this copy is at "
                 f"{mine.describe()}. Pull the update first (docs/VDI-SETUP.md, \"Updating the platform\"), then run "
-                "bootstrap and start the backend again.")
+                f"bootstrap and start the backend again.{why}")
     if state == LOCAL_NEWER:
         at = theirs.describe() if theirs else "a version from before versions were recorded"
         return (f"This copy of the platform ({mine.describe()}) is newer than the database ({at}): ask the admin to "
-                "update first, then run bootstrap and start the backend again.")
+                f"update first, then run bootstrap and start the backend again.{why}")
     return (f"This copy of the platform ({mine.describe()}) and the database ({theirs.describe() if theirs else 'none'}) "
             "are at different versions, and which is newer cannot be told here: ask the admin which to use, and update "
-            "so the two match.")
+            f"so the two match.{why}")
 
 
 class VersionMismatch(RuntimeError):
@@ -185,9 +274,12 @@ class Watch:
 
         with SessionLocal() as db:
             theirs = database(db)
-        if theirs is not None and theirs.commit != self.running.commit:
-            state = compare(self.running, theirs)
-            why = message(state if state != SAME else UNKNOWN, self.running, theirs)
+        if theirs is None:
+            return
+        # An update that changes nothing the database depends on (our own repository) leaves this backend working.
+        state = compare(self.running, theirs)
+        if state != SAME:
+            why = message(state, self.running, theirs)
             if _changed is None:
                 log.warning("The database's platform version changed while this backend runs: %s", why)
             _changed = {"running": self.running.commit, "database": theirs.commit,
@@ -260,13 +352,14 @@ def record(db: Session, out=print) -> int:
             "Run scripts\\update-platform.ps1, which writes PLATFORM_SOURCE.json.")
         return 1
     theirs = database(db)
-    if theirs is not None and theirs.commit == mine.commit:
+    if theirs is not None and theirs.commit == mine.commit and theirs.fingerprint == mine.fingerprint:
         out(f"The database is at {mine.describe()} already.")
         return 0
     head = db.execute(text("SELECT version_num FROM alembic_version")).scalar()
-    db.execute(text("INSERT INTO platform_version (commit, committed_at, migration, recorded_by, hostname) "
-                    "VALUES (:c, :at, :m, :by, :h)"),
+    db.execute(text("INSERT INTO platform_version (commit, committed_at, migration, fingerprint, recorded_by, hostname) "
+                    "VALUES (:c, :at, :m, CAST(:f AS jsonb), :by, :h)"),
                {"c": mine.commit, "at": mine.committed_at, "m": head,
+                "f": json.dumps(mine.fingerprint) if mine.fingerprint else None,
                 "by": label or f"first installation ({machine.windows_account()})", "h": machine.hostname()})
     db.commit()
     out(f"The database is at {mine.describe()} now. Every developer pulls this update, runs bootstrap and restarts "
@@ -289,6 +382,9 @@ def main(argv: list[str] | None = None) -> int:
         mine, theirs = local(), database(db)
         print(f"This copy:    {mine.describe()}")
         print(f"The database: {theirs.describe() if theirs else 'no version recorded yet'}")
+        if _own_repository():
+            print("Our own repository: compared by what the database depends on (migrations, step registrations, seed "
+                  "data), not by commit.")
         print(message(compare(mine, theirs), mine, theirs) or "The same version.")
         return 0
 

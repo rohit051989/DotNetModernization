@@ -960,7 +960,13 @@ start:
 |---|---|---|
 | "The admin has updated the platform: the database is at ... Pull the update first" | The database is newer than your copy | Pull the update, run bootstrap, start again |
 | "This copy of the platform (...) is newer than the database (...): ask the admin to update first" | You pulled before the admin updated | Ask the admin to update; then run bootstrap again |
-| "... at different versions, and which is newer cannot be told here" | Neither git nor the commit dates say | Ask the admin which to use, and update so they match |
+| "... at different versions, and which is newer cannot be told here" | Neither git, the migrations nor the commit dates say | Ask the admin which to use, and update so they match |
+
+**In our own development repository** (no `PLATFORM_SOURCE.json`), commits come often, and most change nothing the
+database holds. There the check compares only what the database depends on: the migration head, each step
+registration's `version`, and a hash of the seed's data (`backend\app\seed\data`, `backend\app\jobs` and the catalog
+export in `catalog\items`). A commit that changes none of these stops nobody and shows no banner; one that does says
+which of them differs. The admin's bootstrap records them beside the commit. An installation always compares commits.
 
 **While a backend runs**, it checks the database's version every 30 seconds. When the admin updates, the page shows a
 banner, "The platform has been updated", saying what to do, and that backend refuses every change (409

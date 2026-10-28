@@ -3225,6 +3225,8 @@ class PlatformVersion(Base):
     commit: Mapped[str] = mapped_column(Text, nullable=False)
     committed_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
     migration: Mapped[str | None] = mapped_column(Text)
+    # What the database depends on: {"migration", "steps": {slug: version}, "seed"} (app.platform_version.fingerprint).
+    fingerprint: Mapped[dict | None] = mapped_column(JSONB)
     recorded_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     recorded_by: Mapped[str] = mapped_column(Text, nullable=False)
     hostname: Mapped[str | None] = mapped_column(Text)

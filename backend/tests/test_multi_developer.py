@@ -25,6 +25,7 @@ import asyncio
 import contextlib
 import datetime
 import io
+import json
 import subprocess
 import tempfile
 import unittest
@@ -190,15 +191,17 @@ class Clones(People):
         self.assertTrue(self.ben_clone.is_dir())       # nothing on disk changed
 
 
-class Versions(People):
+class VersionedDatabase(People):
+    """The database's recorded versions, put back after each test; an installation unless a test class says not."""
     OLD = platform_version.Version("a" * 40, datetime.datetime(2026, 10, 1, tzinfo=datetime.timezone.utc))
     NEW = platform_version.Version("b" * 40, datetime.datetime(2026, 10, 20, tzinfo=datetime.timezone.utc))
+    OWN_REPOSITORY = False
 
     def setUp(self):
         super().setUp()
         self.addCleanup(setattr, platform_version, "_changed", None)
-        # Ordered by commit date here: these commits are not in our repository's history.
-        patcher = mock.patch.object(platform_version, "_own_repository", return_value=False)
+        # These commits are not in our repository's history: an installation orders them by commit date.
+        patcher = mock.patch.object(platform_version, "_own_repository", return_value=self.OWN_REPOSITORY)
         patcher.start()
         self.addCleanup(patcher.stop)
         with SessionLocal() as db:
@@ -212,8 +215,10 @@ class Versions(People):
 
     def database_at(self, version: platform_version.Version) -> None:
         with SessionLocal() as db:
-            db.execute(text("insert into platform_version (commit, committed_at, recorded_by) values (:c, :at, 'Boss')"),
-                       {"c": version.commit, "at": version.committed_at})
+            db.execute(text("insert into platform_version (commit, committed_at, fingerprint, recorded_by) "
+                            "values (:c, :at, cast(:f as jsonb), 'Boss')"),
+                       {"c": version.commit, "at": version.committed_at,
+                        "f": json.dumps(version.fingerprint) if version.fingerprint else None})
             db.commit()
 
     def gate(self, who, mine: platform_version.Version) -> tuple[int, str]:
@@ -222,6 +227,8 @@ class Versions(People):
             code = platform_version.gate(db, out=said.append)
         return code, " ".join(said)
 
+
+class Versions(VersionedDatabase):
     def test_a_developers_bootstrap_behind_or_ahead_of_the_database_stops_with_the_right_message(self):
         self.database_at(self.NEW)
         code, said = self.gate(self.ann, self.OLD)
@@ -236,6 +243,17 @@ class Versions(People):
         code, said = self.gate(self.ann, self.NEW)
         self.assertEqual(code, platform_version.GATE_NOTHING)
         self.assertIn("nothing to migrate or seed", said)
+
+    def test_an_installation_compares_commits_even_when_nothing_the_database_depends_on_changed(self):
+        same = platform_version.fingerprint()
+        self.database_at(platform_version.Version(self.NEW.commit, self.NEW.committed_at, same))
+        older = platform_version.Version(self.OLD.commit, self.OLD.committed_at, same)
+        code, said = self.gate(self.ann, older)
+        self.assertEqual(code, platform_version.GATE_STOP)
+        self.assertIn("Pull the update first", said)
+        with mock.patch.object(platform_version, "local", return_value=older), \
+                self.assertRaises(platform_version.VersionMismatch):
+            platform_version.check_at_start()
 
     def test_a_version_is_described_in_utc_whatever_zone_its_commit_was_made_in(self):
         india = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
@@ -285,6 +303,73 @@ class Versions(People):
         self.assertEqual((refused.status, refused.code), (409, "PLATFORM_UPDATED"))
         # Signing out still works.
         self.assertIn(self.call(ann, self.ann, "POST", "/api/auth/sign-out").status, (200, 204))
+
+
+class OwnRepository(VersionedDatabase):
+    """Our own development repository (no PLATFORM_SOURCE.json): what the database depends on is compared, not commits."""
+    OWN_REPOSITORY = True
+
+    def setUp(self):
+        super().setUp()
+        self.depends = platform_version.fingerprint()
+        # Commits git does not know, so only the fingerprint and the migrations can tell.
+        self.mine = platform_version.Version("e" * 40, self.NEW.committed_at, self.depends)
+
+    def at(self, commit: str, **changed) -> platform_version.Version:
+        return platform_version.Version(commit, self.OLD.committed_at, {**self.depends, **changed})
+
+    def test_the_fingerprint_is_what_the_database_depends_on(self):
+        self.assertEqual(set(self.depends), {"migration", "steps", "seed"})
+        self.assertEqual(self.depends["migration"], platform_version._migration_head())
+        self.assertIn("item-detection", self.depends["steps"])
+        self.assertEqual(platform_version.fingerprint(), self.depends)          # the same files, the same fingerprint
+
+    def test_a_commit_that_changes_nothing_the_database_depends_on_needs_no_update(self):
+        self.database_at(self.at("a" * 40))
+        code, said = self.gate(self.ann, self.mine)
+        self.assertEqual(code, platform_version.GATE_NOTHING, said)
+        with mock.patch.object(platform_version, "local", return_value=self.mine):
+            self.assertEqual(platform_version.check_at_start(), self.mine)        # the backend starts
+
+        watch = platform_version.Watch(self.mine)
+        watch.check()
+        self.database_at(self.at("f" * 40))     # the admin records another commit, changing nothing that matters
+        watch.check()
+        self.assertIsNone(platform_version.updated())
+        ann = self.client(self.ann)
+        self.assertIsNone(self.call(ann, self.ann, "GET", "/api/health").json()["platform_update"])
+
+    def test_a_change_to_what_the_database_depends_on_still_stops_and_says_what(self):
+        steps = {**self.depends["steps"], "item-detection": "9.9.9"}
+        self.database_at(self.at("a" * 40, migration="f0f0f0f0f0f0", steps=steps))     # a migration this copy lacks
+        code, said = self.gate(self.ann, self.mine)
+        self.assertEqual(code, platform_version.GATE_STOP)
+        self.assertIn("Pull the update first", said)
+        self.assertIn("item-detection", said)
+        self.assertIn("They differ in the migrations (", said)
+        self.assertIn(") and the step registrations (", said)
+        with mock.patch.object(platform_version, "local", return_value=self.mine), \
+                self.assertRaises(platform_version.VersionMismatch):
+            platform_version.check_at_start()
+        watch = platform_version.Watch(self.mine)
+        watch.check()
+        self.assertIn("Pull the update first", platform_version.updated()["message"])
+
+    def test_a_database_behind_this_copys_migrations_asks_the_admin_to_update(self):
+        self.database_at(self.at("a" * 40, migration="c3e8a1d6f4b2"))       # an earlier revision of this copy's
+        code, said = self.gate(self.ann, self.mine)
+        self.assertEqual(code, platform_version.GATE_STOP)
+        self.assertIn("ask the admin to update first", said)
+
+    def test_a_version_recorded_before_fingerprints_is_compared_by_commit(self):
+        self.database_at(platform_version.Version("a" * 40, self.OLD.committed_at))
+        self.assertEqual(self.gate(self.ann, self.mine)[0], platform_version.GATE_STOP)
+        # The admin's next bootstrap records one, and the same check passes.
+        with on(self.admin[1], self.admin[0]), mock.patch.object(platform_version, "local", return_value=self.mine), \
+                SessionLocal() as db:
+            self.assertEqual(platform_version.record(db, out=lambda _: None), 0)
+        self.assertEqual(self.gate(self.ann, platform_version.Version("b" * 40, None, self.depends))[0],
+                         platform_version.GATE_NOTHING)
 
 
 class Users(People):
