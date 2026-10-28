@@ -25,7 +25,11 @@ export function RepositoryOverview({ repo, summary, tiles, onOpenTab }: Overview
   return (
     <div className="space-y-4">
       <div className="text-xs text-neutral-400">
-        <p className="break-all font-mono">{repo.local_path}</p>
+        {/* The folder it was registered from, on its owner's machine; each person's own is "your clone", above. */}
+        <p className="break-all">
+          Registered from <span className="font-mono">{repo.local_path}</span>
+          {repo.registered_host && <> on {repo.registered_host}</>}
+        </p>
         {repo.source_type === 'git_clone' && repo.clone_url && (
           <p className="break-all">
             Cloned from <span className="font-mono">{repo.clone_url}</span>

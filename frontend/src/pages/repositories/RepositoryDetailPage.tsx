@@ -476,7 +476,8 @@ export function RepositoryDetailPage({
         ) : (
           <dl className="grid grid-cols-1 gap-x-6 gap-y-3 text-sm sm:grid-cols-2 xl:grid-cols-3">
             <Metadata label="Root folder">{repo.root_folder_name}</Metadata>
-            <Metadata label="Local path">
+            {/* The folder it was registered from: its owner's, on their machine. Each person's own is "your clone". */}
+            <Metadata label={repo.registered_host ? `Registered folder (on ${repo.registered_host})` : 'Registered folder'}>
               <span className="break-all font-mono text-xs">{repo.local_path}</span>
             </Metadata>
             <Metadata label="Clone URL">

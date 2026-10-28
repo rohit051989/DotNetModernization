@@ -134,7 +134,8 @@ function NoCloneLink({ files, filePath, line, className, title, children }: Omit
           >
             Record your clone…
           </button>
-          <button type="button" role="menuitem" onClick={() => void copyRelative()} className="px-3 py-1 text-left hover:bg-neutral-50">
+          <button type="button" role="menuitem" onClick={() => void copyRelative()} className="px-3 py-1 text-left hover:bg-neutral-50"
+            title={`${filePath}:${line}`}>
             Copy the relative path ({filePath.split('/').pop()}:{line})
           </button>
         </span>

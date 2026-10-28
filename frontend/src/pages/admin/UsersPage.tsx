@@ -134,6 +134,18 @@ export function UsersPage() {
   }
 
   async function remove(user: User) {
+    if (user.repositories_owned > 0) {
+      // Refused while they own a repository: say which, without first asking to confirm a deletion that cannot happen.
+      let owned: OwnedRepository[] = []
+      try {
+        owned = await listUserRepositories(user.id)
+      } catch {
+        // the count alone, then
+      }
+      const which = owned.length ? `: ${owned.map((r) => `${r.name} (${r.engagement_name})`).join(', ')}` : ''
+      showToast('error', `${user.name} owns ${user.repositories_owned} ${user.repositories_owned === 1 ? 'repository' : 'repositories'}: assign each a new owner first${which}.`)
+      return
+    }
     if (!window.confirm(`Delete ${user.name} (${user.login})? This cannot be undone. The activity record keeps their name against everything they did.`)) return
     try {
       await deleteUser(user.id)
@@ -158,9 +170,10 @@ export function UsersPage() {
 
   // Nobody disables or deletes themselves, nor the last admin (app.auth.management): said here, refused there too.
   const activeAdmins = (users ?? []).filter((u) => u.role === 'admin' && u.active).length
+  const lastAdmin = (user: User) => user.role === 'admin' && user.active && activeAdmins <= 1
   function guarded(user: User): string | null {
     if (user.id === me?.id) return 'You cannot do this to yourself: ask another admin.'
-    if (user.role === 'admin' && user.active && activeAdmins <= 1) return `${user.name} is the last admin: make another user an admin first.`
+    if (lastAdmin(user)) return `${user.name} is the last admin: make another user an admin first.`
     return null
   }
 
@@ -246,7 +259,8 @@ export function UsersPage() {
                       </button>
                     )}
                     {user.role === 'admin' && (
-                      <button type="button" className="ml-2 text-neutral-600 hover:underline"
+                      <button type="button" className="ml-2 text-neutral-600 hover:underline disabled:cursor-not-allowed disabled:text-neutral-300 disabled:no-underline"
+                        disabled={lastAdmin(user)} title={lastAdmin(user) ? `${user.name} is the last admin: make another user an admin first.` : undefined}
                         onClick={() => void change(user, { role: 'developer' }, `${user.name} is a developer now.`)}>
                         Make developer
                       </button>
@@ -264,7 +278,9 @@ export function UsersPage() {
                       <button type="button" className="text-violet-700 hover:underline" onClick={() => void enable(user)}>Enable</button>
                     )}
                     <button type="button" className="text-red-700 hover:underline disabled:cursor-not-allowed disabled:text-neutral-300 disabled:no-underline"
-                      disabled={guarded(user) !== null} title={guarded(user) ?? 'Refused while they own a repository'} onClick={() => void remove(user)}>
+                      disabled={guarded(user) !== null}
+                      title={guarded(user) ?? (user.repositories_owned > 0 ? 'Refused while they own a repository: click to see which' : undefined)}
+                      onClick={() => void remove(user)}>
                       Delete
                     </button>
                   </td>
