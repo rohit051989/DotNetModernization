@@ -7,6 +7,7 @@ Run: python -m unittest tests.test_client_install
 import datetime
 import json
 import os
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -15,6 +16,7 @@ from pathlib import Path
 
 from app import config
 from app.config import Settings, settings
+from app.conversion import gitops
 from app.db import scrub
 from app.engine import convert, siblings
 from app.workflow.contract import StepContext
@@ -121,6 +123,104 @@ class ConversionStatus(unittest.TestCase):
             _git(Path(rec["worktree"]), "commit", "-qam", "engine change")
             self.assertEqual(convert.status(rec)["state"], "run")
             self.assertIsNone(convert.verify_refusal(rec))
+
+
+class PrepareAllOrNothing(unittest.TestCase):
+    """Creating a conversion is all or nothing: a failure removes the branch, the worktree, the folder with any partial
+    record, and the plan, so the next preparation starts clean. The package step, inputs and advisories are stood in
+    for; the branch, worktree and record are real."""
+
+    def setUp(self):
+        from unittest import mock
+
+        from app import models
+        from app.db import SessionLocal
+        from tests.support import TEST_ENGAGEMENT_ID, CommittedTestEngagement
+
+        self.db = SessionLocal()
+        self.addCleanup(self.db.close)
+        self.engagement = CommittedTestEngagement(self.db)
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.root = Path(tmp.name).resolve() / "App"
+        self.root.mkdir()
+        _git(self.root, "init", "-q", "-b", "main")
+        (self.root / "a.txt").write_text("a")
+        _git(self.root, "add", "-A")
+        _git(self.root, "commit", "-qm", "base")
+        name = f"Atomic-{uuid.uuid4().hex[:6]}"
+        self.repo = models.Repository(engagement_id=TEST_ENGAGEMENT_ID, name=name, slug=name.lower(), source_type="local_path",
+                                      local_path=str(self.root), local_path_normalised=str(self.root).lower(),
+                                      root_folder_name=name, ingest_status="scanned",
+                                      ingest_commit_sha=_git(self.root, "rev-parse", "HEAD"))
+        self.db.add(self.repo)
+        self.db.commit()
+        self.home = convert.conversions_dir(TEST_ENGAGEMENT_ID, self.repo.slug)
+        self.addCleanup(self.engagement.remove)
+        self.addCleanup(lambda: (self.db.rollback(), self.db.query(models.Repository).filter_by(id=self.repo.id).delete(),
+                                 self.db.commit()))
+        self.addCleanup(lambda: [gitops.remove(self.root, Path(r["worktree"])) for r in convert.records(TEST_ENGAGEMENT_ID, self.repo.slug)])
+        self.addCleanup(lambda: shutil.rmtree(self.home, ignore_errors=True))
+
+        def planned(db, engagement_id, slug, base, branch, worktree):
+            plan = models.ConversionPlan(repository_id=self.repo.id, engagement_id=engagement_id, legacy_commit=base,
+                                         target_layout="in_place", target_framework="net10.0", recipes=[], branch=branch,
+                                         worktree_path=str(worktree))
+            db.add(plan)
+            db.commit()
+            return plan, []
+
+        for target, kwargs in ((convert, {"plan_packages": planned, "check_advisories": lambda *a, **k: [],
+                                          "run_packages": lambda *a: ([], {"seconds": 0, "cycles": 0, "flaky": []}),
+                                          "left_for_agent": lambda *a: {}, "generate": lambda *a, **k: {},
+                                          "_commit_inputs": lambda *a: []}),
+                               (siblings, {"detect": lambda root: []})):
+            for attr, stand_in in kwargs.items():
+                patcher = mock.patch.object(target, attr, side_effect=stand_in)
+                patcher.start()
+                self.addCleanup(patcher.stop)
+
+    def prepare(self):
+        return convert.prepare(self.db, self.repo.engagement_id, self.repo.slug, when_run="new", lookups_from_discovery=True)
+
+    def assert_nothing_left(self):
+        from app import models
+
+        self.assertEqual(_git(self.root, "branch", "--list", "conversion/*"), "")
+        self.assertNotIn("conversions", _git(self.root, "worktree", "list"))
+        self.assertFalse((self.home / "1").exists())
+        self.assertEqual(convert.records(self.repo.engagement_id, self.repo.slug), [])
+        self.assertEqual(self.db.query(models.ConversionPlan).filter_by(repository_id=self.repo.id).count(), 0)
+
+    def test_a_failed_worktree_creation_leaves_nothing_and_the_next_preparation_succeeds(self):
+        from unittest import mock
+
+        def fails_half_way(repo, worktree, branch, start):
+            # As `git worktree add -b` can: the branch made, a folder begun, then a failure.
+            worktree.parent.mkdir(parents=True, exist_ok=True)
+            _git(repo, "branch", branch, start)
+            worktree.mkdir()
+            (worktree / "partial.txt").write_text("x")
+            raise gitops.GitError("git worktree add -b conversion/1: forced failure")
+
+        with mock.patch.object(gitops, "ensure_branch_worktree", side_effect=fails_half_way), \
+                self.assertRaises(gitops.GitError):
+            self.prepare()
+        self.assert_nothing_left()
+
+        done = self.prepare()                                          # no "exists without its record"
+        self.assertEqual((done["action"], done["number"], done["branch"]), ("prepared", 1, "conversion/1"))
+        self.assertTrue((self.home / "1" / convert.RECORD).is_file())
+        self.assertIn("conversion/1", _git(self.root, "branch", "--list", "conversion/*"))
+
+    def test_a_failure_after_the_worktree_is_made_removes_it_too(self):
+        from unittest import mock
+
+        with mock.patch.object(convert, "_commit_inputs", side_effect=RuntimeError("inputs: forced failure")), \
+                self.assertRaises(RuntimeError):
+            self.prepare()
+        self.assert_nothing_left()
+        self.assertEqual(self.prepare()["action"], "prepared")
 
 
 class PrepareStep(unittest.TestCase):

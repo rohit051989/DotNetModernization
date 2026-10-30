@@ -516,11 +516,13 @@ class SelfContained(unittest.TestCase):
                           "Run app.engine.inputs again."],
         "absolute local path": ["Copy it from D:\\Iris\\practice\\runs\\x.", "Read \\\\fileserver\\drop\\in.txt.",
                                 "Logs are in /home/operator/logs."],
-        "lifecycle step": ["Rerun item-detection first.", "As step 6 reported.", "The lifecycle step found it."],
-        "platform vocabulary": ["The catalog's default resolution.", "Not decided by the engagement.", "It is presumptive.",
-                                "One occurrence per file.", "See sensitive-config-key.", "Emitted as SENSITIVE_CONFIG_KEY.",
-                                "Found by discovery.", "A strong signal.", "This work item."],
+        "lifecycle step": ["Rerun item-detection first.", "As impact-analysis reported."],
+        "platform vocabulary": ["See sensitive-config-key.", "Emitted as SENSITIVE_CONFIG_KEY.", "Set detection_state to found.",
+                                "Read engine_guidance.", "Ask the Modernization Platform."],
     }
+    # Ordinary words, the client's as much as the platform's: never refused on their own.
+    ORDINARY = ("The catalog's default resolution. Not decided by the engagement. It is presumptive. One occurrence per "
+                "file. Found by discovery. A strong signal. This work item. As step 6 reported. The lifecycle step found it.")
 
     def _with(self, sentence: str) -> dict:
         items = model()["items"]
@@ -535,6 +537,33 @@ class SelfContained(unittest.TestCase):
                 self.assertIn(check, {f["check"] for f in caught.exception.findings})
                 finding = next(f for f in caught.exception.findings if f["check"] == check)
                 self.assertEqual(finding["file"], ".github/upgrades/skills/applying-container-local-timezone.md")
+
+    def test_an_ordinary_word_on_its_own_is_never_refused(self):
+        self.assertEqual(selfcontained.check({"a.md": self.ORDINARY}, model()["vocabulary"]), [])
+        inputs.build(self._with(self.ORDINARY), None)                      # and the generation completes
+
+    def test_every_name_from_the_repository_is_allowed_wherever_it_appears(self):
+        """The WCF sample's projects are Catalog.Host and the like; a client may have frontend/ and docs/ folders, or
+        even a project named after a lifecycle step. Its own names are allowed in any sentence, quoted or not. A
+        platform document reference or a step slug that is not one of its names is still refused."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for rel, text in (("Catalog.Host/Catalog.Host.csproj", "<Project />"),
+                              ("Catalog.Host/Services/CatalogService.cs", "namespace Catalog.Host.Services { }"),
+                              ("frontend/src/App.tsx", ""), ("docs/README.md", ""),
+                              ("tools/impact-analysis/Tool.csproj", "<Project />")):
+                (root / rel).parent.mkdir(parents=True, exist_ok=True)
+                (root / rel).write_text(text, encoding="utf-8")
+            vocabulary = model()["vocabulary"]
+            allowed = {"a.md": "Catalog.Host calls the Catalog service in Catalog.Host.Services.\n"
+                               "- `Catalog.Host/Catalog.Host.csproj` and frontend/src/App.tsx\n"
+                               "See docs/README.md. The tools/impact-analysis project builds; so does impact-analysis.\n"}
+            self.assertEqual(selfcontained.check(allowed, vocabulary, root), [])
+            refused = {"b.md": "See docs/30-ENTRY-POINT.md Part G.\nRerun item-detection.\nEdit backend/app/x.py.\n"}
+            self.assertEqual({f["check"] for f in selfcontained.check(refused, vocabulary, root)},
+                             {"platform document", "lifecycle step", "platform path"})
+            self.assertTrue({"docs/30-ENTRY-POINT.md", "Part G", "item-detection"}
+                            <= {f["match"] for f in selfcontained.check(refused, vocabulary, root)})
 
     def test_nothing_is_written_when_a_file_is_not_self_contained(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -565,7 +594,7 @@ class SelfContained(unittest.TestCase):
                         "(see docs/ and Part D of its own catalog).\n",            # the attribution paragraph
             }
             self.assertEqual(selfcontained.check(allowed, vocabulary, root), [])
-            refused = {"b.md": "Read `C:\\Other\\file.txt`.\nUpdate the `catalog` entry.\n"}
+            refused = {"b.md": "Read `C:\\Other\\file.txt`.\nUpdate `sensitive-config-key` first.\n"}
             self.assertEqual({f["check"] for f in selfcontained.check(refused, vocabulary, root)},
                              {"absolute local path", "platform vocabulary"})
 

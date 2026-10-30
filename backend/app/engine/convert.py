@@ -373,6 +373,44 @@ def prepare(db, engagement_id: str, slug: str, *, baseline: str | None = None, g
         db.rollback()
         plan, units, not_planned = None, [], f"no package step: {error}"
 
+    # Creating a conversion is all or nothing: if any part fails, everything this creation made goes (_undo_creation),
+    # so the next preparation starts clean instead of finding a branch or folder without its record.
+    try:
+        return _prepare_on(db, repository, engagement, root, latest, base, goal, sibling_links, canaries, baseline,
+                           lookups_from_discovery, refresh, number, folder, worktree, branch, plan, units, not_planned)
+    except BaseException:
+        if not refresh:
+            _undo_creation(db, root, folder, worktree, branch, plan)
+        raise
+
+
+def _undo_creation(db, root: Path, folder: Path, worktree: Path, branch: str, plan) -> None:
+    """Removes what a failed creation made: the worktree, the conversion's folder (its partial record and runbook), the
+    branch and the plan. Each existed only because this creation made it: prepare refuses to start over a folder or
+    branch that exists without its record. A sibling's junction in the folder is unlinked, never followed."""
+    import os
+
+    if folder.exists():
+        for child in folder.iterdir():
+            if os.path.isjunction(child):
+                os.rmdir(child)                     # the junction only; the sibling it points at is untouched
+    gitops.remove(root, worktree)
+    gitops._rmtree(folder)
+    gitops.git(root, "branch", "-D", branch, check=False)
+    if plan is not None:
+        db.rollback()
+        db.query(models.ConversionUnit).filter_by(plan_id=plan.id).delete()
+        db.query(models.ConversionPlan).filter_by(id=plan.id).delete()
+        db.commit()
+
+
+def _prepare_on(db, repository, engagement, root: Path, latest: dict | None, base: str, goal: str,
+                sibling_links: list[str], canaries: list[dict], baseline: str | None, lookups_from_discovery: bool,
+                refresh: bool, number: int, folder: Path, worktree: Path, branch: str, plan, units,
+                not_planned: str | None) -> dict:
+    """prepare, from the advisories check to the written record and runbook."""
+    engagement_id, slug = repository.engagement_id, repository.slug
+
     # Nothing is changed unless no version the package commits or the inputs would ask for has a known advisory
     # today. The inputs are generated aside first, whole: a superset of what they will ask for.
     with tempfile.TemporaryDirectory() as tmp:

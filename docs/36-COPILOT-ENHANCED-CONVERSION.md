@@ -399,20 +399,23 @@ item and resolution, "default" rather than presumptive. The manifest names only 
 the commit and each file's hash.
 
 **The self-containedness check** (`app/engine/inputs/selfcontained.py`) runs in `build`, after the secret
-check and before anything is written, over every generated file including the manifest. It fails on:
+check and before anything is written, over every generated file including the manifest. It checks only terms
+specific to the platform, and never refuses an ordinary word on its own (catalog, resolution, signal, discovery,
+step): those are the client's words too, in its project names and its prose. It fails on:
 
 | Check | Fails on |
 |---|---|
 | platform document | `docs/...`, a spec file name, a `Part X` citation |
 | platform path | `backend/`, `steps/`, `catalog/`, `third_party/` ..., a platform module (`app.engine`), `RUNS_DIR` |
 | absolute local path | a Windows drive or UNC path, or a home or temp directory, unless the repository's own files hold it (the path the instruction is about) |
-| lifecycle step | a lifecycle step's name, "lifecycle step", "step 6" |
-| platform vocabulary | catalog, work item, resolution, occurrence, signal, discovery, engagement, presumptive, matrix entry, input generator, Modernization Platform; any catalog item or resolution id; any signal name |
+| lifecycle step | a lifecycle step's slug |
+| platform vocabulary | any catalog item or resolution id, any signal name, an internal field name (`detection_state`, `engine_guidance` ...), the platform's own name |
 
 Item ids, resolution ids, signal names and step names come from the database (`vocabulary` in the
-collected model). Allowed: a skill's name (`applying-<id>`), Copilot's `discovery: preload|lazy` key, the
-attribution paragraph crediting the plugin a template was adapted from, and a word inside a backtick code
-span that the repository itself holds (eShopOnWeb's own `Catalog` names). The adapted templates' notices
+collected model). Every name that comes from the repository itself is allowed wherever it appears: a file or
+folder name, a file's name without its extension (a project's, `Catalog.Host`), a path it has, a namespace its
+code declares. Also allowed: a skill's name (`applying-<id>`), Copilot's `discovery: preload|lazy` key, and the
+attribution paragraph crediting the plugin a template was adapted from. The adapted templates' notices
 still credit the plugin and say they were modified, without naming platform documents or paths.
 
 Proof: `tests/test_engine_inputs.py` `SelfContained` plants each kind of violation and checks it is
@@ -645,6 +648,10 @@ refuses and says to run discovery again. The versions checked are recorded in `c
     prepares a new conversion on a new branch, and changes no existing one; no engine runs.
   - **A failed baseline**, or a repository the planner cannot plan, still gets a conversion. The package step is
     skipped, the reason recorded, and the package changes go to the engine as instructions.
+  - **Creating a conversion is all or nothing.** If creating its worktree, or any later part, fails, everything that
+    creation made is removed: the branch, the worktree, the conversion's folder with any partial record and runbook,
+    and its plan. The next preparation starts clean, never on "a branch that exists without its conversion record".
+    A refresh of an existing conversion keeps it.
   - **Preparation never fails a discovery run.** What happened is in `conversions/last-prepare.json`, shown in the
     Conversion section: a problem as a short summary (what was refused, and in how many files) with the full list
     behind a "details" toggle; secret values named by reference instead of quoted, as a warning on a preparation

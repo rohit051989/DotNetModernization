@@ -1,26 +1,32 @@
 """Every generated file stands on its own (36-COPILOT-ENHANCED-CONVERSION Part K).
 
 The conversion engine reads one repository's branch and nothing else. A reference to a platform document, a path
-on the platform's machine, a lifecycle step or the catalog's own vocabulary points at nothing it can read, and an
-author's note is noise it may try to act on. So the generator runs this check before writing anything, and a
+on the platform's machine, a lifecycle step or one of the platform's own identifiers points at nothing it can read,
+and an author's note is noise it may try to act on. So the generator runs this check before writing anything, and a
 finding stops it. Each finding names the file, the line, the check and the text matched.
+
+Only terms specific to the platform are checked. An ordinary word on its own (catalog, resolution, signal, discovery,
+step) is never refused: it is also the client's word, in its project names and its prose.
 
 | Check | Fails on |
 |---|---|
 | platform document | `docs/...`, a spec file name (`21-APPLICATION-FINGERPRINTING.md`), a `Part X` citation |
 | platform path | a path into the platform repository (`backend/`, `steps/`, `catalog/`, `third_party/` ...), a platform module (`app.engine`), `RUNS_DIR` |
 | absolute local path | a Windows drive or UNC path, or a home or temp directory, unless the repository's own files contain it: a path the code itself holds is the finding the instruction is about |
-| lifecycle step | a lifecycle step's name (`item-detection`), "lifecycle step", "step 6" |
-| platform vocabulary | catalog, work item, resolution, occurrence, signal, discovery, engagement, presumptive, matrix entry, input generator, Modernization Platform; a catalog item or resolution id; a signal name |
+| lifecycle step | a lifecycle step's slug (`item-detection`) |
+| platform vocabulary | a catalog item or resolution id, a signal name, an internal field name (`detection_state`), the platform's own name |
+
+Every name that comes from the repository itself is allowed wherever it appears: a file or folder name, a file's name
+without its extension (a project's, `Catalog.Host`), a path the repository has, a namespace its code declares. A
+client's `frontend/` or `docs/` folder, or a project named after a step, is its own.
 
 Commit messages (Part M): every commit the platform makes in a client repository passes the same check, through
 `check_commit_message` (app.conversion.gitops.platform_commit), and may carry no co-author trailer: no commit the
 platform makes names an AI as a co-author.
 
-Allowed: a skill's name (`applying-<id>`, a file in the branch), the `discovery: preload|lazy` key that Copilot's
-skill format requires, the attribution paragraph crediting the plugin a template was adapted from ("Adapted from
-`agents/...`" to the end of its paragraph), and a vocabulary word inside a backtick code span the repository's own
-files hold: eShopOnWeb's `src/Catalog/...` is its code, not the platform's word.
+Also allowed: a skill's name (`applying-<id>`, a file in the branch), the `discovery: preload|lazy` key that Copilot's
+skill format requires, and the attribution paragraph crediting the plugin a template was adapted from ("Adapted from
+`agents/...`" to the end of its paragraph).
 """
 import re
 import subprocess
@@ -43,13 +49,15 @@ ABSOLUTE_PATH = (
     re.compile(rf"(?<![\w.:/-])/(?:home|Users|root|tmp)/[^{TERMINATORS}]*"),
     re.compile(rf"(?<![\w.:/-])/[a-zA-Z]/(?:Users|Iris|[A-Z][\w-]*)/[^{TERMINATORS}]*"),
 )
-STEP_WORDS = re.compile(r"(?i)\blifecycle steps?\b|\bstep \d+\b")
-VOCABULARY = re.compile(
-    r"(?i)\bcatalog(?:ue)?s?\b|\bwork items?\b|\bresolutions?\b|\boccurrences?\b|\bsignals?\b|\bdiscovery\b"
-    r"|\bengagements?\b|\bpresumptive\b|\bmatrix entr(?:y|ies)\b|\binput generator\b|\bModernization Platform\b")
+# The platform's own names: its internal field and table names, and its product name. Never an ordinary word.
+PLATFORM_TERMS = re.compile(
+    r"\b(?:item_id|resolution_id|engagement_id|repository_id|detection_state|consumer_impact|engine_guidance"
+    r"|is_recommended|seeded_hash|scope_status|ingest_commit_sha|item_occurrences|work_item_impacts|catalog_items"
+    r"|item_resolutions|engagement_decisions|impact_summaries|engagement_patterns|decision_records)\b"
+    r"|\bModernization Platform\b")
 
 SKILL_NAME = re.compile(r"applying-[a-z0-9-]+")
-CODE_SPAN = re.compile(r"`([^`]+)`")
+NAMESPACE = re.compile(r"(?im)^\s*namespace\s+([A-Za-z_][\w.]*)")
 SKILL_DISCOVERY_KEY = re.compile(r"^\s*discovery: (?:preload|lazy)\s*$")
 ATTRIBUTION_START = re.compile(r"^Adapted from `agents/")
 
@@ -83,6 +91,7 @@ class _Repository:
         self.root = root
         self._texts: list[str] | None = None
         self._names: list[str] = []
+        self._own: set[str] = set()
 
     def _corpus(self) -> list[str]:
         # The tracked files, read once. Not `git grep -F`: it mishandles backslashes in a fixed string on Windows.
@@ -94,10 +103,30 @@ class _Repository:
             else:                                           # not a git checkout: every file in the folder
                 self._names = sorted(p.relative_to(self.root).as_posix() for p in self.root.rglob("*") if p.is_file())
             for name in self._names:
+                parts = name.split("/")
+                self._own.update(parts)
+                self._own.add(parts[-1].rsplit(".", 1)[0])  # Catalog.Host.csproj: Catalog.Host
                 f = self.root / name
                 if f.is_file() and f.stat().st_size <= self.MAX_FILE:
-                    self._texts.append(f.read_bytes().decode("utf-8", errors="replace"))
+                    text = f.read_bytes().decode("utf-8", errors="replace")
+                    self._texts.append(text)
+                    if name.lower().endswith((".cs", ".vb")):
+                        for namespace in NAMESPACE.findall(text):
+                            self._own.add(namespace)
+                            self._own.update(namespace.split("."))
         return self._texts
+
+    def names(self, text: str) -> bool:
+        """A name that comes from the repository itself: a file or folder name, a file's name without its extension, a
+        namespace its code declares, or a path it has (or the start of one)."""
+        if self.root is None or not text:
+            return False
+        self._corpus()
+        t = text.rstrip("/.:")
+        if t in self._own:
+            return True
+        # A path: the whole of a tracked file's path, or a run of its folders, on folder boundaries.
+        return "/" in t and any(f"/{t}/" in f"/{n}/" for n in self._names)
 
     def holds(self, text: str) -> bool:
         """Text the repository holds: a tracked file's path (or part of one), or text in a tracked file, verbatim or
@@ -145,7 +174,9 @@ def check(files: dict[str, str], vocabulary: dict | None = None, repository_root
     findings = []
 
     def found(path: str, number: int, kind: str, match: str) -> None:
-        findings.append({"file": path, "line": number, "check": kind, "match": match.strip()[:120]})
+        # A name from the repository itself is its own, wherever it appears.
+        if not repository.names(match.strip()):
+            findings.append({"file": path, "line": number, "check": kind, "match": match.strip()[:120]})
 
     for path, text in sorted(files.items()):
         for number, line in _checked_lines(text):
@@ -159,16 +190,10 @@ def check(files: dict[str, str], vocabulary: dict | None = None, repository_root
                 for m in pattern.finditer(line):
                     if not repository.holds(m.group(0)):
                         found(path, number, "absolute local path", m.group(0))
-            for m in STEP_WORDS.finditer(line):
-                found(path, number, "lifecycle step", m.group(0))
             for pattern in steps:
                 for m in pattern.finditer(line):
                     found(path, number, "lifecycle step", m.group(0))
-            spans = [(s.start(1), s.end(1), s.group(1)) for s in CODE_SPAN.finditer(line)]
-            for m in VOCABULARY.finditer(line):
-                quoted = next((text_ for start, end, text_ in spans if start <= m.start() and m.end() <= end), None)
-                if quoted is not None and repository.holds(quoted.split(":")[0] if "/" in quoted else quoted):
-                    continue
+            for m in PLATFORM_TERMS.finditer(line):
                 found(path, number, "platform vocabulary", m.group(0))
             for pattern in ids + signals:
                 for m in pattern.finditer(line):
