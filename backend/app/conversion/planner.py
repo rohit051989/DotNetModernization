@@ -311,9 +311,13 @@ def load_deltas() -> list[dict]:
 
 
 def _crosses(from_tfm: str, to_tfm: str, breaks_from: str) -> bool:
+    """A delta is a breaking change between two .NET versions: it applies only when both frameworks have one. A .NET
+    Framework project (net472) has no .NET version to cross from, and never compared."""
     _, f = frameworks._parse(from_tfm)
     _, t = frameworks._parse(to_tfm)
     _, b = frameworks._parse(breaks_from)
+    if f is None or t is None or b is None:
+        return False
     return f < b <= t
 
 

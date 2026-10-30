@@ -5,6 +5,7 @@ and the conversion's status and Verify refusal. Without .NET.
 Run: python -m unittest tests.test_client_install
 """
 import datetime
+import json
 import os
 import subprocess
 import tempfile
@@ -131,6 +132,60 @@ class PrepareStep(unittest.TestCase):
             job_execution_id="x", step_execution_id="y", parameters={"prepare_conversion": False, "repository_id": "z"},
             working_dir=".", output_dir=".", database_url=settings.database_url))
         self.assertEqual(result.exit_status, "NOOP")
+
+    def test_a_refusal_is_a_short_summary_with_the_full_list_behind_it(self):
+        from app.engine.inputs import NotSelfContained, SecretFound
+        from app.steps import conversion_preparation
+
+        findings = [{"file": f".github/upgrades/skills/applying-{n}.md", "check": "repository value",
+                     "detail": f"the value of K{n} in deploy/SetParam.xml"} for n in range(7)]
+        findings.append({"file": ".github/upgrades/skills/applying-0.md", "check": "token", "detail": "line 3"})
+        summary, details = conversion_preparation.problem(SecretFound(findings))
+        self.assertEqual(summary, "Refused, a generated input would still contain a secret value: 8 finding(s) in 7 "
+                                  "file(s). Nothing was written.")
+        self.assertEqual(len(details), 8)
+        self.assertEqual(details[0], ".github/upgrades/skills/applying-0.md: repository value (the value of K0 in "
+                                     "deploy/SetParam.xml)")
+        summary, _ = conversion_preparation.problem(NotSelfContained(
+            [{"file": "a.md", "line": 3, "check": "platform path", "match": "docs/"}]))
+        self.assertIn("not self-contained: 1 finding(s) in 1 file(s)", summary)
+        summary, details = conversion_preparation.problem(RuntimeError("first line\n  second\n  third"))
+        self.assertEqual((summary, details), ("RuntimeError: first line", ["second", "third"]))
+
+    def test_secret_values_named_by_reference_are_a_warning_and_the_preparation_completes(self):
+        from unittest import mock
+
+        from app import models
+        from app.db import SessionLocal
+        from app.steps import conversion_preparation
+        from tests.support import TEST_ENGAGEMENT_ID, CommittedTestEngagement
+
+        db = SessionLocal()
+        self.addCleanup(db.close)
+        engagement = CommittedTestEngagement(db)
+        name = f"Prepare-{uuid.uuid4().hex[:6]}"
+        repo = models.Repository(engagement_id=TEST_ENGAGEMENT_ID, name=name, slug=name.lower(), source_type="local_path",
+                                 local_path=f"C:\\{name}", local_path_normalised=f"c:\\{name.lower()}",
+                                 root_folder_name=name, ingest_status="scanned")
+        db.add(repo)
+        db.commit()
+        self.addCleanup(engagement.remove)
+        self.addCleanup(lambda: (db.query(models.Repository).filter_by(id=repo.id).delete(), db.commit()))
+        prepared = {"action": "prepared", "number": 1, "branch": "conversion/1", "baseline": "a" * 40, "head": "b" * 40,
+                    "baselineFrom": "the commit discovery scanned", "packageStep": {"cycles": 1},
+                    "secretReferences": [{"file": ".github/upgrades/skills/applying-move-to-secret.md", "references": 2}]}
+        with mock.patch.object(convert, "prepare", return_value=prepared):
+            result = conversion_preparation.run(StepContext(
+                step_name="conversion-preparation", step_version="1.0.0", job_name="phase0-repository-discovery",
+                job_execution_id="x", step_execution_id="y", parameters={"repository_id": str(repo.id)},
+                working_dir=".", output_dir=".", database_url=settings.database_url))
+        self.assertEqual(result.exit_status, "COMPLETED")
+        attempt = json.loads((convert.conversions_dir(TEST_ENGAGEMENT_ID, repo.slug) / conversion_preparation.LAST_PREPARE)
+                             .read_text(encoding="utf-8"))
+        self.assertEqual(attempt["status"], "prepared")
+        self.assertEqual(attempt["warnings"], {
+            "summary": "2 secret value(s) named by file, key and line instead of quoted, in 1 generated file(s)",
+            "details": [".github/upgrades/skills/applying-move-to-secret.md: 2 reference(s)"]})
 
 
 def _preflight():

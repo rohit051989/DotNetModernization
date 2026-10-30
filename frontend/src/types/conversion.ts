@@ -131,7 +131,12 @@ export interface JobRef {
 export interface PrepareAttempt {
   at: string | null
   status: string | null
+  /** A short summary: what was refused, and in how many files. */
   message: string | null
+  /** The full list behind the summary; absent from attempts recorded before it was kept apart. */
+  details?: string[]
+  /** Prepared, with secret values named by file, key and line instead of quoted. */
+  warnings?: { summary: string; details: string[] } | null
   number: number | null
   jobExecutionId: string | null
 }

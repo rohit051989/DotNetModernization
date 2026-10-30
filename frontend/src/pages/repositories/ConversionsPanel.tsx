@@ -32,6 +32,37 @@ const VERDICT_STYLE: Record<string, string> = {
 
 const RUNNING = ['STARTING', 'STARTED']
 
+/** A preparation's problem as a short summary and the full list. An attempt recorded before the two were kept apart
+ *  has one long message of "file: check (detail)" findings joined by "; ": summarised here the same way. */
+export function preparationProblem(message: string | null, details?: string[]): { summary: string; details: string[] } {
+  const text = message ?? ''
+  if (details && details.length) return { summary: text, details }
+  const parts = text.split('; ')
+  if (parts.length < 3) return { summary: text, details: [] }
+  const head = /^(\w+): /.exec(parts[0])
+  const findings = head ? [parts[0].slice(head[0].length), ...parts.slice(1)] : parts
+  const files = new Set(findings.map((f) => f.split(/:(?:\d+:)? /)[0]))
+  return { summary: `${head ? `${head[1]}: ` : ''}${findings.length} finding(s) in ${files.size} file(s)`, details: findings }
+}
+
+function PreparationNote({ tone, label, summary, details }: { tone: 'failed' | 'kept' | 'warning'; label: string; summary: string; details: string[] }) {
+  const style = tone === 'failed' ? 'border-red-200 bg-red-50 text-red-800'
+    : tone === 'warning' ? 'border-amber-200 bg-amber-50 text-amber-900' : 'border-neutral-200 bg-neutral-50 text-neutral-600'
+  return (
+    <div className={`rounded border px-2 py-1 text-xs ${style}`} data-testid={`preparation-${tone}`}>
+      <p>{label}: {summary}</p>
+      {details.length > 0 && (
+        <details className="mt-1">
+          <summary className="cursor-pointer select-none underline decoration-dotted">details ({details.length})</summary>
+          <ul className="mt-1 list-disc space-y-0.5 pl-4 font-mono text-[11px]">
+            {details.map((d, i) => <li key={i} className="break-all">{d}</li>)}
+          </ul>
+        </details>
+      )}
+    </div>
+  )
+}
+
 function running(job: JobRef | null) {
   return !!job && RUNNING.includes(job.batch_status)
 }
@@ -307,9 +338,12 @@ export function ConversionsPanel({ repositoryId, refreshToken, refusal = null }:
         </p>
       )}
       {last && (last.status === 'failed' || last.status === 'kept') && (
-        <p className={`rounded border px-2 py-1 text-xs ${last.status === 'failed' ? 'border-red-200 bg-red-50 text-red-800' : 'border-neutral-200 bg-neutral-50 text-neutral-600'}`}>
-          Last preparation ({when(last.at)}): {last.message}
-        </p>
+        <PreparationNote tone={last.status === 'failed' ? 'failed' : 'kept'} label={`Last preparation (${when(last.at)})`}
+          {...preparationProblem(last.message, last.details)} />
+      )}
+      {last && last.status !== 'failed' && last.warnings && (
+        <PreparationNote tone="warning" label={`Last preparation (${when(last.at)})`}
+          summary={last.warnings.summary} details={last.warnings.details} />
       )}
 
       <div className="flex flex-wrap items-center gap-2">

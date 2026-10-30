@@ -76,8 +76,18 @@ a change is made to the source data and regenerated.
 
 ### Rules for every generated file
 
-- **No secret values**, ever. The step 5 secrets rules apply to everything generated: occurrence
-  locations and key names, never values
+- **No secret values**, ever. The entry-point-inventory secrets rules apply to everything generated: occurrence
+  locations and key names, never secret values. A value is secret by what it is, not where it came from: its key is
+  sensitive as discovery classifies keys, or the value has a secret's shape (a connection string, a URL with
+  credentials, a token). Binding names, host names, URLs, paths and other ordinary configuration values may appear,
+  a Web Deploy SetParameters file's included. A configuration transform's own attributes (`xdt:Transform`,
+  `xdt:Locator`) are never values, and an element with no name or key (`<connectionStrings>`) names only its own
+  text by its tag. A secret is found only as a whole token (`Application` is not in `ApplicationSettings`), and never
+  inside a repository-relative path the generator wrote, which is never changed: replacing a folder name in it would
+  point the engine at a file that does not exist. Where a generated file would quote a secret, it names it by file, key
+  and line instead (`[not copied: the value of DbPassword in deploy/SetParam.xml:6]`); the preparation records a
+  warning naming the generated file and completes. It refuses only if a secret would still be written after that
+  (`app/engine/inputs/secrets.py`)
 - **One transformation per instruction file**, with explicit "If X is found, do Y" logic, and a
   before-and-after example where the catalog holds one
 - **Ordering constraints become prerequisites** between instruction files
@@ -636,7 +646,9 @@ refuses and says to run discovery again. The versions checked are recorded in `c
   - **A failed baseline**, or a repository the planner cannot plan, still gets a conversion. The package step is
     skipped, the reason recorded, and the package changes go to the engine as instructions.
   - **Preparation never fails a discovery run.** What happened is in `conversions/last-prepare.json`, shown in the
-    Conversion section.
+    Conversion section: a problem as a short summary (what was refused, and in how many files) with the full list
+    behind a "details" toggle; secret values named by reference instead of quoted, as a warning on a preparation
+    that completed.
   - **Package lookups** older than their limit are refreshed, never refused: a stand-alone `prepare` runs discovery
     first.
   - **Sibling folders** a repository's `nuget.config` reaches by relative path are detected (`siblings.detect`).

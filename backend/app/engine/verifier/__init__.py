@@ -325,7 +325,11 @@ def shell_scripts(root: Path, tip_tree: Path, tip: str, changed: list[dict]) -> 
 
 def delta_catalog(model: dict) -> str:
     """DELTA_CATALOG.md in the plugin's table form, from the baseline's discovery: the Behavioral-silent items
-    with their sites, the framework deltas and the breaking package changes."""
+    with their sites, the framework deltas and the breaking package changes. A value shaped like a secret is named by
+    where it is, never quoted (app.engine.inputs.secrets)."""
+    from app.engine.inputs import secrets
+
+    model = secrets.redact(model, None)
     rows = ["| ID | Delta | Category | Sites |", "|---|---|---|---|"]
     n = 0
     for item in model["items"]:

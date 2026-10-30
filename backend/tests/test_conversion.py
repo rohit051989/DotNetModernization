@@ -78,6 +78,13 @@ class FrameworkTests(unittest.TestCase):
         self.assertIsNone(frameworks.supports({"dependencyFrameworks": ["net472"], "libFrameworks": None}, "net8.0").supported)
         self.assertTrue(frameworks.supports({"dependencyFrameworks": ["net472"], "libFrameworks": []}, "net8.0").supported)
 
+    def test_a_delta_applies_only_between_two_dotnet_versions(self):
+        self.assertTrue(planner._crosses("net8.0", "net10.0", "net10.0"))
+        self.assertFalse(planner._crosses("net10.0", "net10.0", "net10.0"))
+        # A .NET Framework project has no .NET version to cross from: no delta, and no failure (the WCF sample).
+        self.assertFalse(planner._crosses("net472", "net10.0", "net10.0"))
+        self.assertFalse(planner._crosses("net8.0-windows", "net10.0", "net10.0"))
+
 
 class DeclarationTests(unittest.TestCase):
     def setUp(self):

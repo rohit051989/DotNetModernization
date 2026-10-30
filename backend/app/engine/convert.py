@@ -194,13 +194,17 @@ def _repository(db, engagement_id: str, slug: str) -> models.Repository:
             .filter(models.Repository.deleted_at.is_(None)).one())
 
 
-def _commit_inputs(db, engagement_id: str, slug: str, worktree: Path, applied: list[dict]) -> None:
+def _commit_inputs(db, engagement_id: str, slug: str, worktree: Path, applied: list[dict]) -> list[dict]:
+    """Generates and commits the inputs. Returns [{file, references}]: each input that names a secret value by its
+    file, key and line instead of quoting it (app.engine.inputs.secrets)."""
     from app.engine import paths
     from app.engine.inputs import selfcontained
 
-    generate(db, engagement_id, slug, worktree, applied=applied)
+    warnings: list[dict] = []
+    generate(db, engagement_id, slug, worktree, applied=applied, warnings=warnings)
     gitops.platform_commit(worktree, INPUTS_COMMIT, vocabulary=selfcontained.vocabulary(db),
                            paths=[p.rstrip("/") for p in paths.GENERATED_INPUT_PATHS if (worktree / p.rstrip("/")).exists()])
+    return warnings
 
 
 # ---------------------------------------------------------------- the package changes the platform applies
@@ -400,7 +404,7 @@ def prepare(db, engagement_id: str, slug: str, *, baseline: str | None = None, g
         units, step = run_packages(db, plan, sibling_links)
         changes, applied = [_unit_record(u) for u in units], applied_changes(units)
     packages_head = gitops.head(worktree)
-    _commit_inputs(db, engagement_id, slug, worktree, applied)
+    secret_references = _commit_inputs(db, engagement_id, slug, worktree, applied)
 
     solutions = sorted(p.name for p in worktree.glob("*.sln"))
     record = {
@@ -425,6 +429,9 @@ def prepare(db, engagement_id: str, slug: str, *, baseline: str | None = None, g
         # their rerun: flaky, reported, never a failure. `skipped`: why no package change was applied.
         "packageStep": step,
         "leftForAgent": left_for_agent(db, engagement_id, slug, applied, changes),
+        # The inputs that name a secret value by its file, key and line instead of quoting it: a warning, never a
+        # failure (app.engine.inputs.secrets).
+        "secretReferences": secret_references,
     }
     _write_record(record)
     Path(record["runbook"]).write_text(render_runbook(record), encoding="utf-8", newline="\n")
@@ -434,9 +441,10 @@ def prepare(db, engagement_id: str, slug: str, *, baseline: str | None = None, g
 def left_for_agent(db, engagement_id: str, slug: str, applied: list[dict], changes: list[dict]) -> dict:
     """What the agent's inputs still ask for: each item with its resolution and places (a package item's values),
     the package changes that did not go green, and the assisted ones (breaking upgrades)."""
-    from app.engine.inputs import model_for
+    from app.engine.inputs import model_for, secrets
 
-    model, _ = model_for(db, engagement_id, slug, applied)
+    model, repository = model_for(db, engagement_id, slug, applied)
+    model = secrets.redact(model, Path(repository.local_path))     # a secret is named by where it is, never quoted
     return {"items": [{"item": i["id"], "resolution": (i["resolution"] or {}).get("id"), "places": len(i["occurrences"]),
                        "values": [o.get("value") for o in i["occurrences"]] if i["id"].startswith("package-") else []}
                       for i in model["items"]],

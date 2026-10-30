@@ -10,8 +10,9 @@ the assessment addendum and the decision sheet, plus `.github/platform-inputs/in
 with a sha256 per file. Generated, never hand-edited: change the source data and regenerate.
 
 Nothing is written unless two checks pass. The secret check (app.engine.inputs.secrets): no generated file may
-look like it holds a secret, and none may contain any value from the repository's own configuration that the step 5
-rules treat as secret. The self-containedness check (app.engine.inputs.selfcontained, Part K): no generated file may
+look like it holds a secret, and none may contain a secret value from the repository's own configuration. A secret
+the inputs would quote is replaced by a reference to its file, key and line before the check, with a warning naming
+the generated file (`build`'s `warnings`); only a secret still there after that refuses. The self-containedness check (app.engine.inputs.selfcontained, Part K): no generated file may
 refer to a platform document, a platform or absolute local path, a lifecycle step or the platform's vocabulary,
 because the engine reads only the branch.
 
@@ -59,13 +60,18 @@ def manifest(model: dict, files: dict[str, str]) -> str:
     }, indent=2, sort_keys=True) + "\n"
 
 
-def build(model: dict, repository_root: Path | None) -> dict[str, str]:
-    """{path: text} for every input including the manifest. Raises SecretFound or NotSelfContained; either way
-    nothing has been written."""
-    files = rendering.render(model)
-    findings = secrets.check(files, repository_root)
+def build(model: dict, repository_root: Path | None, warnings: list | None = None) -> dict[str, str]:
+    """{path: text} for every input including the manifest. A secret value the inputs would quote is replaced by a
+    reference to where it is, and `warnings`, when given, receives [{file, references}] for each generated file that
+    names one. Raises SecretFound (a secret still there after that) or NotSelfContained; either way nothing has been
+    written."""
+    paths = secrets.paths_of(model)            # a value inside one of these is a folder or file name, never a finding
+    files = secrets.redact_files(rendering.render(secrets.redact(model, repository_root)), repository_root, paths)
+    findings = secrets.check(files, repository_root, paths)
     if findings:
         raise SecretFound(findings)
+    if warnings is not None:
+        warnings.extend(secrets.warnings(files))
     files[MANIFEST] = manifest(model, files)
     loose = selfcontained.check(files, model.get("vocabulary"), repository_root)
     if loose:
@@ -138,11 +144,12 @@ def model_for(db, engagement_id: str, slug: str, applied: list[dict] | None = No
 
 
 def generate(db, engagement_id: str, slug: str, out: Path, missing: list | None = None,
-             applied: list[dict] | None = None) -> dict[str, str]:
+             applied: list[dict] | None = None, warnings: list | None = None) -> dict[str, str]:
     """Writes the inputs into `out`. `missing`, when given, receives the changes without engine-facing guidance.
-    `applied`: what the platform already applied on the branch, left out of the inputs (without_applied)."""
+    `applied`: what the platform already applied on the branch, left out of the inputs (without_applied).
+    `warnings`: the generated files that name a secret by reference instead of quoting it (build)."""
     model, repository = model_for(db, engagement_id, slug, applied)
-    files = build(model, Path(repository.local_path))
+    files = build(model, Path(repository.local_path), warnings)
     write(files, out)
     if missing is not None:
         missing.extend(rendering.without_guidance(model))
@@ -195,8 +202,9 @@ def main(argv: list[str] | None = None) -> int:
         from app.db import SessionLocal
         db = SessionLocal()
         missing: list[dict] = []
+        warned: list[dict] = []
         try:
-            files = generate(db, args.engagement, args.repository, args.out, missing)
+            files = generate(db, args.engagement, args.repository, args.out, missing, warnings=warned)
         except SecretFound as err:
             print(f"Refused: a generated file would contain a secret value. Nothing was written. {err}", file=sys.stderr)
             return 1
@@ -210,6 +218,9 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  {rel}")
         for m in missing:
             print(f"  without engine-facing guidance ({m['missing']}): {m['item']} / {m['resolution']}")
+        for w in warned:
+            print(f"  warning: {w['file']} names {w['references']} secret value(s) by file, key and line instead of "
+                  "quoting them")
         return 0
     if args.command == "merge-addendum":
         try:

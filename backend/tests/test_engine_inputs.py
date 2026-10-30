@@ -631,23 +631,43 @@ class NoSecretValue(unittest.TestCase):
             self.assertNotIn(secret, text)
         self.assertIn("CatalogConnection", text)                       # the name is kept, as discovery keeps it
 
-    def test_a_leaked_value_is_refused_and_never_echoed(self):
-        for leak in (FAKE_PASSWORD, FAKE_KEY, FAKE_SETPARAM):
+    def test_a_secret_value_is_named_by_its_file_key_and_line_and_the_inputs_complete(self):
+        for leak, key in ((FAKE_PASSWORD, "ConnectionStrings:CatalogConnection"), (FAKE_KEY, "Payments:ApiKey"),
+                          (FAKE_SETPARAM, "BackendSecretSetting@value")):
             items = model()["items"]
             items[0]["occurrences"][0]["lines"][0]["value"] = f"Uses {leak} here"
-            with self.subTest(leak=leak[:4]), self.assertRaises(inputs.SecretFound) as caught:
-                inputs.build(model(items), self.root)
-            self.assertNotIn(leak, str(caught.exception))
-            self.assertTrue(all(leak not in json.dumps(f) for f in caught.exception.findings))
+            warned: list[dict] = []
+            with self.subTest(leak=leak[:4]):
+                files = inputs.build(model(items), self.root, warned)
+                text = "\n".join(files.values())
+                self.assertNotIn(leak, text)
+                self.assertIn(f"[not copied: the value of {key} in ", text)
+                # The instruction quotes the place, and so does the addendum's list of behavioural deltas.
+                self.assertEqual([w["file"] for w in warned],
+                                 [f"{paths.PLATFORM_INPUTS_DIR}/assessment-addendum.md",
+                                  f"{paths.UPGRADE_SKILLS_DIR}/applying-container-local-timezone.md"])
+                self.assertTrue(all(leak not in json.dumps(w) for w in warned))
 
-    def test_secret_shapes_are_refused_even_when_the_repository_does_not_hold_them(self):
+    def test_a_value_shaped_like_a_secret_is_named_by_its_place_even_when_the_repository_does_not_hold_it(self):
         shapes = ("Server=db;Database=Cat;User Id=sa;Password=x1y2z3;", "apiKey: abcdef123456",
                   "https://user:pw123@host/x", "ghp_" + "A" * 36, "password=hunter22")
         for shape in shapes:
             items = model()["items"]
             items[0]["occurrences"][0]["lines"][0]["value"] = shape
-            with self.subTest(shape=shape[:6]), self.assertRaises(inputs.SecretFound):
-                inputs.build(model(items), None)
+            warned: list[dict] = []
+            with self.subTest(shape=shape[:6]):
+                files = inputs.build(model(items), None, warned)
+                self.assertNotIn(shape, "\n".join(files.values()))
+                self.assertIn("[not copied: the value at src/A/A.cs:10]", "\n".join(files.values()))
+                self.assertTrue(warned)
+
+    def test_a_secret_in_the_rendered_text_alone_is_replaced_too(self):
+        """The safety net behind the model: a value that reaches a file some other way."""
+        files = secrets.redact_files({"a.md": f"x {FAKE_KEY} y\npassword=hunter22\n"}, self.root)
+        self.assertEqual(secrets.check(files, self.root), [])
+        self.assertIn("[not copied: the value of Payments:ApiKey in src/A/appsettings.json:1]", files["a.md"])
+        self.assertIn("[not copied: a value shaped like a sensitive key with a value]", files["a.md"])
+        self.assertEqual(secrets.warnings(files), [{"file": "a.md", "references": 2}])
 
     def test_a_configuration_key_path_is_not_a_key_with_a_value(self):
         """Registry 1.12.0 names keys by their leaf: EnterpriseAuthentication:Token:SigningKey is a path, not a secret."""
@@ -658,13 +678,162 @@ class NoSecretValue(unittest.TestCase):
             with self.subTest(leak=leak[:6]):
                 self.assertTrue(secrets.check({"a.md": leak}, None))
 
-    def test_nothing_is_written_when_a_secret_is_found(self):
+    def test_nothing_is_written_when_a_secret_would_still_be_written(self):
         items = model()["items"]
         items[0]["occurrences"][0]["lines"][0]["value"] = FAKE_PASSWORD
         out = self.root / "out"
-        with self.assertRaises(inputs.SecretFound):
+        # Were a secret to get past both replacements, the check still refuses, and never echoes it.
+        with mock.patch.object(secrets, "redact", side_effect=lambda m, _r: m), \
+                mock.patch.object(secrets, "redact_files", side_effect=lambda f, *_: f), \
+                self.assertRaises(inputs.SecretFound) as caught:
             inputs.write(inputs.build(model(items), self.root), out)
         self.assertFalse(out.exists())
+        self.assertNotIn(FAKE_PASSWORD, str(caught.exception))
+
+    def test_set_parameters_values_that_are_not_secret_may_appear(self):
+        """Client A's preparation was refused for binding names and host names a SetParameters file sets, as the WCF
+        sample's do. They are configuration, not secrets: the inputs quote them and complete."""
+        params = self.root / "CustomFiles" / "Orders.Host" / "SetParamFiles" / "DEV"
+        params.mkdir(parents=True)
+        (params / "SetParam.xml").write_text(
+            '<parameters>\n'
+            '  <setParameter name="OrdersServiceURL" value="http://orders-svc.client-a.example/Orders.svc" />\n'
+            '  <setParameter name="LogDirectory" value="G:\\Logs\\Orders\\" />\n'
+            '  <setParameter name="Orders_BasicHttpBinding_IOrderService_Binding" value="BasicHttpBinding_IOrderService" />\n'
+            '  <setParameter name="Cors_Domain_Web" value="web.client-a.example" />\n'
+            '  <setParameter name="OrdersDbPassword" value="Pa55-word-778899" />\n'
+            '</parameters>\n', encoding="utf-8")
+        values = {v["value"] for v in secrets.repository_values(self.root)}
+        self.assertNotIn("BasicHttpBinding_IOrderService", values)
+        self.assertNotIn("web.client-a.example", values)
+        self.assertNotIn("http://orders-svc.client-a.example/Orders.svc", values)
+        self.assertIn("Pa55-word-778899", values)        # its key is sensitive
+
+        items = [
+            _item("unqualified-hostname", "fully-qualify-hostname", value="web.client-a.example",
+                  file="CustomFiles/Orders.Host/SetParamFiles/DEV/SetParam.xml", line=5),
+            _item("wcf-client-binding", "keep-wcf-client-binding", value="BasicHttpBinding_IOrderService",
+                  file="src/A/Web.config", line=12),
+            _item("sensitive-config-key", "move-to-secret", value="Pa55-word-778899",
+                  file="CustomFiles/Orders.Host/SetParamFiles/DEV/SetParam.xml", line=6),
+        ]
+        m = model(items)
+        m["vocabulary"]["item_ids"] += ["unqualified-hostname", "wcf-client-binding"]
+        m["vocabulary"]["resolution_ids"] += ["fully-qualify-hostname", "keep-wcf-client-binding"]
+        warned: list[dict] = []
+        files = inputs.build(m, self.root, warned)
+        text = "\n".join(files.values())
+        self.assertIn("web.client-a.example", text)
+        self.assertIn("BasicHttpBinding_IOrderService", text)
+        self.assertNotIn("Pa55-word-778899", text)
+        self.assertIn("[not copied: the value of OrdersDbPassword@value in "
+                      "CustomFiles/Orders.Host/SetParamFiles/DEV/SetParam.xml:6]", text)
+        self.assertEqual({w["file"] for w in warned}, {f"{paths.UPGRADE_SKILLS_DIR}/applying-move-to-secret.md"})
+
+    def test_a_configuration_transforms_own_attributes_are_never_values(self):
+        """<connectionStrings xdt:Transform="Replace">: a tag that sounds sensitive names only its own text, and the
+        transform's attributes say how, not what. "Replace" was found in instruction text on client A's installation."""
+        (self.root / "src" / "A" / "Web.Release.config").write_text(
+            '<configuration xmlns:xdt="http://schemas.microsoft.com/XML-Document-Transform">\n'
+            '  <connectionStrings xdt:Transform="Replace">\n'
+            '    <add name="Orders" connectionString="Server=db;Database=Orders;Integrated Security=true" '
+            'xdt:Locator="Match(name)" />\n'
+            '  </connectionStrings>\n'
+            '  <clientCredentials xdt:Transform="Replace">\n'
+            '    <clientCertificate findValue="CN=orders-client" storeLocation="LocalMachine" x509FindType="FindBySubjectName" />\n'
+            '  </clientCredentials>\n'
+            '  <Password>text-secret-7788</Password>\n'
+            '</configuration>\n', encoding="utf-8")
+        values = {v["value"] for v in secrets.repository_values(self.root)}
+        for ordinary in ("Replace", "Match(name)", "LocalMachine", "FindBySubjectName", "CN=orders-client"):
+            self.assertNotIn(ordinary, values)
+        self.assertIn("Server=db;Database=Orders;Integrated Security=true", values)     # a connection string still is
+        self.assertIn("text-secret-7788", values)                                      # a sensitive tag's own text
+        self.assertEqual(secrets.check({"a.md": "Replace the package reference, then build.\n"}, self.root), [])
+
+    def test_a_repository_value_is_found_only_as_a_whole_token(self):
+        params = self.root / "deploy" / "SetParam.xml"
+        params.parent.mkdir()
+        params.write_text('<parameters><setParameter name="EventLog_Password" value="Application" /></parameters>',
+                          encoding="utf-8")
+        self.assertEqual(secrets.check({"a.md": "Read ApplicationSettings and MyApplication_Name.\n"}, self.root), [])
+        for whole in ("the Application log", "`Application`", "log=Application;"):
+            with self.subTest(text=whole):
+                self.assertTrue(secrets.check({"a.md": whole}, self.root))
+                self.assertNotIn("Application", secrets.redact_files({"a.md": whole}, self.root)["a.md"].replace(
+                    "[not copied: the value of EventLog_Password@value in deploy/SetParam.xml:1]", ""))
+
+    def test_a_value_inside_a_path_the_generator_wrote_is_neither_found_nor_replaced(self):
+        params = self.root / "deploy" / "SetParam.xml"
+        params.parent.mkdir()
+        params.write_text('<parameters><setParameter name="Site_Password" value="Orders.Web" /></parameters>',
+                          encoding="utf-8")
+        written = {"src/Orders.Web/Program.cs", "src/Orders.Web/Orders.Web.csproj"}
+        text = "- `src/Orders.Web/Program.cs:3` (src/Orders.Web/Orders.Web.csproj)\n"
+        self.assertEqual(secrets.check({"a.md": text}, self.root, written), [])
+        self.assertEqual(secrets.redact_files({"a.md": text}, self.root, written)["a.md"], text)
+        # The same value standing on its own is still found, and replaced; the path beside it stays.
+        both = text + "Sign in with Orders.Web.\n"
+        self.assertTrue(secrets.check({"a.md": both}, self.root, written))
+        redacted = secrets.redact_files({"a.md": both}, self.root, written)["a.md"]
+        self.assertTrue(redacted.startswith(text))
+        self.assertIn("Sign in with [not copied: the value of Site_Password@value in deploy/SetParam.xml:1].", redacted)
+
+    def test_ordinary_set_parameters_values_and_transforms_prepare_with_paths_intact(self):
+        """A scratch repository as client A's: SetParam files with a WCF binding type, a security mode, a credential
+        type, a grant type, an event log name, a DNS suffix and folder names the inputs use in paths; a transform;
+        and a *_Password value. Only the password is found, and named by reference."""
+        for env, suffix in (("DEV", "dev.client-a.example"), ("PROD", "client-a.example")):
+            folder = self.root / "CustomFiles" / "Orders.Web" / "SetParamFiles" / env
+            folder.mkdir(parents=True)
+            (folder / "SetParam.xml").write_text(
+                '<parameters>\n'
+                '  <setParameter name="OrdersService_BindingType" value="BasicHttpBinding" />\n'
+                '  <setParameter name="OrdersService_SecurityMode" value="Transport" />\n'
+                '  <setParameter name="OrdersService_ClientCredentialType" value="Certificate" />\n'
+                '  <setParameter name="Auth_GrantType" value="password" />\n'
+                '  <setParameter name="EventLogName" value="Application" />\n'
+                f'  <setParameter name="DnsSuffix" value="{suffix}" />\n'
+                '  <setParameter name="WebProjectFolder" value="Orders.Web" />\n'
+                '  <setParameter name="ApiProjectFolder" value="Orders.Api" />\n'
+                '  <setParameter name="Orders_Db_Password" value="Pa55-word-778899" />\n'
+                '</parameters>\n', encoding="utf-8")
+        (self.root / "src" / "A" / "Web.Release.config").write_text(
+            '<configuration xmlns:xdt="http://schemas.microsoft.com/XML-Document-Transform">\n'
+            '  <connectionStrings xdt:Transform="Replace" />\n'
+            '</configuration>\n', encoding="utf-8")
+        values = {v["value"] for v in secrets.repository_values(self.root)}
+        for ordinary in ("BasicHttpBinding", "Transport", "Certificate", "password", "Application", "dev.client-a.example",
+                         "client-a.example", "Orders.Web", "Orders.Api", "Replace"):
+            self.assertNotIn(ordinary, values)
+        self.assertIn("Pa55-word-778899", values)
+
+        web, api = "src/Orders.Web/Program.cs", "src/Orders.Api/Startup.cs"
+        items = [
+            _item("wcf-client-binding", "keep-wcf-client-binding", value="BasicHttpBinding Transport Certificate", file=web),
+            _item("unqualified-hostname", "fully-qualify-hostname", value="dev.client-a.example", file=api, line=4),
+            _item("event-log-usage", "log-to-stdout", value="Application", file=web, line=20),
+            _item("sensitive-config-key", "move-to-secret", value="Pa55-word-778899",
+                  file="CustomFiles/Orders.Web/SetParamFiles/DEV/SetParam.xml", line=10),
+        ]
+        items[0]["occurrences"][0]["lines"].append({"line": 11, "value": "Replace the binding; the grant type stays password",
+                                                     "member": "M", "type": "T", "certainty": None})
+        m = model(items)
+        m["files"] = [web, api, "CustomFiles/Orders.Web/SetParamFiles/DEV/SetParam.xml", "src/A/Web.Release.config"]
+        m["vocabulary"]["item_ids"] += ["wcf-client-binding", "unqualified-hostname", "event-log-usage"]
+        m["vocabulary"]["resolution_ids"] += ["keep-wcf-client-binding", "fully-qualify-hostname", "log-to-stdout"]
+        warned: list[dict] = []
+        files = inputs.build(m, self.root, warned)
+        text = "\n".join(files.values())
+        for ordinary in ("BasicHttpBinding Transport Certificate", "dev.client-a.example", "`Application`",
+                         "Replace the binding; the grant type stays password"):
+            self.assertIn(ordinary, text)
+        for path in (web, api):
+            self.assertIn(f"`{path}", text)                         # every path as the generator wrote it
+        self.assertNotIn("Pa55-word-778899", text)
+        self.assertIn("[not copied: the value of Orders_Db_Password@value in "
+                      "CustomFiles/Orders.Web/SetParamFiles/DEV/SetParam.xml:10]", text)
+        self.assertEqual({w["file"] for w in warned}, {f"{paths.UPGRADE_SKILLS_DIR}/applying-move-to-secret.md"})
 
     def test_the_static_templates_hold_no_secret_shape(self):
         files = {p.name: p.read_text(encoding="utf-8") for p in render.TEMPLATES.rglob("*.md")}

@@ -262,10 +262,17 @@ _DISCOVERY_JOB = "phase0-repository-discovery"
 _VERIFICATION_JOB = "conversion-verification"
 
 
+class PrepareWarningsOut(BaseModel):
+    summary: str
+    details: list[str] = []
+
+
 class PrepareAttemptOut(BaseModel):
     at: str | None = None
     status: str | None = None          # prepared, refreshed, kept, failed
-    message: str | None = None
+    message: str | None = None         # a short summary: what was refused, and in how many files
+    details: list[str] = []            # the full list behind it
+    warnings: PrepareWarningsOut | None = None      # prepared, with secret values named by reference
     number: int | None = None
     jobExecutionId: str | None = None
 
