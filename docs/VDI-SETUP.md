@@ -1748,6 +1748,16 @@ hand. Everything else an update brings, bootstrap applies by itself. Apply every
 had (`previousCommit` in `PLATFORM_SOURCE.json` after the update; in our own installs, the commit before step 5 of
 the appendix), oldest of them first. Entries up to 2026-10-23 were the notes of releases 2 to 7, which are named so.
 
+#### 2026-10-30, 46932fb: conversion preparation and configuration values
+
+A repository whose last conversion preparation failed — the Conversion section shows "Last preparation" in red, for
+example `SecretFound` for a binding name or host name a SetParameters file sets, or a `TypeError` on a .NET Framework
+repository — gets no new conversion by itself. After updating, **on the machine that owns it**, either press **Start
+the next conversion** on its Conversion section, or rescan it (**Rescan**, or `python -m app.repositories.cli
+discover --engagement <engagement> --repository <repository>`): preparation runs again and now completes. Where a generated input would have quoted a secret value, it
+names it by file, key and line instead, and the Conversion section shows that as a warning. Nothing else needs doing:
+no setting, no migration.
+
 #### 2026-10-27, eb3e4c5: the admin updates first; your own clone
 
 From this update on, **the admin updates first, then every developer pulls and restarts** ("Several developers: the
