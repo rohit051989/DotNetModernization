@@ -49,6 +49,10 @@ def local_snapshot(repo: models.Repository) -> dict:
             "package_step": rec.get("packageStep") or {}, "left_for_agent": rec.get("leftForAgent") or {},
             "verify_refusal": convert.verify_refusal(rec), "verification": _verification(rec, s),
             "plan_id": rec.get("planId"),
+            # The scope it was prepared with (36-COPILOT-ENHANCED-CONVERSION Part O): kept once it has been run.
+            "scope": {"left_out": len((rec.get("scope") or {}).get("excluded") or []),
+                      "projects": (rec.get("scope") or {}).get("projects"),
+                      "filter": (rec.get("scope") or {}).get("filter")},
         })
     root = Path(repo.local_path)
     head = gitops.git(root, "rev-parse", "HEAD", check=False).strip() if root.exists() else ""

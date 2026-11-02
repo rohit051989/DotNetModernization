@@ -4,7 +4,7 @@ Two roles:
 - admin: everything, including the catalog, users, engagements, decisions and confirmations;
 - developer: registers repositories, and acts on the ones they own.
 
-A repository's owner (the developer who registered it) may rescan it, edit it, prepare and verify its conversions,
+A repository's owner (the developer who registered it) may rescan it, edit it, prepare and verify its conversions, save its conversion scope,
 resume or stop its jobs, and delete it (restoring a soft-deleted one is an admin's, CLAUDE.md rule 7). Everyone else sees it read-only. A repository with no owner yet (registered
 before sign-in existed) is acted on only by an admin, until one assigns an owner.
 
@@ -45,6 +45,8 @@ RULES: dict[tuple[str, str], str] = {
     ("POST", "/api/repositories/{repository_id}/deletion"): OWNER,
     ("POST", "/api/repositories/{repository_id}/conversions"): OWNER,
     ("POST", "/api/repositories/{repository_id}/conversions/{number}/verify"): OWNER,
+    # Which of its projects its conversions cover: saving prepares an unrun conversion again, on its machine.
+    ("PUT", "/api/repositories/{repository_id}/scope"): OWNER,
     # A job on the owner's repository.
     ("POST", "/api/workflow/executions/{execution_id}/resume"): EXECUTION_OWNER,
     ("POST", "/api/workflow/executions/{execution_id}/stop"): EXECUTION_OWNER,
@@ -59,6 +61,7 @@ ON_ITS_MACHINE = {
     ("POST", "/api/repositories/{repository_id}/deletion"),
     ("POST", "/api/repositories/{repository_id}/conversions"),
     ("POST", "/api/repositories/{repository_id}/conversions/{number}/verify"),
+    ("PUT", "/api/repositories/{repository_id}/scope"),
 }
 
 

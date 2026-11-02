@@ -6,6 +6,7 @@ import { PagedList, localPages, type PageLoader } from '../../components/PagedLi
 import type { MechanismCount, OutboundSummary } from '../../types/results'
 import type { LinuxVerdict, OutboundInvocation, OutboundMechanism, ProjectOutbound } from '../../types/surface'
 import { SourceLink } from './SourceLink'
+import { counted } from './repositoryTabs'
 import { surfaceSectionId } from './surfaceSections'
 import { LimitedList } from '../../components/LimitedList'
 
@@ -521,6 +522,7 @@ export function RepositoryOutboundPanel({ repositoryId, localPath, refreshToken 
     <CollapsibleSection
       id={surfaceSectionId(repositoryId, 'outbound')}
       title="Outbound"
+      count={inventory ? counted(used, 'invocation') : undefined}
       summary={summary}
       rowCount={inventory ? inventory.project_count : undefined}
       persist="browser"

@@ -4,6 +4,7 @@ import { getSoapSummary, soapCalls } from '../../api/results'
 import { CollapsibleSection } from '../../components/CollapsibleSection'
 import { useLimitedList } from '../../components/LimitedList'
 import { PagedList } from '../../components/PagedList'
+import { counted } from './repositoryTabs'
 import { surfaceSectionId } from './surfaceSections'
 import type { SoapSummary } from '../../types/results'
 import type { RepositorySoapCall, SoapVerdictLive } from '../../types/surface'
@@ -94,6 +95,7 @@ export function RepositorySoapPanel({ repositoryId, refreshToken, onOpenEstateSo
     <CollapsibleSection
       id={surfaceSectionId(repositoryId, 'soap')}
       title="SOAP compatibility"
+      count={data ? counted(data.calls, 'call') : undefined}
       summary={summary}
       rowCount={rows}
       persist="browser"

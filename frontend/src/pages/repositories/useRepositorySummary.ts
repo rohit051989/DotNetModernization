@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { listConversions } from '../../api/conversion'
 import { listRepositoryExecutions } from '../../api/repositories'
 import { getSoapSummary } from '../../api/results'
+import { getConversionScope } from '../../api/scope'
 import type { Conversions } from '../../types/conversion'
 import type { SoapSummary } from '../../types/results'
 import type { JobExecution } from '../../types/workflow'
@@ -29,6 +30,8 @@ export interface RepositorySummary {
   latestExecution?: KeyFigure & { executionId: string }
   executions?: number
   projects?: number
+  /** The conversion scope's totals: projects kept and excluded. */
+  scope?: { kept: number; excluded: number; projects: number; workItemsOutOfScope: number }
 }
 
 const CONVERSION_STATE: Record<string, string> = { prepared: 'ready', run: 'run', verified: 'verified' }
@@ -41,12 +44,14 @@ export function useRepositorySummary(
   const [soap, setSoap] = useState<SoapSummary | null | undefined>(undefined)
   const [conversions, setConversions] = useState<Conversions | null | undefined>(undefined)
   const [executions, setExecutions] = useState<JobExecution[] | undefined>(undefined)
+  const [scope, setScope] = useState<RepositorySummary['scope'] | null>(undefined)
 
   useEffect(() => {
     let live = true
     getSoapSummary(repositoryId).then((r) => live && setSoap(r), () => live && setSoap(null))
     listConversions(repositoryId).then((r) => live && setConversions(r), () => live && setConversions(null))
     listRepositoryExecutions(repositoryId).then((r) => live && setExecutions(r), () => live && setExecutions([]))
+    getConversionScope(repositoryId).then((r) => live && setScope(r.totals), () => live && setScope(null))
     return () => {
       live = false
     }
@@ -97,6 +102,7 @@ export function useRepositorySummary(
       }
     }
   }
+  if (scope) summary.scope = scope
   const inventory = artifacts['solution-project-inventory']
   if (inventory) summary.projects = num(obj(inventory.data.summary).project_file_count)
   return summary

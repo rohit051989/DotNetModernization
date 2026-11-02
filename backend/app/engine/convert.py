@@ -47,6 +47,7 @@ from app.conversion import gitops, planner
 from app.engine import siblings
 from app.engine.inputs import generate
 from app.experiment import instrument
+from app.scope import service as scope_service
 
 INPUTS_COMMIT = "Add generated upgrade inputs for GitHub Copilot (do not edit)"
 DEFAULT_GOAL = "Upgrade this solution to .NET 10 and make the application ready to run on OpenShift."
@@ -213,11 +214,21 @@ def _commit_inputs(db, engagement_id: str, slug: str, worktree: Path, applied: l
 SATISFIED = ("committed", "not_applicable")
 
 
-def plan_packages(db, engagement_id: str, slug: str, base: str, branch: str, worktree: Path):
+def plan_packages(db, engagement_id: str, slug: str, base: str, branch: str, worktree: Path, scope: dict | None = None):
     """A conversion plan (app.conversion.planner) on the conversion's own branch and worktree. Its deterministic units
-    are the package changes that need no code; its breaking upgrades stay assisted and are left for the agent."""
-    plan = planner.create(db, engagement_id, slug, [])
+    are the package changes that need no code; its breaking upgrades stay assisted and are left for the agent. With
+    projects left out of scope, it plans only the kept ones and builds the solution's filter (app.scope.files)."""
+    excluded = set((scope or {}).get("excluded") or [])
+    plan = planner.create(db, engagement_id, slug, [], excluded_projects=excluded)
     plan.legacy_commit, plan.branch, plan.worktree_path = base, branch, str(worktree)
+    if excluded:
+        # The conversion's own solution filter (app.scope.service.for_conversion), which must run every kept unit test.
+        built = next(f for f in scope["filters"] if f["filter"] == scope["filter"]) if scope["filter"] else None
+        missing = sorted(set(plan.ordering["unit_test_projects"]) - set(built["projects"] if built else []))
+        if missing:
+            raise LookupError(f"the solution filter {scope['filter'] or '(none)'} does not hold every unit test project "
+                              f"in scope: {', '.join(missing[:3])}")
+        plan.ordering = {**plan.ordering, "solution": scope["filter"], "full_solution": scope["solution"]}
     db.commit()
     units = db.query(models.ConversionUnit).filter_by(plan_id=plan.id).order_by(models.ConversionUnit.sequence).all()
     return plan, units
@@ -344,6 +355,8 @@ def prepare(db, engagement_id: str, slug: str, *, baseline: str | None = None, g
     if sibling_links is None:
         sibling_links = (latest or {}).get("siblingLinks") if latest and latest.get("siblingLinks") is not None else siblings.detect(root)
     canaries = canaries if canaries is not None else (latest or {}).get("canaries") or []
+    # Which projects the conversion covers (app.scope): read once, so the plan, the inputs and the record agree.
+    scope = scope_service.for_conversion(db, repository)
 
     latest_unrun = latest is not None and unrun(Path(latest["worktree"]), latest["baseline"])
     refresh = latest_unrun and when_run != "next"
@@ -367,7 +380,7 @@ def prepare(db, engagement_id: str, slug: str, *, baseline: str | None = None, g
     # The package step's plan. A repository the planner cannot plan (no unit test project, two target frameworks)
     # gets no package step: its package changes go to the agent as instructions, and the reason is recorded.
     try:
-        plan, units = plan_packages(db, engagement_id, slug, base, branch, worktree)
+        plan, units = plan_packages(db, engagement_id, slug, base, branch, worktree, scope)
         not_planned = None
     except (LookupError, ValueError) as error:
         db.rollback()
@@ -377,11 +390,25 @@ def prepare(db, engagement_id: str, slug: str, *, baseline: str | None = None, g
     # so the next preparation starts clean instead of finding a branch or folder without its record.
     try:
         return _prepare_on(db, repository, engagement, root, latest, base, goal, sibling_links, canaries, baseline,
-                           lookups_from_discovery, refresh, number, folder, worktree, branch, plan, units, not_planned)
+                           lookups_from_discovery, refresh, number, folder, worktree, branch, plan, units, not_planned,
+                           scope)
     except BaseException:
         if not refresh:
             _undo_creation(db, root, folder, worktree, branch, plan)
         raise
+
+
+def _commit_scope(worktree: Path, scope: dict) -> dict:
+    """Writes and commits, as the platform, the solution filters and OUT-OF-SCOPE.md notes of a scope that leaves a
+    project out (app.scope.files). Nothing when every project is in scope."""
+    from app.scope import files as scope_files
+
+    if not scope["excluded"]:
+        return {"written": [], "kept": []}
+    written = scope_files.write(worktree, scope)
+    if written["written"]:
+        gitops.platform_commit(worktree, scope_files.COMMIT_MESSAGE, paths=written["written"])
+    return written
 
 
 def _undo_creation(db, root: Path, folder: Path, worktree: Path, branch: str, plan) -> None:
@@ -407,7 +434,7 @@ def _undo_creation(db, root: Path, folder: Path, worktree: Path, branch: str, pl
 def _prepare_on(db, repository, engagement, root: Path, latest: dict | None, base: str, goal: str,
                 sibling_links: list[str], canaries: list[dict], baseline: str | None, lookups_from_discovery: bool,
                 refresh: bool, number: int, folder: Path, worktree: Path, branch: str, plan, units,
-                not_planned: str | None) -> dict:
+                not_planned: str | None, scope: dict) -> dict:
     """prepare, from the advisories check to the written record and runbook."""
     engagement_id, slug = repository.engagement_id, repository.slug
 
@@ -419,7 +446,9 @@ def _prepare_on(db, repository, engagement, root: Path, latest: dict | None, bas
 
     planned = [u.target.get("title") for u in units]
     reuse = bool(refresh and latest["baseline"] == base and latest.get("packagesHead")
-                 and latest.get("plannedPackageChanges") == planned)
+                 and latest.get("plannedPackageChanges") == planned
+                 and (latest.get("scope") or {}).get("excluded", []) == scope["excluded"]
+                 and (latest.get("scope") or {}).get("filters", []) == scope["filters"])
     if reuse and plan is not None:
         # The package commits on the branch stand, so this plan is not run: the record keeps the plan that made them.
         db.query(models.ConversionUnit).filter_by(plan_id=plan.id).delete()
@@ -434,6 +463,10 @@ def _prepare_on(db, repository, engagement, root: Path, latest: dict | None, bas
         gitops.ensure_branch_worktree(root, worktree, branch, base)
         action = "prepared"
     siblings.link(worktree, root, sibling_links)
+    # The scope's files, before the package step, so every build of the conversion builds only what is in scope. A
+    # refresh that keeps the package commits keeps the scope commit beneath them: the scope is the same.
+    scope_written = ((latest.get("scope") or {}).get("files") or {"written": [], "kept": []}) if reuse \
+        else _commit_scope(worktree, scope)
     if reuse:
         changes, applied, step = latest["packageChanges"], latest["applied"], latest.get("packageStep") or {}
     elif plan is None:
@@ -445,6 +478,8 @@ def _prepare_on(db, repository, engagement, root: Path, latest: dict | None, bas
     secret_references = _commit_inputs(db, engagement_id, slug, worktree, applied)
 
     solutions = sorted(p.name for p in worktree.glob("*.sln"))
+    # With projects left out, the conversion builds its solution filter: the one keeping the most projects.
+    solution = scope["solution"] or (solutions[0] if solutions else None)
     record = {
         "number": number, "engagement": engagement_id, "repository": slug, "baseline": base, "branch": branch,
         # Where the baseline came from: the commit discovery scanned, or the command line's --baseline.
@@ -456,7 +491,7 @@ def _prepare_on(db, repository, engagement, root: Path, latest: dict | None, bas
         "folder": str(folder), "worktree": str(worktree), "runbook": str(folder / "RUNBOOK.md"),
         "head": gitops.head(worktree), "platform": instrument.platform_state(),
         "preparedAt": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
-        "goal": goal, "solution": solutions[0] if solutions else None, "siblingLinks": sibling_links,
+        "goal": goal, "solution": solution, "siblingLinks": sibling_links,
         "canaries": canaries, "targetFramework": engagement.target_framework,
         # Every package version the package commits and the inputs ask for, confirmed free of known advisories.
         "packageVersionsChecked": [{**c, "fetchedAt": c["fetchedAt"].isoformat() if c["fetchedAt"] else None}
@@ -470,6 +505,9 @@ def _prepare_on(db, repository, engagement, root: Path, latest: dict | None, bas
         # The inputs that name a secret value by its file, key and line instead of quoting it: a warning, never a
         # failure (app.engine.inputs.secrets).
         "secretReferences": secret_references,
+        # The projects this conversion covers (app.scope): the ones left out, who decided, when and why, the solution
+        # filters that build the rest, and the files written for them (`kept`: already there, left as they were).
+        "scope": {**scope, "files": scope_written},
     }
     _write_record(record)
     Path(record["runbook"]).write_text(render_runbook(record), encoding="utf-8", newline="\n")
@@ -552,7 +590,10 @@ def verify(db, engagement_id: str, slug: str, branch: str, *, base: str | None =
               # Package upgrades against the versions the branch's inputs asked for, not today's newest release.
               "package_targets_from_inputs": True,
               # Removed tests a person approved, with a reason: recorded, not counted (approve_removal).
-              "approved_test_removals": approvals_for(engagement_id, slug, branch)}
+              "approved_test_removals": approvals_for(engagement_id, slug, branch),
+              # The scope the branch's conversion was prepared with (Part O): its solution filter is built and tested,
+              # and the projects it left out are not counted.
+              "scope": (own or {}).get("scope") or {}}
     return verifier.verify(db, engagement_id=engagement_id, slug=slug, base=base, ref=branch,
                            label=label or branch.replace("/", "-"), config=config, refresh_baseline=refresh_baseline)
 

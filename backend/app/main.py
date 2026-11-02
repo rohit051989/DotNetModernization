@@ -33,6 +33,7 @@ from app.routers import (
     item_decisions,
     patterns,
     repositories,
+    scope,
     signal_registry,
     step_policies,
     structure,
@@ -395,6 +396,7 @@ app.include_router(test_coverage.router)
 app.include_router(impact.router)
 app.include_router(impact_pages.router)
 app.include_router(conversion.router)
+app.include_router(scope.router)
 app.include_router(deletion.router)
 app.include_router(editors.router)
 app.include_router(hierarchy.router)

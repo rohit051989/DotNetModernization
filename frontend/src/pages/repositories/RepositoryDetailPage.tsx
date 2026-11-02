@@ -23,6 +23,7 @@ import { formatBytes } from '../workflow/artifacts/renderers'
 import { StoredDependenciesView, StoredFingerprintView, StoredWorkListView } from './StoredResultViews'
 import { RepositoryFiles, useAskForClone } from './SourceLink'
 import { num, obj } from '../workflow/artifacts/adapters'
+import { RepositoryScopeSection } from './RepositoryScopeSection'
 import { RepositoryStructureSection } from './RepositoryStructureSection'
 import { RepositorySurfaceSection } from './RepositorySurfaceSection'
 import { RepositoryImpactSection } from './RepositoryImpactSection'
@@ -39,6 +40,7 @@ import { parseRepositoryRoute, setRepositoryTabRoute } from '../../routing'
 import {
   GROUPS,
   TABS,
+  counted,
   groupOf,
   initialTab,
   rememberScroll,
@@ -212,8 +214,33 @@ export function RepositoryDetailPage({
     return (document.scrollingElement as HTMLElement | null) ?? null
   }, [])
 
+  // The Scope tab's draft: leaving the tab with unsaved changes asks first, and discards them when confirmed.
+  const scopeDirty = useRef(false)
+  const [scopeDiscards, setScopeDiscards] = useState(0)
+  const setScopeDirty = useCallback((dirty: boolean) => {
+    scopeDirty.current = dirty
+  }, [])
+  const mayLeaveScope = useCallback((): boolean => {
+    if (!scopeDirty.current) return true
+    if (!window.confirm('The scope has unsaved changes. Leave the Scope tab and discard them?')) return false
+    scopeDirty.current = false
+    setScopeDiscards((n) => n + 1)
+    return true
+  }, [])
+  useEffect(() => {
+    const onBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (scopeDirty.current) event.preventDefault()
+    }
+    window.addEventListener('beforeunload', onBeforeUnload)
+    return () => window.removeEventListener('beforeunload', onBeforeUnload)
+  }, [])
+
   const show = useCallback(
     (next: TabSlug, push: boolean) => {
+      if (tabRef.current === 'scope' && next !== 'scope' && !mayLeaveScope()) {
+        if (!push) setRepositoryTabRoute(repositoryId, 'scope', false)   // Back or Forward: stay, and say so in the address
+        return
+      }
       const element = scroller()
       if (element) rememberScroll(repositoryId, tabRef.current, element.scrollTop)
       setTab(next)
@@ -222,7 +249,7 @@ export function RepositoryDetailPage({
       rememberTab(repositoryId, next)
       if (push) setRepositoryTabRoute(repositoryId, next, false)
     },
-    [repositoryId, scroller],
+    [repositoryId, scroller, mayLeaveScope],
   )
 
   // The address names the tab shown: a bare /repositories/<id>, or an old #repo-… link, is replaced, not added to.
@@ -278,7 +305,7 @@ export function RepositoryDetailPage({
   }, [loading])
 
   const back = (
-    <button type="button" onClick={onBack} className="text-sm text-violet-600 hover:underline">
+    <button type="button" onClick={() => (tabRef.current !== 'scope' || mayLeaveScope()) && onBack()} className="text-sm text-violet-600 hover:underline">
       ← Back to repositories
     </button>
   )
@@ -310,14 +337,15 @@ export function RepositoryDetailPage({
   const occurrences = artifacts['item-occurrences']
   const fingerprintSummary = obj(fingerprint?.data.summary)
 
-  // Tab labels carry a count or a state where it helps: "Work list · 28", "Conversion · ready".
-  const badge: Partial<Record<TabSlug, string | number>> = {
-    surface: summary.requestEntryPoints?.value,
-    projects: summary.projects,
-    dependencies: summary.dependenciesNeedingChange?.value,
-    'work-list': summary.workItems?.value,
-    conversion: summary.conversion?.value,
-    executions: summary.executions,
+  // Tab labels carry a state, or a count that says what it counts: "Work list · 28 work items", "Conversion · ready".
+  // A tab whose content counts several things (Surface) has no count on its label; its section bar has one per section.
+  const badge: Partial<Record<TabSlug, string>> = {
+    projects: summary.projects !== undefined ? counted(summary.projects, 'project') : undefined,
+    dependencies: summary.dependenciesNeedingChange ? `${summary.dependenciesNeedingChange.value} packages to change` : undefined,
+    'work-list': summary.workItems ? counted(Number(summary.workItems.value), 'work item') : undefined,
+    conversion: summary.conversion ? String(summary.conversion.value) : undefined,
+    executions: summary.executions !== undefined ? counted(summary.executions, 'run') : undefined,
+    scope: summary.scope && summary.scope.excluded > 0 ? `${counted(summary.scope.excluded, 'project')} excluded` : undefined,
   }
   const group = groupOf(tab)
 
@@ -431,11 +459,24 @@ export function RepositoryDetailPage({
         <RepositoryTestsSection repositoryId={repo.id} localPath={repo.local_path} refreshToken={localRefresh} />
       </Panel>
     ),
+    scope: () => (
+      <Panel>
+        <RepositoryScopeSection
+          repositoryId={repo.id}
+          refreshToken={localRefresh}
+          refusal={refusal}
+          onDirtyChange={setScopeDirty}
+          discardToken={scopeDiscards}
+          onSaved={refreshLocal}
+        />
+      </Panel>
+    ),
     'work-list': () => (
       <Panel
         summary={
           occurrences
-            ? `${workItemsLine(workFigures.workItems, workFigures.possible)} · ${num(work.not_checked)} not checked`
+            ? `${workItemsLine(workFigures.workItems, workFigures.possible)} · ${num(work.not_checked)} not checked` +
+              (summary.scope?.excluded ? ` · ${summary.scope.workItemsOutOfScope} out of scope` : '')
             : undefined
         }
       >

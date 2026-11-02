@@ -103,11 +103,12 @@ def _inventory(db: Session, repository_id) -> dict:
     raise LookupError("no solution-project-inventory for this repository: run discovery first")
 
 
-def _unit_test_projects(db: Session, repository_id) -> list[str]:
-    """Projects test-coverage-assessment classified as unit test projects."""
-    rows = db.execute(text("""
+def _unit_test_projects(db: Session, repository_id, excluded: set[str] = frozenset()) -> list[str]:
+    """Projects test-coverage-assessment classified as unit test projects, less those left out of scope."""
+    rows = [p for p in db.execute(text("""
         SELECT DISTINCT project_path FROM test_classes
         WHERE repository_id = :r AND test_type = 'unit' ORDER BY 1"""), {"r": repository_id}).scalars().all()
+            if p not in excluded]
     if not rows:
         raise LookupError("test-coverage-assessment found no unit test project: the baseline cannot run")
     return list(rows)
@@ -321,6 +322,14 @@ def _crosses(from_tfm: str, to_tfm: str, breaks_from: str) -> bool:
     return f < b <= t
 
 
+def _owner(db: Session, repository_id, path: str) -> str | None:
+    """The project a repository file belongs to (app.scope.service.owner)."""
+    from app.scope.service import owner
+
+    projects = db.execute(text("SELECT relative_path FROM projects WHERE repository_id = :r"), {"r": repository_id}).scalars().all()
+    return owner(path, list(projects))
+
+
 def _delta_findings(db: Session, repository_id, delta: dict) -> dict[str, list[str]]:
     """Where discovery found a delta: {file to fix: [consuming files]}."""
     found: dict[str, list[str]] = {}
@@ -347,11 +356,13 @@ class _Move:
     depends: dict[str, str] = field(default_factory=dict)       # move key -> reason
 
 
-def _occurrences(db: Session, repository_id, exclusions: list[dict], drift: list[str] | None = None) -> tuple[dict, list[str]]:
+def _occurrences(db: Session, repository_id, exclusions: list[dict], drift: list[str] | None = None,
+                 excluded_projects: set[str] = frozenset()) -> tuple[dict, list[str]]:
     """{package id lowercase: {package_id, from, to, outcome, occurrences: [(occurrence id, project)]}},
     from dependency-assessment's assessments and item-detection's occurrences. Version drift (one package at
     different versions in different projects) raises, unless `drift` is given: then it is recorded there and the
-    lowest current version is kept, so a report can describe the move without a plan."""
+    lowest current version is kept, so a report can describe the move without a plan. A project left out of the
+    conversion's scope (`excluded_projects`, app.scope) is not looked at."""
     excluded = {e["package_id"].lower() for e in exclusions}
     packages: dict[str, dict] = {}
     skipped = []
@@ -360,6 +371,8 @@ def _occurrences(db: Session, repository_id, exclusions: list[dict], drift: list
             FROM package_assessments a JOIN projects p ON p.id = a.project_id
             WHERE a.repository_id = :r AND a.outcome IN ('upgrade_safe', 'upgrade_breaking')
             ORDER BY a.package_id, p.relative_path"""), {"r": repository_id}):
+        if project in excluded_projects:
+            continue
         if package_id.lower() in excluded:
             skipped.append(package_id)
             continue
@@ -388,6 +401,8 @@ def _occurrences(db: Session, repository_id, exclusions: list[dict], drift: list
             JOIN projects p ON p.id = o.project_id
             WHERE o.repository_id = :r AND o.detection_state = 'found'
               AND o.item_id IN ('package-upgrade-safe', 'package-upgrade-breaking')"""), {"r": repository_id}):
+        if project in excluded_projects:
+            continue
         names = {value.split(" ", 1)[0]} if value else {(e.get("value") or "").split(" ", 1)[0] for e in evidence or []}
         for name in names:
             entry = packages.get(name.lower())
@@ -400,12 +415,13 @@ def _occurrences(db: Session, repository_id, exclusions: list[dict], drift: list
 
 
 def package_moves(db: Session, repository_id, from_tfm: str, to_tfm: str,
-                  exclusions: list[dict], drift: list[str] | None = None) -> tuple[dict, list[PackageMove], list[str]]:
+                  exclusions: list[dict], drift: list[str] | None = None,
+                  excluded_projects: set[str] = frozenset()) -> tuple[dict, list[PackageMove], list[str]]:
     """(packages, moves, skipped): each package dependency-assessment recommends moving, with its
     occurrences, framework support and whether its dependencies are known, and the PackageMove
     `couplings` reads. Shared with the engine input generator (app.engine.inputs), which reports
     the same couplings without making a plan."""
-    packages, skipped = _occurrences(db, repository_id, exclusions, drift)
+    packages, skipped = _occurrences(db, repository_id, exclusions, drift, excluded_projects)
     moves_in: list[PackageMove] = []
     for key, p in sorted(packages.items()):
         merged_before, merged_after, known = {}, {}, True
@@ -424,7 +440,10 @@ def package_moves(db: Session, repository_id, from_tfm: str, to_tfm: str,
     return packages, moves_in, skipped
 
 
-def create(db: Session, engagement_id: str, slug: str, exclusions: list[dict], layout: str = "in_place") -> models.ConversionPlan:
+def create(db: Session, engagement_id: str, slug: str, exclusions: list[dict], layout: str = "in_place",
+           excluded_projects: set[str] = frozenset()) -> models.ConversionPlan:
+    """A plan of the repository's conversion. `exclusions`: packages left out; `excluded_projects`: projects left out
+    of the conversion's scope (app.scope), whose packages, framework and tests the plan does not touch or run."""
     # A slug is unique within its engagement only: two engagements may each have an "orderservice".
     repository = (db.query(models.Repository).filter_by(engagement_id=engagement_id, slug=slug)
                   .filter(models.Repository.deleted_at.is_(None)).one())
@@ -434,13 +453,13 @@ def create(db: Session, engagement_id: str, slug: str, exclusions: list[dict], l
     recipes.sync(db)
 
     inventory = _inventory(db, repository.id)
-    projects = [p for p in inventory["projects"] if p.get("target_framework_raw")]
+    projects = [p for p in inventory["projects"] if p.get("target_framework_raw") and p.get("relative_path") not in excluded_projects]
     current = sorted({p["target_framework_raw"] for p in projects})
     if len(current) != 1:
         raise ValueError(f"projects target {', '.join(current)}: this proof retargets one framework")
     from_tfm = current[0]
     declarations = msbuild.framework_declarations(root, projects)
-    unit_tests = _unit_test_projects(db, repository.id)
+    unit_tests = _unit_test_projects(db, repository.id, excluded_projects)
 
     plan_id = uuid.uuid4()
     plan_dir = RUNS / repository.engagement_id / slug / "conversion" / str(plan_id)[:8]
@@ -454,7 +473,8 @@ def create(db: Session, engagement_id: str, slug: str, exclusions: list[dict], l
     db.flush()
 
     # ---- the packages, their declarations and their couplings
-    packages, moves_in, skipped = package_moves(db, repository.id, from_tfm, to_tfm, exclusions)
+    packages, moves_in, skipped = package_moves(db, repository.id, from_tfm, to_tfm, exclusions,
+                                                excluded_projects=excluded_projects)
     for key, p in sorted(packages.items()):
         p["declarations"] = {}
         for occurrence in p["occurrences"]:
@@ -518,6 +538,8 @@ def create(db: Session, engagement_id: str, slug: str, exclusions: list[dict], l
         if not _crosses(from_tfm, to_tfm, delta["breaks_from"]):
             continue
         for file, consumers in sorted(_delta_findings(db, repository.id, delta).items()):
+            if excluded_projects and _owner(db, repository.id, file) in excluded_projects:
+                continue
             delta_units.append((delta, file, consumers))
 
     # ---- the units
@@ -629,6 +651,8 @@ def create(db: Session, engagement_id: str, slug: str, exclusions: list[dict], l
             WHERE o.repository_id = :r AND o.detection_state = 'found' AND o.item_id = 'package-provided-by-framework'
             ORDER BY p.relative_path, o.value"""), {"r": repository.id}):
         m = re.match(r"^(\S+) (\S+): provided by (.+)$", value or "")
+        if project in excluded_projects:
+            continue
         if not m or m.group(1).lower() in {e["package_id"].lower() for e in exclusions}:
             continue
         target = {"package_id": m.group(1), "version": m.group(2), "project": project, "provided_by": m.group(3),

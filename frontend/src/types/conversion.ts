@@ -201,6 +201,8 @@ export interface ConversionEntry {
   verifying: boolean
   plan: PlanRef | null
   superseded_plans: PlanRef[]
+  /** The scope it was prepared with: how many projects it left out, and the solution filter it builds. */
+  scope?: { left_out: number; projects: number | null; filter: string | null }
 }
 
 export interface NextConversion {

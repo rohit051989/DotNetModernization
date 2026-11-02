@@ -44,7 +44,15 @@ export function getDependencyProject(artifactId: string, path: string) {
 }
 
 export function getWorkItemTotals(artifactId: string) {
-  return api.get<{ occurrence_rows: number; possible_rows: number }>(`${result(artifactId)}/work-items/totals`)
+  return api.get<WorkItemTotals>(`${result(artifactId)}/work-items/totals`)
+}
+
+/** The work list's totals. `out_of_scope_items`: found work items in projects left out of the conversion's scope. */
+export interface WorkItemTotals {
+  occurrence_rows: number
+  possible_rows: number
+  out_of_scope_items?: number
+  out_of_scope_projects?: number
 }
 export const workItems = (artifactId: string, showAll: boolean) => pages(`${result(artifactId)}/work-items`, { show_all: showAll })
 export const workItemFiles = (artifactId: string, projectId: string, itemId: string, byFile: boolean) =>

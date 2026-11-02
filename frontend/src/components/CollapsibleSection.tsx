@@ -135,6 +135,10 @@ interface CollapsibleSectionProps {
   variant?: 'page' | 'nested'
   /** Rendered with this id so a section bar can jump to it. */
   anchorId?: string
+  /** Its jump link's name in a section bar, when shorter than the title. */
+  barTitle?: string
+  /** A count for its jump link, naming what it counts ("4 request entry points"). Undefined while unknown. */
+  count?: string
   children: ReactNode
 }
 
@@ -150,6 +154,8 @@ export function CollapsibleSection({
   persist = 'session',
   variant = 'page',
   anchorId,
+  barTitle,
+  count,
   children,
 }: CollapsibleSectionProps) {
   const storageKey = `section:${id}`
@@ -168,7 +174,8 @@ export function CollapsibleSection({
   )
 
   const register = group?.register
-  useEffect(() => register?.(id, title), [register, id, title])
+  const link = `${barTitle ?? title}${count ? ` · ${count}` : ''}`
+  useEffect(() => register?.(id, link), [register, id, link])
 
   const command = group?.command
   useEffect(() => {

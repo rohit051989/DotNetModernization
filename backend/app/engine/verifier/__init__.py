@@ -58,6 +58,7 @@ from app.engine import configfiles, paths, siblings
 from app.engine.inputs.collect import SILENT_ITEMS
 from app.engine.verifier import deployment, packages, plugin, rediscovery
 from app.experiment import instrument, lookups
+from app.scope import service as scope_service
 
 VERIFIER_VERSION = "1.4.0"
 RUNS = planner.RUNS          # the same runs folder as the conversion runner, whatever the working directory
@@ -113,7 +114,9 @@ def verdict(checks: list[dict]) -> tuple[str, list[str]]:
 
 # ---------------------------------------------------------------- the diff
 
-def diff(root: Path, base: str, tip: str) -> dict:
+def diff(root: Path, base: str, tip: str, also_excluded: set[str] = frozenset()) -> dict:
+    """The branch's changes, less engine state and generated inputs, and `also_excluded`: the files the platform wrote
+    for the conversion's scope (its solution filters and OUT-OF-SCOPE.md notes)."""
     status = gitops.git(root, "diff", "--name-status", "-M", base, tip)
     numstat = gitops.git(root, "diff", "--numstat", "-M", base, tip)
     files, excluded = [], []
@@ -123,12 +126,12 @@ def diff(root: Path, base: str, tip: str) -> dict:
         entry = {"path": path, "change": change}
         if len(parts) == 3:
             entry["from"] = parts[1]
-        (excluded if paths.is_under(path, paths.EXCLUDED_FROM_COMPARISON) else files).append(entry)
+        (excluded if paths.is_under(path, paths.EXCLUDED_FROM_COMPARISON) or path in also_excluded else files).append(entry)
     added = deleted = 0
     for line in numstat.splitlines():
         a, d, path = line.split("\t", 2)
         path = path.split(" => ")[-1].rstrip("}") if "=>" in path else path
-        if paths.is_under(path, paths.EXCLUDED_FROM_COMPARISON) or a == "-":
+        if paths.is_under(path, paths.EXCLUDED_FROM_COMPARISON) or path in also_excluded or a == "-":
             continue
         added, deleted = added + int(a), deleted + int(d)
     commits = int(gitops.git(root, "rev-list", "--count", f"{base}..{tip}") or 0)
@@ -218,12 +221,16 @@ def is_test_file(rel: str, test_projects: list[str] | None = None) -> bool:
     return rel.lower().endswith(CODE_EXTENSIONS)
 
 
-def tests_changed(base_tree: Path, tip_tree: Path, test_projects: list[str]) -> dict:
+def tests_changed(base_tree: Path, tip_tree: Path, test_projects: list[str], out_of_scope=None) -> dict:
     """The plugin's uplift_checks.tests_changed, over the .NET test files only (is_test_file), in the same shape
-    proof_pack.check_tests_kept reads. Every list is complete, for VERIFICATION.md."""
+    proof_pack.check_tests_kept reads. Every list is complete, for VERIFICATION.md. `out_of_scope(path)`: true for a
+    file of a project left out of the conversion's scope, whose tests are not the conversion's."""
     u = plugin.uplift_checks
     old_all, cut_a, _ = u.walk_tests(str(base_tree))
     new_all, cut_b, _ = u.walk_tests(str(tip_tree))
+    if out_of_scope is not None:
+        old_all = {r: p for r, p in old_all.items() if not out_of_scope(r)}
+        new_all = {r: p for r, p in new_all.items() if not out_of_scope(r)}
     old = {r: p for r, p in old_all.items() if is_test_file(r, test_projects)}
     new = {r: p for r, p in new_all.items() if is_test_file(r, test_projects)}
     # What the plugin alone would have counted: configuration it calls tests, changed, added or removed.
@@ -384,15 +391,20 @@ def measure_baseline(base_tree: Path, solution: str | None, projects: list[str],
 
 
 def measured_baseline(db, repository: models.Repository, base_sha: str, plan_prefix: str | None, workspace: Path,
-                      measured: dict | None = None) -> tuple[Path, dict]:
+                      measured: dict | None = None, left_out: set[str] = frozenset()) -> tuple[Path, dict]:
     """BASELINE.md and its result files: a conversion plan's measured baseline at `base_sha` where one exists (the T1
     proof kept its TRX files), else the verifier's own measurement of the base commit. The typed table is written
-    from the counts; baseline_diff then checks it against the result files, so a disagreement shows."""
+    from the counts; baseline_diff then checks it against the result files, so a disagreement shows. A test project
+    `left_out` of the conversion's scope is not in it: its tests are not the conversion's to keep."""
     q = db.query(models.ConversionPlan).filter_by(repository_id=repository.id, legacy_commit=base_sha)
     plans = [p for p in q.order_by(models.ConversionPlan.created_at.desc()) if (p.baseline or {}).get("passed")
              and (plan_prefix is None or str(p.id).startswith(plan_prefix))]
     adir = workspace / "analysis" / repository.slug
     (adir / "baseline").mkdir(parents=True, exist_ok=True)
+    if left_out and measured is not None:
+        gone = {Path(p).stem for p in left_out}
+        measured = {**measured, "projects": {p: r for p, r in measured["projects"].items() if p not in left_out},
+                    "trx": [t for t in measured.get("trx") or [] if Path(t).stem not in gone]}
     if not plans and measured is not None and measured.get("trx"):
         for trx in measured["trx"]:
             shutil.copyfile(trx, adir / "baseline" / Path(trx).name)
@@ -413,14 +425,17 @@ def measured_baseline(db, repository: models.Repository, base_sha: str, plan_pre
     plan_dir = Path(plan.worktree_path).parent
     sources = []
     for e in plan.baseline["evidence"]:
-        if e["kind"] != "test_results":
+        if e["kind"] != "test_results" or e.get("project") in left_out:
             continue
         src = plan_dir / e["path"]
         ok = src.exists() and hashlib.sha256(src.read_bytes()).hexdigest() == e["sha256"]
         if ok:
             shutil.copyfile(src, adir / "baseline" / src.name)
         sources.append({"path": str(src), "sha256": e["sha256"], "intact": ok, "project": e.get("project")})
-    b = plan.baseline
+    b = dict(plan.baseline)
+    if left_out:
+        b["tests"] = {p: t for p, t in b["tests"].items() if p not in left_out}
+        b["total"] = sum(t.get("total", 0) for t in b["tests"].values())
     executed = b["total"] - sum(t["skipped"] for t in b["tests"].values())
     failed = sum(t["failed"] for t in b["tests"].values())
     skipped = sum(t["skipped"] for t in b["tests"].values())
@@ -561,9 +576,16 @@ def verify(db, *, engagement_id: str, slug: str, base: str, ref: str, label: str
     base_unparseable = configfiles.unparseable(base_tree, exclude=paths.EXCLUDED_FROM_COMPARISON)
     config_files_read = configfiles.counted(tip_tree)
 
+    # Part O: the projects the conversion left out of its scope. Their tests are not run or counted, their findings are
+    # not remaining, and the files the platform wrote for the scope are not conversion.
+    scope = config.get("scope") or {}
+    left_out = set(scope.get("excluded") or [])
+    every_project = [p["path"] for p in base_snap["model"]["projects"]]
+    out_of_scope = (lambda path: scope_service.owner(path, every_project) in left_out) if left_out else None
+
     checks: list[dict] = []
     person: list[str] = []
-    changes = diff(root, base_sha, tip_sha)
+    changes = diff(root, base_sha, tip_sha, set((scope.get("files") or {}).get("written") or []))
     (out / "diff.json").write_text(json.dumps(changes, indent=2), encoding="utf-8")
     if not changes["files"]:
         checks.append(_check("converted", "Something converted", "fail",
@@ -578,9 +600,12 @@ def verify(db, *, engagement_id: str, slug: str, base: str, ref: str, label: str
     measured = None
     if not baseline_plan:
         measured = measure_baseline(base_tree, base_snap["solution"], base_snap["unit_test_projects"], base_dir / "measured", base_sha)
-    baseline_md, baseline_info = measured_baseline(db, repository, base_sha, baseline_plan, workspace, measured)
-    projects = baseline_info.get("projects") or base_snap["unit_test_projects"]
+    baseline_md, baseline_info = measured_baseline(db, repository, base_sha, baseline_plan, workspace, measured, left_out)
+    projects = [p for p in baseline_info.get("projects") or base_snap["unit_test_projects"] if p not in left_out]
+    tests_left_out = sorted(p for p in base_snap["unit_test_projects"] if p in left_out)
     solution = base_snap["solution"]
+    if left_out and scope.get("filter"):
+        solution = scope["filter"]          # the kept projects only: on the branch, written by preparation
     clean = build_and_test(tip_tree, solution, projects, out / "clean")
     total = sum(p.get("total", 0) for p in clean["projects"].values())
     not_run = [p for p, r in clean["projects"].items() if not r["ran"]]
@@ -649,7 +674,7 @@ def verify(db, *, engagement_id: str, slug: str, base: str, ref: str, label: str
         checks.append(_check("diff", "Baseline diff", "fail", "no result file from the clean re-run to compare"))
 
     # Tests kept and deltas covered: the plugin's own checks, in its own words.
-    tc = tests_changed(base_tree, tip_tree, base_snap["unit_test_projects"])
+    tc = tests_changed(base_tree, tip_tree, [p for p in base_snap["unit_test_projects"] if p not in left_out], out_of_scope)
     approved_files = {a["test"] for a in config.get("approved_test_removals") or []}
     tc_for_plugin = dict(tc)
     if approved_files:
@@ -714,12 +739,17 @@ def verify(db, *, engagement_id: str, slug: str, base: str, ref: str, label: str
     # Vault Agent annotation delivering the secret) is resolved, though discovery still finds it in the code.
     tip_model, carried = deployment.carried(tip_model, tip_tree)
     before_items, after_items = rediscovery.work_items(base_snap["model"]), rediscovery.work_items(tip_model)
+    # Part O: a finding in a project left out of scope is neither remaining nor resolved: the conversion leaves it.
+    items_left_out = sorted(k for k in before_items if k[0] in left_out)
+    before_items = {k: v for k, v in before_items.items() if k[0] not in left_out}
+    after_items = {k: v for k, v in after_items.items() if k[0] not in left_out}
     resolved, not_checked = split_not_checked(sorted(k for k in before_items if k not in after_items), before_items,
                                               set(tip_unparseable))
     remaining = sorted(k for k in before_items if k in after_items)
     introduced = sorted(k for k in after_items if k not in before_items)
     target = engagement.target_framework
-    off_target = sorted(p["path"] for p in tip_snap["model"]["projects"] if p["framework"] and p["framework"] != target)
+    off_target = sorted(p["path"] for p in tip_snap["model"]["projects"]
+                        if p["framework"] and p["framework"] != target and p["path"] not in left_out)
     rd = {"before": len(before_items), "resolved": [list(k) for k in resolved], "remaining": [list(k) for k in remaining],
           "introduced": [list(k) for k in introduced], "notChecked": [list(k) for k in not_checked], "offTarget": off_target,
           "notCheckedPlaces": {f"{p} {i}": before_items[(p, i)]["places"][:10] for p, i in not_checked},
@@ -730,11 +760,14 @@ def verify(db, *, engagement_id: str, slug: str, base: str, ref: str, label: str
     rd["newerThanSnapshot"] = tip_snap.get("newerThanSnapshot") or []
     rd["releasesSince"], rd["packageTargets"] = releases_since, targets_from
     rd["carriedByDeployment"] = carried
+    rd["outOfScope"] = [list(k) for k in items_left_out]
     detail = (f"{len(resolved)} of {len(before_items)} work item(s) resolved, {len(remaining)} remaining, "
               f"{len(introduced)} introduced"
               + (f", {len(not_checked)} not checked (a place in a configuration file that does not parse)"
                  if not_checked else "")
               + f"; {len(off_target)} project(s) not on {target}"
+              + (f"; {len(items_left_out)} work item(s) in {len(left_out)} project(s) out of scope, not counted"
+                 if left_out else "")
               + (f"; {len(rd['newerThanSnapshot'])} package(s) newer than snapshot, counted as upgraded"
                  if rd["newerThanSnapshot"] else "")
               + (f"; {len(releases_since)} package(s) at the version the inputs asked for, with a newer release since "
@@ -783,6 +816,10 @@ def verify(db, *, engagement_id: str, slug: str, base: str, ref: str, label: str
         "flaky": (base_report or {}).get("rerunFlaky") or [],
         "approvedRemovals": (base_report or {}).get("approvedRemovals") or [],
         "shellScripts": scripts, "attribution": attributed,
+        # Part O: what the conversion left out, and what was built and tested instead of the whole solution.
+        "scope": {"projectsLeftOut": sorted(left_out), "built": solution, "testProjectsLeftOut": tests_left_out,
+                  "workItemsLeftOut": len(items_left_out), "decidedBy": scope.get("decidedBy"),
+                  "decidedAt": scope.get("decidedAt"), "reason": scope.get("reason")} if left_out else None,
         "checkoutUntouched": checkout_untouched,
     }
     (out / "verification.json").write_text(json.dumps(report, indent=2, default=str), encoding="utf-8")
@@ -803,6 +840,25 @@ def _lookups_line(answered: dict | None) -> str:
     return f"Package lookups: answered from the frozen snapshot `{answered['sha256'][:12]}` ({answered['rows']} answers), offline."
 
 
+def scope_md(sc: dict | None) -> list[str]:
+    """VERIFICATION.md's section on a conversion that left projects out of its scope (Part O), or nothing."""
+    if not sc:
+        return []
+    decided = ""
+    if sc.get("decidedBy"):
+        decided = f" (decided by {sc['decidedBy']} on {(sc.get('decidedAt') or '')[:10]}"
+        decided += (f": {sc['reason']})" if sc.get("reason") else ")")
+    out = ["", "## Conversion scope", "",
+           f"{len(sc['projectsLeftOut'])} project(s) were left out of this conversion's scope and left untouched{decided}. "
+           f"Built and tested `{sc['built']}`, not the whole solution. {len(sc['testProjectsLeftOut'])} test project(s) "
+           f"out of scope: not run, and not counted as removed or failing. {sc['workItemsLeftOut']} work item(s) out of "
+           "scope: not counted as remaining.", ""]
+    out += [f"- `{p}`" for p in sc["projectsLeftOut"][:100]]
+    if len(sc["projectsLeftOut"]) > 100:
+        out.append(f"- ... and {len(sc['projectsLeftOut']) - 100} more")
+    return out
+
+
 def markdown(r: dict) -> str:
     out = [f"# Verification: {r['label']}", "",
            f"**Verdict: {r['verdict']}**", "",
@@ -812,6 +868,7 @@ def markdown(r: dict) -> str:
     out += [f"- {x}" for x in r["reasons"]] or ["- None: every check passed."]
     out += ["", "## Checks", "", "| Check | State | Detail |", "|---|---|---|"]
     out += [f"| {c['label']} | {c['state']} | {c['detail'].replace('|', '/')} |" for c in r["checks"]]
+    out += scope_md(r.get("scope"))
     rd = r["rediscovery"]
     out += ["", "## Work items", "",
             f"Before: {rd['before']}. Resolved: {len(rd['resolved'])}. Remaining: {len(rd['remaining'])}. Introduced: {len(rd['introduced'])}."

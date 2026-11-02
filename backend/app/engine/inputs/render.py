@@ -290,6 +290,9 @@ def _instruction(model: dict, item: dict, present: set[str], by_id: dict) -> str
     if item.get("guidance"):
         out += ["", "## The change", "", item["guidance"].strip()]
     out += ["", "## What to do", "", res["guidance"].strip()]
+    if item["id"] == "windows-build-pipeline" and _filters(model):
+        out += ["", f"The Linux build pipeline builds {_filters(model)}, not the whole solution: the projects it leaves "
+                "out are outside this conversion's scope and not part of the converted build."]
     prereq = _prerequisites(item, present, by_id)
     out += ["", "## Prerequisites", ""] + (prereq or ["- None among this repository's other instructions."])
 
@@ -374,7 +377,8 @@ def _instruction(model: dict, item: dict, present: set[str], by_id: dict) -> str
 
     out += ["", "## Done when", "",
             "- [ ] Every listed place is changed, or recorded as not applicable with a reason",
-            "- [ ] The solution builds, from a build actually run",
+            f"- [ ] {'The solution filter ' + _filters(model) if _filters(model) else 'The solution'} builds, from a build "
+            "actually run",
             "- [ ] Every test that passed before still passes; no test was edited, deleted or weakened", ""]
     return "\n".join(out)
 
@@ -430,6 +434,12 @@ def addendum(model: dict) -> str:
                    f"{sum(max(1, len(o['lines'])) for o in item['occurrences'])} | {len(item['impact'])} |")
     out += ["", "Each change with an instruction has a custom upgrade instruction under `.github/upgrades/skills/`, "
             "named in the table."]
+    scope = model.get("scope") or {}
+    if scope.get("excluded"):
+        out += ["", "## Conversion scope", "",
+                f"{len(scope['excluded'])} project(s) are outside this conversion's scope and left untouched; their "
+                f"findings are not listed above. Build and test with {_filters(model)}.", ""]
+        out += [f"- `{p['path']}`" for p in scope["excluded"][:MAX_LIST]]
 
     out += ["", "## Framework deltas", ""]
     if model["deltas"]:
@@ -577,6 +587,34 @@ def decision_sheet(model: dict) -> str:
     return "\n".join(out)
 
 
+def _filters(model: dict) -> str:
+    """The solution filter a conversion that leaves projects out builds and tests, as text: "`A.in-scope.slnf`", or
+    ""."""
+    built = (model.get("scope") or {}).get("filter")
+    return f"`{built}`" if built else ""
+
+
+def scope_section(model: dict) -> str:
+    """The global instructions' section for a conversion that leaves projects out (Part O), or ""."""
+    scope = model.get("scope") or {}
+    if not scope.get("excluded"):
+        return ""
+    others = [f"`{f}`" for f in scope.get("filters") or [] if f != scope.get("filter")]
+    out = ["", "## Conversion scope", "",
+           (f"This conversion covers only some of this repository's projects. Build and test with {_filters(model)}, "
+            "never the whole solution: the filter lists the projects in scope."
+            + (f" The other solutions have filters of their own, listing their projects in scope: {', '.join(others)}."
+               if others else "")) if scope.get("filter") else
+           "This conversion covers only some of this repository's projects.",
+           "", "**Never change a project outside the scope.** Each one has an `OUT-OF-SCOPE.md` in its folder, and is "
+           "left exactly as it is: not converted, not retargeted, its packages and tests untouched. It is not part of "
+           "the converted build. The projects outside the scope:", ""]
+    out += [f"- `{p['path']}`" for p in scope["excluded"][:MAX_LIST]]
+    if len(scope["excluded"]) > MAX_LIST:
+        out.append(f"- ... and {len(scope['excluded']) - MAX_LIST} more, each with its `OUT-OF-SCOPE.md`")
+    return "\n".join(out) + "\n"
+
+
 def render(model: dict) -> dict[str, str]:
     """{repository-relative path: text} for every generated input except the manifest."""
     files: dict[str, str] = {}
@@ -588,7 +626,13 @@ def render(model: dict) -> dict[str, str]:
         files[f"{paths.UPGRADE_SKILLS_DIR}/{skill_name(item['resolution']['id'])}.md"] = _instruction(model, item, present, by_id)
     for template in sorted((TEMPLATES / "skills").glob("*.md")):
         files[f"{paths.SKILLS_DIR}/{template.name}"] = template.read_text(encoding="utf-8")
-    files[paths.COPILOT_INSTRUCTIONS] = (TEMPLATES / "copilot-instructions.md").read_text(encoding="utf-8")
+    instructions = (TEMPLATES / "copilot-instructions.md").read_text(encoding="utf-8")
+    scoped = scope_section(model)
+    if scoped:
+        # Before the attribution at the end: a section of this repository's rules, like the others.
+        head, mark, tail = instructions.partition("\n---\n")
+        instructions = head.rstrip("\n") + "\n" + scoped + mark + tail
+    files[paths.COPILOT_INSTRUCTIONS] = instructions
     files[f"{paths.PLATFORM_INPUTS_DIR}/assessment-addendum.md"] = addendum(model)
     files[f"{paths.PLATFORM_INPUTS_DIR}/decision-sheet.md"] = decision_sheet(model)
     return {k: v.replace("\r\n", "\n") for k, v in sorted(files.items())}

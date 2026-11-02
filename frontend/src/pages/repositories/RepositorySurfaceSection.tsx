@@ -9,6 +9,7 @@ import { RepositoryBackendReachPanel } from './RepositoryBackendReachPanel'
 import { RepositoryOutboundPanel } from './RepositoryOutboundPanel'
 import { RepositorySoapPanel } from './RepositorySoapPanel'
 import { SourceLink } from './SourceLink'
+import { counted } from './repositoryTabs'
 import { SURFACE_SECTIONS, surfaceSectionId } from './surfaceSections'
 import type { EntryClass, EntryPoint, EntryPointKind, HttpDetail, HttpParameter, ProjectEntryPoints, WcfEndpoint } from '../../types/surface'
 
@@ -660,6 +661,7 @@ export function RepositoryInboundPanel({ repositoryId, localPath, refreshToken }
     <CollapsibleSection
       id={surfaceSectionId(repositoryId, 'inbound')}
       title="Inbound"
+      count={inventory ? counted(inventory.request_entry_point_count, 'request entry point') : undefined}
       summary={summary}
       rowCount={inventory ? inventory.project_count : undefined}
       persist="browser"

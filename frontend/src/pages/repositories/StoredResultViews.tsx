@@ -5,6 +5,7 @@ import {
   fingerprintSignals,
   getFingerprintOverview,
   getWorkItemTotals,
+  type WorkItemTotals,
   listDependencyFeeds,
   workItemFiles,
   workItems,
@@ -439,6 +440,8 @@ interface StoredWorkRow {
   evidencePaths: string[]
   decision: ItemDecision | null
   note: ItemNote | null
+  /** Its project is left out of the conversion's scope: kept in the list, marked. */
+  outOfScope?: boolean
 }
 
 /** A value-grouped item's file, with its values. */
@@ -449,7 +452,7 @@ interface FileValues {
 
 export function StoredWorkListView({ artifactId, head, localPath, withDecisions = true }: StoredViewProps & { withDecisions?: boolean }) {
   const [showAll, setShowAll] = useState(false)
-  const [totals, setTotals] = useState<{ occurrence_rows: number; possible_rows: number } | null>(null)
+  const [totals, setTotals] = useState<WorkItemTotals | null>(null)
   const summary = obj(head.summary)
 
   useEffect(() => {
@@ -476,6 +479,11 @@ export function StoredWorkListView({ artifactId, head, localPath, withDecisions 
         {num(summary.not_checked) > 0 && <Chip tone="amber">{num(summary.not_checked)} not checked</Chip>}
         <Chip>{num(summary.checked_absent)} checked absent</Chip>
         {num(summary.excluded) > 0 && <Chip>{num(summary.excluded)} excluded by role</Chip>}
+        {(totals?.out_of_scope_items ?? 0) > 0 && (
+          <Chip tone="amber" title="Found in projects left out of the conversion's scope (the Scope tab): listed, marked, and not converted">
+            {totals!.out_of_scope_items} out of scope, in {totals!.out_of_scope_projects} project{totals!.out_of_scope_projects === 1 ? '' : 's'}
+          </Chip>
+        )}
         <div className="ml-auto flex flex-wrap items-center gap-3">
           <label className="flex items-center gap-1.5 text-[11px] text-neutral-500">
             <input type="checkbox" checked={showAll} onChange={(e) => setShowAll(e.target.checked)} />
@@ -514,9 +522,14 @@ function StoredWorkRowView({ artifactId, row: g, localPath, withDecisions }: { a
   const files = workItemFiles(artifactId, g.projectId, g.itemId, byValue)
   const key = `${artifactId}|${g.projectId}|${g.itemId}`
   return (
-    <tr className="border-b border-neutral-100 align-top last:border-0">
+    <tr className={`border-b border-neutral-100 align-top last:border-0 ${g.outOfScope ? 'bg-neutral-50 text-neutral-500' : ''}`}>
       <td className="py-1.5 pr-3">
         <span className="font-medium text-neutral-800">{g.name ?? g.itemId}</span>
+        {g.outOfScope && (
+          <span className="ml-1.5 rounded bg-neutral-200 px-1.5 text-[11px] text-neutral-700" title="Its project is left out of the conversion's scope (the Scope tab): not converted">
+            out of scope
+          </span>
+        )}
         {g.name && <span className="block font-mono text-[11px] text-neutral-400">{g.itemId}</span>}
         {g.attribute && <span className="block text-[11px] text-neutral-500">{g.attribute}</span>}
       </td>

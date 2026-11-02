@@ -158,6 +158,13 @@ function ConversionCard({
             {entry.baseline_from && <span className="text-neutral-500"> — {entry.baseline_from}</span>}
             {entry.scanned_at && <span className="text-neutral-500"> ({when(entry.scanned_at)})</span>}
           </dd>
+          <dt className="text-neutral-500">Scope</dt>
+          <dd data-testid="conversion-scope">
+            {entry.scope?.left_out
+              ? `${entry.scope.left_out} of ${entry.scope.projects ?? '?'} projects left out, untouched; builds ${entry.scope.filter ?? 'the solution'}`
+              : 'every project'}
+            {entry.state !== 'prepared' && entry.scope?.left_out ? ' (kept since it was run)' : ''}
+          </dd>
           <dt className="text-neutral-500">Worktree</dt>
           <dd className="flex items-center gap-2 break-all font-mono">
             {entry.worktree} <CopyButton value={entry.worktree} />

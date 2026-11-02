@@ -411,7 +411,7 @@ only jumped down to it.
   |---|---|
   | Overview | Overview (`overview`) |
   | Discovery | Surface (`surface`), Projects & fingerprint (`projects`), Dependencies (`dependencies`), Dependency graph (`dependency-graph`), Impact (`impact`), Tests (`tests`) |
-  | Modernization | Work list (`work-list`), Conversion (`conversion`) |
+  | Modernization | Scope (`scope`), Work list (`work-list`), Conversion (`conversion`) |
   | Activity | Executions (`executions`), Details (`details`) |
 
   Choosing a group opens the tab last shown in it, else its first.
@@ -427,8 +427,25 @@ only jumped down to it.
   incompatible, version drift, items found, last scanned), then the key figure from each tab, each a link into it —
   work items, request entry points, dependencies needing change (any outcome but current or unknown), SOAP calls
   needing change (the SOAP panel's rule), the conversion's state, the latest execution (`useRepositorySummary.ts`).
-- **Tab labels carry counts** where they help: "Surface · 54" (request entry points), "Projects & fingerprint · 11",
-  "Dependencies · 66" (needing change), "Work list · 28", "Conversion · ready", "Executions · 9".
+- **Tab labels carry a state, or a count that says what it counts**, or nothing: "Projects & fingerprint · 11
+  projects", "Dependencies · 66 packages to change", "Scope · 12 projects excluded", "Work list · 28 work items",
+  "Conversion · ready", "Executions · 9 runs" (`counted` in `repositoryTabs.ts`). A tab whose content counts several
+  things has no count on its label. Surface's section bar names a count for each section instead: "Inbound · 4 request
+  entry points", "Outbound · 12 invocations", "SOAP compatibility · 9 calls", "Backend calls · 24 operations"
+  (`CollapsibleSection`'s `count` and `barTitle`).
+- **Scope** (36-COPILOT-ENHANCED-CONVERSION.md Part O; `RepositoryScopeSection.tsx`, `scopeDraft.ts`): which of the
+  repository's projects its conversions cover.
+  - A tree of solutions and their projects with checkboxes. A solution's box shows all, some or none (indeterminate),
+    a shared project is marked "also in solution X", and one a solution's deselection kept is marked "kept by X".
+  - Projects not in any solution form a group of their own.
+  - The totals: projects kept and excluded, work items out of scope, and projects new since the scope was set.
+  - Select all, Deselect all, Discard changes, a filter over solutions and projects, and the 20-item rule.
+  - Warnings while editing, each with "Keep <dependency>" and "Exclude <project> too".
+  - Save shows every problem together, or a summary of the change with an optional reason.
+  - The treatment: Leave untouched, and "Retire — remove as dead code", disabled, "coming later".
+  - Leaving the tab (or the page) with unsaved changes asks first.
+  - The editor reads the whole scope at once rather than a page at a time: it checks the draft against every
+    project's dependencies as people tick. It shows 20 rows at a time.
 - **Remembered**: each repository's last tab in this browser (`localStorage`, `repo-tab:<id>`), and each tab's scroll
   position for the session (`sessionStorage`), restored when the tab is shown again.
 - **Kept inside the tabs**: the collapsible sections, the 20-item lists, the filters, and the Surface section bar.
@@ -437,8 +454,9 @@ Other pages: none has the long-page pattern. Estate already shows one view at a 
 their own); Catalog, Dashboard, Workflow and Workflow Administration are lists or single views.
 
 Tests: `frontend/src/pages/repositories/RepositoryDetailPage.test.tsx` covers the groups, switching tabs, loading on
-first open, the addresses, Back and Forward, the old section links, the remembered tab and scroll position, and
-Overview's links.
+first open, the addresses, Back and Forward, the old section links, the remembered tab and scroll position, Overview's
+links, the tab labels' counts, and leaving the Scope tab with unsaved changes. `RepositoryScopeSection.test.tsx` and
+`scopeDraft.test.tsx` cover the scope editor; `RepositorySurfaceSection.test.tsx` covers the section bar's counts.
 
 ## Results on another machine
 

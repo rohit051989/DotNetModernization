@@ -162,7 +162,7 @@ class PrepareAllOrNothing(unittest.TestCase):
         self.addCleanup(lambda: [gitops.remove(self.root, Path(r["worktree"])) for r in convert.records(TEST_ENGAGEMENT_ID, self.repo.slug)])
         self.addCleanup(lambda: shutil.rmtree(self.home, ignore_errors=True))
 
-        def planned(db, engagement_id, slug, base, branch, worktree):
+        def planned(db, engagement_id, slug, base, branch, worktree, scope=None):
             plan = models.ConversionPlan(repository_id=self.repo.id, engagement_id=engagement_id, legacy_commit=base,
                                          target_layout="in_place", target_framework="net10.0", recipes=[], branch=branch,
                                          worktree_path=str(worktree))

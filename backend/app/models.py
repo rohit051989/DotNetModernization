@@ -3230,3 +3230,30 @@ class PlatformVersion(Base):
     recorded_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     recorded_by: Mapped[str] = mapped_column(Text, nullable=False)
     hostname: Mapped[str | None] = mapped_column(Text)
+
+
+class ConversionScope(Base):
+    """Which of a repository's projects its conversions cover (app.scope; 36-COPILOT-ENHANCED-CONVERSION.md Part O). The
+    project is the unit of scope, named by its path relative to the repository, so a rescan keeps the scope. Lazy: no
+    row means every project is in scope, as before scope existed. Only exclusions are stored, so a project discovered
+    later is in scope by default, and a project that no longer exists drops out; `known_projects` is every project at
+    the last save, which tells a new one apart."""
+
+    __tablename__ = "conversion_scopes"
+
+    repository_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("repositories.id", ondelete="CASCADE"),
+                                                     primary_key=True)
+    excluded_projects: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    known_projects: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    # What happens to an excluded project: only "leave_untouched" for now.
+    treatment: Mapped[str] = mapped_column(Text, nullable=False, server_default="leave_untouched")
+    reason: Mapped[str | None] = mapped_column(Text)
+    saved_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    saved_by_name: Mapped[str] = mapped_column(Text, nullable=False)
+    saved_on: Mapped[str | None] = mapped_column(Text)
+    saved_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
+
+    __table_args__ = (
+        CheckConstraint("treatment IN ('leave_untouched')", name="ck_conversion_scopes_treatment"),
+    )

@@ -349,6 +349,7 @@ class ConversionEntryOut(BaseModel):
     verifying: bool = False             # a verification job of this conversion is running
     plan: PlanRefOut | None = None      # the package step's plan whose units this conversion reports
     superseded_plans: list[PlanRefOut] = []   # plans of earlier preparations of this conversion, since refreshed
+    scope: dict = {}                    # the scope it was prepared with: {left_out, projects, filter}
 
 
 class NextConversionOut(BaseModel):

@@ -66,11 +66,20 @@ def _repository_files(repository: models.Repository) -> list[str]:
 
 
 def collect(db: Session, repository: models.Repository) -> dict:
+    """The model. A project left out of the conversion's scope (app.scope, Part O) is not in it: not its findings, its
+    packages, its framework deltas nor its tests. `scope` says which were left out and the solution filters to build."""
+    from app.scope import service as scope_service
+
     engagement = db.get(models.Engagement, repository.engagement_id)
     r = repository.id
+    scope = scope_service.for_conversion(db, repository)
+    excluded = set(scope["excluded"])
+    every = db.execute(text("SELECT relative_path FROM projects WHERE repository_id = :r"), {"r": r}).scalars().all()
+    in_scope = lambda path: not excluded or scope_service.owner(path, every) not in excluded   # noqa: E731
 
     projects = [dict(path=p, framework=f) for p, f in db.execute(text("""
-        SELECT relative_path, target_framework_raw FROM projects WHERE repository_id = :r ORDER BY relative_path"""), {"r": r})]
+        SELECT relative_path, target_framework_raw FROM projects WHERE repository_id = :r ORDER BY relative_path"""), {"r": r})
+        if p not in excluded]
     current = sorted({p["framework"] for p in projects if p["framework"]})
 
     occurrences: dict[str, list[dict]] = {}
@@ -79,6 +88,8 @@ def collect(db: Session, repository: models.Repository) -> dict:
             FROM item_occurrences o JOIN projects p ON p.id = o.project_id
             WHERE o.repository_id = :r AND o.detection_state = 'found'
             ORDER BY o.item_id, p.relative_path, o.file_path NULLS FIRST, o.value NULLS FIRST"""), {"r": r}):
+        if project in excluded:
+            continue
         occurrences.setdefault(item_id, []).append({
             "project": project, "file": file_path, "value": value, "certainty": certainty, "lines": _lines(evidence)})
 
@@ -93,6 +104,8 @@ def collect(db: Session, repository: models.Repository) -> dict:
              AND s.item_id = w.item_id AND s.project_path = w.project_path AND s.resolution_id = w.resolution_id
             WHERE w.repository_id = :r AND w.source = 'structural' AND s.effective
             ORDER BY w.item_id, w.project_path, COALESCE(w.file_path, w.proposed_path), w.action"""), {"r": r}):
+        if project in excluded:
+            continue
         impact.setdefault(item_id, []).append({
             "project": project, "resolution": resolution_id, "action": action, "file": file_path,
             "proposed": proposed, "certainty": certainty,
@@ -107,7 +120,7 @@ def collect(db: Session, repository: models.Repository) -> dict:
     test_mappings = [dict(source_file=s, production_type=pt, test_file=tf, test_class=tc, test_methods=sorted(tm or []))
                      for s, pt, tf, tc, tm in db.execute(text("""
         SELECT source_file, production_type, test_file, test_class, test_methods FROM test_mappings
-        WHERE repository_id = :r ORDER BY source_file, test_file, test_class"""), {"r": r})]
+        WHERE repository_id = :r ORDER BY source_file, test_file, test_class"""), {"r": r}) if in_scope(tf)]
 
     items = []
     for item_id in sorted(occurrences):
@@ -137,7 +150,7 @@ def collect(db: Session, repository: models.Repository) -> dict:
     to_tfm = engagement.target_framework
     packages, couplings, drift = [], {"together": [], "depends": []}, []
     if len(current) == 1:
-        found, moves, _ = planner.package_moves(db, r, current[0], to_tfm, [], drift)
+        found, moves, _ = planner.package_moves(db, r, current[0], to_tfm, [], drift, excluded_projects=excluded)
         together, depends = planner.couplings(moves)
         for key, p in sorted(found.items()):
             placement, why = planner._place({"support": {p["package_id"]: p["support"]}}, current[0], to_tfm)
@@ -150,7 +163,7 @@ def collect(db: Session, repository: models.Repository) -> dict:
     for delta in planner.load_deltas():
         if len(current) != 1 or not planner._crosses(current[0], to_tfm, delta["breaks_from"]):
             continue
-        sites = planner._delta_findings(db, r, delta)
+        sites = {k: v for k, v in planner._delta_findings(db, r, delta).items() if in_scope(k)}
         if sites:
             deltas.append({"id": delta["id"], "symptom": delta.get("symptom"), "description": delta["description"],
                            "fix": (delta.get("fix") or {}).get("basis"), "sites": {k: sorted(v) for k, v in sorted(sites.items())}})
@@ -193,4 +206,5 @@ def collect(db: Session, repository: models.Repository) -> dict:
         "projects": projects, "current_frameworks": current,
         "items": items, "packages": packages, "couplings": couplings, "version_drift": sorted(set(drift)), "deltas": deltas,
         "outbound": outbound, "soap": soap, "vocabulary": vocabulary,
+        "scope": {"excluded": scope["left"], "filter": scope["filter"], "filters": [f["filter"] for f in scope["filters"]]},
     }

@@ -14,12 +14,16 @@ Writes, into an empty folder outside this repository:
 - NuGet.config naming one client feed, feeds/internal: the internal packages (SynthCo.Internal.*, which nuget.org does
   not have) and copies of the external ones the projects use (which it does), each with its nuspec dependencies;
 - expected-graph.json: every project, and every edge the project files declare, as this generator wrote them — what
-  the step's graph must match.
+  the step's graph must match;
+- with `solutions` (the conversion scope's tests, 36-COPILOT-ENHANCED-CONVERSION.md Part O), four solutions at the root
+  that share projects: Web and Workers share every library above the data layer, Legacy shares Core, Domain and
+  Services with both, and Database holds the five that are not code. Every project is in at least one.
 
 Nothing here contacts a network; the step later asks nuget.org about the packages' origin.
 """
 import json
 import sys
+import uuid
 import zipfile
 from pathlib import Path
 
@@ -88,7 +92,33 @@ def nupkg(feed: Path, package_id: str, version: str, dependencies: list) -> None
         z.writestr("content/readme.txt", package_id)
 
 
-def generate(root: Path) -> dict:
+# Project type GUIDs, as Visual Studio writes them in a solution.
+SDK_CSHARP, LEGACY_CSHARP = "{9A19103F-16F7-4668-BE54-9A1E7A4F7556}", "{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}"
+TYPE_OF_EXTENSION = {".sqlproj": "{00D1A9C2-B5F0-4AF3-8072-F6C62B433612}", ".shproj": "{D954291E-2A0B-460D-934E-DC6B0785DB48}"}
+SOLUTIONS = {
+    "SynthCo.Web.sln": CORE + DOMAIN + SERVICES + MODERN + WEB_APPS + TESTS[:20],
+    "SynthCo.Workers.sln": CORE + DOMAIN + SERVICES + MODERN + WORKERS,
+    "SynthCo.Legacy.sln": CORE + DOMAIN + SERVICES + DATA + LEGACY_APPS + TESTS[20:],
+    "SynthCo.Database.sln": [name for name, _ in OTHER],
+}
+
+
+def solution_text(names: list[str]) -> str:
+    """A Visual Studio solution listing the projects, with stable GUIDs."""
+    extension = dict(OTHER)
+    legacy = set(DATA + LEGACY_APPS)
+    out = ["", "Microsoft Visual Studio Solution File, Format Version 12.00", "# Visual Studio Version 17",
+           "VisualStudioVersion = 17.0.31903.59", "MinimumVisualStudioVersion = 10.0.40219.1"]
+    for name in names:
+        ext = extension.get(name, ".csproj")
+        kind = TYPE_OF_EXTENSION.get(ext) or (LEGACY_CSHARP if name in legacy else SDK_CSHARP)
+        guid = "{" + str(uuid.uuid5(uuid.NAMESPACE_URL, f"synthco/{name}")).upper() + "}"
+        out += [f'Project("{kind}") = "{name}", "{path_of(name, ext).replace("/", chr(92))}", "{guid}"', "EndProject"]
+    out += ["Global", "EndGlobal", ""]
+    return "\r\n".join(out)
+
+
+def generate(root: Path, solutions: bool = False) -> dict:
     if root.exists() and any(root.iterdir()):
         raise SystemExit(f"{root} is not empty: give an empty or new folder")
     root.mkdir(parents=True, exist_ok=True)
@@ -230,6 +260,9 @@ def generate(root: Path) -> dict:
         "missing_reference": {"from": path_of(WEB_APPS[0]), "raw_path": r"..\..\Missing\SynthCo.Missing.csproj"},
     }
     (root / "expected-graph.json").write_text(json.dumps(expected, indent=2) + "\n", encoding="utf-8")
+    if solutions:
+        for name, members in SOLUTIONS.items():
+            (root / name).write_text(solution_text(members), encoding="utf-8", newline="")
     return expected
 
 

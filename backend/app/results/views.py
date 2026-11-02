@@ -329,6 +329,16 @@ _STATE_RANK = """case g.state when 'found' then 0 when 'not_checked' then 1 when
 class WorkItemTotalsOut(BaseModel):
     occurrence_rows: int = Field(description="Found occurrences, one per file; an unlocated found item counts one.")
     possible_rows: int = Field(description="Of those, the ones whose every piece of evidence is ambiguous.")
+    out_of_scope_items: int = Field(0, description="Found work items in projects left out of the conversion's scope "
+                                                   "(app.scope): kept in the list, marked, never deleted.")
+    out_of_scope_projects: int = Field(0, description="Projects left out of the conversion's scope.")
+
+
+def _left_out(db: Session, repository_id) -> list[str]:
+    """The projects left out of the repository's conversion scope now (app.scope), by path."""
+    from app.scope import service as scope_service
+
+    return sorted(scope_service.excluded_paths(db, repository_id)) if repository_id else []
 
 
 @router.get(
@@ -339,12 +349,15 @@ class WorkItemTotalsOut(BaseModel):
     responses={404: _NOT_STORED},
 )
 def get_work_item_totals(artifact_id: uuid.UUID, db: Session = Depends(get_db)):
-    _stored(db, artifact_id, "item-occurrences")
+    stored = _stored(db, artifact_id, "item-occurrences")
+    left_out = _left_out(db, stored.repository_id)
     row = db.execute(text(f"""
-        select coalesce(sum(greatest(files, 1)), 0) as occurrences, coalesce(sum(possible), 0) as possible
+        select coalesce(sum(greatest(files, 1)), 0) as occurrences, coalesce(sum(possible), 0) as possible,
+               count(*) filter (where project = any(cast(:left as text[])) and not (files > 0 and possible = files)) as out_of_scope
         from ({_GROUPS}) g where state = 'found'
-    """), {"a": artifact_id}).one()
-    return WorkItemTotalsOut(occurrence_rows=row.occurrences, possible_rows=row.possible)
+    """), {"a": artifact_id, "left": left_out}).one()
+    return WorkItemTotalsOut(occurrence_rows=row.occurrences, possible_rows=row.possible,
+                             out_of_scope_items=row.out_of_scope, out_of_scope_projects=len(left_out))
 
 
 def _work_file(occurrence: dict) -> dict:
@@ -384,7 +397,8 @@ def list_work_items(artifact_id: uuid.UUID, show_all: bool = Query(False), pagin
     state, reason, fileCount, possibleCount, distinctFiles, the first page of its files (`files`: occurrences, or
     files with their values for a value-grouped item), evidencePaths, and `decision` (the engagement's decision for
     the item, and what another item's decision means for it on this project). Found first, then not checked; without
-    show_all, only those two. The filter matches the item's name and id and the project's path."""
+    show_all, only those two. The filter matches the item's name and id and the project's path. `outOfScope`: the
+    project is left out of the repository's conversion scope (app.scope); the row stays, marked."""
     stored = _stored(db, artifact_id, "item-occurrences")
     source = f"""
         select jsonb_build_object('project', g.project, 'projectId', g.project_id, 'item', g.item,
@@ -402,6 +416,8 @@ def list_work_items(artifact_id: uuid.UUID, show_all: bool = Query(False), pagin
 
     projects = {r["projectId"] for r in result.items if r.get("projectId")}
     decisions = item_decisions.work_list_decisions(db, stored.repository_id, project_ids=projects) if stored.repository_id else None
+    # Part O: a row of a project left out of the conversion's scope stays in the list, marked out of scope.
+    left_out = set(_left_out(db, stored.repository_id))
     items = []
     for row in result.items:
         item = row["item"]
@@ -429,6 +445,7 @@ def list_work_items(artifact_id: uuid.UUID, show_all: bool = Query(False), pagin
             "evidencePaths": evidence_paths,
             "decision": decision.model_dump(mode="json") if decision is not None else None,
             "note": note.model_dump(mode="json") if note is not None else None,
+            "outOfScope": (row["project"] or "") in left_out,
         })
     return PageOut(total=result.total, matching=result.matching, offset=result.offset, items=items)
 

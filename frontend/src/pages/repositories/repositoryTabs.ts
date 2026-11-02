@@ -12,6 +12,7 @@ export const TABS = [
   { slug: 'dependency-graph', label: 'Dependency graph', group: 'discovery' },
   { slug: 'impact', label: 'Impact', group: 'discovery' },
   { slug: 'tests', label: 'Tests', group: 'discovery' },
+  { slug: 'scope', label: 'Scope', group: 'modernization' },
   { slug: 'work-list', label: 'Work list', group: 'modernization' },
   { slug: 'conversion', label: 'Conversion', group: 'modernization' },
   { slug: 'executions', label: 'Executions', group: 'activity' },
@@ -19,6 +20,11 @@ export const TABS = [
 ] as const
 
 export type TabSlug = (typeof TABS)[number]['slug']
+
+/** A count that says what it counts: "1 project", "12 projects". Every count on a tab label or a section bar is one. */
+export function counted(n: number, noun: string, nouns = `${noun}s`): string {
+  return `${n} ${n === 1 ? noun : nouns}`
+}
 
 export const GROUPS = [
   { key: 'overview', label: 'Overview' },

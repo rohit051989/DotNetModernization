@@ -4,6 +4,7 @@ import { backendApplications, backendOperations, getBackendSummary } from '../..
 import { CollapsibleSection } from '../../components/CollapsibleSection'
 import { LimitedList, useLimitedList } from '../../components/LimitedList'
 import { PagedList } from '../../components/PagedList'
+import { counted } from './repositoryTabs'
 import { surfaceSectionId } from './surfaceSections'
 import { SourceLink } from './SourceLink'
 import type { BackendApplication, BackendSummary } from '../../types/results'
@@ -273,6 +274,8 @@ export function RepositoryBackendReachPanel({ repositoryId, localPath, refreshTo
     <CollapsibleSection
       id={surfaceSectionId(repositoryId, 'reach')}
       title="Inbound operations → backend calls"
+      barTitle="Backend calls"
+      count={data ? counted(operations, 'operation') : undefined}
       summary={summary}
       rowCount={data ? operations : undefined}
       persist="browser"

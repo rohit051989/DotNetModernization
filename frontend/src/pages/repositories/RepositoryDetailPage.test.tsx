@@ -19,6 +19,22 @@ vi.mock('./RepositoryStructureSection', () => ({ RepositoryStructureSection: sta
 vi.mock('./RepositoryImpactSection', () => ({ RepositoryImpactSection: standIn('impact') }))
 vi.mock('./RepositoryTestsSection', () => ({ RepositoryTestsSection: standIn('tests') }))
 vi.mock('./ConversionsPanel', () => ({ ConversionsPanel: standIn('conversion') }))
+// The Scope tab's stand-in can make its draft unsaved, as ticking a box would, and shows how often it was discarded.
+vi.mock('./RepositoryScopeSection', () => ({
+  RepositoryScopeSection: ({ onDirtyChange, discardToken }: { onDirtyChange: (dirty: boolean) => void; discardToken: number }) => {
+    useEffect(() => {
+      mounts.scope = (mounts.scope ?? 0) + 1
+    }, [])
+    return (
+      <div data-testid="content-scope">
+        <button type="button" onClick={() => onDirtyChange(true)}>
+          Untick a project
+        </button>
+        <span data-testid="discards">{discardToken}</span>
+      </div>
+    )
+  },
+}))
 vi.mock('./structure/StructureSection', () => ({ StructureSection: standIn('dependency-graph') }))
 vi.mock('./StoredResultViews', () => ({
   StoredDependenciesView: standIn('dependencies'),
@@ -58,6 +74,9 @@ vi.mock('../../api/conversion', () => ({
   listConversions: () => Promise.resolve({ conversions: [{ number: 1, branch: 'conversion/1', state: 'prepared' }], next: { number: 2 } }),
 }))
 vi.mock('../../api/results', () => ({ getSoapSummary: () => Promise.reject(new Error('none')) }))
+vi.mock('../../api/scope', () => ({
+  getConversionScope: () => Promise.resolve({ totals: { projects: 170, kept: 158, excluded: 12, workItemsOutOfScope: 9, new: 0 } }),
+}))
 vi.mock('../../api/deletion', () => ({ deleteRepositoryHard: vi.fn(), getRepositoryDeletionPlan: vi.fn() }))
 
 import { RepositoryDetailPage } from './RepositoryDetailPage'
@@ -144,15 +163,18 @@ describe('RepositoryDetailPage tabs', () => {
   it('a group shows its tabs and opens its first; only the selected tab is shown', async () => {
     await open('/repositories/r')
     await click(groups().getByRole('tab', { name: 'Discovery' }))
+    // A count says what it counts, or does not appear: Surface counts several things, so its label has none.
     expect(tabs().getAllByRole('tab').map((t) => t.textContent)).toEqual([
-      'Surface · 54', 'Projects & fingerprint', 'Dependencies · 63', 'Dependency graph', 'Impact', 'Tests',
+      'Surface', 'Projects & fingerprint', 'Dependencies · 63 packages to change', 'Dependency graph', 'Impact', 'Tests',
     ])
     expect(shown()).toEqual(['Surface'])
     expect(window.location.pathname).toBe('/repositories/r/surface')
     await click(groups().getByRole('tab', { name: 'Modernization' }))
-    expect(tabs().getAllByRole('tab').map((t) => t.textContent)).toEqual(['Work list · 28', 'Conversion · ready'])
+    expect(tabs().getAllByRole('tab').map((t) => t.textContent)).toEqual([
+      'Scope · 12 projects excluded', 'Work list · 28 work items', 'Conversion · ready',
+    ])
     await click(groups().getByRole('tab', { name: 'Activity' }))
-    expect(tabs().getAllByRole('tab').map((t) => t.textContent)).toEqual(['Executions · 1', 'Details'])
+    expect(tabs().getAllByRole('tab').map((t) => t.textContent)).toEqual(['Executions · 1 run', 'Details'])
   })
 
   it('loads a tab only when it is first opened, and keeps it after that', async () => {
@@ -160,7 +182,7 @@ describe('RepositoryDetailPage tabs', () => {
     expect(mounts).toEqual({ surface: 1 })
     await click(tabs().getByRole('tab', { name: 'Tests' }))
     expect(mounts).toEqual({ surface: 1, tests: 1 })
-    await click(tabs().getByRole('tab', { name: 'Surface · 54' }))
+    await click(tabs().getByRole('tab', { name: 'Surface' }))
     await click(tabs().getByRole('tab', { name: 'Tests' }))
     expect(mounts).toEqual({ surface: 1, tests: 1 })
     expect(shown()).toEqual(['Tests'])
@@ -211,8 +233,28 @@ describe('RepositoryDetailPage tabs', () => {
     page.scrollTop = 300
     await click(tabs().getByRole('tab', { name: 'Tests' }))
     expect(page.scrollTop).toBe(0)
-    await click(tabs().getByRole('tab', { name: 'Surface · 54' }))
+    await click(tabs().getByRole('tab', { name: 'Surface' }))
     expect(page.scrollTop).toBe(300)
+  })
+
+  it('leaving the Scope tab with unsaved changes asks first, and discards them only when confirmed', async () => {
+    await open('/repositories/r/scope')
+    await click(screen.getByRole('button', { name: 'Untick a project' }))
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    await click(tabs().getByRole('tab', { name: 'Work list · 28 work items' }))
+    expect(confirm).toHaveBeenCalledWith('The scope has unsaved changes. Leave the Scope tab and discard them?')
+    expect(shown()).toEqual(['Scope'])
+    expect(screen.getByTestId('discards').textContent).toBe('0')
+    confirm.mockReturnValue(true)
+    await click(tabs().getByRole('tab', { name: 'Work list · 28 work items' }))
+    expect(shown()).toEqual(['Work list'])
+    expect(screen.getByTestId('discards').textContent).toBe('1')
+    // Nothing unsaved any more: leaving again does not ask.
+    confirm.mockClear()
+    await click(tabs().getByRole('tab', { name: 'Scope · 12 projects excluded' }))
+    await click(tabs().getByRole('tab', { name: 'Conversion · ready' }))
+    expect(confirm).not.toHaveBeenCalled()
+    confirm.mockRestore()
   })
 
   it('Overview’s key figures each open their tab', async () => {

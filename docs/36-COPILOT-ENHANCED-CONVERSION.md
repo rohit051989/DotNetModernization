@@ -676,3 +676,79 @@ refuses and says to run discovery again. The versions checked are recorded in `c
   "NOT PROVEN, nothing converted": the verifier's fixed rules fail an unconverted branch, so the verdict is known
   without a run. Otherwise the conversion's entry then shows the verdict, its reasons and the full VERIFICATION.md.
 
+## Part O — Conversion scope (2026-11-02)
+
+A scope step before preparation: the dev team chooses which of a repository's solutions and projects its conversions
+cover, and the rest are left untouched (backend `app.scope`; the repository page's Scope tab).
+
+**The rules.**
+
+- **The project is the unit of scope.** Selecting or deselecting a solution is a shortcut for its projects:
+  deselecting one deselects each of its projects, except a project that another still-selected solution contains.
+  That project stays selected, shown as "kept by" that solution. Individual projects can be selected or deselected
+  too. A solution's own checkbox shows whether all, some or none of its projects are selected.
+- **Every project is in scope until someone saves a scope**, so a repository nobody has reviewed converts exactly as
+  before. Only exclusions are stored (`conversion_scopes`, by path relative to the repository), so:
+  - a rescan keeps the scope;
+  - a project discovered after the save is in scope by default, flagged "new since scope was set";
+  - an excluded project that no longer exists drops out.
+
+**Editing and saving.**
+
+- **Editing is a draft.** People tick and untick freely, with Select all, Deselect all and Discard changes (back to
+  the last saved scope). Problems show as warnings; nothing is refused while editing. Leaving the tab with unsaved
+  changes asks first.
+- **Save checks the whole selection** and is refused, with every problem listed together, until there are none:
+  - every kept project's dependencies (solution-discovery's project references) must also be kept, directly or
+    through other projects. Each problem names the kept project and the excluded dependency, and offers to keep the
+    dependency or to exclude the project too;
+  - at least one project must be kept.
+
+  The server checks again, in the same words (422 `SCOPE_INVALID`, one item per problem).
+- **Before saving**, a summary shows the change: the projects being excluded and re-included, and the work items
+  moving out of and back into scope, with an optional reason.
+- **Save records** who, from which machine, when and the reason (and an activity record), and carries a version
+  check: if someone else saved first, it is refused (409 `STALE_COPY`) with an offer to reload. Only the repository's
+  owner or an admin can save, from the machine it was registered on (`PUT /api/repositories/{id}/scope`).
+
+**What happens to an excluded project.** The only choice now is "Leave untouched". The UI also shows "Retire — remove
+as dead code", disabled and marked "coming later". Left untouched means:
+
+- **Preparation commits, as the platform, before the package step** (`app.scope.files`):
+  - an `OUT-OF-SCOPE.md` in each excluded project's folder, never over a file already there. It says the project is
+    outside this conversion's scope and left as it was, who decided, when, the reason if one was given, and that it is
+    not part of the converted build;
+  - a solution filter, `<solution>.in-scope.slnf` beside each solution that keeps a project, listing only the kept
+    projects. The conversion builds and tests one of them: the filter keeping the most projects (by solution path on
+    a tie), named in its record (`scope.filter`).
+- **The package step** plans and builds only the kept projects: their packages, framework declarations, framework
+  deltas and unit tests (`planner.create(excluded_projects=...)`), building the conversion's filter. When that filter
+  does not hold every unit test project in scope, the package step is skipped, saying so.
+- **The instructions** cover only the kept projects:
+  - their findings, packages, deltas and tests;
+  - the global instructions' "Conversion scope" section, which tells the agent to build and test with the filter and
+    never to change an excluded project;
+  - the Linux build-pipeline instruction, which builds the filter too;
+  - the addendum, which lists the projects left out.
+- **The work list** marks excluded findings "out of scope": kept visible, never deleted. Its counts say how many are
+  out of scope.
+- **The verifier**:
+  - builds and tests the filter;
+  - treats an excluded project's tests as out of scope, not as removals or failures, and leaves them out of the
+    baseline;
+  - leaves excluded findings out of what re-discovery counts as remaining, and excluded projects out of "not on the
+    target framework";
+  - does not count the scope's own files as conversion;
+  - says in VERIFICATION.md how many projects were left out.
+- **The conversion's record** keeps the scope it was prepared with (`scope` in `conversion.json`).
+
+**Saving a changed scope** prepares a conversion that has not been run yet again, through the same discovery run a
+rescan starts. A conversion already run keeps the scope it was prepared with; the new scope applies to the next one.
+
+**Backlog**, not built:
+
+- **Excluding entry points.** An application's entry points (an endpoint, a job) cannot be left out on their own.
+  That needs reachability analysis: which code only an excluded entry point reaches.
+- **Retire.** Remove an excluded project as dead code instead of leaving it untouched, with its solution entries and
+  references.
+- **Hints.** Suggest which projects look dead: no entry point, nothing referencing them, no recent commits.

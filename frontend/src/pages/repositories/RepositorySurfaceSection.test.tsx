@@ -1,10 +1,11 @@
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ToastProvider } from '../../components/Toast'
 
 // The Surface tab against a server that pages: each panel shows its summary, its projects a page at a time, and a
 // project's entry points or invocations only when the project is opened.
 const asked = vi.hoisted(() => [] as string[])
+const soap = vi.hoisted(() => ({ calls: 0 }))
 const page = vi.hoisted(() => (name: string, items: unknown[]) => () => {
   asked.push(name)
   return Promise.resolve({ total: items.length, matching: items.length, offset: 0, items })
@@ -40,7 +41,7 @@ vi.mock('../../api/results', () => ({
   backendApplications: () => page('applications', []),
   backendOperations: () => page('operations', []),
   getSoapSummary: () => Promise.resolve({ repository_id: 'r', engagement_id: 'e', scanned_at: null, estate_run_at: null, estate_stale: false, estate_note: null,
-                                          target_wcf_client_version: null, unused_count: 0, calls: 0, environments: 0, need_change: 0, undecided: 0 }),
+                                          target_wcf_client_version: null, unused_count: 0, calls: soap.calls, environments: 1, need_change: 0, undecided: 0 }),
   soapCalls: () => page('soap', []),
 }))
 
@@ -67,5 +68,30 @@ describe('RepositorySurfaceSection', () => {
     })
     expect(asked).toContain('no-requests')
     expect(screen.getByText('src/Lib/Lib.csproj')).toBeTruthy()
+  })
+
+  it('the section bar counts each section, naming what it counts', async () => {
+    await act(async () => {
+      render(
+        <ToastProvider>
+          <RepositorySurfaceSection repositoryId="r" localPath="D:\repos\shop" refreshToken={0} />
+        </ToastProvider>,
+      )
+    })
+    const bar = within(screen.getByRole('navigation', { name: 'Surface sections' }))
+    const links = bar.getAllByRole('button').map((b) => b.textContent).filter((t) => !/all$/.test(t ?? ''))
+    // The SOAP section is not shown: this repository makes no SOAP call.
+    expect(links).toEqual(['Inbound · 1 request entry point', 'Outbound · 0 invocations', 'Backend calls · 0 operations'])
+    cleanup()
+    soap.calls = 9
+    await act(async () => {
+      render(
+        <ToastProvider>
+          <RepositorySurfaceSection repositoryId="r" localPath="D:\repos\shop" refreshToken={0} />
+        </ToastProvider>,
+      )
+    })
+    expect(within(screen.getByRole('navigation', { name: 'Surface sections' })).getByRole('button', { name: 'SOAP compatibility · 9 calls' })).toBeTruthy()
+    soap.calls = 0
   })
 })
