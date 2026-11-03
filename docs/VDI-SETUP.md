@@ -1748,6 +1748,15 @@ hand. Everything else an update brings, bootstrap applies by itself. Apply every
 had (`previousCommit` in `PLATFORM_SOURCE.json` after the update; in our own installs, the commit before step 5 of
 the appendix), oldest of them first. Entries up to 2026-10-23 were the notes of releases 2 to 7, which are named so.
 
+#### 2026-11-03, c79ddc7: a conversion scope builds one solution of the kept projects
+
+Only for a repository that has a saved scope leaving projects out, and a conversion prepared with it at c74e9fb that
+has not been run yet: that conversion builds a solution filter, which may miss kept projects that live in other
+solutions. After updating, **on the machine that owns it**, rescan the repository (**Rescan**, or `python -m
+app.repositories.cli discover --engagement <engagement> --repository <repository>`): preparation runs again and the
+conversion builds `in-scope.sln`, which lists every kept project. A conversion already run keeps the scope it was
+prepared with, and still verifies with its filter. Nothing else needs doing: no setting, no migration.
+
 #### 2026-10-30, 46932fb: conversion preparation and configuration values
 
 A repository whose last conversion preparation failed — the Conversion section shows "Last preparation" in red, for
