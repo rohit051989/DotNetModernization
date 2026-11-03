@@ -96,7 +96,8 @@ def nupkg(feed: Path, package_id: str, version: str, dependencies: list) -> None
 SDK_CSHARP, LEGACY_CSHARP = "{9A19103F-16F7-4668-BE54-9A1E7A4F7556}", "{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}"
 TYPE_OF_EXTENSION = {".sqlproj": "{00D1A9C2-B5F0-4AF3-8072-F6C62B433612}", ".shproj": "{D954291E-2A0B-460D-934E-DC6B0785DB48}"}
 SOLUTIONS = {
-    "SynthCo.Web.sln": CORE + DOMAIN + SERVICES + MODERN + WEB_APPS + TESTS[:20],
+    # TESTS[19] is in no solution: a project only a scope's own solution builds.
+    "SynthCo.Web.sln": CORE + DOMAIN + SERVICES + MODERN + WEB_APPS + TESTS[:19],
     "SynthCo.Workers.sln": CORE + DOMAIN + SERVICES + MODERN + WORKERS,
     "SynthCo.Legacy.sln": CORE + DOMAIN + SERVICES + DATA + LEGACY_APPS + TESTS[20:],
     "SynthCo.Database.sln": [name for name, _ in OTHER],
@@ -118,7 +119,9 @@ def solution_text(names: list[str]) -> str:
     return "\r\n".join(out)
 
 
-def generate(root: Path, solutions: bool = False) -> dict:
+def generate(root: Path, solutions: bool = False, test_classes: bool = False) -> dict:
+    """The repository. `solutions`: the four solutions of SOLUTIONS; `test_classes`: an xunit test class in each test
+    project, which test-coverage-assessment classifies as a unit test."""
     if root.exists() and any(root.iterdir()):
         raise SystemExit(f"{root} is not empty: give an empty or new folder")
     root.mkdir(parents=True, exist_ok=True)
@@ -248,6 +251,11 @@ def generate(root: Path, solutions: bool = False) -> dict:
     for i, name in enumerate(TESTS):
         target = (SERVICES + DATA + MODERN)[i * 2]
         project(name, "test", references=[target], packages=[("Microsoft.NET.Test.Sdk", "17.12.0"), ("xunit", "2.9.2")])
+        if test_classes:
+            short = name.replace(".", "")
+            (root / folder_of(name) / f"{short}Facts.cs").write_text(
+                f"using Xunit;\n\nnamespace {name};\n\n[Trait(\"Category\", \"Unit\")]\npublic class {short}Facts\n{{\n    [Fact]\n"
+                "    public void Adds() => Assert.Equal(2, 1 + 1);\n}\n", encoding="utf-8")
     for name, extension in OTHER:
         folder = root / folder_of(name)
         folder.mkdir(parents=True, exist_ok=True)

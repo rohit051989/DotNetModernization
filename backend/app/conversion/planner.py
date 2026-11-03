@@ -441,9 +441,11 @@ def package_moves(db: Session, repository_id, from_tfm: str, to_tfm: str,
 
 
 def create(db: Session, engagement_id: str, slug: str, exclusions: list[dict], layout: str = "in_place",
-           excluded_projects: set[str] = frozenset()) -> models.ConversionPlan:
+           excluded_projects: set[str] = frozenset(), solution: str | None = None) -> models.ConversionPlan:
     """A plan of the repository's conversion. `exclusions`: packages left out; `excluded_projects`: projects left out
-    of the conversion's scope (app.scope), whose packages, framework and tests the plan does not touch or run."""
+    of the conversion's scope (app.scope), whose packages, framework and tests the plan does not touch or run.
+    `solution`: what it builds, the conversion's own solution of the kept projects; else the repository's solution
+    holding every unit test project and the most projects."""
     # A slug is unique within its engagement only: two engagements may each have an "orderservice".
     repository = (db.query(models.Repository).filter_by(engagement_id=engagement_id, slug=slug)
                   .filter(models.Repository.deleted_at.is_(None)).one())
@@ -662,7 +664,7 @@ def create(db: Session, engagement_id: str, slug: str, exclusions: list[dict], l
             f"provided by {m.group(3)}: the reference is redundant", depends_on, [str(occurrence_id)])
 
     plan.ordering = {
-        "from": from_tfm, "to": to_tfm, "solution": _solution(db, repository.id, unit_tests), "unit_test_projects": unit_tests,
+        "from": from_tfm, "to": to_tfm, "solution": solution or _solution(db, repository.id, unit_tests), "unit_test_projects": unit_tests,
         "left_out": skipped,
         "together": [{"packages": [a, b], "reason": r} for a, b, r in together],
         "depends": [{"dependent": a, "dependency": b, "reason": r} for a, b, r in depends],

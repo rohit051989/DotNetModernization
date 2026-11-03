@@ -116,7 +116,7 @@ def verdict(checks: list[dict]) -> tuple[str, list[str]]:
 
 def diff(root: Path, base: str, tip: str, also_excluded: set[str] = frozenset()) -> dict:
     """The branch's changes, less engine state and generated inputs, and `also_excluded`: the files the platform wrote
-    for the conversion's scope (its solution filters and OUT-OF-SCOPE.md notes)."""
+    for the conversion's scope (its own solution and OUT-OF-SCOPE.md notes)."""
     status = gitops.git(root, "diff", "--name-status", "-M", base, tip)
     numstat = gitops.git(root, "diff", "--numstat", "-M", base, tip)
     files, excluded = [], []
@@ -372,11 +372,12 @@ def _baseline_md(adir: Path, origin: str, executed: int, failed: int, skipped: i
 
 def measure_baseline(base_tree: Path, solution: str | None, projects: list[str], measured_dir: Path, base_sha: str) -> dict:
     """Builds the base commit and runs its unit tests, once per base commit: the measured baseline where no
-    conversion plan recorded one. Cached in `measured_dir/measured.json` with its TRX files."""
+    conversion plan recorded one. Cached in `measured_dir/measured.json` with its TRX files, for the same solution
+    and unit test projects (a conversion's scope may build its own solution of fewer)."""
     record = measured_dir / "measured.json"
     if record.exists():
         cached = json.loads(record.read_text(encoding="utf-8"))
-        if cached.get("commit") == base_sha:
+        if cached.get("commit") == base_sha and cached.get("solution") == solution                 and cached.get("asked", projects) == projects:
             return cached
     if measured_dir.exists():
         gitops._rmtree(measured_dir)
@@ -384,7 +385,7 @@ def measure_baseline(base_tree: Path, solution: str | None, projects: list[str],
         result = {"built": False, "buildExit": None, "projects": {}, "trx": [], "why": "no solution or no unit test project"}
     else:
         result = build_and_test(base_tree, solution, projects, measured_dir)
-    result.update(commit=base_sha, at=_now(), solution=solution)
+    result.update(commit=base_sha, at=_now(), solution=solution, asked=projects)
     measured_dir.mkdir(parents=True, exist_ok=True)
     record.write_text(json.dumps(result, indent=2), encoding="utf-8")
     return result
@@ -598,14 +599,22 @@ def verify(db, *, engagement_id: str, slug: str, base: str, ref: str, label: str
     # Measured baseline and the clean re-run.
     workspace = out / "workspace"
     measured = None
+    solution, unit_tests = base_snap["solution"], base_snap["unit_test_projects"]
+    # With projects left out, the conversion's own solution of exactly the kept projects, written by preparation on
+    # the branch (a conversion prepared before it existed built a solution filter). The base commit builds the same
+    # file, copied beside it, and the kept unit test projects, wherever they live.
+    own = (scope.get("build") or scope.get("filter")) if left_out else None
+    if own:
+        solution, unit_tests = own, [p for p in unit_tests if p not in left_out]
+        if (tip_tree / own).is_file() and not (base_tree / own).exists():
+            shutil.copyfile(tip_tree / own, base_tree / own)
+    elif solution is None:
+        unit_tests = []                     # no solution holds every unit test project: nothing to build them with
     if not baseline_plan:
-        measured = measure_baseline(base_tree, base_snap["solution"], base_snap["unit_test_projects"], base_dir / "measured", base_sha)
+        measured = measure_baseline(base_tree, solution, unit_tests, base_dir / "measured", base_sha)
     baseline_md, baseline_info = measured_baseline(db, repository, base_sha, baseline_plan, workspace, measured, left_out)
-    projects = [p for p in baseline_info.get("projects") or base_snap["unit_test_projects"] if p not in left_out]
+    projects = [p for p in baseline_info.get("projects") or unit_tests if p not in left_out]
     tests_left_out = sorted(p for p in base_snap["unit_test_projects"] if p in left_out)
-    solution = base_snap["solution"]
-    if left_out and scope.get("filter"):
-        solution = scope["filter"]          # the kept projects only: on the branch, written by preparation
     clean = build_and_test(tip_tree, solution, projects, out / "clean")
     total = sum(p.get("total", 0) for p in clean["projects"].values())
     not_run = [p for p, r in clean["projects"].items() if not r["ran"]]
@@ -674,7 +683,7 @@ def verify(db, *, engagement_id: str, slug: str, base: str, ref: str, label: str
         checks.append(_check("diff", "Baseline diff", "fail", "no result file from the clean re-run to compare"))
 
     # Tests kept and deltas covered: the plugin's own checks, in its own words.
-    tc = tests_changed(base_tree, tip_tree, [p for p in base_snap["unit_test_projects"] if p not in left_out], out_of_scope)
+    tc = tests_changed(base_tree, tip_tree, [p for p in unit_tests if p not in left_out], out_of_scope)
     approved_files = {a["test"] for a in config.get("approved_test_removals") or []}
     tc_for_plugin = dict(tc)
     if approved_files:
@@ -850,7 +859,8 @@ def scope_md(sc: dict | None) -> list[str]:
         decided += (f": {sc['reason']})" if sc.get("reason") else ")")
     out = ["", "## Conversion scope", "",
            f"{len(sc['projectsLeftOut'])} project(s) were left out of this conversion's scope and left untouched{decided}. "
-           f"Built and tested `{sc['built']}`, not the whole solution. {len(sc['testProjectsLeftOut'])} test project(s) "
+           f"Built and tested `{sc['built']}`, the conversion's own solution of the projects in scope, at the base "
+           f"commit and on the branch. {len(sc['testProjectsLeftOut'])} test project(s) "
            f"out of scope: not run, and not counted as removed or failing. {sc['workItemsLeftOut']} work item(s) out of "
            "scope: not counted as remaining.", ""]
     out += [f"- `{p}`" for p in sc["projectsLeftOut"][:100]]

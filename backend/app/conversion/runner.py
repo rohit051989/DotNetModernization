@@ -46,6 +46,7 @@ import datetime
 import hashlib
 import json
 import os
+import shutil
 import uuid
 from pathlib import Path
 
@@ -100,6 +101,14 @@ class Run:
     def log(self, message: str) -> None:
         print(f"{_now():%H:%M:%S} {message}", flush=True)
 
+    def place_solution(self, tree: Path) -> None:
+        """The solution the plan builds, copied into `tree` from the conversion's worktree when `tree` lacks it: the
+        conversion's own solution of the projects in scope (app.scope.files) is committed on its branch after the
+        baseline commit, and the baseline builds the same projects."""
+        own = self.target / self.solution
+        if not (tree / self.solution).exists() and own.is_file():
+            shutil.copyfile(own, tree / self.solution)
+
     # ---------- build and test ----------
 
     def build_and_test(self, worktree: Path, out: Path) -> tuple[list[dict], dict | None, str | None]:
@@ -132,6 +141,7 @@ class Run:
         scratch = self.dir / "scratch" / "baseline"
         gitops.add_scratch(self.root, scratch, self.plan.legacy_commit)
         siblings.link(scratch, self.root, self.sibling_links)
+        self.place_solution(scratch)
         try:
             records, results, failure = self.build_and_test(scratch, self.evidence / "000-baseline")
         finally:

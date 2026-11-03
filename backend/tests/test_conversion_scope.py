@@ -1,26 +1,33 @@
 """The conversion scope (36-COPILOT-ENHANCED-CONVERSION.md Part O; app.scope) on the synthetic 170-project repository,
-with its four solutions sharing projects (tests/fixtures/synthetic_repository.py, `solutions`).
+with its four solutions sharing projects and a test project in none (tests/fixtures/synthetic_repository.py,
+`solutions`), and a test class in each test project (`test_classes`).
 
 The repository is generated into a scratch folder, committed, registered to a developer on a simulated machine, and
 discovered by the real job in this test run's own schema (tests/__init__.py). Saves go through the API as a server
-would call it (tests.asgi_client), through the real guard and policy. Preparation is the real one, with the advisory
-check and sibling detection stood in for; the verifier's builds, tests and re-discovery are stood in for, its rules
-are the real ones. The tests run in order: each builds on the scope the one before saved.
+would call it (tests.asgi_client), through the real guard and policy. Preparation is the real one, package step
+included, with the advisory check, sibling detection and `dotnet build`/`dotnet test` stood in for (each build records
+the projects the solution it was asked for lists); the conversion's own solution is also read by the real MSBuild when
+dotnet is installed. The verifier's builds, tests and re-discovery are stood in for, its rules are the real ones. The
+tests run in order: each builds on the scope the one before saved.
 
 - a repository nobody has scoped converts everything, as before;
 - Save is refused while a kept project's dependency is excluded, with every problem listed together, and accepted once
   fixed; Deselect all is refused; a non-owner's save and a save from a stale copy are refused;
 - the work list marks the excluded findings and counts them, and deletes none;
-- preparation writes the OUT-OF-SCOPE.md notes (never over a file already there) and the solution filters, and the
-  package step and the instructions leave the excluded projects out;
+- preparation writes the OUT-OF-SCOPE.md notes (never over a file already there) and one solution of exactly the
+  kept projects, spread across several solutions and one in none; the package step runs, building it at the baseline
+  and on the branch and testing every kept unit test project; the instructions leave the excluded projects out;
 - saving a changed scope prepares an unrun conversion again; a conversion already run keeps its scope;
-- the verifier builds and tests the filter, and the excluded projects' tests and findings are not counted;
+- the verifier builds and tests that solution, at the base commit and on the branch, and the excluded projects'
+  tests and findings are not counted;
 - a rescan keeps the scope, flags a new project, and drops an excluded project that is gone.
 
 Uses stdlib unittest, same rationale as test_repository_ingest.py. About five minutes: two discovery runs.
 """
 import contextlib
 import json
+import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -34,7 +41,7 @@ from sqlalchemy import text
 from app import models
 from app.auth import machine, service
 from app.config import settings
-from app.conversion import gitops, planner
+from app.conversion import dotnet, gitops, planner
 from app.db import SessionLocal
 from app.deletion import service as deletion
 from app.engine import convert, siblings
@@ -78,12 +85,43 @@ def path(name: str) -> str:
     return synth.path_of(name)
 
 
+def listed(solution: Path) -> dict[str, str]:
+    """{project path: GUID} of every project a solution file lists, by its Project line."""
+    found = re.findall(r'^Project\("\{[^}]+\}"\) = "[^"]*", "([^"]+)", "(\{[^}]+\})"',
+                       solution.read_text(encoding="utf-8-sig"), re.M)
+    return {p.replace("\\", "/"): guid for p, guid in found}
+
+
+def fixture_guid(name: str) -> str:
+    return "{" + str(uuid.uuid5(uuid.NAMESPACE_URL, f"synthco/{name}")).upper() + "}"
+
+
+@contextlib.contextmanager
+def stand_in_dotnet(builds: list, tests: list):
+    """`dotnet build` and `dotnet test`, stood in for: green, one passing test per test project. Each build records
+    the solution asked for and the projects it lists in that tree (None when the tree has no such file)."""
+    def build(tree, solution, timeout=1800):
+        file = Path(tree) / solution
+        builds.append((solution, set(listed(file)) if file.is_file() else None))
+        return dotnet.Run(True, 0, "stood in")
+
+    def run_tests(tree, project, trx, timeout=1800, filter=None):
+        tests.append(project)
+        trx.parent.mkdir(parents=True, exist_ok=True)
+        trx.write_text("<TestRun />\n", encoding="utf-8")
+        return dotnet.Run(True, 0, "stood in"), dotnet.TestResults(total=1, passed=1, passed_tests=[f"{project}:Adds"])
+
+    with mock.patch.object(dotnet, "build", side_effect=build), mock.patch.object(dotnet, "test", side_effect=run_tests), \
+            mock.patch.object(dotnet, "shutdown_build_servers"):
+        yield
+
+
 class ConversionScopeAtScale(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.tmp = tempfile.TemporaryDirectory()
         cls.root = Path(cls.tmp.name).resolve() / "SynthCo170"
-        synth.generate(cls.root, solutions=True)
+        synth.generate(cls.root, solutions=True, test_classes=True)
         # The repository's own note in a project that will be left out: never overwritten.
         (cls.root / PLANTED).write_text("Our own notes about this project.\n", encoding="utf-8")
         git(cls.root, "init", "-q", "-b", "main")
@@ -154,10 +192,13 @@ class ConversionScopeAtScale(unittest.TestCase):
                 stack += depends[p]
         return out
 
-    # The scope test 2 saves: the Web applications and the Workers, with everything they need. Left out: the legacy
-    # applications, their data layer and its tests, the databases, and the Web tests.
+    # The scope test 2 saves: the Web applications, the Workers and the test project no solution lists, with
+    # everything they need: kept projects of several solutions, and one of none. Left out: the legacy applications,
+    # their data layer, the databases, and the other tests.
+    LOOSE = path(synth.TESTS[19])
+
     def kept(self) -> set[str]:
-        return self.closure({path(n) for n in synth.WEB_APPS + synth.WORKERS})
+        return self.closure({path(n) for n in synth.WEB_APPS + synth.WORKERS} | {self.LOOSE})
 
     # ---------- the tests, in order
 
@@ -170,10 +211,10 @@ class ConversionScopeAtScale(unittest.TestCase):
         shared = next(p for p in tree["projects"] if p["path"] == path(synth.CORE[0]))
         self.assertEqual(len(shared["solutions"]), 3)
         conversion = scope.for_conversion(self.db, self.repo)
-        self.assertEqual((conversion["excluded"], conversion["filters"], conversion["kept"]), ([], [], 170))
+        self.assertEqual((conversion["excluded"], conversion["build"], conversion["kept"]), ([], None, 170))
         from app.engine.inputs.collect import collect
         model = collect(self.db, self.repo)
-        self.assertEqual(model["scope"], {"excluded": [], "filter": None, "filters": []})
+        self.assertEqual(model["scope"], {"excluded": [], "build": None})
         self.assertEqual(len(model["projects"]), 170)
 
     def test_2_save_is_refused_while_a_dependency_is_excluded_with_every_problem_listed_then_accepted(self):
@@ -235,28 +276,48 @@ class ConversionScopeAtScale(unittest.TestCase):
         self.assertEqual(totals["out_of_scope_projects"], len(excluded))
         self.assertEqual(self.tree()["totals"]["workItemsOutOfScope"], len(found))
 
-    def test_6_preparation_writes_the_notes_and_filters_and_leaves_the_excluded_projects_out(self):
+    def test_6_preparation_writes_one_solution_of_the_kept_projects_and_the_package_step_runs(self):
         excluded = set(self.all) - self.kept()
+        kept = set(self.all) - excluded
+        solutions = {p["path"]: p["solutions"] for p in self.projects}
+        self.assertEqual(solutions[self.LOOSE], [])                           # kept, and in no solution
+        self.assertEqual({s for p in kept for s in solutions[p]},             # kept, across several solutions
+                         {"SynthCo.Legacy.sln", "SynthCo.Web.sln", "SynthCo.Workers.sln"})
+        # No solution of the repository holds every kept project, nor every kept unit test project.
+        self.assertFalse(any(kept <= {p for p in kept if s in solutions[p]} for s in synth.SOLUTIONS))
+        self.assertEqual(planner._unit_test_projects(self.db, self.repo.id, excluded), [self.LOOSE])
+        builds, tests = [], []
         with mock.patch.object(convert, "check_advisories", return_value=[]), \
-                mock.patch.object(siblings, "detect", return_value=[]):
+                mock.patch.object(siblings, "detect", return_value=[]), stand_in_dotnet(builds, tests):
             done = convert.prepare(self.db, ENGAGEMENT, self.repo.slug, when_run="new", lookups_from_discovery=True)
         self.assertEqual((done["action"], done["number"]), ("prepared", 1))
         record, wt = done["scope"], Path(done["worktree"])
         self.assertEqual(set(record["excluded"]), excluded)
         self.assertEqual(record["decidedBy"], f"Ann ({self.ann[2]})")
 
-        # A solution filter per solution that keeps a project, listing only those; none for Database's, all left out.
-        filters = {f["solution"]: f for f in record["filters"]}
-        self.assertEqual(sorted(filters), ["SynthCo.Legacy.sln", "SynthCo.Web.sln", "SynthCo.Workers.sln"])
-        for solution, members in synth.SOLUTIONS.items():
-            if solution not in filters:
-                continue
-            listed = json.loads((wt / f"{solution[:-4]}.in-scope.slnf").read_text(encoding="utf-8"))["solution"]
-            self.assertEqual(listed["path"], solution)
-            want = {path(n).replace("/", "\\") for n in members if path(n) not in excluded}
-            self.assertEqual(set(listed["projects"]), want)
-        # The conversion builds the filter that keeps the most projects: the first solution, Database's, keeps none.
-        self.assertEqual((record["filter"], done["solution"]), ("SynthCo.Web.in-scope.slnf", "SynthCo.Web.sln"))
+        # One solution, at the root, listing exactly the kept projects: each shared project once, with the GUID its
+        # solutions give it; the one no solution lists with a GUID made from its path. No solution filter.
+        self.assertEqual((record["build"], done["solution"]), ("in-scope.sln", "in-scope.sln"))
+        own = listed(wt / "in-scope.sln")
+        self.assertEqual(set(own), kept)
+        self.assertEqual(len(re.findall(r"^Project\(", (wt / "in-scope.sln").read_text(encoding="utf-8"), re.M)), len(kept))
+        self.assertEqual(own[path(synth.CORE[0])], fixture_guid(synth.CORE[0]))
+        self.assertEqual(own[self.LOOSE], "{" + str(uuid.uuid5(uuid.NAMESPACE_URL, f"in-scope.sln/{self.LOOSE}")).upper() + "}")
+        self.assertEqual(list(wt.rglob("*.slnf")), [])
+        self.assertNotIn("filters", record)
+        if shutil.which("dotnet"):
+            self.assert_msbuild_builds(wt, kept)
+
+        # The package step ran: planned on the kept projects, building that solution at the baseline (where it is
+        # copied in) and after each change, and testing every kept unit test project.
+        self.assertNotIn("skipped", done["packageStep"])
+        plan = self.db.get(models.ConversionPlan, uuid.UUID(done["planId"]))
+        self.assertEqual((plan.ordering["solution"], plan.ordering["unit_test_projects"]), ("in-scope.sln", [self.LOOSE]))
+        self.assertTrue(plan.baseline["passed"], plan.baseline)
+        self.assertEqual(plan.baseline["commit"], done["baseline"])
+        self.assertTrue(builds)
+        self.assertEqual(builds, [("in-scope.sln", kept)] * len(builds))
+        self.assertEqual(set(tests), {self.LOOSE})
 
         # An OUT-OF-SCOPE.md in each excluded project's folder, never over the repository's own.
         for p in excluded - {PLANTED.rsplit("/", 1)[0] + "/SynthCo.Data.01.csproj"}:
@@ -268,20 +329,20 @@ class ConversionScopeAtScale(unittest.TestCase):
             self.assertIn("not part of the converted build", text_)
         self.assertEqual((wt / PLANTED).read_text(encoding="utf-8"), "Our own notes about this project.\n")
         self.assertIn(PLANTED, record["files"]["kept"])
-        self.assertEqual(git(wt, "log", "-1", "--format=%ae", "--", "SynthCo.Web.in-scope.slnf"), "platform@modernization.local")
+        self.assertEqual(git(wt, "log", "-1", "--format=%ae", "--", "in-scope.sln"), "platform@modernization.local")
 
-        # The instructions build the filter, name the projects left out, and say nothing else about them.
+        # The instructions build that solution, name the projects left out, and say nothing else about them.
         instructions = (wt / ".github/copilot-instructions.md").read_text(encoding="utf-8")
         self.assertIn("## Conversion scope", instructions)
-        self.assertIn("Build and test with `SynthCo.Web.in-scope.slnf`, never the whole solution", instructions)
+        self.assertIn("Build and test with `in-scope.sln`, never the repository's other solutions", instructions)
         self.assertIn("Never change a project outside the scope", instructions)
         for skill in (wt / ".github/upgrades/skills").glob("*.md"):
             body = skill.read_text(encoding="utf-8")
             leaked = [p for p in excluded if f"({p})" in body or f"`{p}`" in body or f"| {p} |" in body]
             self.assertEqual(leaked, [], skill.name)
 
-        # The package step plans only the kept projects, and builds the filter. Offline, the fixture's packages have
-        # no upgrade to plan: one is recorded for a kept project and one for an excluded one.
+        # The package step plans only the kept projects' packages. Offline, the fixture's packages have no upgrade to
+        # plan: one is recorded for a kept project and one for an excluded one.
         kept_one, left_one = path(synth.SERVICES[0]), path(synth.DATA[0])
         ids = dict(self.db.execute(text("SELECT relative_path, id FROM projects WHERE repository_id = :r AND relative_path = ANY(:p)"),
                                    {"r": self.repo.id, "p": [kept_one, left_one]}).all())
@@ -300,21 +361,28 @@ class ConversionScopeAtScale(unittest.TestCase):
         projects_of = lambda found: {o[1] for p in found.values() for o in p["occurrences"]}     # noqa: E731
         self.assertEqual(projects_of(everything), {kept_one, left_one})
         self.assertEqual(projects_of(scoped), {kept_one})
-        # (A unit test project is a kept project the filter lists: Web.01 stands for one here.)
-        plan = models.ConversionPlan(ordering={"solution": "SynthCo.Web.sln", "unit_test_projects": [path(synth.WEB_APPS[0])]})
-        with mock.patch.object(planner, "create", return_value=plan) as create, mock.patch.object(self.db, "commit"), \
-                mock.patch.object(self.db, "query"):
-            convert.plan_packages(self.db, ENGAGEMENT, self.repo.slug, "base", "conversion/x", wt, record)
-        self.assertEqual(create.call_args.kwargs["excluded_projects"], excluded)
-        self.assertEqual((plan.ordering["solution"], plan.ordering["full_solution"]), ("SynthCo.Web.in-scope.slnf", "SynthCo.Web.sln"))
-        # A unit test project in scope that the conversion's filter does not hold: no package step, saying why.
-        plan = models.ConversionPlan(ordering={"solution": "SynthCo.Web.sln", "unit_test_projects": [path(synth.WORKERS[0])]})
-        with mock.patch.object(planner, "create", return_value=plan), mock.patch.object(self.db, "commit"), \
-                mock.patch.object(self.db, "query"), self.assertRaisesRegex(LookupError, "does not hold every unit test"):
-            convert.plan_packages(self.db, ENGAGEMENT, self.repo.slug, "base", "conversion/x", wt, record)
-
         # Saving now would prepare it again: it has not been run.
         self.assertEqual(self.client_get()["on_save"]["reprepares"], 1)
+
+    def assert_msbuild_builds(self, wt: Path, kept: set[str]) -> None:
+        """The real MSBuild reads the conversion's solution: it lists the kept projects, and its build of the solution
+        builds each one, in Debug (the solution's metaproject, without restoring or compiling)."""
+        listing = subprocess.run(["dotnet", "sln", "in-scope.sln", "list"], cwd=wt, capture_output=True, text=True)
+        self.assertEqual(listing.returncode, 0, listing.stdout + listing.stderr)
+        self.assertEqual({line.strip().replace("\\", "/") for line in listing.stdout.splitlines()
+                          if line.strip().endswith("proj")}, kept)
+        metaproj = wt / "in-scope.sln.metaproj"
+        try:
+            validated = subprocess.run(["dotnet", "msbuild", "in-scope.sln", "-t:ValidateSolutionConfiguration", "-nologo",
+                                        "-v:q"], cwd=wt, capture_output=True, text=True, env={**os.environ, "MSBuildEmitSolution": "1"})
+            self.assertEqual(validated.returncode, 0, validated.stdout + validated.stderr)
+            meta = metaproj.read_text(encoding="utf-8-sig")
+            references = re.findall(r'<ProjectReference Include="([^"]+)">\s*(?:<[^>]+>[^<]*</[^>]+>\s*)*?'
+                                    r'<AdditionalProperties>Configuration=Debug; Platform=AnyCPU</AdditionalProperties>', meta)
+            self.assertEqual({Path(r).resolve().relative_to(wt.resolve()).as_posix() for r in references}, kept)
+        finally:
+            for leftover in (metaproj, wt / "in-scope.sln.metaproj.tmp"):
+                leftover.unlink(missing_ok=True)
 
     def client_get(self) -> dict:
         client = self.client(self.ann)
@@ -334,11 +402,14 @@ class ConversionScopeAtScale(unittest.TestCase):
         self.assertTrue(launched[0]["prepare_conversion"])
         self.assertNotIn("new_conversion", launched[0])
         # What that discovery run ends with: the unrun conversion refreshed in place, with the new scope.
+        builds = []
         with mock.patch.object(convert, "check_advisories", return_value=[]), \
-                mock.patch.object(siblings, "detect", return_value=[]):
+                mock.patch.object(siblings, "detect", return_value=[]), stand_in_dotnet(builds, []):
             done = convert.prepare(self.db, ENGAGEMENT, self.repo.slug, when_run="keep", lookups_from_discovery=True)
         self.assertEqual((done["action"], done["number"]), ("refreshed", 1))
         self.assertNotIn(back, done["scope"]["excluded"])
+        self.assertIn(back, listed(Path(done["worktree"]) / "in-scope.sln"))
+        self.assertTrue(all(b[1] and back in b[1] for b in builds))
         self.assertFalse((Path(done["worktree"]) / back).parent.joinpath("OUT-OF-SCOPE.md").exists())
 
         # Run: someone commits on the branch. A new save keeps conversion 1's scope; it applies to the next one.
@@ -354,13 +425,13 @@ class ConversionScopeAtScale(unittest.TestCase):
         self.assertIn("keeps the scope it was prepared with", again["note"])
         self.assertEqual(convert.record(ENGAGEMENT, self.repo.slug, 1)["scope"]["excluded"], done["scope"]["excluded"])
 
-    def test_8_the_verifier_builds_and_tests_the_filter_and_does_not_count_the_excluded_projects(self):
+    def test_8_the_verifier_builds_and_tests_the_conversions_solution_and_does_not_count_the_excluded_projects(self):
         from app.engine import verifier
         from app.engine.verifier import rediscovery
 
         rec = convert.record(ENGAGEMENT, self.repo.slug, 1)
         left = rec["scope"]["excluded"]
-        kept_test, left_test = path(synth.TESTS[0]), path(synth.TESTS[25])
+        kept_tests, left_test = [path(synth.TESTS[0]), self.LOOSE], path(synth.TESTS[25])   # Web's, and in no solution
         self.assertIn(left_test, left)
         kept_lib, left_lib = path(synth.SERVICES[0]), path(synth.DATA[3])
 
@@ -371,28 +442,30 @@ class ConversionScopeAtScale(unittest.TestCase):
                     "projects": [{"path": p, "framework": "net10.0" if p not in left else "net48"} for p in self.all],
                     "deltas": [], "packages": []}
 
-        snaps = iter([{"model": model([kept_lib, left_lib]), "solution": "SynthCo.Web.sln", "unit_test_projects": [kept_test, left_test]},
-                      {"model": model([left_lib]), "solution": "SynthCo.Web.sln", "unit_test_projects": [kept_test, left_test]}])
+        # As re-discovery finds them: no solution of the repository holds every unit test project.
+        snaps = iter([{"model": model([kept_lib, left_lib]), "solution": None, "unit_test_projects": kept_tests + [left_test]},
+                      {"model": model([left_lib]), "solution": None, "unit_test_projects": kept_tests + [left_test]}])
         built = []
 
         def build_and_test(tree, solution, projects, out):
-            built.append((Path(out).name, solution, list(projects)))
+            built.append((Path(out).name, solution, list(projects), set(listed(Path(tree) / solution))))
             return {"built": True, "buildExit": 0, "projects": {p: {"ran": True, "exit": 0, "total": 4} for p in projects}, "trx": []}
 
         with mock.patch.object(rediscovery, "snapshot", side_effect=lambda *a, **k: next(snaps)), \
                 mock.patch.object(verifier, "build_and_test", side_effect=build_and_test):
             report = convert.verify(self.db, ENGAGEMENT, self.repo.slug, "conversion/1", refresh_baseline=True)
 
-        tip = next(b for b in built if b[0] == "clean")
-        self.assertEqual(tip[1], "SynthCo.Web.in-scope.slnf")              # the clean re-run builds the filter
-        self.assertEqual(tip[2], [kept_test])                                # and tests only the kept test project
+        kept = set(self.all) - set(left)
+        tip, base = next(b for b in built if b[0] == "clean"), next(b for b in built if b[0] == "measured")
+        self.assertEqual(tip[1:], ("in-scope.sln", kept_tests, kept))          # the clean re-run builds the solution
+        self.assertEqual(base[1:], ("in-scope.sln", kept_tests, kept))         # and so does the base commit's
         rd = report["rediscovery"]
         self.assertEqual(rd["resolved"], [[kept_lib, "hardcoded-windows-path"]])
         self.assertEqual(rd["remaining"], [])                                # the excluded finding is not remaining
         self.assertEqual(rd["outOfScope"], [[left_lib, "hardcoded-windows-path"]])
         self.assertFalse(set(rd["offTarget"]) & set(left))                   # left on its framework, not counted
         self.assertEqual(report["scope"]["testProjectsLeftOut"], [left_test])
-        self.assertEqual(report["scope"]["built"], "SynthCo.Web.in-scope.slnf")
+        self.assertEqual(report["scope"]["built"], "in-scope.sln")
         written = set(rec["scope"]["files"]["written"])
         self.assertFalse(written & {f["path"] for f in report["diff"].get("files", [])})
         self.assertTrue(written <= set(report["excludedPaths"]))

@@ -67,7 +67,7 @@ def _repository_files(repository: models.Repository) -> list[str]:
 
 def collect(db: Session, repository: models.Repository) -> dict:
     """The model. A project left out of the conversion's scope (app.scope, Part O) is not in it: not its findings, its
-    packages, its framework deltas nor its tests. `scope` says which were left out and the solution filters to build."""
+    packages, its framework deltas nor its tests. `scope` says which were left out and the solution that builds the rest."""
     from app.scope import service as scope_service
 
     engagement = db.get(models.Engagement, repository.engagement_id)
@@ -206,5 +206,5 @@ def collect(db: Session, repository: models.Repository) -> dict:
         "projects": projects, "current_frameworks": current,
         "items": items, "packages": packages, "couplings": couplings, "version_drift": sorted(set(drift)), "deltas": deltas,
         "outbound": outbound, "soap": soap, "vocabulary": vocabulary,
-        "scope": {"excluded": scope["left"], "filter": scope["filter"], "filters": [f["filter"] for f in scope["filters"]]},
+        "scope": {"excluded": scope["left"], "build": scope["build"]},
     }

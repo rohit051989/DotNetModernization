@@ -161,7 +161,7 @@ function ConversionCard({
           <dt className="text-neutral-500">Scope</dt>
           <dd data-testid="conversion-scope">
             {entry.scope?.left_out
-              ? `${entry.scope.left_out} of ${entry.scope.projects ?? '?'} projects left out, untouched; builds ${entry.scope.filter ?? 'the solution'}`
+              ? `${entry.scope.left_out} of ${entry.scope.projects ?? '?'} projects left out, untouched; builds ${entry.scope.build ?? 'the solution'}`
               : 'every project'}
             {entry.state !== 'prepared' && entry.scope?.left_out ? ' (kept since it was run)' : ''}
           </dd>

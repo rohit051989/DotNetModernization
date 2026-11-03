@@ -52,7 +52,8 @@ def local_snapshot(repo: models.Repository) -> dict:
             # The scope it was prepared with (36-COPILOT-ENHANCED-CONVERSION Part O): kept once it has been run.
             "scope": {"left_out": len((rec.get("scope") or {}).get("excluded") or []),
                       "projects": (rec.get("scope") or {}).get("projects"),
-                      "filter": (rec.get("scope") or {}).get("filter")},
+                      # A conversion prepared before its own solution was built built a solution filter.
+                      "build": (rec.get("scope") or {}).get("build") or (rec.get("scope") or {}).get("filter")},
         })
     root = Path(repo.local_path)
     head = gitops.git(root, "rev-parse", "HEAD", check=False).strip() if root.exists() else ""

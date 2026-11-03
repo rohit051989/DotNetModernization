@@ -217,18 +217,12 @@ SATISFIED = ("committed", "not_applicable")
 def plan_packages(db, engagement_id: str, slug: str, base: str, branch: str, worktree: Path, scope: dict | None = None):
     """A conversion plan (app.conversion.planner) on the conversion's own branch and worktree. Its deterministic units
     are the package changes that need no code; its breaking upgrades stay assisted and are left for the agent. With
-    projects left out of scope, it plans only the kept ones and builds the solution's filter (app.scope.files)."""
+    projects left out of scope, it plans only the kept ones and builds the conversion's own solution of them, which
+    holds every kept unit test project (app.scope.files)."""
     excluded = set((scope or {}).get("excluded") or [])
-    plan = planner.create(db, engagement_id, slug, [], excluded_projects=excluded)
+    plan = planner.create(db, engagement_id, slug, [], excluded_projects=excluded,
+                          solution=(scope or {}).get("build") if excluded else None)
     plan.legacy_commit, plan.branch, plan.worktree_path = base, branch, str(worktree)
-    if excluded:
-        # The conversion's own solution filter (app.scope.service.for_conversion), which must run every kept unit test.
-        built = next(f for f in scope["filters"] if f["filter"] == scope["filter"]) if scope["filter"] else None
-        missing = sorted(set(plan.ordering["unit_test_projects"]) - set(built["projects"] if built else []))
-        if missing:
-            raise LookupError(f"the solution filter {scope['filter'] or '(none)'} does not hold every unit test project "
-                              f"in scope: {', '.join(missing[:3])}")
-        plan.ordering = {**plan.ordering, "solution": scope["filter"], "full_solution": scope["solution"]}
     db.commit()
     units = db.query(models.ConversionUnit).filter_by(plan_id=plan.id).order_by(models.ConversionUnit.sequence).all()
     return plan, units
@@ -399,8 +393,8 @@ def prepare(db, engagement_id: str, slug: str, *, baseline: str | None = None, g
 
 
 def _commit_scope(worktree: Path, scope: dict) -> dict:
-    """Writes and commits, as the platform, the solution filters and OUT-OF-SCOPE.md notes of a scope that leaves a
-    project out (app.scope.files). Nothing when every project is in scope."""
+    """Writes and commits, as the platform, the conversion's own solution and the OUT-OF-SCOPE.md notes of a scope
+    that leaves a project out (app.scope.files). Nothing when every project is in scope."""
     from app.scope import files as scope_files
 
     if not scope["excluded"]:
@@ -448,7 +442,7 @@ def _prepare_on(db, repository, engagement, root: Path, latest: dict | None, bas
     reuse = bool(refresh and latest["baseline"] == base and latest.get("packagesHead")
                  and latest.get("plannedPackageChanges") == planned
                  and (latest.get("scope") or {}).get("excluded", []) == scope["excluded"]
-                 and (latest.get("scope") or {}).get("filters", []) == scope["filters"])
+                 and (latest.get("scope") or {}).get("keptProjects", []) == scope["keptProjects"])
     if reuse and plan is not None:
         # The package commits on the branch stand, so this plan is not run: the record keeps the plan that made them.
         db.query(models.ConversionUnit).filter_by(plan_id=plan.id).delete()
@@ -478,8 +472,8 @@ def _prepare_on(db, repository, engagement, root: Path, latest: dict | None, bas
     secret_references = _commit_inputs(db, engagement_id, slug, worktree, applied)
 
     solutions = sorted(p.name for p in worktree.glob("*.sln"))
-    # With projects left out, the conversion builds its solution filter: the one keeping the most projects.
-    solution = scope["solution"] or (solutions[0] if solutions else None)
+    # With projects left out, the conversion builds its own solution: exactly the kept projects.
+    solution = scope["build"] or (solutions[0] if solutions else None)
     record = {
         "number": number, "engagement": engagement_id, "repository": slug, "baseline": base, "branch": branch,
         # Where the baseline came from: the commit discovery scanned, or the command line's --baseline.
@@ -506,7 +500,7 @@ def _prepare_on(db, repository, engagement, root: Path, latest: dict | None, bas
         # failure (app.engine.inputs.secrets).
         "secretReferences": secret_references,
         # The projects this conversion covers (app.scope): the ones left out, who decided, when and why, the solution
-        # filters that build the rest, and the files written for them (`kept`: already there, left as they were).
+        # that builds the rest, and the files written for them (`kept`: already there, left as they were).
         "scope": {**scope, "files": scope_written},
     }
     _write_record(record)
@@ -591,7 +585,7 @@ def verify(db, engagement_id: str, slug: str, branch: str, *, base: str | None =
               "package_targets_from_inputs": True,
               # Removed tests a person approved, with a reason: recorded, not counted (approve_removal).
               "approved_test_removals": approvals_for(engagement_id, slug, branch),
-              # The scope the branch's conversion was prepared with (Part O): its solution filter is built and tested,
+              # The scope the branch's conversion was prepared with (Part O): its own solution is built and tested,
               # and the projects it left out are not counted.
               "scope": (own or {}).get("scope") or {}}
     return verifier.verify(db, engagement_id=engagement_id, slug=slug, base=base, ref=branch,

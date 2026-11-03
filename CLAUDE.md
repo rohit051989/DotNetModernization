@@ -219,6 +219,12 @@ modernization-platform/
     (client B, ...) instead, and an example domain such as `client-a.example` for a host. What a client's
     repositories contain belongs in that client's own database and runs folder, never in this repository.
 
+19. **Never download or run a tool the project does not declare.** Use the project's own tools: its own linter
+    (`oxlint`, from `frontend/package.json`), its test runners, the `dotnet` SDK and the scripts in `scripts/`. No
+    `npx <tool>` or `pip install` of something the project does not list, not even to try it once and throw it away.
+    A client's environment flags downloaded software. If a task truly needs a new tool, ask first, as for any new
+    dependency ("Tech stack").
+
 ## Domain vocabulary
 
 Use these terms exactly and consistently in code, APIs, and UI copy.

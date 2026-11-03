@@ -239,36 +239,36 @@ class Defaults(unittest.TestCase):
 
 class ConversionScope(unittest.TestCase):
     """A conversion that leaves projects out (36-COPILOT-ENHANCED-CONVERSION Part O): the instructions build and test
-    its solution filter, the Linux build-pipeline instruction builds it too, and every excluded project is named as
-    never to be changed. One that leaves none out reads as before."""
+    its own solution of the kept projects, the Linux build-pipeline instruction builds it too, and every excluded
+    project is named as never to be changed. One that leaves none out reads as before."""
 
     def scoped(self):
         m = model([*model()["items"], _item("windows-build-pipeline", "linux-build-pipeline", file="build.cmd")])
         m["vocabulary"]["item_ids"].append("windows-build-pipeline")
         m["vocabulary"]["resolution_ids"].append("linux-build-pipeline")
-        m["scope"] = {"excluded": [{"path": "src/Old/Old.csproj", "name": "Old"}], "filter": "Shop.in-scope.slnf",
-                      "filters": ["Shop.in-scope.slnf", "Batch.in-scope.slnf"]}
+        m["scope"] = {"excluded": [{"path": "src/Old/Old.csproj", "name": "Old"}], "build": "in-scope.sln"}
         return m
 
-    def test_a_conversion_that_leaves_projects_out_builds_and_tests_its_filter(self):
+    def test_a_conversion_that_leaves_projects_out_builds_and_tests_its_own_solution(self):
         files = inputs.build(self.scoped(), None)                      # self-contained and free of secrets, as written
         instructions = files[paths.COPILOT_INSTRUCTIONS]
         self.assertIn("## Conversion scope", instructions)
-        self.assertIn("Build and test with `Shop.in-scope.slnf`, never the whole solution", instructions)
-        self.assertIn("filters of their own, listing their projects in scope: `Batch.in-scope.slnf`", instructions)
+        self.assertIn("Build and test with `in-scope.sln`, never the repository's other solutions: it lists exactly "
+                      "the projects in scope, wherever they live, each once.", instructions)
+        self.assertNotIn("slnf", instructions)
         self.assertIn("**Never change a project outside the scope.**", instructions)
         self.assertIn("- `src/Old/Old.csproj`", instructions)
         self.assertLess(instructions.index("## Conversion scope"), instructions.index("Adapted from"))
         pipeline = files[".github/upgrades/skills/applying-linux-build-pipeline.md"]
-        self.assertIn("The Linux build pipeline builds `Shop.in-scope.slnf`, not the whole solution", pipeline)
+        self.assertIn("The Linux build pipeline builds `in-scope.sln`, not the repository's other solutions", pipeline)
         for name, text in files.items():
             if name.startswith(".github/upgrades/skills/"):
-                self.assertIn("- [ ] The solution filter `Shop.in-scope.slnf` builds, from a build actually run", text)
+                self.assertIn("- [ ] The solution `in-scope.sln` builds, from a build actually run", text)
         self.assertIn("1 project(s) are outside this conversion's scope", files[".github/platform-inputs/assessment-addendum.md"])
 
     def test_a_conversion_that_leaves_nothing_out_reads_as_before(self):
         m = self.scoped()
-        m["scope"] = {"excluded": [], "filter": None, "filters": []}
+        m["scope"] = {"excluded": [], "build": None}
         files = render.render(m)
         self.assertNotIn("Conversion scope", files[paths.COPILOT_INSTRUCTIONS])
         self.assertEqual(files[paths.COPILOT_INSTRUCTIONS], render.render(model())[paths.COPILOT_INSTRUCTIONS])

@@ -113,6 +113,7 @@ class Batch(Run):
         gitops.git(self.work, "checkout", "--detach", "-q", "--force", commit)
         gitops.git(self.work, "reset", "--hard", "-q", commit)
         gitops.git(self.work, "clean", "-fdq")
+        self.place_solution(self.work)
 
     def _blocked_by(self, unit, by_sequence: dict) -> list[str]:
         return [f"unit {by_sequence[d['sequence']].sequence} ({by_sequence[d['sequence']].status})"

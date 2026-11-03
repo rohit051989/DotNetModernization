@@ -718,22 +718,27 @@ as dead code", disabled and marked "coming later". Left untouched means:
   - an `OUT-OF-SCOPE.md` in each excluded project's folder, never over a file already there. It says the project is
     outside this conversion's scope and left as it was, who decided, when, the reason if one was given, and that it is
     not part of the converted build;
-  - a solution filter, `<solution>.in-scope.slnf` beside each solution that keeps a project, listing only the kept
-    projects. The conversion builds and tests one of them: the filter keeping the most projects (by solution path on
-    a tie), named in its record (`scope.filter`).
+  - the conversion's own solution, `in-scope.sln` at the repository's root, listing exactly the kept projects:
+    wherever they live, whichever solutions list them (each shared project once), and those no solution lists. A kept
+    project keeps the GUID, type and Debug/Release configuration the first solution listing it gives it (by solution
+    path); one no solution lists gets a GUID made from its path and Debug/Release on Any CPU. It is named in the
+    conversion's record (`scope.build`). A repository with many solutions sharing projects spreads its kept projects
+    across several of them, so no one solution, or filter of one, holds them all; this one does, so every kept project
+    is built, tested and verified.
 - **The package step** plans and builds only the kept projects: their packages, framework declarations, framework
-  deltas and unit tests (`planner.create(excluded_projects=...)`), building the conversion's filter. When that filter
-  does not hold every unit test project in scope, the package step is skipped, saying so.
+  deltas and unit tests (`planner.create(excluded_projects=..., solution=...)`), building the conversion's solution,
+  which holds every kept unit test project. Its baseline builds the same file, copied into the baseline commit's
+  working copy.
 - **The instructions** cover only the kept projects:
   - their findings, packages, deltas and tests;
-  - the global instructions' "Conversion scope" section, which tells the agent to build and test with the filter and
-    never to change an excluded project;
-  - the Linux build-pipeline instruction, which builds the filter too;
+  - the global instructions' "Conversion scope" section, which tells the agent to build and test with the
+    conversion's solution, never the repository's other solutions, and never to change an excluded project;
+  - the Linux build-pipeline instruction, which builds the conversion's solution too;
   - the addendum, which lists the projects left out.
 - **The work list** marks excluded findings "out of scope": kept visible, never deleted. Its counts say how many are
   out of scope.
 - **The verifier**:
-  - builds and tests the filter;
+  - builds and tests the conversion's solution, at the base commit (the same file, copied beside it) and on the branch;
   - treats an excluded project's tests as out of scope, not as removals or failures, and leaves them out of the
     baseline;
   - leaves excluded findings out of what re-discovery counts as remaining, and excluded projects out of "not on the

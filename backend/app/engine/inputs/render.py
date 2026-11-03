@@ -290,9 +290,9 @@ def _instruction(model: dict, item: dict, present: set[str], by_id: dict) -> str
     if item.get("guidance"):
         out += ["", "## The change", "", item["guidance"].strip()]
     out += ["", "## What to do", "", res["guidance"].strip()]
-    if item["id"] == "windows-build-pipeline" and _filters(model):
-        out += ["", f"The Linux build pipeline builds {_filters(model)}, not the whole solution: the projects it leaves "
-                "out are outside this conversion's scope and not part of the converted build."]
+    if item["id"] == "windows-build-pipeline" and _built(model):
+        out += ["", f"The Linux build pipeline builds {_built(model)}, not the repository's other solutions: the "
+                "projects it leaves out are outside this conversion's scope and not part of the converted build."]
     prereq = _prerequisites(item, present, by_id)
     out += ["", "## Prerequisites", ""] + (prereq or ["- None among this repository's other instructions."])
 
@@ -377,7 +377,7 @@ def _instruction(model: dict, item: dict, present: set[str], by_id: dict) -> str
 
     out += ["", "## Done when", "",
             "- [ ] Every listed place is changed, or recorded as not applicable with a reason",
-            f"- [ ] {'The solution filter ' + _filters(model) if _filters(model) else 'The solution'} builds, from a build "
+            f"- [ ] {'The solution ' + _built(model) if _built(model) else 'The solution'} builds, from a build "
             "actually run",
             "- [ ] Every test that passed before still passes; no test was edited, deleted or weakened", ""]
     return "\n".join(out)
@@ -438,7 +438,7 @@ def addendum(model: dict) -> str:
     if scope.get("excluded"):
         out += ["", "## Conversion scope", "",
                 f"{len(scope['excluded'])} project(s) are outside this conversion's scope and left untouched; their "
-                f"findings are not listed above. Build and test with {_filters(model)}.", ""]
+                f"findings are not listed above. Build and test with {_built(model)}.", ""]
         out += [f"- `{p['path']}`" for p in scope["excluded"][:MAX_LIST]]
 
     out += ["", "## Framework deltas", ""]
@@ -587,10 +587,10 @@ def decision_sheet(model: dict) -> str:
     return "\n".join(out)
 
 
-def _filters(model: dict) -> str:
-    """The solution filter a conversion that leaves projects out builds and tests, as text: "`A.in-scope.slnf`", or
+def _built(model: dict) -> str:
+    """The solution a conversion that leaves projects out builds and tests, its own, as text: "`in-scope.sln`", or
     ""."""
-    built = (model.get("scope") or {}).get("filter")
+    built = (model.get("scope") or {}).get("build")
     return f"`{built}`" if built else ""
 
 
@@ -599,12 +599,10 @@ def scope_section(model: dict) -> str:
     scope = model.get("scope") or {}
     if not scope.get("excluded"):
         return ""
-    others = [f"`{f}`" for f in scope.get("filters") or [] if f != scope.get("filter")]
     out = ["", "## Conversion scope", "",
-           (f"This conversion covers only some of this repository's projects. Build and test with {_filters(model)}, "
-            "never the whole solution: the filter lists the projects in scope."
-            + (f" The other solutions have filters of their own, listing their projects in scope: {', '.join(others)}."
-               if others else "")) if scope.get("filter") else
+           f"This conversion covers only some of this repository's projects. Build and test with {_built(model)}, "
+           "never the repository's other solutions: it lists exactly the projects in scope, wherever they live, each "
+           "once. Do not add a project outside the scope to it." if scope.get("build") else
            "This conversion covers only some of this repository's projects.",
            "", "**Never change a project outside the scope.** Each one has an `OUT-OF-SCOPE.md` in its folder, and is "
            "left exactly as it is: not converted, not retargeted, its packages and tests untouched. It is not part of "

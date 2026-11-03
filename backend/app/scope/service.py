@@ -136,40 +136,41 @@ def excluded_paths(db: Session, repository_id) -> set[str]:
     return set(scope.excluded_projects) & present
 
 
-FILTER_SUFFIX = ".in-scope.slnf"
+SOLUTION = "in-scope.sln"
 
 
-def filter_path(solution: str) -> str:
-    """The solution filter beside a solution: `src/Shop.sln` -> `src/Shop.in-scope.slnf`."""
-    return solution.removesuffix(".sln") + FILTER_SUFFIX
+def _entries(db: Session, repository_id) -> dict[str, dict]:
+    """{project path: {guid, type, solution}}: how the first solution listing a project (by solution path) lists it,
+    for the conversion's own solution. A project no solution lists has no entry."""
+    out: dict[str, dict] = {}
+    for path, guid, kind, solution in db.execute(text("""
+            SELECT p.relative_path, sp.project_guid, sp.project_type_guid, s.relative_path
+            FROM solution_projects sp JOIN solutions s ON s.id = sp.solution_id JOIN projects p ON p.id = sp.project_id
+            WHERE s.repository_id = :r ORDER BY lower(s.relative_path), s.relative_path"""), {"r": repository_id}):
+        out.setdefault(path, {"guid": guid, "type": kind, "solution": solution})
+    return out
 
 
 def for_conversion(db: Session, repository: models.Repository) -> dict:
     """What a conversion is prepared with, and records: the projects left out ({path, name}), with who decided, when
-    and why, and one solution filter per solution that keeps a project ({solution, filter, projects}: the kept
-    projects it lists). `filter` and `solution`: the one the conversion builds and tests, the filter keeping the most
-    projects (by solution path on a tie). Every project is in scope, and there is no filter, when none is excluded."""
+    and why, and the conversion's own solution (`build`, at the repository's root) listing exactly the kept projects
+    (`keptProjects`: {path, name, guid, type, solution}, how a solution of the repository lists each, if one does),
+    wherever they live, each once. Every project is in scope, and there is no solution of its own, when none is
+    excluded."""
     scope = db.get(models.ConversionScope, repository.id)
     projects = _projects(db, repository.id)
     excluded = excluded_paths(db, repository.id)
     out = {"excluded": sorted(excluded, key=str.lower), "projects": len(projects), "kept": len(projects) - len(excluded),
            "treatment": scope.treatment if scope else LEAVE_UNTOUCHED, "version": scope.version if scope else 0,
-           "left": [], "filters": [], "filter": None, "solution": None}
+           "left": [], "build": None, "keptProjects": []}
     if not excluded:
         return out
     out.update(decidedBy=scope.saved_by_name, decidedAt=scope.saved_at.isoformat(timespec="seconds"), reason=scope.reason,
                left=[{"path": p["path"], "name": p["name"]} for p in projects if p["path"] in excluded])
-    solutions: dict[str, list[str]] = {}
-    for p in projects:
-        for s in p["solutions"]:
-            solutions.setdefault(s, [])
-            if p["path"] not in excluded:
-                solutions[s].append(p["path"])
-    out["filters"] = [{"solution": s, "filter": filter_path(s), "projects": kept}
-                      for s, kept in sorted(solutions.items(), key=lambda x: x[0].lower()) if kept]
-    if out["filters"]:
-        built = sorted(out["filters"], key=lambda f: (-len(f["projects"]), f["solution"].lower()))[0]
-        out.update(filter=built["filter"], solution=built["solution"])
+    entries = _entries(db, repository.id)
+    out["keptProjects"] = [{"path": p["path"], "name": p["name"], "guid": None, "type": None, "solution": None,
+                            **entries.get(p["path"], {})} for p in projects if p["path"] not in excluded]
+    out["build"] = SOLUTION
     return out
 
 

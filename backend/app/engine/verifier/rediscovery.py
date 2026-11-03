@@ -143,11 +143,12 @@ def _worker(engagement_id: str, worktree: Path, name: str, out: Path, offline: b
         db.refresh(repository)
         model = collect(db, repository)
         newer = newer_than_snapshot(db, repository.id)
+        # The unit test projects stand even when no solution holds them all: a conversion's scope builds its own.
+        unit_tests, solution = [], None
         try:
             unit_tests = planner._unit_test_projects(db, repository.id)
             solution = planner._solution(db, repository.id, unit_tests)
         except (LookupError, ValueError) as err:
-            unit_tests, solution = [], None
             model["test_projects_problem"] = str(err)
         out.write_text(json.dumps({"steps": steps, "model": model, "unit_test_projects": unit_tests, "solution": solution,
                                    "newerThanSnapshot": newer},
