@@ -219,6 +219,12 @@ def plan_packages(db, engagement_id: str, slug: str, base: str, branch: str, wor
     are the package changes that need no code; its breaking upgrades stay assisted and are left for the agent. With
     projects left out of scope, it plans only the kept ones and builds the conversion's own solution of them, which
     holds every kept unit test project (app.scope.files)."""
+    from app.toolchain import service as toolchain
+
+    # A machine without the runtimes or build tools the baseline needs (Part P) is said so now, in plain words,
+    # instead of by a baseline that fails half way.
+    if (why := toolchain.blocking(db, _repository(db, engagement_id, slug))) is not None:
+        raise LookupError(why)
     excluded = set((scope or {}).get("excluded") or [])
     plan = planner.create(db, engagement_id, slug, [], excluded_projects=excluded,
                           solution=(scope or {}).get("build") if excluded else None)

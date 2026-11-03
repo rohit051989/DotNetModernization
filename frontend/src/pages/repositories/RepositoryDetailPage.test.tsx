@@ -78,6 +78,11 @@ vi.mock('../../api/scope', () => ({
   getConversionScope: () => Promise.resolve({ totals: { projects: 170, kept: 158, excluded: 12, workItemsOutOfScope: 9, new: 0 } }),
 }))
 vi.mock('../../api/deletion', () => ({ deleteRepositoryHard: vi.fn(), getRepositoryDeletionPlan: vi.fn() }))
+// Whether the repository's machine can build and test its baseline (Part P): set per test.
+const toolchain = vi.hoisted(() => ({ current: null as Record<string, unknown> | null }))
+vi.mock('../../api/toolchain', () => ({
+  getToolchain: () => (toolchain.current ? Promise.resolve(toolchain.current) : Promise.reject(new Error('none'))),
+}))
 
 import { RepositoryDetailPage } from './RepositoryDetailPage'
 
@@ -150,6 +155,20 @@ describe('RepositoryDetailPage tabs', () => {
     await open('/repositories/r')
     expect(screen.getByTestId('files-held-on').textContent).toContain("Scanned on Alice's machine (DEVBOX-A): its results are read from the database.")
     ownership.current = {}
+  })
+
+  it('a machine that cannot run the baseline says so in the header, before any conversion', async () => {
+    toolchain.current = {
+      checked: true, ready: false, summary: 'Baseline tests cannot run here: needs the .NET 8 runtime (x64)', missing: [],
+      present: [], host: 'DEVBOX-A', checked_at: '2026-11-03T05:00:00+00:00', held_on: null,
+    }
+    await open('/repositories/r')
+    expect(screen.getByTestId('toolchain-header').textContent).toBe('Baseline tests cannot run here: needs the .NET 8 runtime (x64).')
+    cleanup()
+    toolchain.current = { ...toolchain.current, ready: true, summary: 'Ready: this machine has what the baseline needs' }
+    await open('/repositories/r')
+    expect(screen.queryByTestId('toolchain-header')).toBeNull()
+    toolchain.current = null
   })
 
   it('opens on Overview, alone in its group, with no second row, and names it in the address', async () => {

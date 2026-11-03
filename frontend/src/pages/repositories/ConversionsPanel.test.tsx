@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Conversions, PrepareAttempt } from '../../types/conversion'
+import type { Toolchain } from '../../types/toolchain'
 import { ConversionsPanel, preparationProblem } from './ConversionsPanel'
 
 const api = vi.hoisted(() => ({ listConversions: vi.fn() }))
@@ -46,6 +47,40 @@ describe('the last preparation', () => {
         details: ['.github/upgrades/skills/applying-move-to-secret.md: 2 reference(s)'] } })
     expect(screen.getByTestId('preparation-warning').textContent).toContain('2 secret value(s) named by file, key and line')
     expect(screen.queryByTestId('preparation-failed')).toBeNull()
+  })
+})
+
+describe('beside Start the next conversion', () => {
+  const notReady: Toolchain = {
+    checked: true, ready: false, summary: 'Baseline tests cannot run here: needs the .NET 8 runtime (x64)', present: [],
+    host: 'DEVBOX-A', checked_at: '2026-11-03T05:00:00+00:00', held_on: null,
+    missing: [{ kind: 'runtime', label: 'the .NET 8 runtime (x64)', for: 'test', projects: ['tests/Shop.Tests/Shop.Tests.csproj'],
+      detail: '`dotnet test` starts the test host from C:\\Tools\\dotnet (x64) only, which has .NET 10.0.7' }],
+  }
+
+  async function withToolchain(toolchain: Toolchain | null) {
+    api.listConversions.mockResolvedValue(conversions({ at: null, status: 'prepared', message: 'conversion 1 prepared', number: 1, jobExecutionId: null }))
+    render(<ConversionsPanel repositoryId="r" refreshToken={0} toolchain={toolchain} />)
+    await act(async () => {})
+  }
+
+  it('a repository whose machine cannot run the baseline is told so plainly, with what is missing', async () => {
+    await withToolchain(notReady)
+    const notice = screen.getByTestId('toolchain-notice')
+    expect(notice.querySelector('p')?.textContent).toBe('Baseline tests cannot run here: needs the .NET 8 runtime (x64).')
+    expect(notice.textContent).toContain('A conversion prepared now gets no package step')
+    expect(notice.textContent).toContain('the .NET 8 runtime (x64), for the tests of tests/Shop.Tests/Shop.Tests.csproj')
+    expect(notice.textContent).toContain('which has .NET 10.0.7')
+    // The button stays: a conversion still gets the agent's instructions.
+    expect(screen.getByRole('button', { name: 'Start the next conversion' }).hasAttribute('disabled')).toBe(false)
+  })
+
+  it('a ready machine says so, and one on another machine says whose finding it is', async () => {
+    await withToolchain({ ...notReady, ready: true, missing: [], summary: 'Ready: this machine has what the baseline needs to build and run its tests' })
+    expect(screen.getByTestId('toolchain-notice').textContent).toBe('Ready: this machine has what the baseline needs to build and run its tests.')
+    cleanup()
+    await withToolchain({ ...notReady, held_on: "on Alice's machine (DEVBOX-A)" })
+    expect(screen.getByTestId('toolchain-notice').querySelector('p')?.textContent).toContain('(as DEVBOX-A last found)')
   })
 })
 

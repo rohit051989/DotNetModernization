@@ -50,6 +50,7 @@ from app.repositories import service as repositories_service
 from app.repositories.schemas import RegisterLocalPathRequest
 from app.results import store
 from app.scope import service as scope
+from app.toolchain import service as toolchain
 from app.workflow.runtime import service as runtime
 from tests.asgi_client import Client
 from tests.fixtures import synthetic_repository as synth
@@ -98,8 +99,9 @@ def fixture_guid(name: str) -> str:
 
 @contextlib.contextmanager
 def stand_in_dotnet(builds: list, tests: list):
-    """`dotnet build` and `dotnet test`, stood in for: green, one passing test per test project. Each build records
-    the solution asked for and the projects it lists in that tree (None when the tree has no such file)."""
+    """`dotnet build` and `dotnet test`, stood in for: green, one passing test per test project, so this machine's
+    runtimes do not matter (app.toolchain, Part P). Each build records the solution asked for and the projects it
+    lists in that tree (None when the tree has no such file)."""
     def build(tree, solution, timeout=1800):
         file = Path(tree) / solution
         builds.append((solution, set(listed(file)) if file.is_file() else None))
@@ -112,7 +114,7 @@ def stand_in_dotnet(builds: list, tests: list):
         return dotnet.Run(True, 0, "stood in"), dotnet.TestResults(total=1, passed=1, passed_tests=[f"{project}:Adds"])
 
     with mock.patch.object(dotnet, "build", side_effect=build), mock.patch.object(dotnet, "test", side_effect=run_tests), \
-            mock.patch.object(dotnet, "shutdown_build_servers"):
+            mock.patch.object(dotnet, "shutdown_build_servers"), mock.patch.object(toolchain, "blocking", return_value=None):
         yield
 
 

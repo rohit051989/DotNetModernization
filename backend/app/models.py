@@ -3257,3 +3257,19 @@ class ConversionScope(Base):
     __table_args__ = (
         CheckConstraint("treatment IN ('leave_untouched')", name="ck_conversion_scopes_treatment"),
     )
+
+
+class ToolchainCheck(Base):
+    """Whether the machine a repository is registered on can build and test its baseline on its own frameworks
+    (app.toolchain; 36-COPILOT-ENHANCED-CONVERSION.md Part P): checked on that machine after discovery and whenever its
+    page is read there, and kept here so everyone sees it. `result` is app.toolchain.needs.check's: the summary, and each missing
+    and present runtime or build tool with the projects that need it."""
+
+    __tablename__ = "toolchain_checks"
+
+    repository_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("repositories.id", ondelete="CASCADE"),
+                                                     primary_key=True)
+    host: Mapped[str] = mapped_column(Text, nullable=False)
+    checked_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    ready: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    result: Mapped[dict] = mapped_column(JSONB, nullable=False)

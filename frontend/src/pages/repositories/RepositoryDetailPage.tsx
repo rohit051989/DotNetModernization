@@ -29,6 +29,9 @@ import { RepositorySurfaceSection } from './RepositorySurfaceSection'
 import { RepositoryImpactSection } from './RepositoryImpactSection'
 import { RepositoryTestsSection } from './RepositoryTestsSection'
 import { ConversionsPanel } from './ConversionsPanel'
+import { ToolchainNotice } from './ToolchainNotice'
+import { getToolchain } from '../../api/toolchain'
+import type { Toolchain } from '../../types/toolchain'
 import { RepositoryOwner } from './RepositoryOwner'
 import { ADMIN_ONLY, useIsAdmin } from '../../auth/AuthContext'
 import { StructureSection } from './structure/StructureSection'
@@ -293,6 +296,19 @@ export function RepositoryDetailPage({
 
   const summary = useRepositorySummary(repositoryId, artifacts, refreshToken + localRefresh)
 
+  // Whether the repository's machine can build and test its baseline (Part P): in the header when it cannot, and
+  // beside "Start the next conversion".
+  const [toolchain, setToolchain] = useState<Toolchain | null>(null)
+  useEffect(() => {
+    let live = true
+    getToolchain(repositoryId)
+      .then((found) => live && setToolchain(found))
+      .catch(() => live && setToolchain(null))
+    return () => {
+      live = false
+    }
+  }, [repositoryId, refreshToken, localRefresh])
+
   // The sticky header's height, as --repo-header, so a tab's own sticky bar (Surface's) sits just below it.
   const headerRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
@@ -493,7 +509,7 @@ export function RepositoryDetailPage({
     conversion: () => (
       <Panel>
         <div className="space-y-4">
-          <ConversionsPanel repositoryId={repo.id} refreshToken={localRefresh} refusal={refusal} />
+          <ConversionsPanel repositoryId={repo.id} refreshToken={localRefresh} refusal={refusal} toolchain={toolchain} />
         </div>
       </Panel>
     ),
@@ -621,6 +637,7 @@ export function RepositoryDetailPage({
             Read-only for you: {refusal}
           </p>
         )}
+        {!repo.deleted_at && <ToolchainNotice toolchain={toolchain} compact />}
         <div>
         </div>
 

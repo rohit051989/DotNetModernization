@@ -42,6 +42,7 @@ from app.routers import (
     target_states,
     test_coverage,
     time_limits,
+    toolchain,
     workflow_artifacts,
     workflow_capabilities,
     workflow_executions,
@@ -397,6 +398,7 @@ app.include_router(impact.router)
 app.include_router(impact_pages.router)
 app.include_router(conversion.router)
 app.include_router(scope.router)
+app.include_router(toolchain.router)
 app.include_router(deletion.router)
 app.include_router(editors.router)
 app.include_router(hierarchy.router)

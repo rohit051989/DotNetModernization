@@ -473,7 +473,12 @@ with **Copy**, and a field for the folder (the command's own target by default);
 not the top of a clone of the same repository, and the dialog shows its message. **Forget my clone here** removes the
 record. An evidence file of a conversion, and an artifact no view reads (a SARIF export, a log), are only on the
 owner's machine, and say so instead of linking. The Conversion tab shows the
-conversions as their owner's machine last published them, with when. A repository scanned before results were shared
+conversions as their owner's machine last published them, with when. When the repository's machine cannot build or
+test its baseline on its own frameworks (36-COPILOT-ENHANCED-CONVERSION Part P), the header says so on every tab, in
+one line ("Baseline tests cannot run here: needs the .NET 8 runtime (x64)."), and the Conversion tab repeats it beside
+**Start the next conversion**, with each missing runtime or build tool, the projects that need it, what the machine
+has instead, and that a conversion prepared now gets no package step. A ready machine shows only the Conversion
+tab's one line; a repository of another machine says whose finding it is. A repository scanned before results were shared
 says so under its header, with the command its owner runs to copy them.
 
 ## Dependency graph (repository page)

@@ -757,3 +757,52 @@ rescan starts. A conversion already run keeps the scope it was prepared with; th
 - **Retire.** Remove an excluded project as dead code instead of leaving it untouched, with its solution entries and
   references.
 - **Hints.** Suggest which projects look dead: no entry point, nothing referencing them, no recent commits.
+
+## Part P — Can this machine run the baseline? (2026-11-03)
+
+A conversion's baseline builds and tests the repository on its own frameworks, before anything is converted, on the
+machine it is registered on. That machine needs the runtimes and build tools those frameworks require. Without them
+the package step used to be skipped with a reason found deep inside preparation, such as a .NET 8 test project on a
+machine whose platform .NET had only the .NET 10 runtime. Now the platform checks first and says so plainly
+(`app.toolchain`).
+
+**What a repository needs.** Its projects in scope (Part O), with their target frameworks from solution-discovery and
+their unit test projects from test-coverage-assessment:
+
+| Project | To build | To run its unit tests |
+|---|---|---|
+| modern (`netX.Y`, `netcoreappX.Y`) | a .NET SDK of version X or later | the .NET X.Y runtime (`Microsoft.NETCore.App`, the same major, that minor or later) in the architecture of the platform's dotnet; the ASP.NET Core or Windows Desktop runtime of the same version when it, or a project it references, uses the Web or Windows Desktop SDK |
+| SDK-style on .NET Framework | a .NET SDK (its reference assemblies come from NuGet with the restore) | that .NET Framework runtime |
+| legacy (non-SDK-style) on .NET Framework | that version's reference assemblies (its Developer Pack); a web application project (its project file imports `Microsoft.WebApplication.targets`) also needs those targets where `dotnet build` finds them | that .NET Framework runtime (3.5 for 3.5 and older) |
+
+A `netstandard` project needs nothing beyond an SDK.
+
+**What this machine has** (`app.toolchain.machine`), read from folders, the dotnet executable's header and the
+registry, never by running anything:
+- the .NET the platform builds and tests with: the `dotnet` first on `PATH`, which is `DOTNET_ROOT`'s when
+  `backend\.env` sets it. Its architecture, SDKs and shared runtimes. `dotnet test` starts its test host from this
+  install only, so a runtime elsewhere does not count;
+- the machine's other .NET installs (machine-wide x64 and x86, the per-user one), named only to say where a missing
+  runtime is after all;
+- the .NET Framework reference assemblies, the .NET Framework 4.x release, and whether 3.5 is turned on;
+- `Microsoft.WebApplication.targets` under the platform's SDK, where `dotnet build` looks, and under Visual Studio,
+  which `dotnet build` does not use.
+
+**The result** is one summary, and each missing or present item with what it is for (build or test), the projects
+that need it, and what the machine has instead. For example: "Baseline tests cannot run here: needs the .NET 8 runtime
+(x64)", with "`dotnet test` starts the test host from C:\MP\tools\dotnet (x64) only, which has .NET 10.0.7;
+C:\Program Files\dotnet (x64) has 8.0.29. DOTNET_ROOT (backend\.env) points the platform at the install without it".
+"The baseline cannot build here: needs ..." when the build itself cannot run.
+
+**Where it runs and shows:**
+- **After discovery**, the conversion-preparation step checks and records it (`toolchain_checks`, one row per
+  repository) before it prepares anything.
+- **The repository's page** (`GET /api/repositories/{id}/toolchain`): on its own machine, checked now and recorded
+  when it changed; elsewhere, what its machine last recorded, saying so. When the machine cannot run the baseline, the
+  page header says so on every tab, and the Conversion tab says so beside "Start the next conversion", with what is
+  missing and that a conversion prepared now gets no package step.
+- **The package step** checks before planning, and is skipped at once with the summary as its reason: "no package
+  step: Baseline tests cannot run here: needs ...". The conversion is still prepared, and its package changes go to
+  the agent as instructions.
+- **Preflight** lists, across every registered repository, what this machine lacks and which repositories need it, as
+  `WARNING`, never a failure (`python -m app.toolchain report`).

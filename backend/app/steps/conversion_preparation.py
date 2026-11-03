@@ -6,8 +6,11 @@ the branch and worktree, the package step, the engine's inputs under .github, an
 - A rescan refreshes a conversion that has not been run yet (no commits beyond its inputs), in place, onto that
   commit. A conversion that has been run is left as it is; a person starts the next one from the UI, which runs this
   job with `new_conversion`: always a new conversion, no existing one changed.
+- First, whether this machine has the runtimes and build tools the repository's baseline needs (app.toolchain,
+  36-COPILOT-ENHANCED-CONVERSION.md Part P), recorded for its page.
 - A baseline that does not build or pass its tests still gets a conversion: the package step is skipped, the reason
-  recorded, and the package changes go to the engine as instructions.
+  recorded, and the package changes go to the engine as instructions. A machine that cannot run the baseline skips
+  it at once, saying what is missing.
 - Package lookups were answered by this run's dependency-assessment, so their age is not checked again.
 - It never fails the discovery run. Whatever happens is recorded in `<RUNS_DIR>/<engagement>/<repository>/
   conversions/last-prepare.json`, which the Conversion section shows, and the step completes. A problem is recorded
@@ -74,6 +77,18 @@ def warnings_of(result: dict) -> dict | None:
             "details": [f"{w['file']}: {w['references']} reference(s)" for w in named]}
 
 
+def _check_toolchain(db, repository) -> None:
+    """Whether this machine has the runtimes and build tools the repository's baseline needs (app.toolchain, Part P),
+    recorded for its page before any conversion. Never fails the step."""
+    from app.toolchain import service as toolchain
+
+    try:
+        toolchain.record(db, repository)
+        db.commit()
+    except Exception:
+        db.rollback()
+
+
 def run(context: StepContext) -> StepResult:
     params = context.parameters
     if params.get("prepare_conversion", True) in (False, "false", "False", 0):
@@ -92,6 +107,7 @@ def run(context: StepContext) -> StepResult:
         repository = db.get(models.Repository, repository_id)
         if repository is None:
             return StepResult(exit_status="NOOP", exit_message=f"repository '{repository_id}' does not exist")
+        _check_toolchain(db, repository)
         result = convert.prepare(db, repository.engagement_id, repository.slug,
                                  when_run="next" if params.get("new_conversion") in (True, "true", "True", 1) else "keep",
                                  lookups_from_discovery=True)

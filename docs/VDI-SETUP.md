@@ -558,6 +558,12 @@ Besides `PRESENT` and `MISSING`:
 - Once the schema exists, the **platform** line says whether a platform holds it: `WARNING ... a platform holds this
   schema` while one runs (yours too: stop it before an upgrade), or a `NOTE` that the last one stopped without
   shutting down and its heartbeat has expired. "More than one person", "A stale heartbeat".
+- Once repositories are registered, the **repository toolchains** lines check every one against this machine: a
+  `NOTE` with how many can build and test their baseline here, and a `WARNING` for each runtime or build tool missing,
+  with the repositories that need it and where the machine has it instead. For example, a .NET 8 repository on a
+  machine whose `DOTNET_ROOT` names a .NET 10 install without the .NET 8 runtime: install that runtime into the folder
+  `DOTNET_ROOT` names, or point `DOTNET_ROOT` at one that has it. Never a failure: it stops only that repository's
+  package step on this machine (36-COPILOT-ENHANCED-CONVERSION.md Part P).
 - **existing data** lines report data an older version allowed and a newer rule would refuse, such as one checkout
   registered in two engagements. They are left working and never changed ("Appendix: upgrading from a bundle of
   master").

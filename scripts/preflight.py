@@ -28,7 +28,11 @@ Reports, in plain language, each prerequisite as PRESENT or MISSING, and exits 1
   RUNS_DIR, and writable;
 - with the schema in place: whether a platform holds it (its heartbeat: live, or expired, and how to clear one known
   to be stale), and existing data a later rule would refuse, reported as WARNING and never changed (a checkout
-  registered in two engagements before release 2).
+  registered in two engagements before release 2);
+- across every registered repository, the runtimes and build tools its baseline needs that this machine lacks: the
+  .NET runtime of each modern framework in the platform's dotnet and architecture, the .NET Framework reference
+  assemblies and web application build targets of legacy projects (python -m app.toolchain report). WARNING, never
+  failed.
 
 Standard library only, so it runs before anything is installed. It reads backend/.env and the environment, and never
 prints a username or a password.
@@ -584,6 +588,38 @@ def database(cfg: dict[str, str]) -> None:
                 platform_state(c, schema)
     except psycopg.Error as error:
         check(False, "connection", clean(str(error)).splitlines()[0])
+        return
+    if exists:
+        toolchains()
+
+
+def toolchains() -> None:
+    """Across every registered repository: the runtimes and build tools its baseline needs that this machine lacks
+    (36-COPILOT-ENHANCED-CONVERSION.md Part P; python -m app.toolchain report). Reported, never failed: a repository's
+    frameworks do not stop the platform installing, only that repository's package step on this machine."""
+    try:
+        done = subprocess.run([sys.executable, "-m", "app.toolchain", "report", "--json"], cwd=BACKEND,
+                              capture_output=True, text=True, timeout=300, encoding="utf-8", errors="replace")
+        found = json.loads(done.stdout) if done.returncode == 0 else None
+    except (OSError, subprocess.TimeoutExpired, json.JSONDecodeError):
+        found = None
+    if found is None:
+        # Before bootstrap has migrated an older schema, say: checked by the next preflight.
+        note("repository toolchains", "not checked now (the database is not at this version yet, or the report "
+                                      "failed): cd backend; .venv\\Scripts\\python.exe -m app.toolchain report")
+        return
+    repositories = found["repositories"]
+    if not found["missing"]:
+        note("repository toolchains", f"this machine has what the baselines of all {len(repositories)} registered "
+                                      "repositories need")
+        return
+    ready = sum(1 for r in repositories if r["ready"])
+    note("repository toolchains", f"{ready} of {len(repositories)} registered repositories can build and test their "
+                                  f"baseline here; the platform builds with {found['dotnet'] or 'no dotnet on PATH'}")
+    for m in found["missing"]:
+        what = "their baseline cannot build" if m["for"] == "build" else "their baseline tests cannot run"
+        warn("repository toolchain", f"missing {m['label']}, so {what} here: {', '.join(m['repositories'])}. "
+                                     f"{m['detail']}")
 
 
 HEARTBEAT_STALE_SECONDS = 90   # app.heartbeat.STALE

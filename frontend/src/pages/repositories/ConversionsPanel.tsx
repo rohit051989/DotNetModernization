@@ -5,12 +5,16 @@ import { CopyButton } from '../../components/CopyButton'
 import { ConfirmDialog } from '../../components/ConfirmDialog'
 import { LimitedList } from '../../components/LimitedList'
 import type { ConversionEntry, ConversionState, Conversions, JobRef, PlanRef } from '../../types/conversion'
+import type { Toolchain } from '../../types/toolchain'
 import { RepositoryConversionSection } from './RepositoryConversionSection'
+import { ToolchainNotice } from './ToolchainNotice'
 
 /** Every conversion of the repository, newest first (36-COPILOT-ENHANCED-CONVERSION Part N): number, branch, status
  * and verdict; in each, where it starts from, its runbook and opening message, Verify, its verification, and its own
  * package-step plan (earlier plans of a refreshed conversion hidden as superseded). "Start the next conversion" says
- * what it does and which commit it starts from. Polls while a discovery or verification job runs. */
+ * what it does and which commit it starts from, and, beside it, whether this machine can build and test the baseline
+ * (Part P): a repository that cannot is told so before preparation finds out. Polls while a discovery or verification
+ * job runs. */
 
 const STATE_STYLE: Record<ConversionState, string> = {
   prepared: 'border-sky-200 bg-sky-50 text-sky-800',
@@ -267,7 +271,12 @@ function ConversionCard({
 
 /** `refusal`: why the signed-in person may not prepare or verify this repository's conversions (only its owner or an
  * admin, on the machine it was registered on), shown on the disabled buttons; null when they may. */
-export function ConversionsPanel({ repositoryId, refreshToken, refusal = null }: { repositoryId: string; refreshToken: number; refusal?: string | null }) {
+export function ConversionsPanel({ repositoryId, refreshToken, refusal = null, toolchain = null }: {
+  repositoryId: string
+  refreshToken: number
+  refusal?: string | null
+  toolchain?: Toolchain | null
+}) {
   const [data, setData] = useState<Conversions | null>(null)
   const [failed, setFailed] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
@@ -368,6 +377,7 @@ export function ConversionsPanel({ repositoryId, refreshToken, refusal = null }:
           {subject}, the commit discovery scans first.
         </span>
       </div>
+      <ToolchainNotice toolchain={toolchain} />
       {message && <p className="text-xs text-neutral-600">{message}</p>}
 
       <LimitedList
