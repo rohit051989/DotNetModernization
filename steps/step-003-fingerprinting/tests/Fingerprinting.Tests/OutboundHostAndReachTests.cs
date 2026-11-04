@@ -287,13 +287,32 @@ public class OutboundHostAndReachTests
     }
 
     [Fact]
-    public void A_path_through_another_class_that_makes_backend_calls_is_unresolved_not_followed()
+    public void A_path_through_another_class_is_followed_and_named_type_dot_method()
     {
         var reach = Run(transferQueue: TransferQueueWithDatabase).Single(p => p.ProjectPath == Library).EntryPointBackend.ToDictionary(e => e.EntryPointId);
-        Assert.Equal(BackendReach.Unresolved, reach["ep-history"].Status);
-        Assert.Contains(reach["ep-history"].Unresolved, u => u.Reason.StartsWith("TransferQueue.GetTransferHistory: another class"));
-        // Its own backend call is still found, with the unfollowed path beside it.
+        var history = Assert.Single(reach["ep-history"].Calls);
+        Assert.Equal((BackendReach.Yes, 1), (reach["ep-history"].Status, history.Depth));
+        Assert.Equal("TransferQueue.GetTransferHistory", history.Via[^1]);
         Assert.Equal(BackendReach.Yes, reach["ep-status"].Status);
-        Assert.NotEmpty(reach["ep-status"].Unresolved);
+    }
+
+    [Fact]
+    public void A_call_on_an_abstract_type_is_followed_into_the_class_deriving_from_it()
+    {
+        const string queue = """
+            public abstract class TransferQueue
+            {
+                public string PlacePracticeFTOrder(Item item) => "P";
+                public Status GetPracticeFTOrder(string id) => null;
+                public abstract List<Item> GetTransferHistory();
+            }
+            public class SqlTransferQueue : TransferQueue
+            {
+                public override List<Item> GetTransferHistory() { using (var c = new SqlConnection(ConfigurationManager.ConnectionStrings["Transfers"].ConnectionString)) { return null; } }
+            }
+            """;
+        var reach = Run(transferQueue: queue).Single(p => p.ProjectPath == Library).EntryPointBackend.ToDictionary(e => e.EntryPointId);
+        var history = Assert.Single(reach["ep-history"].Calls);
+        Assert.Equal(["GetTransferHistory", "SqlTransferQueue.GetTransferHistory"], history.Via);
     }
 }

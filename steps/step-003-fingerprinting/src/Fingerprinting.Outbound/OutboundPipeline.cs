@@ -59,8 +59,11 @@ public sealed class OutboundPipeline
     /// time limit, and each file within its own, over which it is recorded NOT_CHECKED with the reason; every
     /// unresolved operation names its reason; progress, a timing profile, and finished projects kept so a rerun
     /// continues from there. Artifact unchanged.
-    /// 1.7.1: the WCF client platform matrix 1.2.1, wording only; no verdict changed. Artifact unchanged.</summary>
-    public const string ScannerVersion = "1.7.1";
+    /// 1.7.1: the WCF client platform matrix 1.2.1, wording only; no verdict changed. Artifact unchanged.
+    /// 1.7.2: an entry point reaches a database or an HTTP client where it is used, not only where it is configured
+    /// (a context's sets and SaveChanges, a call through an HTTP helper or a client factory by name), and follows
+    /// calls across classes up to eight deep. Artifact unchanged: only the backend calls an entry point records grow.</summary>
+    public const string ScannerVersion = "1.7.2";
 
     /// <summary>Projects loaded and analysed at once: bounded, leaving a core for the rest of the machine.</summary>
     public static int Parallelism { get; } = Math.Clamp(Environment.ProcessorCount - 1, 1, 8);

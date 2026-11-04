@@ -826,9 +826,14 @@ into this step as an optional input.
   at 51) is kept in `constructionSites` when it differs.
 - **Inbound operations → backend calls (`BackendReach`).**
   - For each `entry-point-inventory` entry point, from its handler method: the outbound call
-    sites in the method itself (depth 0), then through methods of the same
-    class it calls (`M()`, `this.M()`), breadth-first, up to depth 3.
-  - Each call records its depth, the methods walked, and whether it is
+    sites in the method itself (depth 0), then through the methods it calls,
+    breadth-first, up to depth 8. A call is followed into the same class
+    (`M()`, `this.M()`) or into another class of the repository, by the
+    receiver's declared type (a field, parameter or local) or `Type.M()`. A
+    call on an interface or abstract type goes to every class listing it as a
+    base.
+  - Each call records its depth, the methods walked (`Method` in the same class,
+    `Type.Method` in another; the handler method first), and whether it is
     conditional or in a loop. Both are read from the syntax between the entry
     point and the call:
     - conditional: `if` or `else`, a `switch` case or arm, `?:`, the right
@@ -838,17 +843,53 @@ into this step as an optional input.
       `ForEach`, `Select` and similar.
   - The code text is kept in `context`. A human-readable condition ("not for
     practice accounts") is advisory LLM work and is left out.
-  - A call into another class, or into an injected dependency (an interface,
-    or a field assigned from a constructor parameter), whose type makes
-    backend calls is recorded under `unresolved` and not followed. So is a
-    same-class path deeper than 3.
+  - A path deeper than 8 is recorded under `unresolved` and not followed. A
+    receiver whose type is not declared in the repository (an external
+    library, `var x = factory.Create()`) is not followed and not guessed.
+    Each method is visited once, so two paths to the same call show only the
+    shortest.
+  - The inventory records a database where it is configured (a connection
+    string, `UseSqlServer`) and an HTTP client where it is registered
+    (`AddHttpClient`), so no method an entry point walks contains their call
+    sites. `BackendReach` therefore also finds them where they are **used**
+    (scanner 1.7.2), matched by name and never guessed; the invocations as
+    stored are unchanged:
+    - **Database.** A method of a type holding a `DbContext` subclass of the
+      repository (a field, property, primary-constructor or method parameter,
+      or local of that type) that uses one of its sets, `SaveChanges*`,
+      `Database`, `Set<T>()`, `FromSql*` or `Add`/`Remove`/`Update`/`Find`
+      reaches the databases that context is registered with. The registration
+      names the connection: `AddDbContext<T>(… "name")`, or a helper taking the
+      context as a type argument and the name as a literal or a `const` /
+      `static readonly` string of the repository, or `GetConnectionString("name")`
+      in the context itself. The name must be a connection string the inventory
+      recorded. One call per method per database, labelled `Name: Set, SaveChangesAsync`.
+    - **HTTP.** `CreateClient("name")` on a receiver whose declared type names
+      HTTP (`IHttpClientFactory`, an enterprise client factory), and
+      `helper.CallAsync("name", path, HttpMethod.X, …)` on an HTTP helper, where
+      the name is a literal or constant. The verb and path are read from the
+      request chained on `CreateClient` or made on the variable it is assigned
+      to. The call reaches the registration that carries that client name, else
+      the one registration in the same project that names none (client names
+      read from configuration), when there is exactly one; two are not guessed
+      between.
+  - What is still not reached has status `no`: "no detected call site is
+    reached", not "makes no backend call". Examples: a call through a library's
+    own abstraction (an external document or cache client), a client name or
+    context that is not a literal or a constant, a context matched only by type
+    name (two types of one name in the repository), and caches (not yet matched
+    at use).
   - Status:
     - `yes`: a call is reached;
     - `no`: none, and nothing unfollowed;
     - `unresolved`: none found, but something was not followed.
   - Written to `entry_point_backend`, one row per entry point, replaced per
     repository. Served by `GET /api/repositories/{id}/entry-point-backend`,
-    shown as the table on the repository page's Surface section.
+    shown on the repository page's Surface section as a table of operations whose
+    Flow column draws each operation's call chain as a left-to-right graph: the
+    handler, the methods it walks (`Type.Method`), and each backend call (REST,
+    SOAP, database) attached to the method that makes it. The graph is built
+    from `via` in the browser; the stored shape is unchanged.
 - **Unqualified hostnames.** A SOAP, HTTP or gRPC binding whose host is a single
   label (`appsrv0341`) is at least `requires_change` in that environment.
   - The reason: it resolves on Windows through NetBIOS or the DNS suffix
