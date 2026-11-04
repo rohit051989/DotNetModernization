@@ -1,172 +1,77 @@
-import { Fragment, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { ApiError } from '../../api/client'
 import { backendApplications, backendOperations, getBackendSummary } from '../../api/results'
 import { CollapsibleSection } from '../../components/CollapsibleSection'
-import { LimitedList, useLimitedList } from '../../components/LimitedList'
 import { PagedList } from '../../components/PagedList'
 import { counted } from './repositoryTabs'
 import { surfaceSectionId } from './surfaceSections'
 import { SourceLink } from './SourceLink'
+import { OperationFlowGraph } from './reach/OperationFlowGraph'
 import type { BackendApplication, BackendSummary } from '../../types/results'
-import type { BackendCall, BackendHost, BackendStatus, EntryPointBackendRow } from '../../types/surface'
+import type { BackendStatus, EntryPointBackendRow } from '../../types/surface'
 
 // Inbound operations → backend calls — step 5 1.3.0 (29-ENTRY-POINT-AND-OUTBOUND-INVENTORIES Part C9).
 // Per application, every request entry point and the outbound call sites it
-// reaches: directly in its method, or through methods of the same class.
+// reaches, drawn as a flow: directly in its method, or through the methods it
+// calls, in its class or in others.
 // The No rows are listed on purpose — an operation that calls nothing is a
 // fact a migration plan needs as much as one that does.
 
 const STATUS: Record<BackendStatus, { label: string; style: string; title: string }> = {
   yes: { label: 'Yes', style: 'border-violet-200 bg-violet-50 text-violet-800', title: 'Reaches at least one backend call' },
-  no: { label: 'No', style: 'border-neutral-200 bg-neutral-50 text-neutral-500', title: 'No backend call, and no path left unfollowed' },
+  no: {
+    label: 'No',
+    style: 'border-neutral-200 bg-neutral-50 text-neutral-500',
+    title:
+      'No detected backend call site is reached, and no path was left unfollowed. A call through a library’s own abstraction, or to a ' +
+      'client or context named by something other than a literal or constant, is not detected.',
+  },
   unresolved: {
     label: 'Unresolved',
     style: 'border-amber-200 bg-amber-50 text-amber-800',
-    title: 'No backend call found, but a path through another class, an injected dependency or deeper calls was not followed — never guessed',
+    title: 'No backend call found, but a path deeper than the limit was not followed — never guessed',
   },
   not_assessed: { label: 'Not assessed', style: 'border-neutral-200 bg-white text-neutral-400', title: 'Step 5 ran without step 4’s entry points; rescan' },
 }
 
-function hostLabel(h: BackendHost) {
-  if (!h.host) return '(unresolved)'
-  return `${h.host}${h.port && h.port !== 80 && h.port !== 443 ? `:${h.port}` : ''}`
-}
-
-function Endpoint({ call }: { call: BackendCall }) {
-  const [open, setOpen] = useState(false)
-  const { shown, others, grouped_by } = call.endpoint
-  return (
-    <div>
-      <span className="font-mono text-neutral-800">{hostLabel(shown)}</span>{' '}
-      <span className="text-[10px] text-neutral-400" title={grouped_by === 'host' ? 'No binding for the production environment: the host as found' : undefined}>
-        {shown.environment}
-      </span>
-      {shown.deploy_parameter && <span className="ml-1 text-[10px] text-neutral-400" title="Set by this SetParameters parameter">· {shown.deploy_parameter}</span>}
-      {shown.linux_verdict === 'requires_change' && (
-        <span className="ml-1 rounded border border-amber-200 bg-amber-50 px-1 text-[10px] text-amber-800">requires change</span>
-      )}
-      {others.length > 0 && (
-        <div>
-          <button type="button" onClick={() => setOpen((v) => !v)} className="text-[11px] text-violet-700 hover:underline" aria-expanded={open}>
-            {open ? 'Hide' : 'Show'} {others.length} other environment{others.length === 1 ? '' : 's'}
-          </button>
-          {open && (
-            <LimitedList items={others} name={(o) => [o.environment, o.host]} noun="environments">
-              {(shown) => (
-            <ul className="mt-0.5 space-y-0.5">
-              {shown.map((o) => (
-                <li key={`${o.environment}|${o.source_file}`} className="text-[11px]" title={o.source_file ?? undefined}>
-                  <span className="text-neutral-400">{o.environment}</span> <span className="break-all font-mono text-neutral-700">{hostLabel(o)}</span>
-                  {o.linux_verdict === 'requires_change' && <span className="ml-1 text-amber-700">requires change</span>}
-                </li>
-              ))}
-            </ul>
-              )}
-            </LimitedList>
-          )}
-        </div>
-      )}
-    </div>
-  )
-}
-
-function Flags({ call }: { call: BackendCall }) {
-  if (!call.conditional && !call.in_loop) return <span className="text-neutral-300">—</span>
-  return (
-    <span className="flex flex-wrap gap-1" title={call.context.join('\n')}>
-      {call.conditional && <span className="cursor-help rounded border border-sky-200 bg-sky-50 px-1 text-[10px] text-sky-800">conditional</span>}
-      {call.in_loop && <span className="cursor-help rounded border border-fuchsia-200 bg-fuchsia-50 px-1 text-[10px] text-fuchsia-800">loop</span>}
-      <span className="block w-full text-[10px] text-neutral-400">{call.context.join(' · ')}</span>
-    </span>
-  )
-}
-
-/** One inbound operation: its backend calls are rows of the operations table (the operation's cells span them), so
- * they are limited with the list hook, its controls in a row of their own. */
+/** One inbound operation: its identity, its status, and the flow of calls it makes — the handler, the methods it walks,
+ * and the backend call each makes — opened under the row like the structure graph. An operation that calls nothing says so. */
 function Row({ row, localPath }: { row: EntryPointBackendRow; localPath: string }) {
   const status = STATUS[row.status]
-  const list = useLimitedList(row.calls, { name: (c) => [c.operation, c.contract, c.call_site.filePath], noun: 'backend calls' })
-  const calls: (BackendCall | null)[] = list.visible.length > 0 ? list.visible : [null]
-  const span = calls.length + (list.hasControls ? 1 : 0)
+  const hasFlow = row.calls.length > 0 || row.unresolved.length > 0
+  const [open, setOpen] = useState(false)
   return (
     <>
-      {calls.map((call, index) => (
-        <tr
-          key={call ? `${call.invocation_id}|${call.call_site.lineStart}` : 'none'}
-          className={`align-top ${index === calls.length - 1 && !list.hasControls ? 'border-b border-neutral-100' : ''}`}
-        >
-          {index === 0 && (
-            <>
-              <td rowSpan={span} className="py-1.5 pr-2 text-right text-neutral-400">
-                {row.number}
-              </td>
-              <td rowSpan={span} className="py-1.5 pr-3 font-mono text-neutral-700">
-                {row.service}
-              </td>
-              <td rowSpan={span} className="py-1.5 pr-3">
-                <SourceLink localPath={localPath} filePath={row.handler.filePath} line={row.handler.lineStart} className="font-mono text-neutral-900">
-                  {row.operation}
-                </SourceLink>
-              </td>
-              <td rowSpan={span} className="py-1.5 pr-3">
-                {list.filterBox}
-                <span className={`whitespace-nowrap rounded border px-1.5 py-0.5 text-[11px] font-medium ${status.style}`} title={status.title}>
-                  {status.label}
-                </span>
-                <LimitedList items={row.unresolved} name={(u) => [u.reason, u.callSite.filePath]} noun="paths not followed">
-                  {(shown) => (
-                    <ul className="mt-1 space-y-0.5 text-[11px] text-amber-800">
-                      {shown.map((u) => (
-                        <li key={`${u.reason}|${u.callSite.lineStart}`}>
-                          not followed: {u.reason}{' '}
-                          <SourceLink localPath={localPath} filePath={u.callSite.filePath} line={u.callSite.lineStart} className="font-mono text-neutral-500">
-                            :{u.callSite.lineStart}
-                          </SourceLink>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </LimitedList>
-              </td>
-            </>
-          )}
-          {call ? (
-            <>
-              <td className="py-1.5 pr-3">
-                <span className="font-mono text-neutral-800">{call.operation ?? call.mechanism.replace(/_/g, ' ')}</span>
-                {call.contract && <span className="block text-[10px] text-neutral-400">{call.contract}</span>}
-              </td>
-              <td className="py-1.5 pr-3">
-                <Endpoint call={call} />
-              </td>
-              <td className="py-1.5 pr-3">
-                <SourceLink localPath={localPath} filePath={call.call_site.filePath} line={call.call_site.lineStart} className="break-all font-mono text-violet-700">
-                  {call.call_site.filePath.split('/').pop()}:{call.call_site.lineStart}
-                </SourceLink>
-                {call.depth > 0 && (
-                  <span className="block text-[10px] text-neutral-400" title={call.via.join(' → ')}>
-                    via {call.via.slice(1).join(' → ')} (depth {call.depth})
-                  </span>
-                )}
-              </td>
-              <td className="py-1.5">
-                <Flags call={call} />
-              </td>
-            </>
-          ) : (
-            <td colSpan={4} className="py-1.5 text-neutral-300">
-              {list.noMatch ?? '—'}
-            </td>
-          )}
-        </tr>
-      ))}
-      {list.hasControls && (
-        <tr className="border-b border-neutral-100">
-          <td colSpan={4} className="pb-1.5">
-            {list.controls}
-          </td>
-        </tr>
-      )}
+    <tr className={`align-top ${open ? '' : 'border-b border-neutral-100'}`}>
+      <td className="py-1.5 pr-2 text-right text-neutral-400">{row.number}</td>
+      <td className="py-1.5 pr-3 font-mono text-neutral-700">{row.service}</td>
+      <td className="py-1.5 pr-3">
+        <SourceLink localPath={localPath} filePath={row.handler.filePath} line={row.handler.lineStart} className="font-mono text-neutral-900">
+          {row.operation}
+        </SourceLink>
+      </td>
+      <td className="py-1.5 pr-3">
+        <span className={`whitespace-nowrap rounded border px-1.5 py-0.5 text-[11px] font-medium ${status.style}`} title={status.title}>
+          {status.label}
+        </span>
+      </td>
+      <td className="w-full py-1.5">
+        {hasFlow ? (
+          <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open} className="text-violet-700 hover:underline">
+            {open ? 'Hide flow' : 'Show flow'} · {row.calls.length} backend call{row.calls.length === 1 ? '' : 's'}
+          </button>
+        ) : (
+          <span className="text-neutral-300">—</span>
+        )}
+      </td>
+    </tr>
+    {open && (
+      <tr className="border-b border-neutral-100">
+        <td colSpan={5} className="pb-2">
+          <OperationFlowGraph row={row} localPath={localPath} />
+        </td>
+      </tr>
+    )}
     </>
   )
 }
@@ -202,10 +107,10 @@ function Application({ repositoryId, app, localPath, refreshToken, defaultOpen =
         <PagedList<EntryPointBackendRow> load={backendOperations(repositoryId, app.project_id)} resetKey={`${repositoryId}|${refreshToken}|${app.project_id}`} noun="operations">
           {(shown) => (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1000px] text-left text-xs">
+          <table className="w-full min-w-[720px] text-left text-xs">
             <thead className="text-neutral-400">
               <tr className="border-b border-neutral-200">
-                {['#', 'Service', 'Operation', 'Calls backend?', 'Backend operation', 'Backend endpoint', 'Called from (file:line)', 'Conditional / loop'].map((h) => (
+                {['#', 'Service', 'Operation', 'Calls backend?', 'Flow'].map((h) => (
                   <th key={h} className={`py-1.5 pr-3 font-medium ${h === '#' ? 'text-right' : ''}`}>
                     {h}
                   </th>
@@ -214,9 +119,7 @@ function Application({ repositoryId, app, localPath, refreshToken, defaultOpen =
             </thead>
             <tbody>
               {shown.map((row) => (
-                <Fragment key={row.entry_point_id}>
-                  <Row row={row} localPath={localPath} />
-                </Fragment>
+                <Row key={row.entry_point_id} row={row} localPath={localPath} />
               ))}
             </tbody>
           </table>
@@ -292,9 +195,11 @@ export function RepositoryBackendReachPanel({ repositoryId, localPath, refreshTo
       ) : (
         <div className="space-y-2">
           <p className="text-[11px] text-neutral-400">
-            Every inbound operation, and the backend calls it reaches — in its own method, or through methods of the same class (up to three calls
-            deep). Conditional and loop are read from the code around the call; hover for it. Paths into other classes or injected dependencies that
-            make backend calls are shown as not followed, never guessed. The endpoint is the{' '}
+            Every inbound operation, and the backend calls it reaches — in its own method, or through the methods it calls, in this
+            class or others (up to eight calls deep, shown as a flow from the handler). Conditional and loop are read from the code
+            around the call; hover for it. Calls on a type that is not in the repository are not followed, never guessed. A database is
+            reached where a context's sets or SaveChanges are used, an HTTP client where it is called by name. No means no detected call
+            site is reached, not that the operation calls nothing. The endpoint is the{' '}
             {data.production_environment ? `${data.production_environment} environment's host` : 'host as found (no production environment is set)'}.
           </p>
           {applications === 0 && <p className="text-sm text-neutral-400">No request entry points in this repository.</p>}
