@@ -1783,6 +1783,28 @@ hand. Everything else an update brings, bootstrap applies by itself. Apply every
 had (`previousCommit` in `PLATFORM_SOURCE.json` after the update; in our own installs, the commit before step 5 of
 the appendix), oldest of them first. Entries up to 2026-10-23 were the notes of releases 2 to 7, which are named so.
 
+#### 2026-11-05, c611ac7: the update script runs from the source folder only
+
+Our delivery tooling is ours alone from this commit on ("Our delivery tooling stays on our side"). **Deliver this
+update, and every one after it, with the source folder's own script:**
+
+```powershell
+powershell -ExecutionPolicy Bypass -File C:\MP\source\scripts\update-platform.ps1 -Source C:\MP\source -Platform C:\MP\client\modernization-platform -Branch rohit/modernization-platform
+```
+
+It removes `update-platform.ps1`, `import-client-changes.ps1`, `write-platform-source.ps1`, `master-bundle.ps1`,
+`our-side-only.txt` and the two tests of them from the platform folder, listing them, and no later delivery brings
+them back. `bootstrap.ps1`, preflight and `run-suites.ps1` stay. Nothing else needs doing: no setting, no migration.
+
+If the platform folder's own (older) copy of the script was run instead, it copies the update in and then stops with
+"writing PLATFORM_SOURCE.json failed", committing nothing. Discard what it copied, then run the source folder's:
+
+```powershell
+git -C C:\MP\client checkout -- modernization-platform; git -C C:\MP\client clean -fd -- modernization-platform
+```
+
+(`clean` removes only files git does not track, and never ignored ones: `.env`, `.venv` and `node_modules` stay.)
+
 #### 2026-11-03, c79ddc7: a conversion scope builds one solution of the kept projects
 
 Only for a repository that has a saved scope leaving projects out, and a conversion prepared with it at c74e9fb that

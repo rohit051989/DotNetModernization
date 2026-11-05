@@ -65,7 +65,8 @@ $selector = @((Join-Path $root 'scripts\select_suites.py'), '--root', $root)
 if ($Since) {
     & git -C $root rev-parse --verify --quiet "$Since^{commit}" 2>$null | Out-Null
     if ($LASTEXITCODE -ne 0) { Write-Host "-Since $Since is not a commit of this repository." -ForegroundColor Red; exit 1 }
-    $changed = @(& git -C $root -c core.quotepath=false diff --name-only --no-renames $Since) +
+    # --relative: paths from the platform's own folder, also when it is a folder of a client's repository.
+    $changed = @(& git -C $root -c core.quotepath=false diff --relative --name-only --no-renames $Since) +
                @(& git -C $root -c core.quotepath=false ls-files --others --exclude-standard)
     $why = "changed since $Since"
 } elseif ($Paths.Count -gt 0) {

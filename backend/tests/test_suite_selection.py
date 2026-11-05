@@ -56,7 +56,8 @@ class Selection(unittest.TestCase):
         self.assertEqual(self.names("backend/app/steps/conversion_preparation.registration.json"), ["backend", "reproduce"])
 
     def test_a_documentation_only_change_runs_nothing(self):
-        found = select_suites.select(["docs/VDI-SETUP.md", "README.md", "steps/step-003-fingerprinting/README.md"], self.root)
+        found = select_suites.select(["docs/VDI-SETUP.md", "README.md", "steps/step-003-fingerprinting/README.md",
+                                      "PLATFORM_SOURCE.json"], self.root)
         self.assertEqual(found["suites"], [])
         self.assertIn("only documentation changed", found["none"])
 

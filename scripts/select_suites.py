@@ -8,7 +8,7 @@ Prints JSON: {"suites": [{"name", "why"}], "none": why nothing runs, or null}, i
 
 The rules, by each changed path (relative to the repository, forward slashes):
 
-- documentation: docs/, and any *.md file -> nothing;
+- documentation: docs/, and any *.md file -> nothing; so does PLATFORM_SOURCE.json, which a delivery rewrites;
 - frontend/ -> the frontend tests and the type check;
 - step registrations (steps/<step>/registration/, backend/app/steps/*.registration.json), job definitions
   (backend/app/jobs/), the catalog (catalog/), seed data (backend/app/seed/) and migrations (backend/alembic/) ->
@@ -65,6 +65,8 @@ def rules(path: str) -> list[tuple[str, str]]:
     path = path.replace("\\", "/").removeprefix("./")
     if path.startswith("docs/") or path.lower().endswith(".md"):
         return [("none", "documentation")]
+    if path == "PLATFORM_SOURCE.json":
+        return [("none", "the delivery's record of our commit")]
     found = []
     if _seed(path):
         found += [("seed", "seed data, registrations, the catalog or migrations"),
