@@ -9,8 +9,10 @@
 
     With no parameter, every suite, as before. With -Since <commit> (or -Paths), only the suites the changed paths
     can affect (scripts\select_suites.py says how): frontend\ the frontend tests and type check; steps\<step>\ that
-    step's tests; backend\ the backend suite; step registrations, the catalog, seed data or migrations the seed and
-    registration tests and the reproduce check; documentation nothing; anything no rule knows, every suite. Before
+    step's tests; a script, the backend test modules that test it (a script no test is named for, the backend
+    suite); one backend test module, that module alone; backend\ otherwise the backend suite; step registrations,
+    the catalog, seed data or migrations the seed and registration tests and the reproduce check; documentation
+    nothing; anything no rule knows, every suite. Before
     starting it prints which suites will run, and why. scripts\import-client-changes.ps1 runs it on a merge this way.
 
     Independent suites run at the same time, as many as the machine allows (a quarter of its logical processors, at
@@ -97,11 +99,12 @@ if ($List) {
 }
 
 # ---- How to run each: a command, its folder, and its lane (suites in one lane run one after another)
-function Get-Command-For([string]$name) {
+function Get-Command-For([string]$name, [string[]]$modules) {
     $backend = Join-Path $root 'backend'
     $frontend = Join-Path $root 'frontend'
     switch -Regex ($name) {
         '^backend$' { return @{ Exe = $python; Args = @('-m', 'unittest', 'discover', '-s', 'tests', '-t', '.'); Dir = $backend; Lane = 'backend' } }
+        '^backend tests$' { return @{ Exe = $python; Args = @('-m', 'unittest') + $modules; Dir = $backend; Lane = 'backend tests' } }
         '^seed and registrations$' {
             $modules = @(& $python -c "import sys; sys.path.insert(0, r'$root\scripts'); import select_suites; print(' '.join(select_suites.SEED_TESTS))") -split ' '
             return @{ Exe = $python; Args = @('-m', 'unittest') + $modules; Dir = $backend; Lane = 'seed' }
@@ -127,7 +130,7 @@ function Format-Arguments([string[]]$arguments) {
 $queue = New-Object System.Collections.ArrayList
 $n = 0
 foreach ($s in $chosen) {
-    $command = Get-Command-For $s.name
+    $command = Get-Command-For $s.name @($s.modules)
     if (-not $command) { Write-Host "Unknown suite '$($s.name)'." -ForegroundColor Red; exit 1 }
     $n++
     [void]$queue.Add([pscustomobject]@{ Name = $s.name; Command = $command; Log = (Join-Path $scratch ('{0:D2}' -f $n)) })

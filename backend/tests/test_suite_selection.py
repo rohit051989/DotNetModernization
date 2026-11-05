@@ -1,7 +1,7 @@
 """Which suites a change runs (scripts/select_suites.py; scripts/run-suites.ps1 -Since, -Paths, -List).
 
 The rules are checked on a stand-in repository laid out as ours: two steps, one with C# test projects, one with
-Python tests and a registration. run-suites.ps1 -List is then run on this repository itself, as an import runs it:
+Python tests and a registration, and the backend test modules that test the scripts. run-suites.ps1 -List is then run on this repository itself, as an import runs it:
 it prints the suites and why, and runs none."""
 import importlib.util
 import subprocess
@@ -30,6 +30,10 @@ class Selection(unittest.TestCase):
         (self.root / "steps/step-002-solution-discovery/tests").mkdir(parents=True)
         (self.root / "steps/step-002-solution-discovery/tests/__init__.py").write_text("")
         (self.root / "third_party/code-modernization/scripts/tests").mkdir(parents=True)
+        (self.root / "backend/tests").mkdir(parents=True)
+        for modules in select_suites.SCRIPT_TESTS.values():
+            for module in modules:
+                (self.root / "backend" / (module.replace(".", "/") + ".py")).write_text("")
 
     def names(self, *paths: str) -> list[str]:
         return [s["name"] for s in select_suites.select(list(paths), self.root)["suites"]]
@@ -61,9 +65,43 @@ class Selection(unittest.TestCase):
         self.assertEqual(found["suites"], [])
         self.assertIn("only documentation changed", found["none"])
 
-    def test_the_backend_and_the_scripts_run_the_backend_suite(self):
+    def suite(self, *paths: str) -> dict:
+        return select_suites.select(list(paths), self.root)["suites"][0]
+
+    def test_the_backend_runs_the_backend_suite(self):
         self.assertEqual(self.names("backend/app/engine/convert.py"), ["backend"])
-        self.assertEqual(self.names("scripts/run-suites.ps1"), ["backend"])
+
+    def test_a_script_runs_only_its_own_tests(self):
+        found = self.suite("scripts/run-suites.ps1", "scripts/select_suites.py")
+        self.assertEqual((found["name"], found["modules"]), ("backend tests", ["tests.test_suite_selection"]))
+        self.assertEqual(found["why"], "tests.test_suite_selection: a script, and its tests: scripts/run-suites.ps1, "
+                                       "scripts/select_suites.py")
+        found = self.suite("scripts/update-platform.ps1", "scripts/import-client-changes.ps1")
+        self.assertEqual(found["modules"], ["tests.test_update_platform", "tests.test_import_client_changes"])
+        self.assertEqual(self.suite("scripts/preflight.py")["modules"], ["tests.test_client_install"])
+        # A script no test is named for: the whole backend suite.
+        self.assertEqual(self.names("scripts/bootstrap.ps1"), ["backend"])
+
+    def test_one_backend_test_module_runs_alone(self):
+        (self.root / "backend/tests/test_toolchain.py").write_text("")
+        found = self.suite("backend/tests/test_toolchain.py", "scripts/select_suites.py")
+        self.assertEqual(found["modules"], ["tests.test_toolchain", "tests.test_suite_selection"])
+        # A test module the change deleted has nothing to run; the reproduce check's own module runs the check.
+        self.assertEqual(self.names("backend/tests/test_gone.py"), [])
+        self.assertEqual(self.names("backend/tests/reproduce_on_scratch.py"), ["reproduce"])
+        # Helpers every test module uses are no single module's: the whole backend suite.
+        self.assertEqual(self.names("backend/tests/support.py"), ["backend"])
+
+    def test_the_backend_suite_holds_the_named_test_modules(self):
+        found = select_suites.select(["scripts/run-suites.ps1", "backend/app/main.py"], self.root)["suites"]
+        self.assertEqual([s["name"] for s in found], ["backend"])
+        self.assertIn("(the test modules named): scripts/run-suites.ps1", found[0]["why"])
+
+    def test_every_test_module_named_for_a_script_exists_here(self):
+        for script, modules in select_suites.SCRIPT_TESTS.items():
+            self.assertTrue((ROOT / script).is_file(), script)
+            for module in modules:
+                self.assertTrue((ROOT / "backend" / (module.replace(".", "/") + ".py")).is_file(), module)
 
     def test_a_path_no_rule_knows_runs_everything(self):
         self.assertEqual(self.names(".gitignore"),
@@ -79,6 +117,16 @@ class RunSuitesList(unittest.TestCase):
         return subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
                                str(ROOT / "scripts" / "run-suites.ps1"), "-List", *args],
                               capture_output=True, text=True, encoding="utf-8", errors="replace")
+
+    def test_one_test_module_runs_alone_for_real(self):
+        """Not -List: the changed test module runs, alone, in seconds, instead of the whole backend suite."""
+        done = subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
+                               str(ROOT / "scripts" / "run-suites.ps1"), "-Paths", "backend/tests/test_platform_seed.py"],
+                              capture_output=True, text=True, encoding="utf-8", errors="replace")
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertIn("  backend tests: tests.test_platform_seed: a backend test module", done.stdout)
+        self.assertIn("== backend tests: passed", done.stdout)
+        self.assertIn("All suites passed (1,", done.stdout)
 
     def test_it_prints_the_suites_and_why_and_runs_none(self):
         done = self.run_suites("-Paths", "frontend/src/App.tsx,steps/step-003-fingerprinting/src/X.cs")

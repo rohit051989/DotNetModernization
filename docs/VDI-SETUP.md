@@ -1184,7 +1184,9 @@ and why, before starting), and with `-Push` pushes master only when they all pas
 |---|---|
 | `frontend\` | the frontend tests and type check |
 | `steps\<step>\` | that step's tests: its C# test projects and Python tests |
-| `backend\`, `scripts\` | the backend suite |
+| a script with tests of its own (`run-suites.ps1`, the delivery scripts, preflight: `SCRIPT_TESTS` in `scripts\select_suites.py`) | only those test modules |
+| one backend test module (`backend\tests\test_*.py`) | that module alone |
+| `backend\` otherwise, or any other script | the backend suite |
 | step registrations, job definitions, the catalog, seed data, migrations | the seed and registration tests and the reproduce check |
 | documentation (`docs\`, any `.md`) | none |
 | anything else | every suite |
