@@ -35,8 +35,9 @@ in this guide use the folder layout; for the root, use the repository's own path
 folder, and leave out the folder name in `git add` and `git commit`.
 
 **The rules:**
-1. **Never run anything in the source folder.** No bootstrap, no backend, no edits. It is only copied from, and only
-   `scripts\update-platform.ps1` pulls it.
+1. **Never run anything in the source folder** but its own `scripts\update-platform.ps1`. No bootstrap, no backend,
+   no edits. It is only copied from, and only that script pulls it. The script runs from there and nowhere else: it
+   is ours alone, and the platform folder never has it ("Our delivery tooling stays on our side").
 2. **Never commit outside the platform folder.** In a shared repository, the rest of it is other people's work. Stage
    and commit only with a path: `git add -A -- modernization-platform`, `git commit -- modernization-platform`. (At
    the root of a dedicated repository the whole repository is the platform folder.)
@@ -60,7 +61,8 @@ folder, and leave out the folder name in `git add` and `git commit`.
 | ["Registering a client repository"](#registering-a-client-repository) | by git URL; what discovery produces |
 | ["Moving an existing install that carries our .git"](#moving-an-existing-install-that-carries-our-git) | keeping its database, RUNS_DIR, REPOS_DIR and .env |
 | **Part 2. Ongoing** | |
-| ["Updating the platform"](#updating-the-platform) | stop, update-platform.ps1 (our master), bootstrap, start |
+| ["Our delivery tooling stays on our side"](#our-delivery-tooling-stays-on-our-side) | update-platform.ps1 and the rest run only from the source folder or our repository, never from a client's copy |
+| ["Updating the platform"](#updating-the-platform) | stop, update-platform.ps1 from the source folder (our master), bootstrap, start |
 | ["Delivering to a client from our machine"](#delivering-to-a-client-from-our-machine) | when the client's environment cannot reach our git: master's files only, never our history |
 | ["Importing a client's changes"](#importing-a-clients-changes) | changes made in the client's copy come back into our repository: the deny-list, branch mapping, merge rule; import first, then deliver |
 | ["Users and sign-in"](#users-and-sign-in) | for admins: registering developers, roles, owners, resets; who did what |
@@ -349,38 +351,28 @@ New-Item -ItemType Directory C:\MP\client\modernization-platform
 ```
 
 **At the root of a dedicated repository** ("Two layouts"), there is no folder to create: clone the client's
-repository and check out its branch for the platform; the repository's root is the platform folder. The first copy
-is easiest with the update script, which works from an empty folder or from a new repository's root alike, and
-lists the host's own files it replaced:
+repository and check out its branch for the platform; the repository's root is the platform folder.
 
 ```powershell
 git clone -c core.longpaths=true https://git.client-b.example/team/platform.git C:\MP\platform
 ```
 
-```powershell
-powershell -ExecutionPolicy Bypass -File C:\MP\source\scripts\update-platform.ps1 -Source C:\MP\source -Platform C:\MP\platform -Branch main
-```
-
-It copies, writes `PLATFORM_SOURCE.json` and commits, so steps 3 and "Committing the platform folder" are done; push
-the branch, then go on with "backend\.env".
-
 #### 3. Copy the source in
 
-Everything but `.git` (and nothing that is local to a machine):
+The first copy is a delivery like every later one: the update script, from the source folder. It works from an
+empty platform folder and from a new repository's root alike (a root where `PLATFORM_SOURCE.json` has never been is a
+first install):
 
 ```powershell
-robocopy C:\MP\source C:\MP\client\modernization-platform /E /XD .git .venv node_modules /XF .env
+powershell -ExecutionPolicy Bypass -File C:\MP\source\scripts\update-platform.ps1 -Source C:\MP\source -Platform C:\MP\client\modernization-platform -Branch rohit/modernization-platform
 ```
 
-robocopy's exit codes 0 to 7 mean success; 8 and above mean it failed. Then record which of our commits the folder
-holds. Every preparation and verification names it, beside the client repository's commit:
-
-```powershell
-cd C:\MP\client\modernization-platform; powershell -ExecutionPolicy Bypass -File .\scripts\write-platform-source.ps1 -Source C:\MP\source
-```
-
-It writes `PLATFORM_SOURCE.json` (our commit, a tag only if one happens to point at it, the date) into the platform
-folder, and prints the commit.
+(At a root, `-Platform C:\MP\platform -Branch main`, and it lists the host's own files it replaced.) It copies
+everything but `.git`, what is local to a machine (`.venv`, `node_modules`, `.env`) and our delivery tooling ("Our
+delivery tooling stays on our side"); writes `PLATFORM_SOURCE.json` (our commit, a tag only if one happens to point
+at it, the date), which every preparation and verification names beside the client repository's commit; and commits
+only the platform folder, so "Committing the platform folder" is done too. Push the branch, then go on with
+"backend\.env". Never copy the source in by hand: a plain copy brings our delivery tooling with it.
 
 #### "detected dubious ownership"
 
@@ -880,6 +872,33 @@ names the platform's own folder, so they carry over unchanged.
 
 ## Part 2. Ongoing
 
+### Our delivery tooling stays on our side
+
+Four scripts deliver the platform and bring a client's changes back: `update-platform.ps1`,
+`import-client-changes.ps1`, `write-platform-source.ps1` and `master-bundle.ps1`. **They are ours alone.** They run
+only from our side, our machine or a pristine clone of our repository such as an installation's source folder, and
+never from a client's copy of the platform. `scripts\our-side-only.txt`, in our repository, lists them (with their
+own tests and the list itself), and every delivery honours it:
+
+- a delivery never copies a listed path into a client's platform folder, and removes any listed path an older
+  delivery left there, listing what it removed;
+- the import treats a listed path missing from the client's folder as expected, never as a deletion to bring back
+  into our repository; it never takes a client's copy of one; and a client commit that only touches listed paths is
+  nothing to import, and no delivery warns about it;
+- a first install at a repository's root is recognised by `PLATFORM_SOURCE.json` never having been there, not by
+  our scripts' absence.
+
+Everything a client's own developers need is still delivered: `bootstrap.ps1`, preflight, `run-suites.ps1` and the
+rest of `scripts\`.
+
+**Why.** These scripts act on our repository and on the client's at once: they read our master and our branches,
+move files between the two, push, and decide what crosses. Run from a client's copy, they would act with whatever
+version that copy holds, older than ours and possibly edited there, and could deliver from the wrong place, import
+in the wrong direction, or push what should not go. They also have no use there: the client's environment cannot
+reach our repository, and the client's developers only pull their branch and run bootstrap. Kept on our side, there
+is one copy of each, master's, run by the people responsible for what crosses between the two repositories. Each
+script stops, naming the one to run, when it is started from anywhere else.
+
 ### Updating the platform
 
 How our newer work reaches the platform folder. Installations follow our **master**, the tip of it: every commit on
@@ -890,18 +909,15 @@ every time:
 1. **Stop the backend and the frontend.** Wait until no discovery or verification is running (the **Executions**
    tab), then press **Ctrl+C** in both windows. One still running when the backend stops is marked "orphaned by
    engine restart" the next time it starts, and must be started again.
-2. **Run the update script.** It works the same run from the platform folder or from the source folder:
-
-   ```powershell
-   powershell -ExecutionPolicy Bypass -File C:\MP\client\modernization-platform\scripts\update-platform.ps1 -Source C:\MP\source -Platform C:\MP\client\modernization-platform -Branch rohit/modernization-platform
-   ```
+2. **Run the update script, from the source folder** (the platform folder has no copy of it: "Our delivery tooling
+   stays on our side"):
 
    ```powershell
    powershell -ExecutionPolicy Bypass -File C:\MP\source\scripts\update-platform.ps1 -Source C:\MP\source -Platform C:\MP\client\modernization-platform -Branch rohit/modernization-platform
    ```
 
-   (Use one of them. The second runs the script as master has it, which the first update after a change to the
-   script needs: see "Upgrade notes".) Add `-Push` to push your branch afterwards. The script:
+   Add `-Push` to push your branch afterwards. The script:
+   - stops, changing nothing, when it is not the source folder's own copy, naming the one to run;
    - stops, changing nothing, if the client's repository is not on your branch, or if the platform folder has
      uncommitted changes; it names the branch, or lists the files;
    - stops, changing nothing, unless the source folder is a clone of ours on `master`, following `origin/master`,
@@ -909,21 +925,23 @@ every time:
    - updates your branch with `git pull --ff-only`; when it has commits in the platform folder, made since the
      latest delivery, that our repository has not imported, it lists them under a warning that this delivery
      overwrites their changes to our files, and carries on. To keep them, import them first ("Importing a client's
-     changes"). Deliveries do not count;
+     changes"). Deliveries do not count, nor does a commit that only touches our delivery tooling;
    - fetches our master and stops, changing nothing, when it cannot tell which of our commits the platform folder
      holds: no `PLATFORM_SOURCE.json`, or a commit the source folder does not contain. The message says how to go
-     on. (An empty platform folder is a first install, and needs none.);
+     on. (A first install needs none: an empty platform folder, or a repository root where `PLATFORM_SOURCE.json`
+     has never been, on disk or in its history.);
    - **never goes backwards**: it stops, changing nothing in either folder, when master does not descend from the
      commit the platform folder holds or from the source folder's own master. That means our history was
      rewritten, or the platform was installed from another branch; the message says which, and lists the commits
      that would be lost. Ask us why before going on. `-AllowDowngrade` installs master anyway, after listing what
      is lost;
    - brings the source folder to master's tip with `git pull --ff-only`;
-   - copies the source into the platform folder with robocopy, leaving out `.git`, `.venv`, `node_modules` and
-     `.env`, and removes only the files we deleted or renamed: those in the installed commit and not in the new
-     one. A file you committed in the platform folder is in neither: it is kept, and listed as "not part of the
-     platform". A file of yours that one of ours of the same name replaces (at a repository's root, typically the
-     host's own `README.md` and `.gitignore`) is listed as replaced;
+   - copies the source into the platform folder with robocopy, leaving out `.git`, `.venv`, `node_modules`, `.env`
+     and every path `scripts\our-side-only.txt` lists, and removes only the files we deleted or renamed: those in
+     the installed commit and not in the new one. A file you committed in the platform folder is in neither: it is
+     kept, and listed as "not part of the platform". A file of yours that one of ours of the same name replaces (at a
+     repository's root, typically the host's own `README.md` and `.gitignore`) is listed as replaced. A listed path
+     an older delivery left in the platform folder is removed, and listed as "ours alone";
    - writes the new `PLATFORM_SOURCE.json`: our commit, the one before (`previousCommit`), and a tag only if one
      happens to point at the commit;
    - stages and commits only the platform folder, with our source commit in the message; with `-Push`, pushes only
@@ -1031,27 +1049,16 @@ Two folders on our machine, short paths as in "Why paths must be short":
    git -C C:\MPD\client-a switch -c platform/modernization origin/main
    ```
 
-3. **The platform folder, with master's files in it, committed.** As Part 1's "Copy the source in", from the source
-   clone at master's tip:
-
-   ```powershell
-   git -C C:\MPD\source pull --ff-only
-   ```
+3. **The platform folder, with master's files in it, committed.** As Part 1's "Copy the source in": an empty folder,
+   then the update script from the source clone, which pulls master, copies everything but our delivery tooling,
+   writes `PLATFORM_SOURCE.json` and commits only the platform folder:
 
    ```powershell
    New-Item -ItemType Directory C:\MPD\client-a\modernization-platform
    ```
 
    ```powershell
-   robocopy C:\MPD\source C:\MPD\client-a\modernization-platform /E /XD .git .venv node_modules /XF .env
-   ```
-
-   ```powershell
-   cd C:\MPD\client-a\modernization-platform; powershell -ExecutionPolicy Bypass -File .\scripts\write-platform-source.ps1 -Source C:\MPD\source
-   ```
-
-   ```powershell
-   git -C C:\MPD\client-a add -A -- modernization-platform; git -C C:\MPD\client-a commit -m "Modernization platform: first copy" -- modernization-platform
+   powershell -ExecutionPolicy Bypass -File C:\MPD\source\scripts\update-platform.ps1 -Source C:\MPD\source -Platform C:\MPD\client-a\modernization-platform -Branch platform/modernization
    ```
 
 4. **Push only the branch**, then check what the client's repository received: no tag of ours, and no commit
@@ -1090,15 +1097,18 @@ Two folders on our machine, short paths as in "Why paths must be short":
    powershell -ExecutionPolicy Bypass -File C:\MPD\source\scripts\update-platform.ps1 -Source C:\MPD\source -Platform C:\MPD\client-a\modernization-platform -Branch platform/modernization -Push
    ```
 
-   It pulls master into the source clone, refuses to go backwards, copies files only, removes what we deleted or
-   renamed, writes `PLATFORM_SOURCE.json`, commits only the platform folder, and pushes only the branch ("Updating
-   the platform" lists every check).
+   It pulls master into the source clone, refuses to go backwards, copies files only (never our delivery tooling),
+   removes what we deleted or renamed and any of our delivery tooling an older delivery left, writes
+   `PLATFORM_SOURCE.json`, commits only the platform folder, and pushes only the branch ("Updating the platform"
+   lists every check).
 4. Check what went, as in step 4 above, then tell the client the update is on the branch, with any "Upgrade notes"
    entries newer than the commit they had. On their environment: stop the platform, `git pull` the branch, run
    bootstrap, start it again (the platform folder's `README.md`).
 
-Nothing is run from the client's clone on our machine: no bootstrap, no backend. It exists only to receive master's
-files and push them, and to import the client's changes.
+Nothing is run from the client's clone on our machine: no bootstrap, no backend, and none of the scripts in it. It
+exists only to receive master's files and push them, and to import the client's changes. The update script runs from
+the source clone, the import from our working repository: neither is in the client's clone ("Our delivery tooling
+stays on our side").
 
 ### Importing a client's changes
 
@@ -1144,7 +1154,8 @@ a feature built for another installation, and a copy would revert it. Instead th
 1. reads the commit the client received from `PLATFORM_SOURCE.json` (our repository must have it);
 2. on a temporary branch from that commit, copies the client's committed folder over it, leaving out
    `PLATFORM_SOURCE.json`, `.env` files, `.venv`, `node_modules`, build output and everything else local-only, and
-   removes the files the client deleted;
+   every path `scripts\our-side-only.txt` lists; removes the files the client deleted, but never a listed path, whose
+   absence there is expected. A client's copy of a listed path (an older delivery left it) is listed as "not taken";
 3. scans everything coming in (below), then commits it;
 4. merges that commit into our branch. Where both sides changed the same lines, **the client's version wins**: the
    client is the source in this direction. Every file where that happened is listed, so it can be checked.
@@ -1165,11 +1176,28 @@ commit messages. It refuses, listing each finding with its file and line (a secr
 Have the client remove what was found on their branch, rewriting the commit message if that is where it was, then
 import again.
 
-**master stays deployable.** When the target is master, the import runs every suite on the merged result
-(`scripts\run-suites.ps1`: backend, frontend, C#, the step programs), and with `-Push` pushes master only when they
-all pass. Otherwise master keeps the merge locally, unpushed, and the script says so: fix it with a commit on top,
-run `scripts\run-suites.ps1`, then push. Any other branch is pushed once the scan passes. Without `-Push` nothing is
-pushed.
+**master stays deployable.** When the target is master, the import runs the suites the merge can affect on the
+merged result, chosen from the paths it changed (`scripts\run-suites.ps1 -Since`, which prints which suites will run
+and why, before starting), and with `-Push` pushes master only when they all pass. The choice, by path:
+
+| Changed | Suites |
+|---|---|
+| `frontend\` | the frontend tests and type check |
+| `steps\<step>\` | that step's tests: its C# test projects and Python tests |
+| `backend\`, `scripts\` | the backend suite |
+| step registrations, job definitions, the catalog, seed data, migrations | the seed and registration tests and the reproduce check |
+| documentation (`docs\`, any `.md`) | none |
+| anything else | every suite |
+
+Independent suites run at the same time, as many as the machine allows. `-AllSuites` runs every suite, as before.
+When a suite fails, master keeps the merge locally, unpushed, and the script says so: fix it with a commit on top, run
+`scripts\run-suites.ps1`, then push. **`-SkipSuites`** runs none: the merge stays local, and pushing it needs `-Push`
+together with `-SkipSuites` and a `-Reason`; the merge's commit message then records that the suites were not run, by
+whom, and why. Any other branch is pushed once the scan passes. Without `-Push` nothing is pushed.
+
+`scripts\run-suites.ps1` makes the same choice on its own, for anyone: `-Since <commit>` runs the suites the paths
+changed since that commit can affect (uncommitted ones included), `-Paths a,b` those given paths can, and `-List`
+only prints the choice. With no parameter it runs every suite.
 
 **The report.** What was added, changed and deleted, every file where the client's version won, the commit, and
 whether it was pushed. When the client has nothing new since the last import (or only our deliveries), it says so,
@@ -1542,7 +1570,8 @@ there is recorded with the reason, within its own time limit.
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| Updating: **"The argument '...\update-platform.ps1' to the -File parameter does not exist"** | The client's repository is on a branch that has no platform folder (often `main`), so the script is not on disk | Switch back to your own branch, `git -C C:\MP\client switch rohit/modernization-platform`, and run the update again ("Updating the platform") |
+| Updating: **"The argument '...\update-platform.ps1' to the -File parameter does not exist"** | The command names the platform folder's copy of the script. The platform folder has none: our delivery tooling is never delivered | Run the source folder's own, `C:\MP\source\scripts\update-platform.ps1` ("Updating the platform") |
+| Updating: **"Stopped: this copy of update-platform.ps1 (...) is not the source folder's"** | A copy an older delivery left in the platform folder was run | Run the source folder's own, as the message shows. The next update removes the old copy |
 | Updating: **"Stopped: the client repository ... is on branch '...', not '...'"** | The client's repository is on another branch that does carry the platform folder | Switch to your own branch, as the message says. Never update or commit on anyone else's branch |
 | Updating: **"Stopped: the platform folder has uncommitted changes"** | A file in the platform folder was edited and not committed (the message lists them) | Commit it to your branch if it must stay (it is then imported into the platform: "Importing a client's changes"), or discard it (`git -C C:\MP\client checkout -- modernization-platform/<file>`), then update again |
 | Updating: **"Warning: the client's branch has N commit(s) in the platform folder that our repository has not imported"** | Changes were committed in the platform folder since the latest delivery, and not imported. The delivery went ahead and overwrote their changes to our files | To keep them, import them ("Importing a client's changes": the commits listed are still in the branch's history), then update again |

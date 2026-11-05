@@ -23,7 +23,10 @@
     (docs\VDI-SETUP.md, "Delivering to a client from our machine"). Either way only files are copied: our history
     and tags never go into the client's repository, and only -Branch is pushed.
 
-    It works the same whether it is run from the source folder or from the platform folder.
+    It runs only from the source folder: C:\MP\source\scripts\update-platform.ps1. It is ours alone, like every path
+    scripts\our-side-only.txt lists (docs\VDI-SETUP.md, "Our delivery tooling stays on our side"): never copied into
+    the platform folder, and removed from it when an earlier delivery put it there. A copy run from anywhere but the
+    source folder stops, naming the one to run.
 
     In order, stopping with a plain message at the first problem:
       1. The client repository must be on -Branch, and the platform folder must have no uncommitted changes
@@ -33,20 +36,21 @@
          made since the latest delivery, that our repository has not imported (scripts\import-client-changes.ps1
          records each import's client commit in a Client-Commit trailer), they are listed under a warning that
          the delivery overwrites their changes to our files, and the delivery carries on. Deliveries, which write
-         PLATFORM_SOURCE.json, do not count.
+         PLATFORM_SOURCE.json, do not count, nor does a commit that only touches paths ours alone.
       3. The installed commit must be known: a platform folder that already has files needs a PLATFORM_SOURCE.json
-         whose commit the source folder holds, or the update is refused, changing nothing (an empty folder is a
-         first install and needs none). Never backwards: origin's master must descend from the installed commit
+         whose commit the source folder holds, or the update is refused, changing nothing. A first install needs
+         none: an empty folder, or a repository root where PLATFORM_SOURCE.json has never been, neither on disk
+         nor in its history. Never backwards: origin's master must descend from the installed commit
          and from the source folder's own master. A rewritten history, or a platform installed from another
          branch, is refused, saying why, with both folders left as they were. -AllowDowngrade installs it
          anyway, after listing what will be lost. Then the source folder is brought to origin's master with
          git pull --ff-only (with -AllowDowngrade over a rewritten history, git reset --hard to it).
-      4. The source is copied into the platform folder with robocopy, leaving out .git, .venv, node_modules and
-         .env files. robocopy's exit codes 0 to 7 mean success.
+      4. The source is copied into the platform folder with robocopy, leaving out .git, .venv, node_modules, .env
+         files and every path ours alone (scripts\our-side-only.txt). robocopy's exit codes 0 to 7 mean success.
       5. Files we deleted or renamed are removed: only files that were in the installed commit and are not in the
          new one, worked out in the source folder, which holds both (a rename deletes the old name). A file in
          the platform folder that is in neither commit is the client's own: it is kept, and listed as "not part of
-         the platform".
+         the platform". Every path ours alone that an earlier delivery left there is removed, and listed.
       6. PLATFORM_SOURCE.json is written (scripts\write-platform-source.ps1): the commit, and a tag only if one
          happens to point at it.
       7. Only the platform folder is staged and committed: git add -A -- <folder>, then git commit -- <folder>,
@@ -118,6 +122,20 @@ function Test-Commit([string]$folder, [string]$commit) {
 $Source = (Resolve-Path -LiteralPath $Source).Path.TrimEnd('\')
 $Platform = (Resolve-Path -LiteralPath $Platform).Path.TrimEnd('\')
 
+# ---- 0. Only from the source folder: this script is ours alone (scripts\our-side-only.txt). A copy anywhere else,
+# such as one an earlier delivery left in a platform folder, stops here, naming the one to run. Compared as git sees
+# the two folders: a path can be written more than one way on Windows.
+$here = "$(& git -C $PSScriptRoot rev-parse --show-toplevel 2>$null)".Trim()
+$sourceRoot = "$(& git -C $Source rev-parse --show-toplevel 2>$null)".Trim()
+$hereIsSource = $here -and $sourceRoot -and ($here -eq $sourceRoot) -and
+    ("$(& git -C $PSScriptRoot rev-parse --show-prefix 2>$null)".Trim() -eq 'scripts/')
+if (-not $hereIsSource) {
+    Stop-Update ("this copy of update-platform.ps1 ($PSCommandPath) is not the source folder's. Our delivery tooling runs " +
+        "only from our side, never from a client's copy of the platform (docs\VDI-SETUP.md, `"Our delivery tooling stays " +
+        "on our side`"). Run the source folder's own:`n  powershell -ExecutionPolicy Bypass -File `"$Source\scripts\update-platform.ps1`" " +
+        "-Source `"$Source`" -Platform `"$Platform`" -Branch $Branch")
+}
+
 # ---- 1. The client repository: the right branch, and a clean platform folder
 # Where the platform folder sits in its repository comes from git itself (--show-prefix), never from comparing paths:
 # a path can be written more than one way on Windows (C:\Users\ROHIT~1.KHA is C:\Users\rohit.khanna).
@@ -175,11 +193,14 @@ if (Test-Path $record) {
     try { $installed = "$((Get-Content $record -Raw | ConvertFrom-Json).commit)".Trim() } catch { $installed = $null }
 }
 # An empty platform folder is a first install. At a repository's root, which is never empty (a new repository often
-# holds a README.md and .gitignore of its own), a first install is one with no platform in it yet: neither a
-# PLATFORM_SOURCE.json nor our scripts. Anything else is an installed platform, whose commit must be known:
-# deletions are worked out from it, and without it a client's own file cannot be told from one we deleted.
+# holds a README.md and .gitignore of its own), a first install is one with no platform in it yet: PLATFORM_SOURCE.json,
+# which every delivery writes, has never been there, neither on disk nor in the repository's history. (Never our
+# scripts: they are ours alone, and no delivery leaves them there.) Anything else is an installed platform, whose
+# commit must be known: deletions are worked out from it, and without it a client's own file cannot be told from one
+# we deleted.
 if ($atRoot) {
-    $firstInstall = -not (Test-Path $record) -and -not (Test-Path (Join-Path $Platform 'scripts\update-platform.ps1'))
+    $everDelivered = "$(@(Invoke-Git $top @('log', '-1', '--format=%H', 'HEAD', '--', 'PLATFORM_SOURCE.json') 'Looking for an earlier delivery')[0])".Trim()
+    $firstInstall = -not (Test-Path $record) -and -not $everDelivered
 } else {
     $firstInstall = -not (Get-ChildItem -LiteralPath $Platform -Recurse -File -Force -ErrorAction SilentlyContinue |
         Where-Object { $_.Name -ne '.env' } | Select-Object -First 1)
@@ -191,6 +212,17 @@ Invoke-Git $Source @('fetch', '--quiet', '--refmap=', 'origin', 'master', '+refs
 $new = @(Invoke-Git $Source @('rev-parse', 'FETCH_HEAD') 'Reading origin''s master')[0]
 $tag = & git -C $Source describe --tags --exact-match $new 2>$null
 $tag = $(if ($LASTEXITCODE -eq 0 -and $tag) { "$tag".Trim() } else { $null })
+
+# What is ours alone, as master lists it (scripts\our-side-only.txt): never delivered, and removed where an earlier
+# delivery left it. A master from before the list has none.
+$ourSideOnly = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+$listed = & git -C $Source -c core.quotepath=false show "${new}:scripts/our-side-only.txt" 2>$null
+if ($LASTEXITCODE -eq 0) {
+    foreach ($line in @($listed)) {
+        $path = "$line".Trim().Replace('\', '/')
+        if ($path -and -not $path.StartsWith('#')) { [void]$ourSideOnly.Add($path) }
+    }
+}
 
 # ---- 2b. Changes on the client's branch that our repository has not imported
 # The client's commits in the platform folder, other than deliveries (a delivery writes PLATFORM_SOURCE.json), that no
@@ -210,7 +242,11 @@ if (-not $firstInstall) {
     foreach ($line in @(Invoke-Git $top (@('log', '--no-merges', '--format=%H %s') + $range + @('--', $scope)) 'Listing the client''s commits')) {
         $commit = $line.Substring(0, 40)
         $delivery = @(Invoke-Git $top @('diff-tree', '--no-commit-id', '--name-only', '-r', $commit, '--', "${prefix}PLATFORM_SOURCE.json") 'Reading a commit')
-        if ($delivery.Count -eq 0) { $notImported += "$($commit.Substring(0, 12)) $($line.Substring(41))" }
+        if ($delivery.Count -gt 0) { continue }
+        # A commit that only touches paths ours alone (removing a script an older delivery left, say) is nothing to import.
+        $theirs = @(Invoke-Git $top @('-c', 'core.quotepath=false', 'diff-tree', '--no-commit-id', '--name-only', '-r', $commit, '--', $scope) 'Reading a commit') |
+            Where-Object { -not $ourSideOnly.Contains($_.Substring($prefix.Length)) }
+        if (@($theirs).Count -gt 0) { $notImported += "$($commit.Substring(0, 12)) $($line.Substring(41))" }
     }
     if ($notImported.Count -gt 0) {
         $listed = "  " + ($notImported -join "`n  ")
@@ -227,8 +263,8 @@ if (-not $firstInstall) {
         Stop-Update ("the platform folder has files but no PLATFORM_SOURCE.json naming the commit of ours it holds. Without " +
             "it, a file we deleted cannot be told from the client's own, so nothing was changed. Ask us which of our " +
             "commits the folder was copied from, then record it: check that commit out in the source folder " +
-            "(git -C `"$Source`" checkout <commit>), run scripts\write-platform-source.ps1 -Source `"$Source`" from the " +
-            "platform folder, commit PLATFORM_SOURCE.json to your branch, put the source folder back on master " +
+            "(git -C `"$Source`" checkout <commit>), run the source folder's scripts\write-platform-source.ps1 " +
+            "-Source `"$Source`" -Platform `"$Platform`", commit PLATFORM_SOURCE.json to your branch, put the source folder back on master " +
             "(git -C `"$Source`" switch master) and run the update again.")
     }
     if (-not (Test-Commit $Source $installed)) {
@@ -295,11 +331,14 @@ foreach ($entry in @(Invoke-Git $top @('-c', 'core.quotepath=false', 'ls-files',
 $replaced = @()
 foreach ($entry in $ourNew) {
     $info, $path = $entry -split "`t", 2
+    if ($ourSideOnly.Contains($path)) { continue }
     $theirBlob = $theirBlobs[$path.ToLowerInvariant()]
     if ($theirBlob -and -not $wasOurs.Contains($path) -and $theirBlob -ne ($info -split ' ')[2]) { $replaced += $path }
 }
 
-& robocopy $Source $Platform /E /XD .git .venv node_modules /XF .env /R:1 /W:1 /NFL /NDL /NJH /NJS /NP | Out-Null
+# Never copied: the paths ours alone, named by their full path in the source folder (robocopy /XF takes full paths).
+$notCopied = @($ourSideOnly | ForEach-Object { Join-Path $Source ($_.Replace('/', '\')) })
+& robocopy $Source $Platform /E /XD .git .venv node_modules /XF .env @notCopied /R:1 /W:1 /NFL /NDL /NJH /NJS /NP | Out-Null
 $copied = $LASTEXITCODE
 if ($copied -ge 8) { Stop-Update "robocopy failed (exit code $copied): the platform folder may be partly copied. Fix the cause and run the update again." }
 Write-Host "Copied (robocopy exit code $copied)"
@@ -327,6 +366,24 @@ if ($old -and $old -ne $new) {
 }
 Write-Host "Removed $removed file(s) we deleted or renamed"
 
+# Paths ours alone that an earlier delivery left in the platform folder: removed, and listed.
+$ourSideRemoved = @()
+foreach ($path in @($ourSideOnly | Sort-Object)) {
+    $target = Join-Path $Platform ($path.Replace('/', '\'))
+    if (Test-Path -LiteralPath $target -PathType Leaf) {
+        Remove-Item -LiteralPath $target -Force
+        $ourSideRemoved += $path
+        $parent = Split-Path -Parent $target
+        while ($parent.Length -gt $Platform.Length -and -not (Get-ChildItem -LiteralPath $parent -Force)) {
+            Remove-Item -LiteralPath $parent -Force
+            $parent = Split-Path -Parent $parent
+        }
+    }
+}
+if ($ourSideRemoved.Count -gt 0) {
+    Write-Host "Removed, ours alone and never delivered (scripts\our-side-only.txt) ($($ourSideRemoved.Count)):`n  $($ourSideRemoved -join "`n  ")"
+}
+
 # The client's own files: committed in the platform folder, in neither the installed commit nor the new one. Kept.
 $platformFiles = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
 foreach ($commit in @($old, $new) | Where-Object { $_ }) {
@@ -337,7 +394,7 @@ foreach ($commit in @($old, $new) | Where-Object { $_ }) {
 $theirs = @()
 foreach ($tracked in @(Invoke-Git $top @('-c', 'core.quotepath=false', 'ls-files', '--', $scope) 'Listing the platform folder''s files')) {
     $path = $tracked.Substring($prefix.Length)
-    if ($path -ne 'PLATFORM_SOURCE.json' -and -not $platformFiles.Contains($path)) { $theirs += $path }
+    if ($path -ne 'PLATFORM_SOURCE.json' -and -not $platformFiles.Contains($path) -and -not $ourSideOnly.Contains($path)) { $theirs += $path }
 }
 if ($theirs.Count -gt 0) {
     Write-Host "Kept, not part of the platform ($($theirs.Count)):`n  $($theirs -join "`n  ")"
@@ -347,7 +404,7 @@ if ($theirs.Count -gt 0) {
 # The copy just placed in the platform folder, whichever folder this script was started from.
 # Kept as it is when the commit has not changed: a run with nothing new commits nothing.
 if ($installed -ne $new) {
-    & (Join-Path $Platform 'scripts\write-platform-source.ps1') -Source $Source -Platform $Platform -Previous "$old"
+    & (Join-Path $Source 'scripts\write-platform-source.ps1') -Source $Source -Platform $Platform -Previous "$old"
     if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) { Stop-Update 'writing PLATFORM_SOURCE.json failed.' }
 }
 

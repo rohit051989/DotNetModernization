@@ -1,0 +1,20 @@
+# Ours alone: our delivery tooling, which runs only from our side (our machine, or a pristine clone of our repository
+# such as an installation's source folder), never from a client's copy of the platform.
+#
+# scripts\update-platform.ps1 never copies a path listed here into a client's platform folder, and removes any listed
+# path already there, listing what it removed. scripts\import-client-changes.ps1 treats a listed path missing from a
+# client's folder as expected, never as a deletion, and never takes a client's copy of one. Everything a client's own
+# developers need stays delivered: bootstrap.ps1, preflight, run-suites.ps1 and the rest.
+#
+# One path per line, relative to the repository, forward slashes. Lines starting with # are comments.
+# docs\VDI-SETUP.md, "Our delivery tooling stays on our side", says why.
+
+scripts/update-platform.ps1
+scripts/import-client-changes.ps1
+scripts/write-platform-source.ps1
+scripts/master-bundle.ps1
+scripts/our-side-only.txt
+
+# The tests of the tooling above: they run the scripts, which a client's copy does not have.
+backend/tests/test_update_platform.py
+backend/tests/test_import_client_changes.py

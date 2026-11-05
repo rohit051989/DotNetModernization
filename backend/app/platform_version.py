@@ -349,7 +349,8 @@ def record(db: Session, out=print) -> int:
     mine = local()
     if not mine.commit:
         out("This copy's commit is not known (no PLATFORM_SOURCE.json, and not our git repository): nothing recorded. "
-            "Run scripts\\update-platform.ps1, which writes PLATFORM_SOURCE.json.")
+            "A delivery writes PLATFORM_SOURCE.json: scripts\\update-platform.ps1, run from the source folder "
+            "(docs\\VDI-SETUP.md, \"Updating the platform\").")
         return 1
     theirs = database(db)
     if theirs is not None and theirs.commit == mine.commit and theirs.fingerprint == mine.fingerprint:

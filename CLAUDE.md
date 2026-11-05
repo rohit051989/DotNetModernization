@@ -204,7 +204,9 @@ modernization-platform/
     (`git -C <top> status -- <folder>`), never at the rest of the host repository. Its identity is our source
     commit from `PLATFORM_SOURCE.json`, recorded beside the host repository's commit (`app.experiment.instrument`).
     Nothing the platform or its scripts do commits outside its folder or to another branch:
-    `scripts/update-platform.ps1` stages and commits with `-- <folder>` only.
+    `scripts/update-platform.ps1` stages and commits with `-- <folder>` only. Our delivery tooling is ours alone:
+    every path `scripts/our-side-only.txt` lists runs only from our side and is never delivered. A new script or
+    test that only our side uses goes on that list; what a client's own developers need never does.
 
 17. **master is always deployable.** Every installation follows master (`scripts/update-platform.ps1` pulls it),
     so every commit on master passes the full test suites: backend, frontend and C#. Unfinished work stays on a

@@ -101,7 +101,9 @@ Then register the repositories to modernize (the guide's "Registering a client r
 
 ## 6. Updating
 
-An update arrives as a commit to this folder on the platform's branch. To install it:
+An update arrives as a commit to this folder on the platform's branch. The platform's team makes it, from their own
+clone of the platform: the scripts that deliver updates and import changes stay with them, and are not in this
+folder. To install it:
 
 1. Stop the backend and the frontend (**Ctrl+C** in each window), once no discovery or verification is running (the
    repository's **Executions** tab).

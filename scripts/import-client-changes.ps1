@@ -28,9 +28,16 @@
          Nothing is imported unless the scan finds nothing.
       7. That commit is merged into the target. Where both sides changed the same lines the client's version wins:
          the client is the source in this direction. Every file where that happened is reported.
-      8. The target branch in our working repository moves to the merge (fast-forward). For master, the backend,
-         frontend and C# suites run on the result (scripts\run-suites.ps1); with -Push, master is pushed only when
-         they all pass, and otherwise stays unpushed, saying why. Any other branch is pushed once the scan passes.
+      8. The target branch in our working repository moves to the merge (fast-forward). For master, the suites the
+         merge can affect run on the result (scripts\run-suites.ps1 -Since, which prints which and why, chosen from
+         the paths the merge changed; -AllSuites runs every suite); with -Push, master is pushed only when they all
+         pass, and otherwise stays unpushed, saying why. -SkipSuites runs none: the merge stays local, and pushing
+         it needs -Push with -SkipSuites and a -Reason, which the merge's commit message records with who skipped
+         them. Any other branch is pushed once the scan passes.
+
+    It is ours alone, like every path scripts\our-side-only.txt lists: it runs only from our working repository, never
+    from a client's copy. A listed path missing from the client's folder is expected, never a deletion; a client's
+    copy of one is never taken; and a client commit that only touches listed paths is nothing to import.
 
     The commit's subject is the client's latest commit message; its body lists the client's other commits since the
     previous import; its Client-Commit trailer records the client's commit, so the next import knows where it left
@@ -50,7 +57,18 @@
     lines starting with # are comments. It lives on the operator's machine, outside the repository.
 
 .PARAMETER Push
-    Push the target branch to origin: master only when every suite passes, any other branch once the scan passes.
+    Push the target branch to origin: master only when every suite that ran passed, any other branch once the scan
+    passes.
+
+.PARAMETER AllSuites
+    On master, run every suite, not only those the merge can affect.
+
+.PARAMETER SkipSuites
+    On master, run no suite. The merge stays local unless -Push is given too, with -Reason; the commit message records
+    that the suites were not run, by whom, and why.
+
+.PARAMETER Reason
+    Why the suites were skipped: required to push with -SkipSuites.
 
 .EXAMPLE
     powershell -ExecutionPolicy Bypass -File .\scripts\import-client-changes.ps1 -Platform C:\MPD\client-a\modernization-platform -Repository D:\work\modernization-platform -DenyList C:\MPD\deny-list.txt -Push
@@ -60,7 +78,10 @@ param(
     [Parameter(Mandatory)][string]$Platform,
     [Parameter(Mandatory)][string]$Repository,
     [Parameter(Mandatory)][string]$DenyList,
-    [switch]$Push
+    [switch]$Push,
+    [switch]$AllSuites,
+    [switch]$SkipSuites,
+    [string]$Reason = ''
 )
 
 $ErrorActionPreference = 'Continue'   # git writes progress to stderr; every exit code is checked instead
@@ -101,9 +122,14 @@ function Test-Commit([string]$folder, [string]$commit) {
     return $LASTEXITCODE -eq 0 -and "$type".Trim() -eq 'commit'
 }
 
+$script:ourSideOnly = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+
+# Local to a machine, or ours alone (scripts\our-side-only.txt): never taken from the client's folder, and never a
+# deletion when it is missing there.
 function Test-LocalOnly([string]$path) {
     $parts = $path -split '/'
     if ($parts.Count -eq 1 -and $parts[0] -eq 'PLATFORM_SOURCE.json') { return $true }
+    if ($script:ourSideOnly.Contains($path)) { return $true }
     for ($i = 0; $i -lt $parts.Count - 1; $i++) { if ($LocalOnlyDirs -contains $parts[$i]) { return $true } }
     return $parts[-1] -like '*.pyc'
 }
@@ -175,8 +201,26 @@ $Platform = (Resolve-Path -LiteralPath $Platform).Path.TrimEnd('\')
 if (-not (Test-Path -LiteralPath $DenyList -PathType Leaf)) { Stop-Import "the deny-list file $DenyList does not exist." }
 $DenyList = (Resolve-Path -LiteralPath $DenyList).Path
 
+if ($Push -and $SkipSuites -and -not $Reason.Trim()) {
+    Stop-Import "-Push with -SkipSuites needs -Reason: why master may go out without its suites. The commit message records it, and who skipped them."
+}
 if ("$(@(Invoke-Git $Repository @('rev-parse', '--show-prefix') 'Reading our repository')[0])") {
     Stop-Import "$Repository is not the root of our working repository."
+}
+# Only from our working repository: this script is ours alone (scripts\our-side-only.txt), never run from a client's copy.
+$here = "$(& git -C $PSScriptRoot rev-parse --show-toplevel 2>$null)".Trim()
+$ourTop = "$(@(Invoke-Git $Repository @('rev-parse', '--show-toplevel') 'Reading our repository')[0])".Trim()
+if ($here -ne $ourTop) {
+    Stop-Import ("this copy of import-client-changes.ps1 ($PSCommandPath) is not our working repository's. Our delivery tooling " +
+        "runs only from our side (docs\VDI-SETUP.md, `"Our delivery tooling stays on our side`"): run $Repository\scripts\import-client-changes.ps1.")
+}
+# What is ours alone, as our repository lists it: never taken from the client's folder, never a deletion there.
+$listFile = Join-Path $Repository 'scripts\our-side-only.txt'
+if (Test-Path -LiteralPath $listFile) {
+    foreach ($line in Get-Content -LiteralPath $listFile -Encoding UTF8) {
+        $path = "$line".Trim().Replace('\', '/')
+        if ($path -and -not $path.StartsWith('#')) { [void]$script:ourSideOnly.Add($path) }
+    }
 }
 $ourChanges = @(Invoke-Git $Repository @('status', '--porcelain') 'Checking our repository')
 if ($ourChanges.Count -gt 0) {
@@ -272,7 +316,11 @@ $range = @('HEAD') + $(if ($stops.Count -gt 0) { @('--not') + $stops } else { @(
 $incoming = @()
 foreach ($commit in @(Invoke-Git $top (@('log', '--no-merges', '--format=%H') + $range + @('--', $scope)) 'Listing the client''s commits')) {
     $delivery = @(Invoke-Git $top @('diff-tree', '--no-commit-id', '--name-only', '-r', $commit, '--', "${prefix}PLATFORM_SOURCE.json") 'Reading a commit')
-    if ($delivery.Count -eq 0) { $incoming += $commit }
+    if ($delivery.Count -gt 0) { continue }
+    # A commit that only touches paths ours alone (removing a script an older delivery left, say) brings nothing in.
+    $theirs = @(Invoke-Git $top @('-c', 'core.quotepath=false', 'diff-tree', '--no-commit-id', '--name-only', '-r', $commit, '--', $scope) 'Reading a commit') |
+        Where-Object { -not $script:ourSideOnly.Contains($_.Substring($prefix.Length)) }
+    if (@($theirs).Count -gt 0) { $incoming += $commit }
 }
 if ($incoming.Count -eq 0) {
     Write-Host ''
@@ -326,11 +374,18 @@ if (-not (Test-Path $tarExe)) { $tarExe = 'tar' }
 if ($LASTEXITCODE -ne 0) { Stop-Import "unpacking the client's folder failed (tar exit code $LASTEXITCODE)." }
 
 $theirFiles = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+$notTaken = @()
 foreach ($path in @(Invoke-Git $top @('-c', 'core.quotepath=false', 'ls-tree', '-r', '--name-only', $tree) 'Listing the client''s files')) {
     if (Test-EnvFile $path) { Add-Finding $path 'a .env file, committed in the platform folder: never imported'; continue }
+    if ($script:ourSideOnly.Contains($path)) { $notTaken += $path; continue }
     if (-not (Test-LocalOnly $path)) { [void]$theirFiles.Add($path) }
 }
-& robocopy $extract $worktree /E /XD @LocalOnlyDirs /XF PLATFORM_SOURCE.json .env *.pyc /R:1 /W:1 /NFL /NDL /NJH /NJS /NP | Out-Null
+if ($notTaken.Count -gt 0) {
+    Write-Host "Not taken, ours alone (an older delivery left them in the client's folder) ($($notTaken.Count)):`n  $($notTaken -join "`n  ")"
+}
+# Never copied in: the paths ours alone, by their full path in the client's folder as unpacked (robocopy /XF).
+$notCopied = @($script:ourSideOnly | ForEach-Object { Join-Path $extract ($_.Replace('/', '\')) })
+& robocopy $extract $worktree /E /XD @LocalOnlyDirs /XF PLATFORM_SOURCE.json .env *.pyc @notCopied /R:1 /W:1 /NFL /NDL /NJH /NJS /NP | Out-Null
 if ($LASTEXITCODE -ge 8) { Stop-Import "copying the client's folder failed (robocopy exit code $LASTEXITCODE)." }
 foreach ($path in @(Invoke-Git $worktree @('-c', 'core.quotepath=false', 'ls-files') 'Listing our files')) {
     if (-not $theirFiles.Contains($path) -and -not (Test-LocalOnly $path)) {
@@ -423,6 +478,12 @@ if ($LASTEXITCODE -eq 0) {
     exit 0
 }
 $won = $(if ($clientWon.Count -gt 0) { @('', "Where both sides changed the same lines, the client's version was kept:") + @($clientWon | ForEach-Object { "- $_" }) } else { @() })
+if ($SkipSuites -and $target -eq 'master') {
+    # Recorded in the merge itself: master carries, for good, that it went in without its suites, by whom and why.
+    $who = "$(& git -C $Repository config user.name) <$(& git -C $Repository config user.email)>, as $env:USERDOMAIN\$env:USERNAME on $env:COMPUTERNAME"
+    $won += @('', "The suites were not run on this merge (-SkipSuites), by $who.",
+              "Reason: $(if ($Reason.Trim()) { $Reason.Trim() } else { 'none given (not pushed by the import)' })")
+}
 Invoke-Git $worktree @('commit', '-q', '--no-verify', '-F', (Write-Message $won)) "Merging into our $target" | Out-Null
 $merged = @(Invoke-Git $worktree @('rev-parse', 'HEAD') 'Reading the merge')[0]
 
@@ -444,15 +505,21 @@ if ($clientWon.Count -gt 0) {
 }
 
 $passed = $true
-if ($target -eq 'master') {
+if ($target -eq 'master' -and $SkipSuites) {
     Write-Host ''
-    Write-Host 'Running every suite on the merged master (scripts\run-suites.ps1)...'
-    & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Repository 'scripts\run-suites.ps1')
+    Write-Host "No suite run (-SkipSuites)$(if ($Reason.Trim()) { ": $($Reason.Trim())" }). The merge's commit message records it." -ForegroundColor Yellow
+} elseif ($target -eq 'master') {
+    # Only the suites the merge can affect, from the paths it changed (scripts\run-suites.ps1 prints which, and why),
+    # or every suite with -AllSuites.
+    Write-Host ''
+    $selection = $(if ($AllSuites) { @() } else { @('-Since', $start) })
+    Write-Host "Running $(if ($AllSuites) { 'every suite' } else { "the suites the merge can affect (changed since $($start.Substring(0, 12)))" }) on the merged master (scripts\run-suites.ps1)..."
+    & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Repository 'scripts\run-suites.ps1') @selection
     $passed = $LASTEXITCODE -eq 0
     Write-Host $(if ($passed) { 'The suites passed on the merged master.' } else { 'The suites FAILED on the merged master.' })
 }
 if (-not $Push) {
-    Write-Host "Not pushed (no -Push)$(if (-not $passed) { '; the suites failed, so master must be fixed before it is pushed' })."
+    Write-Host "Not pushed (no -Push)$(if (-not $passed) { '; the suites failed, so master must be fixed before it is pushed' })$(if ($SkipSuites -and $target -eq 'master') { '; to push it without its suites, give -Push -SkipSuites -Reason' })."
     exit $(if ($passed) { 0 } else { 1 })
 }
 if (-not $passed) {

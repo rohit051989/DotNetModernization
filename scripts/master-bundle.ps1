@@ -15,6 +15,9 @@
 
     The bundle is checked with git bundle verify before its hash is written. Nothing is pushed or uploaded.
 
+    Ours alone, like every path scripts\our-side-only.txt lists: it runs only in our repository, never in an
+    installation, and is never delivered to a client.
+
 .PARAMETER OutDir
     Where to write the files. Default: a release folder beside the repository (outside it, so the bundle is never
     committed).
@@ -36,6 +39,11 @@ function Fail([string]$why) {
     exit 1
 }
 
+# Ours alone (scripts\our-side-only.txt): made from our repository, never from an installation, which
+# PLATFORM_SOURCE.json marks.
+if (Test-Path (Join-Path $root 'PLATFORM_SOURCE.json')) {
+    Fail "$root is an installation of the platform (it has a PLATFORM_SOURCE.json), not our repository. Our delivery tooling runs only from our side (docs\VDI-SETUP.md, `"Our delivery tooling stays on our side`")."
+}
 $commit = & git -C $root rev-parse --verify --quiet refs/heads/master 2>$null
 if ($LASTEXITCODE -ne 0 -or -not $commit) { Fail "there is no master in $root." }
 $commit = "$commit".Trim()

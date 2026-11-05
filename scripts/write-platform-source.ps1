@@ -5,8 +5,11 @@
 .DESCRIPTION
     The platform folder of a client install carries no .git of ours (docs\VDI-SETUP.md Part 1). This file is how
     every preparation and verification names what is installed: the source commit (installations follow our master),
-    a tag only if one happens to point at that commit, and the date the copy was made (app\experiment\instrument.py reads it). scripts\update-platform.ps1 writes it on every update;
-    run this once by hand after the first copy.
+    a tag only if one happens to point at that commit, and the date the copy was made (app\experiment\instrument.py
+    reads it). scripts\update-platform.ps1 runs it on every delivery, the first included.
+
+    Ours alone, like every path scripts\our-side-only.txt lists: it runs only from the source folder it reads (the
+    pristine clone of our repository), never from a client's copy of the platform, and is never delivered.
 
     Reads the source folder with git; changes nothing there.
 
@@ -14,7 +17,7 @@
     The source folder: the clone of our repository the platform was copied from.
 
 .PARAMETER Platform
-    The platform folder. Default: the folder this script is in, one level up.
+    The platform folder, where PLATFORM_SOURCE.json is written.
 
 .PARAMETER Previous
     The source commit the platform folder held before this copy, when there was one (recorded, for the history).
@@ -24,19 +27,25 @@
     follow master, and the tag recorded is whichever tag points at the commit, if any.
 
 .EXAMPLE
-    .\scripts\write-platform-source.ps1 -Source C:\MP\source
+    C:\MP\source\scripts\write-platform-source.ps1 -Source C:\MP\source -Platform C:\MP\client\modernization-platform
 #>
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][string]$Source,
-    [string]$Platform = '',
+    [Parameter(Mandatory)][string]$Platform,
     [string]$Previous = '',
     [string]$Release = ''
 )
 
 $ErrorActionPreference = 'Continue'   # git writes to stderr; exit codes are checked instead
-# Windows PowerShell 5.1 has no $PSScriptRoot in a parameter's default value: the default is worked out here.
-if (-not $Platform) { $Platform = Split-Path -Parent $PSScriptRoot }
+# Only from the source folder it reads, compared as git sees the two folders.
+$here = "$(& git -C $PSScriptRoot rev-parse --show-toplevel 2>$null)".Trim()
+$sourceRoot = "$(& git -C $Source rev-parse --show-toplevel 2>$null)".Trim()
+if (-not $here -or $here -ne $sourceRoot) {
+    Write-Host ("This copy of write-platform-source.ps1 is not the source folder's: our delivery tooling runs only from our " +
+        "side (docs\VDI-SETUP.md, `"Our delivery tooling stays on our side`"). Run $Source\scripts\write-platform-source.ps1.") -ForegroundColor Red
+    exit 1
+}
 $commit = & git -C $Source rev-parse HEAD
 if ($LASTEXITCODE -ne 0 -or -not $commit) {
     Write-Host "$Source is not a git clone of our repository: there is no commit to record." -ForegroundColor Red

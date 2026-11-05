@@ -1,7 +1,8 @@
 """scripts/update-platform.ps1 on small repositories (docs/VDI-SETUP.md, "Updating the platform"): a client repository
 with its own history and someone else's branch, our source with a change, a delete and a rename. Installations
-follow our master. Runs the script as the guide does, with Windows PowerShell, from the platform folder or the
-source folder."""
+follow our master. Runs the script as the guide does, with Windows PowerShell, from the source folder: it is ours
+alone (scripts/our-side-only.txt), never delivered, and a copy anywhere else stops. The platform folder starts as an
+older delivery left it, with our scripts in it; the next delivery removes them."""
 import json
 import shutil
 import subprocess
@@ -11,6 +12,8 @@ import unittest
 from pathlib import Path
 
 SCRIPTS = Path(__file__).resolve().parents[2] / "scripts"
+OURS_ALONE = ("update-platform.ps1", "write-platform-source.ps1", "our-side-only.txt")
+DELIVERED = ("bootstrap.ps1", "run-suites.ps1")          # stand-ins for what a client's developers need
 IDENTITY = ["-c", "user.name=t", "-c", "user.email=t@t"]
 BRANCH, OTHER, FOLDER = "rohit/platform", "asmith/feature", "mp"
 
@@ -24,6 +27,15 @@ def ps(script: Path, *args: str) -> subprocess.CompletedProcess:
                           capture_output=True, text=True, encoding="utf-8", errors="replace")
 
 
+def our_scripts(work: Path) -> None:
+    """Our delivery tooling and its list, as in our repository, and stand-ins for the scripts a client keeps."""
+    (work / "scripts").mkdir(parents=True, exist_ok=True)
+    for name in OURS_ALONE:
+        shutil.copy2(SCRIPTS / name, work / "scripts" / name)
+    for name in DELIVERED:
+        (work / "scripts" / name).write_text(f"Write-Host '{name}'\n")
+
+
 @unittest.skipUnless(sys.platform == "win32", "update-platform.ps1 is Windows PowerShell")
 class UpdatePlatform(unittest.TestCase):
     def setUp(self):
@@ -31,9 +43,7 @@ class UpdatePlatform(unittest.TestCase):
         root = Path(self.tmp.name)
         # Our repository, with the two scripts, and files to change, delete and rename.
         work = root / "ours-work"
-        (work / "scripts").mkdir(parents=True)
-        for name in ("update-platform.ps1", "write-platform-source.ps1"):
-            shutil.copy2(SCRIPTS / name, work / "scripts" / name)
+        our_scripts(work)
         (work / "changed.txt").write_text("v1\n")
         (work / "deleted.txt").write_text("goes upstream\n")
         (work / "docs").mkdir()
@@ -59,13 +69,14 @@ class UpdatePlatform(unittest.TestCase):
         git(self.remote, "symbolic-ref", "HEAD", "refs/heads/main")
         self.client = root / "client"
         subprocess.run(["git", "clone", "-q", str(self.remote), str(self.client)], check=True)
-        # Part 1: your branch, the platform folder, the copy, PLATFORM_SOURCE.json, the commit.
+        # Part 1 as an older guide had it: your branch, the platform folder, a copy of everything (our scripts
+        # included), PLATFORM_SOURCE.json, the commit.
         git(self.client, "switch", "-q", "-c", BRANCH, "origin/main")
         self.platform = self.client / FOLDER
         self.platform.mkdir()
         subprocess.run(["robocopy", str(self.source), str(self.platform), "/E", "/XD", ".git", "/NFL", "/NDL", "/NJH", "/NJS"],
                        capture_output=True)
-        done = ps(self.platform / "scripts" / "write-platform-source.ps1", "-Source", str(self.source))
+        done = ps(self.source / "scripts" / "write-platform-source.ps1", "-Source", str(self.source), "-Platform", str(self.platform))
         self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
         git(self.client, "add", "-A", "--", FOLDER); git(self.client, "commit", "-q", "-m", "platform", "--", FOLDER)
         git(self.client, "push", "-q", "-u", "origin", BRANCH)
@@ -78,8 +89,8 @@ class UpdatePlatform(unittest.TestCase):
         self.tmp.cleanup()
 
     def update(self, *extra: str, run_from: Path | None = None) -> subprocess.CompletedProcess:
-        """Runs the update as the guide does, from the platform folder unless `run_from` names another."""
-        return ps((run_from or self.platform) / "scripts" / "update-platform.ps1", "-Source", str(self.source),
+        """Runs the update as the guide does, from the source folder unless `run_from` names another."""
+        return ps((run_from or self.source) / "scripts" / "update-platform.ps1", "-Source", str(self.source),
                   "-Platform", str(self.platform), "-Branch", BRANCH, *extra)
 
     def record(self) -> dict:
@@ -213,10 +224,10 @@ class UpdatePlatform(unittest.TestCase):
         (self.platform / "docs" / "client-runbook.md").write_text("also ours\n")
         git(self.client, "add", "-A", "--", FOLDER); git(self.client, "commit", "-q", "-m", "client files", "--", FOLDER)
         self.upstream()
-        for run_from in (self.platform, self.source):
-            done = self.update(run_from=run_from)
+        for n in (1, 2):
+            done = self.update()
             self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
-            if run_from == self.platform:
+            if n == 1:
                 self.assertIn("Warning: the client's branch has 1 commit(s) in the platform folder that our repository has not imported", done.stdout)
                 self.assertIn("client files", done.stdout)
             else:
@@ -227,7 +238,7 @@ class UpdatePlatform(unittest.TestCase):
             self.assertIn("Kept, not part of the platform (2):", done.stdout)
             self.assertIn("client-notes.md", done.stdout)
             self.assertIn("docs/client-runbook.md", done.stdout)
-            self.commit_upstream("v3\n" if run_from == self.platform else "v4\n")
+            self.commit_upstream("v3\n" if n == 1 else "v4\n")
         # The deletion and the rename upstream were applied all the same.
         self.assertFalse((self.platform / "deleted.txt").exists())
         self.assertFalse((self.platform / "docs" / "old-name.md").exists())
@@ -300,10 +311,50 @@ class UpdatePlatform(unittest.TestCase):
         self.assertEqual(done.returncode, 1)
         self.assertIn(f"is on branch 'rohit/older-work', not '{BRANCH}'", done.stdout)
         self.assertIn("Nothing was committed", done.stdout)
-        # A branch without the platform folder (the client's main): the script itself is not there to run, which
-        # the guide's troubleshooting explains; run it from the source folder instead.
-        git(self.client, "switch", "-q", "main")
-        self.assertFalse((self.platform / "scripts" / "update-platform.ps1").exists())
+
+
+    def test_a_delivery_removes_our_scripts_an_older_one_left_and_never_copies_them_again(self):
+        for name in OURS_ALONE:
+            self.assertTrue((self.platform / "scripts" / name).exists(), name)           # as the older delivery left it
+        new = self.upstream()
+        done = self.update("-Push")
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertIn("Removed, ours alone and never delivered (scripts\\our-side-only.txt) (3):\n"
+                      "  scripts/our-side-only.txt\n  scripts/update-platform.ps1\n  scripts/write-platform-source.ps1",
+                      done.stdout)
+        tracked = git(self.client, "ls-files", "--", f"{FOLDER}/scripts").splitlines()
+        self.assertEqual(sorted(tracked), [f"{FOLDER}/scripts/{name}" for name in sorted(DELIVERED)])
+        self.assertNotIn("Kept, not part of the platform", done.stdout)
+        self.assertEqual(self.record()["commit"], new)
+        # The next delivery copies none of them, and has nothing of ours alone to remove.
+        self.commit_upstream("v3\n")
+        done = self.update()
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertNotIn("ours alone", done.stdout)
+        self.assertNotIn("Warning: the client's branch", done.stdout)
+        for name in OURS_ALONE:
+            self.assertFalse((self.platform / "scripts" / name).exists(), name)
+        for name in DELIVERED:
+            self.assertTrue((self.platform / "scripts" / name).exists(), name)
+
+    def test_a_copy_of_the_script_outside_the_source_folder_stops_naming_the_one_to_run(self):
+        self.upstream()
+        head = git(self.client, "rev-parse", "HEAD")
+        done = self.update(run_from=self.platform)                     # the copy an older delivery left there
+        self.assertEqual(done.returncode, 1, done.stdout)
+        self.assertIn("is not the source folder's", done.stdout)
+        self.assertIn(f"{self.source}\\scripts\\update-platform.ps1", done.stdout)
+        self.assertEqual(git(self.client, "rev-parse", "HEAD"), head)
+        self.assertEqual((self.platform / "changed.txt").read_text(), "v1\n")
+
+    def test_a_client_commit_removing_our_scripts_by_hand_is_nothing_to_import(self):
+        git(self.client, "rm", "-q", "--", *(f"{FOLDER}/scripts/{name}" for name in OURS_ALONE))
+        git(self.client, "commit", "-q", "-m", "Remove the delivery scripts", "--", FOLDER)
+        self.upstream()
+        done = self.update()
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertNotIn("Warning: the client's branch", done.stdout)
+        self.assertNotIn("ours alone", done.stdout)                     # nothing left to remove
 
     def test_it_stops_on_uncommitted_changes_in_the_platform_folder_and_names_them(self):
         (self.platform / "changed.txt").write_text("edited here\n")
@@ -359,9 +410,7 @@ class UpdatePlatformAtRoot(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         root = Path(self.tmp.name)
         work = root / "ours-work"
-        (work / "scripts").mkdir(parents=True)
-        for name in ("update-platform.ps1", "write-platform-source.ps1"):
-            shutil.copy2(SCRIPTS / name, work / "scripts" / name)
+        our_scripts(work)
         (work / "README.md").write_text("# Modernization Platform\n")
         (work / ".gitignore").write_text("backend/.env\n.env\n")
         (work / ".gitattributes").write_text("*.yaml text eol=lf\n")
@@ -424,6 +473,11 @@ class UpdatePlatformAtRoot(unittest.TestCase):
         self.assertEqual(git(self.client, "status", "--porcelain"), "")
         self.assertEqual(git(self.remote, "rev-parse", "main"), git(self.client, "rev-parse", "HEAD"))
         self.assertIn("PLATFORM_SOURCE.json", git(self.client, "show", "--name-only", "--format=", "HEAD").splitlines())
+        # Our scripts stay on our side; what the client's developers need is delivered.
+        for name in OURS_ALONE:
+            self.assertFalse((self.client / "scripts" / name).exists(), name)
+        for name in DELIVERED:
+            self.assertTrue((self.client / "scripts" / name).exists(), name)
 
     def test_a_clients_own_file_and_env_at_the_root_are_kept_through_an_update(self):
         self.assertEqual(self.update().returncode, 0)
@@ -462,6 +516,32 @@ class UpdatePlatformAtRoot(unittest.TestCase):
         self.assertEqual(done.returncode, 1, done.stdout)
         self.assertIn("the platform folder has uncommitted changes", done.stdout)
         self.assertIn("README.md", done.stdout)
+
+    def test_an_installed_root_is_recognised_by_platform_source_json_not_by_our_scripts(self):
+        """No delivery leaves our scripts at the root, so they cannot say a platform is installed: PLATFORM_SOURCE.json
+        does. The second delivery is an update, applying our deletion and rename, not a first install."""
+        self.assertEqual(self.update().returncode, 0)
+        self.assertFalse((self.client / "scripts" / "update-platform.ps1").exists())
+        new = self.upstream()
+        done = self.update()
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertNotIn("nothing installed", done.stdout)
+        self.assertIn("Removed 2 file(s) we deleted or renamed", done.stdout)
+        self.assertEqual((self.record()["commit"], self.record()["previousCommit"]), (new, git(self.work, "rev-parse", "HEAD~1")))
+
+    def test_a_root_where_an_older_delivery_left_our_scripts_has_them_removed(self):
+        # As an older delivery left a root: our scripts there, committed with the platform.
+        self.assertEqual(self.update().returncode, 0)
+        for name in OURS_ALONE:
+            shutil.copy2(self.source / "scripts" / name, self.client / "scripts" / name)
+        git(self.client, "add", "-A"); git(self.client, "commit", "-q", "-m", "Modernization platform: older delivery")
+        self.upstream()
+        done = self.update()
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertIn("Removed, ours alone and never delivered", done.stdout)
+        for name in OURS_ALONE:
+            self.assertFalse((self.client / "scripts" / name).exists(), name)
+        self.assertEqual(git(self.client, "status", "--porcelain"), "")
 
     def test_an_installed_root_without_platform_source_json_is_refused(self):
         self.assertEqual(self.update().returncode, 0)

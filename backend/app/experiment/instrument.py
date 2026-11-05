@@ -117,7 +117,7 @@ def require_clean(expected: str | None = None) -> str:
                            "first, so the experiment can name the commit it is measured with")
     if not state["commit"]:
         raise RuntimeError(f"the platform's source commit is not known: no {SOURCE_FILE} in its folder "
-                           "(scripts/update-platform.ps1 writes it)")
+                           "(a delivery writes it: scripts/update-platform.ps1, run from the source folder)")
     if expected and not state["commit"].startswith(expected):
         raise RuntimeError(f"the platform is at {state['commit'][:12]}, not the experiment's platform_commit "
                            f"{expected[:12]}: check it out, or create a new generation at this commit")

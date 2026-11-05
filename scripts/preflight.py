@@ -272,7 +272,8 @@ def platform_location(cfg: dict[str, str]) -> None:
         note("location", f"folder {folder} of the host repository {top}, on branch {branch.strip()}")
         if source is None:
             warn("platform source", "no PLATFORM_SOURCE.json in the platform folder: records cannot name our source "
-                                    "commit. scripts\\update-platform.ps1 writes it (docs/VDI-SETUP.md Part 2)")
+                                    "commit. A delivery writes it: scripts\\update-platform.ps1, run from the source "
+                                    "folder (docs/VDI-SETUP.md Part 2)")
         for key in ("RUNS_DIR", "REPOS_DIR"):
             value = cfg.get(key, "").strip()
             if value and Path(value).is_absolute() and Path(value).resolve().is_relative_to(top):

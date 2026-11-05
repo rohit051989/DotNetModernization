@@ -2,7 +2,9 @@
 repository with a feature the client never received, a client repository that received the platform through
 update-platform.ps1 and changed it, on main and on a release branch. Runs both scripts as the guide does, with
 Windows PowerShell. The suites the import runs on master are a stand-in here (scripts/run-suites.ps1 in the scratch
-repository), passing or failing as each test sets."""
+repository), passing or failing as each test sets, and saying what it was asked to run. Our delivery scripts are ours
+alone (scripts/our-side-only.txt): no delivery leaves them in the client's folder, and the import never takes their
+absence there for a deletion."""
 import json
 import os
 import shutil
@@ -18,9 +20,10 @@ FOLDER = "mp"
 TERM = "zebracorp"        # an invented term standing for a client's name in the deny-list
 
 SUITES = """if ($env:MP_TEST_SUITES -eq 'fail') { Write-Host 'stand-in suites: FAILED'; exit 1 }
-Write-Host 'stand-in suites: passed'
+Write-Host "stand-in suites: passed (asked: $(if ($args.Count) { $args -join ' ' } else { 'every suite' }))"
 exit 0
 """
+OURS_ALONE = ("update-platform.ps1", "write-platform-source.ps1", "import-client-changes.ps1", "our-side-only.txt")
 
 
 def git(cwd: Path, *args: str) -> str:
@@ -41,7 +44,7 @@ class ImportClientChanges(unittest.TestCase):
         # Ours: the scripts, files the client will change, delete and leave alone.
         seed = root / "ours-seed"
         (seed / "scripts").mkdir(parents=True)
-        for name in ("update-platform.ps1", "write-platform-source.ps1", "import-client-changes.ps1"):
+        for name in OURS_ALONE:
             shutil.copy2(SCRIPTS / name, seed / "scripts" / name)
         (seed / "scripts" / "run-suites.ps1").write_text(SUITES)
         (seed / "app.txt").write_text("one\ntwo\nthree\n")
@@ -132,6 +135,7 @@ class ImportClientChanges(unittest.TestCase):
     # ---- main into master
 
     def test_main_merges_exactly_the_clients_changes_into_master_and_our_feature_survives(self):
+        self.ours_master_before = git(self.ours, "rev-parse", "master")
         self.client_commit("Client: notes for operators", {"notes.md": "how we run it\n"})
         self.client_commit("Client: tune the app, drop an unused file", {"app.txt": "one\nTWO, tuned\nthree\n", "gone.txt": None})
         head = git(self.client, "rev-parse", "HEAD")
@@ -153,6 +157,14 @@ class ImportClientChanges(unittest.TestCase):
         self.assertIn("Deleted (1):\n  gone.txt", done.stdout)
         self.assertIn("stand-in suites: passed", done.stdout)
         self.assertIn("Pushed our master", done.stdout)
+        # Only the suites the merge can affect: run-suites.ps1 -Since the master the merge started from.
+        self.assertIn(f"stand-in suites: passed (asked: -Since {self.ours_master_before})", done.stdout)
+        # The client's folder has none of our delivery scripts; ours are all still there, unchanged.
+        for name in OURS_ALONE:
+            self.assertFalse((self.platform / "scripts" / name).exists(), name)
+            self.assertEqual(self.ours_file("master", f"scripts/{name}"), (SCRIPTS / name).read_text(encoding="utf-8"), name)
+        self.assertTrue((self.platform / "scripts" / "run-suites.ps1").exists())          # delivered: the client keeps it
+        self.assertNotIn("Deleted (1):\n  scripts", done.stdout)
         # Our history is only added to: the feature commit is still an ancestor.
         self.assertIn("ours: a feature for another installation", git(self.ours, "log", "--format=%s", "master"))
         # Again: nothing new.
@@ -253,6 +265,75 @@ class ImportClientChanges(unittest.TestCase):
         self.assertEqual(git(self.ours, "rev-parse", "master"), self.ours_master)          # not pushed
         self.assertIn("four", (self.work / "app.txt").read_text())                         # merged locally only
 
+    def test_all_suites_runs_every_suite(self):
+        self.client_commit("Client: a change", {"app.txt": "one\ntwo\nthree\nfour\n"})
+        done = self.import_("-AllSuites")
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertIn("stand-in suites: passed (asked: every suite)", done.stdout)
+
+    def test_skipped_suites_keep_the_merge_local_unless_pushed_with_a_reason_which_the_message_records(self):
+        self.ours_master = git(self.ours, "rev-parse", "master")
+        self.client_commit("Client: a change", {"app.txt": "one\ntwo\nthree\nfour\n"})
+        # -Push with -SkipSuites but no reason: refused before anything happens.
+        self.assert_refused(self.import_("-SkipSuites"), "-Push with -SkipSuites needs -Reason")
+        # Without -Push: merged locally, no suite run, not pushed; the message says the suites were not run.
+        done = ps(self.work / "scripts" / "import-client-changes.ps1", "-Platform", str(self.platform), "-Repository",
+                  str(self.work), "-DenyList", str(self.deny), "-SkipSuites", env={"MP_TEST_SUITES": "fail"})
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertNotIn("stand-in suites", done.stdout)
+        self.assertIn("No suite run (-SkipSuites)", done.stdout)
+        self.assertIn("Not pushed (no -Push)", done.stdout)
+        self.assertEqual(git(self.ours, "rev-parse", "master"), self.ours_master)
+        local = git(self.work, "log", "-1", "--format=%B", "master")
+        self.assertIn("The suites were not run on this merge (-SkipSuites), by t <t@t>", local)
+        self.assertIn("Reason: none given (not pushed by the import)", local)
+
+    def test_a_push_without_suites_records_who_skipped_them_and_why(self):
+        self.client_commit("Client: a change", {"app.txt": "one\ntwo\nthree\nfour\n"})
+        done = self.import_("-SkipSuites", "-Reason", "The client needs the fix today; the suites run tonight", suites="fail")
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertIn("Pushed our master", done.stdout)
+        message = git(self.ours, "log", "-1", "--format=%B", "master")
+        self.assertIn("The suites were not run on this merge (-SkipSuites), by t <t@t>, as ", message)
+        self.assertIn("Reason: The client needs the fix today; the suites run tonight", message)
+        self.assertIn("Client-Commit: ", message.splitlines()[-1])                # the trailer stays last
+
+    # ---- our delivery tooling: ours alone
+
+    def test_a_client_copy_of_our_scripts_left_by_an_older_delivery_is_never_taken(self):
+        """An older delivery put our scripts in the client's folder, and the client edited one there. Ours stay as
+        they are; the client's other change comes in."""
+        self.client_commit("Client: older delivery's scripts", {f"scripts/{name}": (SCRIPTS / name).read_text(encoding="utf-8")
+                                                                for name in OURS_ALONE})
+        self.client_commit("Client: tweak the update script, and the app",
+                           {"scripts/update-platform.ps1": "Write-Host 'the client version'\n", "app.txt": "one\ntwo, tuned\nthree\n"})
+        done = self.import_()
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertIn("Not taken, ours alone (an older delivery left them in the client's folder) (4):", done.stdout)
+        self.assertEqual(self.ours_file("master", "app.txt"), "one\ntwo, tuned\nthree\n")
+        for name in OURS_ALONE:
+            self.assertEqual(self.ours_file("master", f"scripts/{name}"), (SCRIPTS / name).read_text(encoding="utf-8"), name)
+
+    def test_a_client_commit_only_removing_our_scripts_brings_nothing_in(self):
+        self.ours_master = git(self.ours, "rev-parse", "master")
+        self.client_commit("Client: older delivery's scripts", {f"scripts/{name}": (SCRIPTS / name).read_text(encoding="utf-8")
+                                                                for name in OURS_ALONE})
+        self.client_commit("Client: remove the delivery scripts", {f"scripts/{name}": None for name in OURS_ALONE})
+        done = self.import_()
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertIn("Nothing new to import", done.stdout)
+        self.assertEqual(git(self.ours, "rev-parse", "master"), self.ours_master)
+
+    def test_the_script_runs_only_from_our_working_repository(self):
+        self.ours_master = git(self.ours, "rev-parse", "master")
+        self.client_commit("Client: a change", {"app.txt": "x\n"})
+        copy = Path(self.tmp.name) / "elsewhere" / "scripts"
+        copy.mkdir(parents=True)
+        shutil.copy2(self.work / "scripts" / "import-client-changes.ps1", copy / "import-client-changes.ps1")
+        done = ps(copy / "import-client-changes.ps1", "-Platform", str(self.platform), "-Repository", str(self.work),
+                  "-DenyList", str(self.deny), env={"MP_TEST_SUITES": "pass"})
+        self.assert_refused(done, "is not our working repository's")
+
     # ---- a delivery over client commits not yet imported
 
     def test_a_delivery_over_unimported_client_commits_warns_lists_them_and_carries_on(self):
@@ -304,6 +385,7 @@ class ImportClientChanges(unittest.TestCase):
                        str(client), "-Branch", "main", "-Push")
         self.assertEqual(delivered.returncode, 0, delivered.stdout + delivered.stderr)
         self.assertIn("Replaced with ours, the client's own file of the same name (1):\n  .gitignore", delivered.stdout)
+        self.assertFalse((client / "scripts" / "update-platform.ps1").exists())          # ours alone: never delivered
         # The client changes the platform at the root, and adds a file of its own.
         (client / "app.txt").write_text("one\ntwo, at the root\nthree\n")
         (client / "OPERATIONS.md").write_text("how we run it\n")
@@ -318,6 +400,8 @@ class ImportClientChanges(unittest.TestCase):
         self.assertEqual(self.ours_file("master", "feature.txt"), "built for another installation\n")
         self.assertEqual(self.ours_file("master", ".gitignore"), "backend/.env\n")      # ours, never the host's
         self.assertIsNone(self.ours_file("master", "PLATFORM_SOURCE.json"))
+        for name in OURS_ALONE:                       # missing from the client's root: expected, never a deletion
+            self.assertEqual(self.ours_file("master", f"scripts/{name}"), (SCRIPTS / name).read_text(encoding="utf-8"), name)
         message = git(self.ours, "log", "-1", "--format=%B", "master")
         self.assertEqual(message.splitlines()[0], "Client B: root changes")
         # And the next delivery to that root waits for nothing: the import recorded the client's commit.
