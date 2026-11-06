@@ -1803,6 +1803,16 @@ hand. Everything else an update brings, bootstrap applies by itself. Apply every
 had (`previousCommit` in `PLATFORM_SOURCE.json` after the update; in our own installs, the commit before step 5 of
 the appendix), oldest of them first. Entries up to 2026-10-23 were the notes of releases 2 to 7, which are named so.
 
+#### 2026-11-06, dc8b760: files of ours a client's ignore rules hid are delivered
+
+Only for the platform in a folder of a shared repository whose own ignore rules match files of ours: a root
+`.gitignore` like the Visual Studio template's, which ignores `artifacts/` and `bin/`, kept
+`frontend\src\pages\workflow\artifacts` out of every earlier delivery's commit there. The operator who delivered has
+those files on disk; everyone who pulled the branch lacks them. This delivery stages them, listing each with the rule
+that matched it, and every later one checks that every file of ours is tracked before pushing. After it, **every
+developer pulls the branch** as usual; run preflight to confirm: its "delivered files" line says all are tracked and
+on disk. Nothing else needs doing: no setting, no migration.
+
 #### 2026-11-05, c611ac7: the update script runs from the source folder only
 
 Our delivery tooling is ours alone from this commit on ("Our delivery tooling stays on our side"). **Deliver this
