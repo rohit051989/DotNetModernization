@@ -550,6 +550,11 @@ Besides `PRESENT` and `MISSING`:
 - Once the schema exists, the **platform** line says whether a platform holds it: `WARNING ... a platform holds this
   schema` while one runs (yours too: stop it before an upgrade), or a `NOTE` that the last one stopped without
   shutting down and its heartbeat has expired. "More than one person", "A stale heartbeat".
+- On an installation, the **delivered files** line compares the platform folder with the installed commit
+  (`PLATFORM_SOURCE.json` lists every file it delivered): a `WARNING` for each file of ours the client's repository
+  does not track, with the ignore rule that hid it (the next delivery stages it), and `MISSING` for one not on disk
+  (pull the branch; if it is still missing, ask for a new delivery). A `NOTE` says all are there, or that the record
+  predates the list (the next delivery adds it).
 - Once repositories are registered, the **repository toolchains** lines check every one against this machine: a
   `NOTE` with how many can build and test their baseline here, and a `WARNING` for each runtime or build tool missing,
   with the repositories that need it and where the machine has it instead. For example, a .NET 8 repository on a
@@ -945,7 +950,16 @@ every time:
    - writes the new `PLATFORM_SOURCE.json`: our commit, the one before (`previousCommit`), and a tag only if one
      happens to point at the commit;
    - stages and commits only the platform folder, with our source commit in the message; with `-Push`, pushes only
-     your branch. Run again with nothing new on master, it commits nothing.
+     your branch. Run again with nothing new on master, it commits nothing;
+   - stages **every file of ours, even one the client's ignore rules match.** A shared repository's root
+     `.gitignore` (the Visual Studio template's, say) often ignores `artifacts/` or `bin/`, and it applies inside the
+     platform folder, so a file of ours under such a folder would never be committed, and everyone who pulled the
+     branch would lack it. The script forces exactly those paths, listing each with the rule that matched
+     ("Staged although the client's ignore rules match them"), and never stages anything else the rules ignore: a
+     real build output folder stays ignored;
+   - then checks that every file it delivered is tracked in the client's repository and on disk. If any is not, it
+     stops before pushing ("Stopped: the delivery is incomplete"), naming each file and the ignore rule that matched
+     it.
 
    Your local files are never touched: `backend\.env`, `frontend\.env`, `.venv`, `node_modules`, the published
    step programs, and anything you changed elsewhere in the client's repository (which stays uncommitted).
@@ -1155,7 +1169,9 @@ a feature built for another installation, and a copy would revert it. Instead th
 2. on a temporary branch from that commit, copies the client's committed folder over it, leaving out
    `PLATFORM_SOURCE.json`, `.env` files, `.venv`, `node_modules`, build output and everything else local-only, and
    every path `scripts\our-side-only.txt` lists; removes the files the client deleted, but never a listed path, whose
-   absence there is expected. A client's copy of a listed path (an older delivery left it) is listed as "not taken";
+   absence there is expected. A client's copy of a listed path (an older delivery left it) is listed as "not taken".
+   A file of ours missing from the client's folder that the client's ignore rules match was hidden, never committed
+   there by an older delivery: it is kept, listed with the rule ("Kept, not deleted"), never taken for a deletion;
 3. scans everything coming in (below), then commits it;
 4. merges that commit into our branch. Where both sides changed the same lines, **the client's version wins**: the
    client is the source in this direction. Every file where that happened is listed, so it can be checked.
@@ -1576,6 +1592,8 @@ there is recorded with the reason, within its own time limit.
 | Updating: **"Stopped: this copy of update-platform.ps1 (...) is not the source folder's"** | A copy an older delivery left in the platform folder was run | Run the source folder's own, as the message shows. The next update removes the old copy |
 | Updating: **"Stopped: the client repository ... is on branch '...', not '...'"** | The client's repository is on another branch that does carry the platform folder | Switch to your own branch, as the message says. Never update or commit on anyone else's branch |
 | Updating: **"Stopped: the platform folder has uncommitted changes"** | A file in the platform folder was edited and not committed (the message lists them) | Commit it to your branch if it must stay (it is then imported into the platform: "Importing a client's changes"), or discard it (`git -C C:\MP\client checkout -- modernization-platform/<file>`), then update again |
+| Updating: **"Stopped: the delivery is incomplete, N file(s) of ours"** | Files of ours are not tracked in the client's repository, or not on disk, after the commit; each is named with the ignore rule that matched it. Nothing was pushed | Find out why the rule shown still wins (a `.gitattributes` or hook of the client's, say), fix it, and run the update again: it stages every file of ours |
+| Preflight: **"WARNING delivered files: N file(s) of the installed commit are not tracked in the client's repository"** | An older delivery left files of ours uncommitted because the client's ignore rules match them (a root `.gitignore` ignoring `artifacts/`, say). Anyone who pulls the branch lacks them | The next delivery stages them ("Updating the platform"); until then, the operator who delivered has them on disk |
 | Updating: **"Warning: the client's branch has N commit(s) in the platform folder that our repository has not imported"** | Changes were committed in the platform folder since the latest delivery, and not imported. The delivery went ahead and overwrote their changes to our files | To keep them, import them ("Importing a client's changes": the commits listed are still in the branch's history), then update again |
 | Updating: **"Stopped: the source folder has changes"** | Something was run or edited in the source folder | Discard it as the message says. Nothing is ever run in the source folder |
 | Updating: **"Stopped: the source folder is on a commit of its own (...), not master"** | An older copy of the update script left the source folder at a release tag | Put it back on master, `git -C C:\MP\source switch master`, and run the update from the source folder ("Upgrade notes", 2026-10-26) |

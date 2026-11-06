@@ -21,7 +21,9 @@
          ours, not the client's, and are left out. None: there is nothing new to import.
       5. On a temporary branch from the received commit, in a scratch worktree, the client's committed folder is
          copied over it, leaving out PLATFORM_SOURCE.json, .env files, .venv, node_modules, build output and anything
-         else local-only; files the client deleted are removed.
+         else local-only; files the client deleted are removed. A file of ours missing from the client's folder that
+         the client's ignore rules match was hidden, never committed there by an older delivery: it is kept, and
+         listed, never taken for a deletion.
       6. Everything coming in is scanned: the added and changed lines, the file names, the branch name and the commit
          messages. Secrets (sensitive keys with values, tokens, connection strings with passwords, private keys),
          .env files, binaries over 1 MB and every deny-list term are refused, each listed with its file and line.
@@ -86,6 +88,7 @@ param(
 
 $ErrorActionPreference = 'Continue'   # git writes progress to stderr; every exit code is checked instead
 [Console]::OutputEncoding = [Text.Encoding]::UTF8
+$OutputEncoding = New-Object Text.UTF8Encoding($false)   # paths piped to git (check-ignore --stdin) as UTF-8
 
 $LocalOnlyDirs = @('.git', '.venv', 'venv', 'node_modules', 'bin', 'obj', 'dist', 'publish', '__pycache__',
                    '.pytest_cache', '.vs', 'runs')
@@ -387,10 +390,30 @@ if ($notTaken.Count -gt 0) {
 $notCopied = @($script:ourSideOnly | ForEach-Object { Join-Path $extract ($_.Replace('/', '\')) })
 & robocopy $extract $worktree /E /XD @LocalOnlyDirs /XF PLATFORM_SOURCE.json .env *.pyc @notCopied /R:1 /W:1 /NFL /NDL /NJH /NJS /NP | Out-Null
 if ($LASTEXITCODE -ge 8) { Stop-Import "copying the client's folder failed (robocopy exit code $LASTEXITCODE)." }
-foreach ($path in @(Invoke-Git $worktree @('-c', 'core.quotepath=false', 'ls-files') 'Listing our files')) {
-    if (-not $theirFiles.Contains($path) -and -not (Test-LocalOnly $path)) {
-        Invoke-Git $worktree @('rm', '-q', '--', $path) "Removing $path" | Out-Null
+$gone = @(Invoke-Git $worktree @('-c', 'core.quotepath=false', 'ls-files') 'Listing our files' |
+    Where-Object { -not $theirFiles.Contains($_) -and -not (Test-LocalOnly $_) })
+# A file of ours the client's ignore rules match (a shared repository's .gitignore ignoring artifacts/, say) may never
+# have been committed there by an older delivery: hidden, not deleted. It stays ours, and is listed.
+$hiddenByClient = [ordered]@{}
+if ($gone.Count -gt 0) {
+    # NUL-separated (-z): PowerShell ends what it pipes with a line break, which would otherwise join the last path,
+    # and may start it with a byte-order mark, which "." absorbs.
+    $out = (@('.' + "`0" + (($gone | ForEach-Object { "$prefix$_" }) -join "`0") + "`0" |
+        & git -C $top check-ignore --stdin -z -v --no-index 2>$null) -join "`n")
+    $fields = $out -split "`0"
+    for ($i = 0; $i + 3 -lt $fields.Count; $i += 4) {
+        $source, $line, $pattern, $path = $fields[$i..($i + 3)]
+        $path = $path.TrimStart([char]0xFEFF)
+        if ($path -and $pattern -and -not $pattern.StartsWith('!')) { $hiddenByClient[$path.Substring($prefix.Length)] = "${source}:${line}:$pattern" }
     }
+}
+foreach ($path in $gone) {
+    if ($hiddenByClient.Contains($path)) { continue }
+    Invoke-Git $worktree @('rm', '-q', '--', $path) "Removing $path" | Out-Null
+}
+if ($hiddenByClient.Count -gt 0) {
+    Write-Host ("Kept, not deleted: missing from the client's folder because the client's ignore rules hide them " +
+        "($($hiddenByClient.Count)):`n  " + (($hiddenByClient.Keys | ForEach-Object { "$_ ($($hiddenByClient[$_]))" }) -join "`n  "))
 }
 # A .env file never comes in, whatever the scan finds.
 Get-ChildItem -LiteralPath $worktree -Recurse -Force -File -ErrorAction SilentlyContinue |

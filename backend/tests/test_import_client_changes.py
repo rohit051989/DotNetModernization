@@ -324,6 +324,30 @@ class ImportClientChanges(unittest.TestCase):
         self.assertIn("Nothing new to import", done.stdout)
         self.assertEqual(git(self.ours, "rev-parse", "master"), self.ours_master)
 
+    def test_files_the_clients_ignore_rules_hid_are_never_taken_for_deletions(self):
+        """An older delivery into a shared repository whose root .gitignore ignores artifacts/ never committed our file
+        under an artifacts folder, so the client's branch lacks it. The import keeps it, says why, and takes the
+        client's own change."""
+        (self.work / "web" / "artifacts").mkdir(parents=True)
+        (self.work / "web" / "artifacts" / "renderers.tsx").write_text("export const renderers = {};\n")
+        git(self.work, "add", "-A"); git(self.work, "commit", "-q", "-m", "ours: artifact views")
+        git(self.work, "push", "-q", "origin", "master")
+        self.deliver_and_check()
+        # As an older delivery left it: the client's rule, and our file never committed on the client's branch.
+        (self.client / ".gitignore").write_text("artifacts/\nbin/\n")
+        git(self.client, "add", ".gitignore")
+        git(self.client, "rm", "-q", "--cached", "--", f"{FOLDER}/web/artifacts/renderers.tsx")
+        git(self.client, "commit", "-q", "-m", "Client: the shared repository's ignore rules")
+        git(self.client, "push", "-q")
+        self.client_commit("Client: a change", {"app.txt": "one\ntwo, the client's\nthree\n"})
+        done = self.import_()
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertIn("Kept, not deleted: missing from the client's folder because the client's ignore rules hide them "
+                      "(1):\n  web/artifacts/renderers.tsx (.gitignore:1:artifacts/)", done.stdout)
+        self.assertEqual(self.ours_file("master", "web/artifacts/renderers.tsx"), "export const renderers = {};\n")
+        self.assertEqual(self.ours_file("master", "app.txt"), "one\ntwo, the client's\nthree\n")
+        self.assertNotIn("web/artifacts", done.stdout.split("Deleted", 1)[1] if "Deleted" in done.stdout else "")
+
     def test_the_script_runs_only_from_our_working_repository(self):
         self.ours_master = git(self.ours, "rev-parse", "master")
         self.client_commit("Client: a change", {"app.txt": "x\n"})

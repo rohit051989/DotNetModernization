@@ -6,7 +6,8 @@
     The platform folder of a client install carries no .git of ours (docs\VDI-SETUP.md Part 1). This file is how
     every preparation and verification names what is installed: the source commit (installations follow our master),
     a tag only if one happens to point at that commit, and the date the copy was made (app\experiment\instrument.py
-    reads it). scripts\update-platform.ps1 runs it on every delivery, the first included.
+    reads it), and every file the commit delivers (`files`), which preflight checks are tracked and on disk.
+    scripts\update-platform.ps1 runs it on every delivery, the first included.
 
     Ours alone, like every path scripts\our-side-only.txt lists: it runs only from the source folder it reads (the
     pristine clone of our repository), never from a client's copy of the platform, and is never delivered.
@@ -61,6 +62,15 @@ if ($branch -eq 'HEAD') { $branch = $null }   # a commit checked out on its own:
 # (app\platform_version.py).
 $committedAt = "$(& git -C $Source show -s --format=%cI HEAD)".Trim()
 if (-not $committedAt) { $committedAt = $null }
+# Every file this commit delivers: all of it but the paths ours alone (scripts\our-side-only.txt). Preflight checks
+# on an installation, which has no history of ours, that each is tracked in the client's repository and on disk.
+$ourSideOnly = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+foreach ($line in @(& git -C $Source show 'HEAD:scripts/our-side-only.txt' 2>$null)) {
+    $path = "$line".Trim().Replace('\', '/')
+    if ($path -and -not $path.StartsWith('#')) { [void]$ourSideOnly.Add($path) }
+}
+$files = @(& git -C $Source -c core.quotepath=false ls-tree -r --name-only HEAD | ForEach-Object { "$_" } |
+    Where-Object { -not $ourSideOnly.Contains($_) } | Sort-Object -CaseSensitive)
 
 $record = [ordered]@{
     commit         = $commit
@@ -70,6 +80,7 @@ $record = [ordered]@{
     committedAt    = $committedAt
     previousCommit = $(if ($Previous) { $Previous } else { $null })
     note           = 'Written by scripts\update-platform.ps1 (or write-platform-source.ps1): the commit of our source this folder was copied from. Do not edit.'
+    files          = $files
 }
 $json = ($record | ConvertTo-Json) -replace "`r`n", "`n"
 [IO.File]::WriteAllText((Join-Path $Platform 'PLATFORM_SOURCE.json'), $json + "`n", (New-Object Text.UTF8Encoding($false)))

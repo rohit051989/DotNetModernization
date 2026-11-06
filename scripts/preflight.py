@@ -23,7 +23,8 @@ Reports, in plain language, each prerequisite as PRESENT or MISSING, and exits 1
   goes through the proxy or direct (reported, never failed);
 - where the platform runs: its own repository, or a subfolder of a host repository (a client's shared one), and the
   source commit it was copied from (PLATFORM_SOURCE.json); RUNS_DIR and REPOS_DIR outside the host repository
-  (reported);
+  (reported); on an installation, every file the installed commit delivered (PLATFORM_SOURCE.json `files`) tracked in
+  the client's repository (WARNING, naming the ignore rule that hid one) and on disk (MISSING);
 - RUNS_DIR set, outside the repository, and writable; REPOS_DIR, when set, absolute, outside the repository and
   RUNS_DIR, and writable;
 - with the schema in place: whether a platform holds it (its heartbeat: live, or expired, and how to clear one known
@@ -282,6 +283,63 @@ def platform_location(cfg: dict[str, str]) -> None:
     if source:
         note("platform source", f"{source.get('commit', '?')[:12]}"
                                 f"{' (' + source['tag'] + ')' if source.get('tag') else ''}, copied {source.get('date', '?')}")
+        if top is not None:
+            delivered_files(ROOT, top, source)
+
+
+SHOWN_FILES = 10   # files named in a delivered-files finding, before "and N more"
+
+
+def undelivered(root: Path, top: Path, files: list[str]) -> dict:
+    """Which of the files the installed commit delivered (PLATFORM_SOURCE.json `files`) the client's repository does
+    not track, and which are not on disk: {untracked, absent, rules: {path: "source:line:pattern"}}. A rule is the
+    client's ignore rule that matches an untracked file, the usual cause (a shared repository's .gitignore ignoring
+    artifacts/ or bin/)."""
+    prefix = root.resolve().relative_to(top.resolve()).as_posix()
+    prefix = "" if prefix == "." else prefix + "/"
+    done = subprocess.run(["git", "-C", str(top), "-c", "core.quotepath=false", "ls-files", "--", prefix or "."],
+                          capture_output=True, text=True, encoding="utf-8", errors="replace")
+    tracked = {line[len(prefix):].lower() for line in done.stdout.splitlines() if line}
+    untracked = [f for f in files if f.lower() not in tracked]
+    absent = [f for f in files if not (root / f).exists()]
+    rules = {}
+    if untracked:
+        # NUL-separated (-z), as bytes: no line ending or quoting ever touches a path.
+        found = subprocess.run(["git", "-C", str(top), "check-ignore", "--stdin", "-z", "-v", "--no-index"],
+                               input=b"".join((prefix + f).encode("utf-8") + b"\0" for f in untracked), capture_output=True)
+        fields = found.stdout.decode("utf-8", errors="replace").split("\0")
+        for i in range(0, len(fields) - 3, 4):
+            source, line, pattern, path = fields[i:i + 4]
+            if path and not pattern.startswith("!"):
+                rules[path[len(prefix):]] = f"{source}:{line}:{pattern}"
+    return {"untracked": untracked, "absent": absent, "rules": rules}
+
+
+def _listed(paths: list[str], rules: dict | None = None) -> str:
+    shown = [p + (f" (ignored by {rules[p]})" if rules and p in rules else "") for p in paths[:SHOWN_FILES]]
+    return ", ".join(shown) + (f" and {len(paths) - SHOWN_FILES} more" if len(paths) > SHOWN_FILES else "")
+
+
+def delivered_files(root: Path, top: Path, source: dict) -> None:
+    """On an installation: every file the installed commit delivered is tracked in the client's repository and on disk.
+    One the client's ignore rules hid was never committed, so everyone who pulls the branch lacks it."""
+    files = source.get("files")
+    if not isinstance(files, list):
+        note("delivered files", "not checked: PLATFORM_SOURCE.json does not list them (delivered before it did); the "
+                                "next delivery records them")
+        return
+    found = undelivered(root, top, files)
+    if found["absent"]:
+        check(False, "delivered files", f"{len(found['absent'])} file(s) of the installed commit are not on disk: "
+                                        f"{_listed(found['absent'], found['rules'])}. Pull the platform's branch; if "
+                                        "they are still missing, ask for a new delivery (it stages every file of ours)")
+    if found["untracked"]:
+        warn("delivered files", f"{len(found['untracked'])} file(s) of the installed commit are not tracked in the "
+                                f"client's repository, so anyone who pulls the branch lacks them: "
+                                f"{_listed(found['untracked'], found['rules'])}. The next delivery stages them "
+                                "(docs/VDI-SETUP.md, \"Updating the platform\")")
+    if not found["absent"] and not found["untracked"]:
+        note("delivered files", f"all {len(files)} tracked and on disk")
 
 
 def long_paths() -> None:

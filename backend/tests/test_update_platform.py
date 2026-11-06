@@ -337,6 +337,44 @@ class UpdatePlatform(unittest.TestCase):
         for name in DELIVERED:
             self.assertTrue((self.platform / "scripts" / name).exists(), name)
 
+    def test_files_of_ours_the_clients_ignore_rules_match_are_delivered_and_tracked(self):
+        """The shared repository's root .gitignore, like the Visual Studio template's, ignores artifacts/ and bin/, and
+        applies to the platform folder. Our files under an artifacts folder are staged anyway, exactly those paths, and
+        reach the client's remote; a real build-output folder in the platform folder stays ignored."""
+        (self.client / ".gitignore").write_text("# Visual Studio\nartifacts/\nbin/\n")
+        git(self.client, "add", ".gitignore"); git(self.client, "commit", "-q", "-m", "Client: ignore build output")
+        ours = ["frontend/src/pages/workflow/artifacts/index.ts", "frontend/src/pages/workflow/artifacts/renderers.tsx"]
+        for path in ours:
+            (self.work / path).parent.mkdir(parents=True, exist_ok=True)
+            (self.work / path).write_text(f"// {path}\n")
+        git(self.work, "add", "-A"); git(self.work, "commit", "-q", "-m", "ours: artifact views")
+        self.publish()
+        build = self.platform / "backend" / "bin" / "Debug" / "app.dll"           # a local build's output
+        build.parent.mkdir(parents=True)
+        build.write_bytes(b"MZ")
+        done = self.update("-Push")
+        self.assertEqual(done.returncode, 0, done.stdout + done.stderr)
+        self.assertIn("Staged although the client's ignore rules match them (2):\n"
+                      f"  {ours[0]} (.gitignore:2:artifacts/)\n  {ours[1]} (.gitignore:2:artifacts/)", done.stdout)
+        self.assertIn("is tracked and on disk.", done.stdout)
+        on_remote = git(self.remote, "ls-tree", "-r", "--name-only", BRANCH).splitlines()
+        for path in ours:
+            self.assertIn(f"{FOLDER}/{path}", on_remote)
+        # The build output stays ignored: never staged, never committed, the folder clean.
+        self.assertNotIn(f"{FOLDER}/backend/bin/Debug/app.dll", git(self.client, "ls-files").splitlines())
+        ignored = subprocess.run(["git", "-C", str(self.client), "check-ignore", "-q", f"{FOLDER}/backend/bin/Debug/app.dll"])
+        self.assertEqual(ignored.returncode, 0)
+        self.assertEqual(git(self.client, "status", "--porcelain"), "")
+        # The record lists every file delivered, for preflight: ours under artifacts/, none of the tooling ours alone.
+        files = self.record()["files"]
+        self.assertTrue(set(ours) <= set(files))
+        self.assertNotIn("scripts/update-platform.ps1", files)
+        # Once tracked, the rule no longer applies to them: the next delivery forces nothing.
+        self.commit_upstream("v3\n")
+        again = self.update()
+        self.assertEqual(again.returncode, 0, again.stdout + again.stderr)
+        self.assertNotIn("Staged although", again.stdout)
+
     def test_a_copy_of_the_script_outside_the_source_folder_stops_naming_the_one_to_run(self):
         self.upstream()
         head = git(self.client, "rev-parse", "HEAD")

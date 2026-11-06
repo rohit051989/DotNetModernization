@@ -54,7 +54,12 @@
       6. PLATFORM_SOURCE.json is written (scripts\write-platform-source.ps1): the commit, and a tag only if one
          happens to point at it.
       7. Only the platform folder is staged and committed: git add -A -- <folder>, then git commit -- <folder>,
-         with our source commit in the message. Nothing outside the folder is ever staged or committed.
+         with our source commit in the message. Nothing outside the folder is ever staged or committed. Every file we
+         deliver is staged even when the client's ignore rules match it (a shared repository's .gitignore often
+         ignores artifacts/ or bin/): exactly those paths are forced with git add -f, each listed with the rule, and
+         nothing else the rules ignore is ever staged. Then every delivered file must be tracked in the client's
+         repository and on disk; any that is not is named, with the rule that matched it, and the update stops
+         before pushing.
       8. With -Push, only -Branch is pushed.
     Then it tells you to run bootstrap and restart the backend.
 
@@ -95,6 +100,7 @@ param(
 )
 
 $ErrorActionPreference = 'Continue'   # git writes progress to stderr; every exit code is checked instead
+$OutputEncoding = New-Object Text.UTF8Encoding($false)   # paths piped to git (check-ignore --stdin) as UTF-8
 
 function Stop-Update([string]$why) {
     Write-Host ''
@@ -112,6 +118,25 @@ function Invoke-Git([string]$folder, [string[]]$arguments, [string]$what) {
         Stop-Update "$what failed: git $($arguments -join ' ')`n$(($output | Out-String).Trim())"
     }
     return @($output | ForEach-Object { "$_" })
+}
+
+# The paths among $paths (relative to the platform folder) that the client's ignore rules match: {path: "source:line:
+# pattern"}. Without -NoIndex, a path git already tracks is never reported (ignore rules do not apply to it). A
+# negated rule ("!pattern") that matched last means not ignored. Paths go to git on stdin as UTF-8, NUL-separated
+# (-z): PowerShell ends what it pipes with a line break, which would otherwise become part of the last path, and may
+# start it with a byte-order mark, which "." absorbs.
+function Get-Ignored([string[]]$paths, [switch]$NoIndex) {
+    $found = [ordered]@{}
+    if (-not $paths -or $paths.Count -eq 0) { return $found }
+    $arguments = @('-C', $top, 'check-ignore', '--stdin', '-z', '-v') + $(if ($NoIndex) { @('--no-index') } else { @() })
+    $out = (@('.' + "`0" + (($paths | ForEach-Object { "$prefix$_" }) -join "`0") + "`0" | & git @arguments 2>$null) -join "`n")
+    $fields = $out -split "`0"
+    for ($i = 0; $i + 3 -lt $fields.Count; $i += 4) {
+        $source, $line, $pattern, $path = $fields[$i..($i + 3)]
+        $path = $path.TrimStart([char]0xFEFF)
+        if ($path -and $pattern -and -not $pattern.StartsWith('!')) { $found[$path.Substring($prefix.Length)] = "${source}:${line}:$pattern" }
+    }
+    return $found
 }
 
 function Test-Commit([string]$folder, [string]$commit) {
@@ -319,6 +344,9 @@ if (@(Invoke-Git $Source @('rev-parse', 'HEAD') 'Reading the source commit')[0] 
 # The client's own files that ours replace: committed there, never ours (not in the installed commit), and different
 # from our file of the same name. At a repository's root, typically the README.md and .gitignore it was created with.
 $ourNew = @(Invoke-Git $Source @('-c', 'core.quotepath=false', 'ls-tree', '-r', $new) 'Listing our files')
+# What this delivery puts in the platform folder: every file of master but those ours alone, and PLATFORM_SOURCE.json.
+# Each must end up tracked in the client's repository and on disk (step 7).
+$delivered = @($ourNew | ForEach-Object { ("$_" -split "`t", 2)[1] } | Where-Object { -not $ourSideOnly.Contains($_) }) + @('PLATFORM_SOURCE.json')
 $wasOurs = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
 if ($old) {
     foreach ($path in @(Invoke-Git $Source @('-c', 'core.quotepath=false', 'ls-tree', '-r', '--name-only', $old) 'Listing the installed files')) { [void]$wasOurs.Add($path) }
@@ -410,6 +438,19 @@ if ($installed -ne $new) {
 
 # ---- 7. Commit only the platform folder
 Invoke-Git $top @('add', '-A', '--', $scope) 'Staging the platform folder' | Out-Null
+# Every file we deliver is staged, even when the client's ignore rules match it: a shared repository's .gitignore
+# (the Visual Studio template's, say) often ignores artifacts/ or bin/, which would silently leave such a file of ours
+# out of the client's repository. Exactly those paths are forced; nothing else the rules ignore is ever staged.
+$hidden = Get-Ignored $delivered
+if ($hidden.Count -gt 0) {
+    $paths = @($hidden.Keys)
+    for ($i = 0; $i -lt $paths.Count; $i += 100) {
+        $chunk = @($paths[$i..([Math]::Min($i + 99, $paths.Count - 1))] | ForEach-Object { "$prefix$_" })
+        Invoke-Git $top (@('--literal-pathspecs', 'add', '-f', '--') + $chunk) 'Staging our files the client''s ignore rules match' | Out-Null
+    }
+    Write-Host ("Staged although the client's ignore rules match them ($($hidden.Count)):`n  " +
+        (($paths | ForEach-Object { "$_ ($($hidden[$_]))" }) -join "`n  "))
+}
 $staged = @(Invoke-Git $top @('diff', '--cached', '--name-only', '--', $scope) 'Listing the staged files')
 if ($staged.Count -eq 0) {
     Write-Host 'Nothing changed in the platform folder: no commit.'
@@ -420,6 +461,27 @@ if ($staged.Count -eq 0) {
     $commit = @(Invoke-Git $top @('rev-parse', '--short', 'HEAD') 'Reading the commit')[0]
     Write-Host "Committed $commit on $Branch`: $($staged.Count) file(s) in $where"
 }
+
+# ---- 7b. Every delivered file is tracked and on disk
+# Before anything is pushed: a file of ours the client's repository does not track is missing for everyone who pulls
+# the branch. Each is named, with the ignore rule that matched it.
+$tracked = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+foreach ($path in @(Invoke-Git $top @('-c', 'core.quotepath=false', 'ls-files', '--', $scope) 'Listing the tracked files')) {
+    [void]$tracked.Add($path.Substring($prefix.Length))
+}
+$untracked = @($delivered | Where-Object { -not $tracked.Contains($_) })
+$absent = @($delivered | Where-Object { -not (Test-Path -LiteralPath (Join-Path $Platform ($_.Replace('/', '\')))) })
+if ($untracked.Count -gt 0 -or $absent.Count -gt 0) {
+    $rules = Get-Ignored $untracked -NoIndex
+    $lines = @($untracked | ForEach-Object { "$_`: not tracked in the client's repository$(if ($rules.Contains($_)) { ", ignored by $($rules[$_])" })" }) +
+             @($absent | ForEach-Object { "$_`: not on disk in the platform folder" })
+    Write-Host ''
+    Write-Host ("Stopped: the delivery is incomplete, $($lines.Count) file(s) of ours:`n  " + ($lines -join "`n  ") +
+        "`nNothing was pushed. Anyone who pulls the branch would lack these files. Fix the cause (a rule shown above is in " +
+        "the client's .gitignore), then run the update again: it stages every file of ours.") -ForegroundColor Red
+    exit 1
+}
+Write-Host "Every delivered file ($($delivered.Count)) is tracked and on disk."
 
 # ---- 8. Push, only your branch
 if ($Push) {

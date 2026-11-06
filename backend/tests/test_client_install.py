@@ -578,5 +578,46 @@ class PreflightDotnetRuntime(unittest.TestCase):
             self.assertIn("10.0.7", detail)
 
 
+class PreflightDeliveredFiles(unittest.TestCase):
+    """On an installation, every file the installed commit delivered (PLATFORM_SOURCE.json `files`) is tracked in the
+    client's repository and on disk. In a folder of a shared repository whose root .gitignore ignores artifacts/ and
+    bin/, as the Visual Studio template does, an older delivery left a file of ours under artifacts/ untracked."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.top = Path(tmp.name).resolve() / "client"
+        self.platform = self.top / "mp"
+        (self.platform / "web" / "artifacts").mkdir(parents=True)
+        (self.top / ".gitignore").write_text("artifacts/\nbin/\n")
+        (self.platform / "app.txt").write_text("ours\n")
+        (self.platform / "web" / "artifacts" / "renderers.tsx").write_text("ours, hidden by the client's rule\n")
+        subprocess.run(["git", "init", "-q", str(self.top)], check=True)
+        subprocess.run(["git", "-C", str(self.top), "add", "-A"], check=True)        # the rule keeps artifacts/ out
+        self.files = ["app.txt", "gone.txt", "web/artifacts/renderers.tsx"]
+
+    def test_files_hidden_by_the_clients_ignore_rules_and_files_not_on_disk_are_reported(self):
+        pf = _preflight()
+        found = pf.undelivered(self.platform, self.top, self.files)
+        self.assertEqual(found["untracked"], ["gone.txt", "web/artifacts/renderers.tsx"])
+        self.assertEqual(found["absent"], ["gone.txt"])
+        self.assertEqual(found["rules"], {"web/artifacts/renderers.tsx": ".gitignore:1:artifacts/"})
+
+        pf.delivered_files(self.platform, self.top, {"files": self.files})
+        self.assertEqual([(ok, what) for ok, what, _ in pf.results], [(False, "delivered files")])
+        self.assertIn("gone.txt", pf.results[0][2])
+        warned = dict(pf.warnings)["delivered files"]
+        self.assertIn("2 file(s) of the installed commit are not tracked in the client's repository", warned)
+        self.assertIn("web/artifacts/renderers.tsx (ignored by .gitignore:1:artifacts/)", warned)
+
+    def test_all_tracked_and_on_disk_is_a_note_and_an_older_record_is_not_checked(self):
+        pf = _preflight()
+        subprocess.run(["git", "-C", str(self.top), "add", "-f", "mp/web/artifacts/renderers.tsx"], check=True)
+        pf.delivered_files(self.platform, self.top, {"files": ["app.txt", "web/artifacts/renderers.tsx"]})
+        self.assertEqual((pf.results, pf.warnings), ([], []))
+        pf.delivered_files(self.platform, self.top, {"commit": "0123"})              # delivered before `files`
+        self.assertEqual((pf.results, pf.warnings), ([], []))
+
+
 if __name__ == "__main__":
     unittest.main()
