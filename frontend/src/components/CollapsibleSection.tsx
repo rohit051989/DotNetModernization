@@ -139,6 +139,8 @@ interface CollapsibleSectionProps {
   barTitle?: string
   /** A count for its jump link, naming what it counts ("4 request entry points"). Undefined while unknown. */
   count?: string
+  /** Shown inside something that already names it (a tab): just the body, no header and no border. */
+  bare?: boolean
   children: ReactNode
 }
 
@@ -156,6 +158,7 @@ export function CollapsibleSection({
   anchorId,
   barTitle,
   count,
+  bare = false,
   children,
 }: CollapsibleSectionProps) {
   const storageKey = `section:${id}`
@@ -190,6 +193,7 @@ export function CollapsibleSection({
     }
   }, [command, id, set])
 
+  if (bare) return <>{children}</>
   const nested = variant === 'nested'
   const bodyId = `${id}:body`
   return (

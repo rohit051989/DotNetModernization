@@ -32,7 +32,9 @@ RULES: dict[tuple[str, str], str] = {
     ("POST", "/api/workflow/step-policies/validate"): ANY,
     ("POST", "/api/engagements/{engagement_id}/step-policies/validate"): ANY,
     ("POST", "/api/editors/visual-studio/open"): ANY,
-    # Registering a repository: anyone signed in, who then owns it.
+    # Registering a repository: anyone signed in, who then owns it. The hosting OS pair (current_hosting_os,
+    # target_hosting_os) is a field rule on this route and on PUT /api/repositories/{id}: only an admin may set a
+    # value other than the default or the stored one (app.routers.repositories._require_admin_to_set_hosting).
     ("POST", "/api/engagements/{engagement_id}/repositories/register"): ANY,
     # Each person's own clone of a repository, on their own machine: theirs to record or forget, whoever owns it.
     ("POST", "/api/repositories/{repository_id}/clone"): ANY,

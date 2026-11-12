@@ -175,8 +175,17 @@ Replaces the table definition in `13-REPOSITORY-INGEST.md` entirely.
 | `technical_owner` | `TEXT` | Optional. Who to ask about it. Invaluable at 50+ repos |
 | `criticality` | `TEXT` NOT NULL DEFAULT `'medium'` | CHECK IN (`low`, `medium`, `high`, `critical`). Business criticality, an input to risk scoring at `risk-scoring-tier-assignment` |
 | `retirement_status` | `TEXT` NOT NULL DEFAULT `'active'` | CHECK IN (`active`, `slated_for_retirement`, `decommissioned`) |
+| `current_hosting_os` | `TEXT` NOT NULL DEFAULT `'windows'` | CHECK IN (`windows`, `linux`). Where the application is hosted today. Set by an admin |
+| `target_hosting_os` | `TEXT` NOT NULL DEFAULT `'linux'` | CHECK IN (`windows`, `linux`). Where it is going. Set by an admin |
 | `tags` | `JSONB` NOT NULL DEFAULT `'[]'` | |
 | `notes` | `TEXT` | Free text |
+
+**Hosting OS.** `current_hosting_os` and `target_hosting_os` decide whether the repository page shows its Linux
+compatibility list (`04-FRONTEND-SPEC.md`, "Compatibility tab"): only a move from `windows` to `linux` does. **Only an
+admin sets or changes them**, at registration and in the edit form. Anyone else registers with the defaults, the form
+does not show them the fields, and the API answers 403 `NOT_ALLOWED` to a value other than the default (register) or
+the stored one (`PUT`). They are optional everywhere: left out, a registration uses the defaults and a `PUT` leaves them
+as they are. Existing repositories took the defaults when the columns were added, so they show the Linux list as before.
 
 `criticality` and `retirement_status` are deliberate. Criticality feeds the tier
 assignment at `risk-scoring-tier-assignment`, which otherwise has only technical signals to work from —
@@ -423,7 +432,8 @@ GET    /api/repositories/{id}/executions
 ```
 
 `PUT` may change only `name`, `description`, `technical_owner`, `criticality`,
-`retirement_status`, `tags`, `notes` and `default_branch`. It must **not** change
+`retirement_status`, `tags`, `notes`, `default_branch` and, for an admin only, `current_hosting_os` and
+`target_hosting_os`. It must **not** change
 `local_path`, `clone_url` or `root_folder_name` — those are identity. Relocating
 means delete and re-register.
 

@@ -167,6 +167,16 @@ class RegisterByUrlTests(unittest.TestCase):
         self.assertEqual(Path(repo.local_path), self.root / "repos" / self.engagement.id / "Orders")
         self.assertEqual((repo.source_type, repo.name, repo.ingest_status), ("git_clone", "Orders", "registered"))
 
+    def test_the_hosting_os_defaults_to_windows_then_linux(self):
+        with mock.patch.object(settings, "repos_dir", str(self.root / "repos")):
+            repo = self._register()
+        self.assertEqual((repo.current_hosting_os, repo.target_hosting_os), ("windows", "linux"))
+
+    def test_the_hosting_os_an_admin_chose_is_kept(self):
+        with mock.patch.object(settings, "repos_dir", str(self.root / "repos")):
+            repo = self._register(current_hosting_os="windows", target_hosting_os="windows")
+        self.assertEqual((repo.current_hosting_os, repo.target_hosting_os), ("windows", "windows"))
+
     def test_without_repos_dir_the_target_folder_is_required(self):
         with mock.patch.object(settings, "repos_dir", ""):
             with self.assertRaises(repositories_service.RegistrationError) as ctx:

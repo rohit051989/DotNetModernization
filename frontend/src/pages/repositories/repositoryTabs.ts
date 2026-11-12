@@ -7,6 +7,7 @@
 export const TABS = [
   { slug: 'overview', label: 'Overview', group: 'overview' },
   { slug: 'surface', label: 'Surface', group: 'discovery' },
+  { slug: 'compatibility', label: 'Compatibility', group: 'discovery' },
   { slug: 'projects', label: 'Projects & fingerprint', group: 'discovery' },
   { slug: 'dependencies', label: 'Dependencies', group: 'discovery' },
   { slug: 'dependency-graph', label: 'Dependency graph', group: 'discovery' },

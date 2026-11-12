@@ -5,7 +5,6 @@ import { CollapsibleSection } from '../../components/CollapsibleSection'
 import { useLimitedList } from '../../components/LimitedList'
 import { PagedList } from '../../components/PagedList'
 import { counted } from './repositoryTabs'
-import { surfaceSectionId } from './surfaceSections'
 import type { SoapSummary } from '../../types/results'
 import type { RepositorySoapCall, SoapVerdictLive } from '../../types/surface'
 import { CONFIRMED_HELP, UNDER_REVIEW, UNDER_REVIEW_LABEL } from '../../types/estate'
@@ -22,6 +21,8 @@ interface RepositorySoapPanelProps {
   refreshToken: number
   /** Opens the call's row in the Estate tab's SOAP compatibility report. */
   onOpenEstateSoap?: (invocationId: string) => void
+  /** Shown in a tab of its own: no section header, and a line instead of nothing when there are no SOAP calls. */
+  bare?: boolean
 }
 
 const STYLE: Record<string, string> = {
@@ -56,7 +57,7 @@ function Verdict({ live }: { live: SoapVerdictLive }) {
   )
 }
 
-export function RepositorySoapPanel({ repositoryId, refreshToken, onOpenEstateSoap }: RepositorySoapPanelProps) {
+export function RepositorySoapPanel({ repositoryId, refreshToken, onOpenEstateSoap, bare = false }: RepositorySoapPanelProps) {
   const [data, setData] = useState<SoapSummary | null>(null)
   const [notScanned, setNotScanned] = useState(false)
   const [failed, setFailed] = useState(false)
@@ -79,7 +80,9 @@ export function RepositorySoapPanel({ repositoryId, refreshToken, onOpenEstateSo
     }
   }, [repositoryId, refreshToken])
 
-  if (notScanned || (data && data.calls === 0 && data.unused_count === 0)) return null
+  if (notScanned || (data && data.calls === 0 && data.unused_count === 0)) {
+    return bare ? <p className="text-xs text-neutral-500">{notScanned ? 'The outbound-invocation inventory has not run yet for this repository.' : 'No SOAP calls found in this repository.'}</p> : null
+  }
   // Counted by the server over every call, with the verdicts as they stand now; the calls come a page at a time.
   const rows = data?.environments
   const needChange = data?.need_change ?? 0
@@ -93,13 +96,14 @@ export function RepositorySoapPanel({ repositoryId, refreshToken, onOpenEstateSo
         (data.unused_count > 0 ? ` · ${data.unused_count} unused not listed` : '')
   return (
     <CollapsibleSection
-      id={surfaceSectionId(repositoryId, 'soap')}
+      id={`compat:${repositoryId}:soap`}
       title="SOAP compatibility"
       count={data ? counted(data.calls, 'call') : undefined}
       summary={summary}
       rowCount={rows}
       persist="browser"
       variant="nested"
+      bare={bare}
     >
       {failed && <p className="text-xs text-red-700">Could not load this repository's SOAP compatibility.</p>}
       {data && (

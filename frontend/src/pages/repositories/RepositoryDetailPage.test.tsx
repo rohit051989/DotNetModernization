@@ -60,7 +60,8 @@ vi.mock('../../api/repositories', () => ({
     Promise.resolve({
       ...ownership.current,
       id: 'r', name: 'shop', engagement_id: 'e', local_path: 'D:\\repos\\shop', source_type: 'local_path', clone_url: null, ingest_status: 'scanned',
-      criticality: 'medium', clone_url_verification: 'verified', retirement_status: 'active', warnings: [], deleted_at: null, size_bytes: 1, file_count: 1,
+      criticality: 'medium', clone_url_verification: 'verified', retirement_status: 'active', current_hosting_os: 'windows', target_hosting_os: 'linux',
+      warnings: [], deleted_at: null, size_bytes: 1, file_count: 1,
       primary_languages: [], last_scanned_at: null, tags: [], technical_owner: null,
       ...ownership.current,
     }),
@@ -73,7 +74,10 @@ vi.mock('../../api/repositories', () => ({
 vi.mock('../../api/conversion', () => ({
   listConversions: () => Promise.resolve({ conversions: [{ number: 1, branch: 'conversion/1', state: 'prepared' }], next: { number: 2 } }),
 }))
-vi.mock('../../api/results', () => ({ getSoapSummary: () => Promise.reject(new Error('none')) }))
+vi.mock('../../api/results', () => ({
+  getSoapSummary: () => Promise.reject(new Error('none')),
+  getCompatibilitySummary: () => Promise.reject(new Error('none')),
+}))
 vi.mock('../../api/scope', () => ({
   getConversionScope: () => Promise.resolve({ totals: { projects: 170, kept: 158, excluded: 12, workItemsOutOfScope: 9, new: 0 } }),
 }))
@@ -184,7 +188,7 @@ describe('RepositoryDetailPage tabs', () => {
     await click(groups().getByRole('tab', { name: 'Discovery' }))
     // A count says what it counts, or does not appear: Surface counts several things, so its label has none.
     expect(tabs().getAllByRole('tab').map((t) => t.textContent)).toEqual([
-      'Surface', 'Projects & fingerprint', 'Dependencies · 63 packages to change', 'Dependency graph', 'Impact', 'Tests',
+      'Surface', 'Compatibility', 'Projects & fingerprint', 'Dependencies · 63 packages to change', 'Dependency graph', 'Impact', 'Tests',
     ])
     expect(shown()).toEqual(['Surface'])
     expect(window.location.pathname).toBe('/repositories/r/surface')

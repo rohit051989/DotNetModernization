@@ -586,6 +586,8 @@ def register_local_path(
         technical_owner=payload.technical_owner,
         criticality=payload.criticality,
         retirement_status=payload.retirement_status,
+        current_hosting_os=payload.current_hosting_os,
+        target_hosting_os=payload.target_hosting_os,
         tags=payload.tags,
         notes=payload.notes,
         has_git_history=has_git,
@@ -729,6 +731,8 @@ def register_git_clone(db: Session, engagement: models.Engagement, payload: Regi
         technical_owner=payload.technical_owner,
         criticality=payload.criticality,
         retirement_status=payload.retirement_status,
+        current_hosting_os=payload.current_hosting_os,
+        target_hosting_os=payload.target_hosting_os,
         tags=payload.tags,
         notes=payload.notes,
         has_git_history=False,
@@ -809,6 +813,11 @@ def update_repository(repo: models.Repository, payload: RepositoryUpdate) -> Non
     repo.technical_owner = payload.technical_owner
     repo.criticality = payload.criticality
     repo.retirement_status = payload.retirement_status
+    # Null leaves them as they are; the router has already refused a change from anyone but an admin.
+    if payload.current_hosting_os is not None:
+        repo.current_hosting_os = payload.current_hosting_os
+    if payload.target_hosting_os is not None:
+        repo.target_hosting_os = payload.target_hosting_os
     repo.tags = payload.tags
     repo.notes = payload.notes
     repo.default_branch = payload.default_branch

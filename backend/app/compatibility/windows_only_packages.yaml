@@ -1,0 +1,69 @@
+# Factory defaults for the repository Compatibility tab (docs/04-FRONTEND-SPEC.md): what moving a legacy .NET
+# repository to the modern stack on Linux/OpenShift needs. Read from the repository, never from the database; edit it
+# here and commit.
+#
+# 1. packages: NuGet packages that only work on Windows, or only on .NET Framework. Always a "blocker".
+#    `match: exact` compares the whole package id, `match: prefix` the start of it (both case-insensitive).
+packages:
+  - {id: Microsoft.Win32.Registry, match: exact, why: "Windows registry; throws PlatformNotSupportedException on Linux.", replacement: "IConfiguration (ConfigMap, environment variables, Secret)."}
+  - {id: Microsoft.Windows.Compatibility, match: exact, why: "Compatibility pack: most of its APIs are Windows-only.", replacement: "Replace each API it supplies with a cross-platform one."}
+  - {id: System.Management, match: exact, why: "WMI is Windows-only.", replacement: "Read the value from the container or platform instead (environment, /proc, Kubernetes API)."}
+  - {id: System.Diagnostics.EventLog, match: exact, why: "Windows Event Log; not available on Linux.", replacement: "Log to stdout through ILogger."}
+  - {id: System.ServiceProcess.ServiceController, match: exact, why: "Windows services control manager.", replacement: "Run the work as a hosted service (BackgroundService) in the container."}
+  - {id: System.Security.Cryptography.ProtectedData, match: exact, why: "DPAPI is Windows-only.", replacement: "ASP.NET Core Data Protection, or a secret store."}
+  - {id: System.Drawing.Common, match: exact, why: "Windows-only since .NET 6; on Linux needs libgdiplus and is unsupported.", replacement: "SkiaSharp, ImageSharp or Magick.NET."}
+  - {id: System.Messaging, match: exact, why: "MSMQ is Windows-only and not in modern .NET.", replacement: "A broker the platform offers (AMQP, Kafka)."}
+  - {id: System.DirectoryServices, match: prefix, why: "Active Directory APIs are Windows-only (LDAP-only parts differ).", replacement: "Novell.Directory.Ldap or System.DirectoryServices.Protocols over LDAP."}
+  - {id: System.Data.OracleClient, match: exact, why: ".NET Framework only; removed from modern .NET.", replacement: "Oracle.ManagedDataAccess.Core."}
+  - {id: Microsoft.Office.Interop., match: prefix, why: "COM interop with Office needs Windows and an installed Office.", replacement: "Open XML SDK, ClosedXML or EPPlus."}
+  - {id: Microsoft.VisualStudio.Services.Client, match: prefix, why: "Relies on Windows credential and identity stores.", replacement: "REST client with a token."}
+  - {id: System.Web.Mvc, match: prefix, why: ".NET Framework only (System.Web).", replacement: "ASP.NET Core MVC."}
+  - {id: System.Web.Http, match: prefix, why: ".NET Framework only (System.Web).", replacement: "ASP.NET Core Web API."}
+  - {id: Microsoft.AspNet., match: prefix, why: ".NET Framework only (System.Web, OWIN on IIS).", replacement: "ASP.NET Core."}
+  - {id: Microsoft.Owin.Host.SystemWeb, match: exact, why: "Hosts OWIN inside IIS (System.Web).", replacement: "ASP.NET Core middleware."}
+
+# 2. treatments: what each found catalog item means for the move, shown as a badge in the Linux list.
+#      blocker    the code fails on Linux, or does not exist on modern .NET: it must change before it runs.
+#      container  it runs on Linux but needs a change to run well in an OpenShift container.
+#      other      it runs, but behaves differently (or its host model changes): review it.
+#    A catalog item not listed here is not shown in the Linux list.
+treatments:
+  # blocker
+  registry-access: blocker
+  system-drawing-common: blocker
+  directory-services-usage: blocker
+  msmq-usage: blocker
+  windows-auth-connection-string: blocker
+  hardcoded-windows-path: blocker
+  windows-service: blocker
+  winforms-desktop: blocker
+  wpf-desktop: blocker
+  ssis-package: blocker
+  asmx-service: blocker
+  aspnet-webforms: blocker
+  fx-aspnet-mvc: blocker
+  fx47-class-library: blocker
+  wcf-service: blocker
+  wcf-service-host: blocker
+  wcf-iis-servicemodel: blocker
+  wcf-nettcp-client: blocker
+  # container
+  container-fixed-user-writable-path: container
+  container-privileged-port: container
+  container-runs-as-root: container
+  missing-dockerfile: container
+  missing-health-endpoint: container
+  missing-ocp4-manifests: container
+  custom-file-logger-provider: container
+  serilog-file-sink: container
+  enterprise-vault-secret-reference: container
+  sensitive-config-key: container
+  unqualified-hostname: container
+  aspnetcore-iis-hosting: container
+  windows-build-pipeline: container
+  # other
+  datetime-now-usage: other
+  encoding-default: other
+  windows-service-hosting: other
+  interactive-console-tool: other
+  console-batch-job: other

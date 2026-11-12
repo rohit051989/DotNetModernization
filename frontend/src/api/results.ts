@@ -1,6 +1,7 @@
 import { api } from './client'
 import type { Page, PageLoader } from '../components/PagedList'
 import type { ContextMapArtifact, SoapBackendHost } from '../types/estate'
+import type { CompatibilityFinding, CompatibilitySummary } from '../types/compatibility'
 import type { BackendSummary, EntryPointSummary, ImpactSummary, OutboundSummary, RepositoryResults, SoapSummary, TestsSummary } from '../types/results'
 
 /** A paged list's loader: `path` with the filter box's text, the offset and limit, and the list's own parameters.
@@ -79,6 +80,9 @@ export const backendOperations = (repositoryId: string, projectId: string) =>
 
 export const getSoapSummary = (repositoryId: string) => api.get<SoapSummary>(`${repo(repositoryId)}/soap-compatibility/summary`)
 export const soapCalls = (repositoryId: string) => pages(`${repo(repositoryId)}/soap-compatibility/calls`)
+
+export const getCompatibilitySummary = (repositoryId: string) => api.get<CompatibilitySummary>(`${repo(repositoryId)}/compatibility/summary`)
+export const linuxCompatibility = (repositoryId: string) => pages<CompatibilityFinding>(`${repo(repositoryId)}/compatibility/linux`)
 
 // ---------- Projects (structure) ----------
 

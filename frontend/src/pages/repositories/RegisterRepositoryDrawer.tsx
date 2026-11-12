@@ -1,12 +1,13 @@
 import { useState, type FormEvent } from 'react'
 import { Drawer } from '../../components/Drawer'
+import { useIsAdmin } from '../../auth/AuthContext'
 import { Field, inputClass } from '../../components/FormField'
 import { LimitedList } from '../../components/LimitedList'
 import { TagInput } from '../../components/TagInput'
 import { useToast } from '../../components/Toast'
 import { ApiError } from '../../api/client'
 import { inspectPath, inspectUrl, registerRepository } from '../../api/repositories'
-import type { Criticality, InspectPathResult, InspectUrlResult, RetirementStatus } from '../../types/repositories'
+import type { Criticality, HostingOs, InspectPathResult, InspectUrlResult, RetirementStatus } from '../../types/repositories'
 
 interface RegisterRepositoryDrawerProps {
   engagementId: string
@@ -23,6 +24,11 @@ const SOURCE_OPTIONS = [
 
 export function RegisterRepositoryDrawer({ engagementId, onClose, onRegistered }: RegisterRepositoryDrawerProps) {
   const { showToast } = useToast()
+  // Where the application is hosted now and where it is going: an admin chooses; everyone else registers with the
+  // defaults and the fields are not shown (the backend refuses anything else from them).
+  const isAdmin = useIsAdmin()
+  const [currentHostingOs, setCurrentHostingOs] = useState<HostingOs>('windows')
+  const [targetHostingOs, setTargetHostingOs] = useState<HostingOs>('linux')
   const [source, setSource] = useState('git_url')
 
   const [gitUrl, setGitUrl] = useState('')
@@ -123,6 +129,7 @@ export function RegisterRepositoryDrawer({ engagementId, onClose, onRegistered }
     setFieldErrors({})
     setSubmitting(true)
     try {
+      const hosting = isAdmin ? { current_hosting_os: currentHostingOs, target_hosting_os: targetHostingOs } : {}
       const details = {
         name: name.trim() || undefined,
         description: description.trim() || null,
@@ -131,6 +138,7 @@ export function RegisterRepositoryDrawer({ engagementId, onClose, onRegistered }
         retirement_status: retirementStatus,
         tags,
         notes: notes.trim() || null,
+        ...hosting,
       }
       const result = source === 'git_url'
         ? await registerRepository(engagementId, {
@@ -152,6 +160,7 @@ export function RegisterRepositoryDrawer({ engagementId, onClose, onRegistered }
         default_branch: defaultBranch.trim() || null,
         tags,
         notes: notes.trim() || null,
+        ...hosting,
       })
       showToast('success', source === 'git_url'
         ? `Registered "${result.slug}". Cloning, then discovery.`
@@ -408,6 +417,35 @@ export function RegisterRepositoryDrawer({ engagementId, onClose, onRegistered }
                 </p>
               )}
             </Field>
+
+            {isAdmin && (
+              <>
+                <Field label="Current hosting" error={fieldErrors.current_hosting_os}>
+                  <select
+                    value={currentHostingOs}
+                    onChange={(event) => setCurrentHostingOs(event.target.value as HostingOs)}
+                    className={inputClass(!!fieldErrors.current_hosting_os)}
+                  >
+                    <option value="windows">Windows</option>
+                    <option value="linux">Linux</option>
+                  </select>
+                </Field>
+
+                <Field label="Target hosting" error={fieldErrors.target_hosting_os}>
+                  <select
+                    value={targetHostingOs}
+                    onChange={(event) => setTargetHostingOs(event.target.value as HostingOs)}
+                    className={inputClass(!!fieldErrors.target_hosting_os)}
+                  >
+                    <option value="windows">Windows</option>
+                    <option value="linux">Linux</option>
+                  </select>
+                  <p className="mt-1 text-xs text-neutral-400">
+                    The Compatibility tab shows its Linux list only for a move from Windows to Linux.
+                  </p>
+                </Field>
+              </>
+            )}
 
             {source === 'local_path' && (
             <Field label="Default branch">
