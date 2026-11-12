@@ -1803,6 +1803,14 @@ hand. Everything else an update brings, bootstrap applies by itself. Apply every
 had (`previousCommit` in `PLATFORM_SOURCE.json` after the update; in our own installs, the commit before step 5 of
 the appendix), oldest of them first. Entries up to 2026-10-23 were the notes of releases 2 to 7, which are named so.
 
+#### 2026-11-09, (commit of "repository hosting OS"): Linux compatibility is shown only for a move from Windows to Linux
+
+Nothing to do after the admin's bootstrap, which adds the two columns (`repositories.current_hosting_os`,
+`repositories.target_hosting_os`). Every existing repository takes the defaults, Windows now and Linux next, so it keeps
+showing the Compatibility tab's Linux list exactly as before. **An admin** can change a repository's pair in its edit
+form (Details tab), and chooses it when registering one; a repository that stays on Windows then shows SOAP
+compatibility only. Developers register with the defaults and cannot change the pair. No new setting, no rescan.
+
 #### 2026-11-06, dc8b760: files of ours a client's ignore rules hid are delivered
 
 Only for the platform in a folder of a shared repository whose own ignore rules match files of ours: a root

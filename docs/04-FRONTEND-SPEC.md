@@ -410,7 +410,7 @@ only jumped down to it.
   | Group | Tabs (address) |
   |---|---|
   | Overview | Overview (`overview`) |
-  | Discovery | Surface (`surface`), Projects & fingerprint (`projects`), Dependencies (`dependencies`), Dependency graph (`dependency-graph`), Impact (`impact`), Tests (`tests`) |
+  | Discovery | Surface (`surface`), Compatibility (`compatibility`), Projects & fingerprint (`projects`), Dependencies (`dependencies`), Dependency graph (`dependency-graph`), Impact (`impact`), Tests (`tests`) |
   | Modernization | Scope (`scope`), Work list (`work-list`), Conversion (`conversion`) |
   | Activity | Executions (`executions`), Details (`details`) |
 
@@ -433,6 +433,18 @@ only jumped down to it.
   things has no count on its label. Surface's section bar names a count for each section instead: "Inbound · 4 request
   entry points", "Outbound · 12 invocations", "SOAP compatibility · 9 calls", "Backend calls · 24 operations"
   (`CollapsibleSection`'s `count` and `barTitle`).
+- **Compatibility tab** (`RepositoryCompatibilityPanel.tsx`, `hosting.ts`): what will not work, or needs a change, when
+  the repository moves to the modern stack. Inner tabs: **SOAP** (always) and **Linux** (a list of blockers, container
+  changes and items to review, each with what to do). Breaking package upgrades and packages to replace are on the
+  Dependencies tab and the Work list, not repeated here.
+  - **The Linux tab is shown only for a move from Windows hosting to Linux hosting**: the repository's
+    `current_hosting_os` is `windows` and its `target_hosting_os` is `linux` (`showsLinux` in `hosting.ts`, the one
+    rule). For any other pair the tab is not shown, SOAP stands alone with no tab bar, a remembered Linux tab opens on
+    SOAP, and the Overview's "Compatibility issues" figure counts SOAP only ("SOAP 3", not "SOAP 3 · Linux 5"). The
+    Linux findings stay stored: setting the pair back shows them again.
+  - **Admin only.** The register drawer ("Current hosting", "Target hosting", Windows or Linux, default Windows then
+    Linux) and the Details tab's edit form show the two fields to an admin only; the Details tab shows
+    "Hosting: Windows → Linux" to everyone. The backend enforces it (`15-REPOSITORY-INGEST-UI.md`).
 - **Scope** (36-COPILOT-ENHANCED-CONVERSION.md Part O; `RepositoryScopeSection.tsx`, `scopeDraft.ts`): which of the
   repository's projects its conversions cover.
   - A tree of solutions and their projects with checkboxes. A solution's box shows all, some or none (indeterminate),

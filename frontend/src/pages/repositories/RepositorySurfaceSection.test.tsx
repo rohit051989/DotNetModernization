@@ -80,18 +80,7 @@ describe('RepositorySurfaceSection', () => {
     })
     const bar = within(screen.getByRole('navigation', { name: 'Surface sections' }))
     const links = bar.getAllByRole('button').map((b) => b.textContent).filter((t) => !/all$/.test(t ?? ''))
-    // The SOAP section is not shown: this repository makes no SOAP call.
+    // SOAP and Linux compatibility have a tab of their own (RepositoryCompatibilityPanel).
     expect(links).toEqual(['Inbound · 1 request entry point', 'Outbound · 0 invocations', 'Backend calls · 0 operations'])
-    cleanup()
-    soap.calls = 9
-    await act(async () => {
-      render(
-        <ToastProvider>
-          <RepositorySurfaceSection repositoryId="r" localPath="D:\repos\shop" refreshToken={0} />
-        </ToastProvider>,
-      )
-    })
-    expect(within(screen.getByRole('navigation', { name: 'Surface sections' })).getByRole('button', { name: 'SOAP compatibility · 9 calls' })).toBeTruthy()
-    soap.calls = 0
   })
 })

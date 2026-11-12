@@ -13,6 +13,8 @@ from app.db import get_db
 from app.errors import ErrorResponse, error, errors
 from app.repositories import service as repositories_service
 from app.repositories.schemas import (
+    DEFAULT_CURRENT_HOSTING_OS,
+    DEFAULT_TARGET_HOSTING_OS,
     InspectPathRequest,
     InspectPathResponse,
     InspectUrlRequest,
@@ -47,6 +49,17 @@ def _get_engagement(db: Session, engagement_id: str) -> models.Engagement:
     if engagement is None or engagement.deleted_at is not None:
         raise error(404, f"Engagement '{engagement_id}' not found", code="NOT_FOUND")
     return engagement
+
+
+def _require_admin_to_set_hosting(current: str | None, target: str | None, was_current: str, was_target: str) -> None:
+    """The hosting OS pair decides whether the Linux compatibility list is shown, so only an admin sets or changes it
+    (the register form and the policy table cannot say so per field). Sending what is already there is not a change:
+    a developer registering with the defaults, or saving other edits, is never refused. The UI hides the fields from
+    everyone else, this is the rule."""
+    changed = (current is not None and current != was_current) or (target is not None and target != was_target)
+    person = actors.current()
+    if changed and (person is None or not person.is_admin):
+        raise error(403, "Only an admin sets where a repository is hosted now and where it is going.", code="NOT_ALLOWED")
 
 
 def _get_repository(db: Session, repository_id: uuid.UUID, include_deleted: bool = False) -> models.Repository:
@@ -238,6 +251,8 @@ def register_repository(
     `GET /api/workflow/executions/{job_execution_id}` to follow progress.
     """
     engagement = _get_engagement(db, engagement_id)
+    _require_admin_to_set_hosting(payload.current_hosting_os, payload.target_hosting_os,
+                                  DEFAULT_CURRENT_HOSTING_OS, DEFAULT_TARGET_HOSTING_OS)
 
     try:
         if isinstance(payload, RegisterGitCloneRequest):
@@ -320,11 +335,15 @@ def get_repository(
 def update_repository(repository_id: uuid.UUID, payload: RepositoryUpdate, db: Session = Depends(get_db)):
     """
     May change only `name`, `description`, `technical_owner`, `criticality`,
-    `retirement_status`, `tags`, `notes` and `default_branch`. Cannot change
+    `retirement_status`, `tags`, `notes`, `default_branch` and, for an admin
+    only, `current_hosting_os` and `target_hosting_os` (null leaves them as
+    they are). Cannot change
     `local_path`, `clone_url` or `root_folder_name` — those are identity.
     Relocating a repository means delete and re-register.
     """
     repo = _get_repository(db, repository_id)
+    _require_admin_to_set_hosting(payload.current_hosting_os, payload.target_hosting_os,
+                                  repo.current_hosting_os, repo.target_hosting_os)
     repositories_service.update_repository(repo, payload)
     db.commit()
     db.refresh(repo)

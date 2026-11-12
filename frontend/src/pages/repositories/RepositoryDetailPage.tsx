@@ -9,7 +9,8 @@ import {
   updateRepository,
   verifyRepositoryPath,
 } from '../../api/repositories'
-import type { Criticality, RepositoryDetail, RetirementStatus } from '../../types/repositories'
+import type { Criticality, HostingOs, RepositoryDetail, RetirementStatus } from '../../types/repositories'
+import { HOSTING_LABEL, showsLinux } from './hosting'
 import type { JobExecution } from '../../types/workflow'
 import { ApiError } from '../../api/client'
 import { EmptyState } from '../../components/EmptyState'
@@ -25,6 +26,7 @@ import { RepositoryFiles, useAskForClone } from './SourceLink'
 import { num, obj } from '../workflow/artifacts/adapters'
 import { RepositoryScopeSection } from './RepositoryScopeSection'
 import { RepositoryStructureSection } from './RepositoryStructureSection'
+import { RepositoryCompatibilityPanel } from './RepositoryCompatibilityPanel'
 import { RepositorySurfaceSection } from './RepositorySurfaceSection'
 import { RepositoryImpactSection } from './RepositoryImpactSection'
 import { RepositoryTestsSection } from './RepositoryTestsSection'
@@ -294,7 +296,9 @@ export function RepositoryDetailPage({
     }
   }, [repositoryId, scroller, loading])
 
-  const summary = useRepositorySummary(repositoryId, artifacts, refreshToken + localRefresh)
+  // Whether the repository moves from Windows to Linux hosting: only then is there a Linux list to show or count.
+  const linuxApplies = repo ? showsLinux(repo) : true
+  const summary = useRepositorySummary(repositoryId, artifacts, refreshToken + localRefresh, linuxApplies)
 
   // Whether the repository's machine can build and test its baseline (Part P): in the header when it cannot, and
   // beside "Start the next conversion".
@@ -354,7 +358,8 @@ export function RepositoryDetailPage({
   const fingerprintSummary = obj(fingerprint?.data.summary)
 
   // Tab labels carry a state, or a count that says what it counts: "Work list · 28 work items", "Conversion · ready".
-  // A tab whose content counts several things (Surface) has no count on its label; its section bar has one per section.
+  // A tab whose content counts several things (Surface, Compatibility) has no count on its label; Surface's section bar and
+  // Compatibility's inner tabs have one per section.
   const badge: Partial<Record<TabSlug, string>> = {
     projects: summary.projects !== undefined ? counted(summary.projects, 'project') : undefined,
     dependencies: summary.dependenciesNeedingChange ? `${summary.dependenciesNeedingChange.value} packages to change` : undefined,
@@ -413,7 +418,18 @@ export function RepositoryDetailPage({
         }
         bare
       >
-        <RepositorySurfaceSection repositoryId={repo.id} localPath={repo.local_path} refreshToken={localRefresh} onOpenEstateSoap={onOpenEstateSoap} />
+        <RepositorySurfaceSection repositoryId={repo.id} localPath={repo.local_path} refreshToken={localRefresh} />
+      </Panel>
+    ),
+    compatibility: () => (
+      <Panel summary={linuxApplies ? 'SOAP and Linux compatibility for the modern stack on Linux' : 'SOAP compatibility for the modern stack'} bare>
+        <RepositoryCompatibilityPanel
+          repositoryId={repo.id}
+          localPath={repo.local_path}
+          refreshToken={localRefresh}
+          showLinux={linuxApplies}
+          onOpenEstateSoap={onOpenEstateSoap}
+        />
       </Panel>
     ),
     projects: () => (
@@ -542,6 +558,9 @@ export function RepositoryDetailPage({
             </Metadata>
             <Metadata label="Detected remote">
               {repo.detected_clone_url ? <span className="break-all font-mono text-xs">{repo.detected_clone_url}</span> : '—'}
+            </Metadata>
+            <Metadata label="Hosting">
+              {HOSTING_LABEL[repo.current_hosting_os]} → {HOSTING_LABEL[repo.target_hosting_os]}
             </Metadata>
             <Metadata label="Provider">{repo.provider ?? '—'}</Metadata>
             <Metadata label="Organization">{repo.organization ?? '—'}</Metadata>
@@ -861,6 +880,10 @@ function EditForm({
   onSaved: () => void
 }) {
   const { showToast } = useToast()
+  // Where it is hosted now and where it is going: an admin's to change; the backend refuses anyone else.
+  const isAdmin = useIsAdmin()
+  const [currentHostingOs, setCurrentHostingOs] = useState<HostingOs>(repo.current_hosting_os)
+  const [targetHostingOs, setTargetHostingOs] = useState<HostingOs>(repo.target_hosting_os)
   const [name, setName] = useState(repo.name)
   const [description, setDescription] = useState(repo.description ?? '')
   const [technicalOwner, setTechnicalOwner] = useState(repo.technical_owner ?? '')
@@ -883,6 +906,7 @@ function EditForm({
         tags,
         notes: notes.trim() || null,
         default_branch: defaultBranch.trim() || null,
+        ...(isAdmin ? { current_hosting_os: currentHostingOs, target_hosting_os: targetHostingOs } : {}),
       })
       showToast('success', 'Repository updated.')
       onSaved()
@@ -923,6 +947,23 @@ function EditForm({
           <option value="decommissioned">Decommissioned</option>
         </select>
       </Field>
+      {isAdmin && (
+        <>
+          <Field label="Current hosting">
+            <select value={currentHostingOs} onChange={(event) => setCurrentHostingOs(event.target.value as HostingOs)} className={inputClass(false)}>
+              <option value="windows">Windows</option>
+              <option value="linux">Linux</option>
+            </select>
+          </Field>
+          <Field label="Target hosting">
+            <select value={targetHostingOs} onChange={(event) => setTargetHostingOs(event.target.value as HostingOs)} className={inputClass(false)}>
+              <option value="windows">Windows</option>
+              <option value="linux">Linux</option>
+            </select>
+            <p className="mt-1 text-xs text-neutral-400">The Compatibility tab shows its Linux list only for a move from Windows to Linux.</p>
+          </Field>
+        </>
+      )}
       <Field label="Default branch">
         <input value={defaultBranch} onChange={(event) => setDefaultBranch(event.target.value)} className={inputClass(false)} />
       </Field>

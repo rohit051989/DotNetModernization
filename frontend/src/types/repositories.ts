@@ -4,6 +4,9 @@ export type { JobExecution }
 
 export type Criticality = 'low' | 'medium' | 'high' | 'critical'
 export type RetirementStatus = 'active' | 'slated_for_retirement' | 'decommissioned'
+/** Where an application is hosted now and where it is going. An admin sets them; the Compatibility tab shows its
+ * Linux list only for a move from Windows to Linux. */
+export type HostingOs = 'windows' | 'linux'
 export type CloneUrlVerification = 'verified' | 'mismatch' | 'unverifiable' | 'not_applicable'
 export type IngestStatus = 'registered' | 'cloning' | 'scanned' | 'scan_failed' | 'path_missing'
 export type SourceType = 'local_path' | 'git_clone'
@@ -26,6 +29,8 @@ export interface RepositorySummary {
   provider: string | null
   criticality: Criticality
   retirement_status: RetirementStatus
+  current_hosting_os: HostingOs
+  target_hosting_os: HostingOs
   ingest_status: IngestStatus
   has_git_history: boolean
   clone_url_verification: CloneUrlVerification
@@ -119,6 +124,9 @@ export interface RegisterLocalPathInput {
   default_branch?: string | null
   tags: string[]
   notes?: string | null
+  /** Admin only; left out, the server uses windows and linux. */
+  current_hosting_os?: HostingOs
+  target_hosting_os?: HostingOs
 }
 
 /** Registering by git URL: the discovery job clones it (docs/VDI-SETUP.md: Registering a client repository). */
@@ -134,6 +142,9 @@ export interface RegisterGitCloneInput {
   retirement_status: RetirementStatus
   tags: string[]
   notes?: string | null
+  /** Admin only; left out, the server uses windows and linux. */
+  current_hosting_os?: HostingOs
+  target_hosting_os?: HostingOs
 }
 
 export interface InspectUrlResult {
@@ -164,6 +175,9 @@ export interface RepositoryUpdateInput {
   tags: string[]
   notes: string | null
   default_branch: string | null
+  /** Admin only; left out, they stay as they are. */
+  current_hosting_os?: HostingOs
+  target_hosting_os?: HostingOs
 }
 
 export interface RescanResult {

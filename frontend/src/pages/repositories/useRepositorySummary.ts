@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { listConversions } from '../../api/conversion'
 import { listRepositoryExecutions } from '../../api/repositories'
-import { getSoapSummary } from '../../api/results'
+import { getCompatibilitySummary, getSoapSummary } from '../../api/results'
+import type { CompatibilitySummary } from '../../types/compatibility'
 import { getConversionScope } from '../../api/scope'
 import type { Conversions } from '../../types/conversion'
 import type { SoapSummary } from '../../types/results'
@@ -14,6 +15,8 @@ export interface KeyFigure {
   value: string | number
   detail?: string
   tone?: 'red' | 'amber'
+  /** Still being read: the card shows a loader in place of the figure, never a partial one. */
+  loading?: boolean
 }
 
 /**
@@ -25,7 +28,8 @@ export interface RepositorySummary {
   workItems?: KeyFigure
   requestEntryPoints?: KeyFigure
   dependenciesNeedingChange?: KeyFigure
-  soapCallsNeedingChange?: KeyFigure
+  /** SOAP calls needing change, plus the Linux findings: the Compatibility tab's total. */
+  compatibilityIssues?: KeyFigure
   conversion?: KeyFigure
   latestExecution?: KeyFigure & { executionId: string }
   executions?: number
@@ -40,8 +44,11 @@ export function useRepositorySummary(
   repositoryId: string,
   artifacts: Partial<Record<PageArtifactType, LatestArtifact>>,
   refreshToken: number,
+  /** Whether the repository moves from Windows to Linux (hosting.ts): when it does not, Linux findings are not counted. */
+  showLinux = true,
 ): RepositorySummary {
   const [soap, setSoap] = useState<SoapSummary | null | undefined>(undefined)
+  const [compatibility, setCompatibility] = useState<CompatibilitySummary | null | undefined>(undefined)
   const [conversions, setConversions] = useState<Conversions | null | undefined>(undefined)
   const [executions, setExecutions] = useState<JobExecution[] | undefined>(undefined)
   const [scope, setScope] = useState<RepositorySummary['scope'] | null>(undefined)
@@ -49,6 +56,7 @@ export function useRepositorySummary(
   useEffect(() => {
     let live = true
     getSoapSummary(repositoryId).then((r) => live && setSoap(r), () => live && setSoap(null))
+    getCompatibilitySummary(repositoryId).then((r) => live && setCompatibility(r), () => live && setCompatibility(null))
     listConversions(repositoryId).then((r) => live && setConversions(r), () => live && setConversions(null))
     listRepositoryExecutions(repositoryId).then((r) => live && setExecutions(r), () => live && setExecutions([]))
     getConversionScope(repositoryId).then((r) => live && setScope(r.totals), () => live && setScope(null))
@@ -78,10 +86,22 @@ export function useRepositorySummary(
       tone: breaking > 0 || num(s.vulnerableCount) > 0 ? 'amber' : undefined,
     }
   }
-  if (soap) {
-    // Counted by the server over every call, with the verdicts as they stand now (a runtime or Linux verdict asking for a change).
-    const change = soap.need_change
-    summary.soapCallsNeedingChange = { value: change, detail: `of ${soap.calls} SOAP call${soap.calls === 1 ? '' : 's'}`, tone: change > 0 ? 'amber' : undefined }
+  // A repository that is not moving from Windows to Linux has no Linux tab, so its Linux findings are not counted.
+  const linuxCounted = showLinux ? compatibility : null
+  if (soap === undefined || (showLinux && compatibility === undefined)) {
+    // The total is the sum of two reads: nothing is shown until both have come back (or failed).
+    summary.compatibilityIssues = { value: '', loading: true }
+  } else if (soap || linuxCounted) {
+    // Counted by the server, and the same numbers as the Compatibility tab's inner tabs (SOAP calls, and Linux
+    // findings when that tab is shown), so the total is what the tab shows. The tone says when a SOAP call needs change.
+    const soapChange = soap?.need_change ?? 0
+    const soapCalls = soap?.calls ?? 0
+    const linux = linuxCounted?.linux ?? 0
+    summary.compatibilityIssues = {
+      value: soapCalls + linux,
+      detail: showLinux ? `SOAP ${soapCalls} · Linux ${linux}` : `SOAP ${soapCalls}`,
+      tone: soapChange > 0 || (linuxCounted?.linux_blockers ?? 0) > 0 ? 'amber' : undefined,
+    }
   }
   if (conversions) {
     const newest = conversions.conversions[0]

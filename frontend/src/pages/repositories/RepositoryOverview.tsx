@@ -17,7 +17,7 @@ export function RepositoryOverview({ repo, summary, tiles, onOpenTab }: Overview
     { label: 'Work items', tab: 'work-list', figure: summary.workItems, awaiting: 'item-detection has not run' },
     { label: 'Request entry points', tab: 'surface', figure: summary.requestEntryPoints, awaiting: 'entry-point-inventory has not run' },
     { label: 'Dependencies needing change', tab: 'dependencies', figure: summary.dependenciesNeedingChange, awaiting: 'dependency-assessment has not run' },
-    { label: 'SOAP calls needing change', tab: 'surface', figure: summary.soapCallsNeedingChange, awaiting: 'no SOAP calls recorded' },
+    { label: 'Compatibility issues', tab: 'compatibility', figure: summary.compatibilityIssues, awaiting: 'the repository has not been scanned yet' },
     { label: 'Conversion', tab: 'conversion', figure: summary.conversion, awaiting: 'no conversion yet' },
     { label: 'Latest execution', tab: 'executions', figure: summary.latestExecution, awaiting: 'discovery has not run' },
   ]
@@ -53,9 +53,19 @@ export function RepositoryOverview({ repo, summary, tiles, onOpenTab }: Overview
             >
               <span className="block text-[11px] font-medium uppercase tracking-wide text-neutral-400">{label}</span>
               <span className="block truncate text-lg font-semibold text-neutral-900">
-                {figure ? figure.value : <span className="text-neutral-300">—</span>}
+                {figure?.loading ? (
+                  <span
+                    role="status"
+                    aria-label={`${label} loading`}
+                    className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-neutral-300 border-t-violet-600"
+                  />
+                ) : figure ? (
+                  figure.value
+                ) : (
+                  <span className="text-neutral-300">—</span>
+                )}
               </span>
-              <span className="block truncate text-xs text-neutral-500">{figure ? (figure.detail ?? ' ') : awaiting}</span>
+              <span className="block truncate text-xs text-neutral-500">{figure?.loading ? 'counting compatibility issues…' : figure ?(figure.detail ?? ' ') : awaiting}</span>
               <span className="mt-0.5 block text-[11px] text-violet-600">Open {tabLabel(tab)} →</span>
             </button>
           )
@@ -66,5 +76,5 @@ export function RepositoryOverview({ repo, summary, tiles, onOpenTab }: Overview
 }
 
 function tabLabel(tab: TabSlug): string {
-  return { 'work-list': 'Work list', surface: 'Surface', dependencies: 'Dependencies', conversion: 'Conversion', executions: 'Executions' }[tab as string] ?? tab
+  return { 'work-list': 'Work list', surface: 'Surface', compatibility: 'Compatibility', dependencies: 'Dependencies', conversion: 'Conversion', executions: 'Executions' }[tab as string] ?? tab
 }

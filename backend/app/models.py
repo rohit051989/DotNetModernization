@@ -850,6 +850,10 @@ class Repository(Base):
     technical_owner: Mapped[str | None] = mapped_column(Text)
     criticality: Mapped[str] = mapped_column(Text, nullable=False, server_default="medium")
     retirement_status: Mapped[str] = mapped_column(Text, nullable=False, server_default="active")
+    # Where the application is hosted now and where it is going (windows or linux); an admin sets them. The Linux
+    # compatibility list is shown only for windows to linux.
+    current_hosting_os: Mapped[str] = mapped_column(Text, nullable=False, server_default="windows")
+    target_hosting_os: Mapped[str] = mapped_column(Text, nullable=False, server_default="linux")
     tags: Mapped[list] = mapped_column(JSONB, nullable=False, server_default="[]")
     notes: Mapped[str | None] = mapped_column(Text)
 
@@ -907,6 +911,8 @@ class Repository(Base):
         CheckConstraint(
             f"retirement_status IN {RETIREMENT_STATUS}", name="ck_repositories_retirement_status"
         ),
+        CheckConstraint("current_hosting_os IN ('windows', 'linux')", name="ck_repositories_current_hosting_os"),
+        CheckConstraint("target_hosting_os IN ('windows', 'linux')", name="ck_repositories_target_hosting_os"),
         CheckConstraint(f"ingest_status IN {INGEST_STATUS}", name="ck_repositories_ingest_status"),
         CheckConstraint(
             f"source_status IS NULL OR source_status IN {SOURCE_STATUS}",

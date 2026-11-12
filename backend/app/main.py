@@ -31,6 +31,7 @@ from app.routers import (
     impact,
     impact_pages,
     item_decisions,
+    compatibility_pages,
     patterns,
     repositories,
     scope,
@@ -390,6 +391,7 @@ app.include_router(repositories.router)
 app.include_router(structure.router)
 app.include_router(surface.router)
 app.include_router(surface_pages.router)
+app.include_router(compatibility_pages.router)
 app.include_router(dashboard.router)
 app.include_router(estate.router)
 app.include_router(estate_pages.router)

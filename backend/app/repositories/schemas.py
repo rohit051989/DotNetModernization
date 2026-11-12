@@ -8,6 +8,11 @@ from app.workflow.runtime.schemas import JobExecutionOut
 
 Criticality = Literal["low", "medium", "high", "critical"]
 RetirementStatus = Literal["active", "slated_for_retirement", "decommissioned"]
+# Where a repository's application is hosted now and where it is going. The Compatibility tab shows its Linux list
+# only for a move from Windows to Linux. Only an admin sets them; everyone registers with these defaults.
+HostingOs = Literal["windows", "linux"]
+DEFAULT_CURRENT_HOSTING_OS: HostingOs = "windows"
+DEFAULT_TARGET_HOSTING_OS: HostingOs = "linux"
 CloneUrlVerification = Literal["verified", "mismatch", "unverifiable", "not_applicable"]
 IngestStatus = Literal["registered", "cloning", "scanned", "scan_failed", "path_missing"]
 SourceStatus = Literal["active", "archived", "disabled", "inaccessible"]
@@ -145,6 +150,12 @@ class RegisterLocalPathRequest(BaseModel):
     default_branch: str | None = Field(default=None, description="Detected or operator-supplied default branch.")
     tags: list[str] = Field(default_factory=list, description="Free-form labels for filtering.")
     notes: str | None = Field(default=None, description="Free text.")
+    current_hosting_os: HostingOs = Field(
+        default=DEFAULT_CURRENT_HOSTING_OS, description="Where the application is hosted today. Admin only: anyone else gets 403 for a value other than the default."
+    )
+    target_hosting_os: HostingOs = Field(
+        default=DEFAULT_TARGET_HOSTING_OS, description="Where it is going. Admin only: anyone else gets 403 for a value other than the default."
+    )
 
 
 class RegisterGitCloneRequest(BaseModel):
@@ -185,6 +196,12 @@ class RegisterGitCloneRequest(BaseModel):
     retirement_status: RetirementStatus = Field(default="active", description="Retirement status.")
     tags: list[str] = Field(default_factory=list, description="Free-form labels for filtering.")
     notes: str | None = Field(default=None, description="Free text.")
+    current_hosting_os: HostingOs = Field(
+        default=DEFAULT_CURRENT_HOSTING_OS, description="Where the application is hosted today. Admin only: anyone else gets 403 for a value other than the default."
+    )
+    target_hosting_os: HostingOs = Field(
+        default=DEFAULT_TARGET_HOSTING_OS, description="Where it is going. Admin only: anyone else gets 403 for a value other than the default."
+    )
 
 
 class InspectUrlRequest(BaseModel):
@@ -250,6 +267,8 @@ class RepositorySummary(BaseModel):
     provider: str | None = Field(description="Derived from the asserted clone URL's host.")
     criticality: Criticality = Field(description="Business criticality.")
     retirement_status: RetirementStatus = Field(description="'active', 'slated_for_retirement', or 'decommissioned'.")
+    current_hosting_os: HostingOs = Field(description="Where the application is hosted today.")
+    target_hosting_os: HostingOs = Field(description="Where it is going. The Linux compatibility list shows only for windows to linux.")
     ingest_status: IngestStatus = Field(description="'registered', 'scanned', 'scan_failed', or 'path_missing'.")
     has_git_history: bool = Field(description="Whether the folder had a .git directory at the last scan.")
     clone_url_verification: CloneUrlVerification = Field(description="Result of the last clone URL verification.")
@@ -343,6 +362,12 @@ class RepositoryUpdate(BaseModel):
     tags: list[str] = Field(default_factory=list, description="Free-form labels.")
     notes: str | None = Field(default=None, description="Free text.")
     default_branch: str | None = Field(default=None, description="Default branch.")
+    current_hosting_os: HostingOs | None = Field(
+        default=None, description="Where the application is hosted today. Null leaves it as it is. Admin only: anyone else gets 403 for a changed value."
+    )
+    target_hosting_os: HostingOs | None = Field(
+        default=None, description="Where it is going. Null leaves it as it is. Admin only: anyone else gets 403 for a changed value."
+    )
 
 
 class RepositorySoftDeleteResponse(BaseModel):
