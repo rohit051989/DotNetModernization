@@ -55,6 +55,7 @@ public sealed class WcfContractIndex
         }
 
         var hosting = WcfHostIndex.Build(projects, repository ?? RepositoryFiles.Empty);
+        var calledOnly = ClientSideContracts(projects, repository ?? RepositoryFiles.Empty);
         var services = new List<Service>();
         foreach (var contract in contracts)
         {
@@ -87,10 +88,12 @@ public sealed class WcfContractIndex
 
             if (candidates.Count == 0)
             {
-                if (clients.Count > 0)
+                if (clients.Count > 0 || calledOnly.Contains(contract.Type.Name))
                 {
-                    // Only proxies implement it: a client-side contract, an
-                    // outbound dependency (step 5), not an entry point.
+                    // Only proxies implement it, or the repository only calls
+                    // it (a ChannelFactory<T> in code, a <client> endpoint in
+                    // config): a client-side contract, an outbound dependency
+                    // (step 5), not an entry point.
                     continue;
                 }
 
@@ -125,6 +128,48 @@ public sealed class WcfContractIndex
 
         return new WcfContractIndex(services);
     }
+
+    private static readonly IReadOnlySet<string> ChannelFactories =
+        new HashSet<string>(StringComparer.Ordinal) { "ChannelFactory", "DuplexChannelFactory" };
+
+    /// <summary>Contracts the repository calls without a ClientBase proxy: the type argument of a
+    /// <c>ChannelFactory&lt;T&gt;</c> or <c>DuplexChannelFactory&lt;T&gt;</c> in code, and the contract of a
+    /// <c>&lt;client&gt;&lt;endpoint&gt;</c> in any app.config or web.config. Rightmost names, as written. Only
+    /// consulted for a contract no class implements, so a service that also calls itself stays a service.</summary>
+    private static HashSet<string> ClientSideContracts(IReadOnlyList<ProjectSource> projects, RepositoryFiles repository)
+    {
+        var names = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var generic in projects.SelectMany(p => p.Files).SelectMany(f => f.Root.DescendantNodes().OfType<GenericNameSyntax>()))
+        {
+            if (ChannelFactories.Contains(generic.Identifier.Text) && generic.TypeArgumentList.Arguments.Count == 1
+                && Rightmost(generic.TypeArgumentList.Arguments[0]) is { } name)
+            {
+                names.Add(name);
+            }
+        }
+
+        var configs = repository.Configs.Concat(projects.SelectMany(p => p.AuxiliaryFiles)
+            .Where(f => ConfigFile.IsConfigFileName(f.RelativePath))
+            .Select(f => ConfigFile.Parse(f.RelativePath, f.Text)));
+        foreach (var config in configs)
+        {
+            var endpoints = config.Document?.Root?.Element("system.serviceModel")?.Element("client")?.Elements("endpoint") ?? [];
+            foreach (var contract in endpoints.Select(e => (string?)e.Attribute("contract")).Where(c => !string.IsNullOrWhiteSpace(c)))
+            {
+                names.Add(contract!.Trim().Split('.')[^1]);
+            }
+        }
+
+        return names;
+    }
+
+    private static string? Rightmost(TypeSyntax type) => type switch
+    {
+        QualifiedNameSyntax qualified => qualified.Right.Identifier.Text,
+        AliasQualifiedNameSyntax alias => alias.Name.Identifier.Text,
+        SimpleNameSyntax simple => simple.Identifier.Text,
+        _ => null,
+    };
 
     private static bool IsOneWay(AttributeSyntax attribute) =>
         attribute.ArgumentList?.Arguments.Any(a =>

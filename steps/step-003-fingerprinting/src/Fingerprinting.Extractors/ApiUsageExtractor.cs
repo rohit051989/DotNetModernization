@@ -119,7 +119,22 @@ public sealed class ApiUsageExtractor : IFingerprintExtractor
     {
         "BasicHttpBinding", "BasicHttpsBinding", "NetHttpBinding", "NetHttpsBinding", "WSHttpBinding",
         "WS2007HttpBinding", "WSDualHttpBinding", "NetTcpBinding", "NetNamedPipeBinding", "CustomBinding",
+        // Registry 1.13.0: the .NET Framework-only non-HTTP bindings.
+        "NetMsmqBinding", "MsmqIntegrationBinding", "NetPeerTcpBinding",
     };
+
+    // Registry 1.13.0: the non-HTTP transports a CustomBinding is built on (System.ServiceModel.Channels, or
+    // CoreWCF.Channels). Recorded like a binding, as <namespace>.Channels.<type>.
+    private static readonly HashSet<string> WcfTransportElementTypes = new(StringComparer.Ordinal)
+    {
+        "TcpTransportBindingElement", "NamedPipeTransportBindingElement", "MsmqTransportBindingElement",
+        "PeerTransportBindingElement",
+    };
+
+    private static string? WcfBindingValue(string root, string typeName) =>
+        WcfBindingTypes.Contains(typeName) ? $"{root}.{typeName}"
+        : WcfTransportElementTypes.Contains(typeName) ? $"{root}.Channels.{typeName}"
+        : null;
 
     private static readonly string[] ConsoleTypeNames = ["Console", "System.Console"];
 
@@ -160,6 +175,9 @@ public sealed class ApiUsageExtractor : IFingerprintExtractor
             var importsDrawing = usings.Any(u => u == "System.Drawing" || u.StartsWith("System.Drawing.", StringComparison.Ordinal));
             var importsDirectory = usings.Any(u => u is "System.DirectoryServices" or "System.DirectoryServices.AccountManagement");
             var isWcfClientFile = IsWcfClientFile(root);
+            var isWcfHostFile = IsWcfHostFile(root);
+            var bindingNamespace = usings.Any(u => u == "CoreWCF" || u.StartsWith("CoreWCF.", StringComparison.Ordinal))
+                ? "CoreWCF" : "System.ServiceModel";
             var importsSpectre = usings.Any(u => u == "Spectre.Console");
             var importsSharprompt = usings.Any(u => u == "Sharprompt");
 
@@ -169,10 +187,10 @@ public sealed class ApiUsageExtractor : IFingerprintExtractor
                 {
                     if (isWcfClientFile && node is ObjectCreationExpressionSyntax { Type: var generatedBinding }
                         && RoslynNameHelpers.RightmostIdentifier(generatedBinding) is { } generatedName
-                        && WcfBindingTypes.Contains(generatedName))
+                        && WcfBindingValue("System.ServiceModel", generatedName) is { } generatedValue)
                     {
                         Add(accumulator, "WCF_CLIENT_BINDING_USAGE", SignalCategories.EndpointIndicator,
-                            $"System.ServiceModel.{generatedName}", file.RelativePath, node, NameOnly);
+                            generatedValue, file.RelativePath, node, NameOnly);
                     }
 
                     continue;
@@ -196,9 +214,20 @@ public sealed class ApiUsageExtractor : IFingerprintExtractor
                         break;
                     case ObjectCreationExpressionSyntax { Type: var bindingType }
                         when isWcfClientFile && RoslynNameHelpers.RightmostIdentifier(bindingType) is { } bindingName
-                             && WcfBindingTypes.Contains(bindingName):
+                             && WcfBindingValue("System.ServiceModel", bindingName) is { } bindingValue:
                         Add(accumulator, "WCF_CLIENT_BINDING_USAGE", SignalCategories.EndpointIndicator,
-                            $"System.ServiceModel.{bindingName}", file.RelativePath, node, NameOnly);
+                            bindingValue, file.RelativePath, node, NameOnly);
+                        break;
+                    case ObjectCreationExpressionSyntax { Type: var serviceBinding }
+                        when isWcfHostFile && RoslynNameHelpers.RightmostIdentifier(serviceBinding) is { } serviceBindingName
+                             && WcfBindingValue(
+                                 serviceBinding.ToString().StartsWith("CoreWCF.", StringComparison.Ordinal) ? "CoreWCF"
+                                 : serviceBinding.ToString().StartsWith("System.ServiceModel.", StringComparison.Ordinal) ? "System.ServiceModel"
+                                 : bindingNamespace, serviceBindingName) is { } serviceBindingValue:
+                        // Registry 1.13.0: a binding (or a CustomBinding's transport) constructed where a service is
+                        // hosted (ServiceHost, AddServiceEndpoint, CoreWCF's service builder) is the service's binding.
+                        Add(accumulator, "WCF_SERVICE_BINDING_USAGE", SignalCategories.EndpointIndicator,
+                            serviceBindingValue, file.RelativePath, node, NameOnly);
                         break;
                     case ObjectCreationExpressionSyntax { Type: var created }
                         when RoslynNameHelpers.RightmostIdentifier(created) == "ProcessStartInfo":
@@ -391,19 +420,29 @@ public sealed class ApiUsageExtractor : IFingerprintExtractor
     /// </summary>
     private static bool IsWcfClientFile(SyntaxNode root)
     {
-        var hosts = root.DescendantNodes().OfType<IdentifierNameSyntax>()
-            .Any(i => i.Identifier.Text is "ServiceHost" or "AddServiceEndpoint");
-        if (hosts)
+        if (IsWcfHostFile(root))
         {
             return false;
         }
 
         var derivesClientBase = root.DescendantNodes().OfType<BaseTypeSyntax>()
             .Any(b => RoslynNameHelpers.RightmostIdentifier(b.Type) is "ClientBase" or "DuplexClientBase");
-        var createsFactory = root.DescendantNodes().OfType<ObjectCreationExpressionSyntax>()
-            .Any(o => RoslynNameHelpers.RightmostIdentifier(o.Type) is "ChannelFactory" or "DuplexChannelFactory");
+        // Registry 1.13.0: also a factory created target-typed — ChannelFactory<T> _factory = new(binding, address) —
+        // so any use of the generic ChannelFactory<T> / DuplexChannelFactory<T> type counts, not only `new ChannelFactory<T>(...)`.
+        var createsFactory = root.DescendantNodes().OfType<GenericNameSyntax>()
+            .Any(g => g.Identifier.Text is "ChannelFactory" or "DuplexChannelFactory");
         return derivesClientBase || createsFactory;
     }
+
+    /// <summary>
+    /// Registry 1.13.0: a file that hosts a WCF service — it mentions <c>ServiceHost</c> or
+    /// <c>AddServiceEndpoint</c> (System.ServiceModel self-hosting, and CoreWCF's
+    /// <c>serviceBuilder.AddServiceEndpoint&lt;TService, TContract&gt;(binding, path)</c>). A binding
+    /// constructed there is the service's binding (WCF_SERVICE_BINDING_USAGE).
+    /// </summary>
+    private static bool IsWcfHostFile(SyntaxNode root) =>
+        root.DescendantNodes().OfType<SimpleNameSyntax>()
+            .Any(i => i.Identifier.Text is "ServiceHost" or "AddServiceEndpoint");
 
     /// <summary>The method, constructor, property or local function a node
     /// sits in — the caller, for evidence. Null at type or file level.</summary>

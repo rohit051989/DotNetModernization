@@ -32,8 +32,10 @@ public sealed class FingerprintPipeline(SignalRegistry registry, IReadOnlyList<I
     // parallel, bounded; a time limit per project, over which it is recorded FAILED with
     // NOT_CHECKED and the reason; progress, a timing profile, and finished projects kept so
     // a rerun continues from there.
+    // 1.8.0 (registry 1.13.0): WCF_SERVICE_BINDING_CONFIG and WCF_SERVICE_BINDING_USAGE, the binding a WCF
+    // service is exposed on; WCF_CLIENT_BINDING_USAGE also recognises the MSMQ and peer bindings.
     // Matches the application-fingerprinting step registration version.
-    public const string ScannerVersion = "1.7.0";
+    public const string ScannerVersion = "1.8.0";
 
     // The registry is the single source of truth for evidence_kind per
     // signal name (25-STANDARDS-AND-VIEWPOINTS.md Part A3 addendum) —
