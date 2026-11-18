@@ -161,18 +161,39 @@ public sealed class ConfigurationExtractor : IFingerprintExtractor
         // own (WCF_CLIENT_BINDING_CONFIG, registry 1.5.0) — "a client calling
         // over netTcpBinding" is then one condition, and a NetTcp *service*
         // beside an HTTP client no longer looks like a NetTcp client.
+        // Registry 1.13.0: a <customBinding> configuration whose transport is not HTTP. An endpoint on it records
+        // customBinding:<transport> (customBinding:tcpTransport ...) as its client or service binding, since
+        // "customBinding" alone says nothing about the transport.
+        var customTransports = CustomBindingTransports(root);
+
         foreach (var endpoint in root.Descendants().Where(e => e.Name.LocalName == "endpoint"))
         {
             var contract = (string?)endpoint.Attribute("contract");
             var binding = (string?)endpoint.Attribute("binding");
+            var sideBinding = binding;
+            if (string.Equals(binding, "customBinding", StringComparison.Ordinal)
+                && customTransports.TryGetValue((string?)endpoint.Attribute("bindingConfiguration") ?? "", out var transport))
+            {
+                sideBinding = $"customBinding:{transport}";
+            }
             var lineInfo = (IXmlLineInfo)endpoint;
             var ancestors = endpoint.Ancestors().Select(a => a.Name.LocalName).ToList();
 
-            if (!string.IsNullOrEmpty(binding) && ancestors.Contains("client"))
+            if (!string.IsNullOrEmpty(sideBinding) && ancestors.Contains("client"))
             {
                 accumulator.Add(
                     "WCF_CLIENT_BINDING_CONFIG", SignalCategories.EndpointIndicator, SignalTypes.ConfigElement,
-                    binding, EvidenceSourceTypes.Configuration, relativePath, ExtractorName,
+                    sideBinding, EvidenceSourceTypes.Configuration, relativePath, ExtractorName,
+                    evidence: LineEvidence(lineInfo, endpoint));
+            }
+
+            // Registry 1.13.0: a service endpoint's binding on its own, the counterpart of
+            // WCF_CLIENT_BINDING_CONFIG — "a service exposed over netTcpBinding".
+            if (!string.IsNullOrEmpty(sideBinding) && ancestors.Contains("services"))
+            {
+                accumulator.Add(
+                    "WCF_SERVICE_BINDING_CONFIG", SignalCategories.EndpointIndicator, SignalTypes.ConfigElement,
+                    sideBinding, EvidenceSourceTypes.Configuration, relativePath, ExtractorName,
                     evidence: LineEvidence(lineInfo, endpoint));
             }
 
@@ -200,6 +221,47 @@ public sealed class ConfigurationExtractor : IFingerprintExtractor
                     "WCF_BINDING_CONFIG", SignalCategories.EndpointIndicator, SignalTypes.ConfigElement,
                     binding, EvidenceSourceTypes.Configuration, relativePath, ExtractorName,
                     evidence: LineEvidence(lineInfo, endpoint));
+            }
+        }
+
+        // Registry 1.13.0: default endpoints. A <service> with no <endpoint> of its own gets one per base address
+        // (WCF 4), on the binding <protocolMapping> gives the address's scheme; net.tcp, net.pipe and net.msmq map
+        // to netTcpBinding, netNamedPipeBinding and netMsmqBinding unless the file maps them otherwise. Only the
+        // non-HTTP schemes are recorded: an HTTP default endpoint is not what this signal is read for.
+        var protocolMapping = new Dictionary<string, string>(DefaultProtocolMapping, StringComparer.OrdinalIgnoreCase);
+        foreach (var add in root.Descendants().Where(e => e.Name.LocalName == "protocolMapping")
+                     .SelectMany(m => m.Elements().Where(e => e.Name.LocalName == "add")))
+        {
+            if ((string?)add.Attribute("scheme") is { Length: > 0 } scheme && (string?)add.Attribute("binding") is { Length: > 0 } mapped)
+            {
+                var mappedTransport = string.Equals(mapped, "customBinding", StringComparison.Ordinal)
+                    && customTransports.TryGetValue((string?)add.Attribute("bindingConfiguration") ?? "", out var t) ? t : null;
+                protocolMapping[scheme] = mappedTransport is null ? mapped : $"customBinding:{mappedTransport}";
+            }
+        }
+
+        foreach (var service in root.Descendants().Where(e => e.Name.LocalName == "service" && e.Parent?.Name.LocalName == "services"))
+        {
+            if (service.Elements().Any(e => e.Name.LocalName == "endpoint"))
+            {
+                continue;
+            }
+
+            foreach (var baseAddress in service.Elements().Where(e => e.Name.LocalName == "host")
+                         .SelectMany(h => h.Elements().Where(e => e.Name.LocalName == "baseAddresses"))
+                         .SelectMany(b => b.Elements().Where(e => e.Name.LocalName == "add")))
+            {
+                var address = (string?)baseAddress.Attribute("baseAddress") ?? "";
+                var schemeEnd = address.IndexOf("://", StringComparison.Ordinal);
+                if (schemeEnd <= 0 || !DefaultProtocolMapping.ContainsKey(address[..schemeEnd]))
+                {
+                    continue;
+                }
+
+                accumulator.Add(
+                    "WCF_SERVICE_BINDING_CONFIG", SignalCategories.EndpointIndicator, SignalTypes.ConfigElement,
+                    protocolMapping[address[..schemeEnd]], EvidenceSourceTypes.Configuration, relativePath, ExtractorName,
+                    evidence: LineEvidence((IXmlLineInfo)baseAddress, baseAddress));
             }
         }
 
@@ -469,5 +531,37 @@ public sealed class ConfigurationExtractor : IFingerprintExtractor
                 "VAULT_CONFIG", SignalCategories.ConfigurationIndicator, SignalTypes.ConfigElement,
                 keyPath, EvidenceSourceTypes.Configuration, relativePath, ExtractorName, HeuristicConfidence, evidence);
         }
+    }
+    /// <summary>Registry 1.13.0: WCF 4's default protocol mapping for the non-HTTP schemes.</summary>
+    private static readonly IReadOnlyDictionary<string, string> DefaultProtocolMapping =
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["net.tcp"] = "netTcpBinding",
+            ["net.pipe"] = "netNamedPipeBinding",
+            ["net.msmq"] = "netMsmqBinding",
+        };
+
+    /// <summary>Registry 1.13.0: the transport elements a &lt;customBinding&gt; can be built on that are not HTTP.</summary>
+    private static readonly HashSet<string> NonHttpTransports = new(StringComparer.Ordinal)
+    {
+        "tcpTransport", "namedPipeTransport", "msmqTransport", "msmqIntegration", "peerTransport",
+    };
+
+    /// <summary>Each named &lt;customBinding&gt; configuration built on a non-HTTP transport, by its name ("" for the
+    /// unnamed default configuration).</summary>
+    private static Dictionary<string, string> CustomBindingTransports(XElement root)
+    {
+        var transports = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var binding in root.Descendants().Where(e => e.Name.LocalName == "customBinding")
+                     .SelectMany(cb => cb.Elements().Where(e => e.Name.LocalName == "binding")))
+        {
+            var transport = binding.Elements().Select(e => e.Name.LocalName).FirstOrDefault(NonHttpTransports.Contains);
+            if (transport is not null)
+            {
+                transports.TryAdd((string?)binding.Attribute("name") ?? "", transport);
+            }
+        }
+
+        return transports;
     }
 }

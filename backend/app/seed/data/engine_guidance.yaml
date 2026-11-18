@@ -24,7 +24,8 @@
 # aspnet-webforms, container-fixed-user-writable-path, directory-services-usage,
 # encoding-default, fx-aspnet-mvc, fx47-class-library, interactive-console-tool,
 # missing-dockerfile, modern-worker-service, msmq-usage, package-not-approved, registry-access,
-# ssis-package, system-drawing-common, wcf-nettcp-client, wcf-service, wcf-service-host,
+# ssis-package, system-drawing-common, wcf-nettcp-client, wcf-non-http-client-binding,
+# wcf-non-http-service-binding, wcf-service, wcf-service-host,
 # windows-service, windows-service-hosting, winforms-desktop, wpf-desktop.
 
 items:

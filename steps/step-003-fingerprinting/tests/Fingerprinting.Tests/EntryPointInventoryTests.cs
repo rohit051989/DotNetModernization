@@ -564,6 +564,61 @@ public class EntryPointInventoryTests
     }
 
     [Fact]
+    public void A_contract_only_called_through_a_ChannelFactory_or_a_client_endpoint_is_not_an_entry_point()
+    {
+        // 2.5.0: no ClientBase proxy, but the repository only calls these contracts.
+        var entries = Detect(new()
+        {
+            ["src/Client/Contracts.cs"] = """
+                namespace Shop.Client
+                {
+                    [ServiceContract] public interface ICarrier { [OperationContract] string Book(string id); }
+                    [ServiceContract] public interface IReporting { [OperationContract] void Record(string line); }
+                    [ServiceContract] public interface IWarehouse { [OperationContract] int Reserve(string sku); }
+                    [ServiceContract] public interface IOrders { [OperationContract] string Get(int id); }
+                }
+                """,
+            ["src/Client/Program.cs"] = """
+                namespace Shop.Client
+                {
+                    public static class Program
+                    {
+                        public static void Main()
+                        {
+                            var carrier = new ChannelFactory<ICarrier>("Carrier").CreateChannel();
+                            System.ServiceModel.DuplexChannelFactory<Shop.Client.IReporting> reporting = null;
+                        }
+                    }
+                }
+                """,
+        }, "src/Client/Client.csproj", auxiliary:
+        [
+            ("src/Client/App.config", """
+                <configuration><system.serviceModel><client>
+                  <endpoint name="Warehouse" address="net.pipe://localhost/warehouse" binding="netNamedPipeBinding" contract="Shop.Client.IWarehouse" />
+                </client></system.serviceModel></configuration>
+                """),
+        ]);
+
+        // Only IOrders, which nothing calls or implements, stays an (uncertain) service.
+        Assert.Equal(["IOrders"], entries.Where(e => e.Kind == EntryPointKinds.WcfOperation).Select(e => e.Wcf!.Contract).Distinct().ToList());
+    }
+
+    [Fact]
+    public void A_service_that_also_calls_itself_through_a_ChannelFactory_stays_a_service()
+    {
+        var entries = Detect(new()
+        {
+            ["src/Svc/IOrders.cs"] = "[ServiceContract] public interface IOrders { [OperationContract] string Get(int id); }",
+            ["src/Svc/Orders.cs"] = "public class Orders : IOrders { public string Get(int id) => null; }",
+            ["src/Svc/SelfTest.cs"] = "public static class SelfTest { static ChannelFactory<IOrders> Factory = null; }",
+        }, "src/Svc/Svc.csproj");
+
+        var entry = Assert.Single(entries, e => e.Kind == EntryPointKinds.WcfOperation);
+        Assert.Equal("Orders", entry.Wcf!.Implementation);
+    }
+
+    [Fact]
     public void gRPC_overrides_carry_the_proto_full_method_name()
     {
         var entry = Assert.Single(Detect(new()

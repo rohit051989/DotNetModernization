@@ -552,7 +552,8 @@ class AuthoredItemTests(unittest.TestCase):
     }
     ABSENCE = {"missing-dockerfile", "missing-health-endpoint", "missing-ocp4-manifests"}
     HOSTING = {"windows-service-hosting", "modern-worker-service", "wcf-service-host", "interactive-console-tool"}
-    APPLICATION_WORK = {"wcf-nettcp-client", "msmq-usage", "asmx-service", "wcf-service"}
+    APPLICATION_WORK = {"wcf-nettcp-client", "msmq-usage", "asmx-service", "wcf-service",
+                        "wcf-non-http-client-binding", "wcf-non-http-service-binding"}   # registry 1.13.0
     # Generic, parameterised by package (30-DEPENDENCY-ASSESSMENT Part D2); signals from step 6.
     PACKAGE = {
         "package-upgrade-safe", "package-upgrade-breaking", "package-replacement-required",
@@ -820,10 +821,12 @@ class AuthoredItemTests(unittest.TestCase):
         match = detection["match"]
         self.assertEqual(set(match), {"any"}, "the proof below assumes an any-only match")
 
-        conditions = {(c["signal"]["name"], c["signal"]["value"]["equals"]) for c in match["any"]}
+        conditions = {(c["signal"]["name"], value) for c in match["any"] for value in c["signal"]["value"]["in"]}
         self.assertEqual(conditions, {
             ("WCF_CLIENT_BINDING_CONFIG", "netTcpBinding"),
+            ("WCF_CLIENT_BINDING_CONFIG", "customBinding:tcpTransport"),   # registry 1.13.0
             ("WCF_CLIENT_BINDING_USAGE", "System.ServiceModel.NetTcpBinding"),
+            ("WCF_CLIENT_BINDING_USAGE", "System.ServiceModel.Channels.TcpTransportBindingElement"),
         })
 
         nettcp_service_http_client = {
@@ -832,6 +835,7 @@ class AuthoredItemTests(unittest.TestCase):
             ("WCF_BINDING_CONFIG", "basicHttpBinding"),
             ("WCF_CLIENT_ENDPOINT_CONFIG", "ILedger"),
             ("WCF_CLIENT_BINDING_CONFIG", "basicHttpBinding"),
+            ("WCF_SERVICE_BINDING_CONFIG", "netTcpBinding"),   # registry 1.13.0
             # svcutil adds the NetTcp package to every client: must not count.
             ("WCF_CLIENT_PACKAGE", "System.ServiceModel.NetTcp"),
         }
@@ -839,6 +843,46 @@ class AuthoredItemTests(unittest.TestCase):
 
         nettcp_client = {("WCF_CLIENT_BINDING_CONFIG", "netTcpBinding")}
         self.assertTrue(conditions & nettcp_client)
+        self.assertTrue(conditions & {("WCF_CLIENT_BINDING_CONFIG", "customBinding:tcpTransport")})
+
+    def test_non_http_binding_items_split_client_and_service_and_leave_nettcp_clients_to_their_own_item(self):
+        """Registry 1.13.0: every non-HTTP binding raises a work item. A client over named pipes, MSMQ or peer
+        channel is wcf-non-http-client-binding (a NetTcp client stays wcf-nettcp-client); a service exposed over
+        any non-HTTP binding is wcf-non-http-service-binding. HTTP bindings raise neither."""
+        from app.items.evaluation import matches_value
+
+        items = self._items()
+
+        def matched(item_id, emitted):
+            return any(c["signal"]["name"] == name and matches_value(c["signal"]["value"], value)
+                       for c in items[item_id]["detection"]["match"]["any"] for name, value in emitted)
+
+        for item_id in ("wcf-non-http-client-binding", "wcf-non-http-service-binding"):
+            self.assertEqual(set(items[item_id]["detection"]["match"]), {"any"})
+
+        client, service = "wcf-non-http-client-binding", "wcf-non-http-service-binding"
+        for emitted, expected in (
+            ({("WCF_CLIENT_BINDING_CONFIG", "netNamedPipeBinding")}, {client}),
+            ({("WCF_CLIENT_BINDING_CONFIG", "netMsmqBinding")}, {client}),
+            ({("WCF_CLIENT_BINDING_USAGE", "System.ServiceModel.NetNamedPipeBinding")}, {client}),
+            ({("WCF_CLIENT_BINDING_CONFIG", "netTcpBinding")}, set()),   # wcf-nettcp-client's
+            ({("WCF_CLIENT_BINDING_CONFIG", "customBinding:tcpTransport")}, set()),   # wcf-nettcp-client's too
+            ({("WCF_CLIENT_BINDING_CONFIG", "customBinding:namedPipeTransport")}, {client}),
+            ({("WCF_CLIENT_BINDING_USAGE", "System.ServiceModel.Channels.MsmqTransportBindingElement")}, {client}),
+            ({("WCF_SERVICE_BINDING_CONFIG", "customBinding:tcpTransport")}, {service}),
+            ({("WCF_SERVICE_BINDING_USAGE", "CoreWCF.Channels.TcpTransportBindingElement")}, {service}),
+            ({("WCF_CLIENT_BINDING_CONFIG", "customBinding")}, set()),   # an HTTP customBinding
+            ({("WCF_SERVICE_BINDING_CONFIG", "netTcpBinding")}, {service}),
+            ({("WCF_SERVICE_BINDING_CONFIG", "msmqIntegrationBinding")}, {service}),
+            ({("WCF_SERVICE_BINDING_USAGE", "CoreWCF.NetTcpBinding")}, {service}),
+            ({("WCF_SERVICE_BINDING_USAGE", "System.ServiceModel.NetNamedPipeBinding")}, {service}),
+            ({("WCF_SERVICE_BINDING_CONFIG", "basicHttpBinding"), ("WCF_CLIENT_BINDING_CONFIG", "wsHttpBinding"),
+              ("WCF_SERVICE_BINDING_USAGE", "CoreWCF.BasicHttpBinding"),
+              ("WCF_CLIENT_BINDING_USAGE", "System.ServiceModel.BasicHttpsBinding"),
+              ("WCF_BINDING_CONFIG", "netTcpBinding")}, set()),
+        ):
+            with self.subTest(emitted=emitted):
+                self.assertEqual({i for i in (client, service) if matched(i, emitted)}, expected)
 
     def test_conversion_ordering_is_recorded_on_both_sides(self):
         items = self._items()

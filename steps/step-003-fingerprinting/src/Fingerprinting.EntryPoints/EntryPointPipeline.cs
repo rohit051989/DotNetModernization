@@ -33,7 +33,10 @@ public sealed class EntryPointPipeline
     /// <summary>Matches the entry-point-inventory step registration version. 2.4.0 (release 5): each project's own
     /// files only (a nested project's are its own); projects loaded in parallel, bounded, each within a time limit,
     /// over which it is recorded NOT_CHECKED with the reason; progress and a timing profile. Artifact unchanged.</summary>
-    public const string ScannerVersion = "2.4.0";
+    /// 2.5.0: a [ServiceContract] no class implements, that the repository only calls (a ChannelFactory&lt;T&gt; in code,
+    /// a &lt;client&gt; endpoint in config), is a client-side contract, not an entry point — like one only ClientBase
+    /// proxies implement.
+    public const string ScannerVersion = "2.5.0";
 
     private static readonly IReadOnlyList<IEntryPointDetector> Detectors =
     [

@@ -336,6 +336,7 @@ public sealed class ExtractorBatch2Tests
         Assert.Equal(["ILedger"], Values(signals, "WCF_CLIENT_ENDPOINT_CONFIG"));
         Assert.Equal(["basicHttpBinding", "netTcpBinding"], Values(signals, "WCF_BINDING_CONFIG"));
         Assert.Equal(["netTcpBinding"], Values(signals, "WCF_CLIENT_BINDING_CONFIG"));
+        Assert.Equal(["basicHttpBinding"], Values(signals, "WCF_SERVICE_BINDING_CONFIG"));   // registry 1.13.0
     }
 
     [Fact]
@@ -358,6 +359,114 @@ public sealed class ExtractorBatch2Tests
 
         Assert.Contains("netTcpBinding", Values(signals, "WCF_BINDING_CONFIG"));
         Assert.Equal(["basicHttpBinding"], Values(signals, "WCF_CLIENT_BINDING_CONFIG"));
+        Assert.Equal(["netTcpBinding"], Values(signals, "WCF_SERVICE_BINDING_CONFIG"));   // registry 1.13.0
+    }
+
+    [Fact]
+    public async Task Config_CustomBindingOnANonHttpTransport_RecordsItsTransport()
+    {
+        // Registry 1.13.0: "customBinding" alone says nothing about the transport.
+        using var repo = new TempRepo();
+        repo.Write("app.config", """
+            <configuration>
+              <system.serviceModel>
+                <bindings>
+                  <customBinding>
+                    <binding name="TcpBinary"><binaryMessageEncoding /><tcpTransport /></binding>
+                    <binding name="PipeBinary"><binaryMessageEncoding /><namedPipeTransport /></binding>
+                    <binding name="HttpsText"><textMessageEncoding /><httpsTransport /></binding>
+                  </customBinding>
+                </bindings>
+                <services>
+                  <service name="Orders"><endpoint contract="IOrders" binding="customBinding" bindingConfiguration="PipeBinary" /></service>
+                </services>
+                <client>
+                  <endpoint name="Ledger" contract="ILedger" binding="customBinding" bindingConfiguration="TcpBinary" address="net.tcp://ledger/svc" />
+                  <endpoint name="Audit" contract="IAudit" binding="customBinding" bindingConfiguration="HttpsText" address="https://audit/svc" />
+                </client>
+              </system.serviceModel>
+            </configuration>
+            """);
+
+        var signals = await Extract(new ConfigurationExtractor(), repo);
+
+        Assert.Equal(["customBinding", "customBinding:tcpTransport"], Values(signals, "WCF_CLIENT_BINDING_CONFIG"));
+        Assert.Equal(["customBinding:namedPipeTransport"], Values(signals, "WCF_SERVICE_BINDING_CONFIG"));
+        Assert.Equal(["customBinding"], Values(signals, "WCF_BINDING_CONFIG"));   // unchanged: the declared binding
+    }
+
+    [Fact]
+    public async Task Config_DefaultEndpoints_FromNonHttpBaseAddresses_AndProtocolMapping()
+    {
+        // Registry 1.13.0: a <service> with no endpoint of its own gets one per base address (WCF 4).
+        using var repo = new TempRepo();
+        repo.Write("web.config", """
+            <configuration>
+              <system.serviceModel>
+                <protocolMapping><add scheme="net.pipe" binding="customBinding" bindingConfiguration="Pipe" /></protocolMapping>
+                <bindings><customBinding><binding name="Pipe"><namedPipeTransport /></binding></customBinding></bindings>
+                <services>
+                  <service name="Defaults">
+                    <host><baseAddresses>
+                      <add baseAddress="net.tcp://localhost:808/defaults" />
+                      <add baseAddress="net.pipe://localhost/defaults" />
+                      <add baseAddress="http://localhost/defaults" />
+                    </baseAddresses></host>
+                  </service>
+                  <service name="Explicit">
+                    <host><baseAddresses><add baseAddress="net.msmq://localhost/private/explicit" /></baseAddresses></host>
+                    <endpoint address="" contract="IExplicit" binding="basicHttpBinding" />
+                  </service>
+                </services>
+              </system.serviceModel>
+            </configuration>
+            """);
+
+        var signals = await Extract(new ConfigurationExtractor(), repo);
+
+        // The explicit service's net.msmq base address is not used by its HTTP endpoint: not a default endpoint.
+        Assert.Equal(["basicHttpBinding", "customBinding:namedPipeTransport", "netTcpBinding"], Values(signals, "WCF_SERVICE_BINDING_CONFIG"));
+    }
+
+    [Fact]
+    public async Task ApiUsage_CustomBindingTransportElements_OnBothSides()
+    {
+        using var repo = new TempRepo();
+        repo.Write("Client.cs", """
+            using System.ServiceModel;
+            using System.ServiceModel.Channels;
+            class Client
+            {
+                ILedger Open() => new ChannelFactory<ILedger>(
+                    new CustomBinding(new BinaryMessageEncodingBindingElement(), new TcpTransportBindingElement()),
+                    "net.tcp://ledger/svc").CreateChannel();
+            }
+            """);
+        // A factory created target-typed is still a client file.
+        repo.Write("Reporting.cs", """
+            using System.ServiceModel;
+            sealed class Reporting
+            {
+                private readonly ChannelFactory<IReporting> _factory = new(new NetNamedPipeBinding(), new EndpointAddress("net.pipe://localhost/r"));
+            }
+            """);
+        repo.Write("Program.cs", """
+            using CoreWCF;
+            using CoreWCF.Channels;
+            using CoreWCF.Configuration;
+            var app = WebApplication.CreateBuilder(args).Build();
+            app.UseServiceModel(sb => sb.AddServiceEndpoint<Orders, IOrders>(
+                new CustomBinding(new BinaryMessageEncodingBindingElement(), new NamedPipeTransportBindingElement()), "/orders"));
+            app.Run();
+            """);
+
+        var signals = await Extract(new ApiUsageExtractor(), repo);
+
+        Assert.Equal(["System.ServiceModel.Channels.TcpTransportBindingElement", "System.ServiceModel.CustomBinding",
+                "System.ServiceModel.NetNamedPipeBinding"],
+            Values(signals, "WCF_CLIENT_BINDING_USAGE"));
+        Assert.Equal(["CoreWCF.Channels.NamedPipeTransportBindingElement", "CoreWCF.CustomBinding"],
+            Values(signals, "WCF_SERVICE_BINDING_USAGE"));
     }
 
     [Fact]
@@ -397,6 +506,59 @@ public sealed class ExtractorBatch2Tests
         Assert.Equal(
             ["Audit.cs System.ServiceModel.NetTcpBinding", "Reference.cs System.ServiceModel.BasicHttpBinding"],
             bindings);
+        // Registry 1.13.0: the self-hosted service's binding is the service's.
+        Assert.Equal(["Host.cs System.ServiceModel.NetTcpBinding"], signals.Where(s => s.Name == "WCF_SERVICE_BINDING_USAGE")
+            .Select(s => $"{s.SourcePath} {s.Value}").ToList());
+    }
+
+    [Fact]
+    public async Task ApiUsage_WcfServiceBinding_CoreWcfServiceBuilderAndLegacyNonHttpBindings()
+    {
+        using var repo = new TempRepo();
+        // CoreWCF on .NET: the generic AddServiceEndpoint<TService, TContract> on the service builder.
+        repo.Write("Program.cs", """
+            using CoreWCF;
+            using CoreWCF.Configuration;
+            var builder = WebApplication.CreateBuilder(args);
+            builder.WebHost.UseNetTcp(8089);
+            var app = builder.Build();
+            app.UseServiceModel(sb =>
+            {
+                sb.AddService<Orders>();
+                sb.AddServiceEndpoint<Orders, IOrders>(new NetTcpBinding(), "/orders");
+                sb.AddServiceEndpoint<Orders, IOrders>(new BasicHttpBinding(), "/orders.svc");
+            });
+            app.Run();
+            """);
+        // .NET Framework self-host over named pipes and MSMQ.
+        repo.Write("Host.cs", """
+            class Host
+            {
+                void Start()
+                {
+                    var host = new System.ServiceModel.ServiceHost(typeof(Ledger));
+                    host.AddServiceEndpoint(typeof(ILedger), new System.ServiceModel.NetNamedPipeBinding(), "net.pipe://localhost/ledger");
+                    host.AddServiceEndpoint(typeof(ILedger), new NetMsmqBinding(), "net.msmq://localhost/private/ledger");
+                }
+            }
+            """);
+        // A queued client: MSMQ binding on the client side.
+        repo.Write("Queue.cs", """
+            class Queue
+            {
+                ILedger Open() => new ChannelFactory<ILedger>(new NetMsmqBinding(), "net.msmq://ledger/private/q").CreateChannel();
+            }
+            """);
+
+        var signals = await Extract(new ApiUsageExtractor(), repo);
+
+        Assert.Equal(
+            ["Host.cs System.ServiceModel.NetMsmqBinding", "Host.cs System.ServiceModel.NetNamedPipeBinding",
+             "Program.cs CoreWCF.BasicHttpBinding", "Program.cs CoreWCF.NetTcpBinding"],
+            signals.Where(s => s.Name == "WCF_SERVICE_BINDING_USAGE").Select(s => $"{s.SourcePath} {s.Value}")
+                .OrderBy(v => v, StringComparer.Ordinal).ToList());
+        Assert.Equal(["Queue.cs System.ServiceModel.NetMsmqBinding"],
+            signals.Where(s => s.Name == "WCF_CLIENT_BINDING_USAGE").Select(s => $"{s.SourcePath} {s.Value}").ToList());
     }
 
     [Fact]
@@ -484,15 +646,18 @@ public sealed class ExtractorBatch2Tests
         // + 1.10.0 AMBIGUOUS_TOP_LEVEL_PROGRAM_ON_NET10, a framework delta from step 4
         // + 1.11.0 TARGET_FRAMEWORK_BELOW_ENGAGEMENT_TARGET and PACKAGE_PROVIDED_BY_FRAMEWORK (step 6),
         //   USE_IIS_INVOCATION, ASPNETCORE_HOSTING_MODEL and the three CONTAINER_* signals
-        // + 1.12.0 VAULT_SECRET_REFERENCE, CONFIG_FILE_UNPARSEABLE, CUSTOM_FILE_LOGGER_PROVIDER, WINDOWS_BUILD_PIPELINE.
-        Assert.Equal("1.12.0", registry.RegistryVersion);
-        Assert.Equal(149, registry.Entries.Count);
+        // + 1.12.0 VAULT_SECRET_REFERENCE, CONFIG_FILE_UNPARSEABLE, CUSTOM_FILE_LOGGER_PROVIDER, WINDOWS_BUILD_PIPELINE
+        // + 1.13.0 WCF_SERVICE_BINDING_CONFIG and WCF_SERVICE_BINDING_USAGE.
+        Assert.Equal("1.13.0", registry.RegistryVersion);
+        Assert.Equal(151, registry.Entries.Count);
+        Assert.Contains(registry.Entries, e => e.Name == "WCF_SERVICE_BINDING_CONFIG" && e.Extractor == ConfigurationExtractor.ExtractorName);
+        Assert.Contains(registry.Entries, e => e.Name == "WCF_SERVICE_BINDING_USAGE" && e.Extractor == ApiUsageExtractor.ExtractorName);
         Assert.Contains(registry.Entries, e => e.Name == FileLoggerProviderExtractor.CustomFileLoggerProvider && e.Extractor == FileLoggerProviderExtractor.ExtractorName);
         Assert.Contains(registry.Entries, e => e.Name == WindowsBuild.WindowsBuildPipeline && e.Extractor == FileIndicatorExtractor.ExtractorName);
         Assert.Equal(8, registry.Entries.Count(e => e.Extractor == "EntryPointInventory"));
         Assert.Equal(7, registry.Entries.Count(e => e.Extractor == "DependencyAssessment" && e.Category == SignalCategories.PackageDependency));
         Assert.Contains(registry.Entries, e => e.Name == "WCF_CLIENT_BINDING_CONFIG" && e.Extractor == ConfigurationExtractor.ExtractorName);
-        Assert.Equal(13, registry.Entries.Count(e => e.Extractor == ApiUsageExtractor.ExtractorName));
+        Assert.Equal(14, registry.Entries.Count(e => e.Extractor == ApiUsageExtractor.ExtractorName));
         Assert.Equal(3, registry.Entries.Count(e => e.Name.StartsWith("CONTAINER_") && e.Extractor == FileIndicatorExtractor.ExtractorName));
         Assert.Contains(registry.Entries, e => e.Name == IisHostingExtractor.HostingModel && e.Extractor == IisHostingExtractor.ExtractorName);
         Assert.Equal(3, registry.Entries.Count(e => e.Extractor == PathLiteralExtractor.ExtractorName));
