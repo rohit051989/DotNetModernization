@@ -10,7 +10,8 @@ public sealed record HierarchyOptions(
     bool ComparePublicFeed,
     int MaxPackageDepth = 12,
     int MaxPackages = 5000,
-    string PublicFeedSource = FeedResolver.NuGetOrgV3);
+    string PublicFeedSource = FeedResolver.NuGetOrgV3,
+    IReadOnlyList<EngagementFeed>? EngagementFeeds = null);
 
 /// <summary>
 /// Builds the dependency-hierarchy@1.0.0 artifact for one repository — 37-DEPENDENCY-HIERARCHY.md Part B. Read-only
@@ -150,7 +151,7 @@ public sealed class HierarchyPipeline(PackageLookup lookup, HierarchyOptions opt
         string? feedError = null;
         try
         {
-            feeds = FeedResolver.Resolve(repositoryRoot, projectDirectory, options.ComparePublicFeed, options.PublicFeedSource);
+            feeds = FeedResolver.Resolve(repositoryRoot, projectDirectory, options.ComparePublicFeed, options.PublicFeedSource, options.EngagementFeeds);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException or NuGet.Configuration.NuGetConfigurationException)
         {
@@ -324,7 +325,7 @@ public sealed class HierarchyPipeline(PackageLookup lookup, HierarchyOptions opt
                 break;
             }
 
-            errors.Add(result.Error ?? $"feed '{feed.Name}' lists no version of it");
+            errors.Add(result.Error ?? $"artifactory '{feed.Name}' lists no version of it");
         }
 
         if (input.Producers.TryGetValue(packageId.ToLowerInvariant(), out var producer))
@@ -345,20 +346,26 @@ public sealed class HierarchyPipeline(PackageLookup lookup, HierarchyOptions opt
         }
         else if (feeds is not { UsingClientFeeds: true })
         {
-            origin = new Origin(PackageOrigins.External, "answered by nuget.org, the fallback: the project declares no client feed", answering, null);
+            origin = new Origin(PackageOrigins.External, "answered by nuget.org, the fallback: the project declares no private artifactory", answering, null);
         }
-        else if (feeds.Public is { } nuget)
+        else if (answering.Role == Feed.RoleNuGetOrg)
         {
+            // The project's configuration declares nuget.org beside its client feed, and nuget.org is what answered.
+            origin = new Origin(PackageOrigins.External, "answered by nuget.org, a source the project declares", answering, null);
+        }
+        else if ((feeds.Public ?? feeds.Authorities.FirstOrDefault(f => f.Role == Feed.RoleNuGetOrg)) is { } nuget)
+        {
+            // Public is null when nuget.org is already a declared authority; compare against that one then.
             var onPublic = await lookup.GetAsync(nuget, packageId, ct);
             origin = onPublic.Entry is { Versions.Count: > 0 }
-                ? new Origin(PackageOrigins.External, $"on client feed '{answering.Name}' and on nuget.org", answering, null)
+                ? new Origin(PackageOrigins.External, $"on private artifactory '{answering.Name}' and on nuget.org", answering, null)
                 : onPublic.Reachable
-                    ? new Origin(PackageOrigins.Internal, $"on client feed '{answering.Name}', not on nuget.org", answering, null)
-                    : new Origin(PackageOrigins.Internal, $"on client feed '{answering.Name}'; nuget.org could not be asked ({onPublic.Error})", answering, null);
+                    ? new Origin(PackageOrigins.Internal, $"on private artifactory '{answering.Name}', not on nuget.org", answering, null)
+                    : new Origin(PackageOrigins.Internal, $"on private artifactory '{answering.Name}'; nuget.org could not be asked ({onPublic.Error})", answering, null);
         }
         else
         {
-            origin = new Origin(PackageOrigins.Internal, $"on client feed '{answering.Name}'; nuget.org was not consulted (the public comparison is off)", answering, null);
+            origin = new Origin(PackageOrigins.Internal, $"on private artifactory '{answering.Name}'; nuget.org was not consulted (the public comparison is off)", answering, null);
         }
 
         _origins[packageId] = origin;
@@ -458,13 +465,13 @@ public sealed class HierarchyPipeline(PackageLookup lookup, HierarchyOptions opt
             var cached = result.Entry?.Versions.FirstOrDefault(v => SameVersion(v.Version, version));
             if (cached is null)
             {
-                errors.Add(result.Error ?? $"feed '{feed.Name}' lists no version {version}");
+                errors.Add(result.Error ?? $"artifactory '{feed.Name}' lists no version {version}");
                 continue;
             }
 
             var groups = cached.Dependencies ?? await lookup.DependenciesAsync(feed, result.Entry!, cached, ct);
             return groups is null
-                ? (null, $"the package's dependencies could not be read from feed '{feed.Name}'")
+                ? (null, $"the package's dependencies could not be read from artifactory '{feed.Name}'")
                 : (groups, "");
         }
 
@@ -522,7 +529,7 @@ public sealed class HierarchyPipeline(PackageLookup lookup, HierarchyOptions opt
                     break;
                 }
 
-                errors.Add(result.Error ?? $"feed '{feed.Name}' has no version in {rangeText}");
+                errors.Add(result.Error ?? $"artifactory '{feed.Name}' has no version in {rangeText}");
             }
 
             if (answer.Item1 is null) answer = (null, errors.Count > 0 ? string.Join("; ", errors) : "no feed was resolved");

@@ -884,6 +884,36 @@ class AuthoredItemTests(unittest.TestCase):
             with self.subTest(emitted=emitted):
                 self.assertEqual({i for i in (client, service) if matched(i, emitted)}, expected)
 
+    def test_serilog_file_sink_in_config_or_code_with_the_console_sink_as_context(self):
+        """Registry 1.14.0: a Serilog File sink on a Windows path is found in appsettings or in code, one occurrence
+        per file, and each occurrence records whether the same file already has a Console sink."""
+        from app.items.detection import referenced_signal_names, validate_detection
+        from app.items.evaluation import project_occurrences
+
+        detection, _ = validate_detection("occurrence", self._items()["serilog-file-sink"]["detection"], {})
+        self.assertEqual(referenced_signal_names(detection), {
+            "SERILOG_FILE_SINK_CONFIG", "SERILOG_FILE_SINK_USAGE", "SERILOG_CONSOLE_SINK_CONFIG", "SERILOG_CONSOLE_SINK_USAGE"})
+
+        def row(value, path, line):
+            return {"value": value, "source_path": path, "repository_level": False,
+                    "evidence": [{"lineStart": line, "lineEnd": line}]}
+
+        located = project_occurrences(detection, {
+            "SERILOG_FILE_SINK_CONFIG": [row(r"G:\Logs\app-.log", "appsettings.json", 9),
+                                         row("logs/app.log", "appsettings.Linux.json", 4)],   # not a Windows path
+            "SERILOG_FILE_SINK_USAGE": [row(r"C:\logs\app.log", "Program.cs", 12), row(None, "Logging.cs", 3)],
+            "SERILOG_CONSOLE_SINK_CONFIG": [row("Console", "appsettings.json", 5), row("Console", "appsettings.Linux.json", 3)],
+            "SERILOG_CONSOLE_SINK_USAGE": [row("Console", "Other.cs", 2)],   # another file: not Program.cs's
+        })
+        self.assertEqual([(o["file_path"], o["value"]) for o in located], [
+            ("Program.cs", "Console sink: missing"),
+            ("appsettings.json", "Console sink: present"),
+        ])
+        appsettings = located[1]
+        self.assertEqual([(e["signal_name"], e["line_start"]) for e in appsettings["evidence"]],
+                         [("SERILOG_CONSOLE_SINK_CONFIG", 5), ("SERILOG_FILE_SINK_CONFIG", 9)])
+        self.assertEqual(appsettings["certainty"], "confirmed")
+
     def test_conversion_ordering_is_recorded_on_both_sides(self):
         items = self._items()
         for first, then in (

@@ -32,6 +32,10 @@ RULES: dict[tuple[str, str], str] = {
     ("POST", "/api/workflow/step-policies/validate"): ANY,
     ("POST", "/api/engagements/{engagement_id}/step-policies/validate"): ANY,
     ("POST", "/api/editors/visual-studio/open"): ANY,
+    # The Artifactory repositories an engagement's scans ask (the Artifactory tab): shared by the engagement, so anyone signed in may
+    # list one or take it off. They hold no credential.
+    ("POST", "/api/engagements/{engagement_id}/artifactories"): ANY,
+    ("DELETE", "/api/engagements/{engagement_id}/artifactories/{artifactory_id}"): ANY,
     # Registering a repository: anyone signed in, who then owns it. The hosting OS pair (current_hosting_os,
     # target_hosting_os) is a field rule on this route and on PUT /api/repositories/{id}: only an admin may set a
     # value other than the default or the stored one (app.routers.repositories._require_admin_to_set_hosting).

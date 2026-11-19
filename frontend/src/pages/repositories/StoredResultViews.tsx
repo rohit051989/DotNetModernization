@@ -1,10 +1,13 @@
-import { Fragment, useEffect, useState } from 'react'
+import { Fragment, useEffect, useState, type ReactNode } from 'react'
 import {
   dependencyPackages,
   dependencyUses,
   fingerprintSignals,
+  getDependencyOrigins,
   getFingerprintOverview,
   getWorkItemTotals,
+  type DependencyOrigins,
+  type DependencyPart,
   type WorkItemTotals,
   listDependencyFeeds,
   workItemFiles,
@@ -12,6 +15,7 @@ import {
 } from '../../api/results'
 import { LimitedList } from '../../components/LimitedList'
 import { PagedList, type Page } from '../../components/PagedList'
+import { openTab } from '../../navigation'
 import type { WorkListDecisions } from '../../types/items'
 import { list, num, obj, str, type Json } from '../workflow/artifacts/adapters'
 import {
@@ -147,14 +151,91 @@ interface StoredVersion {
 }
 
 interface StoredPackage {
+  /** From dependency-hierarchy: internal, external or unknown (unresolved); null when the graph does not hold it. */
+  origin: string | null
+  originBasis: string | null
+  producer: { repositoryName?: string; projectPath?: string } | null
   packageId: string
   drift: boolean
   projectCount: number
   versions: StoredVersion[]
 }
 
+// Why a package is unknown, as the assessment records it (artifact 1.7.0, 38-PACKAGE-ACCESS.md): what the cause means and
+// what the developer can do. Nothing is guessed from the reason text; a result from before 1.7.0 has no cause.
+const CAUSE: Record<string, { title: string; hint: string }> = {
+  feed_auth: { title: 'Artifactory needs a login', hint: 'Log in to the artifactory on this machine (a credential provider, or a NuGet source with your token), then rescan.' },
+  feed_unreachable: { title: 'Artifactory could not be reached', hint: 'Check the network or VPN to the artifactory, then rescan.' },
+  not_on_feed: { title: 'On no consulted artifactory', hint: 'It may be on a private artifactory this engagement does not list yet. A "not found" answer from an artifactory already asked is cached for 24 hours.' },
+  version_unresolved: { title: 'Version could not be read', hint: 'The PackageReference version comes from a property or file the scan could not read.' },
+}
+
+/** The amber note that sends a person to the Artifactory tab (docs/39-ARTIFACTORY.md). */
+function ArtifactoryNote({ children }: { children: ReactNode }) {
+  return <span className="mt-1 block rounded border border-amber-300 bg-amber-50 px-2 py-1 text-amber-800">{children}</span>
+}
+
+function ArtifactoryLink() {
+  return (
+    <button type="button" onClick={() => openTab('artifactory')} className="font-medium text-violet-700 underline hover:text-violet-900">
+      Artifactory tab
+    </button>
+  )
+}
+
+function UnknownCause({ pkg }: { pkg: Json }) {
+  if (pkg.outcome !== 'unknown') return null
+  const cause = str(pkg.unknownCause)
+  const known = cause ? CAUSE[cause] : undefined
+  const feeds = list<Json>(pkg.failedFeeds ?? pkg.consultedFeeds)
+  return (
+    <span className="mt-1 block text-[11px]">
+      <span className="font-medium text-amber-800">{known?.title ?? (cause ? 'Not answered (offline lookup)' : 'Cause not recorded: rescan to classify')}</span>
+      {known && <span className="block text-neutral-500">{known.hint}</span>}
+      {cause === 'feed_auth' && (
+        <ArtifactoryNote>
+          Set the artifactory&apos;s login (ARTIFACTORY_USERNAME and ARTIFACTORY_PASSWORD in <code>backend/.env</code>) and add the artifactory url in the{' '}
+          <ArtifactoryLink />, then rescan. If the artifactory url is already in NuGet.config with its credentials, you can ignore this.
+        </ArtifactoryNote>
+      )}
+      {cause === 'not_on_feed' && (
+        <ArtifactoryNote>
+          Add the artifactory URL in the <ArtifactoryLink />, then rescan.
+        </ArtifactoryNote>
+      )}
+      {feeds.map((f, i) => (
+        <span key={i} className="block text-neutral-400" title={str(f.url) ?? undefined}>
+          {str(f.name)}
+          {str(f.failure) && ` · ${str(f.failure) === 'auth' ? 'login needed' : 'unreachable'}${f.httpStatus ? ` (${num(f.httpStatus)})` : ''}`}
+        </span>
+      ))}
+    </span>
+  )
+}
+
+/** Where a package in the Internal part comes from: flagged when no artifactory could say, or the graph does not hold it. */
+function OriginTag({ group }: { group: StoredPackage }) {
+  if (group.origin === 'unknown') {
+    return (
+      <Chip tone="amber" title="No artifactory could resolve this package, so it is not known to be public">
+        Unresolved
+      </Chip>
+    )
+  }
+  if (group.origin === null) {
+    return <Chip title="The dependency graph does not hold this package: it caps its packages, or was run separately">Not classified</Chip>
+  }
+  return (
+    <span className="block text-[11px] text-neutral-500" title={group.originBasis ?? undefined}>
+      {group.producer?.repositoryName ? `built in ${group.producer.repositoryName}` : group.originBasis}
+    </span>
+  )
+}
+
 export function StoredDependenciesView({ artifactId, head, localPath }: StoredViewProps) {
   const [showCurrent, setShowCurrent] = useState(false)
+  const [part, setPart] = useState<DependencyPart>('internal')
+  const [origins, setOrigins] = useState<DependencyOrigins | null>(null)
   const [open, setOpen] = useState<Record<string, boolean>>({})
   const [feeds, setFeeds] = useState<Json[]>([])
   const summary = obj(head.summary)
@@ -170,8 +251,47 @@ export function StoredDependenciesView({ artifactId, head, localPath }: StoredVi
     }
   }, [artifactId])
 
+  useEffect(() => {
+    let live = true
+    getDependencyOrigins(artifactId).then((r) => live && setOrigins(r), () => live && setOrigins(null))
+    return () => {
+      live = false
+    }
+  }, [artifactId])
+
+  // Until dependency-hierarchy has run, the packages are one list.
+  const split = origins?.hierarchy_scanned === true
+  const shownPart: DependencyPart = split ? part : 'all'
+
   return (
     <div className="space-y-2">
+      {origins && !split && (
+        <p className="text-[11px] text-amber-700">Run dependency-hierarchy to split internal and external packages.</p>
+      )}
+      {split && origins && (
+        <div className="flex items-center gap-1" role="group" aria-label="Packages by origin">
+          {(['internal', 'external'] as const).map((choice) => (
+            <button
+              key={choice}
+              type="button"
+              aria-pressed={part === choice}
+              onClick={() => setPart(choice)}
+              className={`rounded border px-2.5 py-1 text-xs ${
+                part === choice ? 'border-violet-300 bg-violet-50 font-medium text-violet-800' : 'border-neutral-200 text-neutral-600 hover:bg-neutral-50'
+              }`}
+            >
+              {choice === 'internal' ? 'Internal' : 'External'} ({origins.origin_counts[choice]})
+            </button>
+          ))}
+          {part === 'internal' && origins.origin_counts.unresolved + origins.origin_counts.not_classified > 0 && (
+            <span className="ml-2 text-[11px] text-neutral-500">
+              {origins.origin_counts.unresolved > 0 && `${origins.origin_counts.unresolved} unresolved`}
+              {origins.origin_counts.unresolved > 0 && origins.origin_counts.not_classified > 0 && ' · '}
+              {origins.origin_counts.not_classified > 0 && `${origins.origin_counts.not_classified} not classified`}
+            </span>
+          )}
+        </div>
+      )}
       <div className="flex flex-wrap items-center gap-1.5">
         <Chip>{num(summary.packageCount)} package references</Chip>
         {(outcomes.no_compatible_version ?? 0) > 0 && <Chip tone="red">{outcomes.no_compatible_version} no compatible version</Chip>}
@@ -183,7 +303,7 @@ export function StoredDependenciesView({ artifactId, head, localPath }: StoredVi
         <span className="mx-1 text-neutral-300">|</span>
         {num(summary.vulnerableCount) > 0 && <Chip tone="red">{num(summary.vulnerableCount)} vulnerable</Chip>}
         {num(summary.deprecatedCount) > 0 && <Chip tone="amber">{num(summary.deprecatedCount)} deprecated</Chip>}
-        {num(summary.notInClientFeedCount) > 0 && <Chip tone="amber">{num(summary.notInClientFeedCount)} not in client feed</Chip>}
+        {num(summary.notInClientFeedCount) > 0 && <Chip tone="amber">{num(summary.notInClientFeedCount)} not in private artifactory</Chip>}
         {num(summary.versionDriftCount) > 0 && (
           <Chip tone="amber" title="Packages referenced at more than one version across projects: consolidate before upgrading">
             {num(summary.versionDriftCount)} version drift
@@ -201,17 +321,17 @@ export function StoredDependenciesView({ artifactId, head, localPath }: StoredVi
       </div>
       <div className="text-[11px] text-neutral-500">
         Target <span className="font-mono">{targetFramework}</span> · answered by{' '}
-        {(sources.client_feed ?? 0) > 0 && <span className="font-medium text-teal-700">client feed ×{sources.client_feed} </span>}
-        {(sources.nuget_org_fallback ?? 0) > 0 && <span className="font-medium text-neutral-700">nuget.org fallback ×{sources.nuget_org_fallback} </span>}
-        {(sources.none ?? 0) > 0 && <span className="text-neutral-500">no feed ×{sources.none}</span>}
-        <LimitedList items={feeds} name={(f) => [str(f.name), str(f.url)]} noun="feeds">
+        {(sources.client_feed ?? 0) > 0 && <span className="font-medium text-teal-700">private artifactory ×{sources.client_feed} </span>}
+        {(sources.nuget_org_fallback ?? 0) > 0 && <span className="font-medium text-neutral-700">public artifactory (nuget.org) ×{sources.nuget_org_fallback} </span>}
+        {(sources.none ?? 0) > 0 && <span className="text-neutral-500">no artifactory ×{sources.none}</span>}
+        <LimitedList items={feeds} name={(f) => [str(f.name), str(f.url)]} noun="artifactories">
           {(visibleFeeds) => (
             <span className="block text-neutral-400">
-              Feeds:{' '}
+              Artifactories:{' '}
               {visibleFeeds.map((f, i) => (
                 <span key={i} title={`${str(f.url)} — declared in ${str(f.declaredIn)}`}>
                   {i > 0 && ' · '}
-                  {str(f.name)} <span className="text-neutral-300">({str(f.role)?.replace(/_/g, ' ')})</span>
+                  {str(f.name)} <span className="text-neutral-300">({str(f.role) === 'client_feed' ? 'private artifactory' : str(f.role) === 'nuget_org' ? 'public artifactory' : str(f.role)?.replace(/_/g, ' ')})</span>
                 </span>
               ))}
             </span>
@@ -224,19 +344,20 @@ export function StoredDependenciesView({ artifactId, head, localPath }: StoredVi
         <span className="font-medium text-neutral-700">Vulnerable</span> always refers to the version in use.
       </p>
       <PagedList<StoredPackage>
-        load={dependencyPackages(artifactId, showCurrent)}
-        resetKey={`${artifactId}|${showCurrent}`}
+        load={dependencyPackages(artifactId, showCurrent, shownPart)}
+        resetKey={`${artifactId}|${showCurrent}|${shownPart}`}
         noun="packages"
         empty={<p className="text-xs text-neutral-400">No packages to show.</p>}
       >
         {(visibleGroups) => (
-          <Table head={['Package', 'Projects', 'Version in use', 'Recommended version', 'Outcome', 'Flags', 'Reason', 'Feed']} minWidth={1200}>
+          <Table head={['Package', 'Projects', 'Version in use', 'Recommended version', 'Outcome', 'Flags', 'Reason', 'Artifactory']} minWidth={1200}>
             {visibleGroups.map((group) => (
               <Fragment key={group.packageId}>
                 {group.drift && (
                   <tr className="border-b border-neutral-100 bg-amber-50/40 align-top">
                     <td className="py-1.5 pr-3 font-medium text-neutral-800">{group.packageId}</td>
                     <td colSpan={7} className="py-1.5 pr-3">
+                      {shownPart === 'internal' && <OriginTag group={group} />}{' '}
                       <Chip tone="amber" title="One package at different versions across projects. Consolidating first is usually the sensible order before upgrading.">
                         version drift: {group.versions.length} versions across {group.projectCount} projects
                       </Chip>
@@ -254,6 +375,7 @@ export function StoredDependenciesView({ artifactId, head, localPath }: StoredVi
                       localPath={localPath}
                       targetFramework={targetFramework}
                       expanded={!!open[key]}
+                      showOrigin={shownPart === 'internal'}
                       onToggle={() => setOpen((o) => ({ ...o, [key]: !o[key] }))}
                     />
                   )
@@ -274,10 +396,13 @@ function StoredVersionRow({
   localPath,
   targetFramework,
   expanded,
+  showOrigin,
   onToggle,
 }: {
   artifactId: string
   group: StoredPackage
+  /** The Internal part: each package says where it comes from. */
+  showOrigin: boolean
   version: StoredVersion
   localPath: string | null
   targetFramework: string | null
@@ -316,6 +441,7 @@ function StoredVersionRow({
             </SourceLink>
           )}
           {kind && kind !== 'runtime' && <span className="ml-1.5 text-[10px] uppercase tracking-wide text-neutral-400">{kind}</span>}
+          {showOrigin && !group.drift && <OriginTag group={group} />}
         </td>
         <td className="py-1.5 pr-3 font-mono text-[11px] text-neutral-600">
           <PagedList<ProjectUse> load={uses} resetKey={`${artifactId}|${group.packageId}|${version.version}`} initial={firstProjects} noun="projects">
@@ -338,7 +464,7 @@ function StoredVersionRow({
             <span className="text-neutral-800">{recommended ?? '—'}</span>
           )}
           {latest && latest !== recommended && !gap && (
-            <span className="block text-[11px] text-neutral-400" title="The newest version on the feed, which does not support the target framework">
+            <span className="block text-[11px] text-neutral-400" title="The newest version on the artifactory, which does not support the target framework">
               latest {latest}
             </span>
           )}
@@ -368,7 +494,7 @@ function StoredVersionRow({
                 deprecated{str(deprecated.replacementId) ? ` → ${str(deprecated.replacementId)}` : ''}
               </Chip>
             )}
-            {gap && <Chip tone="amber">not in client feed</Chip>}
+            {gap && <Chip tone="amber">not in private artifactory</Chip>}
             {pkg.contentBreakingPossible === true && (
               <Chip title="Content package moving a major version: markup or CSS may break. Not analysed by this step, and not counted as breaking.">
                 content breaking possible
@@ -382,19 +508,20 @@ function StoredVersionRow({
               {line}
             </span>
           ))}
+          <UnknownCause pkg={pkg} />
         </td>
         <td className="py-1.5 pr-3 text-[11px]">
           {str(pkg.feedSource) ? (
             <>
               <span className={str(pkg.feedSource) === 'client_feed' ? 'font-medium text-teal-700' : 'text-neutral-600'}>
-                {str(pkg.feedSource) === 'client_feed' ? 'client feed' : 'nuget.org fallback'}
+                {str(pkg.feedSource) === 'client_feed' ? 'private artifactory' : 'public artifactory (nuget.org)'}
               </span>
               <span className="block text-neutral-400" title={str(pkg.feedUrl) ?? undefined}>
                 {str(pkg.feedName)}
               </span>
             </>
           ) : (
-            <span className="text-neutral-300">no feed answered</span>
+            <span className="text-neutral-300">no artifactory answered</span>
           )}
         </td>
       </tr>

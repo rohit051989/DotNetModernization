@@ -461,6 +461,32 @@ class EngagementPattern(Base):
     )
 
 
+class EngagementFeed(Base):
+    """A NuGet feed an engagement's scans ask, listed in its Artifactory tab. Never a credential: the login comes from
+    NuGet.config or the scanning machine's environment (docs/39-ARTIFACTORY.md)."""
+
+    __tablename__ = "engagement_feeds"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    engagement_id: Mapped[str] = mapped_column(Text, ForeignKey("engagements.id", ondelete="CASCADE"), nullable=False)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    url: Mapped[str] = mapped_column(Text, nullable=False)
+    url_normalised: Mapped[str] = mapped_column(Text, nullable=False)
+    created_by: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    deleted_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
+    deleted_by: Mapped[str | None] = mapped_column(Text)
+
+    __table_args__ = (
+        Index("uq_engagement_feeds_live_url", "engagement_id", "url_normalised", unique=True,
+              postgresql_where=text("deleted_at IS NULL")),
+        Index("uq_engagement_feeds_live_name", "engagement_id", text("lower(name)"), unique=True,
+              postgresql_where=text("deleted_at IS NULL")),
+    )
+
+
 PROBE_OUTCOMES = ("passed", "failed", "error")
 MATRIX_KINDS = ("support", "platform")
 

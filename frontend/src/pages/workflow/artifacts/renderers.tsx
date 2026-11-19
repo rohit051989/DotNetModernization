@@ -502,9 +502,9 @@ export function packageReasons(pkg: Json, targetFramework: string | null): strin
     case 'unknown': {
       const status = /\b(401|403|404|407)\b/.exec(reason)
       const said: Record<string, string> = {
-        '401': 'the feed returned 401 (Unauthorized): it needs a login',
-        '403': 'the feed returned 403 (Forbidden): the login has no access',
-        '404': 'the feed returned 404 (Not Found)',
+        '401': 'the artifactory url returned 401 (Unauthorized): it needs a login',
+        '403': 'the artifactory url returned 403 (Forbidden): the login has no access',
+        '404': 'the artifactory url returned 404 (Not Found)',
         '407': 'the proxy returned 407: it needs a login',
       }
       reasons.push(`Unknown: the lookup did not answer — ${status ? `${said[status[1]]}. ` : ''}${reason || 'no reason recorded'}.`)
@@ -543,7 +543,7 @@ export function packageReasons(pkg: Json, targetFramework: string | null): strin
   }
   const gap = pkg.notInClientFeed ? obj(pkg.notInClientFeed) : null
   if (gap) {
-    reasons.push(`Not in the client feed: ${str(gap.clientFeedName)} has ${str(gap.latestInClientFeed) ?? 'no compatible version'}, nuget.org has ${str(gap.latestPublicVersion)}.`)
+    reasons.push(`Not in the private artifactory: ${str(gap.clientFeedName)} has ${str(gap.latestInClientFeed) ?? 'no compatible version'}, nuget.org has ${str(gap.latestPublicVersion)}.`)
   }
   return reasons
 }
@@ -585,7 +585,7 @@ export function DependenciesView({ data, localPath }: ArtifactRendererProps) {
   }, [data])
 
   // The feeds NuGet resolved, deduplicated across projects — so it is always
-  // visible whether answers came from a client feed or the nuget.org fallback.
+  // visible whether answers came from a private artifactory or the public one (nuget.org).
   const feeds = useMemo(() => {
     const seen = new Map<string, Json>()
     for (const project of list(data.projects)) {
@@ -615,7 +615,7 @@ export function DependenciesView({ data, localPath }: ArtifactRendererProps) {
         <span className="mx-1 text-neutral-300">|</span>
         {num(summary.vulnerableCount) > 0 && <Chip tone="red">{num(summary.vulnerableCount)} vulnerable</Chip>}
         {num(summary.deprecatedCount) > 0 && <Chip tone="amber">{num(summary.deprecatedCount)} deprecated</Chip>}
-        {num(summary.notInClientFeedCount) > 0 && <Chip tone="amber">{num(summary.notInClientFeedCount)} not in client feed</Chip>}
+        {num(summary.notInClientFeedCount) > 0 && <Chip tone="amber">{num(summary.notInClientFeedCount)} not in private artifactory</Chip>}
         {num(summary.versionDriftCount) > 0 && (
           <Chip tone="amber" title="Packages referenced at more than one version across projects: consolidate before upgrading">
             {num(summary.versionDriftCount)} version drift
@@ -633,17 +633,17 @@ export function DependenciesView({ data, localPath }: ArtifactRendererProps) {
       </div>
       <div className="text-[11px] text-neutral-500">
         Target <span className="font-mono">{str(data.targetFramework)}</span> · answered by{' '}
-        {(sources.client_feed ?? 0) > 0 && <span className="font-medium text-teal-700">client feed ×{sources.client_feed} </span>}
-        {(sources.nuget_org_fallback ?? 0) > 0 && <span className="font-medium text-neutral-700">nuget.org fallback ×{sources.nuget_org_fallback} </span>}
-        {(sources.none ?? 0) > 0 && <span className="text-neutral-500">no feed ×{sources.none}</span>}
-        <LimitedList items={feeds} name={(f) => [str(f.name), str(f.url)]} noun="feeds">
+        {(sources.client_feed ?? 0) > 0 && <span className="font-medium text-teal-700">private artifactory ×{sources.client_feed} </span>}
+        {(sources.nuget_org_fallback ?? 0) > 0 && <span className="font-medium text-neutral-700">public artifactory (nuget.org) ×{sources.nuget_org_fallback} </span>}
+        {(sources.none ?? 0) > 0 && <span className="text-neutral-500">no artifactory ×{sources.none}</span>}
+        <LimitedList items={feeds} name={(f) => [str(f.name), str(f.url)]} noun="artifactories">
           {(visibleFeeds) => (
             <span className="block text-neutral-400">
-              Feeds:{' '}
+              Artifactories:{' '}
               {visibleFeeds.map((f, i) => (
                 <span key={i} title={`${str(f.url)} — declared in ${str(f.declaredIn)}`}>
                   {i > 0 && ' · '}
-                  {str(f.name)} <span className="text-neutral-300">({str(f.role)?.replace(/_/g, ' ')})</span>
+                  {str(f.name)} <span className="text-neutral-300">({str(f.role) === 'client_feed' ? 'private artifactory' : str(f.role) === 'nuget_org' ? 'public artifactory' : str(f.role)?.replace(/_/g, ' ')})</span>
                 </span>
               ))}
             </span>
@@ -661,7 +661,7 @@ export function DependenciesView({ data, localPath }: ArtifactRendererProps) {
         </p>
         <LimitedList items={visible} name={(group) => [group.packageId, ...group.versions.flatMap((v) => v.uses.map((u) => u.project))]} noun="packages">
           {(visibleGroups) => (
-        <Table head={['Package', 'Projects', 'Version in use', 'Recommended version', 'Outcome', 'Flags', 'Reason', 'Feed']} minWidth={1200}>
+        <Table head={['Package', 'Projects', 'Version in use', 'Recommended version', 'Outcome', 'Flags', 'Reason', 'Artifactory']} minWidth={1200}>
           {visibleGroups.map((group) => (
             <Fragment key={group.packageId}>
               {group.drift && (
@@ -762,7 +762,7 @@ function VersionRowView({
             <span className="text-neutral-800">{recommended ?? '—'}</span>
           )}
           {latest && latest !== recommended && !gap && (
-            <span className="block text-[11px] text-neutral-400" title="The newest version on the feed, which does not support the target framework">
+            <span className="block text-[11px] text-neutral-400" title="The newest version on the artifactory, which does not support the target framework">
               latest {latest}
             </span>
           )}
@@ -792,7 +792,7 @@ function VersionRowView({
                 deprecated{str(deprecated.replacementId) ? ` → ${str(deprecated.replacementId)}` : ''}
               </Chip>
             )}
-            {gap && <Chip tone="amber">not in client feed</Chip>}
+            {gap && <Chip tone="amber">not in private artifactory</Chip>}
             {pkg.contentBreakingPossible === true && (
               <Chip title="Content package moving a major version: markup or CSS may break. Not analysed by this step, and not counted as breaking.">
                 content breaking possible
@@ -809,14 +809,14 @@ function VersionRowView({
           {str(pkg.feedSource) ? (
             <>
               <span className={str(pkg.feedSource) === 'client_feed' ? 'font-medium text-teal-700' : 'text-neutral-600'}>
-                {str(pkg.feedSource) === 'client_feed' ? 'client feed' : 'nuget.org fallback'}
+                {str(pkg.feedSource) === 'client_feed' ? 'private artifactory' : 'public artifactory (nuget.org)'}
               </span>
               <span className="block text-neutral-400" title={str(pkg.feedUrl) ?? undefined}>
                 {str(pkg.feedName)}
               </span>
             </>
           ) : (
-            <span className="text-neutral-300">no feed answered</span>
+            <span className="text-neutral-300">no artifactory answered</span>
           )}
         </td>
       </tr>

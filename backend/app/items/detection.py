@@ -43,6 +43,17 @@ class ItemMatch(BaseModel):
     )
 
 
+class OccurrenceContext(BaseModel):
+    """Signals that describe an occurrence without locating one or deciding whether the item applies: rows of
+    them in the occurrence's own file join its evidence, and the occurrence's value says whether any was there
+    ('Console sink: present' / 'Console sink: missing' beside a Serilog File sink)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    label: str = Field(description="What the signals show, e.g. 'Console sink'.")
+    signals: list[str] = Field(min_length=1, description="Signals looked for in the occurrence's file.")
+
+
 class OccurrenceSource(BaseModel):
     """Which signal's evidence defines the item's locations (Part E)."""
 
@@ -59,6 +70,11 @@ class OccurrenceSource(BaseModel):
         description="Further positive-match signals that locate occurrences the same way, for an item matched by "
         "`any` of several signals. A row at the same path and line as an occurrence already projected (from "
         "`signal`, then `also` in order) joins that occurrence rather than making a second one.",
+    )
+    context: OccurrenceContext | None = Field(
+        default=None,
+        description="Signals looked for in each occurrence's own file: their rows join its evidence, and its value "
+        "records '<label>: present' or '<label>: missing'. Never part of whether the item applies.",
     )
 
 
@@ -122,6 +138,7 @@ def referenced_signal_names(detection: dict) -> set[str]:
     if source:
         names.add(source["signal"])
         names.update((source.get("also") or []))
+        names.update((source.get("context") or {}).get("signals") or [])
     if detection.get("attribute"):
         names.add(detection["attribute"]["signal"])
     return names

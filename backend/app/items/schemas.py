@@ -564,7 +564,7 @@ class ExtractorBacklogEntry(BaseModel):
 
 # ---------- signal index ----------
 
-SignalUsage = Literal["match", "none", "occurrence_source"]
+SignalUsage = Literal["match", "none", "occurrence_source", "context"]
 
 
 class SignalReference(BaseModel):
@@ -572,7 +572,7 @@ class SignalReference(BaseModel):
     item_name: str
     item_scope: ItemScope
     item_status: ItemStatus
-    usages: list[SignalUsage] = Field(description="How this item uses the signal: in match, in a none condition, as occurrence_source.")
+    usages: list[SignalUsage] = Field(description="How this item uses the signal: in match, in a none condition, as occurrence_source, or as occurrence_source.context.")
 
 
 class SignalIndexEntry(BaseModel):

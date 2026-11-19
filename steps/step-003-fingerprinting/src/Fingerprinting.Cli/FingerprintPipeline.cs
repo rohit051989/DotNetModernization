@@ -34,8 +34,10 @@ public sealed class FingerprintPipeline(SignalRegistry registry, IReadOnlyList<I
     // a rerun continues from there.
     // 1.8.0 (registry 1.13.0): WCF_SERVICE_BINDING_CONFIG and WCF_SERVICE_BINDING_USAGE, the binding a WCF
     // service is exposed on; WCF_CLIENT_BINDING_USAGE also recognises the MSMQ and peer bindings.
+    // 1.9.0 (registry 1.14.0): Serilog sinks in code (SERILOG_FILE_SINK_USAGE, SERILOG_CONSOLE_SINK_USAGE) and the
+    // Console sink in appsettings (SERILOG_CONSOLE_SINK_CONFIG).
     // Matches the application-fingerprinting step registration version.
-    public const string ScannerVersion = "1.8.0";
+    public const string ScannerVersion = "1.9.0";
 
     // The registry is the single source of truth for evidence_kind per
     // signal name (25-STANDARDS-AND-VIEWPOINTS.md Part A3 addendum) —

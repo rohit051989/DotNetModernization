@@ -96,6 +96,36 @@ class EvaluationTests(unittest.TestCase):
         located = evaluation.project_occurrences(detection, {"F": [row(source_path="k8s/deploy.yaml", repository_level=True)]})
         self.assertEqual(located, [])
 
+    def test_context_signals_describe_an_occurrence_and_never_locate_one(self):
+        """occurrence_source.context: rows in the occurrence's own file join its evidence and its value says
+        present or missing; a file with only a context row is no occurrence, and a located value is kept."""
+        detection = {
+            "match": {"all": [cond("k", "K")]},
+            "occurrence_source": {"signal": "K", "group_by": "source_path_and_value",
+                                  "context": {"label": "Console sink", "signals": ["C"]}},
+        }
+        located = evaluation.project_occurrences(detection, {
+            "K": [row("ApiKey", "a.json", evidence=[{"lineStart": 4, "lineEnd": 4}]), row("Token", "b.json")],
+            "C": [row("Console", "a.json", evidence=[{"lineStart": 2, "lineEnd": 2}]), row("Console", "only-context.json"),
+                  row("Console", "b.json", repository_level=True)],
+        })
+        self.assertEqual([(o["file_path"], o["value"]) for o in located],
+                         [("a.json", "ApiKey; Console sink: present"), ("b.json", "Token; Console sink: missing")])
+        self.assertEqual([(e["signal_name"], e["line_start"]) for e in located[0]["evidence"]], [("C", 2), ("K", 4)])
+
+    def test_context_is_referenced_and_validated(self):
+        from fastapi import HTTPException
+
+        from app.items.detection import referenced_signal_names, validate_detection
+
+        detection = {"match": {"all": [cond("k", "K")]},
+                     "occurrence_source": {"signal": "K", "context": {"label": "Console sink", "signals": ["C", "D"]}}}
+        normalised, warnings = validate_detection("occurrence", detection, {"K": "FILE"})
+        self.assertEqual(referenced_signal_names(normalised), {"K", "C", "D"})
+        self.assertTrue(any("C, D" in w for w in warnings))   # not registered yet: the item stays not_ready
+        with self.assertRaises(HTTPException):
+            validate_detection("occurrence", {**detection, "occurrence_source": {"signal": "K", "context": {"label": "x", "signals": []}}}, {})
+
     def test_source_path_and_value_splits_one_file(self):
         detection = {"match": {"all": [cond("k", "K")]}, "occurrence_source": {"signal": "K", "group_by": "source_path_and_value"}}
         located = evaluation.project_occurrences(detection, {"K": [row("ApiKey", "web.config"), row("Password", "web.config")]})

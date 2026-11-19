@@ -22,7 +22,7 @@ from sqlalchemy.orm import Session
 
 from app import models
 
-USAGES = ("match", "none", "occurrence_source")
+USAGES = ("match", "none", "occurrence_source", "context")
 
 
 def item_signal_usages(detection: dict) -> dict[str, set[str]]:
@@ -45,6 +45,8 @@ def item_signal_usages(detection: dict) -> dict[str, set[str]]:
     if source:
         for name in [source["signal"], *(source.get("also") or [])]:
             add(name, "occurrence_source")
+        for name in (source.get("context") or {}).get("signals") or []:
+            add(name, "context")
     return usages
 
 

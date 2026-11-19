@@ -450,6 +450,13 @@ public sealed class ConfigurationExtractor : IFingerprintExtractor
                     "SERILOG_FILE_SINK_CONFIG", SignalCategories.ConfigurationIndicator, SignalTypes.ConfigElement,
                     pathValue, EvidenceSourceTypes.Configuration, relativePath, ExtractorName, evidence: evidence);
             }
+            else if (IsSerilogSinkName(node, "Console"))
+            {
+                // Registry 1.14.0: a Console sink in the same Serilog section — logs already reach stdout.
+                accumulator.Add(
+                    "SERILOG_CONSOLE_SINK_CONFIG", SignalCategories.ConfigurationIndicator, SignalTypes.ConfigElement,
+                    "Console", EvidenceSourceTypes.Configuration, relativePath, ExtractorName, evidence: evidence);
+            }
 
             var parents = node.Path.Take(node.Path.Count - 1).ToList();
             AddIntegrationSignals(
@@ -464,11 +471,14 @@ public sealed class ConfigurationExtractor : IFingerprintExtractor
     // anywhere under the root "Serilog" section — WriteTo[n], an object-form
     // WriteTo, or a sink nested in WriteTo[n].Args.configure (Async).
     private static bool IsSerilogFileSinkName(JsonConfigNode node) =>
+        IsSerilogSinkName(node, "File") || IsSerilogSinkName(node, "RollingFile");
+
+    private static bool IsSerilogSinkName(JsonConfigNode node, string sinkName) =>
         node.Path.Count >= 2
         && node.Path[0].Equals("Serilog", StringComparison.OrdinalIgnoreCase)
         && node.Name.Equals("Name", StringComparison.OrdinalIgnoreCase)
         && node.StringValue is { } sink
-        && (sink.Equals("File", StringComparison.OrdinalIgnoreCase) || sink.Equals("RollingFile", StringComparison.OrdinalIgnoreCase));
+        && sink.Equals(sinkName, StringComparison.OrdinalIgnoreCase);
 
     private static Evidence JsonEvidence(JsonConfigNode node) => new()
     {

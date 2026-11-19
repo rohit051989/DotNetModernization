@@ -276,6 +276,67 @@ class CentralResults(unittest.TestCase):
         uses = views.list_dependency_uses(assessment.id, "LIB.SAFE", "2.0.0", pages(), self.db)
         self.assertEqual([u["project"] for u in uses.items], ["a/A.csproj", "b/B.csproj"])
 
+    def origin_assessment(self):
+        def pkg(package_id, version):
+            return {"packageId": package_id, "currentVersion": version, "outcome": "upgrade_safe",
+                    "declaredAt": {"filePath": "x.csproj", "line": 3}}
+        content = {"summary": {"packageCount": 5}, "projects": [
+            {"projectPath": "a/A.csproj", "packages": [pkg("Corp.Core", "1.0.0"), pkg("Newtonsoft.Json", "13.0.1"),
+                                                       pkg("Mixed.Lib", "1.0.0"), pkg("Offline.Lib", "1.0.0"),
+                                                       pkg("Capped.Lib", "1.0.0")]},
+            {"projectPath": "b/B.csproj", "packages": [pkg("Mixed.Lib", "2.0.0")]},
+        ]}
+        execution, step = self.execution()
+        return self.artifact(execution, step, "dependency-assessment", content)
+
+    def graph_package(self, package_id, version, origin, basis="because", producer=None):
+        detail = {"package": {"packageId": package_id, "version": version, "origin": origin, "originBasis": basis}}
+        if producer:
+            detail["package"]["producer"] = producer
+        self.db.add(models.HierarchyNode(repository_id=self.repo.id, node_id=f"package:{package_id.lower()}@{version}",
+                                         node_type="package", name=package_id, status="checked", detail=detail))
+        self.db.flush()
+
+    def scan_graph(self):
+        self.graph_package("Corp.Core", "1.0.0", "internal", "produced by repository Billing",
+                           {"repositoryName": "Billing", "projectPath": "Core/Core.csproj"})
+        self.graph_package("Newtonsoft.Json", "13.0.1", "external")
+        self.graph_package("Mixed.Lib", "1.0.0", "external")
+        self.graph_package("Mixed.Lib", "2.0.0", "internal")             # internal if any version is
+        self.graph_package("Offline.Lib", "1.0.0", "unknown")            # Capped.Lib is not in the graph at all
+
+    def test_dependency_packages_are_not_split_until_the_hierarchy_has_run(self):
+        assessment = self.origin_assessment()
+        everything = views.list_dependency_packages(assessment.id, True, pages(), self.db, "all")
+        for part in ("internal", "external"):
+            self.assertEqual(views.list_dependency_packages(assessment.id, True, pages(), self.db, part).total, 5)
+        self.assertEqual({(i["origin"], i["originBasis"], i["producer"]) for i in everything.items}, {(None, None, None)})
+        origins = views.get_dependency_origins(assessment.id, self.db)
+        self.assertFalse(origins.hierarchy_scanned)
+        self.assertEqual(origins.origin_counts.model_dump(), {"internal": 0, "external": 0, "unresolved": 0, "not_classified": 0})
+
+    def test_dependency_packages_split_into_internal_with_the_unresolved_and_external(self):
+        assessment = self.origin_assessment()
+        self.scan_graph()
+        names = lambda part: [i["packageId"] for i in views.list_dependency_packages(assessment.id, True, pages(), self.db, part).items]
+        self.assertEqual(sorted(names("internal")), ["Capped.Lib", "Corp.Core", "Mixed.Lib", "Offline.Lib"])
+        self.assertEqual(sorted(names("external")), ["Newtonsoft.Json"])
+        self.assertEqual(len(names("all")), 5)
+
+        by_name = {i["packageId"]: i for i in views.list_dependency_packages(assessment.id, True, pages(), self.db, "all").items}
+        self.assertEqual((by_name["Corp.Core"]["origin"], by_name["Corp.Core"]["producer"]["repositoryName"]), ("internal", "Billing"))
+        self.assertEqual(by_name["Corp.Core"]["originBasis"], "produced by repository Billing")
+        self.assertEqual(by_name["Offline.Lib"]["origin"], "unknown")
+        self.assertEqual(by_name["Mixed.Lib"]["origin"], "internal")
+        self.assertIsNone(by_name["Capped.Lib"]["origin"])                # not classified: the graph does not hold it
+
+        narrowed = views.list_dependency_packages(assessment.id, True, pages(q="json"), self.db, "internal")
+        self.assertEqual((narrowed.total, narrowed.matching), (4, 0))     # the filter box narrows within the part
+
+        origins = views.get_dependency_origins(assessment.id, self.db)
+        self.assertTrue(origins.hierarchy_scanned)
+        self.assertEqual(origins.origin_counts.model_dump(), {"internal": 4, "external": 1, "unresolved": 1, "not_classified": 1})
+
     def test_a_hard_deleted_repository_takes_its_results_but_not_a_content_another_shares(self):
         from app.deletion import service as deletion
 

@@ -1,21 +1,33 @@
 category: logging
 deleted: false
 description: |-
-  A Serilog File sink configured with a Windows drive-letter or UNC path. On OCP4 the path does not exist and logs belong on stdout for EFK. A repository often repeats the same path across many appsettings files, one per environment or host. One occurrence per appsettings file, so a batching: all approach can treat the set as one coherent change.
+  A Serilog File sink configured with a Windows drive-letter or UNC path, in appsettings*.json or in code (.WriteTo.File(...), .WriteTo.Async(a => a.File(...)); registry 1.14.0). On OCP4 the path does not exist and logs belong on stdout for EFK. A repository often repeats the same path across many appsettings files, one per environment or host. One occurrence per file, so a batching: all approach can treat the set as one coherent change. Each occurrence records whether the same file already has a Serilog Console sink ("Console sink: present" / "Console sink: missing"): present, the fix only removes the File sink; missing, it also adds the Console sink.
   Conversion ordering (docs/28 Part E): runs BEFORE hardcoded-windows-path. Removing the sink removes its path; reversed, a path about to be deleted gets externalised first and the work list carries a spurious occurrence. Becomes a depends_on entry.
 detection:
   match:
-    all:
+    all: []
+    any:
     - id: file-sink-windows-path
       signal:
         name: SERILOG_FILE_SINK_CONFIG
         value:
           regex: ^([A-Za-z]:[\\/]|\\\\)
-    any: []
+    - id: code-file-sink-windows-path
+      signal:
+        name: SERILOG_FILE_SINK_USAGE
+        value:
+          regex: ^([A-Za-z]:[\\/]|\\\\)
     atLeast: []
     metadata: []
     none: []
   occurrence_source:
+    also:
+    - SERILOG_FILE_SINK_USAGE
+    context:
+      label: Console sink
+      signals:
+      - SERILOG_CONSOLE_SINK_CONFIG
+      - SERILOG_CONSOLE_SINK_USAGE
     group_by: source_path
     signal: SERILOG_FILE_SINK_CONFIG
 engine_guidance: |-

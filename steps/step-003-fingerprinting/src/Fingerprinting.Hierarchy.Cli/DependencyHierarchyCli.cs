@@ -151,7 +151,7 @@ public static class DependencyHierarchyCli
         using var progress = new StepProgress(context.OutputDir, Console.Error);
         var (projectLimit, fileLimit) = StepLimits.Within(context);
         var artifact = await BuildAsync(repositoryRoot, inventory, assessment, path => projectIds.TryGetValue(path, out var id) ? id : null, producers, cache,
-            options, progress, WorkLimits.From(projectLimit, fileLimit));
+            options, progress, WorkLimits.From(projectLimit, fileLimit), EngagementFeeds.From(context.StepContext));
 
         progress.Phase("write");
         var outputPath = await WriteArtifactAsync(artifact, context.OutputDir);
@@ -219,7 +219,8 @@ public static class DependencyHierarchyCli
 
     public static async Task<DependencyHierarchyArtifact> BuildAsync(
         string repositoryRoot, SolutionProjectInventory inventory, AssessmentSlice? assessment, Func<string, Guid?> resolveProjectId,
-        IReadOnlyDictionary<string, PackageProducer> producers, ILookupCache cache, Options options, StepProgress progress, WorkLimits limits)
+        IReadOnlyDictionary<string, PackageProducer> producers, ILookupCache cache, Options options, StepProgress progress, WorkLimits limits,
+        IReadOnlyList<EngagementFeed>? engagementFeeds = null)
     {
         var projects = inventory.Projects.Select(p => new HierarchyInputProject(
             p.RelativePath,
@@ -245,7 +246,7 @@ public static class DependencyHierarchyCli
         PackageLookup NewLookup() => new(shared, Path.Combine(DependencyAssessmentCli.CacheRoot, "packages"), TimeSpan.FromHours(options.CacheTtlHours),
             forceRefresh: false, now, options.LookupOffline);
         var workers = options.LookupConcurrency > 1 ? new LookupWorkers(Enumerable.Range(0, options.LookupConcurrency).Select(_ => NewLookup()).ToList()) : null;
-        var pipeline = new HierarchyPipeline(NewLookup(), new HierarchyOptions(options.ComparePublicFeed, options.MaxPackageDepth, options.MaxPackages), workers);
+        var pipeline = new HierarchyPipeline(NewLookup(), new HierarchyOptions(options.ComparePublicFeed, options.MaxPackageDepth, options.MaxPackages, EngagementFeeds: engagementFeeds), workers);
         return await pipeline.RunAsync(new HierarchyInput(inventory.RepositoryId, inventory.RepositorySlug, projects, references, assessment, producers),
             repositoryRoot, CancellationToken.None, progress, limits);
     }

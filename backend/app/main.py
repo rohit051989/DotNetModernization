@@ -15,6 +15,7 @@ from app.config import settings
 from app.heartbeat import AnotherPlatform, Heartbeat
 from app.results import views as results_views
 from app.routers import (
+    artifactory,
     catalog,
     catalog_items,
     conversion,
@@ -393,6 +394,7 @@ app.include_router(surface.router)
 app.include_router(surface_pages.router)
 app.include_router(compatibility_pages.router)
 app.include_router(dashboard.router)
+app.include_router(artifactory.router)
 app.include_router(estate.router)
 app.include_router(estate_pages.router)
 app.include_router(test_coverage.router)

@@ -813,7 +813,7 @@ bookmarked or sent, and the page reopens on the tab last used:
 | Surface | what can call the repository, and what it calls. Each section folds on its own and says what is in it while folded; the bar at the top jumps to a section and expands or collapses them all, and the page remembers which are open |
 | Dependency graph | the dependency graph: projects, packages and assembly references from the roots down, as a graph or a tree, with + and − to expand and collapse, search, transitive packages and filters (`37-DEPENDENCY-HIERARCHY.md` Part E) |
 | Projects & fingerprint | solutions, projects, frameworks |
-| Dependencies | every package: the version in use, the recommended version, its outcome and flags, and a **Reason** in plain words for each (the advisory, its severity and the version that fixes it; why an upgrade is safe; which shared framework provides it; the publisher's named successor; why a lookup did not answer, such as a feed returning 401). "Vulnerable" always refers to the version in use |
+| Dependencies | every package: the version in use, the recommended version, its outcome and flags, and a **Reason** in plain words for each (the advisory, its severity and the version that fixes it; why an upgrade is safe; which shared framework provides it; the publisher's named successor; why a lookup did not answer, such as an artifactory returning 401). "Vulnerable" always refers to the version in use |
 | Surface (SOAP compatibility) | each SOAP call per environment: the Runtime and Platform verdicts, a **Why** beside each (the matrix entry that decided it and its probe evidence, or why it is unknown), and whether a named person has **confirmed** that entry (reviewed its evidence and accepted it) |
 | Work list | the catalog items found, where, and how each is to be resolved |
 | Tests | test projects and what they cover |
@@ -1600,8 +1600,8 @@ there is recorded with the reason, within its own time limit.
 | Updating: **"Stopped: master (...) does not descend from the installed commit ..."** | Our master's history was rewritten, or the platform was installed from another branch. Nothing was changed | Ask us why, with the commits the message lists. Only when we confirm, run the update again with `-AllowDowngrade` |
 | Updating: **"Stopped: the platform folder has files but no PLATFORM_SOURCE.json"**, or **"... which the source folder does not contain"** | The update cannot tell which of our commits the folder holds, so it cannot tell a file we deleted from one of yours. Nothing was changed | Do what the message says: record the commit the folder was copied from (ask us which), or bring that commit into the source folder; then update again. `-AllowDowngrade` does not get past this |
 | Updating: **"... failed: git pull --ff-only"** | Your branch on the server has commits this machine does not, which cannot be fast-forwarded | Ask whoever else pushed to your branch; nobody else should. Then `git -C C:\MP\client pull --rebase` and update again |
-| A feed answers **401** (preflight "HTTP 401", bootstrap stage 6, or a package marked "unknown ... 401 (Unauthorized)" in Dependencies) | The feed needs a login and none was supplied | Add the feed with its login to the account's NuGet configuration: `dotnet nuget add source <address> -n <name> -u <user> -p <token>`; for a feed a scanned repository names, `dotnet nuget update source <name> -u <user> -p <token>`, or install the client's credential provider and sign in once. Leave `NUGET_SOURCES` empty when the login is in the NuGet configuration |
-| A feed answers **403** | The login is known but has no right to that feed | Ask the feed's owner for read access for that account; the address and the login are right |
+| An artifactory answers **401** (preflight "HTTP 401", bootstrap stage 6, or a package marked "unknown ... 401 (Unauthorized)" in Dependencies) | The artifactory needs a login and none was supplied | Add the artifactory with its login to the account's NuGet configuration: `dotnet nuget add source <address> -n <name> -u <user> -p <token>`; for an artifactory a scanned repository names, `dotnet nuget update source <name> -u <user> -p <token>`, or install the client's credential provider and sign in once. Leave `NUGET_SOURCES` empty when the login is in the NuGet configuration |
+| An artifactory answers **403** | The login is known but has no right to that artifactory | Ask the artifactory's owner for read access for that account; the address and the login are right |
 | Stage 3: "No matching distribution found" or "Could not find a version that satisfies the requirement" | The mirror has no wheel of that package for this Python (bootstrap never compiles) | Use a Python 3.11 to 3.14 that the mirror has wheels for (3.13 is the safest), or ask for the mirror to include wheels for `cp314-win_amd64`. Never install a compiler for this |
 | git: **"Filename too long"** | The path is over 259 characters and `core.longpaths` is off | `git config --global core.longpaths true` ("Account settings"), use shorter folders ("Before starting"), then clone again |
 | A discovery step fails at once: **"You must install .NET to run this application"** | .NET is installed per user and `DOTNET_ROOT` is not set in `backend\.env` | Set `DOTNET_ROOT` ("Account settings" and "backend\.env"), restart the backend |
@@ -1802,6 +1802,17 @@ doing after an update besides bootstrap: a rescan, a package your mirror must ca
 hand. Everything else an update brings, bootstrap applies by itself. Apply every entry newer than the commit you
 had (`previousCommit` in `PLATFORM_SOURCE.json` after the update; in our own installs, the commit before step 5 of
 the appendix), oldest of them first. Entries up to 2026-10-23 were the notes of releases 2 to 7, which are named so.
+
+#### 2026-11-17, (commit of "Artifactory tab: engagement feeds"): an engagement can list artifactories, and a hierarchy rule
+
+Bootstrap adds the table `engagement_feeds` by itself. Two things to do after updating: (1) **rescan** a repository to
+use artifactories listed in the engagement's new Artifactory tab (`39-ARTIFACTORY.md`) and to reclassify packages that
+the repository's `NuGet.config` and nuget.org both serve: dependency-hierarchy used to call a package internal when
+`NuGet.config` declared nuget.org beside a private artifactory, and now calls it external. Rebuild the step programs
+(`dotnet publish src/Fingerprinting.Hierarchy.Cli -c Release -o publish/dependency-hierarchy`, and the same for
+`Fingerprinting.Dependencies.Cli` as `dependency-assessment`). (2) Optional: where an artifactory needs a login that
+`NuGet.config` does not carry, set `ARTIFACTORY_USERNAME` and `ARTIFACTORY_PASSWORD` in `backend/.env` or the environment, or
+`NuGetPackageSourceCredentials_<artifactory name>` for one artifactory. No setting is required.
 
 #### 2026-11-09, (commit of "repository hosting OS"): Linux compatibility is shown only for a move from Windows to Linux
 

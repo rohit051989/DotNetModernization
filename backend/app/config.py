@@ -70,6 +70,11 @@ class Settings(BaseSettings):
     npm_registry: str = ""
     nuget_sources: str = ""              # comma-separated: feed URLs or local folders for the step programs' restore
     compare_public_nuget_feed: bool = True
+    # One login for the feeds an engagement lists in its Artifactory tab that NuGet.config does not already
+    # authenticate (docs/39-ARTIFACTORY.md). Optional; environment or backend/.env only, never the database.
+    # Like DB_PASSWORD they reach the step programs as ARTIFACTORY_USERNAME and ARTIFACTORY_PASSWORD in this process's environment.
+    artifactory_username: str | None = None
+    artifactory_password: SecretStr | None = None
 
     # A .NET installed per user (docs/VDI-SETUP.md: Account settings). When set, this folder goes first on PATH and becomes
     # DOTNET_ROOT for this process and so for every process it starts: the step programs (which find their runtime
@@ -158,7 +163,8 @@ class Settings(BaseSettings):
 
     def secrets(self) -> list[str]:
         """The values no message may show: the username and the password."""
-        return [v for v in (self.db_user, self.db_password.get_secret_value() if self.db_password else None) if v]
+        return [v for v in (self.db_user, self.db_password.get_secret_value() if self.db_password else None,
+                            self.artifactory_password.get_secret_value() if self.artifactory_password else None) if v]
 
 
 def database_url(schema: str, s: "Settings | None" = None) -> str:
@@ -177,6 +183,11 @@ def apply_credentials(s: "Settings") -> None:
         os.environ["PGUSER"] = s.db_user
     if s.db_password:
         os.environ["PGPASSWORD"] = s.db_password.get_secret_value()
+    # The feed login from backend/.env, for the step programs (a value already in the environment is what was read).
+    if s.artifactory_username:
+        os.environ["ARTIFACTORY_USERNAME"] = s.artifactory_username
+    if s.artifactory_password:
+        os.environ["ARTIFACTORY_PASSWORD"] = s.artifactory_password.get_secret_value()
 
 
 # The .NET SDK the platform runs (builds, tests, the step programs) contacts nothing of its own accord: no usage

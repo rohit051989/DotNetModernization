@@ -162,12 +162,13 @@ public static class DependencyAssessmentCli
         using var progress = new StepProgress(context.OutputDir, Console.Error);
         var (projectLimit, fileLimit) = StepLimits.Within(context);
         var limits = WorkLimits.From(projectLimit, fileLimit);
+        var engagementFeeds = EngagementFeeds.From(context.StepContext);
         var checkpoints = ProjectCheckpoints.Open(StepLimits.CheckpointDirectory(context), ProjectCheckpoints.Key(
             ArtifactType, DependencyPipeline.ScannerVersion, inventoryRef.Checksum, fingerprintRef.Checksum, target,
-            options.ToString(), limits.ProjectLoad.TotalSeconds.ToString(CultureInfo.InvariantCulture)));
+            options.ToString() + EngagementFeeds.Key(engagementFeeds), limits.ProjectLoad.TotalSeconds.ToString(CultureInfo.InvariantCulture)));
         checkpoints.Watch(progress);
         var (artifact, lookup) = await AssessAsync(repositoryRoot, inventory, fingerprint, path => projectIds.TryGetValue(path, out var id) ? id : null, cache, options,
-            progress, limits, checkpoints);
+            progress, limits, checkpoints, engagementFeeds);
 
         progress.Phase("write");
         var outputPath = await WriteArtifactAsync(artifact, context.OutputDir);
@@ -186,7 +187,7 @@ public static class DependencyAssessmentCli
             ExitStatus = ExitStatuses.Completed,
             ExitMessage = $"Assessed {summary.PackageCount} direct package(s) across {summary.ProjectsScanned} project(s) in '{artifact.RepositorySlug}' for {artifact.TargetFramework}: "
                           + string.Join(", ", summary.CountByOutcome.Select(kv => $"{kv.Value} {kv.Key}"))
-                          + $"; {summary.DeprecatedCount} deprecated, {summary.VulnerableCount} vulnerable, {summary.NotInClientFeedCount} not in client feed."
+                          + $"; {summary.DeprecatedCount} deprecated, {summary.VulnerableCount} vulnerable, {summary.NotInClientFeedCount} not in private artifactory."
                           + (resumed > 0 ? $" {resumed} project(s) carried over from the interrupted run." : "")
                           + (progress.NotCheckedItems.Count > 0 ? $" {progress.NotCheckedItems.Count} item(s) not checked (see timing-profile.json)." : ""),
             Metrics = new Dictionary<string, long>
@@ -201,7 +202,7 @@ public static class DependencyAssessmentCli
                 new StepOutput
                 {
                     ArtifactType = ArtifactType,
-                    // The version the written artifact declares (1.7.1): a second constant here had drifted to 1.5.0.
+                    // The version the written artifact declares (1.7.0): a second constant here had drifted to 1.5.0.
                     ArtifactVersion = ArtifactUri.DeclaredVersion(outputPath),
                     Uri = ArtifactUri.FromLocalPath(outputPath),
                     Checksum = checksum,
@@ -244,7 +245,8 @@ public static class DependencyAssessmentCli
 
     public static async Task<(DependencyAssessmentArtifact, PackageLookup)> AssessAsync(
         string repositoryRoot, SolutionProjectInventory inventory, ApplicationFingerprintSlice fingerprint, Func<string, Guid?> resolveProjectId,
-        ILookupCache cache, Options options, StepProgress? progress = null, WorkLimits? limits = null, ProjectCheckpoints? checkpoints = null)
+        ILookupCache cache, Options options, StepProgress? progress = null, WorkLimits? limits = null, ProjectCheckpoints? checkpoints = null,
+        IReadOnlyList<EngagementFeed>? engagementFeeds = null)
     {
         var warnings = new List<Warning>();
         if (options.ExplainChanges)
@@ -290,7 +292,7 @@ public static class DependencyAssessmentCli
             : null;
         var shared = SharedFrameworks.Load(Path.Combine(AppContext.BaseDirectory, "schemas", "shared-frameworks-1.0.0.json"));
         var pipeline = new DependencyPipeline(lookup, new DependencyOptions(options.TargetFramework, options.ComparePublicFeed, options.IncludeTransitive,
-            SharedFrameworks: shared), transitive);
+            SharedFrameworks: shared, EngagementFeeds: engagementFeeds), transitive);
         var artifact = await pipeline.RunAsync(new DependencyInput(inventory.RepositoryId, inventory.RepositorySlug, FingerprintType, projects, warnings), repositoryRoot, CancellationToken.None,
             progress, limits, checkpoints);
         return (artifact, lookup);
@@ -319,7 +321,7 @@ public static class DependencyAssessmentCli
         ?? throw new InvalidOperationException("application-fingerprint deserialized to null");
 
     private static readonly Lazy<ArtifactSchemaValidator> SchemaValidator = new(() =>
-        ArtifactSchemaValidator.Load(Path.Combine(AppContext.BaseDirectory, "schemas", "dependency-assessment-1.6.0.schema.json")));
+        ArtifactSchemaValidator.Load(Path.Combine(AppContext.BaseDirectory, "schemas", "dependency-assessment-1.7.0.schema.json")));
 
     public static async Task<string> WriteArtifactAsync(DependencyAssessmentArtifact artifact, string outDir)
     {

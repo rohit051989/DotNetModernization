@@ -13,7 +13,8 @@ public sealed record DependencyOptions(
     bool ComparePublicFeed = true,
     bool IncludeTransitive = false,
     string PublicFeedSource = FeedResolver.NuGetOrgV3,
-    SharedFrameworks? SharedFrameworks = null);
+    SharedFrameworks? SharedFrameworks = null,
+    IReadOnlyList<EngagementFeed>? EngagementFeeds = null);
 
 /// <summary>One project as the step receives it: step 2's path, framework
 /// and direct packages, the database id, and step 3's skip verdict.</summary>
@@ -45,8 +46,9 @@ public sealed class DependencyPipeline(PackageLookup lookup, DependencyOptions o
     /// recorded NOT_CHECKED with the reason; a transitive restore over its limit ends with everything it started;
     /// progress, a timing profile, and finished projects kept so a rerun continues from there. Artifact unchanged.
     /// 1.7.1: the step reports its artifact to the engine as 1.6.0, the version it writes; it had reported 1.5.0.
-    /// Artifact unchanged.</summary>
-    public const string ScannerVersion = "1.7.1";
+    /// Artifact unchanged. 1.8.0 (artifact 1.7.0): an unknown package says why, as a code with the feeds involved
+    /// (<see cref="UnknownCauses"/>; 38-PACKAGE-ACCESS.md). Additive.</summary>
+    public const string ScannerVersion = "1.8.0";
 
     /// <summary>1.5.0: the PACKAGE_VULNERABLE value's ending when no release without a known advisory supports the
     /// target.</summary>
@@ -178,7 +180,7 @@ public sealed class DependencyPipeline(PackageLookup lookup, DependencyOptions o
                 [new Warning { Code = WarningCodes.ProjectDirectoryNotFound, Message = $"Project directory not found on disk: {project.RelativePath}", Severity = WarningSeverities.Warning }]);
         }
 
-        var feeds = FeedResolver.Resolve(repositoryRoot, projectDirectory, options.ComparePublicFeed, options.PublicFeedSource);
+        var feeds = FeedResolver.Resolve(repositoryRoot, projectDirectory, options.ComparePublicFeed, options.PublicFeedSource, options.EngagementFeeds);
         var declarations = PackageDeclarations.Read(repositoryRoot, project.RelativePath, project.Packages);
         // Step 2's answer, including a framework set in Directory.*.props
         // (solution-project-inventory 2.1.0): one answer for every step.
@@ -275,7 +277,7 @@ public sealed class DependencyPipeline(PackageLookup lookup, DependencyOptions o
 
         if (declaration.Version is null)
         {
-            return (Result(Outcomes.Unknown, declaration.Problem, 0.0), []);
+            return (Result(Outcomes.Unknown, declaration.Problem, 0.0) with { UnknownCause = UnknownCauses.VersionUnresolved }, []);
         }
 
         var currentVersion = declaration.Version;
@@ -294,12 +296,24 @@ public sealed class DependencyPipeline(PackageLookup lookup, DependencyOptions o
         // its silence is "unknown", never a quiet substitution (Part B7).
         var candidates = new List<Candidate>();
         var errors = new List<string>();
+        var failedFeeds = new List<FailedFeed>();
         foreach (var feed in feeds.Authorities)
         {
             var result = await lookup.GetAsync(feed, declaration.PackageId, ct);
             if (!result.Reachable)
             {
                 errors.Add(result.Error!);
+                if (result.Failure != LookupFailure.None)
+                {
+                    failedFeeds.Add(new FailedFeed
+                    {
+                        Name = feed.Name,
+                        Url = feed.Url,
+                        Failure = result.Failure == LookupFailure.Auth ? FeedFailures.Auth : FeedFailures.Unreachable,
+                        HttpStatus = result.HttpStatus,
+                    });
+                }
+
                 continue;
             }
 
@@ -333,15 +347,27 @@ public sealed class DependencyPipeline(PackageLookup lookup, DependencyOptions o
 
         if (errors.Count > 0)
         {
-            return (Result(Outcomes.Unknown, string.Join("; ", errors), 0.0) with { FeedSource = SourceOf(feeds) }, []);
+            // 1.7.0: the most actionable cause wins, a login before a connection. No cause for an error that is
+            // neither (a lookup answered offline from a frozen snapshot).
+            var cause = failedFeeds.Any(f => f.Failure == FeedFailures.Auth) ? UnknownCauses.FeedAuth
+                : failedFeeds.Count > 0 ? UnknownCauses.FeedUnreachable
+                : null;
+            return (Result(Outcomes.Unknown, string.Join("; ", errors), 0.0)
+                with { FeedSource = SourceOf(feeds), UnknownCause = cause, FailedFeeds = cause is null ? null : failedFeeds }, []);
         }
 
         if (ordered.Count == 0)
         {
             var gap = await PublicGapAsync(publicCandidates, allowPrerelease, null, feeds, ct);
             var where = string.Join(", ", feeds.Authorities.Select(f => f.Name));
-            var assessment = Result(Outcomes.Unknown, $"{declaration.PackageId} is not on {(feeds.UsingClientFeeds ? "the client feed(s)" : "nuget.org")}: {where}", 0.0)
-                with { FeedSource = SourceOf(feeds), NotInClientFeed = gap };
+            var assessment = Result(Outcomes.Unknown, (feeds.UsingClientFeeds ? $"{declaration.PackageId} was not found in the public artifactory or in the private artifactories listed in the Artifactory tab. To look it up, add its artifactory URL in the Artifactory tab, then rescan." : $"{declaration.PackageId} is not on nuget.org: {where}"), 0.0)
+                with
+                {
+                    FeedSource = SourceOf(feeds),
+                    NotInClientFeed = gap,
+                    UnknownCause = UnknownCauses.NotOnFeed,
+                    ConsultedFeeds = feeds.Authorities.Select(f => new ConsultedFeed { Name = f.Name, Url = f.Url }).ToList(),
+                };
             return (assessment, Signals(declaration, assessment, null));
         }
 
@@ -469,7 +495,7 @@ public sealed class DependencyPipeline(PackageLookup lookup, DependencyOptions o
         if (diff is null && transitive.Count == 0)
         {
             reasons.Add(currentCandidate is null
-                ? $"{currentVersion} is not on the feed, so its assemblies could not be compared; semver decides"
+                ? $"{currentVersion} is not on the artifactory, so its assemblies could not be compared; semver decides"
                 : "no comparable assemblies in one of the versions; semver decides");
             var assessment = Finish(Result(heuristic, $"{semver} version change ({currentVersion} -> {recommended.Version}), presumed {(semver == "major" ? "breaking" : "safe")}", 0.5))
                 with
