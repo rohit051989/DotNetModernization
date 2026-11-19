@@ -173,7 +173,7 @@ class PrepareAllOrNothing(unittest.TestCase):
         for target, kwargs in ((convert, {"plan_packages": planned, "check_advisories": lambda *a, **k: [],
                                           "run_packages": lambda *a: ([], {"seconds": 0, "cycles": 0, "flaky": []}),
                                           "left_for_agent": lambda *a: {}, "generate": lambda *a, **k: {},
-                                          "_commit_inputs": lambda *a: []}),
+                                          "_commit_inputs": lambda *a: ([], {})}),
                                (siblings, {"detect": lambda root: []})):
             for attr, stand_in in kwargs.items():
                 patcher = mock.patch.object(target, attr, side_effect=stand_in)
