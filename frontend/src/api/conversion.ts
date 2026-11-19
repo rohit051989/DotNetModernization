@@ -1,4 +1,5 @@
 import { api, apiUrl } from './client'
+import type { ConversionEngine } from '../types/catalog'
 import type { Conversions, RepositoryConversion } from '../types/conversion'
 
 /** The repository's conversion plan (the newest, or `planId`), its units in
@@ -21,6 +22,15 @@ export function listConversions(repositoryId: string) {
 /** Starts the next conversion: discovery runs, then prepares a new conversion. */
 export function startNextConversion(repositoryId: string) {
   return api.post<{ job_execution_id: string }>(`/api/repositories/${encodeURIComponent(repositoryId)}/conversions`)
+}
+
+/** The repository's own conversion engine (its owner), or null for the engagement's default. A conversion not yet run
+ * is prepared again for it. */
+export function setConversionEngine(repositoryId: string, engine: ConversionEngine | null) {
+  return api.put<{ engine: ConversionEngine; source: 'repository' | 'engagement'; note: string; reprepare_job_execution_id: string | null }>(
+    `/api/repositories/${encodeURIComponent(repositoryId)}/conversion-engine`,
+    { engine },
+  )
 }
 
 /** Verifies a conversion that has been run, as a workflow job. 409, with the reason, when refused. */

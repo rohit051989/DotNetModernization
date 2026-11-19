@@ -112,7 +112,9 @@ class Runbook(unittest.TestCase):
                                     "## 6. When the agent reports done", "## 7. Verify"])
         self.assertIn("If the agent stops without its done report (the four results from the opening message), send "
                       "`Continue.`", text)
-        self.assertIn("One commit at the end is fine.", text)
+        # One commit per work item, as the instructions say (Part Q): the reply agrees with them.
+        self.assertIn("Commit each instruction on its own once it builds, naming it in the commit message.", text)
+        self.assertIn("Engine: **GitHub Copilot**.", text)
         self.assertIn(convert.opening_message("Make it ready for OpenShift.", "AccountsApi.sln"), text)
         self.assertIn("python -m app.engine.convert verify --engagement test-client-a --repository accountsapi-net10 "
                       "--branch conversion/1", text)

@@ -60,7 +60,7 @@ from app.engine.verifier import deployment, packages, plugin, rediscovery
 from app.experiment import instrument, lookups
 from app.scope import service as scope_service
 
-VERIFIER_VERSION = "1.4.0"
+VERIFIER_VERSION = "1.5.0"
 RUNS = planner.RUNS          # the same runs folder as the conversion runner, whatever the working directory
 
 RULES = [
@@ -85,8 +85,8 @@ RULES = [
     "Every new or changed shell script has LF line endings, the executable bit and an eol=lf rule; else NOT PROVEN.",
     "Otherwise PROVEN.",
     "The impact comparison and the diff size are reported, never judged.",
-    "Engine state under .github/upgrades/ and the generated inputs are excluded from the diff, the impact "
-    "comparison and re-discovery.",
+    "Engine state under .github/upgrades/ and .claude/, and the generated inputs, are excluded from the diff, the "
+    "impact comparison and re-discovery.",
     "PROVEN is evidence, not approval: a named person signs.",
 ]
 
@@ -288,13 +288,17 @@ FILES_SECTION = re.compile(r"^## Files\n\n[^\n]*\n\n((?:- `[^`]+`\n?)+)", re.MUL
 
 
 def instruction_files(root: Path, commit: str) -> dict[str, list[str]]:
-    """{instruction file name: the files its Files section names}, from the instructions in `commit`."""
-    names = gitops.git(root, "ls-tree", "-r", "--name-only", commit, "--", paths.UPGRADE_SKILLS_DIR).splitlines()
+    """{instruction: the files its Files section names}, from the instructions in `commit`: GitHub Copilot's by file
+    name (`applying-x.md`), Claude Code's skills by name (`applying-x`)."""
+    names = gitops.git(root, "ls-tree", "-r", "--name-only", commit, "--", *paths.WORK_ITEM_DIRS).splitlines()
     out = {}
     for name in names:
+        if not paths.is_work_item(name):
+            continue
         text = gitops.git(root, "show", f"{commit}:{name}").replace("\r\n", "\n")
         m = FILES_SECTION.search(text)
-        out[Path(name).name] = re.findall(r"^- `([^`]+)`", m.group(1), re.MULTILINE) if m else []
+        key = Path(name).name if name.startswith(paths.UPGRADE_SKILLS_DIR + "/") else paths.work_item_name(name)
+        out[key] = re.findall(r"^- `([^`]+)`", m.group(1), re.MULTILINE) if m else []
     return out
 
 
@@ -830,6 +834,8 @@ def verify(db, *, engagement_id: str, slug: str, base: str, ref: str, label: str
                   "workItemsLeftOut": len(items_left_out), "decidedBy": scope.get("decidedBy"),
                   "decidedAt": scope.get("decidedAt"), "reason": scope.get("reason")} if left_out else None,
         "checkoutUntouched": checkout_untouched,
+        # The engine the conversion was prepared for (Part Q), when a conversion's verification names one.
+        "engine": config.get("engine"),
     }
     (out / "verification.json").write_text(json.dumps(report, indent=2, default=str), encoding="utf-8")
     (out / "VERIFICATION.md").write_text(markdown(report), encoding="utf-8")
@@ -874,7 +880,11 @@ def markdown(r: dict) -> str:
            f"**Verdict: {r['verdict']}**", "",
            f"Repository `{r['repository']}`, base `{r['base'][:8]}`, `{r['ref']}` at `{r['tip'][:8]}`; verified {r['verifiedAt']} "
            f"by verifier {r['verifier']['version']} ({r['verifier']['plugin']}).", "",
-           _platform_line(r.get("platform")), _lookups_line(r.get("packageLookups")), "", "## Reasons", ""]
+           _platform_line(r.get("platform")), _lookups_line(r.get("packageLookups"))]
+    if r.get("engine"):
+        from app.engine import engines
+        out.append(f"Engine: {engines.name(r['engine'])}.")
+    out += ["", "## Reasons", ""]
     out += [f"- {x}" for x in r["reasons"]] or ["- None: every check passed."]
     out += ["", "## Checks", "", "| Check | State | Detail |", "|---|---|---|"]
     out += [f"| {c['label']} | {c['state']} | {c['detail'].replace('|', '/')} |" for c in r["checks"]]

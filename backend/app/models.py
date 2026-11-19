@@ -358,6 +358,9 @@ class Engagement(Base):
     # sent to, [{provider, organisation}], enforced by app.engine.boundary. Empty by default: nothing is
     # allowed until a person sets it. Names and organisations only; never a credential.
     engine_allowlist: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    # 36-COPILOT-ENHANCED-CONVERSION Part Q: the conversion engine its repositories use unless one chooses its own
+    # ('github-copilot' or 'claude-code'). Chosen at creation, changed by an admin; every existing engagement kept Copilot.
+    default_engine: Mapped[str] = mapped_column(Text, nullable=False, server_default="github-copilot")
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default="active")
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -372,6 +375,7 @@ class Engagement(Base):
 
     __table_args__ = (
         CheckConstraint(f"status IN {LIFECYCLE_STATUS}", name="ck_engagements_status"),
+        CheckConstraint("default_engine IN ('github-copilot', 'claude-code')", name="ck_engagements_default_engine"),
     )
 
 
@@ -880,6 +884,8 @@ class Repository(Base):
     # compatibility list is shown only for windows to linux.
     current_hosting_os: Mapped[str] = mapped_column(Text, nullable=False, server_default="windows")
     target_hosting_os: Mapped[str] = mapped_column(Text, nullable=False, server_default="linux")
+    # 36-COPILOT-ENHANCED-CONVERSION Part Q: the owner's choice of conversion engine; null means the engagement's default.
+    conversion_engine: Mapped[str | None] = mapped_column(Text)
     tags: Mapped[list] = mapped_column(JSONB, nullable=False, server_default="[]")
     notes: Mapped[str | None] = mapped_column(Text)
 
@@ -939,6 +945,8 @@ class Repository(Base):
         ),
         CheckConstraint("current_hosting_os IN ('windows', 'linux')", name="ck_repositories_current_hosting_os"),
         CheckConstraint("target_hosting_os IN ('windows', 'linux')", name="ck_repositories_target_hosting_os"),
+        CheckConstraint("conversion_engine IS NULL OR conversion_engine IN ('github-copilot', 'claude-code')",
+                        name="ck_repositories_conversion_engine"),
         CheckConstraint(f"ingest_status IN {INGEST_STATUS}", name="ck_repositories_ingest_status"),
         CheckConstraint(
             f"source_status IS NULL OR source_status IN {SOURCE_STATUS}",

@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
 import { ApiError } from '../../api/client'
-import { listConversions, startNextConversion, verifyConversion } from '../../api/conversion'
+import { listConversions, setConversionEngine, startNextConversion, verifyConversion } from '../../api/conversion'
+import { setEngagementEngine } from '../../api/catalog'
+import { useIsAdmin } from '../../auth/AuthContext'
 import { CopyButton } from '../../components/CopyButton'
 import { ConfirmDialog } from '../../components/ConfirmDialog'
 import { LimitedList } from '../../components/LimitedList'
-import type { ConversionEntry, ConversionState, Conversions, JobRef, PlanRef } from '../../types/conversion'
+import { ENGINE_NAMES, type ConversionEngine } from '../../types/catalog'
+import type { ConversionEntry, ConversionState, Conversions, EngineChoice, JobRef, PlanRef } from '../../types/conversion'
 import type { Toolchain } from '../../types/toolchain'
 import { RepositoryConversionSection } from './RepositoryConversionSection'
 import { ToolchainNotice } from './ToolchainNotice'
@@ -162,6 +165,8 @@ function ConversionCard({
             {entry.baseline_from && <span className="text-neutral-500"> — {entry.baseline_from}</span>}
             {entry.scanned_at && <span className="text-neutral-500"> ({when(entry.scanned_at)})</span>}
           </dd>
+          <dt className="text-neutral-500">Engine</dt>
+          <dd data-testid="conversion-engine">{ENGINE_NAMES[entry.engine ?? 'github-copilot']}</dd>
           <dt className="text-neutral-500">Scope</dt>
           <dd data-testid="conversion-scope">
             {entry.scope?.left_out
@@ -271,6 +276,70 @@ function ConversionCard({
 
 /** `refusal`: why the signed-in person may not prepare or verify this repository's conversions (only its owner or an
  * admin, on the machine it was registered on), shown on the disabled buttons; null when they may. */
+/** Which engine the next conversion is prepared for (36-COPILOT-ENHANCED-CONVERSION Part Q): the repository's own
+ * choice (its owner), else the engagement's default (an admin). A conversion not yet run is prepared again. */
+function EnginePicker({ repositoryId, choice, refusal, onChanged }: {
+  repositoryId: string
+  choice: EngineChoice
+  refusal: string | null
+  onChanged: (note: string) => void
+}) {
+  const isAdmin = useIsAdmin()
+  const [busy, setBusy] = useState(false)
+  const engines = Object.keys(ENGINE_NAMES) as ConversionEngine[]
+  const value = choice.source === 'repository' ? choice.engine : ''
+
+  async function change(next: string) {
+    setBusy(true)
+    try {
+      const saved = await setConversionEngine(repositoryId, next === '' ? null : (next as ConversionEngine))
+      onChanged(saved.note)
+    } catch (err) {
+      onChanged(err instanceof ApiError ? err.message : 'Could not change the engine.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function changeDefault(next: ConversionEngine) {
+    setBusy(true)
+    try {
+      await setEngagementEngine(choice.engagement_id, next, choice.engagement_version)
+      onChanged(`The engagement's default engine is now ${ENGINE_NAMES[next]}. Repositories that chose their own keep it.`)
+    } catch (err) {
+      onChanged(err instanceof ApiError ? err.message : 'Could not change the engagement default.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-xs text-neutral-600" data-testid="engine-picker">
+      <span>
+        Engine: <strong className="text-neutral-800">{ENGINE_NAMES[choice.engine]}</strong>
+        {choice.source === 'repository' ? ' (this repository’s choice)' : ' (the engagement’s default)'}.
+      </span>
+      <label className="flex items-center gap-1">
+        This repository
+        <select value={value} disabled={busy || !!refusal} title={refusal ?? choice.on_change} aria-label="This repository's engine"
+          onChange={(e) => change(e.target.value)} className="rounded border border-neutral-300 px-1 py-0.5 text-xs">
+          <option value="">the engagement’s default ({ENGINE_NAMES[choice.engagement_default]})</option>
+          {engines.map((id) => <option key={id} value={id}>{ENGINE_NAMES[id]}</option>)}
+        </select>
+      </label>
+      <label className="flex items-center gap-1">
+        Engagement default
+        <select value={choice.engagement_default} disabled={busy || !isAdmin} title={isAdmin ? undefined : 'Only an admin may change it.'}
+          aria-label="The engagement's default engine" onChange={(e) => changeDefault(e.target.value as ConversionEngine)}
+          className="rounded border border-neutral-300 px-1 py-0.5 text-xs">
+          {engines.map((id) => <option key={id} value={id}>{ENGINE_NAMES[id]}</option>)}
+        </select>
+      </label>
+      <span className="text-neutral-500">{choice.on_change}</span>
+    </div>
+  )
+}
+
 export function ConversionsPanel({ repositoryId, refreshToken, refusal = null, toolchain = null }: {
   repositoryId: string
   refreshToken: number
@@ -377,6 +446,10 @@ export function ConversionsPanel({ repositoryId, refreshToken, refusal = null, t
           {subject}, the commit discovery scans first.
         </span>
       </div>
+      {data.engine && <EnginePicker repositoryId={repositoryId} choice={data.engine} refusal={refusal} onChanged={(note) => {
+        setMessage(note)
+        load()
+      }} />}
       <ToolchainNotice toolchain={toolchain} />
       {message && <p className="text-xs text-neutral-600">{message}</p>}
 

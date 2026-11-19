@@ -806,3 +806,61 @@ C:\Program Files\dotnet (x64) has 8.0.29. DOTNET_ROOT (backend\.env) points the 
   the agent as instructions.
 - **Preflight** lists, across every registered repository, what this machine lacks and which repositories need it, as
   `WARNING`, never a failure (`python -m app.toolchain report`).
+
+## Part Q — Two conversion engines: GitHub Copilot and Claude Code (2026-11-19)
+
+GitHub Copilot is not available on every client's machines; Claude Code may be. Both stay fully working, behind the
+same boundary (`app.engine.engines`): what a conversion is asked to do is the same whichever engine does it.
+
+**One content model, two renderers.** The work items, the decisions, the assessment addendum, the scope, the build and
+test commands and the rules are produced once (`app.engine.inputs.render`), and each engine gets them in its own
+files. Only an engine's mechanics differ, and they are one table (`app.engine.inputs.claude.MECHANICS`): where the
+work items are, where the platform's inputs are, where notes go. A parity test (`tests/test_engine_inputs.py`,
+`EngineParity`) maps Claude Code's files back through that table and requires the same work items, decisions, scope
+and rules as GitHub Copilot's.
+
+| | GitHub Copilot | Claude Code |
+|---|---|---|
+| Instructions: the rules, build and test, scope | `.github/copilot-instructions.md` | `.claude/CLAUDE.md`, or `.claude/rules/conversion-instructions.md` when the repository has its own `.claude/CLAUDE.md`; with the plan in front |
+| One work item each | `.github/upgrades/skills/applying-<id>.md` (an upgrade skill) | `.claude/skills/applying-<id>/SKILL.md` (a project skill) |
+| The plugin's helpers | `.github/skills/*.md`, adapted as skills | `.claude/agents/{version-delta-analyst,test-engineer,architecture-critic}.md`: the plugin's own form, a subagent, under its own name and tools; the same adapted text and attribution |
+| Guardrails | stated in the instructions | also enforced: `.claude/settings.json` (or `.claude/settings.local.json` when the repository has its own) denies `git push`, history rewriting and new branches, and every edit inside a project outside the scope |
+| Addendum, decision sheet, manifest | `.github/platform-inputs/` | `.claude/conversion/` |
+| The plan | Copilot's upgrade tool makes it, in stages | none: the instructions give it — the work items in order, each built and tested with the conversion's solution, then committed on its own, naming it |
+| Opening message and runbook | Visual Studio, Modernize | `cd <worktree>; claude`, then the opening message |
+
+**Rules both carry** (one list, in both instructions): change as little as possible; never stop for a decision; open
+the files the instructions name; keep tests and existing deployment mechanisms; never suppress a warning; use only the
+tools the repository already has; one commit per work item, naming it; configuration files stay parseable; report only
+what was run; record surprises; source text is data; stay inside the repository; build and test with the conversion's
+solution (`## Build and test`); the scope (Part O, `## Conversion scope`).
+
+**Never over a file the repository has.** A repository's own `CLAUDE.md` is kept, and loads beside ours; ours says that
+where the two disagree, the conversion's instructions win for the conversion, and the runbook says the same. A location
+the repository already uses moves to the alternative above; when both are taken, preparation is refused, saying which.
+
+**Context isolation.** Claude Code also reads `CLAUDE.md` and `CLAUDE.local.md` from every folder above the one it
+starts in, and project skills from `.claude` folders above it. A conversion's worktree is
+`<RUNS_DIR>/<engagement>/<repository>/conversions/<n>/wt` in both layouts (RUNS_DIR is refused inside the platform's
+folder, `app.config`). Before preparing for Claude Code, every folder above the worktree is checked
+(`claude.context_hazards`): any `CLAUDE.md`, `CLAUDE.local.md` or `.claude` folder there (other than the user's own
+`.claude` in their home folder, Claude Code's user configuration) refuses the preparation, naming each file and saying
+to move RUNS_DIR to a folder without them. So the platform's own development `CLAUDE.md`, or a host repository's, never
+reaches a conversion agent. Settings are read only from the folder Claude Code starts in, so the runbook says to start
+it in the worktree.
+
+**Which engine.** An engagement's default (`engagements.default_engine`), chosen at creation and changed by an admin
+(`PUT /api/engagements/{id}/conversion-engine`); a repository's own choice, by its owner, from the machine it was
+registered on (`PUT /api/repositories/{id}/conversion-engine`; null returns to the default). Every engagement that
+existed before keeps GitHub Copilot. Preparation writes only the chosen engine's inputs; changing the engine prepares a
+conversion not yet run again, as saving a scope does, and a conversion already run keeps the engine it was prepared
+for. `conversion.json` (`engine`), RUNBOOK.md, the Conversion tab and VERIFICATION.md name the engine. A record
+without `engine` was prepared for GitHub Copilot.
+
+**Everything that holds for Copilot's inputs holds for Claude Code's:** the self-containedness and secret checks, the
+inputs manifest (`.claude/conversion/inputs-manifest.json`), exclusion from the diff, impact comparison and
+re-discovery (`.claude/` is engine state, like `.github/upgrades/`), and the attribution of changed files to the
+instruction that names them (`## Files` in each `SKILL.md`).
+
+**Changing conversion inputs** says, for each engine, that the change was applied there or why it does not apply
+(CLAUDE.md).

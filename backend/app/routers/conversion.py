@@ -350,6 +350,7 @@ class ConversionEntryOut(BaseModel):
     plan: PlanRefOut | None = None      # the package step's plan whose units this conversion reports
     superseded_plans: list[PlanRefOut] = []   # plans of earlier preparations of this conversion, since refreshed
     scope: dict = {}                    # the scope it was prepared with: {left_out, projects, build}
+    engine: str = "github-copilot"      # the engine it was prepared for (Part Q); before engines, GitHub Copilot
 
 
 class NextConversionOut(BaseModel):
@@ -363,6 +364,16 @@ class NextConversionOut(BaseModel):
     last_scanned_at: str | None = None
 
 
+class EngineChoiceOut(BaseModel):
+    """Which engine the repository's next conversion uses (36-COPILOT-ENHANCED-CONVERSION Part Q)."""
+    engine: str
+    source: str                         # "repository" (its owner chose) or "engagement" (the default)
+    engagement_id: str
+    engagement_default: str
+    engagement_version: int
+    on_change: str                      # what changing it does now
+
+
 class ConversionsOut(BaseModel):
     conversions: list[ConversionEntryOut]   # newest first
     next: NextConversionOut
@@ -371,6 +382,7 @@ class ConversionsOut(BaseModel):
     verification_job: JobRefOut | None = None
     other_plans: list[PlanRefOut] = []       # package-step plans not tied to a conversion (experiments)
     held: "ConversionsHeldOut | None" = None  # on another machine: as it last published them
+    engine: EngineChoiceOut | None = None
 
 
 def _job_ref(db: Session, job_name: str, repository_id: uuid.UUID) -> JobRefOut | None:
@@ -503,7 +515,81 @@ def list_conversions(repository_id: uuid.UUID, db: Session = Depends(get_db)):
         discovery_job=_job_ref(db, _DISCOVERY_JOB, repository_id),
         verification_job=_job_ref(db, _VERIFICATION_JOB, repository_id),
         other_plans=[ref(p) for p in plans if str(p.id) not in tied],
-        held=held_out)
+        held=held_out,
+        engine=_engine_choice(db, repo, snapshot))
+
+
+def _engine_choice(db: Session, repo: models.Repository, snapshot: dict) -> EngineChoiceOut:
+    from app.engine import engines
+
+    engagement = db.get(models.Engagement, repo.engagement_id)
+    latest = (snapshot.get("entries") or [None])[0]
+    if latest is None:
+        note = "No conversion yet: the first one is prepared for this engine."
+    elif latest["state"] == "prepared":
+        note = f"Changing it prepares conversion {latest['number']} again (it has not been run yet) for the new engine."
+    else:
+        note = f"Conversion {latest['number']} has been run and keeps its engine; a change applies to the next one."
+    return EngineChoiceOut(engine=engines.of_repository(db, repo), source=engines.source(db, repo),
+                           engagement_id=repo.engagement_id, engagement_default=engagement.default_engine,
+                           engagement_version=engagement.version, on_change=note)
+
+
+class EngineIn(BaseModel):
+    engine: str | None = None           # 'github-copilot', 'claude-code', or null for the engagement's default
+
+
+class EngineSavedOut(BaseModel):
+    engine: str
+    source: str
+    note: str
+    reprepare_job_execution_id: str | None = None
+
+
+@router.put(
+    "/repositories/{repository_id}/conversion-engine",
+    response_model=EngineSavedOut,
+    summary="Choose the repository's conversion engine, or go back to the engagement's default",
+    operation_id="set_repository_conversion_engine",
+    responses={404: {"model": ErrorResponse, "description": "Repository not found."},
+               422: {"model": ErrorResponse, "description": "Not an engine (UNKNOWN_ENGINE)."}},
+)
+def set_repository_engine(repository_id: uuid.UUID, payload: EngineIn, background_tasks: BackgroundTasks,
+                          db: Session = Depends(get_db)):
+    """Its owner, from the machine it was registered on (app.auth.policy). A conversion not yet run is prepared again
+    for the new engine, through the same discovery run a rescan starts, as saving a scope does; one already run keeps
+    the engine it was prepared for (36-COPILOT-ENHANCED-CONVERSION Part Q)."""
+    from app.auth import activity
+    from app.engine import engines
+    from app.repositories import service as repositories
+
+    repo = _repository(db, repository_id)
+    if payload.engine is not None and payload.engine not in engines.ENGINES:
+        raise error(422, f"'{payload.engine}' is not a conversion engine: one of {', '.join(engines.ENGINES)}.",
+                    field="engine", code="UNKNOWN_ENGINE")
+    before = engines.of_repository(db, repo)
+    snapshot, _ = _snapshot(db, repo)
+    latest = (snapshot.get("entries") or [None])[0]
+    repo.conversion_engine = payload.engine
+    db.flush()
+    after = engines.of_repository(db, repo)
+    activity.record(db, "set conversion engine", "repository", str(repo.id),
+                    summary=f"{payload.engine or 'the engagement default'} ({engines.name(after)})")
+    db.commit()
+    job = None
+    if after != before and latest is not None and latest["state"] == "prepared":
+        token = repositories.start_rescan(repo)
+        job = _launch(db, background_tasks, _DISCOVERY_JOB, {
+            "engagement_id": repo.engagement_id, "repository_id": str(repo.id), "ingest_token": token,
+            "prepare_conversion": True})
+        note = f"Saved. Conversion {latest['number']} is being prepared again for {engines.name(after)}."
+    elif after == before:
+        note = f"Saved: the engine is still {engines.name(after)}, so no conversion changes."
+    elif latest is None:
+        note = f"Saved. The first conversion is prepared for {engines.name(after)}."
+    else:
+        note = f"Saved. Conversion {latest['number']} has been run and keeps its engine; the next one uses {engines.name(after)}."
+    return EngineSavedOut(engine=after, source=engines.source(db, repo), note=note, reprepare_job_execution_id=job)
 
 
 @router.post(

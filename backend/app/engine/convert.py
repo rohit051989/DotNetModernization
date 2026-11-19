@@ -8,7 +8,8 @@
     python -m app.engine.convert approve-removal --engagement test-client-a --repository accountsapi-net10
         --branch conversion/2 --test <test name or test file> [--test ...] --reason "..." --by "<person>"
 
-`prepare` makes the next conversion of a repository: a branch `conversion/<n>` from its baseline, in a worktree at
+`prepare` makes the next conversion of a repository, for its engine (app.engine.engines, Part Q: GitHub Copilot or
+Claude Code, the repository's own choice or its engagement's default): a branch `conversion/<n>` from its baseline, in a worktree at
 `<RUNS_DIR>/<engagement>/<repository>/conversions/<n>/wt`. First the platform applies the package changes that need no
 code: safe upgrades (each also fixing the vulnerability its package carries) and removals of packages the target
 framework provides. It uses the conversion unit loop (app.conversion.runner): one commit each on the conversion
@@ -44,14 +45,17 @@ from pathlib import Path
 
 from app import models
 from app.conversion import gitops, planner
-from app.engine import siblings
+from app.engine import engines, siblings
 from app.engine.inputs import generate
 from app.experiment import instrument
 from app.scope import service as scope_service
 
 INPUTS_COMMIT = "Add generated upgrade inputs for GitHub Copilot (do not edit)"
+INPUTS_COMMITS = {engines.COPILOT: INPUTS_COMMIT, engines.CLAUDE: "Add generated conversion inputs for Claude Code (do not edit)"}
 DEFAULT_GOAL = "Upgrade this solution to .NET 10 and make the application ready to run on OpenShift."
 RUNBOOK_TEMPLATE = Path(__file__).resolve().parent / "templates" / "conversion-runbook.md"
+RUNBOOK_TEMPLATES = {engines.COPILOT: RUNBOOK_TEMPLATE,
+                     engines.CLAUDE: Path(__file__).resolve().parent / "templates" / "conversion-runbook-claude.md"}
 RECORD = "conversion.json"
 STUCK_MINUTES = 5
 MAX_ROUNDS = 3
@@ -59,8 +63,11 @@ MAX_ROUNDS = 3
 
 # ---------------------------------------------------------------- the opening message
 
-def opening_message(goal: str, solution: str | None) -> str:
-    """Everything the agent needs, in the first message: the goal, how to work, the inputs, and what done means."""
+def opening_message(goal: str, solution: str | None, engine: str = engines.COPILOT, instructions: str | None = None) -> str:
+    """Everything the agent needs, in the first message: the goal, how to work, the inputs, and what done means.
+    Claude Code's says the same in its own mechanics: its instructions file holds the plan."""
+    if engine == engines.CLAUDE:
+        return _claude_opening(goal, solution, instructions)
     build = f"Build the solution ({solution})" if solution else "Build the solution"
     return "\n".join([
         goal.strip(),
@@ -93,6 +100,55 @@ def opening_message(goal: str, solution: str | None) -> str:
         "run all four checks again, and report only the results of that last run.",
         "Report each result with the command you ran and a summary of its output.",
     ])
+
+
+def _done_checks(solution: str | None) -> list[str]:
+    build = f"Build the solution ({solution})" if solution else "Build the solution"
+    return [
+        "You are done only when all of these hold. Before you report done:",
+        f"1. {build} with 0 errors.",
+        "2. Run all tests. Every test must pass. Do not weaken, skip or delete any test. If a test file must change "
+        "(a renamed namespace, for instance), keep the change minimal and list each change with its reason.",
+        "3. Confirm that every JSON and XML configuration file in the repository still parses.",
+        "4. Start the application without blocking the terminal, wait until it reports that it is listening or until "
+        "it fails, then stop it. If it fails only because a secret, a vault or an external service is unavailable on "
+        "this machine, report that, and do not change code to work around it.",
+        f"If any of these fails, fix it and run all four again, at most {MAX_ROUNDS} times; then report what still "
+        "fails.",
+        "Every result you report must be from the final state of the code. If you change anything after a check, "
+        "run all four checks again, and report only the results of that last run.",
+        "Report each result with the command you ran and a summary of its output.",
+    ]
+
+
+def _claude_opening(goal: str, solution: str | None, instructions: str | None) -> str:
+    from app.engine.inputs import claude
+
+    instructions = instructions or claude.INSTRUCTIONS
+    return "\n".join([
+        goal.strip(),
+        "",
+        "How to work:",
+        f"- Follow {instructions}: it gives the plan (the work items in order, each a skill in {claude.SKILLS_DIR}), "
+        "the rules and the scope. Read "
+        f"{claude.INPUTS_DIR}/assessment-addendum.md and {claude.INPUTS_DIR}/decision-sheet.md before the first work item.",
+        "- Every work item names, by path, the existing files it concerns. Open those files by their paths; do not "
+        "search for them, and never create a file the instructions say already exists.",
+        "- Never suppress a warning or an error to make a check pass: no -nowarn, NoWarn, #pragma warning disable, "
+        "lowered warning level or skipped analyzer.",
+        "- Work on the current branch and do not create another branch. Commit each work item on its own, naming it; "
+        "never push, rebase or amend.",
+        "- Keep every test, and the code it uses, unless an instruction says a decision chose otherwise; keep every "
+        "existing deployment and build mechanism, adding beside it.",
+        "- Never change a project outside the conversion's scope; if a change seems to need one, stop and say so.",
+        "",
+        *_done_checks(solution),
+    ])
+
+
+def opening_for(record: dict) -> str:
+    """The opening message of a conversion, for the engine it was prepared for."""
+    return opening_message(record["goal"], record.get("solution"), engines.of_record(record), record.get("instructions"))
 
 
 def framework_name(tfm: str) -> str:
@@ -195,17 +251,23 @@ def _repository(db, engagement_id: str, slug: str) -> models.Repository:
             .filter(models.Repository.deleted_at.is_(None)).one())
 
 
-def _commit_inputs(db, engagement_id: str, slug: str, worktree: Path, applied: list[dict]) -> list[dict]:
-    """Generates and commits the inputs. Returns [{file, references}]: each input that names a secret value by its
-    file, key and line instead of quoting it (app.engine.inputs.secrets)."""
+def _commit_inputs(db, engagement_id: str, slug: str, worktree: Path, applied: list[dict],
+                   engine: str = engines.COPILOT) -> tuple[list[dict], dict[str, str]]:
+    """Generates and commits the inputs for `engine`, only its own. Returns ([{file, references}]: each input that
+    names a secret value by its file, key and line instead of quoting it (app.engine.inputs.secrets); the files)."""
     from app.engine import paths
     from app.engine.inputs import selfcontained
 
     warnings: list[dict] = []
-    generate(db, engagement_id, slug, worktree, applied=applied, warnings=warnings)
-    gitops.platform_commit(worktree, INPUTS_COMMIT, vocabulary=selfcontained.vocabulary(db),
-                           paths=[p.rstrip("/") for p in paths.GENERATED_INPUT_PATHS if (worktree / p.rstrip("/")).exists()])
-    return warnings
+    files = generate(db, engagement_id, slug, worktree, applied=applied, warnings=warnings, engine=engine)
+    if engine == engines.COPILOT:
+        gitops.platform_commit(worktree, INPUTS_COMMIT, vocabulary=selfcontained.vocabulary(db),
+                               paths=[p.rstrip("/") for p in paths.GENERATED_INPUT_PATHS if (worktree / p.rstrip("/")).exists()])
+    else:
+        # Exactly the files written, even where the repository's own ignore rules would hide one (.claude/ often is).
+        gitops.platform_commit(worktree, INPUTS_COMMITS[engine], vocabulary=selfcontained.vocabulary(db),
+                               paths=sorted(files), force=True)
+    return warnings, files
 
 
 # ---------------------------------------------------------------- the package changes the platform applies
@@ -357,6 +419,7 @@ def prepare(db, engagement_id: str, slug: str, *, baseline: str | None = None, g
     canaries = canaries if canaries is not None else (latest or {}).get("canaries") or []
     # Which projects the conversion covers (app.scope): read once, so the plan, the inputs and the record agree.
     scope = scope_service.for_conversion(db, repository)
+    engine = engines.of_repository(db, repository)
 
     latest_unrun = latest is not None and unrun(Path(latest["worktree"]), latest["baseline"])
     refresh = latest_unrun and when_run != "next"
@@ -370,6 +433,8 @@ def prepare(db, engagement_id: str, slug: str, *, baseline: str | None = None, g
     branch = f"conversion/{number}"
     if worktree.resolve().is_relative_to(root.resolve()):
         raise ValueError(f"{worktree} would be inside the registered checkout")
+    if engine == engines.CLAUDE:
+        _refuse_outside_context(folder)
 
     if not refresh:
         if folder.exists():
@@ -391,11 +456,25 @@ def prepare(db, engagement_id: str, slug: str, *, baseline: str | None = None, g
     try:
         return _prepare_on(db, repository, engagement, root, latest, base, goal, sibling_links, canaries, baseline,
                            lookups_from_discovery, refresh, number, folder, worktree, branch, plan, units, not_planned,
-                           scope)
+                           scope, engine)
     except BaseException:
         if not refresh:
             _undo_creation(db, root, folder, worktree, branch, plan)
         raise
+
+
+def _refuse_outside_context(folder: Path) -> None:
+    """Claude Code also reads CLAUDE.md, CLAUDE.local.md and .claude folders above the folder it starts in (Part Q): a
+    conversion's worktree under one would hand the agent instructions that are not the conversion's, the platform's own
+    development CLAUDE.md among them. Refused, naming each, before anything is made."""
+    from app.engine.inputs import claude
+
+    found = claude.context_hazards(folder / "wt")
+    if found:
+        raise ValueError("Claude Code would also read instruction files above the conversion's worktree "
+                         f"({folder / 'wt'}): {', '.join(found)}. Set RUNS_DIR in backend/.env to a folder with no "
+                         "CLAUDE.md, CLAUDE.local.md or .claude folder above it (outside every repository), restart the "
+                         "backend, and prepare again")
 
 
 def _commit_scope(worktree: Path, scope: dict) -> dict:
@@ -434,14 +513,14 @@ def _undo_creation(db, root: Path, folder: Path, worktree: Path, branch: str, pl
 def _prepare_on(db, repository, engagement, root: Path, latest: dict | None, base: str, goal: str,
                 sibling_links: list[str], canaries: list[dict], baseline: str | None, lookups_from_discovery: bool,
                 refresh: bool, number: int, folder: Path, worktree: Path, branch: str, plan, units,
-                not_planned: str | None, scope: dict) -> dict:
+                not_planned: str | None, scope: dict, engine: str = engines.COPILOT) -> dict:
     """prepare, from the advisories check to the written record and runbook."""
     engagement_id, slug = repository.engagement_id, repository.slug
 
     # Nothing is changed unless no version the package commits or the inputs would ask for has a known advisory
     # today. The inputs are generated aside first, whole: a superset of what they will ask for.
     with tempfile.TemporaryDirectory() as tmp:
-        fresh = generate(db, engagement_id, slug, Path(tmp))
+        fresh = generate(db, engagement_id, slug, Path(tmp), engine=engines.COPILOT)
     checked = check_advisories(db, fresh, targets=unit_targets(units), check_age=not lookups_from_discovery)
 
     planned = [u.target.get("title") for u in units]
@@ -475,13 +554,18 @@ def _prepare_on(db, repository, engagement, root: Path, latest: dict | None, bas
         units, step = run_packages(db, plan, sibling_links)
         changes, applied = [_unit_record(u) for u in units], applied_changes(units)
     packages_head = gitops.head(worktree)
-    secret_references = _commit_inputs(db, engagement_id, slug, worktree, applied)
+    secret_references, written = _commit_inputs(db, engagement_id, slug, worktree, applied, engine)
 
     solutions = sorted(p.name for p in worktree.glob("*.sln"))
     # With projects left out, the conversion builds its own solution: exactly the kept projects.
     solution = scope["build"] or (solutions[0] if solutions else None)
     record = {
         "number": number, "engagement": engagement_id, "repository": slug, "baseline": base, "branch": branch,
+        # The engine it was prepared for (Part Q), and where that engine's instructions and settings are.
+        "engine": engine, "instructions": _instructions_of(engine, written), "settings": _settings_of(engine, written),
+        # The repository's own instruction files Claude Code also loads: kept unchanged, named in the runbook.
+        "ownInstructions": [p for p in ("CLAUDE.md", "CLAUDE.local.md", ".claude/CLAUDE.md")
+                            if engine == engines.CLAUDE and p not in written and (worktree / p).is_file()],
         # Where the baseline came from: the commit discovery scanned, or the command line's --baseline.
         "baselineFrom": "the --baseline given" if baseline else "the commit discovery scanned"
                         if repository.ingest_commit_sha else "the checkout's HEAD",
@@ -514,6 +598,21 @@ def _prepare_on(db, repository, engagement, root: Path, latest: dict | None, bas
     return {**record, "action": action}
 
 
+def _instructions_of(engine: str, files: dict[str, str]) -> str:
+    from app.engine import paths
+    from app.engine.inputs import claude
+
+    if engine == engines.COPILOT:
+        return paths.COPILOT_INSTRUCTIONS
+    return next(p for p in (claude.INSTRUCTIONS, claude.INSTRUCTIONS_ALTERNATIVE) if p in files)
+
+
+def _settings_of(engine: str, files: dict[str, str]) -> str | None:
+    from app.engine.inputs import claude
+
+    return next((p for p in (claude.SETTINGS, claude.SETTINGS_ALTERNATIVE) if p in files), None)
+
+
 def left_for_agent(db, engagement_id: str, slug: str, applied: list[dict], changes: list[dict]) -> dict:
     """What the agent's inputs still ask for: each item with its resolution and places (a package item's values),
     the package changes that did not go green, and the assisted ones (breaking upgrades)."""
@@ -535,16 +634,30 @@ def verify_command(record: dict, branch: str | None = None, base: str | None = N
 
 
 def render_runbook(record: dict) -> str:
-    template = string.Template(RUNBOOK_TEMPLATE.read_text(encoding="utf-8"))
-    return template.substitute(
+    from app.engine.inputs import claude
+
+    engine = engines.of_record(record)
+    template = string.Template(RUNBOOK_TEMPLATES[engine].read_text(encoding="utf-8"))
+    values = dict(
         repository=record["repository"], branch=record["branch"], worktree=record["worktree"],
         solution=record["solution"] or "<solution>.sln", base=record["baseline"][:8],
         platform=instrument.describe(record["platform"]),
-        opening=opening_message(record["goal"], record["solution"]),
+        opening=opening_for(record),
         target=framework_name(record["targetFramework"]), stuck_minutes=STUCK_MINUTES,
         verify_command=verify_command(record),
         prepare_command=f"python -m app.engine.convert prepare --engagement {record['engagement']} "
-                        f"--repository {record['repository']}")
+                        f"--repository {record['repository']}",
+        scope_section="")
+    if engine == engines.CLAUDE:
+        own = record.get("ownInstructions") or []
+        values.update(
+            instructions=record.get("instructions") or claude.INSTRUCTIONS,
+            settings=record.get("settings") or claude.SETTINGS,
+            settings_scope=", and no edit inside a project left out of the scope" if (record.get("scope") or {}).get("left") else "",
+            own_claude_md=("| " + ", ".join(f"`{f}`" for f in own) + " | The repository's own, kept unchanged. Claude Code "
+                           "loads it too; where it and the conversion's instructions disagree, the conversion's "
+                           "instructions say they win for this conversion. |\n") if own else "")
+    return template.substitute(values)
 
 
 # ---------------------------------------------------------------- approved test removals
@@ -593,7 +706,9 @@ def verify(db, engagement_id: str, slug: str, branch: str, *, base: str | None =
               "approved_test_removals": approvals_for(engagement_id, slug, branch),
               # The scope the branch's conversion was prepared with (Part O): its own solution is built and tested,
               # and the projects it left out are not counted.
-              "scope": (own or {}).get("scope") or {}}
+              "scope": (own or {}).get("scope") or {},
+              # The engine the branch's conversion was prepared for (Part Q), named in VERIFICATION.md.
+              "engine": engines.of_record(own) if own else None}
     return verifier.verify(db, engagement_id=engagement_id, slug=slug, base=base, ref=branch,
                            label=label or branch.replace("/", "-"), config=config, refresh_baseline=refresh_baseline)
 

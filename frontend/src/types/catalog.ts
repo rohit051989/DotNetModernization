@@ -13,12 +13,19 @@ export type ForcingPerspective =
   | 'LOCATION'
   | 'DEVELOPMENT_RESOURCE'
 
+/** The conversion engines (36-COPILOT-ENHANCED-CONVERSION Part Q). */
+export type ConversionEngine = 'github-copilot' | 'claude-code'
+
+export const ENGINE_NAMES: Record<ConversionEngine, string> = { 'github-copilot': 'GitHub Copilot', 'claude-code': 'Claude Code' }
+
 export interface Engagement {
   id: string
   client_name: string
   description: string | null
   target_platform: string | null
   default_posture: string
+  /** The conversion engine its repositories use unless one chooses its own (36-COPILOT-ENHANCED-CONVERSION Part Q). */
+  default_engine?: ConversionEngine
   status: LifecycleStatus
   created_at: string
   updated_at: string

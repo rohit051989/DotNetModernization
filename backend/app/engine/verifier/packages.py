@@ -45,7 +45,7 @@ def inputs_commit(root: Path, base: str, tip: str) -> str | None:
     """The platform's commit that wrote the instructions, when the conversion was prepared: the first platform commit
     after `base` that touches the instructions folder (the package commits before it touch project files only)."""
     for sha in _platform_commits(root, base, tip):
-        if gitops.git(root, "diff-tree", "--no-commit-id", "--name-only", "-r", sha, "--", paths.UPGRADE_SKILLS_DIR).strip():
+        if gitops.git(root, "diff-tree", "--no-commit-id", "--name-only", "-r", sha, "--", *paths.WORK_ITEM_DIRS).strip():
             return sha
     return None
 
@@ -75,8 +75,9 @@ def applied_by_platform(root: Path, base: str, tip: str) -> list[dict]:
 
 def asked_for(root: Path, commit: str) -> list[dict]:
     """[{project, package, current, asked, instruction}] from the package instructions in `commit`."""
-    names = gitops.git(root, "ls-tree", "-r", "--name-only", commit, "--", paths.UPGRADE_SKILLS_DIR).splitlines()
-    files = {n: gitops.git(root, "show", f"{commit}:{n}") for n in names if Path(n).name.startswith("applying-package-")}
+    names = gitops.git(root, "ls-tree", "-r", "--name-only", commit, "--", *paths.WORK_ITEM_DIRS).splitlines()
+    files = {n: gitops.git(root, "show", f"{commit}:{n}") for n in names
+             if paths.is_work_item(n) and paths.work_item_name(n).startswith("applying-package-")}
     return render.package_targets(files)
 
 

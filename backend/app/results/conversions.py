@@ -45,7 +45,9 @@ def local_snapshot(repo: models.Repository) -> dict:
             "commits_beyond_inputs": s["commitsBeyondInputs"], "uncommitted": s["uncommitted"], "worktree": rec["worktree"],
             "prepared_at": rec.get("preparedAt"), "runbook_path": str(runbook),
             "runbook": runbook.read_text(encoding="utf-8") if runbook.exists() else None,
-            "opening_message": convert.opening_message(rec["goal"], rec.get("solution")),
+            "opening_message": convert.opening_for(rec),
+            # The engine it was prepared for (36-COPILOT-ENHANCED-CONVERSION Part Q); before engines, GitHub Copilot.
+            "engine": rec.get("engine") or "github-copilot",
             "package_step": rec.get("packageStep") or {}, "left_for_agent": rec.get("leftForAgent") or {},
             "verify_refusal": convert.verify_refusal(rec), "verification": _verification(rec, s),
             "plan_id": rec.get("planId"),

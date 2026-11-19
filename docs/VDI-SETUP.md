@@ -95,7 +95,7 @@ Install these first. None needs administrator rights if installed per user ("Acc
 | **npm** | **7.0.0 or later** | Every Node.js above ships a newer one |
 | **.NET SDK** | **any .NET 10 SDK, 10.0.100 or later** (tested: 10.0.203 and 10.0.302) | Any feature band (1xx, 2xx, 3xx). The .NET 9 SDK alone is not enough |
 | **git** | **2.17.0 or later** (tested: 2.55.0) | |
-| Visual Studio with GitHub Copilot | the client's standard | Only for running a conversion ("Registering a client repository"); the platform does not need it. When installed (2022 or later, Community, Professional or Enterprise), file links in the UI can open in it, at the line, each installation by its own name (`04-FRONTEND-SPEC.md` "File links"). SQL Server Management Studio and Build Tools are never used, though the Visual Studio Installer lists them |
+| Visual Studio with GitHub Copilot, or Claude Code | the client's standard | Only for running a conversion, with the engine the engagement or repository chose (`36-COPILOT-ENHANCED-CONVERSION.md` Part Q) ("Registering a client repository"); the platform does not need it. When installed (2022 or later, Community, Professional or Enterprise), file links in the UI can open in it, at the line, each installation by its own name (`04-FRONTEND-SPEC.md` "File links"). SQL Server Management Studio and Build Tools are never used, though the Visual Studio Installer lists them |
 | VS Code | any | Optional. When `code` is on PATH, file links in the UI can open in it, at the line. Without either editor, file links copy the path and line |
 
 #### Access needed
@@ -820,7 +820,7 @@ bookmarked or sent, and the page reopens on the tab last used:
 | Executions | each discovery run, newest first, opening its step-by-step page |
 | Details | the repository's registration, git facts and owner; Edit changes them |
 | Impact | files each change touches |
-| **Conversion** | every conversion, newest first: number, branch, status (prepared, run, verified) and verdict. Each one's entry has the commit it starts from, its worktree, the runbook, the opening message for GitHub Copilot (with a copy button), its package-step plan, **Verify** once it has been run, and its VERIFICATION.md once verified |
+| **Conversion** | every conversion, newest first: number, branch, status (prepared, run, verified) and verdict. Each one's entry has the commit it starts from, its worktree, the engine it was prepared for, the runbook, the opening message for that engine (with a copy button), its package-step plan, **Verify** once it has been run, and its VERIFICATION.md once verified |
 
 On disk, under `RUNS_DIR\<engagement>\<repository>\`:
 
@@ -1802,6 +1802,16 @@ doing after an update besides bootstrap: a rescan, a package your mirror must ca
 hand. Everything else an update brings, bootstrap applies by itself. Apply every entry newer than the commit you
 had (`previousCommit` in `PLATFORM_SOURCE.json` after the update; in our own installs, the commit before step 5 of
 the appendix), oldest of them first. Entries up to 2026-10-23 were the notes of releases 2 to 7, which are named so.
+
+#### 2026-11-19, (commit of "Claude Code as a second conversion engine"): an engagement chooses GitHub Copilot or Claude Code
+
+Bootstrap adds `engagements.default_engine` and `repositories.conversion_engine` by itself. Every existing engagement
+keeps GitHub Copilot, and every existing conversion keeps the engine it was prepared for: nothing to do. To use Claude
+Code, an admin sets the engagement's default in a repository's Conversion tab, or a repository's owner chooses it there
+for that repository; a conversion not yet run is prepared again for it. Before the first Claude Code conversion, check
+that no folder above RUNS_DIR holds a `CLAUDE.md`, `CLAUDE.local.md` or `.claude` folder (other than your own `.claude`
+in your home folder): preparation refuses one, because Claude Code would read it. The verifier now reports a change
+inside a project left out of the scope as a scope violation (NOT PROVEN).
 
 #### 2026-11-19, (commit of "Artifactory: a token as well as a username and password"): an artifactory login can be a token
 

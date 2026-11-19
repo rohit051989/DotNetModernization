@@ -29,12 +29,19 @@ import re
 import sys
 from pathlib import Path
 
-from app.engine import paths
+from app.engine import engines, paths
 from app.engine.inputs import secrets, selfcontained
 from app.engine.inputs import render as rendering
 from app.engine.inputs.render import ADDENDUM_END, ADDENDUM_START, GENERATOR_VERSION
 
 MANIFEST = f"{paths.PLATFORM_INPUTS_DIR}/inputs-manifest.json"
+
+
+def manifest_path(engine: str = engines.COPILOT) -> str:
+    """Where an engine's inputs manifest goes (Part Q)."""
+    from app.engine.inputs import claude
+
+    return MANIFEST if engine == engines.COPILOT else claude.MANIFEST
 
 
 class SecretFound(Exception):
@@ -60,19 +67,20 @@ def manifest(model: dict, files: dict[str, str]) -> str:
     }, indent=2, sort_keys=True) + "\n"
 
 
-def build(model: dict, repository_root: Path | None, warnings: list | None = None) -> dict[str, str]:
+def build(model: dict, repository_root: Path | None, warnings: list | None = None,
+          engine: str = engines.COPILOT) -> dict[str, str]:
     """{path: text} for every input including the manifest. A secret value the inputs would quote is replaced by a
     reference to where it is, and `warnings`, when given, receives [{file, references}] for each generated file that
     names one. Raises SecretFound (a secret still there after that) or NotSelfContained; either way nothing has been
     written."""
     paths = secrets.paths_of(model)            # a value inside one of these is a folder or file name, never a finding
-    files = secrets.redact_files(rendering.render(secrets.redact(model, repository_root)), repository_root, paths)
+    files = secrets.redact_files(rendering.render(secrets.redact(model, repository_root), engine), repository_root, paths)
     findings = secrets.check(files, repository_root, paths)
     if findings:
         raise SecretFound(findings)
     if warnings is not None:
         warnings.extend(secrets.warnings(files))
-    files[MANIFEST] = manifest(model, files)
+    files[manifest_path(engine)] = manifest(model, files)
     loose = selfcontained.check(files, model.get("vocabulary"), repository_root)
     if loose:
         raise NotSelfContained(loose)
@@ -144,12 +152,13 @@ def model_for(db, engagement_id: str, slug: str, applied: list[dict] | None = No
 
 
 def generate(db, engagement_id: str, slug: str, out: Path, missing: list | None = None,
-             applied: list[dict] | None = None, warnings: list | None = None) -> dict[str, str]:
+             applied: list[dict] | None = None, warnings: list | None = None,
+             engine: str = engines.COPILOT) -> dict[str, str]:
     """Writes the inputs into `out`. `missing`, when given, receives the changes without engine-facing guidance.
     `applied`: what the platform already applied on the branch, left out of the inputs (without_applied).
     `warnings`: the generated files that name a secret by reference instead of quoting it (build)."""
     model, repository = model_for(db, engagement_id, slug, applied)
-    files = build(model, Path(repository.local_path), warnings)
+    files = build(model, Path(repository.local_path), warnings, engine)
     write(files, out)
     if missing is not None:
         missing.extend(rendering.without_guidance(model))

@@ -45,6 +45,18 @@ execution. They are this project's rules for the upgrade and override any genera
   lowered warning level, `TreatWarningsAsErrors` turned off or skipped analyzer. A vulnerability warning (NU1901 to
   NU1904) is fixed by the package version its instruction names, or reported; never hidden.
 
+## Use only the tools this repository already has
+
+- Never download, install or run a tool the repository does not already use: no new SDK, workload, global or local
+  tool, package manager or script fetched from the network. Build and test with the commands under "Build and test".
+  If a change seems to need a new tool, stop and say so.
+
+## One commit per work item
+
+- Commit each instruction under `.github/upgrades/skills/` on its own once it is applied, builds and its tests pass,
+  on the current branch, with a commit message that names it (`applying-...`). Never create another branch, push,
+  rebase, amend a commit or otherwise rewrite the branch's history.
+
 ## Configuration files
 
 - When several changes touch the same configuration file, make them **in a single edit** of that file, not one

@@ -45,7 +45,7 @@ def check(engagement_id: str, client_name: str, target_framework: str) -> None:
 
 def create(db: Session, engagement_id: str, client_name: str, target_framework: str = "net10.0",
            description: str | None = None, target_platform: str | None = None,
-           default_posture: str = "lift-and-shift") -> models.Engagement:
+           default_posture: str = "lift-and-shift", default_engine: str = "github-copilot") -> models.Engagement:
     """Adds the engagement and flushes; the caller commits. Raises EngagementError."""
     engagement_id = engagement_id.strip()
     client_name = client_name.strip()
@@ -55,7 +55,7 @@ def create(db: Session, engagement_id: str, client_name: str, target_framework: 
         raise EngagementError(409, "id", f"Engagement '{engagement_id}' already exists", "DUPLICATE_ID")
     engagement = models.Engagement(
         id=engagement_id, client_name=client_name, description=description, target_platform=target_platform,
-        default_posture=default_posture, target_framework=target_framework,
+        default_posture=default_posture, target_framework=target_framework, default_engine=default_engine,
     )
     db.add(engagement)
     db.flush()

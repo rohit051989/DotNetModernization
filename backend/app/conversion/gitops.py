@@ -82,16 +82,21 @@ class CommitRefused(ValueError):
     pass
 
 
-def platform_commit(worktree: Path, message: str, *, paths: list[str] | None = None, vocabulary: dict | None = None) -> str:
+def platform_commit(worktree: Path, message: str, *, paths: list[str] | None = None, vocabulary: dict | None = None,
+                    force: bool = False) -> str:
     """Every commit the platform makes in a client repository (36-COPILOT-ENHANCED-CONVERSION Part M). The message
     must be self-contained (no platform document, path, lifecycle step or vocabulary: app.engine.inputs.selfcontained)
-    and carry no co-author trailer; otherwise nothing is committed. `paths`: what to stage, else everything."""
+    and carry no co-author trailer; otherwise nothing is committed. `paths`: what to stage, else everything; `force`:
+    stage those paths even where the repository's ignore rules match them."""
     from app.engine.inputs import selfcontained
 
     findings = selfcontained.check_commit_message(message, vocabulary)
     if findings:
         raise CommitRefused("commit message refused: " + "; ".join(f"{f['check']} ({f['match']})" for f in findings))
-    git(worktree, "add", "--", *paths) if paths else git(worktree, "add", "--all")
+    if paths:
+        git(worktree, "add", *(["-f"] if force else []), "--", *paths)
+    else:
+        git(worktree, "add", "--all")
     git(worktree, *PLATFORM_IDENTITY, "commit", "--no-verify", "-q", "-m", message)
     return head(worktree)
 

@@ -1,3 +1,4 @@
+import type { ConversionEngine } from './catalog'
 /** A repository's conversion plan and its units — 34-CONVERSION-ARCHITECTURE.md
  * C4 and Part E, served by GET /api/repositories/{id}/conversion. */
 
@@ -203,6 +204,20 @@ export interface ConversionEntry {
   superseded_plans: PlanRef[]
   /** The scope it was prepared with: how many projects it left out, and the solution of the kept projects it builds. */
   scope?: { left_out: number; projects: number | null; build: string | null }
+  /** The engine it was prepared for; one prepared before engines were recorded is GitHub Copilot's. */
+  engine?: ConversionEngine
+}
+
+/** Which engine the repository's next conversion uses, and where that comes from (36-COPILOT-ENHANCED-CONVERSION
+ * Part Q): the repository owner's choice, else the engagement's default (set by an admin). */
+export interface EngineChoice {
+  engine: ConversionEngine
+  source: 'repository' | 'engagement'
+  engagement_id: string
+  engagement_default: ConversionEngine
+  engagement_version: number
+  /** What changing it does now: re-prepares a conversion not yet run, or applies to the next one. */
+  on_change: string
 }
 
 export interface NextConversion {
@@ -222,4 +237,5 @@ export interface Conversions {
   verification_job: JobRef | null
   other_plans: PlanRef[]
   held?: ConversionsHeld | null
+  engine?: EngineChoice
 }

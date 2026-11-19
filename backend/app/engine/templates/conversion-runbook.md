@@ -3,7 +3,7 @@
 > Written by `python -m app.engine.convert prepare` from `backend/app/engine/templates/conversion-runbook.md`.
 > Do not edit it: change the template or the inputs, and prepare again.
 
-Worktree `${worktree}`, branch `${branch}`, from baseline `${base}`. Prepared with ${platform}.
+Worktree `${worktree}`, branch `${branch}`, from baseline `${base}`. Prepared with ${platform}. Engine: **GitHub Copilot**.
 
 ## 1. Open the worktree
 
@@ -24,7 +24,7 @@ ${opening}
 | If the agent asks | Reply |
 |---|---|
 | Target framework | `${target}` |
-| Branch, Git strategy, commits | `Work on the current branch and do not create another branch. One commit at the end is fine.` |
+| Branch, Git strategy, commits | `Work on the current branch and do not create another branch. Commit each instruction on its own once it builds, naming it in the commit message.` |
 | Automatic or guided flow | `Guided.` |
 | Upgrade options | `Use the answers in .github/platform-inputs/decision-sheet.md. Where it gives none, continue with your recommended option.` |
 | Whether to plan, or to execute the plan | `Proceed.` |
@@ -71,3 +71,4 @@ reported counts as evidence.
 
 To start again after fixing an instruction, run `${prepare_command}`. If this conversion has not been run, its inputs
 are refreshed in place. Otherwise it prepares the next conversion, with its own worktree and runbook.
+${scope_section}

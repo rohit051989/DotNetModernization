@@ -264,6 +264,14 @@ Use these terms exactly and consistently in code, APIs, and UI copy.
 - **Forcing factor** — the security requirement or decommissioned dependency that
   justifies choosing something other than the lowest-impact option.
 
+20. **Every change to conversion inputs covers both engines.** The platform prepares conversions for GitHub Copilot and
+    for Claude Code from one content model (`app/engine/inputs/render.py`, `claude.py`;
+    `36-COPILOT-ENHANCED-CONVERSION.md` Part Q). A change to what a conversion is told (a work item, a rule, the
+    decision sheet, the addendum, the scope, the build and test commands, the opening message or the runbook) states,
+    for each engine, that it was applied there or why it does not apply, in the commit message and in the spec it
+    changes. Only engine mechanics may differ between them, and those live in `claude.MECHANICS`; the parity test
+    (`tests/test_engine_claude.py`) must keep passing.
+
 ## Out of scope for this build
 
 Repository scanning beyond the lifecycle steps, wave planning, engine integration beyond what is built, deployment.
