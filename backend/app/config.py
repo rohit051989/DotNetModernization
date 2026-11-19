@@ -71,8 +71,11 @@ class Settings(BaseSettings):
     nuget_sources: str = ""              # comma-separated: feed URLs or local folders for the step programs' restore
     compare_public_nuget_feed: bool = True
     # One login for the feeds an engagement lists in its Artifactory tab that NuGet.config does not already
-    # authenticate (docs/39-ARTIFACTORY.md). Optional; environment or backend/.env only, never the database.
-    # Like DB_PASSWORD they reach the step programs as ARTIFACTORY_USERNAME and ARTIFACTORY_PASSWORD in this process's environment.
+    # authenticate (docs/39-ARTIFACTORY.md): a token, or a username and password. Optional; environment or backend/.env
+    # only, never the database. Like DB_PASSWORD they reach the step programs as ARTIFACTORY_TOKEN, ARTIFACTORY_USERNAME
+    # and ARTIFACTORY_PASSWORD in this process's environment, where Fingerprinting.Dependencies' ArtifactoryLogin, the
+    # one place that authenticates a call to an artifactory, reads them. An empty token counts as not set.
+    artifactory_token: SecretStr | None = None
     artifactory_username: str | None = None
     artifactory_password: SecretStr | None = None
 
@@ -176,6 +179,16 @@ def database_url(schema: str, s: "Settings | None" = None) -> str:
             f"?options={quote(f'-csearch_path={schema}', safe='')}")
 
 
+def artifactory_method(token: str | None, username: str | None, password: str | None) -> str:
+    """Which artifactory login is configured, named as ArtifactoryLogin.Configured names it: "token" (it wins over a
+    username and password), "username and password" or "none". Never a value. An empty token counts as not set."""
+    if token and token.strip():
+        return "token"
+    if username and password is not None:
+        return "username and password"
+    return "none"
+
+
 def apply_credentials(s: "Settings") -> None:
     """DB_USER and DB_PASSWORD into this process's environment as PGUSER and PGPASSWORD, which libpq (psycopg) and
     the step programs read. The only place they go."""
@@ -184,6 +197,8 @@ def apply_credentials(s: "Settings") -> None:
     if s.db_password:
         os.environ["PGPASSWORD"] = s.db_password.get_secret_value()
     # The feed login from backend/.env, for the step programs (a value already in the environment is what was read).
+    if s.artifactory_token and s.artifactory_token.get_secret_value().strip():
+        os.environ["ARTIFACTORY_TOKEN"] = s.artifactory_token.get_secret_value().strip()
     if s.artifactory_username:
         os.environ["ARTIFACTORY_USERNAME"] = s.artifactory_username
     if s.artifactory_password:

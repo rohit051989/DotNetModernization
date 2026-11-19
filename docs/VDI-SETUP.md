@@ -1803,6 +1803,14 @@ hand. Everything else an update brings, bootstrap applies by itself. Apply every
 had (`previousCommit` in `PLATFORM_SOURCE.json` after the update; in our own installs, the commit before step 5 of
 the appendix), oldest of them first. Entries up to 2026-10-23 were the notes of releases 2 to 7, which are named so.
 
+#### 2026-11-19, (commit of "Artifactory: a token as well as a username and password"): an artifactory login can be a token
+
+Nothing is required: an existing `backend/.env` with `ARTIFACTORY_USERNAME` and `ARTIFACTORY_PASSWORD` keeps working
+exactly as before, and bootstrap republishes the two dependency step programs by itself. Optional: where an artifactory
+accepts only a token, set `ARTIFACTORY_TOKEN` in `backend/.env` or the environment, then restart the backend.
+A token wins over a username and password; when an artifactory rejects it, a run warns once and uses the username and
+password instead (`39-ARTIFACTORY.md`). Preflight now names the login method and checks each listed artifactory with it.
+
 #### 2026-11-17, (commit of "Artifactory tab: engagement feeds"): an engagement can list artifactories, and a hierarchy rule
 
 Bootstrap adds the table `engagement_feeds` by itself. Two things to do after updating: (1) **rescan** a repository to

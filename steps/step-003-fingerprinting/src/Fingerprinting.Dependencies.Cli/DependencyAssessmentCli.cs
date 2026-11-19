@@ -42,8 +42,29 @@ public static class DependencyAssessmentCli
     public static async Task<int> RunAsync(string[] args, TextReader input, TextWriter output, TextWriter error)
     {
         FeedCredentials.Configure();
+        if (args.Length > 0 && args[0] == "--check-artifactory") return await CheckArtifactoriesAsync(args[1..], output);
         if (args.Length > 0) return await RunStandaloneAsync(args, error);
         return await StepEnvelopeRunner.RunAsync(input, output, error, ExecuteAsync);
+    }
+
+    // ---------- preflight's artifactory check (docs/39-ARTIFACTORY.md) ----------
+
+    /// <summary>Asks each artifactory URL for its service index with this machine's login (<see cref="ArtifactoryLogin"/>),
+    /// one line each: <c>OK</c> or <c>FAILED</c>, the normalised URL, what happened and the method used. Never a value.
+    /// Exit code 0 when every one answered.</summary>
+    private static async Task<int> CheckArtifactoriesAsync(string[] urls, TextWriter output)
+    {
+        var login = ArtifactoryLogin.Current;
+        output.WriteLine($"login: {login.Configured}");
+        var failed = 0;
+        foreach (var url in urls)
+        {
+            var (ok, text) = await login.CheckAsync(url, TimeSpan.FromSeconds(30));
+            output.WriteLine((ok ? "OK " : "FAILED ") + text);
+            if (!ok) failed++;
+        }
+
+        return failed == 0 ? 0 : 1;
     }
 
     // ---------- standalone ----------

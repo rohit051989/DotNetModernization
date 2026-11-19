@@ -11,7 +11,7 @@ import { useToast } from '../components/Toast'
 export function ArtifactoryPage({ engagementId }: { engagementId: string }) {
   const { showToast } = useToast()
   const [artifactories, setArtifactories] = useState<EngagementArtifactory[] | null>(null)
-  const [machineLogin, setMachineLogin] = useState<boolean | null>(null)
+  const [machineLogin, setMachineLogin] = useState<'token' | 'username and password' | 'none' | null>(null)
   const [url, setUrl] = useState('')
   const [name, setName] = useState('')
   const [errors, setErrors] = useState<{ url?: string; name?: string }>({})
@@ -19,7 +19,10 @@ export function ArtifactoryPage({ engagementId }: { engagementId: string }) {
 
   const reload = useCallback(() => {
     listArtifactories(engagementId).then(setArtifactories, () => setArtifactories([]))
-    getCredentialsStatus(engagementId).then((s) => setMachineLogin(s.machine_login), () => setMachineLogin(null))
+    getCredentialsStatus(engagementId).then(
+      (s) => setMachineLogin(s.machine_login ? (s.method && s.method !== 'none' ? s.method : 'username and password') : 'none'),
+      () => setMachineLogin(null),
+    )
   }, [engagementId])
 
   useEffect(reload, [reload])
@@ -70,9 +73,11 @@ export function ArtifactoryPage({ engagementId }: { engagementId: string }) {
         <p className="mt-2 text-xs text-neutral-500" data-testid="machine-login">
           {machineLogin === null
             ? ''
-            : machineLogin
-              ? 'This machine has an artifactory login in its environment.'
-              : 'This machine has no ARTIFACTORY_USERNAME and ARTIFACTORY_PASSWORD: artifactories NuGet.config does not authenticate are asked anonymously.'}
+            : machineLogin === 'token'
+              ? 'This machine has an artifactory login in its environment: a token (ARTIFACTORY_TOKEN).'
+              : machineLogin === 'username and password'
+                ? 'This machine has an artifactory login in its environment: a username and password.'
+                : 'This machine has no ARTIFACTORY_TOKEN, and no ARTIFACTORY_USERNAME and ARTIFACTORY_PASSWORD: artifactories NuGet.config does not authenticate are asked anonymously.'}
         </p>
       </div>
 
@@ -86,8 +91,9 @@ export function ArtifactoryPage({ engagementId }: { engagementId: string }) {
             aria-label="Artifactory URL"
           />
           <p className="mt-2 rounded border border-amber-300 bg-amber-50 px-2 py-1.5 text-xs text-amber-800" data-testid="credentials-note">
-            Set <strong>ARTIFACTORY_USERNAME</strong> and <strong>ARTIFACTORY_PASSWORD</strong> in this machine&apos;s environment or in{' '}
-            <code>backend/.env</code> if the artifactory needs a login. If the artifactory is already in NuGet.config with its credentials,
+            Set <strong>ARTIFACTORY_TOKEN</strong>, or <strong>ARTIFACTORY_USERNAME</strong> and <strong>ARTIFACTORY_PASSWORD</strong>, in
+            this machine&apos;s environment or in <code>backend/.env</code> if the artifactory needs a login. A token wins over a
+            username and password. If the artifactory is already in NuGet.config with its credentials,
             you can ignore this.
           </p>
         </Field>

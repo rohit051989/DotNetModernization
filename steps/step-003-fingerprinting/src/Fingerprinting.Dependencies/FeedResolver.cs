@@ -9,6 +9,10 @@ namespace Fingerprinting.Dependencies;
 /// is what may be stored.</summary>
 public sealed record Feed(string Name, PackageSource Source, string Url, string Role, string DeclaredIn)
 {
+    /// <summary>Set when the feed is asked with the machine's token (<see cref="ArtifactoryLogin"/>), which NuGet's own
+    /// credential cannot carry; null for every other feed, which NuGet authenticates as it always has.</summary>
+    public ArtifactoryLogin? HeaderLogin { get; init; }
+
     public const string RoleClient = "client_feed";
     public const string RoleNuGetOrg = "nuget_org";
     public const string RoleIgnored = "ignored";
@@ -116,17 +120,22 @@ public static class FeedResolver
 
     private static void AddEngagementFeeds(List<Feed> all, IReadOnlyList<EngagementFeed>? engagementFeeds, string root, Func<string, string?>? environment)
     {
+        // The machine login: this process's own (a rejected token is remembered for the run), or one read from a test's environment.
+        var machine = environment is null ? ArtifactoryLogin.Current : ArtifactoryLogin.FromEnvironment(environment);
+        environment ??= Environment.GetEnvironmentVariable;
         foreach (var listed in engagementFeeds ?? [])
         {
             if (!Uri.TryCreate(listed.Url, UriKind.Absolute, out var uri) || uri.IsFile) continue;
             var url = NormaliseUrl(listed.Url, root).TrimEnd('/');
-            var declared = all.FirstOrDefault(f => f.Url.TrimEnd('/').Equals(url, StringComparison.OrdinalIgnoreCase));
-            if (declared is not null)
+            var at = all.FindIndex(f => f.Url.TrimEnd('/').Equals(url, StringComparison.OrdinalIgnoreCase));
+            if (at >= 0)
             {
-                // NuGet.config has it: its credentials win; where it has none, the environment's login stands in.
-                if (declared.Source.Credentials is null && EngagementFeeds.Credential(declared.Name, environment) is { } login)
+                // NuGet.config has it: its credentials win; where it has none, the machine login stands in.
+                var declared = all[at];
+                if (declared.Source.Credentials is null)
                 {
-                    declared.Source.Credentials = login;
+                    if (EngagementFeeds.Credential(declared.Name, environment, machine) is { } login) declared.Source.Credentials = login;
+                    else if (EngagementFeeds.MachineToken(declared.Name, environment, machine) is { } token) all[at] = declared with { HeaderLogin = token };
                 }
 
                 continue;
@@ -136,9 +145,12 @@ public static class FeedResolver
             var source = new PackageSource(listed.Url.Trim(), name)
             {
                 AllowInsecureConnections = uri.Scheme == Uri.UriSchemeHttp,
-                Credentials = EngagementFeeds.Credential(name, environment),
+                Credentials = EngagementFeeds.Credential(name, environment, machine),
             };
-            all.Add(new Feed(name, source, url, IsNuGetOrg(listed.Url) ? Feed.RoleNuGetOrg : Feed.RoleClient, "engagement"));
+            all.Add(new Feed(name, source, url, IsNuGetOrg(listed.Url) ? Feed.RoleNuGetOrg : Feed.RoleClient, "engagement")
+            {
+                HeaderLogin = EngagementFeeds.MachineToken(name, environment, machine),
+            });
         }
     }
 

@@ -30,6 +30,9 @@ Reports, in plain language, each prerequisite as PRESENT or MISSING, and exits 1
 - with the schema in place: whether a platform holds it (its heartbeat: live, or expired, and how to clear one known
   to be stale), and existing data a later rule would refuse, reported as WARNING and never changed (a checkout
   registered in two engagements before release 2);
+- the artifactory login this machine has (ARTIFACTORY_TOKEN, or ARTIFACTORY_USERNAME and ARTIFACTORY_PASSWORD, or none;
+  never a value), and, for each artifactory an engagement lists, whether it answers with that login, asked by the
+  dependency step's own code (DependencyAssessment.Cli --check-artifactory). A failure is a WARNING, never failed;
 - across every registered repository, the runtimes and build tools its baseline needs that this machine lacks: the
   .NET runtime of each modern framework in the platform's dotnet and architecture, the .NET Framework reference
   assemblies and web application build targets of legacy projects (python -m app.toolchain report). WARNING, never
@@ -645,6 +648,7 @@ def database(cfg: dict[str, str]) -> None:
                   " neither is needed)")
             if exists:
                 platform_state(c, schema)
+                artifactories(c, schema, cfg)
     except psycopg.Error as error:
         check(False, "connection", clean(str(error)).splitlines()[0])
         return
@@ -739,6 +743,59 @@ def platform_state(c, schema: str) -> None:
                                       f"{', '.join(f'{e}/{s}' for e, s, _ in group)}, {group[0][2]}), from before "
                                       "release 2 refused it. Left working and unchanged; see docs/VDI-SETUP.md "
                                       "More than one person")
+
+
+ARTIFACTORY_VARIABLES = ("ARTIFACTORY_TOKEN", "ARTIFACTORY_USERNAME", "ARTIFACTORY_PASSWORD")
+CHECK_ARTIFACTORY = ROOT / "steps" / "step-003-fingerprinting" / "publish" / "dependency-assessment" / "DependencyAssessment.Cli.exe"
+
+
+def artifactory_method(cfg: dict[str, str]) -> str:
+    """As app.config.artifactory_method and ArtifactoryLogin.Configured name it; never a value."""
+    if cfg.get("ARTIFACTORY_TOKEN", "").strip():
+        return "token"
+    if cfg.get("ARTIFACTORY_USERNAME") and "ARTIFACTORY_PASSWORD" in cfg:
+        return "username and password"
+    return "none"
+
+
+def artifactories(c, schema: str, cfg: dict[str, str]) -> None:
+    """The artifactory login this machine has, and whether each artifactory an engagement lists answers with it
+    (docs/39-ARTIFACTORY.md). The check runs the dependency step's own code, so it authenticates exactly as a scan does:
+    the token, the fallback to a username and password when the token is rejected, or NuGet's own login. Reported, never
+    failed: an artifactory is optional, and a scan reports its own failures."""
+    method = artifactory_method(cfg)
+    note("artifactory login", f"{method}" + (" (ARTIFACTORY_TOKEN; it wins over a username and password)" if method == "token"
+                                             else " (ARTIFACTORY_USERNAME and ARTIFACTORY_PASSWORD)" if method != "none"
+                                             else ": artifactories NuGet.config does not authenticate are asked anonymously"))
+    if not _table(c, schema, "engagement_feeds"):
+        return
+    urls = [r[0] for r in c.execute(f'SELECT DISTINCT url FROM "{schema}".engagement_feeds WHERE deleted_at IS NULL '
+                                    'ORDER BY url').fetchall()]
+    if not urls:
+        note("artifactories", "no engagement lists one")
+        return
+    if not CHECK_ARTIFACTORY.exists():
+        note("artifactories", f"{len(urls)} listed; their connection is checked once bootstrap has published the step programs")
+        return
+    env = dict(os.environ)
+    for key in ARTIFACTORY_VARIABLES:
+        if key in cfg and key not in env:
+            env[key] = cfg[key]
+    secrets = [cfg[k] for k in ARTIFACTORY_VARIABLES if cfg.get(k, "").strip() and k != "ARTIFACTORY_USERNAME"]
+    try:
+        done = subprocess.run([str(CHECK_ARTIFACTORY), "--check-artifactory", *urls], env=env, capture_output=True,
+                              text=True, encoding="utf-8", errors="replace", timeout=60 + 35 * len(urls))
+        lines = done.stdout.splitlines()
+    except (OSError, subprocess.TimeoutExpired) as error:
+        warn("artifactories", f"the check could not run: {type(error).__name__}")
+        return
+    for line in lines:
+        for secret in sorted(secrets, key=len, reverse=True):
+            line = line.replace(secret, "***")
+        if line.startswith("OK "):
+            check(True, "artifactory", line[3:])
+        elif line.startswith("FAILED "):
+            warn("artifactory", line[7:])
 
 
 def main() -> int:

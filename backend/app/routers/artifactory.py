@@ -1,8 +1,9 @@
 """The Artifactory tab's API — the Artifactory repositories an engagement's scans ask (docs/39-ARTIFACTORY.md).
 
 The list is shared by everyone on the database. It never holds a credential: an artifactory's login comes from NuGet.config,
-else from the environment of the machine that scans (NuGetPackageSourceCredentials_<name>, or ARTIFACTORY_USERNAME and
-ARTIFACTORY_PASSWORD, which backend/.env may supply). The status route only says whether the machine has the pair.
+else from the environment of the machine that scans (NuGetPackageSourceCredentials_<name>, or ARTIFACTORY_TOKEN, or
+ARTIFACTORY_USERNAME and ARTIFACTORY_PASSWORD, which backend/.env may supply). The status route only says which method the
+machine has, never a value.
 """
 import datetime
 import re
@@ -16,7 +17,7 @@ from sqlalchemy.orm import Session
 
 from app import models
 from app.auth import actor as actors
-from app.config import settings
+from app.config import artifactory_method, settings
 from app.db import get_db
 from app.errors import ErrorResponse, error
 
@@ -63,8 +64,10 @@ class ArtifactoryOut(BaseModel):
 
 
 class CredentialsStatusOut(BaseModel):
-    machine_login: bool = Field(description="Whether this machine's backend has ARTIFACTORY_USERNAME and ARTIFACTORY_PASSWORD. "
-                                            "Never their values.")
+    machine_login: bool = Field(description="Whether this machine's backend has an artifactory login: ARTIFACTORY_TOKEN, or "
+                                            "ARTIFACTORY_USERNAME and ARTIFACTORY_PASSWORD. Never their values.")
+    method: str = Field("none", description="Which login: 'token' (it wins over a username and password), "
+                                            "'username and password' or 'none'. Never a value.")
 
 
 def _engagement(db: Session, engagement_id: str) -> models.Engagement:
@@ -147,4 +150,8 @@ def remove_artifactory(engagement_id: str, artifactory_id: uuid.UUID, db: Sessio
             responses={404: _NOT_FOUND})
 def credentials_status(engagement_id: str, db: Session = Depends(get_db)):
     _engagement(db, engagement_id)
-    return CredentialsStatusOut(machine_login=bool(settings.artifactory_username and settings.artifactory_password))
+    token = settings.artifactory_token.get_secret_value() if settings.artifactory_token else None
+    password = settings.artifactory_password.get_secret_value() if settings.artifactory_password else None
+    # As before the token: a username and a non-empty password make the pair.
+    method = artifactory_method(token, settings.artifactory_username, password or None)
+    return CredentialsStatusOut(machine_login=method != "none", method=method)

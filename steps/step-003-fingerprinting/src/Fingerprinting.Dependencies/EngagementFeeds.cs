@@ -12,13 +12,15 @@ public sealed record EngagementFeed(string Name, string Url);
 /// 1. NuGet.config — a source it declares with the same URL, with its own credentials, is used as it is.
 /// 2. <c>NuGetPackageSourceCredentials_&lt;name&gt;</c> in the environment, NuGet's own format
 ///    (<c>Username=...;Password=...</c>), for a feed with its own login.
-/// 3. <c>ARTIFACTORY_USERNAME</c> and <c>ARTIFACTORY_PASSWORD</c>: one login for every engagement feed that has neither of the above.
+/// 3. The machine login (<see cref="ArtifactoryLogin"/>): <c>ARTIFACTORY_TOKEN</c>, or <c>ARTIFACTORY_USERNAME</c> and
+///    <c>ARTIFACTORY_PASSWORD</c>, one login for every engagement feed that has neither of the above.
 /// The login lives in memory for the run; nothing derived from it is recorded or cached (Part B4).
 /// </summary>
 public static class EngagementFeeds
 {
-    public const string UsernameVariable = "ARTIFACTORY_USERNAME";
-    public const string PasswordVariable = "ARTIFACTORY_PASSWORD";
+    public const string TokenVariable = ArtifactoryLogin.TokenVariable;
+    public const string UsernameVariable = ArtifactoryLogin.UsernameVariable;
+    public const string PasswordVariable = ArtifactoryLogin.PasswordVariable;
     public const string PerFeedPrefix = "NuGetPackageSourceCredentials_";
 
     /// <summary>The feeds in <c>step_context.artifactories</c>; empty when the engine gave none.</summary>
@@ -42,15 +44,23 @@ public static class EngagementFeeds
     public static string Key(IReadOnlyList<EngagementFeed>? feeds) =>
         feeds is { Count: > 0 } ? "|feeds:" + string.Join(",", feeds.Select(f => f.Url)) : "";
 
-    /// <summary>The login for a feed called <paramref name="name"/>, or null when the environment has none.</summary>
-    public static PackageSourceCredential? Credential(string name, Func<string, string?>? environment = null)
+    /// <summary>The login NuGet sends itself for a feed called <paramref name="name"/>: the feed's own variable, else the
+    /// machine's username and password when no token is set (<see cref="ArtifactoryLogin.Credential"/>). Null when the
+    /// environment has neither; with a token, <see cref="MachineToken"/> says the feed is asked with it instead.</summary>
+    public static PackageSourceCredential? Credential(string name, Func<string, string?>? environment = null, ArtifactoryLogin? login = null)
     {
         environment ??= Environment.GetEnvironmentVariable;
-        if (Parse(environment(PerFeedPrefix + name)) is { } own) return Build(name, own.User, own.Password);
-        var user = environment(UsernameVariable);
-        var password = environment(PasswordVariable);
-        return !string.IsNullOrEmpty(user) && password is not null ? Build(name, user, password) : null;
+        if (OwnCredential(name, environment) is { } own) return own;
+        return (login ?? ArtifactoryLogin.FromEnvironment(environment)).Credential(name);
     }
+
+    /// <summary>The machine login that authenticates a feed called <paramref name="name"/> with a header: set when the
+    /// feed has no variable of its own and the machine has a token; null otherwise.</summary>
+    public static ArtifactoryLogin? MachineToken(string name, Func<string, string?> environment, ArtifactoryLogin login) =>
+        OwnCredential(name, environment) is null && login.AuthenticatesWithHeader ? login : null;
+
+    private static PackageSourceCredential? OwnCredential(string name, Func<string, string?> environment) =>
+        Parse(environment(PerFeedPrefix + name)) is { } own ? Build(name, own.User, own.Password) : null;
 
     /// <summary>NuGet's <c>Username=...;Password=...</c> form.</summary>
     public static (string User, string Password)? Parse(string? value)

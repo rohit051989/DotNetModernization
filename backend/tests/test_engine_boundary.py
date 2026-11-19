@@ -151,17 +151,20 @@ class Runs(unittest.TestCase):
 
 
 DATABASE_LOGIN = {"db_user", "db_password"}
+# The machine's login for the artifactories an engagement lists (docs/39-ARTIFACTORY.md): from the environment only,
+# passed to the step programs, never stored or sent anywhere else. A package feed's login, not an engine's.
+FEED_LOGIN = {"artifactory_token", "artifactory_password"}
 
 
 class NoCredentialAnywhere(unittest.TestCase):
     """No field, setting or file accepts an engine credential."""
 
     def test_no_setting_takes_a_credential(self):
-        # The platform's own database login is the one credential a setting holds, from the environment only
-        # (01-ENVIRONMENT-SETUP.md section 10); no setting takes an engine's.
+        # The platform's own database login and the artifactory login are the only credentials a setting holds, from
+        # the environment only (01-ENVIRONMENT-SETUP.md section 10, docs/39-ARTIFACTORY.md); no setting takes an engine's.
         named = [f for f in Settings.model_fields if CREDENTIAL_NAME.search(f)]
-        self.assertEqual([f for f in named if f not in DATABASE_LOGIN], [])
-        self.assertTrue(set(named) <= DATABASE_LOGIN)
+        self.assertEqual([f for f in named if f not in DATABASE_LOGIN | FEED_LOGIN], [])
+        self.assertTrue(set(named) <= DATABASE_LOGIN | FEED_LOGIN)
 
     def test_no_engine_column_takes_a_credential(self):
         for table in (models.EngineRun.__table__, models.Engagement.__table__):

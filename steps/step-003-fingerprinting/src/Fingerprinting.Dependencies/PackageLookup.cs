@@ -62,22 +62,23 @@ public sealed partial class PackageLookup(ILookupCache cache, string packageCach
 
     private SourceRepository RepositoryFor(Feed feed)
     {
-        if (!_repositories.TryGetValue(feed.Url, out var repository))
-        {
-            repository = Repository.Factory.GetCoreV3(feed.Source);
-            _repositories[feed.Url] = repository;
-        }
+        if (_repositories.TryGetValue(feed.Url, out var known)) return known;
 
+        // A feed asked with the machine's token goes through ArtifactoryLogin; every other feed as NuGet asks it.
+        SourceRepository repository = feed.HeaderLogin is { } login ? login.Repository(feed.Source) : Repository.Factory.GetCoreV3(feed.Source);
+        _repositories[feed.Url] = repository;
         return repository;
     }
 
     /// <summary>A protocol error, with any URL in it normalised — an
     /// exception message must not carry a credential into the artifact.</summary>
-    private static string Describe(Feed feed, Exception ex)
+    private static string Describe(Feed feed, Exception ex) => $"artifactory '{feed.Name}' could not be reached: {Message(ex)}";
+
+    /// <summary>An exception's message with every URL in it normalised, so no login in a URL reaches a result or a log.</summary>
+    public static string Message(Exception ex)
     {
         var message = ex.InnerException?.Message ?? ex.Message;
-        message = UrlPattern().Replace(message, m => FeedResolver.NormaliseUrl(m.Value.TrimEnd('.', ','), Path.GetPathRoot(Path.GetTempPath())!));
-        return $"artifactory '{feed.Name}' could not be reached: {message.Trim()}";
+        return UrlPattern().Replace(message, m => FeedResolver.NormaliseUrl(m.Value.TrimEnd('.', ','), Path.GetPathRoot(Path.GetTempPath())!)).Trim();
     }
 
     public async Task<LookupResult> GetAsync(Feed feed, string packageId, CancellationToken ct)
@@ -138,7 +139,10 @@ public sealed partial class PackageLookup(ILookupCache cache, string packageCach
         catch (Exception ex) when (ex is FatalProtocolException or HttpRequestException or TaskCanceledException or IOException or InvalidOperationException)
         {
             var status = HttpStatusOf(ex);
-            return new LookupResult(null, Describe(feed, ex), status is 401 or 403 ? LookupFailure.Auth : LookupFailure.Unreachable, status);
+            var message = status is 401 or 403 && feed.HeaderLogin is { TokenRejected: true, HasUsernameAndPassword: false } login
+                ? login.RejectedMessage(feed.Name, status)
+                : Describe(feed, ex);
+            return new LookupResult(null, message, status is 401 or 403 ? LookupFailure.Auth : LookupFailure.Unreachable, status);
         }
     }
 

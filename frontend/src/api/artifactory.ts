@@ -21,7 +21,7 @@ export function removeArtifactory(engagementId: string, artifactoryId: string) {
   return api.delete<void>(`/api/engagements/${encodeURIComponent(engagementId)}/artifactories/${encodeURIComponent(artifactoryId)}`)
 }
 
-/** Whether this machine's backend has ARTIFACTORY_USERNAME and ARTIFACTORY_PASSWORD; never their values. */
+/** Which artifactory login this machine's backend has: a token, a username and password, or none; never a value. */
 export function getCredentialsStatus(engagementId: string) {
-  return api.get<{ machine_login: boolean }>(`/api/engagements/${encodeURIComponent(engagementId)}/artifactory/credentials-status`)
+  return api.get<{ machine_login: boolean; method?: 'token' | 'username and password' | 'none' }>(`/api/engagements/${encodeURIComponent(engagementId)}/artifactory/credentials-status`)
 }

@@ -1,6 +1,7 @@
 """The Artifactory tab's artifactory list (app.routers.artifactory): URL normalisation, the duplicate check, soft delete, and
 that no credential is ever stored or returned. Runs in this test run's own schema (tests/__init__.py). Stdlib unittest.
 """
+import os
 import unittest
 from unittest import mock
 
@@ -32,6 +33,44 @@ class Normalise(unittest.TestCase):
 
     def test_default_name_comes_from_the_url(self):
         self.assertEqual(artifactory.default_name(normalise_url(URL)), "nuget-private")
+
+
+class MachineLogin(unittest.TestCase):
+    """ARTIFACTORY_TOKEN beside ARTIFACTORY_USERNAME and ARTIFACTORY_PASSWORD (docs/39-ARTIFACTORY.md): the method is named, a
+    value never is, and the step programs receive what is set. The rules a call follows are ArtifactoryLogin's, tested in C#."""
+
+    def test_the_method_is_named_the_token_wins_and_an_empty_token_counts_as_not_set(self):
+        from app.config import artifactory_method
+        self.assertEqual(artifactory_method("example-token", "me", "example-pw"), "token")
+        self.assertEqual(artifactory_method("example-token", None, None), "token")
+        self.assertEqual(artifactory_method("", "me", "example-pw"), "username and password")
+        self.assertEqual(artifactory_method("  ", None, None), "none")
+        self.assertEqual(artifactory_method(None, "me", None), "none")
+
+    def test_the_settings_reach_the_step_programs_and_an_empty_token_does_not(self):
+        from pydantic import SecretStr
+
+        from app import config
+        for token, expected in (("example-token-7Qx", "example-token-7Qx"), ("", None)):
+            with mock.patch.dict("os.environ", {}, clear=False):
+                for key in ("ARTIFACTORY_TOKEN", "ARTIFACTORY_USERNAME", "ARTIFACTORY_PASSWORD", "PGUSER", "PGPASSWORD"):
+                    os.environ.pop(key, None)
+                s = config.settings.model_copy(update={"artifactory_token": SecretStr(token), "artifactory_username": "me",
+                                                       "artifactory_password": SecretStr("example-pw")})
+                config.apply_credentials(s)
+                env = os.environ
+                self.assertEqual(env.get("ARTIFACTORY_TOKEN"), expected)
+                self.assertEqual((env.get("ARTIFACTORY_USERNAME"), env.get("ARTIFACTORY_PASSWORD")), ("me", "example-pw"))
+
+    def test_the_status_names_a_token_and_never_its_value(self):
+        from pydantic import SecretStr
+        with mock.patch.object(artifactory.settings, "artifactory_token", SecretStr("example-token-7Qx")),                 mock.patch.object(artifactory.settings, "artifactory_username", None),                 mock.patch.object(artifactory.settings, "artifactory_password", None),                 mock.patch.object(artifactory, "_engagement", lambda db, eid: None):
+            status = artifactory.credentials_status(TEST_ENGAGEMENT_ID, None)
+        self.assertEqual(status.model_dump(), {"machine_login": True, "method": "token"})
+        self.assertNotIn("example-token-7Qx", status.model_dump_json())
+        with mock.patch.object(artifactory.settings, "artifactory_token", None),                 mock.patch.object(artifactory.settings, "artifactory_username", None),                 mock.patch.object(artifactory.settings, "artifactory_password", None),                 mock.patch.object(artifactory, "_engagement", lambda db, eid: None):
+            self.assertEqual(artifactory.credentials_status(TEST_ENGAGEMENT_ID, None).model_dump(),
+                             {"machine_login": False, "method": "none"})
 
 
 class Artifactories(unittest.TestCase):
@@ -91,7 +130,7 @@ class Artifactories(unittest.TestCase):
         with mock.patch.object(artifactory.settings, "artifactory_username", "me"), \
                 mock.patch.object(artifactory.settings, "artifactory_password", artifactory.settings.db_password.__class__("pw-secret")):
             status = artifactory.credentials_status(TEST_ENGAGEMENT_ID, self.db)
-            self.assertEqual(status.model_dump(), {"machine_login": True})
+            self.assertEqual(status.model_dump(), {"machine_login": True, "method": "username and password"})
             self.add()
             context = executor._artifactories_context(self.db, "dependency-hierarchy", {"engagement_id": TEST_ENGAGEMENT_ID})
         self.assertEqual(context, {"artifactories": [{"name": "nuget-private", "url": URL}]})

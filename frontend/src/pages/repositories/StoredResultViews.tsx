@@ -194,7 +194,7 @@ function UnknownCause({ pkg }: { pkg: Json }) {
       {known && <span className="block text-neutral-500">{known.hint}</span>}
       {cause === 'feed_auth' && (
         <ArtifactoryNote>
-          Set the artifactory&apos;s login (ARTIFACTORY_USERNAME and ARTIFACTORY_PASSWORD in <code>backend/.env</code>) and add the artifactory url in the{' '}
+          Set the artifactory&apos;s login (ARTIFACTORY_TOKEN, or ARTIFACTORY_USERNAME and ARTIFACTORY_PASSWORD, in <code>backend/.env</code>) and add the artifactory url in the{' '}
           <ArtifactoryLink />, then rescan. If the artifactory url is already in NuGet.config with its credentials, you can ignore this.
         </ArtifactoryNote>
       )}
