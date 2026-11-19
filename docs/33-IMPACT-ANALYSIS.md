@@ -503,7 +503,10 @@ new).
   lands. Recall in scope leaves out the files tagged `out-of-scope`.
 - `tests/test_impact_calibration.py` holds recall, recall in scope and precision to the
   floors and the review rate to the ceiling recorded in the oracle, and fails on an
-  unclassified or untagged disagreement.
+  unclassified or untagged disagreement. It needs `sampleapps/WCF` beside the checkout and
+  is skipped without it (a git worktree or a scratch clone has none); the calibration
+  itself refuses to run without it, since impact-analysis on the frozen inputs alone
+  reports a fraction of the oracle (23/70) that measures nothing about the rules.
 
 | | Recall | Precision | Review |
 |---|---|---|---|

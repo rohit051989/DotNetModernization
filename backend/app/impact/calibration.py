@@ -173,17 +173,27 @@ def _fold(actions: set[str]) -> str:
     return "review"
 
 
+def repository(oracle: dict) -> Path:
+    """The oracle's repository: sampleapps/ beside this checkout."""
+    return CODE.parent / oracle["repository"]
+
+
 def run(oracle_path: Path = DEFAULT_ORACLE, transform_catalog=None) -> Result:
     """transform_catalog: an optional function over the catalog JSON before the
     run — the regression test uses it to show a weakened rule is caught."""
     oracle = yaml.safe_load(oracle_path.read_text(encoding="utf-8"))
     inputs = oracle_path.parent / oracle["inputs"]
-    repo = CODE.parent / oracle["repository"]
+    repo = repository(oracle)
     occurrences = json.loads((inputs / "item-occurrences.json").read_text(encoding="utf-8"))
     item_ids = {i["itemId"] for p in occurrences["projects"] for i in p["items"]}
     if not EXE.exists():
         raise RuntimeError(f"{EXE} not found: publish impact-analysis first "
                            "(dotnet publish src/Fingerprinting.Impact.Cli -c Release -o publish/impact-analysis)")
+    # Without the repository impact-analysis still runs, on the frozen inputs alone, and
+    # reports a fraction of the oracle: a measurement of nothing, not of the rules.
+    if not repo.is_dir():
+        raise RuntimeError(f"{repo} not found: the oracle's repository must be beside this checkout "
+                           "(a git worktree or a scratch clone has no sampleapps beside it)")
 
     catalog = _catalog(item_ids)
     if transform_catalog is not None:

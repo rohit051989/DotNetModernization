@@ -9,7 +9,8 @@ ceiling, fails here — and so does any disagreement the oracle does not
 classify and tag with the work expected to resolve it.
 
 Needs the published step (steps/step-003-fingerprinting/publish/impact-analysis)
-and the sample repository (sampleapps/WCF). No database.
+and the sample repository (sampleapps/WCF, beside this checkout); skipped without
+either, as the other sample tests are. No database.
 
 Run from backend/:  python -m unittest tests.test_impact_calibration -v
 """
@@ -26,6 +27,10 @@ class CalibrationTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.oracle = yaml.safe_load(calibration.DEFAULT_ORACLE.read_text(encoding="utf-8"))
+        if not calibration.EXE.exists():
+            raise unittest.SkipTest("impact-analysis is not published on this machine")
+        if not calibration.repository(cls.oracle).is_dir():
+            raise unittest.SkipTest(f"the oracle's repository is not beside this checkout ({calibration.repository(cls.oracle)})")
         cls.result = calibration.run()
 
     def test_recall_and_precision_hold_their_floors(self):
