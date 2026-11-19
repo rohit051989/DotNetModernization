@@ -141,8 +141,16 @@ public sealed class ArtifactoryLogin
         using var limit = new CancellationTokenSource(timeout);
         try
         {
-            await repository.GetResourceAsync<ServiceIndexResourceV3>(limit.Token);
-            return (true, $"{shown}: answered (login: {Used})");
+            // The service index asked over the network every time, never from NuGet's disk cache of it (kept for
+            // 40 minutes): a check answered from a cache would say nothing about the connection or the login.
+            var http = await repository.GetResourceAsync<HttpSourceResource>(limit.Token);
+            var status = await http.HttpSource.ProcessResponseAsync(new HttpSourceRequest(url.Trim(), NuGet.Common.NullLogger.Instance),
+                response => Task.FromResult((int)response.StatusCode), NuGet.Common.NullLogger.Instance, limit.Token);
+            if (status is >= 200 and < 300) return (true, $"{shown}: answered (login: {Used})");
+            var refused = status is 401 or 403
+                ? HasToken && TokenRejected && !HasUsernameAndPassword ? $"rejected {TokenVariable} ({status})" : $"refused the login ({status})"
+                : $"answered {status}";
+            return (false, $"{shown}: {refused} (login: {Used})");
         }
         catch (Exception ex) when (ex is NuGet.Protocol.Core.Types.FatalProtocolException or HttpRequestException or OperationCanceledException or IOException or InvalidOperationException)
         {

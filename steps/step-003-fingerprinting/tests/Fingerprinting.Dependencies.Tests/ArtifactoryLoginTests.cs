@@ -186,6 +186,23 @@ public sealed class ArtifactoryLoginTests : IDisposable
     }
 
     [Fact]
+    public async Task The_connection_check_asks_the_artifactory_every_time_never_a_cache_of_its_answer()
+    {
+        using var standIn = new StandIn(acceptToken: null, acceptBasic: true);
+
+        var first = await ArtifactoryLogin.FromEnvironment(Env(user: User, password: Password), new StringWriter())
+            .CheckAsync(standIn.Index, TimeSpan.FromSeconds(30));
+        var asked = standIn.Requests.Count;
+        var second = await ArtifactoryLogin.FromEnvironment(Env(Token, User, Password), new StringWriter())
+            .CheckAsync(standIn.Index, TimeSpan.FromSeconds(30));
+
+        Assert.True(first.Ok, first.Text);
+        Assert.True(second.Ok, second.Text);
+        Assert.Contains("(login: token rejected, used username and password)", second.Text);
+        Assert.Contains(standIn.Requests.Skip(asked), r => r.Scheme == "Bearer");        // the second check was sent
+    }
+
+    [Fact]
     public async Task A_timeout_is_reported_as_it_is_and_never_switches_to_the_username_and_password()
     {
         using var standIn = new StandIn(acceptToken: Token, hang: true);
