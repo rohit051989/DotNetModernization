@@ -429,6 +429,73 @@ public sealed class ExtractorBatch2Tests
     }
 
     [Fact]
+    public async Task ApiUsage_SerilogSinksInCode_FileWithItsPath_AndConsole()
+    {
+        // Registry 1.14.0: Serilog sinks configured in code, also inside a wrapper's lambda.
+        using var repo = new TempRepo();
+        repo.Write("Program.cs", """
+            using Serilog;
+            Log.Logger = new LoggerConfiguration()
+                .WriteTo.Console()
+                .WriteTo.File(@"C:\logs\app-.log", rollingInterval: RollingInterval.Day)
+                .WriteTo.Async(a => a.File(path: "logs/async.log"))
+                .WriteTo.Conditional(e => true, wt => wt.RollingFile(LogPath()))
+                .CreateLogger();
+            """);
+        // No Serilog in the file: File and Console are only method names here.
+        repo.Write("Exporter.cs", """
+            class Exporter
+            {
+                void Run(Writer w) { w.WriteTo.File("report.csv"); w.Console(); }
+            }
+            """);
+        // Serilog written in the file without a using (a global using elsewhere).
+        repo.Write("Logging.cs", """
+            static class Logging
+            {
+                public static LoggerConfiguration Configure(LoggerConfiguration c) =>
+                    c.WriteTo.Async(sinks => sinks.Console()).AuditTo.File(@"\\share\audit.log");
+            }
+            """);
+
+        var signals = await Extract(new ApiUsageExtractor(), repo);
+
+        Assert.Equal([null, "C:\\logs\\app-.log", "\\\\share\\audit.log", "logs/async.log"],
+            signals.Where(s => s.Name == ApiUsageExtractor.SerilogFileSinkUsage).Select(s => s.Value).Order(StringComparer.Ordinal).ToList());
+        Assert.DoesNotContain(signals, s => s.SourcePath == "Exporter.cs");
+        // The sink's own line, not the line the fluent chain starts on (line 2).
+        Assert.Equal(4, signals.Single(s => s.Value == @"C:\logs\app-.log").Evidence[0].LineStart);
+        Assert.Equal(3, signals.Single(s => s.Name == ApiUsageExtractor.SerilogConsoleSinkUsage && s.SourcePath == "Program.cs").Evidence[0].LineStart);
+        Assert.Equal(["Logging.cs", "Program.cs"],
+            signals.Where(s => s.Name == ApiUsageExtractor.SerilogConsoleSinkUsage).Select(s => s.SourcePath).Order().ToList());
+        Assert.All(signals.Where(s => s.Name == ApiUsageExtractor.SerilogConsoleSinkUsage), s => Assert.Equal("Console", s.Value));
+    }
+
+    [Fact]
+    public async Task Config_SerilogConsoleSink_BesideAndInsideAsync()
+    {
+        // Registry 1.14.0: a Console sink in appsettings, at the top level or inside an Async sink's configure.
+        using var repo = new TempRepo();
+        repo.Write("appsettings.json", """
+            { "Serilog": { "WriteTo": [
+                { "Name": "Console" },
+                { "Name": "File", "Args": { "path": "G:\\Logs\\app-.log" } } ] } }
+            """);
+        repo.Write("appsettings.UAT.json", """
+            { "Serilog": { "WriteTo": [ { "Name": "Async", "Args": { "configure": [ { "Name": "Console" } ] } } ] } }
+            """);
+        repo.Write("appsettings.Production.json", """
+            { "Serilog": { "WriteTo": [ { "Name": "File", "Args": { "path": "logs/app.log" } } ] }, "Console": { "Name": "Console" } }
+            """);
+
+        var signals = await Extract(new ConfigurationExtractor(), repo);
+
+        Assert.Equal(["appsettings.UAT.json", "appsettings.json"],
+            signals.Where(s => s.Name == "SERILOG_CONSOLE_SINK_CONFIG").Select(s => s.SourcePath).Order(StringComparer.Ordinal).ToList());
+        Assert.Equal(["G:\\Logs\\app-.log", "logs/app.log"], Values(signals, "SERILOG_FILE_SINK_CONFIG"));
+    }
+
+    [Fact]
     public async Task ApiUsage_CustomBindingTransportElements_OnBothSides()
     {
         using var repo = new TempRepo();
@@ -647,9 +714,13 @@ public sealed class ExtractorBatch2Tests
         // + 1.11.0 TARGET_FRAMEWORK_BELOW_ENGAGEMENT_TARGET and PACKAGE_PROVIDED_BY_FRAMEWORK (step 6),
         //   USE_IIS_INVOCATION, ASPNETCORE_HOSTING_MODEL and the three CONTAINER_* signals
         // + 1.12.0 VAULT_SECRET_REFERENCE, CONFIG_FILE_UNPARSEABLE, CUSTOM_FILE_LOGGER_PROVIDER, WINDOWS_BUILD_PIPELINE
-        // + 1.13.0 WCF_SERVICE_BINDING_CONFIG and WCF_SERVICE_BINDING_USAGE.
-        Assert.Equal("1.13.0", registry.RegistryVersion);
-        Assert.Equal(151, registry.Entries.Count);
+        // + 1.13.0 WCF_SERVICE_BINDING_CONFIG and WCF_SERVICE_BINDING_USAGE
+        // + 1.14.0 SERILOG_FILE_SINK_USAGE, SERILOG_CONSOLE_SINK_USAGE and SERILOG_CONSOLE_SINK_CONFIG.
+        Assert.Equal("1.14.0", registry.RegistryVersion);
+        Assert.Equal(154, registry.Entries.Count);
+        Assert.Contains(registry.Entries, e => e.Name == ApiUsageExtractor.SerilogFileSinkUsage && e.Extractor == ApiUsageExtractor.ExtractorName);
+        Assert.Contains(registry.Entries, e => e.Name == ApiUsageExtractor.SerilogConsoleSinkUsage && e.Extractor == ApiUsageExtractor.ExtractorName);
+        Assert.Contains(registry.Entries, e => e.Name == "SERILOG_CONSOLE_SINK_CONFIG" && e.Extractor == ConfigurationExtractor.ExtractorName);
         Assert.Contains(registry.Entries, e => e.Name == "WCF_SERVICE_BINDING_CONFIG" && e.Extractor == ConfigurationExtractor.ExtractorName);
         Assert.Contains(registry.Entries, e => e.Name == "WCF_SERVICE_BINDING_USAGE" && e.Extractor == ApiUsageExtractor.ExtractorName);
         Assert.Contains(registry.Entries, e => e.Name == FileLoggerProviderExtractor.CustomFileLoggerProvider && e.Extractor == FileLoggerProviderExtractor.ExtractorName);
@@ -657,7 +728,7 @@ public sealed class ExtractorBatch2Tests
         Assert.Equal(8, registry.Entries.Count(e => e.Extractor == "EntryPointInventory"));
         Assert.Equal(7, registry.Entries.Count(e => e.Extractor == "DependencyAssessment" && e.Category == SignalCategories.PackageDependency));
         Assert.Contains(registry.Entries, e => e.Name == "WCF_CLIENT_BINDING_CONFIG" && e.Extractor == ConfigurationExtractor.ExtractorName);
-        Assert.Equal(14, registry.Entries.Count(e => e.Extractor == ApiUsageExtractor.ExtractorName));
+        Assert.Equal(16, registry.Entries.Count(e => e.Extractor == ApiUsageExtractor.ExtractorName));
         Assert.Equal(3, registry.Entries.Count(e => e.Name.StartsWith("CONTAINER_") && e.Extractor == FileIndicatorExtractor.ExtractorName));
         Assert.Contains(registry.Entries, e => e.Name == IisHostingExtractor.HostingModel && e.Extractor == IisHostingExtractor.ExtractorName);
         Assert.Equal(3, registry.Entries.Count(e => e.Extractor == PathLiteralExtractor.ExtractorName));

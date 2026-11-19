@@ -45,9 +45,9 @@ lookup is deterministic, via the NuGet protocol.
 
 The LLM role is confined to explaining breaking changes — Part E.
 
-### B2. Feed resolution — client feeds first
+### B2. Artifactory resolution — private artifactories first
 
-| Situation | Feeds used |
+| Situation | Artifactories used |
 |---|---|
 | `NuGet.config` declares package sources | **Those sources**, in declared order |
 | No `NuGet.config`, or no sources declared | **nuget.org** as fallback |
@@ -55,26 +55,26 @@ The LLM role is confined to explaining breaking changes — Part E.
 Resolve `NuGet.config` the way the NuGet client does: repository-level, then user, then
 machine, honouring `<clear/>`.
 
-Record per lookup which feed answered:
+Record per lookup which artifactory answered:
 
 - `feed_source`: `client_feed` or `nuget_org_fallback`
 - `feed_name`: the source's configured name
 
 **A `<clear/>` is deliberate.** A bank that clears nuget.org and points only at
-Artifactory has decided what may be used. Respect it: when client feeds are configured,
+Artifactory has decided what may be used. Respect it: when private artifactories are configured,
 they are the authority.
 
 **A declared nuget.org is one of the declared sources.** A `NuGet.config` that lists an
 internal feed *and* nuget.org (AccountsApi: `../EnterprisePackages/feed` beside nuget.org)
 makes both the authority, in declared order (1.3.0; before it, nuget.org was dropped as soon
-as a client feed existed, so every public package read "not on the client feed"). The public
+as a private artifactory existed, so every public package read "not on the private artifactory"). The public
 comparison of B3 is then not needed: it runs only when nuget.org is not declared.
 
-### B3. The client-feed gap
+### B3. The private-artifactory gap
 
-When client feeds are configured, also query nuget.org **for comparison only** — never as
+When private artifactories are configured, also query nuget.org **for comparison only** — never as
 the answer — where network policy allows. If a newer compatible version exists publicly
-but not in the client feed, set `not_in_client_feed` with both versions:
+but not in the private artifactory, set `not_in_client_feed` with both versions:
 
 > Latest public compatible: 13.0.3 — latest in Artifactory: 12.0.1
 
@@ -84,11 +84,11 @@ nuget.org is unreachable.
 
 ### B4. Credentials
 
-Feeds typically require authentication. Use the NuGet client's own credential
+Artifactories typically require authentication. Use the NuGet client's own credential
 resolution — `packageSourceCredentials`, environment variables, credential providers.
 
-**Nothing derived from a feed credential is ever persisted**, the same invariant as
-connection strings in docs/21 Part G. Feed URLs are stored with userinfo, query and
+**Nothing derived from an artifactory credential is ever persisted**, the same invariant as
+connection strings in docs/21 Part G. Artifactory URLs are stored with userinfo, query and
 fragment stripped, per `outbound-invocation-inventory`'s normalisation.
 
 ### B5. The repository stays read-only
@@ -120,12 +120,12 @@ So determinism is defined **against a lookup cache**:
   pattern, so a result is always read alongside when it was true
 - `lookup_offline` (scanner 1.4.1; job parameter `lookup_offline`, default false): every
   answer comes from the cache whatever its age, a package the cache does not hold is reported
-  as not answered, and no package file is downloaded: no feed is contacted. An experiment's
+  as not answered, and no package file is downloaded: no artifactory is contacted. An experiment's
   verifier runs this way against the experiment's frozen snapshot
   (36-COPILOT-ENHANCED-CONVERSION Part L)
 - a version newer than every version the lookup answers know (scanner 1.4.3) is outcome
   `current`, reason "newer than the lookup answers: ...": a release published after they were
-  taken. An engine run looks up live feeds and is not penalised for a newer valid release; before
+  taken. An engine run looks up live artifactories and is not penalised for a newer valid release; before
   1.4.3 it was `no_compatible_version`, which raised a replacement work item
 - no recommended version carries a known advisory (scanner 1.5.0, artifact 1.5.0). When the
   newest version supporting the target has one, the newest without one, not below the current
@@ -139,10 +139,19 @@ So determinism is defined **against a lookup cache**:
   PACKAGE_DEPRECATED value reads "replacement New V". When none qualifies, it reads
   "replacement New; no release of it supports the target without a known advisory"
 
-### B7. Unreachable feeds
+### B7. Unreachable artifactories
 
-A feed that cannot be reached yields outcome `unknown` with the reason. Never guess, never
-silently substitute another feed.
+An artifactory that cannot be reached yields outcome `unknown` with the reason. Never guess, never
+silently substitute another artifactory.
+
+Since artifact 1.7.0 (scanner 1.8.0) an `unknown` package also says why, as a code
+(`38-PACKAGE-ACCESS.md`): `unknownCause` is `feed_auth` (an authority artifactory answered 401 or 403),
+`feed_unreachable` (any other failure to reach one; when both occur `feed_auth` wins), `not_on_feed`
+(every authority artifactory answered and none holds the package) or `version_unresolved` (the
+`PackageReference` version could not be read). `failedFeeds` (name, normalised url, `auth` or
+`unreachable`, HTTP status) goes with the first two, `consultedFeeds` (name, normalised url) with
+`not_on_feed`. A lookup answered offline from a frozen snapshot has no cause. No credential, userinfo or
+query string is ever in these fields (B4).
 
 ---
 
@@ -165,7 +174,7 @@ TestClientB.
 | `unknown` | Could not be determined — reason recorded |
 
 The **recommended version** is the latest version that supports the target framework,
-from the authoritative feed. Not merely the latest version: a package's newest release
+from the authoritative artifactory. Not merely the latest version: a package's newest release
 may have dropped a framework the project still needs.
 
 ### C3. Flags — orthogonal, may co-occur
@@ -317,7 +326,7 @@ recommended version, outcome badge, flags — with `no_compatible_version` and `
 sorted first. Breaking packages expand to the changed members and their call sites, each
 linking to source. Where `not_in_client_feed` is set, both versions show side by side.
 
-The feed that answered is visible per package, so it is always clear whether a result came
+The artifactory that answered is visible per package, so it is always clear whether a result came
 from the client's Artifactory or the nuget.org fallback.
 
 ---
@@ -330,7 +339,7 @@ from the client's Artifactory or the nuget.org fallback.
   is a package-reference change best made once the direct upgrades land
 - **Non-NuGet dependencies** — npm for the parked React work, vendored DLLs referenced by
   `HintPath`. A `HintPath` reference to a vendored DLL is worth flagging as `unknown`, since
-  it has no feed to query
+  it has no artifactory to query
 
 ---
 
@@ -339,13 +348,13 @@ from the client's Artifactory or the nuget.org fallback.
 - [ ] Step inserted between `outbound-invocation-inventory` and `item-detection`; later steps renumbered with slugs unchanged;
       both job definitions updated and valid
 - [ ] Registered as a signal producer; its signals in the registry; registry version bumped
-- [ ] With a `NuGet.config` declaring sources, those feeds answer and `feed_source` is
+- [ ] With a `NuGet.config` declaring sources, those artifactories answer and `feed_source` is
       `client_feed`
 - [ ] With no `NuGet.config`, nuget.org answers and `feed_source` is `nuget_org_fallback`
-- [ ] `<clear/>` is honoured: nuget.org is never used as the answer when client feeds exist
-- [ ] A version present publicly but absent from the client feed sets
+- [ ] `<clear/>` is honoured: nuget.org is never used as the answer when private artifactories exist
+- [ ] A version present publicly but absent from the private artifactory sets
       `not_in_client_feed` with both versions
-- [ ] An unreachable feed yields `unknown` with a reason, never a substituted answer
+- [ ] An unreachable artifactory yields `unknown` with a reason, never a substituted answer
 - [ ] Recommended version is the latest supporting the target framework, not merely latest
 - [ ] Deprecated and vulnerable are flags that co-occur with any outcome
 - [ ] API diff overrides the semver heuristic in both directions, and
@@ -353,7 +362,7 @@ from the client's Artifactory or the nuget.org fallback.
 - [ ] Breaking packages record affected call sites
 - [ ] The five generic catalog items exist and detect via item-detection with no special
       handling; occurrences appear in the work list
-- [ ] No feed credential is persisted; feed URLs are normalised
+- [ ] No artifactory credential is persisted; artifactory URLs are normalised
 - [ ] `git status` is clean in every scanned repository; nothing is restored in place
 - [ ] Two runs against the same lookup cache produce identical artifacts; cache time is in
       metadata
@@ -372,24 +381,24 @@ Code: `steps/step-003-fingerprinting/src/Fingerprinting.Dependencies` (pipeline)
 `Fingerprinting.Dependencies.Cli` (`DependencyAssessment.Cli.exe`), sharing
 `Fingerprinting.Analysis` and `Fingerprinting.StepHost` with `application-fingerprinting`,
 `entry-point-inventory` and `outbound-invocation-inventory`. Tests in
-`tests/Fingerprinting.Dependencies.Tests`, offline: feeds are local folders of packages built
-in the test, their assemblies compiled with Roslyn. NuGet's own libraries do the feed work:
+`tests/Fingerprinting.Dependencies.Tests`, offline: artifactories are local folders of packages built
+in the test, their assemblies compiled with Roslyn. NuGet's own libraries do the artifactory work:
 `NuGet.Protocol` and `NuGet.Credentials` 7.9.0.
 
-**Which feed is the client's (B2).** NuGet resolves the sources for each project
+**Which artifactory is the client's (B2).** NuGet resolves the sources for each project
 (`Settings.LoadDefaultSettings` from the project directory, so `<clear/>` and the declared
 order are NuGet's own): the `NuGet.config` files inside the repository, then those in the
 folders above it up to the drive root, then the user's (`%APPDATA%\NuGet\NuGet.Config` and
 `%APPDATA%\NuGet\config\*.config`), then the machine's — what `dotnet restore` reads. Each
-feed records where it is declared: `repository`, `parent`, `user` or `machine` (`parent`
-from 1.6.0). A source is a **client feed** when it is not nuget.org — wherever it is
+artifactory records where it is declared: `repository`, `parent`, `user` or `machine` (`parent`
+from 1.6.0). A source is a **private artifactory** when it is not nuget.org — wherever it is
 declared — except a *local folder* declared only at machine level: that is tooling, not a
-client feed — Visual Studio's machine-wide "Microsoft Visual Studio Offline Packages" is the
+private artifactory — Visual Studio's machine-wide "Microsoft Visual Studio Offline Packages" is the
 case on every developer machine — and is recorded with role `ignored`. (Before 1.6.0 a
 local folder declared at user level was ignored too; dotnet restore uses it, so it is a
-client feed now.) Credentials are NuGet's: `packageSourceCredentials`, the
+private artifactory now.) Credentials are NuGet's: `packageSourceCredentials`, the
 `NuGetPackageSourceCredentials_<name>` environment variable, or a credential provider, held
-in memory for the run and never recorded. With client feeds,
+in memory for the run and never recorded. With private artifactories,
 every one must answer: an unreachable one makes the package `unknown` (B7), and nuget.org is
 consulted for the B3 comparison only. With none, nuget.org answers as
 `nuget_org_fallback`.
@@ -436,7 +445,7 @@ and is otherwise the same shape.
 
 **Dependencies recorded (1.2.0).** Each version's nuspec dependency groups — framework, and
 each dependency's id and version range — go into the lookup cache entry
-(`package_lookup_cache.metadata[version].dependencies`), from the feed metadata NuGet.Protocol
+(`package_lookup_cache.metadata[version].dependencies`), from the artifactory metadata NuGet.Protocol
 already fetches; an entry cached earlier is filled from the package's own nuspec. Both ends of
 every assessed upgrade are recorded whatever the cache's age. The conversion planner orders
 and groups package units by them (34-CONVERSION-ARCHITECTURE.md, As built).
@@ -463,7 +472,7 @@ repository's projects sets `version_drift` on each reference and counts once in
 and shows drifting versions together under the package.
 
 **Determinism and the cache (B6).** The lookup cache (`package_lookup_cache` in the engine,
-a JSON file standalone) holds each feed's answer, and also what was read from packages
+a JSON file standalone) holds each artifactory's answer, and also what was read from packages
 (lib/ref frameworks, package kind), so a rerun against the same cache reads nothing new. No
 fetch time appears in the artifact; `lookup_cache_snapshot_at` is in the step output's
 metadata. Packages are downloaded to `%LOCALAPPDATA%\ModernizationPlatform\dependency-cache`
@@ -487,7 +496,7 @@ net10.0), the packages each shared framework carries and at which version — th
 `SharedFrameworks.UsedBy` decides which frameworks a project uses: `Microsoft.NETCore.App` always;
 `Microsoft.AspNetCore.App` for a Web or Razor SDK project or one with a `FrameworkReference` to it. A
 direct reference to a package one of them carries, at a version no higher than the carried one, is
-outcome `framework_provided` with signal `PACKAGE_PROVIDED_BY_FRAMEWORK`, decided before any feed
+outcome `framework_provided` with signal `PACKAGE_PROVIDED_BY_FRAMEWORK`, decided before any artifactory
 lookup. A class library's `Microsoft.AspNetCore.*` package stays an upgrade: the library does not
 use the shared framework.
 
@@ -501,4 +510,12 @@ removes the reference (impact: the project file and the version declaration).
 
 ## Large repositories (release 5: dependency-assessment 1.7.0)
 
-Projects one at a time, as before (the time goes on package lookups, which the lookup cache shares, and a client feed should not see in bursts), each within `project_seconds`, over which it is recorded `NOT_CHECKED`; finished projects are kept so a rerun continues from there. A transitive restore over its limit ends with everything it started, and both its output pipes are read. Artifact unchanged. Every step reports progress, writes a timing profile, keeps to its time and stall limits and ends its whole process tree when stopped: `11-STEP-CONTRACT.md`, "Time limits, progress and stopping". The registration's fixed `timeout_seconds` is gone.
+Projects one at a time, as before (the time goes on package lookups, which the lookup cache shares, and a private artifactory should not see in bursts), each within `project_seconds`, over which it is recorded `NOT_CHECKED`; finished projects are kept so a rerun continues from there. A transitive restore over its limit ends with everything it started, and both its output pipes are read. Artifact unchanged. Every step reports progress, writes a timing profile, keeps to its time and stall limits and ends its whole process tree when stopped: `11-STEP-CONTRACT.md`, "Time limits, progress and stopping". The registration's fixed `timeout_seconds` is gone.
+
+## Package access (artifact 1.7.0, scanner 1.8.0)
+
+Why a package is `unknown`, as a code, with the artifactories involved: B7 above and `38-PACKAGE-ACCESS.md`. The output
+schema is `schemas/dependency-assessment-1.7.0.schema.json`, derived from 1.6.0 by
+`schemas/make_dependency_schema_1_7_0.py`: three optional properties on a package, written only for an `unknown`
+outcome (`unknownCause`, `failedFeeds`, `consultedFeeds`). `outcome_reason` text is unchanged. A failed lookup is not
+cached, so a rescan after a login asks the artifactory again; a `not_on_feed` answer is cached for the 24-hour lookup TTL.

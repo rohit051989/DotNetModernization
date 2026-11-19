@@ -61,6 +61,9 @@ class SignalIndexTests(GovernanceTestCase):
         index = self.index()
         sink = {r["item_id"]: r["usages"] for r in index["SERILOG_FILE_SINK_CONFIG"]["referenced_by"]}
         self.assertEqual(sink["serilog-file-sink"], ["match", "occurrence_source"])
+        # Registry 1.14.0: a Console sink only describes the File-sink occurrence (occurrence_source.context).
+        console = {r["item_id"]: r["usages"] for r in index["SERILOG_CONSOLE_SINK_CONFIG"]["referenced_by"]}
+        self.assertEqual(console["serilog-file-sink"], ["context"])
         # A Dockerfile only ever stops an absence item applying.
         docker = index["DOCKERFILE_FILE"]
         self.assertEqual(docker["usages"], ["none"])

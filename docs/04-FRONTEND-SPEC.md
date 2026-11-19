@@ -493,6 +493,24 @@ has instead, and that a conversion prepared now gets no package step. A ready ma
 tab's one line; a repository of another machine says whose finding it is. A repository scanned before results were shared
 says so under its header, with the command its owner runs to copy them.
 
+## Dependencies (repository page): Internal and External
+
+The **Dependencies** tab lists the packages of the stored dependency assessment (`GET /api/results/{artifact_id}/dependencies/packages`,
+paged). Once dependency-hierarchy has run, a switch above the table splits them: **Internal (n)** and **External (n)**
+(`part=internal|external`; the counts come from `GET .../dependencies/origins` and cover every package, whatever the
+list's filters). Origin is the hierarchy step's own decision (`37-DEPENDENCY-HIERARCHY.md`, Part B3), read from
+`hierarchy_nodes`; a package id with several versions is internal if any version is, else external if any is.
+
+- **Internal** also holds what is not known to be public: an **Unresolved** package (no artifactory could say where it comes
+  from) and a **Not classified** one (the dependency graph does not hold it: it caps its packages, or was run
+  separately). Both carry a badge. An internal package says which repository builds it when the estate knows.
+- **External** is the public packages, with the columns as before.
+- Before dependency-hierarchy has run the tab is one list, with the hint "Run dependency-hierarchy to split internal
+  and external packages."
+- An `unknown` package's Reason cell says why, from the assessment's own `unknownCause` and artifactories
+  (`38-PACKAGE-ACCESS.md`): the cause, what it needs, and the artifactories that failed or were consulted. A result from before
+  artifact 1.7.0 says "Cause not recorded: rescan to classify".
+
 ## Dependency graph (repository page)
 
 The repository page's **Dependency graph** tab (until release 7, the "Structure" section) shows the repository's

@@ -238,7 +238,7 @@ public sealed class DependencyAssessmentTests : IDisposable
     {
         File.WriteAllText(Path.Combine(_repo, "NuGet.config"), """
             <configuration><packageSources><clear />
-              <add key="locked" value="http://svc-user:S3cr3tFeedPw@127.0.0.1:9/v3/index.json?token=QueryT0ken" />
+              <add key="locked" value="http://svc-user:ExampleFeedPw@127.0.0.1:9/v3/index.json?token=QueryT0ken" />
             </packageSources></configuration>
             """);
         Package(_publicFeed, "Acme.Json", "1.0.0", "net8.0", JsonV1);
@@ -251,10 +251,212 @@ public sealed class DependencyAssessmentTests : IDisposable
         Assert.Null(json.RecommendedVersion);
 
         var text = DeterministicJson.Serialize(artifact);
-        Assert.DoesNotContain("S3cr3tFeedPw", text);
+        Assert.DoesNotContain("ExampleFeedPw", text);
         Assert.DoesNotContain("QueryT0ken", text);
         Assert.DoesNotContain("svc-user", text);
         Assert.Contains("http://127.0.0.1:9/v3/index.json", text);
+    }
+
+    // ---------- 1.7.0: why a package is unknown (38-PACKAGE-ACCESS.md Part A, B) ----------
+
+    /// <summary>A feed that answers every request with one HTTP status and nothing else: a feed needing a login.</summary>
+    private sealed class StatusFeed : IDisposable
+    {
+        private readonly System.Net.Sockets.TcpListener _listener = new(System.Net.IPAddress.Loopback, 0);
+        private readonly CancellationTokenSource _stop = new();
+
+        public StatusFeed(int status, string reason)
+        {
+            _listener.Start();
+            Port = ((System.Net.IPEndPoint)_listener.LocalEndpoint).Port;
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    while (!_stop.IsCancellationRequested)
+                    {
+                        var client = await _listener.AcceptTcpClientAsync(_stop.Token);
+                        _ = Task.Run(async () =>
+                        {
+                            using (client)
+                            {
+                                var stream = client.GetStream();
+                                var buffer = new byte[4096];
+                                try
+                                {
+                                    await stream.ReadAtLeastAsync(buffer, 1, throwOnEndOfStream: false, _stop.Token);
+                                    var response = System.Text.Encoding.ASCII.GetBytes(
+                                        $"HTTP/1.1 {status} {reason}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+                                    await stream.WriteAsync(response, _stop.Token);
+                                }
+                                catch (Exception e) when (e is IOException or OperationCanceledException or ObjectDisposedException) { }
+                            }
+                        });
+                    }
+                }
+                catch (Exception e) when (e is OperationCanceledException or ObjectDisposedException or System.Net.Sockets.SocketException) { }
+            });
+        }
+
+        public int Port { get; }
+
+        /// <summary>The feed's address with a credential and a token in it, as a client's NuGet.config may have.</summary>
+        public string SourceWithSecrets => $"http://svc-user:ExampleFeedPw@127.0.0.1:{Port}/v3/index.json?token=QueryT0ken";
+
+        public string NormalisedUrl => $"http://127.0.0.1:{Port}/v3/index.json";
+
+        public void Dispose()
+        {
+            _stop.Cancel();
+            _listener.Stop();
+        }
+    }
+
+    private void FeedConfig(params (string Key, string Source)[] sources) => File.WriteAllText(Path.Combine(_repo, "NuGet.config"),
+        "<configuration><packageSources><clear />"
+        + string.Concat(sources.Select(s => $"<add key=\"{s.Key}\" value=\"{s.Source}\" />"))
+        + "</packageSources></configuration>");
+
+    private static string Refused() => "http://svc-user:ExampleFeedPw@127.0.0.1:9/v3/index.json?token=QueryT0ken";
+
+    private static void AssertNoSecret(DependencyAssessmentArtifact artifact)
+    {
+        var text = DeterministicJson.Serialize(artifact);
+        Assert.DoesNotContain("ExampleFeedPw", text);
+        Assert.DoesNotContain("QueryT0ken", text);
+        Assert.DoesNotContain("svc-user", text);
+    }
+
+    [Theory]
+    [InlineData(401, "Unauthorized")]
+    [InlineData(403, "Forbidden")]
+    public async Task A_feed_that_answers_401_or_403_is_unknown_with_the_cause_feed_auth_and_the_feed_named(int status, string reason)
+    {
+        using var feed = new StatusFeed(status, reason);
+        FeedConfig(("locked", feed.SourceWithSecrets));
+        Project("""    <PackageReference Include="Acme.Json" Version="1.0.0" />""", "class P { }");
+
+        var artifact = await Run([new InputPackage("Acme.Json", "1.0.0", "packagereference")]);
+        var json = Package(artifact, "Acme.Json");
+
+        Assert.Equal((Outcomes.Unknown, UnknownCauses.FeedAuth), (json.Outcome, json.UnknownCause));
+        var failed = Assert.Single(json.FailedFeeds!);
+        Assert.Equal(("locked", feed.NormalisedUrl, FeedFailures.Auth, status), (failed.Name, failed.Url, failed.Failure, failed.HttpStatus));
+        Assert.Null(json.ConsultedFeeds);
+        AssertNoSecret(artifact);
+        PackageSchema().Validate(DeterministicJson.Serialize(artifact.Projects.Single().Packages));
+    }
+
+    [Fact]
+    public async Task A_feed_that_cannot_be_reached_is_unknown_with_the_cause_feed_unreachable_and_no_status()
+    {
+        FeedConfig(("down", Refused()));
+        Project("""    <PackageReference Include="Acme.Json" Version="1.0.0" />""", "class P { }");
+
+        var artifact = await Run([new InputPackage("Acme.Json", "1.0.0", "packagereference")]);
+        var json = Package(artifact, "Acme.Json");
+
+        Assert.Equal((Outcomes.Unknown, UnknownCauses.FeedUnreachable), (json.Outcome, json.UnknownCause));
+        var failed = Assert.Single(json.FailedFeeds!);
+        Assert.Equal(("down", "http://127.0.0.1:9/v3/index.json", FeedFailures.Unreachable, null), (failed.Name, failed.Url, failed.Failure, failed.HttpStatus));
+        AssertNoSecret(artifact);
+        PackageSchema().Validate(DeterministicJson.Serialize(artifact.Projects.Single().Packages));
+    }
+
+    [Fact]
+    public async Task When_one_feed_needs_a_login_and_another_is_down_the_cause_is_feed_auth_and_both_feeds_are_listed()
+    {
+        using var feed = new StatusFeed(401, "Unauthorized");
+        FeedConfig(("down", Refused()), ("locked", feed.SourceWithSecrets));
+        Project("""    <PackageReference Include="Acme.Json" Version="1.0.0" />""", "class P { }");
+
+        var artifact = await Run([new InputPackage("Acme.Json", "1.0.0", "packagereference")]);
+        var json = Package(artifact, "Acme.Json");
+
+        Assert.Equal(UnknownCauses.FeedAuth, json.UnknownCause);
+        Assert.Equal([("down", FeedFailures.Unreachable), ("locked", FeedFailures.Auth)], json.FailedFeeds!.Select(f => (f.Name, f.Failure)));
+        AssertNoSecret(artifact);
+    }
+
+    [Fact]
+    public async Task A_package_no_consulted_feed_holds_is_unknown_with_the_cause_not_on_feed_and_the_feeds_asked()
+    {
+        ClientFeedConfig();
+        Package(_clientFeed, "Acme.Other", "1.0.0", "net8.0", JsonV1);
+        Project("""    <PackageReference Include="Acme.Json" Version="1.0.0" />""", "class P { }");
+
+        var artifact = await Run([new InputPackage("Acme.Json", "1.0.0", "packagereference")]);
+        var json = Package(artifact, "Acme.Json");
+
+        Assert.Equal((Outcomes.Unknown, UnknownCauses.NotOnFeed), (json.Outcome, json.UnknownCause));
+        var consulted = Assert.Single(json.ConsultedFeeds!);
+        Assert.Equal("artifactory", consulted.Name);
+        Assert.Equal("repo:feeds/artifactory", consulted.Url);   // a folder inside the repository is repository-relative
+        Assert.Null(json.FailedFeeds);
+        PackageSchema().Validate(DeterministicJson.Serialize(artifact.Projects.Single().Packages));
+    }
+
+    [Fact]
+    public async Task A_version_that_cannot_be_read_is_unknown_with_the_cause_version_unresolved()
+    {
+        ClientFeedConfig();
+        Project("""    <PackageReference Include="Acme.Json" />""", "class P { }");
+
+        var artifact = await Run([new InputPackage("Acme.Json", "$(NoSuchVersion)", "packagereference")]);
+        var json = Package(artifact, "Acme.Json");
+
+        Assert.Equal((Outcomes.Unknown, UnknownCauses.VersionUnresolved), (json.Outcome, json.UnknownCause));
+        Assert.Null(json.FailedFeeds);
+        Assert.Null(json.ConsultedFeeds);
+        PackageSchema().Validate(DeterministicJson.Serialize(artifact.Projects.Single().Packages));
+    }
+
+    [Fact]
+    public async Task A_lookup_answered_offline_is_unknown_with_no_cause()
+    {
+        ClientFeedConfig();
+        Project("""    <PackageReference Include="Acme.Json" Version="1.0.0" />""", "class P { }");
+        var lookup = new PackageLookup(new MemoryLookupCache(), Path.Combine(_root, "packages"), TimeSpan.FromHours(24), forceRefresh: false,
+            DateTimeOffset.Parse("2026-10-02T00:00:00Z"), offline: true);
+        var pipeline = new DependencyPipeline(lookup, new DependencyOptions("net10.0", ComparePublicFeed: false, SharedFrameworks: Shared));
+        var input = new DependencyInput(RepositoryId, "fixture", "application-fingerprint",
+            [new DependencyInputProject("src/App/App.csproj", Guid.Empty, null, "net8.0", [new InputPackage("Acme.Json", "1.0.0", "packagereference")])], []);
+
+        var json = Package(await pipeline.RunAsync(input, _repo, CancellationToken.None), "Acme.Json");
+
+        Assert.Equal(Outcomes.Unknown, json.Outcome);
+        Assert.Null(json.UnknownCause);
+        Assert.Null(json.FailedFeeds);
+        Assert.Null(json.ConsultedFeeds);
+    }
+
+    [Fact]
+    public async Task A_package_that_is_not_unknown_carries_none_of_the_cause_fields()
+    {
+        ClientFeedConfig();
+        Package(_clientFeed, "Acme.Json", "1.0.0", "net8.0", JsonV1);
+        Project("""    <PackageReference Include="Acme.Json" Version="1.0.0" />""", "class P { }");
+
+        var artifact = await Run([new InputPackage("Acme.Json", "1.0.0", "packagereference")]);
+        var text = DeterministicJson.Serialize(artifact);
+
+        Assert.DoesNotContain("unknownCause", text);
+        Assert.DoesNotContain("failedFeeds", text);
+        Assert.DoesNotContain("consultedFeeds", text);
+    }
+
+    [Fact]
+    public void The_http_status_is_read_from_the_exception_chain_or_from_nugets_message()
+    {
+        var forbidden = new NuGet.Protocol.Core.Types.FatalProtocolException("could not load the service index",
+            new HttpRequestException("denied", null, System.Net.HttpStatusCode.Forbidden));
+        Assert.Equal(403, PackageLookup.HttpStatusOf(forbidden));
+
+        var byText = new NuGet.Protocol.Core.Types.FatalProtocolException("Response status code does not indicate success: 401 (Unauthorized).");
+        Assert.Equal(401, PackageLookup.HttpStatusOf(byText));
+
+        Assert.Null(PackageLookup.HttpStatusOf(new HttpRequestException("No such host is known.")));
+        Assert.Null(PackageLookup.HttpStatusOf(new TaskCanceledException("timed out")));
     }
 
     // ---------- outcomes and classification (Part C) ----------
@@ -446,7 +648,7 @@ public sealed class DependencyAssessmentTests : IDisposable
     /// fixture's "public" feed is a local folder, which the feed enum rightly refuses.</summary>
     private static ArtifactSchemaValidator PackageSchema()
     {
-        var schema = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "schemas", "dependency-assessment-1.6.0.schema.json")))!;
+        var schema = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "schemas", "dependency-assessment-1.7.0.schema.json")))!;
         var wrapper = new System.Text.Json.Nodes.JsonObject
         {
             ["$schema"] = schema["$schema"]!.DeepClone(),
@@ -792,7 +994,7 @@ public sealed class DependencyAssessmentTests : IDisposable
 
         var artifact = await Run([new InputPackage("Acme.Json", "1.0.0", "packagereference")], cache);
         var json = Package(artifact, "Acme.Json");
-        Assert.Equal("1.6.0", artifact.ArtifactVersion);
+        Assert.Equal("1.7.0", artifact.ArtifactVersion);
         Assert.Equal(scope, json.Deprecated!.Scope);
         Assert.Equal(scope == "version" ? "1.1.0" : null, json.Deprecated.NewestNotDeprecated);
         Assert.Equal(signalValue, Assert.Single(artifact.Projects.Single().Signals, s => s.Name == "PACKAGE_DEPRECATED").Value);

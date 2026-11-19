@@ -35,8 +35,20 @@ export const fingerprintSignals = (artifactId: string, category: string) => page
 export function listDependencyFeeds(artifactId: string) {
   return api.get<Record<string, unknown>[]>(`${result(artifactId)}/dependencies/feeds`)
 }
-export const dependencyPackages = (artifactId: string, showCurrent: boolean) =>
-  pages(`${result(artifactId)}/dependencies/packages`, { show_current: showCurrent })
+/** Internal: internal, unresolved and not classified packages; external: the public ones (needs dependency-hierarchy). */
+export type DependencyPart = 'all' | 'internal' | 'external'
+export const dependencyPackages = (artifactId: string, showCurrent: boolean, part: DependencyPart = 'all') =>
+  pages(`${result(artifactId)}/dependencies/packages`, { show_current: showCurrent, part })
+
+/** How many package ids are in each part, whatever the list's filters; none until dependency-hierarchy has run. */
+export interface DependencyOrigins {
+  hierarchy_scanned: boolean
+  /** `internal` includes `unresolved` (no artifactory could say where it comes from) and `not_classified` (not in the graph). */
+  origin_counts: { internal: number; external: number; unresolved: number; not_classified: number }
+}
+export function getDependencyOrigins(artifactId: string) {
+  return api.get<DependencyOrigins>(`${result(artifactId)}/dependencies/origins`)
+}
 /** One version's projects; version null: every version's. */
 export const dependencyUses = (artifactId: string, packageId: string, version: string | null) =>
   pages(`${result(artifactId)}/dependencies/uses`, { package_id: packageId, version })

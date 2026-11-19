@@ -22,7 +22,7 @@ It is a graph, not a tree. A shared library with several parents is one node; ev
 | Registration | `steps/step-003-fingerprinting/registration/dependency-hierarchy.json` |
 
 Read-only against the repository. Nothing is restored, built or downloaded into it. The step shares
-`dependency-assessment`'s feed resolution (NuGet's own configuration loader), credentials and lookup cache
+`dependency-assessment`'s artifactory resolution (NuGet's own configuration loader), credentials and lookup cache
 (`package_lookup_cache`).
 
 ### Does `dependency-assessment` read packages.config?
@@ -42,7 +42,7 @@ reads them through `dependency-assessment`'s artifact, and draws them as `packag
 | Type | Id | What it carries |
 |---|---|---|
 | Project | `project:<repository-relative path>` | kind (B2) and why; target frameworks; SDK-style or legacy; package management (PackageReference, packages.config, mixed, none) |
-| Package | `package:<id>@<version>` (lower case, normalised version) | version; origin, internal or external (B3), and why; the feed that answered; transitive or declared; the producing repository of an internal package where estate consolidation knows it; `dependency-assessment`'s findings for a declared package (outcome, reason, outdated, deprecated, vulnerable); the version's known advisories from the feed's metadata (transitive packages too) |
+| Package | `package:<id>@<version>` (lower case, normalised version) | version; origin, internal or external (B3), and why; the artifactory that answered; transitive or declared; the producing repository of an internal package where estate consolidation knows it; `dependency-assessment`'s findings for a declared package (outcome, reason, outdated, deprecated, vulnerable); the version's known advisories from the artifactory's metadata (transitive packages too) |
 | Assembly reference | `assembly:<location>:<path or name>` | the simple name and version from the Include; where it points: a DLL in the repository, a DLL outside it, the GAC, or .NET Framework itself; whether the HintPath's file exists |
 
 A package at two versions is two nodes. A ProjectReference to a file that is not in the repository is a project node
@@ -68,14 +68,17 @@ Decided once per package id, from the first project (in path order) that uses it
 
 1. Estate consolidation found the repository that produces it (`dependency_edges`, kind `internal_package`, by
    `via_package`): **internal**, naming that repository and project.
-2. No feed lists it, but restore installed it (it is in the project's assets file) and nuget.org is the project's only
+2. No artifactory lists it, but restore installed it (it is in the project's assets file) and nuget.org is the project's only
    source: **external**, as an unlisted nuget.org package.
-3. No feed answered: **unknown**, and the node is not checked, with each feed's answer.
-4. The project declares no client feed, so nuget.org answered as the fallback: **external**.
-5. A client feed answered, and the public comparison is on: **external** if nuget.org has the package too (a client
-   feed that mirrors nuget.org), **internal** if it does not.
-6. A client feed answered, and the public comparison is off (`COMPARE_PUBLIC_NUGET_FEED=false`): **internal**, with
-   the basis saying nuget.org was not consulted. A client feed that proxies nuget.org then makes every package look
+3. No artifactory answered: **unknown**, and the node is not checked, with each artifactory's answer.
+4. The project declares no private artifactory, so nuget.org answered as the fallback: **external**.
+   Likewise where the project declares nuget.org beside its private artifactory and nuget.org is the source that answered.
+   When a private artifactory answers first, a declared nuget.org is the one compared against in rule 5, whatever the
+   setting below says.
+5. A private artifactory answered, and the public comparison is on: **external** if nuget.org has the package too (a private
+   artifactory that mirrors nuget.org), **internal** if it does not.
+6. A private artifactory answered, and the public comparison is off (`COMPARE_PUBLIC_NUGET_FEED=false`): **internal**, with
+   the basis saying nuget.org was not consulted. A private artifactory that proxies nuget.org then makes every package look
    internal; the basis says so on each.
 
 ### B4. Edges
@@ -93,7 +96,7 @@ A package's own dependencies come from:
 - **the project's restored `obj/project.assets.json`**, where it exists and has the package at the version in use:
   what restore chose, for the project's framework. Resolution `assets_file`. A file restore wrote before the project
   last changed can be stale.
-- otherwise **the feed's metadata**: the nuspec dependency group nearest the project's target framework (NuGet's
+- otherwise **the artifactory's metadata**: the nuspec dependency group nearest the project's target framework (NuGet's
   framework reducer), each dependency at the lowest listed version its range allows — what restore would choose, not
   what it chose. Resolution `feed_metadata`. Each such edge records the frameworks it was found for, because one package
   version can depend on different packages per framework.
@@ -108,7 +111,7 @@ A package's own dependencies come from:
   (`dependenciesNotCheckedReason`).
 - **Size.** At most `max_packages` (5000) package nodes. Past it, nothing new is added, the run warns, and the package
   whose dependencies were cut says so.
-- **Not checked, with the reason.** A package no feed answers, a version that cannot be resolved, dependencies that
+- **Not checked, with the reason.** A package no artifactory answers, a version that cannot be resolved, dependencies that
   cannot be read, an unknown target framework, a missing HintPath file, a missing referenced project, a project over
   its time limit (B6). Nothing unresolved is silently dropped.
 
@@ -118,7 +121,7 @@ Like every discovery step, it reports progress (phases `read`, `resolve`, `graph
 writes `timing-profile.json`, and resolves each project within the engine's per-project limit (`STEP_PROJECT_SECONDS`).
 A project over its limit keeps what was found and is marked not checked, with the reason. The step carries on.
 
-A cold lookup cache costs a feed round trip per package, and a repository's closure runs to hundreds of packages.
+A cold lookup cache costs an artifactory round trip per package, and a repository's closure runs to hundreds of packages.
 Before the walk follows a node's dependencies, their lookups are made together, at most `lookup_concurrency` (8) at a
 time, each by its own `PackageLookup` over one synchronised cache. The walk then reads the answers from the cache.
 eShopOnWeb (11 projects, 288 packages): 268 s one at a time against an empty cache, 42 s with this, 1.3 s with a warm
@@ -207,7 +210,7 @@ version), `referenced_by` (its parents) and `child_count` (its children under th
   deprecated, the number of work items, referenced by N.
 - **Details**: the path with the editor link (`SourceLink`: the person's editor, or copy); where each parent declares
   it, at its line; target framework, project format and package management; kind with its basis; version, origin with
-  its basis, feed and producer; how its own dependencies were found; parents; work items; and
+  its basis, artifactory and producer; how its own dependencies were found; parents; work items; and
   `dependency-assessment`'s status with its reason. That last comes from the artifact the page already holds: a
   project's status and skip reason with its outcome counts, a declared package's outcome, recommended version and reason
   per project. A transitive package or an assembly reference says why it was not assessed.
@@ -232,7 +235,7 @@ repository:
   Framework, and into the packages folder;
 - a folder under central package management;
 - a reference to a missing project;
-- a client feed of internal packages and copies of external ones, with nuspec dependencies.
+- a private artifactory of internal packages and copies of external ones, with nuspec dependencies.
 
 It also writes `expected-graph.json`. After registering and scanning it,
 `python -m tests.fixtures.synthetic_repository --check <folder> <repository id>` compares the graph in the database

@@ -32,6 +32,28 @@ public static class Outcomes
     };
 }
 
+/// <summary>1.7.0 (38-PACKAGE-ACCESS.md Part A): why a package is <c>unknown</c>, as a code.</summary>
+public static class UnknownCauses
+{
+    /// <summary>An authority feed answered 401 or 403.</summary>
+    public const string FeedAuth = "feed_auth";
+
+    /// <summary>An authority feed could not be reached (DNS, timeout, TLS, refused, any other protocol error).</summary>
+    public const string FeedUnreachable = "feed_unreachable";
+
+    /// <summary>Every authority feed answered, and none holds the package.</summary>
+    public const string NotOnFeed = "not_on_feed";
+
+    /// <summary>The PackageReference version could not be read.</summary>
+    public const string VersionUnresolved = "version_unresolved";
+}
+
+public static class FeedFailures
+{
+    public const string Auth = "auth";
+    public const string Unreachable = "unreachable";
+}
+
 public static class FeedSources
 {
     /// <summary>A package source the client declared — the authority (Part B2).</summary>
@@ -124,7 +146,7 @@ public static class CallSiteCertainty
 public sealed record DependencyAssessmentArtifact
 {
     public string ArtifactType { get; init; } = "dependency-assessment";
-    public string ArtifactVersion { get; init; } = "1.6.0";
+    public string ArtifactVersion { get; init; } = "1.7.0";
     public required string ScannerVersion { get; init; }
     public required Guid RepositoryId { get; init; }
     public required string RepositorySlug { get; init; }
@@ -237,6 +259,20 @@ public sealed record PackageAssessment
     public required string Outcome { get; init; }
     public string? OutcomeReason { get; init; }
 
+    /// <summary>1.7.0: for an unknown outcome, why (<see cref="UnknownCauses"/>). Null, and not written, for any other
+    /// outcome and for an unknown with no classified cause (a lookup answered offline).</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? UnknownCause { get; init; }
+
+    /// <summary>1.7.0: for <c>feed_auth</c> and <c>feed_unreachable</c>, every authority feed that failed, in declared
+    /// order. Normalised urls only (Part B4).</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<FailedFeed>? FailedFeeds { get; init; }
+
+    /// <summary>1.7.0: for <c>not_on_feed</c>, the authority feeds that were asked.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<ConsultedFeed>? ConsultedFeeds { get; init; }
+
     /// <summary>runtime, build, tools, analyzer or content (<see cref="PackageKinds"/>);
     /// null when no version of the package could be read.</summary>
     public string? PackageKind { get; init; }
@@ -277,6 +313,26 @@ public sealed record PackageAssessment
     public IReadOnlyList<CallSite> CallSites { get; init; } = [];
     public required double Confidence { get; init; }
     public IReadOnlyList<string> ConfidenceReasons { get; init; } = [];
+}
+
+/// <summary>A feed that failed for a package (1.7.0). <see cref="Url"/> is normalised: no userinfo, query or fragment.</summary>
+public sealed record FailedFeed
+{
+    public required string Name { get; init; }
+    public required string Url { get; init; }
+
+    /// <summary><c>auth</c> or <c>unreachable</c> (<see cref="FeedFailures"/>).</summary>
+    public required string Failure { get; init; }
+
+    /// <summary>The HTTP status, when the failure had one.</summary>
+    public int? HttpStatus { get; init; }
+}
+
+/// <summary>A feed a package was looked up on and not found (1.7.0). Normalised url.</summary>
+public sealed record ConsultedFeed
+{
+    public required string Name { get; init; }
+    public required string Url { get; init; }
 }
 
 public sealed record SourceLine

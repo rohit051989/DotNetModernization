@@ -1,5 +1,6 @@
 using Fingerprinting.Domain;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace Fingerprinting.Extractors;
@@ -180,6 +181,7 @@ public sealed class ApiUsageExtractor : IFingerprintExtractor
                 ? "CoreWCF" : "System.ServiceModel";
             var importsSpectre = usings.Any(u => u == "Spectre.Console");
             var importsSharprompt = usings.Any(u => u == "Sharprompt");
+            var serilogFile = !file.IsGenerated && IsSerilogFile(usings, root);
 
             foreach (var node in root.DescendantNodes())
             {
@@ -204,6 +206,11 @@ public sealed class ApiUsageExtractor : IFingerprintExtractor
                     case InvocationExpressionSyntax invocation:
                         MatchMethodCall(invocation, file.RelativePath, accumulator);
                         MatchConsoleInput(invocation, importsSpectre, importsSharprompt, file.RelativePath, accumulator);
+                        if (serilogFile)
+                        {
+                            MatchSerilogSink(invocation, file.RelativePath, accumulator);
+                        }
+
                         break;
                     case ObjectCreationExpressionSyntax { Type: var promptType }
                         when RoslynNameHelpers.RightmostIdentifier(promptType) is { } promptName
@@ -331,6 +338,90 @@ public sealed class ApiUsageExtractor : IFingerprintExtractor
             Add(accumulator, "INTERACTIVE_CONSOLE_INPUT", SignalCategories.ExecutionIndicator,
                 $"Sharprompt.Prompt.{member}", path, invocation, QualifiedMember);
         }
+    }
+
+    // Registry 1.14.0: Serilog sinks configured in code. Only in a file that uses Serilog (a Serilog using, or Serilog /
+    // LoggerConfiguration written in it): WriteTo is Serilog's name, but File and Console are common method names.
+    public const string SerilogFileSinkUsage = "SERILOG_FILE_SINK_USAGE";
+    public const string SerilogConsoleSinkUsage = "SERILOG_CONSOLE_SINK_USAGE";
+
+    private static readonly HashSet<string> SerilogFileSinkMethods = new(StringComparer.Ordinal) { "File", "RollingFile" };
+
+    private static bool IsSerilogFile(IReadOnlyList<string> usings, SyntaxNode root) =>
+        usings.Any(u => u == "Serilog" || u.StartsWith("Serilog.", StringComparison.Ordinal))
+        || root.DescendantTokens().Any(t => t.IsKind(SyntaxKind.IdentifierToken) && t.ValueText is ("Serilog" or "LoggerConfiguration"));
+
+    /// <summary>
+    /// A Serilog sink written in code: <c>.WriteTo.File(...)</c>, <c>.WriteTo.RollingFile(...)</c> or
+    /// <c>.WriteTo.Console(...)</c> (and <c>AuditTo</c>), or the same sink inside a wrapper whose lambda receives
+    /// the sink configuration (<c>.WriteTo.Async(a =&gt; a.File(...))</c>, <c>.WriteTo.Conditional(..., wt =&gt;
+    /// wt.Console())</c>). A File sink's value is its path when written as a string literal (the first argument,
+    /// or <c>path:</c>), else null; a Console sink's value is "Console".
+    /// </summary>
+    private static void MatchSerilogSink(InvocationExpressionSyntax invocation, string path, SignalAccumulator accumulator)
+    {
+        if (invocation.Expression is not MemberAccessExpressionSyntax access)
+        {
+            return;
+        }
+
+        var sink = access.Name.Identifier.Text;
+        var isFile = SerilogFileSinkMethods.Contains(sink);
+        if ((!isFile && sink != "Console") || !IsSerilogSinkReceiver(access.Expression))
+        {
+            return;
+        }
+
+        // From the sink's own name to its closing parenthesis: the invocation itself starts where the fluent
+        // chain does (new LoggerConfiguration()), lines above the sink.
+        var start = access.Name.GetLocation().GetLineSpan().StartLinePosition.Line + 1;
+        var end = invocation.ArgumentList.GetLocation().GetLineSpan().EndLinePosition.Line + 1;
+        accumulator.Add(
+            isFile ? SerilogFileSinkUsage : SerilogConsoleSinkUsage, SignalCategories.ConfigurationIndicator,
+            SignalTypes.ApiInvocation, isFile ? LiteralPath(invocation) : "Console", EvidenceSourceTypes.SourceCode, path,
+            ExtractorName, QualifiedMember,
+            new Evidence
+            {
+                LineStart = start,
+                LineEnd = end,
+                DeclaringType = invocation.FirstAncestorOrSelf<BaseTypeDeclarationSyntax>()?.Identifier.Text,
+                Member = EnclosingMemberName(invocation),
+                SnippetHash = Hashing.Sha256Hex(invocation.ToString()),
+            });
+    }
+
+    /// <summary><c>x.WriteTo</c> / <c>x.AuditTo</c>, or the parameter of a lambda passed to a
+    /// <c>x.WriteTo.Something(...)</c> wrapper (Async, Conditional, Map ...).</summary>
+    private static bool IsSerilogSinkReceiver(ExpressionSyntax receiver)
+    {
+        if (receiver is MemberAccessExpressionSyntax { Name.Identifier.ValueText: "WriteTo" or "AuditTo" })
+        {
+            return true;
+        }
+
+        if (receiver is not IdentifierNameSyntax { Identifier.ValueText: var name })
+        {
+            return false;
+        }
+
+        var lambda = receiver.Ancestors().OfType<LambdaExpressionSyntax>().FirstOrDefault(l => l switch
+        {
+            SimpleLambdaExpressionSyntax simple => simple.Parameter.Identifier.ValueText == name,
+            ParenthesizedLambdaExpressionSyntax parenthesized => parenthesized.ParameterList.Parameters.Any(p => p.Identifier.ValueText == name),
+            _ => false,
+        });
+        return lambda?.Parent is ArgumentSyntax { Parent.Parent: InvocationExpressionSyntax wrapper }
+               && wrapper.Expression is MemberAccessExpressionSyntax { Expression: MemberAccessExpressionSyntax { Name.Identifier.ValueText: "WriteTo" or "AuditTo" } };
+    }
+
+    private static string? LiteralPath(InvocationExpressionSyntax invocation)
+    {
+        var arguments = invocation.ArgumentList.Arguments;
+        var argument = arguments.FirstOrDefault(a => a.NameColon?.Name.Identifier.ValueText == "path")
+                       ?? arguments.FirstOrDefault(a => a.NameColon is null);
+        return argument?.Expression is LiteralExpressionSyntax literal && literal.IsKind(SyntaxKind.StringLiteralExpression)
+            ? literal.Token.ValueText
+            : null;
     }
 
     /// <summary>The call is a statement on its own (<c>Console.ReadLine();</c>)

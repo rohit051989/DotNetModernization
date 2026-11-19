@@ -8,6 +8,7 @@ compute over the whole artifact (groups, counts, the order) is computed here, by
 import datetime
 import re
 import uuid
+from typing import Literal
 
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
@@ -215,6 +216,67 @@ def list_dependency_feeds(artifact_id: uuid.UUID, db: Session = Depends(get_db))
     return sorted(feeds, key=lambda f: f.get("role") or "")
 
 
+# Where each package came from, as the dependency-hierarchy step decided (the Dependency graph tab shows the same).
+# One row per package id: internal if any version is, else external if any is, else unknown. A package id the graph
+# does not hold has no row here: it is "not classified" (the graph caps its packages, and may be from another run).
+_ORIGINS = """
+    select lower(n.detail->'package'->>'packageId') as opid,
+           case when bool_or(n.detail->'package'->>'origin' = 'internal') then 'internal'
+                when bool_or(n.detail->'package'->>'origin' = 'external') then 'external'
+                else 'unknown' end as origin,
+           (array_agg(n.detail->'package'->>'originBasis' order by n.node_id))[1] as basis,
+           (array_agg(n.detail->'package'->'producer' order by n.node_id)
+                filter (where jsonb_typeof(n.detail->'package'->'producer') = 'object'))[1] as producer
+    from hierarchy_nodes n
+    where n.repository_id = :rid and n.node_type = 'package'
+    group by 1
+"""
+
+# The part a package belongs to: the unknown and the not classified are with the internal ones, flagged.
+_PART = "case when origin = 'external' then 'external' else 'internal' end"
+
+
+def _hierarchy_scanned(db: Session, repository_id: uuid.UUID | None) -> bool:
+    return repository_id is not None and db.execute(text(
+        "select 1 from hierarchy_nodes where repository_id = :rid limit 1"), {"rid": repository_id}).first() is not None
+
+
+class OriginCountsOut(BaseModel):
+    internal: int = Field(description="Package ids in the Internal part: internal, unresolved and not classified.")
+    external: int
+    unresolved: int = Field(description="Of internal: no feed could say where the package comes from.")
+    not_classified: int = Field(description="Of internal: not in the dependency graph (it caps its packages, or is from "
+                                            "another run).")
+
+
+class DependencyOriginsOut(BaseModel):
+    hierarchy_scanned: bool = Field(description="False until dependency-hierarchy has run: the packages are not split.")
+    origin_counts: OriginCountsOut
+
+
+@router.get(
+    "/results/{artifact_id}/dependencies/origins",
+    response_model=DependencyOriginsOut,
+    summary="Get how many packages of a stored dependency assessment are internal and external",
+    operation_id="get_dependency_origins",
+    responses={404: _NOT_STORED},
+)
+def get_dependency_origins(artifact_id: uuid.UUID, db: Session = Depends(get_db)):
+    """Distinct package ids over the whole assessment, whatever the list's filters: the switch's labels."""
+    artifact = _stored(db, artifact_id, "dependency-assessment")
+    rid = artifact.repository_id
+    scanned = _hierarchy_scanned(db, rid)
+    counts = {r.origin: r.n for r in db.execute(text(f"""
+        select coalesce(o.origin, 'not_classified') as origin, count(*) as n
+        from (select distinct pid from ({_USES}) u) p left join ({_ORIGINS}) o on o.opid = p.pid
+        group by 1
+    """), {"a": artifact_id, "rid": rid}).all()} if scanned else {}
+    unresolved, not_classified = counts.get("unknown", 0), counts.get("not_classified", 0)
+    return DependencyOriginsOut(hierarchy_scanned=scanned, origin_counts=OriginCountsOut(
+        internal=counts.get("internal", 0) + unresolved + not_classified, external=counts.get("external", 0),
+        unresolved=unresolved, not_classified=not_classified))
+
+
 @router.get(
     "/results/{artifact_id}/dependencies/packages",
     response_model=PageOut,
@@ -223,23 +285,37 @@ def list_dependency_feeds(artifact_id: uuid.UUID, db: Session = Depends(get_db))
     responses={404: _NOT_STORED},
 )
 def list_dependency_packages(artifact_id: uuid.UUID, show_current: bool = Query(False), paging: PageParams = Depends(),
-                             db: Session = Depends(get_db)):
+                             db: Session = Depends(get_db),
+                             part: Literal["all", "internal", "external"] = Query("all", description=(
+                                 "Internal: internal, unresolved and not classified packages; external: the public ones. "
+                                 "Ignored until dependency-hierarchy has run."))):
     """One item per package id: packageId, drift, projectCount and its versions, each with the projects referencing
     it there (useCount, the first 20 as `projects`), the outcomes they have, the worst project's assessment (`worst`)
     and where the first declares it. What blocks first comes first. Without show_current, a package current
-    everywhere is left out unless it drifts. The filter matches the package id and the projects' paths."""
-    _stored(db, artifact_id, "dependency-assessment")
+    everywhere is left out unless it drifts. The filter matches the package id and the projects' paths.
+    Once dependency-hierarchy has run, each item also has `origin` (internal, external, unknown; null when the graph
+    does not hold the package), `originBasis` and `producer`; before, all three are null."""
+    artifact = _stored(db, artifact_id, "dependency-assessment")
+    rid = artifact.repository_id
+    scanned = _hierarchy_scanned(db, rid)
     source = f"""
-        select jsonb_build_object('pid', pid) as item, pid as k_pid, min(rank) as rank, min(pk->>'packageId') as display,
-               count(distinct ver) as versions, bool_and(pk->>'outcome' = 'current') as all_current,
-               lower(min(pk->>'packageId') || ' ' || string_agg(project, ' ')) as search
-        from ({_USES}) u group by pid
+        select jsonb_build_object('pid', u.pid, 'origin', min(o.origin), 'originBasis', min(o.basis),
+                                  'producer', (array_agg(o.producer))[1]) as item,
+               u.pid as k_pid, min(u.rank) as rank, min(u.pk->>'packageId') as display,
+               count(distinct u.ver) as versions, bool_and(u.pk->>'outcome' = 'current') as all_current,
+               lower(min(u.pk->>'packageId') || ' ' || string_agg(u.project, ' ')) as search,
+               coalesce(min(o.origin), 'not_classified') as origin
+        from ({_USES}) u left join ({_ORIGINS}) o on o.opid = u.pid group by u.pid
     """
     where = "true" if show_current else "(versions > 1 or not all_current)"
-    result = page(db, source, {"a": artifact_id}, paging, order="rank, lower(display), k_pid", where=where)
+    if scanned and part != "all":
+        where += f" and {_PART} = :part"
+    result = page(db, source, {"a": artifact_id, "rid": rid if scanned else None, "part": part}, paging,
+                  order="rank, lower(display), k_pid", where=where)
     pids = [i["pid"] for i in result.items]
     if not pids:
         return result
+    origins = {i["pid"]: i for i in result.items}
     versions = db.execute(text(f"""
         select pid, ver, count(*) as use_count,
                (array_agg(pk->>'packageId' order by project))[1] as package_id,
@@ -258,7 +334,9 @@ def list_dependency_packages(artifact_id: uuid.UUID, show_current: bool = Query(
     items = []
     for pid in pids:
         rows = sorted(by_pid.get(pid, []), key=lambda v: _version_key(v.ver))
+        found = origins[pid]
         items.append({
+            "origin": found.get("origin"), "originBasis": found.get("originBasis"), "producer": found.get("producer"),
             "packageId": rows[0].package_id if rows else pid,
             "drift": len(rows) > 1,
             "projectCount": distinct_projects.get(pid, 0),

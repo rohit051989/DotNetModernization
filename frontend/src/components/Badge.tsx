@@ -133,6 +133,11 @@ const USAGE_LABEL: Record<SignalUsage, { label: string; className: string; title
     className: 'border-indigo-200 bg-indigo-50 text-indigo-700',
     title: 'The occurrence_source: each occurrence of the item is located by this signal.',
   },
+  context: {
+    label: 'context',
+    className: 'border-sky-200 bg-sky-50 text-sky-700',
+    title: "occurrence_source.context: looked for in each occurrence's own file and recorded as present or missing; never decides whether the item applies.",
+  },
   none: {
     label: 'none',
     className: 'border-neutral-300 bg-white text-neutral-600',

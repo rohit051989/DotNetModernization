@@ -15,8 +15,10 @@ const server = vi.hoisted(() => {
   }))
   return {
     calls: [] as string[],
+    cause: 'feed_auth',
     page,
     work,
+    origins: { hierarchy_scanned: false, origin_counts: { internal: 0, external: 0, unresolved: 0, not_classified: 0 } },
   }
 })
 
@@ -27,13 +29,18 @@ vi.mock('../../api/results', () => ({
     return server.page([{ name: 'ASP_NET_CORE', value: '8.0', project: 'src/A/A.csproj', sourcePath: null, occurrences: 1, confidence: 1 }])
   },
   listDependencyFeeds: () => Promise.resolve([{ name: 'nuget.org', url: 'https://api.nuget.org/v3/index.json', role: 'nuget_org' }]),
-  dependencyPackages: () => () =>
-    server.page([{
-      packageId: 'Newtonsoft.Json', drift: false, projectCount: 1,
+  getDependencyOrigins: () => Promise.resolve(server.origins),
+  dependencyPackages: (_a: string, _showCurrent: boolean, part: string) => () => {
+    server.calls.push(`packages:${part}`)
+    const one = (packageId: string, origin: string | null) => ({
+      packageId, drift: false, projectCount: 1, origin, originBasis: null, producer: null,
       versions: [{ version: '12.0.3', useCount: 1, outcomes: ['upgrade_safe'], projects: ['src/A/A.csproj'],
                    first: { project: 'src/A/A.csproj', declaredAt: { filePath: 'src/A/A.csproj', line: 9 } },
-                   worst: { project: 'src/A/A.csproj', pkg: { packageId: 'Newtonsoft.Json', outcome: 'upgrade_safe', currentVersion: '12.0.3', recommendedVersion: '13.0.3' } } }],
-    }]),
+                   worst: { project: 'src/A/A.csproj', pkg: { packageId, outcome: origin === 'unknown' ? 'unknown' : 'upgrade_safe', currentVersion: '12.0.3', recommendedVersion: '13.0.3',
+                   ...(origin === 'unknown' ? { unknownCause: server.cause, failedFeeds: [{ name: 'corp', url: 'https://pkgs.client-a.example/v3/index.json', failure: 'auth', httpStatus: 401 }] } : {}) } } }],
+    })
+    return server.page(part === 'internal' ? [one('Offline.Lib', 'unknown'), one('Gone.Lib', null)] : [one('Newtonsoft.Json', 'external')])
+  },
   dependencyUses: () => () => server.page([{ project: 'src/A/A.csproj', pkg: { outcome: 'upgrade_safe', callSites: [] } }]),
   getWorkItemTotals: () => Promise.resolve({ occurrence_rows: 50, possible_rows: 0 }),
   workItems: () => (_q: string, offset: number, limit: number) => {
@@ -66,9 +73,65 @@ describe('stored result views', () => {
   })
 
   it('dependencies show each package with its worst project\'s assessment', async () => {
+    server.origins = { hierarchy_scanned: false, origin_counts: { internal: 0, external: 0, unresolved: 0, not_classified: 0 } }
     await show(<StoredDependenciesView artifactId="d" head={{ summary: { packageCount: 1 }, targetFramework: 'net10.0' }} localPath={null} />)
     expect(screen.getAllByText('Newtonsoft.Json').length).toBeGreaterThan(0)
     expect(screen.getByText('13.0.3')).toBeTruthy()
+  })
+
+  it('dependencies are one list, with a hint, until dependency-hierarchy has run', async () => {
+    server.origins = { hierarchy_scanned: false, origin_counts: { internal: 0, external: 0, unresolved: 0, not_classified: 0 } }
+    server.calls.length = 0
+    await show(<StoredDependenciesView artifactId="d" head={{ summary: { packageCount: 1 }, targetFramework: 'net10.0' }} localPath={null} />)
+    expect(screen.getByText(/Run dependency-hierarchy to split/)).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /Internal/ })).toBeNull()
+    expect(server.calls.filter((c) => c.startsWith('packages'))).toEqual(['packages:all'])
+  })
+
+  it('dependencies split into Internal and External with counts, and flag what is unresolved', async () => {
+    server.origins = { hierarchy_scanned: true, origin_counts: { internal: 2, external: 1, unresolved: 1, not_classified: 1 } }
+    server.calls.length = 0
+    await show(<StoredDependenciesView artifactId="d" head={{ summary: { packageCount: 3 }, targetFramework: 'net10.0' }} localPath={null} />)
+    expect(screen.getByRole('button', { name: 'Internal (2)' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'External (1)' })).toBeTruthy()
+    expect(screen.getByText('1 unresolved · 1 not classified')).toBeTruthy()
+    expect(screen.getAllByText('Offline.Lib').length).toBeGreaterThan(0)
+    expect(screen.getByText('Unresolved')).toBeTruthy()
+    expect(screen.getByText('Not classified')).toBeTruthy()
+    expect(screen.getByText('Artifactory needs a login')).toBeTruthy()
+    expect(screen.getByText(/corp · login needed \(401\)/)).toBeTruthy()
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'External (1)' }))
+    })
+    expect(server.calls.filter((c) => c.startsWith('packages')).pop()).toBe('packages:external')
+    expect(screen.getAllByText('Newtonsoft.Json').length).toBeGreaterThan(0)
+    expect(screen.queryByText('Unresolved')).toBeNull()
+  })
+
+  it('an unresolved package says what to do and links to the Artifactory tab', async () => {
+    const opened: string[] = []
+    const listener = (event: Event) => opened.push((event as CustomEvent<string>).detail)
+    window.addEventListener('platform:open-tab', listener)
+    server.origins = { hierarchy_scanned: true, origin_counts: { internal: 2, external: 1, unresolved: 1, not_classified: 1 } }
+    try {
+      server.cause = 'not_on_feed'
+      await show(<StoredDependenciesView artifactId="d" head={{ summary: { packageCount: 3 }, targetFramework: 'net10.0' }} localPath={null} />)
+      expect(screen.getByText('On no consulted artifactory')).toBeTruthy()
+      expect(screen.getByText(/Add the artifactory URL in the/)).toBeTruthy()
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Artifactory tab' }))
+      })
+      expect(opened).toEqual(['artifactory'])
+      cleanup()
+
+      server.cause = 'feed_auth'
+      await show(<StoredDependenciesView artifactId="d" head={{ summary: { packageCount: 3 }, targetFramework: 'net10.0' }} localPath={null} />)
+      expect(screen.getByText(/Set the artifactory's login/)).toBeTruthy()
+      expect(screen.getByRole('button', { name: 'Artifactory tab' })).toBeTruthy()
+    } finally {
+      window.removeEventListener('platform:open-tab', listener)
+      server.cause = 'feed_auth'
+    }
   })
 
   it('the work list shows 20 rows with their first files, and asks for more when told to', async () => {

@@ -223,6 +223,23 @@ export function DetectionView({ detection, signals, onSelectSignal }: DetectionV
               ? 'distinct path and value'
               : 'distinct source path'}{' '}
             in the evidence of <SignalName name={detection.occurrence_source.signal} signals={signals} onSelectSignal={onSelectSignal} />
+            {(detection.occurrence_source.also ?? []).map((name) => (
+              <span key={name}>
+                {' '}and <SignalName name={name} signals={signals} onSelectSignal={onSelectSignal} />
+              </span>
+            ))}
+            {detection.occurrence_source.context && (
+              <span>
+                ; each records &quot;{detection.occurrence_source.context.label}: present / missing&quot; from{' '}
+                {detection.occurrence_source.context.signals.map((name, index) => (
+                  <span key={name}>
+                    {index > 0 ? ', ' : ''}
+                    <SignalName name={name} signals={signals} onSelectSignal={onSelectSignal} />
+                  </span>
+                ))}{' '}
+                in the same file
+              </span>
+            )}
           </span>
         ) : (
           <span className="text-neutral-400">— none (the project is the unit)</span>

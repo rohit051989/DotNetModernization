@@ -56,7 +56,12 @@ public static class FeedResolver
     }
 
     /// <param name="publicFeedSource">nuget.org, overridable so tests can stand a local folder in for it.</param>
-    public static FeedSet Resolve(string repositoryRoot, string projectDirectory, bool comparePublicFeed, string publicFeedSource = NuGetOrgV3)
+    /// <param name="engagementFeeds">The feeds the engagement lists in the platform (docs/39-ARTIFACTORY.md), added
+    /// after the ones NuGet.config declares. A source NuGet.config declares with the same URL stays as it is, and
+    /// keeps its own credentials; one without any gets the login from the environment (<see cref="EngagementFeeds"/>).</param>
+    /// <param name="environment">The environment variables, overridable so tests need not set any.</param>
+    public static FeedSet Resolve(string repositoryRoot, string projectDirectory, bool comparePublicFeed, string publicFeedSource = NuGetOrgV3,
+        IReadOnlyList<EngagementFeed>? engagementFeeds = null, Func<string, string?>? environment = null)
     {
         var settings = Settings.LoadDefaultSettings(projectDirectory);
         var provider = new PackageSourceProvider(settings);
@@ -86,6 +91,8 @@ public static class FeedResolver
             all.Add(new Feed(source.Name, source, NormaliseUrl(source.Source, root), role, declaredIn));
         }
 
+        AddEngagementFeeds(all, engagementFeeds, root, environment);
+
         var clients = all.Where(f => f.Role == Feed.RoleClient).ToList();
         if (clients.Count > 0)
         {
@@ -105,6 +112,34 @@ public static class FeedResolver
                        ?? NuGetOrg(publicFeedSource, root, "default");
         if (!all.Contains(nugetOrg)) all.Add(nugetOrg);
         return new FeedSet(all, [nugetOrg], UsingClientFeeds: false, Public: null);
+    }
+
+    private static void AddEngagementFeeds(List<Feed> all, IReadOnlyList<EngagementFeed>? engagementFeeds, string root, Func<string, string?>? environment)
+    {
+        foreach (var listed in engagementFeeds ?? [])
+        {
+            if (!Uri.TryCreate(listed.Url, UriKind.Absolute, out var uri) || uri.IsFile) continue;
+            var url = NormaliseUrl(listed.Url, root).TrimEnd('/');
+            var declared = all.FirstOrDefault(f => f.Url.TrimEnd('/').Equals(url, StringComparison.OrdinalIgnoreCase));
+            if (declared is not null)
+            {
+                // NuGet.config has it: its credentials win; where it has none, the environment's login stands in.
+                if (declared.Source.Credentials is null && EngagementFeeds.Credential(declared.Name, environment) is { } login)
+                {
+                    declared.Source.Credentials = login;
+                }
+
+                continue;
+            }
+
+            var name = all.Any(f => f.Name.Equals(listed.Name, StringComparison.OrdinalIgnoreCase)) ? listed.Name + " (engagement)" : listed.Name;
+            var source = new PackageSource(listed.Url.Trim(), name)
+            {
+                AllowInsecureConnections = uri.Scheme == Uri.UriSchemeHttp,
+                Credentials = EngagementFeeds.Credential(name, environment),
+            };
+            all.Add(new Feed(name, source, url, IsNuGetOrg(listed.Url) ? Feed.RoleNuGetOrg : Feed.RoleClient, "engagement"));
+        }
     }
 
     /// <summary>Where a NuGet.config file sits: inside the repository, in the machine-wide or the user's NuGet

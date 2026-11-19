@@ -209,7 +209,7 @@ public sealed class DependencyHierarchyTests : IDisposable
 
         var common = Node(artifact, "package:acme.common@1.0.0").Package!;
         Assert.Equal(PackageOrigins.Internal, common.Origin);
-        Assert.Equal("on client feed 'internal', not on nuget.org", common.OriginBasis);
+        Assert.Equal("on private artifactory 'internal', not on nuget.org", common.OriginBasis);
         var json = Node(artifact, "package:newtonsoft.json@13.0.3").Package!;
         Assert.Equal(PackageOrigins.External, json.Origin);
         Assert.Equal((1, 1), (artifact.Summary.InternalPackageCount, artifact.Summary.ExternalPackageCount));
@@ -238,7 +238,7 @@ public sealed class DependencyHierarchyTests : IDisposable
 
         var node = Node(artifact, "package:missing.package@1.0.0");
         Assert.Equal(NodeStatuses.NotChecked, node.Status);
-        Assert.Contains("feed 'internal' lists no version of it", node.NotCheckedReason);
+        Assert.Contains("artifactory 'internal' lists no version of it", node.NotCheckedReason);
         Assert.Equal(PackageOrigins.Unknown, node.Package!.Origin);
     }
 

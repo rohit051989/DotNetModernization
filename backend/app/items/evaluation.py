@@ -211,6 +211,23 @@ def project_occurrences(detection: dict, signals_by_name: dict[str, list[dict]])
                     same["certainty"] = "confirmed"
             else:
                 occurrences.append(occurrence)
+
+    # `occurrence_source.context`: what else the occurrence's own file holds (a Console sink beside a Serilog File
+    # sink). Joins the evidence and names itself in the value; certainty stays the located rows' own.
+    context = source.get("context")
+    if context:
+        for occurrence in occurrences:
+            entries = [
+                _evidence_entry(name, row["value"], entry)
+                for name in context["signals"]
+                for row in signals_by_name.get(name, [])
+                if not row["repository_level"] and row["source_path"] == occurrence["file_path"]
+                for entry in (row["evidence"] or [{}])
+            ]
+            if entries:
+                occurrence["evidence"] = _sorted_evidence(occurrence["evidence"] + entries)
+            described = f"{context['label']}: {'present' if entries else 'missing'}"
+            occurrence["value"] = described if occurrence["value"] is None else f"{occurrence['value']}; {described}"
     return sorted(occurrences, key=lambda o: (o["file_path"], o["value"] or ""))
 
 

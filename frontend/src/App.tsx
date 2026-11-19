@@ -5,11 +5,13 @@ import { getRepository } from './api/repositories'
 import type { Engagement } from './types/catalog'
 import { AppShell } from './components/AppShell'
 import type { TabKey } from './components/TabBar'
+import { OPEN_TAB } from './navigation'
 import { CatalogPage } from './pages/CatalogPage'
 import { RepositoriesPage } from './pages/RepositoriesPage'
 import { DashboardPage } from './pages/DashboardPage'
 import { EstatePage } from './pages/EstatePage'
 import { WorkflowPage } from './pages/WorkflowPage'
+import { ArtifactoryPage } from './pages/ArtifactoryPage'
 import { WorkflowAdministrationPage } from './pages/admin/WorkflowAdministrationPage'
 import { UsersPage } from './pages/admin/UsersPage'
 import { SignInPage } from './pages/SignInPage'
@@ -135,6 +137,13 @@ function PlatformApp() {
     return () => window.removeEventListener('popstate', handlePopState)
   }, [])
 
+  // A link inside a page (a feed that needs a login -> the Artifactory tab) asks for a tab.
+  useEffect(() => {
+    const open = (event: Event) => handleSelectTab((event as CustomEvent<TabKey>).detail)
+    window.addEventListener(OPEN_TAB, open)
+    return () => window.removeEventListener(OPEN_TAB, open)
+  })
+
   function handleSelectEngagement(engagementId: string | null) {
     setSelectedEngagementId(engagementId)
     if (selectedRepositoryId) {
@@ -257,6 +266,8 @@ function PlatformApp() {
             onSelectExecution={handleSelectExecution}
             onNavigateToRepositories={() => setActiveTab('repositories')}
           />
+        ) : activeTab === 'artifactory' && selectedEngagementId ? (
+          <ArtifactoryPage key={selectedEngagementId} engagementId={selectedEngagementId} />
         ) : activeTab === 'admin' && !selectedEngagementId ? (
           <WorkflowAdministrationPage />
         ) : activeTab === 'users' ? (

@@ -10,8 +10,22 @@ using NuGet.Versioning;
 
 namespace Fingerprinting.Dependencies;
 
-/// <summary>A feed's answer for one package: the entry, or why there is none.</summary>
-public sealed record LookupResult(CacheEntry? Entry, string? Error)
+/// <summary>Why a feed gave no answer (38-PACKAGE-ACCESS.md Part B). <c>None</c> for an answer, and for a lookup that was
+/// never made (offline, answered from a frozen snapshot).</summary>
+public enum LookupFailure
+{
+    None,
+
+    /// <summary>The feed answered 401 or 403: it needs a login the machine has not made.</summary>
+    Auth,
+
+    /// <summary>The feed could not be reached, or failed in any other way: DNS, timeout, TLS, refused, a protocol error.</summary>
+    Unreachable,
+}
+
+/// <summary>A feed's answer for one package: the entry, or why there is none. <paramref name="Failure"/> and
+/// <paramref name="HttpStatus"/> classify an error for the package-access view; <paramref name="Error"/> stays the text.</summary>
+public sealed record LookupResult(CacheEntry? Entry, string? Error, LookupFailure Failure = LookupFailure.None, int? HttpStatus = null)
 {
     public bool Reachable => Error is null;
 }
@@ -63,7 +77,7 @@ public sealed partial class PackageLookup(ILookupCache cache, string packageCach
     {
         var message = ex.InnerException?.Message ?? ex.Message;
         message = UrlPattern().Replace(message, m => FeedResolver.NormaliseUrl(m.Value.TrimEnd('.', ','), Path.GetPathRoot(Path.GetTempPath())!));
-        return $"feed '{feed.Name}' could not be reached: {message.Trim()}";
+        return $"artifactory '{feed.Name}' could not be reached: {message.Trim()}";
     }
 
     public async Task<LookupResult> GetAsync(Feed feed, string packageId, CancellationToken ct)
@@ -78,7 +92,7 @@ public sealed partial class PackageLookup(ILookupCache cache, string packageCach
 
         if (offline)
         {
-            return new LookupResult(null, $"feed '{feed.Name}' was not asked: '{packageId}' is not in the frozen package lookups, and lookups are offline");
+            return new LookupResult(null, $"artifactory '{feed.Name}' was not asked: '{packageId}' is not in the frozen package lookups, and lookups are offline");
         }
 
         try
@@ -123,8 +137,34 @@ public sealed partial class PackageLookup(ILookupCache cache, string packageCach
         }
         catch (Exception ex) when (ex is FatalProtocolException or HttpRequestException or TaskCanceledException or IOException or InvalidOperationException)
         {
-            return new LookupResult(null, Describe(feed, ex));
+            var status = HttpStatusOf(ex);
+            return new LookupResult(null, Describe(feed, ex), status is 401 or 403 ? LookupFailure.Auth : LookupFailure.Unreachable, status);
         }
+    }
+
+    [GeneratedRegex(@"status code[^0-9]{0,40}(\d{3})", RegexOptions.IgnoreCase)]
+    private static partial Regex StatusCodeText();
+
+    /// <summary>The HTTP status behind a protocol error: the <see cref="HttpRequestException.StatusCode"/> found
+    /// anywhere in the exception chain, else the one NuGet writes into its message ("Response status code does not
+    /// indicate success: 401 (Unauthorized)"). Null when the failure had no HTTP answer (DNS, timeout, TLS).</summary>
+    public static int? HttpStatusOf(Exception ex)
+    {
+        var chain = new List<Exception>();
+        for (Exception? e = ex; e is not null; e = e.InnerException) chain.Add(e);
+
+        foreach (var e in chain)
+        {
+            if (e is HttpRequestException { StatusCode: { } code }) return (int)code;
+        }
+
+        foreach (var e in chain)
+        {
+            var match = StatusCodeText().Match(e.Message);
+            if (match.Success) return int.Parse(match.Groups[1].Value);
+        }
+
+        return null;
     }
 
     /// <summary>

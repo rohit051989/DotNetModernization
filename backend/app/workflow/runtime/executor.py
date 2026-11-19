@@ -104,6 +104,21 @@ def _run_base_dir(
     return settings.runs_path / engagement_id / repository_slug / execution_dir
 
 
+# The steps that ask NuGet feeds. They get the engagement's feed list (names and URLs; never a login: that reaches
+# them from NuGet.config or the environment they inherit, docs/39-ARTIFACTORY.md).
+FEED_STEPS = ("dependency-assessment", "dependency-hierarchy")
+
+
+def _artifactories_context(db: Session, step_name: str, parameters: dict | None) -> dict:
+    engagement_id = (parameters or {}).get("engagement_id")
+    if step_name not in FEED_STEPS or not engagement_id:
+        return {}
+    rows = (db.query(models.EngagementFeed)
+            .filter(models.EngagementFeed.engagement_id == engagement_id, models.EngagementFeed.deleted_at.is_(None))
+            .order_by(models.EngagementFeed.created_at, models.EngagementFeed.name).all())
+    return {"artifactories": [{"name": r.name, "url": r.url} for r in rows]} if rows else {}
+
+
 def _resolve_config(value, parameters: dict):
     """Substitutes ${params.x} and ${settings.x} tokens in a step's `config` block."""
     if isinstance(value, str):
@@ -629,7 +644,8 @@ def _invoke_step(
         # The time and stall limits in effect, and a folder that outlives this execution, where a step keeps what it
         # has finished so a rerun after a time-out, stall or crash continues from there (release 5).
         step_context={"time_limits": time_limits.effective(db, node.step, (instance.parameters or {}).get("repository_id")),
-                      "checkpoint_dir": str(run_base.parent / "checkpoints" / node.step)},
+                      "checkpoint_dir": str(run_base.parent / "checkpoints" / node.step),
+                      **_artifactories_context(db, node.step, instance.parameters)},
         working_dir=str(run_root),
         output_dir=str(output_dir),
         database_url=settings.database_url,

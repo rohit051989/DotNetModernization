@@ -95,6 +95,10 @@ export interface ItemMatch {
 export interface OccurrenceSource {
   signal: string
   group_by?: OccurrenceGroupBy
+  /** Further signals that locate occurrences the same way. */
+  also?: string[]
+  /** Signals looked for in each occurrence's own file: '<label>: present' / '<label>: missing'. */
+  context?: { label: string; signals: string[] }
 }
 
 export interface ItemDetection {
@@ -356,7 +360,7 @@ export interface SignalCoverage {
 
 /** How an item's detection uses a signal: in `match` (all/any/atLeast), in a
  * `none` condition (exclusion), or as `occurrence_source`. */
-export type SignalUsage = 'match' | 'none' | 'occurrence_source'
+export type SignalUsage = 'match' | 'none' | 'occurrence_source' | 'context'
 
 export interface SignalReference {
   item_id: string

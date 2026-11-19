@@ -162,7 +162,8 @@ export function ItemForm({ mode, item, onClose, onSaved }: ItemFormProps) {
     setFieldErrors([])
     const detection: ItemDetection = { match: parsed.match }
     if (form.scope === 'occurrence' && form.occurrenceSignal) {
-      detection.occurrence_source = { signal: form.occurrenceSignal, group_by: form.groupBy }
+      // Keep what the form does not edit (also, context): an edit must not drop them.
+      detection.occurrence_source = { ...item?.detection.occurrence_source, signal: form.occurrenceSignal, group_by: form.groupBy }
     }
     const payload: CatalogItemWriteInput = {
       name: form.name.trim(),

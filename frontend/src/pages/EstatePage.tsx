@@ -1104,7 +1104,7 @@ function PackagesView({ engagementId, reloads, data }: { engagementId: string; r
                     <div className="flex flex-wrap gap-1">
                       {p.flags.vulnerable && <Pill className="border-red-200 bg-red-50 text-red-700">vulnerable</Pill>}
                       {p.flags.deprecated && <Pill className="border-amber-200 bg-amber-50 text-amber-800">deprecated</Pill>}
-                      {p.flags.notInClientFeed && <Pill className="border-amber-200 bg-amber-50 text-amber-800">not in client feed</Pill>}
+                      {p.flags.notInClientFeed && <Pill className="border-amber-200 bg-amber-50 text-amber-800">not in private artifactory</Pill>}
                     </div>
                   </td>
                 </tr>
@@ -1208,7 +1208,7 @@ function DependenciesView({ engagementId, reloads, data }: { engagementId: strin
             <span className="font-mono">{ref(e.from)}</span> → <span className="font-mono">{ref(e.to)}</span>{' '}
             <span className="text-neutral-500">
               via package {e.via}
-              {e.clientFeed ? ' (client feed)' : ''}
+              {e.clientFeed ? ' (private artifactory)' : ''}
             </span>
           </li>
         ))}

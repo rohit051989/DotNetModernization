@@ -32,8 +32,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Content Include="..\..\schemas\dependency-assessment-1.6.0.schema.json">
-      <Link>schemas\dependency-assessment-1.6.0.schema.json</Link>
+    <Content Include="..\..\schemas\dependency-assessment-1.7.0.schema.json">
+      <Link>schemas\dependency-assessment-1.7.0.schema.json</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
     <Content Include="..\..\schemas\dependency-hierarchy-1.0.0.schema.json">
