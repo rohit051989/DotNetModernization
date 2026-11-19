@@ -157,7 +157,63 @@ class ClaudeFiles(unittest.TestCase):
 
 
 class ScopeInTheInstructions(unittest.TestCase):
-    """The agent sees the scope where it reads first, and Claude Code enforces it."""
+    """The agent sees the scope where it reads first: in both engines' instructions, the decision sheet and the
+    runbook, with who, when and why; no work item points into an excluded project; Claude Code enforces it; the
+    verifier counts a change inside one as a scope violation."""
+
+    def test_both_engines_instructions_name_the_excluded_projects_with_who_when_and_why(self):
+        m = scoped()
+        for engine in engines.ENGINES:
+            files = inputs.build(m, None, engine=engine)
+            text = files[paths.COPILOT_INSTRUCTIONS if engine == engines.COPILOT else claude.INSTRUCTIONS]
+            scope = text.split("## Conversion scope", 1)[1].split("\n---\n", 1)[0]
+            self.assertIn("Build and test only `in-scope.sln`", scope)
+            self.assertIn("| Old | `src/Old/Old.csproj` |", scope)
+            self.assertIn("| Legacy | `Legacy.csproj` |", scope)
+            self.assertIn("Left out by Pat Example on 2026-11-18. Reason: retired next year.", scope)
+            self.assertIn("Never change, retarget or fix", scope)
+            self.assertIn("stop and say so", scope)
+
+    def test_the_decision_sheet_lists_them_too(self):
+        sheet = render.render(scoped())[f"{paths.PLATFORM_INPUTS_DIR}/decision-sheet.md"]
+        self.assertIn("## Conversion scope", sheet)
+        self.assertIn("| Old | `src/Old/Old.csproj` |", sheet)
+
+    def test_no_work_item_points_at_an_excluded_projects_files(self):
+        for engine in engines.ENGINES:
+            files = render.render(scoped(), engine)
+            for path, text in files.items():
+                if "applying-" in path:
+                    self.assertNotIn("src/Old/", text, path)
+
+    def test_both_runbooks_carry_the_same_list(self):
+        from app.engine import convert
+
+        scope = {"excluded": ["Legacy.csproj", "src/Old/Old.csproj"], "build": "in-scope.sln", "decidedBy": "Pat Example",
+                 "decidedAt": "2026-11-18T10:00:00+00:00", "reason": "retired next year",
+                 "left": [{"path": "src/Old/Old.csproj", "name": "Old"}, {"path": "Legacy.csproj", "name": "Legacy"}]}
+        for record in (ClaudeRunbook.RECORD, {k: v for k, v in ClaudeRunbook.RECORD.items() if k != "engine"}):
+            text = convert.render_runbook({**record, "scope": scope})
+            self.assertNotIn("${", text)
+            self.assertIn("## Conversion scope: the projects left out", text)
+            self.assertIn("| Old | `src/Old/Old.csproj` |", text)
+            self.assertIn("Left out by Pat Example on 2026-11-18. Reason: retired next year.", text)
+            self.assertIn("scope violation", text)
+        self.assertNotIn("Conversion scope", convert.render_runbook(ClaudeRunbook.RECORD))
+
+    def test_the_verifier_counts_any_change_inside_an_excluded_project_but_its_note(self):
+        from app.engine import verifier
+        from app.scope.service import owner
+
+        every = ["src/A/A.csproj", "src/Old/Old.csproj"]
+        out_of_scope = lambda path: owner(path, every) == "src/Old/Old.csproj"      # noqa: E731
+        changed = [{"path": "src/A/A.cs", "change": "M"}, {"path": "src/Old/OUT-OF-SCOPE.md", "change": "M"},
+                   {"path": "src/Old/Program.cs", "change": "M"}, {"path": "src/New.cs", "change": "R", "from": "src/Old/Moved.cs"}]
+        self.assertEqual(verifier.scope_violations(changed, out_of_scope), ["src/Old/Moved.cs", "src/Old/Program.cs"])
+        self.assertEqual(verifier.scope_violations(changed, None), [])
+        failing = [{"id": "scope", "label": "Scope kept", "state": "fail", "detail": "scope violation: ..."},
+                   {"id": "converted", "label": "Something converted", "state": "pass", "detail": "x"}]
+        self.assertEqual(verifier.verdict(failing)[0], "NOT PROVEN")
 
     def test_claude_codes_settings_deny_edits_inside_excluded_projects(self):
         deny = json.loads(render.render(scoped(), engines.CLAUDE)[claude.SETTINGS])["permissions"]["deny"]

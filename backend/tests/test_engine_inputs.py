@@ -253,11 +253,14 @@ class ConversionScope(unittest.TestCase):
         files = inputs.build(self.scoped(), None)                      # self-contained and free of secrets, as written
         instructions = files[paths.COPILOT_INSTRUCTIONS]
         self.assertIn("## Conversion scope", instructions)
-        self.assertIn("Build and test with `in-scope.sln`, never the repository's other solutions: it lists exactly "
-                      "the projects in scope, wherever they live, each once.", instructions)
+        self.assertIn("Build and test only `in-scope.sln` (`dotnet build in-scope.sln`, `dotnet test in-scope.sln`), never "
+                      "the repository's other solutions: it lists exactly the projects in scope, wherever they live, each "
+                      "once.", instructions)
         self.assertNotIn("slnf", instructions)
-        self.assertIn("**Never change a project outside the scope.**", instructions)
-        self.assertIn("- `src/Old/Old.csproj`", instructions)
+        self.assertIn("**Never change, retarget or fix a project outside the scope**", instructions)
+        self.assertIn("If a change seems to need one of them, stop and say so", instructions)
+        self.assertIn("| Old | `src/Old/Old.csproj` |", instructions)
+        self.assertIn("Left out. No reason was given.", instructions)      # who and when are not in this model
         self.assertLess(instructions.index("## Conversion scope"), instructions.index("Adapted from"))
         pipeline = files[".github/upgrades/skills/applying-linux-build-pipeline.md"]
         self.assertIn("The Linux build pipeline builds `in-scope.sln`, not the repository's other solutions", pipeline)

@@ -15,6 +15,7 @@ The checks, and what fails or caps the verdict:
 | Check | Source | Fails (NOT PROVEN) | Caps (PARTLY PROVEN) |
 |---|---|---|---|
 | Something converted | Git | no change outside engine state and generated inputs | |
+| Scope kept | Git | a change inside a project outside the conversion's scope, other than its `OUT-OF-SCOPE.md` | |
 | Measured baseline | Plugin `baseline_diff` | | baseline counts not parsed from result files |
 | Clean re-run | Platform | build fails; a test project fails to run; zero tests executed | |
 | Baseline diff | Plugin `baseline_diff` | a regression, a new failure, a test that stopped running | |
@@ -67,7 +68,8 @@ RULES = [
     "NOT PROVEN when any check fails: nothing converted; the build fails; a test project fails to run or no test "
     "executes; a regression, a new failure or a baseline test that no longer runs; a JSON or XML configuration "
     "file that parsed at the base commit, or is new, and does not parse on the branch; a deliberate break (canary) "
-    "that no test catches.",
+    "that no test catches; a change inside a project outside the conversion's scope, other than its OUT-OF-SCOPE.md "
+    "(a scope violation).",
     "Otherwise PARTLY PROVEN when any check has a gap: the baseline is not measured from result files; a test "
     "file was removed or more than 25% of test files changed; a Behavioral-silent delta's site is named by no "
     "test; a configuration file that did not parse at the base commit still does not; no canary could be run; an "
@@ -599,6 +601,12 @@ def verify(db, *, engagement_id: str, slug: str, base: str, ref: str, label: str
         checks.append(_check("converted", "Something converted", "pass",
                              f"{changes['filesTouched']} file(s) changed in {changes['commits']} commit(s), "
                              f"+{changes['linesAdded']} -{changes['linesDeleted']} lines"))
+    violations = scope_violations(changes["files"], out_of_scope)
+    if out_of_scope is not None:
+        checks.append(_check("scope", "Scope kept", "fail" if violations else "pass",
+                             (f"scope violation: {len(violations)} file(s) changed inside projects outside the conversion's "
+                              "scope: " + ", ".join(violations[:20]) + (" ..." if len(violations) > 20 else ""))
+                             if violations else f"nothing changed inside the {len(left_out)} project(s) left out", files=violations))
 
     # Measured baseline and the clean re-run.
     workspace = out / "workspace"
@@ -836,10 +844,24 @@ def verify(db, *, engagement_id: str, slug: str, base: str, ref: str, label: str
         "checkoutUntouched": checkout_untouched,
         # The engine the conversion was prepared for (Part Q), when a conversion's verification names one.
         "engine": config.get("engine"),
+        "scopeViolations": violations,
     }
     (out / "verification.json").write_text(json.dumps(report, indent=2, default=str), encoding="utf-8")
     (out / "VERIFICATION.md").write_text(markdown(report), encoding="utf-8")
     return report
+
+
+def scope_violations(files: list[dict], out_of_scope) -> list[str]:
+    """The changed files (or renamed from) inside a project outside the conversion's scope, other than its
+    OUT-OF-SCOPE.md note (Part O): every one is a scope violation."""
+    if out_of_scope is None:
+        return []
+    hit = set()
+    for entry in files:
+        for path in (entry["path"], entry.get("from")):
+            if path and Path(path).name != "OUT-OF-SCOPE.md" and out_of_scope(path):
+                hit.add(path)
+    return sorted(hit)
 
 
 def _platform_line(state: dict | None) -> str:
@@ -889,6 +911,10 @@ def markdown(r: dict) -> str:
     out += ["", "## Checks", "", "| Check | State | Detail |", "|---|---|---|"]
     out += [f"| {c['label']} | {c['state']} | {c['detail'].replace('|', '/')} |" for c in r["checks"]]
     out += scope_md(r.get("scope"))
+    if r.get("scopeViolations"):
+        out += ["", "## Scope violations", "",
+                "Changed inside projects outside the conversion's scope. A branch with one cannot be PROVEN.", ""]
+        out += [f"- `{p}`" for p in r["scopeViolations"][:200]]
     rd = r["rediscovery"]
     out += ["", "## Work items", "",
             f"Before: {rd['before']}. Resolved: {len(rd['resolved'])}. Remaining: {len(rd['remaining'])}. Introduced: {len(rd['introduced'])}."

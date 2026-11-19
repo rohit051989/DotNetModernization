@@ -1803,6 +1803,13 @@ hand. Everything else an update brings, bootstrap applies by itself. Apply every
 had (`previousCommit` in `PLATFORM_SOURCE.json` after the update; in our own installs, the commit before step 5 of
 the appendix), oldest of them first. Entries up to 2026-10-23 were the notes of releases 2 to 7, which are named so.
 
+#### 2026-11-19, (commit of "The scope in the instructions"): a change inside an excluded project fails verification
+
+Nothing to do after updating. Conversions prepared from now on name the projects left out of the scope, with who
+left them out, when and why, in the engine's instructions, the decision sheet and the runbook. The verifier reports any
+change inside such a project, other than its `OUT-OF-SCOPE.md`, as a scope violation, naming the files: the branch is
+NOT PROVEN. A conversion prepared before keeps its inputs; prepare it again (rescan) to give the agent the list.
+
 #### 2026-11-19, (commit of "Claude Code as a second conversion engine"): an engagement chooses GitHub Copilot or Claude Code
 
 Bootstrap adds `engagements.default_engine` and `repositories.conversion_engine` by itself. Every existing engagement
@@ -1810,8 +1817,7 @@ keeps GitHub Copilot, and every existing conversion keeps the engine it was prep
 Code, an admin sets the engagement's default in a repository's Conversion tab, or a repository's owner chooses it there
 for that repository; a conversion not yet run is prepared again for it. Before the first Claude Code conversion, check
 that no folder above RUNS_DIR holds a `CLAUDE.md`, `CLAUDE.local.md` or `.claude` folder (other than your own `.claude`
-in your home folder): preparation refuses one, because Claude Code would read it. The verifier now reports a change
-inside a project left out of the scope as a scope violation (NOT PROVEN).
+in your home folder): preparation refuses one, because Claude Code would read it.
 
 #### 2026-11-19, (commit of "Artifactory: a token as well as a username and password"): an artifactory login can be a token
 

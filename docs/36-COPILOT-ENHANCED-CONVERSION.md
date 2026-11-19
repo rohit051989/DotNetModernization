@@ -730,14 +730,22 @@ as dead code", disabled and marked "coming later". Left untouched means:
   which holds every kept unit test project. Its baseline builds the same file, copied into the baseline commit's
   working copy.
 - **The instructions** cover only the kept projects:
-  - their findings, packages, deltas and tests;
-  - the global instructions' "Conversion scope" section, which tells the agent to build and test with the
-    conversion's solution, never the repository's other solutions, and never to change an excluded project;
+  - their findings, packages, deltas and tests; no work item names a file of an excluded project (its Dockerfile, a
+    build script in its folder), whatever kind of file it is;
+  - the top-level instructions' "Conversion scope" section, for both engines (Part Q), where the agent reads first and
+    not only in `OUT-OF-SCOPE.md` files it may never open: build and test only the conversion's solution; every
+    excluded project by name and path, with who excluded them, when and the reason; never change, retarget or fix
+    one; if a change seems to need one, stop and say so;
+  - the decision sheet's and RUNBOOK.md's "Conversion scope" section, the same list;
+  - Claude Code's settings, which deny edits inside each excluded project's folder (only its project file when its
+    folder also holds a kept project, or is the repository's root);
   - the Linux build-pipeline instruction, which builds the conversion's solution too;
   - the addendum, which lists the projects left out.
 - **The work list** marks excluded findings "out of scope": kept visible, never deleted. Its counts say how many are
   out of scope.
 - **The verifier**:
+  - reports any change inside an excluded project, other than its `OUT-OF-SCOPE.md`, as a scope violation, naming the
+    files (check "Scope kept"): a branch with one is NOT PROVEN;
   - builds and tests the conversion's solution, at the base commit (the same file, copied beside it) and on the branch;
   - treats an excluded project's tests as out of scope, not as removals or failures, and leaves them out of the
     baseline;

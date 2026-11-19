@@ -633,6 +633,24 @@ def verify_command(record: dict, branch: str | None = None, base: str | None = N
             f"--branch {branch or record['branch']}" + (f" --base {base[:8]}" if base else ""))
 
 
+def runbook_scope(record: dict) -> str:
+    """The runbook's section on the projects left out (Part O), the same list as the instructions and the decision
+    sheet: by name and path, with who, when and why. "" when every project is in scope."""
+    from app.engine.inputs import render
+
+    scope = record.get("scope") or {}
+    excluded = scope.get("left") or []
+    if not excluded:
+        return ""
+    model = {"scope": {"excluded": excluded, "build": scope.get("build"), "decidedBy": scope.get("decidedBy"),
+                       "decidedAt": scope.get("decidedAt"), "reason": scope.get("reason")}}
+    lines = render.scope_listing(model, "## Conversion scope: the projects left out")
+    lines += ["", "The agent must not change, retarget or fix any of them; its instructions say so, and to stop and say so "
+              "if a change seems to need one. The verifier reports any change inside one (other than its "
+              "`OUT-OF-SCOPE.md`) as a scope violation, and a branch with one cannot be PROVEN."]
+    return "\n".join(lines) + "\n"
+
+
 def render_runbook(record: dict) -> str:
     from app.engine.inputs import claude
 
@@ -647,7 +665,7 @@ def render_runbook(record: dict) -> str:
         verify_command=verify_command(record),
         prepare_command=f"python -m app.engine.convert prepare --engagement {record['engagement']} "
                         f"--repository {record['repository']}",
-        scope_section="")
+        scope_section=("\n" + runbook_scope(record)) if runbook_scope(record) else "")
     if engine == engines.CLAUDE:
         own = record.get("ownInstructions") or []
         values.update(

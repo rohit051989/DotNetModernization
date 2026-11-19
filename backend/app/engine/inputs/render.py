@@ -274,7 +274,22 @@ def concerned_files(model: dict, item: dict) -> list[str]:
     wanted |= {e["file"] for e in item["impact"] if e.get("file")}
     kinds = PACKAGE_KINDS if item["id"].startswith("package-") else tuple(FILE_KINDS)
     wanted |= {f for f in existing if any(FILE_KINDS[k].search(f) for k in kinds)}
+    # Never a file of a project outside the conversion's scope (Part O): no instruction points into one.
+    left = {p["path"] for p in (model.get("scope") or {}).get("excluded") or []}
+    if left:
+        every = [p["path"] for p in model.get("projects") or []] + sorted(left)
+        wanted = {f for f in wanted if _owner(f, every) not in left}
     return sorted(f for f in wanted & existing if not paths.is_under(f, paths.GENERATED_INPUT_PATHS))
+
+
+def _owner(path: str, projects: list[str]) -> str | None:
+    """The project a repository file belongs to: the one whose folder holds it most closely (app.scope.service.owner)."""
+    best = None
+    for project in projects:
+        folder = project.rsplit("/", 1)[0] + "/" if "/" in project else ""
+        if path.startswith(folder) and (best is None or len(folder) > len(best[0])):
+            best = (folder, project)
+    return best[1] if best else None
 
 
 def tests_of(model: dict, item: dict) -> list[dict]:
@@ -594,6 +609,7 @@ def decision_sheet(model: dict) -> str:
                        f"{_md(', '.join(p['places']) or 'the application')} |")
     else:
         out.append("None.")
+    out += scope_listing(model, "## Conversion scope")
     out += ["", "## Unresolved", "",
             "Places where the approach cannot apply. They are left unchanged by the conversion and need a decision "
             "afterwards.", ""]
@@ -615,22 +631,50 @@ def _built(model: dict) -> str:
     return f"`{built}`" if built else ""
 
 
+def scope_decided(scope: dict) -> str:
+    """Who left the projects out, when and why, in one sentence."""
+    who = scope.get("decidedBy")
+    when = (scope.get("decidedAt") or "")[:10]
+    said = "Left out" + (f" by {who}" if who else "") + (f" on {when}" if when else "") + "."
+    reason = (scope.get("reason") or "").strip()
+    return said + (f" Reason: {reason.rstrip('.')}." if reason else " No reason was given.")
+
+
+def scope_listing(model: dict, heading: str) -> list[str]:
+    """The projects outside the scope, by name and path, with who left them out, when and why: lines for the
+    decision sheet (and the runbooks). [] when every project is in scope."""
+    scope = model.get("scope") or {}
+    if not scope.get("excluded"):
+        return []
+    out = ["", heading, "",
+           f"{len(scope['excluded'])} project(s) are outside this conversion's scope: never changed, retargeted or fixed. "
+           f"Build and test only {_built(model) or 'the conversion' + chr(39) + 's own solution'}.", "",
+           scope_decided(scope), "", "| Project | Path |", "|---|---|"]
+    out += [f"| {_md(p.get('name') or Path(p['path']).stem)} | `{_md(p['path'])}` |" for p in scope["excluded"][:MAX_LIST]]
+    if len(scope["excluded"]) > MAX_LIST:
+        out.append(f"| ... and {len(scope['excluded']) - MAX_LIST} more | each with its `OUT-OF-SCOPE.md` |")
+    return out
+
+
 def scope_section(model: dict) -> str:
-    """The global instructions' section for a conversion that leaves projects out (Part O), or ""."""
+    """The instructions' section for a conversion that leaves projects out (Part O), or "": where the agent reads
+    first, not only in the OUT-OF-SCOPE.md files it may never open."""
     scope = model.get("scope") or {}
     if not scope.get("excluded"):
         return ""
+    c = commands(model)
     out = ["", "## Conversion scope", "",
-           f"This conversion covers only some of this repository's projects. Build and test with {_built(model)}, "
-           "never the repository's other solutions: it lists exactly the projects in scope, wherever they live, each "
-           "once. Do not add a project outside the scope to it." if scope.get("build") else
-           "This conversion covers only some of this repository's projects.",
-           "", "**Never change a project outside the scope.** Each one has an `OUT-OF-SCOPE.md` in its folder, and is "
-           "left exactly as it is: not converted, not retargeted, its packages and tests untouched. It is not part of "
-           "the converted build. The projects outside the scope:", ""]
-    out += [f"- `{p['path']}`" for p in scope["excluded"][:MAX_LIST]]
+           f"This conversion covers only some of this repository's projects. Build and test only {_built(model)} "
+           f"(`{c['build']}`, `{c['test']}`), never the repository's other solutions: it lists exactly the projects in "
+           "scope, wherever they live, each once. Do not add a project outside the scope to it.",
+           "", "**Never change, retarget or fix a project outside the scope**, not even to make a build or a test pass: "
+           "not its code, its project file, its packages or its tests. Each one has an `OUT-OF-SCOPE.md` in its folder "
+           "and is left exactly as it is; it is not part of the converted build. If a change seems to need one of them, "
+           "stop and say so, naming the project and why: this is the one case where you stop instead of deciding.",
+           "", scope_decided(scope), "", "| Project | Path |", "|---|---|"]
+    out += [f"| {_md(p.get('name') or Path(p['path']).stem)} | `{_md(p['path'])}` |" for p in scope["excluded"][:MAX_LIST]]
     if len(scope["excluded"]) > MAX_LIST:
-        out.append(f"- ... and {len(scope['excluded']) - MAX_LIST} more, each with its `OUT-OF-SCOPE.md`")
+        out.append(f"| ... and {len(scope['excluded']) - MAX_LIST} more | each with its `OUT-OF-SCOPE.md` |")
     return "\n".join(out) + "\n"
 
 

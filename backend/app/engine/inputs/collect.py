@@ -206,5 +206,8 @@ def collect(db: Session, repository: models.Repository) -> dict:
         "projects": projects, "current_frameworks": current,
         "items": items, "packages": packages, "couplings": couplings, "version_drift": sorted(set(drift)), "deltas": deltas,
         "outbound": outbound, "soap": soap, "vocabulary": vocabulary,
-        "scope": {"excluded": scope["left"], "build": scope["build"]},
+        # Part O: the projects left out ({path, name}), and when there are any, who left them out, when and why, named
+        # in every engine's instructions, the decision sheet and the runbook.
+        "scope": {"excluded": scope["left"], "build": scope["build"],
+                  **({k: scope.get(k) for k in ("decidedBy", "decidedAt", "reason")} if scope["left"] else {})},
     }
