@@ -648,7 +648,7 @@ public sealed class DependencyAssessmentTests : IDisposable
     /// fixture's "public" feed is a local folder, which the feed enum rightly refuses.</summary>
     private static ArtifactSchemaValidator PackageSchema()
     {
-        var schema = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "schemas", "dependency-assessment-1.7.0.schema.json")))!;
+        var schema = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "schemas", $"dependency-assessment-{DependencyAssessmentArtifact.Version}.schema.json")))!;
         var wrapper = new System.Text.Json.Nodes.JsonObject
         {
             ["$schema"] = schema["$schema"]!.DeepClone(),
@@ -994,7 +994,7 @@ public sealed class DependencyAssessmentTests : IDisposable
 
         var artifact = await Run([new InputPackage("Acme.Json", "1.0.0", "packagereference")], cache);
         var json = Package(artifact, "Acme.Json");
-        Assert.Equal("1.7.0", artifact.ArtifactVersion);
+        Assert.Equal("1.8.0", artifact.ArtifactVersion);
         Assert.Equal(scope, json.Deprecated!.Scope);
         Assert.Equal(scope == "version" ? "1.1.0" : null, json.Deprecated.NewestNotDeprecated);
         Assert.Equal(signalValue, Assert.Single(artifact.Projects.Single().Signals, s => s.Name == "PACKAGE_DEPRECATED").Value);

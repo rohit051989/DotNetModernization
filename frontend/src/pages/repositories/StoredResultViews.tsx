@@ -33,6 +33,7 @@ import {
 } from '../workflow/artifacts/renderers'
 import { SourceLink } from './SourceLink'
 import { workItemFigures, workItemsLine } from './workItemFigures'
+import { feedOrigin } from '../workflow/artifacts/feedOrigin'
 
 // The repository page's fingerprint, dependencies and work list, read from the stored result (backend app.results)
 // a page at a time: the header from the artifact's summary, each list from the database 20 at a time, filtered there.
@@ -329,7 +330,7 @@ export function StoredDependenciesView({ artifactId, head, localPath }: StoredVi
             <span className="block text-neutral-400">
               Artifactories:{' '}
               {visibleFeeds.map((f, i) => (
-                <span key={i} title={`${str(f.url)} — declared in ${str(f.declaredIn)}`}>
+                <span key={i} title={`${str(f.url)} — from ${feedOrigin(str(f.declaredIn))}`}>
                   {i > 0 && ' · '}
                   {str(f.name)} <span className="text-neutral-300">({str(f.role) === 'client_feed' ? 'private artifactory' : str(f.role) === 'nuget_org' ? 'public artifactory' : str(f.role)?.replace(/_/g, ' ')})</span>
                 </span>

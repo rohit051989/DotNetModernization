@@ -145,8 +145,13 @@ public static class CallSiteCertainty
 
 public sealed record DependencyAssessmentArtifact
 {
+    /// <summary>The version this step writes, and the schema file it is validated against before it is written
+    /// (<c>schemas/dependency-assessment-&lt;version&gt;.schema.json</c>). 1.8.0: a feed may be declared in
+    /// <c>engagement</c>.</summary>
+    public const string Version = "1.8.0";
+
     public string ArtifactType { get; init; } = "dependency-assessment";
-    public string ArtifactVersion { get; init; } = "1.7.0";
+    public string ArtifactVersion { get; init; } = Version;
     public required string ScannerVersion { get; init; }
     public required Guid RepositoryId { get; init; }
     public required string RepositorySlug { get; init; }
@@ -232,7 +237,9 @@ public sealed record FeedRecord
 
     /// <summary><c>repository</c>, <c>parent</c> (a NuGet.config in a folder
     /// above the repository), <c>user</c> or <c>machine</c> — where the
-    /// source is declared; <c>default</c> for the nuget.org fallback.</summary>
+    /// source is declared; <c>default</c> for the nuget.org fallback;
+    /// <c>engagement</c> (1.8.0) for a feed listed on the engagement's
+    /// Artifactory tab that no NuGet.config declares (docs/39-ARTIFACTORY.md).</summary>
     public required string DeclaredIn { get; init; }
 }
 

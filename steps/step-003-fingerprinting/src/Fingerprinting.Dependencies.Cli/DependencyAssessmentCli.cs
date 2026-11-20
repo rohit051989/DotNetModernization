@@ -223,7 +223,7 @@ public static class DependencyAssessmentCli
                 new StepOutput
                 {
                     ArtifactType = ArtifactType,
-                    // The version the written artifact declares (1.7.0): a second constant here had drifted to 1.5.0.
+                    // The version the written artifact declares: a second constant here had drifted to 1.5.0.
                     ArtifactVersion = ArtifactUri.DeclaredVersion(outputPath),
                     Uri = ArtifactUri.FromLocalPath(outputPath),
                     Checksum = checksum,
@@ -341,8 +341,10 @@ public static class DependencyAssessmentCli
         JsonSerializer.Deserialize<ApplicationFingerprintSlice>(await File.ReadAllTextAsync(path), CamelCaseRead)
         ?? throw new InvalidOperationException("application-fingerprint deserialized to null");
 
+    // The schema of the version the artifact declares, so the two cannot drift apart.
     private static readonly Lazy<ArtifactSchemaValidator> SchemaValidator = new(() =>
-        ArtifactSchemaValidator.Load(Path.Combine(AppContext.BaseDirectory, "schemas", "dependency-assessment-1.7.0.schema.json")));
+        ArtifactSchemaValidator.Load(Path.Combine(AppContext.BaseDirectory, "schemas",
+            $"dependency-assessment-{DependencyAssessmentArtifact.Version}.schema.json")));
 
     public static async Task<string> WriteArtifactAsync(DependencyAssessmentArtifact artifact, string outDir)
     {

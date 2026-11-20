@@ -60,6 +60,10 @@ password`, `token rejected, used username and password`, `token rejected` or `no
 - Anyone signed in may add or remove an artifactory (`app.auth.policy`).
 - The engine passes the list to the two steps in `step_context.artifactories` (names and URLs). A new or removed artifactory
   applies to the next scan of a repository; **rescan** to use it.
+- A scan records an artifactory that no `NuGet.config` declares in each project's `feeds` with `declaredIn: "engagement"`
+  (dependency-assessment artifact 1.8.0; `30-DEPENDENCY-ASSESSMENT.md`). The Dependencies view's "Artifactories:" line
+  lists it, and its tooltip says it comes from the engagement's Artifactory tab. Before 1.8.0 such a scan failed at
+  dependency-assessment, because artifact 1.7.0 did not allow that value.
 
 ## API
 

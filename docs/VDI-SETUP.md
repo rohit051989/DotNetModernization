@@ -1803,6 +1803,13 @@ hand. Everything else an update brings, bootstrap applies by itself. Apply every
 had (`previousCommit` in `PLATFORM_SOURCE.json` after the update; in our own installs, the commit before step 5 of
 the appendix), oldest of them first. Entries up to 2026-10-23 were the notes of releases 2 to 7, which are named so.
 
+#### 2026-11-19, (commit of "Dependency assessment: an engagement artifactory in its output"): rescan after listing an artifactory
+
+Every scan of a repository whose engagement lists an artifactory on the Artifactory tab failed at dependency-assessment
+(its output named the feed's origin `engagement`, which artifact 1.7.0 did not allow). Bootstrap publishes the fixed step
+(artifact 1.8.0). Then **rescan** each repository of such an engagement: until then its Dependencies view shows the
+results of the last scan before the artifactory was listed. Nothing to do for an engagement with no artifactory.
+
 #### 2026-11-19, (commit of "The scope in the instructions"): a change inside an excluded project fails verification
 
 Nothing to do after updating. Conversions prepared from now on name the projects left out of the scope, with who

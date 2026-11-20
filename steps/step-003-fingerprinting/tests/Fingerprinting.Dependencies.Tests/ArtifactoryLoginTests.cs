@@ -258,6 +258,45 @@ public sealed class ArtifactoryLoginTests : IDisposable
             engagementFeeds: [new EngagementFeed("nuget-private", "http://localhost:8081/repository/nuget-private/index.json")], environment: env);
     }
 
+    /// <summary>
+    /// The step's real output with a feed from the Artifactory tab, validated as a whole against the schema file of the
+    /// version it declares (the file the step itself validates against before it writes). Before 1.8.0 the schema
+    /// allowed no <c>engagement</c> origin, and every scan of an engagement that lists an artifactory was refused.
+    /// </summary>
+    [Fact]
+    public async Task A_scan_with_an_engagement_feed_writes_an_artifact_its_own_schema_accepts()
+    {
+        using var standIn = new StandIn(acceptToken: null, anonymous: true);
+        var repo = Path.Combine(_root, "repo");
+        var project = Path.Combine(repo, "src", "App");
+        Directory.CreateDirectory(project);
+        File.WriteAllText(Path.Combine(repo, "NuGet.config"),
+            """<?xml version="1.0" encoding="utf-8"?><configuration><packageSources><clear /></packageSources></configuration>""");
+        File.WriteAllText(Path.Combine(project, "App.csproj"), """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup><TargetFramework>net8.0</TargetFramework></PropertyGroup>
+              <ItemGroup><PackageReference Include="Acme.Json" Version="1.0.0" /></ItemGroup>
+            </Project>
+            """);
+        File.WriteAllText(Path.Combine(project, "Program.cs"), "class P { }");
+
+        var lookup = new PackageLookup(new MemoryLookupCache(), Path.Combine(_root, "packages"), TimeSpan.FromHours(24), forceRefresh: false,
+            DateTimeOffset.Parse("2026-11-19T00:00:00Z"));
+        var pipeline = new DependencyPipeline(lookup, new DependencyOptions("net10.0", ComparePublicFeed: false,
+            EngagementFeeds: [new EngagementFeed("nuget-private", standIn.Index)]));
+        var input = new DependencyInput(Guid.Parse("11111111-2222-3333-4444-555555555555"), "fixture", "application-fingerprint",
+            [new DependencyInputProject("src/App/App.csproj", Guid.Parse("22222222-3333-4444-5555-666666666666"), null, "net8.0",
+                [new InputPackage("Acme.Json", "1.0.0", "packagereference")])], []);
+        var artifact = await pipeline.RunAsync(input, repo, CancellationToken.None);
+
+        var feed = Assert.Single(artifact.Projects.Single().Feeds);
+        Assert.Equal(("engagement", Feed.RoleClient), (feed.DeclaredIn, feed.Role));
+        Assert.Equal("nuget-private", Assert.Single(artifact.Projects.Single().Packages).FeedName);
+
+        var schema = Path.Combine(AppContext.BaseDirectory, "schemas", $"dependency-assessment-{artifact.ArtifactVersion}.schema.json");
+        Fingerprinting.StepHost.ArtifactSchemaValidator.Load(schema).Validate(Fingerprinting.Domain.DeterministicJson.Serialize(artifact));
+    }
+
     [Fact]
     public void An_engagement_feed_without_a_login_of_its_own_is_asked_with_the_token_and_not_handed_to_nuget()
     {

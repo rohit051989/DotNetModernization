@@ -7,6 +7,7 @@ import { workItemFigures, workItemsLine } from '../../repositories/workItemFigur
 import { LimitedList } from '../../../components/LimitedList'
 import { entryPointProjects, list, num, obj, outboundProjects, str, type Json } from './adapters'
 import type { WorkListDecisions } from '../../../types/items'
+import { feedOrigin } from './feedOrigin'
 
 export interface ArtifactRendererProps {
   data: Json
@@ -641,7 +642,7 @@ export function DependenciesView({ data, localPath }: ArtifactRendererProps) {
             <span className="block text-neutral-400">
               Artifactories:{' '}
               {visibleFeeds.map((f, i) => (
-                <span key={i} title={`${str(f.url)} — declared in ${str(f.declaredIn)}`}>
+                <span key={i} title={`${str(f.url)} — from ${feedOrigin(str(f.declaredIn))}`}>
                   {i > 0 && ' · '}
                   {str(f.name)} <span className="text-neutral-300">({str(f.role) === 'client_feed' ? 'private artifactory' : str(f.role) === 'nuget_org' ? 'public artifactory' : str(f.role)?.replace(/_/g, ' ')})</span>
                 </span>

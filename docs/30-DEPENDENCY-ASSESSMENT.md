@@ -519,3 +519,21 @@ schema is `schemas/dependency-assessment-1.7.0.schema.json`, derived from 1.6.0 
 `schemas/make_dependency_schema_1_7_0.py`: three optional properties on a package, written only for an `unknown`
 outcome (`unknownCause`, `failedFeeds`, `consultedFeeds`). `outcome_reason` text is unchanged. A failed lookup is not
 cached, so a rescan after a login asks the artifactory again; a `not_on_feed` answer is cached for the 24-hour lookup TTL.
+
+## Engagement artifactories in the output (artifact 1.8.0, scanner 1.9.0)
+
+A feed listed on the engagement's Artifactory tab that no `NuGet.config` declares (`39-ARTIFACTORY.md`) is recorded in
+a project's `feeds` with `declaredIn: "engagement"`. Artifact 1.7.0 allowed only `repository`, `parent`, `user`,
+`machine` and `default`, so every scan of an engagement that listed an artifactory wrote output its own schema refused,
+and the step failed when it stored it. The output schema is `schemas/dependency-assessment-1.8.0.schema.json`, derived
+from 1.7.0 by `schemas/make_dependency_schema_1_8_0.py`; nothing else changed. 1.7.0 stays as written.
+
+The step validates its output against the schema of the version it declares (`DependencyAssessmentArtifact.Version`),
+so the two cannot drift apart again, and a test runs the real pipeline with an engagement artifactory served by a local
+stand-in and validates the whole artifact against that file (`ArtifactoryLoginTests`). Every version from 1.1.0 on now
+has a generator: 1.6.0, written by hand, gained `make_dependency_schema_1_6_0.py`, which reproduces it exactly.
+(`make_dependency_schema.py` is 1.1.0's generator and rightly has no `parent`.)
+
+The UI names every origin in words (`frontend/src/pages/workflow/artifacts/feedOrigin.ts`): `engagement` reads "the
+engagement's Artifactory tab". `dependency-hierarchy` records a package's feed by name and URL only, so its output is
+unchanged.

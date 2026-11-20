@@ -272,6 +272,15 @@ Use these terms exactly and consistently in code, APIs, and UI copy.
     changes. Only engine mechanics may differ between them, and those live in `claude.MECHANICS`; the parity test
     (`tests/test_engine_claude.py`) must keep passing.
 
+21. **A new value or field in a step's output needs a new artifact schema version, and a test of the real output.**
+    Add a value to an enum or a field to an artifact, and the step writes a new version: a new
+    `schemas/<artifact>-<version>.schema.json` from its own generator script, the earlier file kept as written (as
+    rule 4 keeps an applied migration), the registration's `produces[].artifact_version` and step version bumped. Add a
+    test that runs the step's real pipeline on input that produces the new value and validates the whole artifact
+    against the schema file of the version it declares, the file the step validates against before it writes. A test
+    of the parts alone is not enough: dependency-assessment wrote `declaredIn: "engagement"` that its schema refused,
+    and every scan of an engagement with an artifactory failed while each part's tests passed.
+
 ## Out of scope for this build
 
 Repository scanning beyond the lifecycle steps, wave planning, engine integration beyond what is built, deployment.
