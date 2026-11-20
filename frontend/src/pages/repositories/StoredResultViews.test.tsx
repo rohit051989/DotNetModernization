@@ -16,11 +16,20 @@ const server = vi.hoisted(() => {
   return {
     calls: [] as string[],
     cause: 'feed_auth',
+    feeds: [{ name: 'nuget.org', url: 'https://api.nuget.org/v3/index.json', role: 'nuget_org', declaredIn: 'default' }] as Record<string, string>[],
     page,
     work,
     origins: { hierarchy_scanned: false, origin_counts: { internal: 0, external: 0, unresolved: 0, not_classified: 0 } },
   }
 })
+
+// What the assessment records beside each cause (artifact 1.7.0; only_unlisted 1.9.0).
+function causeFields(cause: string) {
+  const corp = { name: 'corp', url: 'https://pkgs.client-a.example/v3/index.json' }
+  if (cause === 'not_on_feed') return { consultedFeeds: [corp] }
+  if (cause === 'only_unlisted') return { unlistedFeeds: [{ ...corp, versions: ['2.1.0', '2.0.0'] }] }
+  return { failedFeeds: [{ ...corp, failure: 'auth', httpStatus: 401 }] }
+}
 
 vi.mock('../../api/results', () => ({
   getFingerprintOverview: () => Promise.resolve({ status_counts: { SCANNED: 3 }, categories: [{ category: 'ENTRY_POINT', signals: 2, distinct: 1 }] }),
@@ -28,7 +37,7 @@ vi.mock('../../api/results', () => ({
     server.calls.push(`signals:${category}`)
     return server.page([{ name: 'ASP_NET_CORE', value: '8.0', project: 'src/A/A.csproj', sourcePath: null, occurrences: 1, confidence: 1 }])
   },
-  listDependencyFeeds: () => Promise.resolve([{ name: 'nuget.org', url: 'https://api.nuget.org/v3/index.json', role: 'nuget_org' }]),
+  listDependencyFeeds: () => Promise.resolve(server.feeds),
   getDependencyOrigins: () => Promise.resolve(server.origins),
   dependencyPackages: (_a: string, _showCurrent: boolean, part: string) => () => {
     server.calls.push(`packages:${part}`)
@@ -37,7 +46,7 @@ vi.mock('../../api/results', () => ({
       versions: [{ version: '12.0.3', useCount: 1, outcomes: ['upgrade_safe'], projects: ['src/A/A.csproj'],
                    first: { project: 'src/A/A.csproj', declaredAt: { filePath: 'src/A/A.csproj', line: 9 } },
                    worst: { project: 'src/A/A.csproj', pkg: { packageId, outcome: origin === 'unknown' ? 'unknown' : 'upgrade_safe', currentVersion: '12.0.3', recommendedVersion: '13.0.3',
-                   ...(origin === 'unknown' ? { unknownCause: server.cause, failedFeeds: [{ name: 'corp', url: 'https://pkgs.client-a.example/v3/index.json', failure: 'auth', httpStatus: 401 }] } : {}) } } }],
+                   ...(origin === 'unknown' ? { unknownCause: server.cause, ...causeFields(server.cause) } : {}) } } }],
     })
     return server.page(part === 'internal' ? [one('Offline.Lib', 'unknown'), one('Gone.Lib', null)] : [one('Newtonsoft.Json', 'external')])
   },
@@ -117,7 +126,7 @@ describe('stored result views', () => {
       server.cause = 'not_on_feed'
       await show(<StoredDependenciesView artifactId="d" head={{ summary: { packageCount: 3 }, targetFramework: 'net10.0' }} localPath={null} />)
       expect(screen.getByText('On no consulted artifactory')).toBeTruthy()
-      expect(screen.getByText(/Add the artifactory URL in the/)).toBeTruthy()
+      expect(screen.getByText(/add the artifactory URL in the/)).toBeTruthy()
       await act(async () => {
         fireEvent.click(screen.getByRole('button', { name: 'Artifactory tab' }))
       })
@@ -130,6 +139,48 @@ describe('stored result views', () => {
       expect(screen.getByRole('button', { name: 'Artifactory tab' })).toBeTruthy()
     } finally {
       window.removeEventListener('platform:open-tab', listener)
+      server.cause = 'feed_auth'
+    }
+  })
+
+  it('a package on no consulted artifactory is not sent to the Artifactory tab when the engagement lists one', async () => {
+    server.origins = { hierarchy_scanned: true, origin_counts: { internal: 2, external: 1, unresolved: 1, not_classified: 1 } }
+    server.cause = 'not_on_feed'
+    const before = server.feeds
+    server.feeds = [{ name: 'corp', url: 'https://pkgs.client-a.example/v3/index.json', role: 'client_feed', declaredIn: 'engagement' }]
+    try {
+      await show(<StoredDependenciesView artifactId="d" head={{ summary: { packageCount: 3 }, targetFramework: 'net10.0' }} localPath={null} />)
+      expect(screen.getByText('On no consulted artifactory')).toBeTruthy()
+      expect(screen.queryByText(/add the artifactory URL in the/)).toBeNull()
+      expect(screen.queryByRole('button', { name: 'Artifactory tab' })).toBeNull()
+    } finally {
+      server.feeds = before
+      server.cause = 'feed_auth'
+    }
+  })
+
+  it('a package held only as unlisted versions names them, and a feed reporting nearly all unlisted says why', async () => {
+    server.origins = { hierarchy_scanned: true, origin_counts: { internal: 2, external: 1, unresolved: 1, not_classified: 1 } }
+    server.cause = 'only_unlisted'
+    const note = "artifactory 'corp' reports 13 of the 13 versions it answered as unlisted. An unlisted version is one published 1900-01-01"
+    const summary = {
+      packageCount: 3,
+      feedListing: [
+        { name: 'corp', url: 'https://pkgs.client-a.example/v3/index.json', packagesAnswered: 2, packagesOnlyUnlisted: 2, versionsAnswered: 13,
+          versionsUnlisted: 13, mostlyUnlisted: true, note },
+        { name: 'quiet', url: 'https://pkgs.client-a.example/quiet/index.json', packagesAnswered: 4, packagesOnlyUnlisted: 0, versionsAnswered: 9,
+          versionsUnlisted: 0, mostlyUnlisted: false },
+      ],
+    }
+    try {
+      await show(<StoredDependenciesView artifactId="d" head={{ summary, targetFramework: 'net10.0' }} localPath={null} />)
+      expect(screen.getByText('Only unlisted versions, not this one')).toBeTruthy()
+      expect(screen.getByText('corp · unlisted: 2.1.0, 2.0.0')).toBeTruthy()
+      expect(screen.queryByText(/add the artifactory URL in the/)).toBeNull()
+      expect(screen.getByText(/corp: 2 of 2 packages only as unlisted versions/)).toBeTruthy()
+      expect(screen.getByText(note)).toBeTruthy()
+      expect(screen.queryByText(/quiet:/)).toBeNull()
+    } finally {
       server.cause = 'feed_auth'
     }
   })

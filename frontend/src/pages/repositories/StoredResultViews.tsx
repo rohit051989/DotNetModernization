@@ -34,6 +34,7 @@ import {
 import { SourceLink } from './SourceLink'
 import { workItemFigures, workItemsLine } from './workItemFigures'
 import { feedOrigin } from '../workflow/artifacts/feedOrigin'
+import { FeedListing } from '../workflow/artifacts/FeedListing'
 
 // The repository page's fingerprint, dependencies and work list, read from the stored result (backend app.results)
 // a page at a time: the header from the artifact's summary, each list from the database 20 at a time, filtered there.
@@ -167,8 +168,13 @@ interface StoredPackage {
 const CAUSE: Record<string, { title: string; hint: string }> = {
   feed_auth: { title: 'Artifactory needs a login', hint: 'Log in to the artifactory on this machine (a credential provider, or a NuGet source with your token), then rescan.' },
   feed_unreachable: { title: 'Artifactory could not be reached', hint: 'Check the network or VPN to the artifactory, then rescan.' },
-  not_on_feed: { title: 'On no consulted artifactory', hint: 'It may be on a private artifactory this engagement does not list yet. A "not found" answer from an artifactory already asked is cached for 24 hours.' },
+  not_on_feed: { title: 'On no consulted artifactory', hint: 'A "not found" answer from an artifactory already asked is cached for 24 hours.' },
   version_unresolved: { title: 'Version could not be read', hint: 'The PackageReference version comes from a property or file the scan could not read.' },
+  // artifact 1.9.0: the package is on the artifactory, but only as unlisted versions, and not the one referenced.
+  only_unlisted: {
+    title: 'Only unlisted versions, not this one',
+    hint: 'The artifactory holds the package, but every version it holds is unlisted, and the referenced version is not among them. An unlisted version still restores by exact version: reference one of them, or publish the referenced version.',
+  },
 }
 
 /** The amber note that sends a person to the Artifactory tab (docs/39-ARTIFACTORY.md). */
@@ -184,11 +190,17 @@ function ArtifactoryLink() {
   )
 }
 
-function UnknownCause({ pkg }: { pkg: Json }) {
+/**
+ * Why an unknown package is unknown. `engagementListed`: the scan asked an artifactory listed on the engagement's
+ * Artifactory tab. A package on no consulted artifactory is sent to that tab only when the engagement lists none, or a
+ * consulted artifactory failed: with one listed and every one answering, another URL is not the likely fix.
+ */
+function UnknownCause({ pkg, engagementListed }: { pkg: Json; engagementListed: boolean }) {
   if (pkg.outcome !== 'unknown') return null
   const cause = str(pkg.unknownCause)
   const known = cause ? CAUSE[cause] : undefined
   const feeds = list<Json>(pkg.failedFeeds ?? pkg.consultedFeeds)
+  const suggestArtifactory = !engagementListed || list(pkg.failedFeeds).length > 0
   return (
     <span className="mt-1 block text-[11px]">
       <span className="font-medium text-amber-800">{known?.title ?? (cause ? 'Not answered (offline lookup)' : 'Cause not recorded: rescan to classify')}</span>
@@ -199,11 +211,16 @@ function UnknownCause({ pkg }: { pkg: Json }) {
           <ArtifactoryLink />, then rescan. If the artifactory url is already in NuGet.config with its credentials, you can ignore this.
         </ArtifactoryNote>
       )}
-      {cause === 'not_on_feed' && (
+      {cause === 'not_on_feed' && suggestArtifactory && (
         <ArtifactoryNote>
-          Add the artifactory URL in the <ArtifactoryLink />, then rescan.
+          It may be on a private artifactory this engagement does not list yet: add the artifactory URL in the <ArtifactoryLink />, then rescan.
         </ArtifactoryNote>
       )}
+      {list<Json>(pkg.unlistedFeeds).map((f, i) => (
+        <span key={`unlisted-${i}`} className="block text-neutral-400" title={str(f.url) ?? undefined}>
+          {str(f.name)} · unlisted: {list<string>(f.versions).join(', ')}
+        </span>
+      ))}
       {feeds.map((f, i) => (
         <span key={i} className="block text-neutral-400" title={str(f.url) ?? undefined}>
           {str(f.name)}
@@ -243,6 +260,7 @@ export function StoredDependenciesView({ artifactId, head, localPath }: StoredVi
   const outcomes = obj(summary.countByOutcome) as Record<string, number>
   const sources = obj(summary.countByFeedSource) as Record<string, number>
   const targetFramework = str(head.targetFramework)
+  const engagementListed = feeds.some((f) => str(f.declaredIn) === 'engagement')
 
   useEffect(() => {
     let live = true
@@ -338,6 +356,7 @@ export function StoredDependenciesView({ artifactId, head, localPath }: StoredVi
             </span>
           )}
         </LimitedList>
+        <FeedListing summary={summary} />
       </div>
       <p className="text-[11px] text-neutral-500">
         <span className="font-medium text-neutral-700">Version in use</span> is what the project references now;{' '}
@@ -376,6 +395,7 @@ export function StoredDependenciesView({ artifactId, head, localPath }: StoredVi
                       localPath={localPath}
                       targetFramework={targetFramework}
                       expanded={!!open[key]}
+                      engagementListed={engagementListed}
                       showOrigin={shownPart === 'internal'}
                       onToggle={() => setOpen((o) => ({ ...o, [key]: !o[key] }))}
                     />
@@ -397,11 +417,14 @@ function StoredVersionRow({
   localPath,
   targetFramework,
   expanded,
+  engagementListed,
   showOrigin,
   onToggle,
 }: {
   artifactId: string
   group: StoredPackage
+  /** The scan asked an artifactory listed on the engagement's Artifactory tab. */
+  engagementListed: boolean
   /** The Internal part: each package says where it comes from. */
   showOrigin: boolean
   version: StoredVersion
@@ -509,7 +532,7 @@ function StoredVersionRow({
               {line}
             </span>
           ))}
-          <UnknownCause pkg={pkg} />
+          <UnknownCause pkg={pkg} engagementListed={engagementListed} />
         </td>
         <td className="py-1.5 pr-3 text-[11px]">
           {str(pkg.feedSource) ? (

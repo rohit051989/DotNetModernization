@@ -8,6 +8,7 @@ import { LimitedList } from '../../../components/LimitedList'
 import { entryPointProjects, list, num, obj, outboundProjects, str, type Json } from './adapters'
 import type { WorkListDecisions } from '../../../types/items'
 import { feedOrigin } from './feedOrigin'
+import { FeedListing } from './FeedListing'
 
 export interface ArtifactRendererProps {
   data: Json
@@ -508,10 +509,17 @@ export function packageReasons(pkg: Json, targetFramework: string | null): strin
         '404': 'the artifactory url returned 404 (Not Found)',
         '407': 'the proxy returned 407: it needs a login',
       }
-      reasons.push(`Unknown: the lookup did not answer — ${status ? `${said[status[1]]}. ` : ''}${reason || 'no reason recorded'}.`)
+      reasons.push(
+        str(pkg.unknownCause) === 'only_unlisted'
+          ? `Unknown: ${reason}`
+          : `Unknown: the lookup did not answer — ${status ? `${said[status[1]]}. ` : ''}${reason || 'no reason recorded'}.`,
+      )
       break
     }
   }
+  // dependency-assessment 1.9.0: an unlisted version in use, or proposed because no listed one fits.
+  const listingNote = str(pkg.listingNote)
+  if (listingNote) reasons.push(`Unlisted: ${listingNote}.`)
   const vulnerable = pkg.vulnerable ? obj(pkg.vulnerable) : null
   if (vulnerable) {
     const advisories = list(vulnerable.advisories)
@@ -650,6 +658,7 @@ export function DependenciesView({ data, localPath }: ArtifactRendererProps) {
             </span>
           )}
         </LimitedList>
+        <FeedListing summary={summary} />
       </div>
       {visible.length === 0 ? (
         <p className="text-xs text-neutral-400">No packages to show.</p>
