@@ -75,8 +75,10 @@ class FailedScan(unittest.TestCase):
                                                    batch_status="FAILED", exit_status="FAILED", exit_message=FAILURE,
                                                    started_at=ended, ended_at=ended))
                 break
+            # A stub completes as NOT_IMPLEMENTED: it completed all the same.
+            exit_status = "NOT_IMPLEMENTED" if step == "risk-scoring-tier-assignment" else "COMPLETED"
             self.db.add(models.WfStepExecution(job_execution_id=execution.id, step_name=step, step_version="1",
-                                               batch_status="COMPLETED", exit_status="COMPLETED",
+                                               batch_status="COMPLETED", exit_status=exit_status,
                                                started_at=ended, ended_at=ended))
         self.db.commit()
         return execution

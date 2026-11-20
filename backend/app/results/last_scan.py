@@ -55,9 +55,10 @@ def results_dates(db: Session, repository_id: uuid.UUID, steps: list[str]) -> di
         join wf_job_executions j on j.id = s.job_execution_id
         join wf_job_instances i on i.id = j.job_instance_id
         where i.job_name = :job and i.parameters->>'repository_id' = :r
-          and s.step_name = any(:steps) and s.batch_status = 'COMPLETED' and s.exit_status = 'COMPLETED'
+          and s.step_name = any(:steps) and s.batch_status = 'COMPLETED'
+          and coalesce(s.exit_status, '') <> all(:failed)
         group by s.step_name
-    """), {"job": DISCOVERY, "r": str(repository_id), "steps": steps}).all()
+    """), {"job": DISCOVERY, "r": str(repository_id), "steps": steps, "failed": list(STEP_FAILED)}).all()
     found = {r.step_name: r.ended_at for r in rows}
     return {step: found.get(step) for step in steps}
 
