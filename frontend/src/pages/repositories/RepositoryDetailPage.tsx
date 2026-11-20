@@ -38,6 +38,7 @@ import { RepositoryOwner } from './RepositoryOwner'
 import { ADMIN_ONLY, useIsAdmin } from '../../auth/AuthContext'
 import { StructureSection } from './structure/StructureSection'
 import { useLatestArtifacts, type LatestArtifact } from './useLatestArtifacts'
+import { FailedScanBanner, OlderResultsNotice } from './FailedScanNotice'
 import { RepositoryOverview } from './RepositoryOverview'
 import { useRepositorySummary } from './useRepositorySummary'
 import { workItemFigures, workItemsLine } from './workItemFigures'
@@ -728,6 +729,7 @@ export function RepositoryDetailPage({
         </p>
       )}
 
+      {results?.failed_scan && <FailedScanBanner failed={results.failed_scan} onOpenActivity={() => show('executions', true)} />}
       {results?.not_copied_note && (
         <p className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800" data-testid="not-copied-note">
           {results.not_copied_note}
@@ -743,6 +745,7 @@ export function RepositoryDetailPage({
 
         {TABS.filter((t) => visited.has(t.slug)).map((t) => (
           <div key={t.slug} id={`repo-panel-${t.slug}`} role="tabpanel" aria-label={t.label} hidden={t.slug !== tab}>
+            <OlderResultsNotice failed={results?.failed_scan} tab={t.slug} />
             {content[t.slug]()}
           </div>
         ))}

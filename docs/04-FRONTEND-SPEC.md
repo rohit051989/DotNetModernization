@@ -423,6 +423,16 @@ only jumped down to it.
   Surface section's own anchors) open the matching tab.
 - **A slim header**: the name, the status chips and the actions (Verify path, Rescan, Edit, Delete) stay at the top
   of every tab, with the two rows. A tab's own sticky bar (Surface's section bar) sits just below it (`--repo-header`).
+- **A failed scan is said, never hidden** (`FailedScanNotice.tsx`; backend `app.results.last_scan`, from the
+  database). When the repository's latest discovery run failed (or was stopped), the header says when, at which step
+  and the first line of its message, with a link to the Activity tab. The steps before the failure stored new results;
+  each tab fed by a step the run did not complete keeps its earlier results and labels them "Older results, from the
+  scan of <date>", naming the steps ("No results yet" when the step never completed). The tabs and their steps:
+  Surface and Compatibility (entry-point-inventory, outbound-invocation-inventory), Projects & fingerprint
+  (solution-discovery, application-fingerprinting), Dependencies (dependency-assessment), Dependency graph
+  (dependency-hierarchy), Impact (impact-analysis), Tests (test-coverage-assessment), Scope (solution-discovery,
+  item-detection), Work list (item-detection), Conversion (conversion-preparation). A later run that completes clears
+  both. No conversion is prepared until then (`36-COPILOT-ENHANCED-CONVERSION.md` Part N).
 - **Overview is the summary**: the cards (size, files, main language, projects, request entry points, Linux
   incompatible, version drift, items found, last scanned), then the key figure from each tab, each a link into it —
   work items, request entry points, dependencies needing change (any outcome but current or unknown), SOAP calls

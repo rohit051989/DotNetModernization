@@ -48,6 +48,7 @@ from app.conversion import gitops, planner
 from app.engine import engines, siblings
 from app.engine.inputs import generate
 from app.experiment import instrument
+from app.results import last_scan
 from app.scope import service as scope_service
 
 INPUTS_COMMIT = "Add generated upgrade inputs for GitHub Copilot (do not edit)"
@@ -394,6 +395,10 @@ class LookupsStale(RuntimeError):
     """The package lookups are older than their limit: discovery answers them again before prepare runs."""
 
 
+class ResultsMixed(RuntimeError):
+    """The latest discovery run failed: some steps' results are from it and others from an earlier run."""
+
+
 def prepare(db, engagement_id: str, slug: str, *, baseline: str | None = None, goal: str | None = None,
             sibling_links: list[str] | None = None, canaries: list[dict] | None = None, when_run: str = "new",
             lookups_from_discovery: bool = False) -> dict:
@@ -407,8 +412,13 @@ def prepare(db, engagement_id: str, slug: str, *, baseline: str | None = None, g
     instructions and runbook are about the code that was analysed — never from an earlier conversion's baseline.
     `baseline` overrides it (the command line's --baseline). Refreshing an unrun conversion moves it onto that commit.
     `lookups_from_discovery`: the discovery run this prepare ends has just answered the package lookups, so their age
-    is not checked again; otherwise lookups older than their limit raise LookupsStale."""
+    is not checked again; otherwise lookups older than their limit raise LookupsStale.
+
+    Refused (ResultsMixed) when the repository's latest discovery run failed: the steps before the failure stored new
+    results, about the commit it scanned, and the rest still hold an earlier run's (app.results.last_scan)."""
     repository = _repository(db, engagement_id, slug)
+    if refused := last_scan.refusal(db, repository.id):
+        raise ResultsMixed(refused)
     engagement = db.get(models.Engagement, engagement_id)
     root = Path(repository.local_path)
     latest = (records(engagement_id, slug) or [None])[-1]
@@ -777,6 +787,8 @@ def main(argv: list[str] | None = None) -> int:
             options = dict(baseline=args.baseline, goal=args.goal, sibling_links=args.sibling_links, canaries=canaries)
             try:
                 r = prepare(db, args.engagement, args.repository, **options)
+            except ResultsMixed as mixed:
+                raise SystemExit(f"refused: {mixed}")
             except LookupsStale as stale:
                 # Part N: refreshed, never refused. Discovery answers the lookups again (its own prepare step off,
                 # so these options are kept), then prepare runs on what it answered.

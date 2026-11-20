@@ -676,6 +676,22 @@ refuses and says to run discovery again. The versions checked are recorded in `c
   "NOT PROVEN, nothing converted": the verifier's fixed rules fail an unconverted branch, so the verdict is known
   without a run. Otherwise the conversion's entry then shows the verdict, its reasons and the full VERIFICATION.md.
 
+
+### Never on a mix of new and older results (2026-11-19)
+
+A discovery run that fails stops at the failed step: the steps before it have stored new results, about the commit it
+scanned (and `repositories.ingest_commit_sha` has moved to that commit), while the failed step and every step after it
+still hold an earlier run's. Before this change the discovery job's own conversion-preparation step never ran after a
+failure (the job halts), but `python -m app.engine.convert prepare` did: it read the newest stored result of each kind
+and prepared a conversion from that mix, the package step and the work items from the older run against the newer
+commit. `convert.prepare` now refuses (`ResultsMixed`) whenever the repository's latest discovery run failed, was stopped
+or abandoned (`app.results.last_scan.refusal`): "The latest discovery run failed at <step> on <when> UTC, so the results
+of <steps> are from an earlier run while the others are new. A conversion is not prepared on a mix of new and older
+results: fix the failure and rescan the repository first (its Activity tab has the failure)." Nothing is created. The
+command line prints it and exits; inside a discovery job it is recorded as the last preparation's message, in full. The
+UI's ways to prepare (Start the next conversion, an engine or scope change) run discovery first, so they prepare only
+after a run that completes. Both engines alike: this decides whether inputs are prepared, not what they say (rule 20).
+
 ## Part O — Conversion scope (2026-11-02)
 
 A scope step before preparation: the dev team chooses which of a repository's solutions and projects its conversions

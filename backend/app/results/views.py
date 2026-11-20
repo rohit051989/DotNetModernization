@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 from app import models
 from app.db import get_db
 from app.errors import ErrorResponse, error
-from app.results import held, store
+from app.results import held, last_scan, store
 from app.results.paging import PAGE, PageOut, PageParams, page
 
 router = APIRouter(prefix="/api", tags=["Results"])
@@ -35,6 +35,17 @@ class ResultOut(BaseModel):
     head: dict = Field(description="The artifact's top-level fields other than lists: its summary, counts, versions.")
 
 
+class FailedScanOut(BaseModel):
+    job_execution_id: uuid.UUID
+    status: str = Field(description="How the run ended: FAILED, STOPPED or ABANDONED (or still running with a failed step).")
+    failed_step: str | None = Field(description="The step that failed, by slug.")
+    message: str | None = Field(description="The first line of the step's message; the full text is on the Activity tab.")
+    at: datetime.datetime
+    results_from: dict[str, datetime.datetime | None] = Field(
+        description="Each step that did not complete in that run, and when it last did: the date of the results its "
+                    "views show instead (null: it never has).")
+
+
 class RepositoryResultsOut(BaseModel):
     repository_id: uuid.UUID
     results: dict[str, ResultOut] = Field(description="The newest stored artifact of each kind the page reads.")
@@ -44,6 +55,9 @@ class RepositoryResultsOut(BaseModel):
                                         "database: scans made before central results, never copied (python -m "
                                         "app.results copy-existing on the machine that made them).")
     not_copied_note: str | None = None
+    failed_scan: FailedScanOut | None = Field(
+        default=None, description="The latest discovery run, when it failed: the views of the steps it did not complete "
+                                  "show older results (app.results.last_scan).")
 
 
 def _repository(db: Session, repository_id: uuid.UUID) -> models.Repository:
@@ -88,7 +102,8 @@ def get_repository_results(repository_id: uuid.UUID, db: Session = Depends(get_d
                 "its owner runs python -m app.results copy-existing there.")
     return RepositoryResultsOut(repository_id=repository_id, results=results,
                                 held_on=where if held.elsewhere(repo.registered_host) else None,
-                                not_copied=len(missing), not_copied_note=note)
+                                not_copied=len(missing), not_copied_note=note,
+                                failed_scan=last_scan.failed_scan(db, repository_id))
 
 
 def _stored(db: Session, artifact_id: uuid.UUID, artifact_type: str) -> models.ResultArtifact:

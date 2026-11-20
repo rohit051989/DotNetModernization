@@ -21,6 +21,18 @@ export interface RepositoryResults {
   held_on: string | null
   not_copied: number
   not_copied_note: string | null
+  /** The latest discovery run, when it failed (backend app.results.last_scan). */
+  failed_scan?: FailedScan | null
+}
+
+export interface FailedScan {
+  job_execution_id: string
+  status: string
+  failed_step: string | null
+  message: string | null
+  at: string
+  /** Each step that did not complete in that run, and when it last did: the date of the results its views show. */
+  results_from: Record<string, string | null>
 }
 
 export interface EntryPointSummary {

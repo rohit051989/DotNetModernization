@@ -62,6 +62,10 @@ def problem(error: Exception) -> tuple[str, list[str]]:
             what = "a generated input is not self-contained"
             details = [f"{f['file']}:{f['line']}: {f['check']} ({f['match']})" for f in findings]
         return (f"Refused, {what}: {len(findings)} finding(s) in {len(files)} file(s). Nothing was written.", details)
+    from app.engine.convert import ResultsMixed
+
+    if isinstance(error, ResultsMixed):      # already a sentence that says what to do
+        return str(error), []
     lines = [line for line in str(error).splitlines() if line.strip()] or [""]
     return f"{type(error).__name__}: {lines[0]}"[:300], [line.strip() for line in lines[1:]]
 
