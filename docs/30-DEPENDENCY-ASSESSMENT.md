@@ -151,7 +151,8 @@ Since artifact 1.7.0 (scanner 1.8.0) an `unknown` package also says why, as a co
 `PackageReference` version could not be read). `failedFeeds` (name, normalised url, `auth` or
 `unreachable`, HTTP status) goes with the first two, `consultedFeeds` (name, normalised url) with
 `not_on_feed`. A lookup answered offline from a frozen snapshot has no cause. No credential, userinfo or
-query string is ever in these fields (B4).
+query string is ever in these fields (B4). Since artifact 1.9.0 (scanner 1.10.0) a fifth cause, `only_unlisted`, with
+`unlistedFeeds`: see "Unlisted versions" below.
 
 ---
 
@@ -308,7 +309,8 @@ One row per project per direct package: `id` (derived, stable), `repository_id`,
 
 ### `package_lookup_cache`
 
-`feed_url_normalised`, `package_id`, `versions` JSONB, `metadata` JSONB, `fetched_at`.
+`feed_url_normalised`, `package_id`, `versions` JSONB, `metadata` JSONB, `fetched_at`, `lookup_rule` (since migration
+`b5d2e8f4a1c7`: the rule the answer was asked under; see "Unlisted versions" below).
 Primary key `(feed_url_normalised, package_id)`.
 
 ### Artifact
@@ -537,3 +539,57 @@ has a generator: 1.6.0, written by hand, gained `make_dependency_schema_1_6_0.py
 The UI names every origin in words (`frontend/src/pages/workflow/artifacts/feedOrigin.ts`): `engagement` reads "the
 engagement's Artifactory tab". `dependency-hierarchy` records a package's feed by name and URL only, so its output is
 unchanged.
+
+## Unlisted versions (artifact 1.9.0, scanner 1.10.0)
+
+NuGet's unlisting only hides a version from search: it still restores by exact version. Before 1.10.0 the lookup asked
+for listed versions only (`includeUnlisted: false`), so a package whose versions were all unlisted looked empty, and a
+project referencing an unlisted version that exists was reported `unknown`, `not_on_feed`. Since 1.10.0 the lookup asks
+for every version and records for each whether it is listed (`CachedVersion.Listed`). A v3 registration says so in its
+`listed` property; a v2 feed's answer is read by its published date, where 1900-01-01 means unlisted
+(`V2FeedPackageInfo.IsListed`). Then:
+
+- **The referenced version exists, listed or unlisted:** the package is resolved as any other. When the version in use
+  is unlisted, the package carries a short `listingNote` ("1.2.0 is unlisted on 'private': hidden from search, it still
+  restores by exact version"), never an `unknownCause`.
+- **Compatibility is judged from every version that exists.** `no_compatible_version` means no version, listed or not,
+  supports the target.
+- **A proposal is a listed version** (the recommended version, the newest version free of deprecation, a retired
+  package's replacement version, and a dependency's minimum when the API of what an upgrade carries is diffed). The
+  version in use counts too, whatever its listing. An unlisted version is proposed only when no listed one fits, and the
+  `listingNote` says so ("no listed version supports net10.0 at or above 1.0.0: 1.5.0 is unlisted on 'private'").
+  `latestVersion` is the newest listed version, or the newest unlisted one when none is listed.
+- **`only_unlisted`:** only when the referenced version does not exist and every version the authority artifactories
+  hold is unlisted. The package is `unknown` with `unknownCause: "only_unlisted"` and `unlistedFeeds`, each artifactory
+  holding it with every version it holds, newest first. The reason names the artifactories and the versions (the first
+  ten per artifactory, then "and N more"), and says to reference one of them or publish the referenced version.
+- **`summary.feedListing`**, once per scan: per authority artifactory that answered, the declared packages it holds
+  (`packagesAnswered`), how many of them only as unlisted versions (`packagesOnlyUnlisted`), and the versions answered
+  and unlisted. Each package is counted once however many projects reference it. When at least 90% of at least 10
+  versions are unlisted, `mostlyUnlisted` is true and `note` says plainly that this usually means how the artifactory
+  reports dates (an unlisted version is one published 1900-01-01), not that the packages were unlisted on purpose; the
+  scan treats them as present. A project carried over from an interrupted run (release 5's checkpoints) is not counted
+  again.
+- **The `not_on_feed` reason** suggests the Artifactory tab ("To look it up, add its artifactory URL in the Artifactory
+  tab, then rescan.") only when the engagement lists no artifactory, or a consulted artifactory failed. With one listed
+  and every one answering, another URL is not the likely fix. The repository page follows the same rule.
+
+**The lookup cache keeps no answer from the old rule.** Each entry records the rule it was asked under
+(`CacheEntry.Rule`, column `package_lookup_cache.lookup_rule`; `PackageLookup.AnswerRule` is 2). Every row written
+before has rule 1 (the migration's default), and a lookup asks it again whatever its age, so the first rescan after the
+upgrade asks every artifactory once more. A lookup made offline (`lookup_offline`, an experiment's frozen snapshot)
+uses a row whatever its rule: a frozen snapshot answers as it was frozen. A standalone run's JSON cache reads an entry
+without a rule as rule 1.
+
+`dependency-hierarchy` shares the lookup (scanner 1.1.0, artifact unchanged): an artifactory that holds a package only
+unlisted answers for it, so its origin is decided as for any other, and a range resolves to its lowest listed version,
+else its lowest unlisted one.
+
+The output schema is `schemas/dependency-assessment-1.9.0.schema.json`, derived from 1.8.0 by
+`schemas/make_dependency_schema_1_9_0.py`. 1.8.0 stays as written. `UnlistedVersionsTests` runs the real pipeline
+against a local stand-in artifactory that serves listed and unlisted versions and validates each whole artifact against
+the schema file of the version it declares.
+
+UI: the repository page's Dependencies tab and the execution's artifact viewer add the listing note to a package's
+reasons, name the unlisted versions for `only_unlisted`, and show the feed listing under the artifactories, with the
+note in amber for an artifactory that reports nearly everything unlisted.

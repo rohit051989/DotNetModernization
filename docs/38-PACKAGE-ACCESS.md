@@ -50,9 +50,12 @@ A package's `unknownCause` is one of:
 | `feed_unreachable` | An authority artifactory could not be reached: DNS, timeout, TLS, connection refused, any other protocol error | same |
 | `not_on_feed` | Every authority artifactory answered, none holds the package | the `ordered.Count == 0` path |
 | `version_unresolved` | The `PackageReference` version could not be read (a property or central-package-version that does not resolve) | the `declaration.Version is null` path |
+| `only_unlisted` | Artifact 1.9.0: the referenced version is on no authority artifactory, and every version they hold is unlisted. It records `unlistedFeeds` (name, normalised url, versions) | before the `ordered.Count == 0` path (`30-DEPENDENCY-ASSESSMENT.md` "Unlisted versions") |
 
 When more than one authority artifactory failed for one package, the package's cause is the most actionable: `feed_auth`,
-then `feed_unreachable`. `not_on_feed` and `version_unresolved` occur only when no artifactory failed / no lookup was made.
+then `feed_unreachable`. `not_on_feed`, `only_unlisted` and `version_unresolved` occur only when no artifactory failed / no
+lookup was made. Since artifact 1.9.0 the `not_on_feed` reason, and the row's note, send a person to the Artifactory tab
+only when the engagement lists no artifactory or a consulted artifactory failed.
 
 Unknown outcomes the step produces for other reasons (a lookup answered offline from a frozen snapshot, `lookup_offline`)
 get no `unknownCause` and show as "Not answered (offline lookup)", with no action.

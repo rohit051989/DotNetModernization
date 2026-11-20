@@ -139,7 +139,9 @@ public sealed class DependencyDatabase(string connectionString)
 /// <c>(feed_url_normalised, package_id)</c>: <c>versions</c> is the version
 /// list, newest first; <c>metadata</c> holds, per version, listing,
 /// framework, deprecation and vulnerability data. Reads go to the table;
-/// writes are held and flushed in the step's own transaction.
+/// writes are held and flushed in the step's own transaction. <c>lookup_rule</c>
+/// is the rule the answer was asked under (<see cref="PackageLookup.AnswerRule"/>);
+/// a row written before the column existed reads as 1, which a lookup asks again.
 /// </summary>
 public sealed class PostgresLookupCache(string connectionString) : ILookupCache
 {
@@ -155,7 +157,7 @@ public sealed class PostgresLookupCache(string connectionString) : ILookupCache
         using var connection = new NpgsqlConnection(connectionString);
         connection.Open();
         using var command = new NpgsqlCommand(
-            "SELECT versions::text, metadata::text, fetched_at FROM package_lookup_cache WHERE feed_url_normalised = @feed AND package_id = @id", connection);
+            "SELECT versions::text, metadata::text, fetched_at, lookup_rule FROM package_lookup_cache WHERE feed_url_normalised = @feed AND package_id = @id", connection);
         command.Parameters.AddWithValue("feed", feedUrl);
         command.Parameters.AddWithValue("id", key.Item2);
         using var reader = command.ExecuteReader();
@@ -169,6 +171,7 @@ public sealed class PostgresLookupCache(string connectionString) : ILookupCache
                 FeedUrl = feedUrl,
                 PackageId = key.Item2,
                 FetchedAt = reader.GetFieldValue<DateTimeOffset>(2),
+                Rule = reader.GetInt32(3),
                 Versions = versions.Select(v => metadata.TryGetValue(v, out var m) ? m : new CachedVersion { Version = v }).ToList(),
             };
         }
@@ -185,10 +188,11 @@ public sealed class PostgresLookupCache(string connectionString) : ILookupCache
         {
             await using var upsert = new NpgsqlCommand(
                 """
-                INSERT INTO package_lookup_cache (feed_url_normalised, package_id, versions, metadata, fetched_at)
-                VALUES (@feed, @id, @versions, @metadata, @at)
+                INSERT INTO package_lookup_cache (feed_url_normalised, package_id, versions, metadata, fetched_at, lookup_rule)
+                VALUES (@feed, @id, @versions, @metadata, @at, @rule)
                 ON CONFLICT (feed_url_normalised, package_id)
-                DO UPDATE SET versions = EXCLUDED.versions, metadata = EXCLUDED.metadata, fetched_at = EXCLUDED.fetched_at
+                DO UPDATE SET versions = EXCLUDED.versions, metadata = EXCLUDED.metadata, fetched_at = EXCLUDED.fetched_at,
+                              lookup_rule = EXCLUDED.lookup_rule
                 """,
                 connection, transaction);
             upsert.Parameters.AddWithValue("feed", entry.FeedUrl);
@@ -199,6 +203,7 @@ public sealed class PostgresLookupCache(string connectionString) : ILookupCache
                 Value = JsonSerializer.Serialize(entry.Versions.ToDictionary(v => v.Version), DeterministicJson.Options),
             });
             upsert.Parameters.AddWithValue("at", entry.FetchedAt);
+            upsert.Parameters.AddWithValue("rule", entry.Rule);
             await upsert.ExecuteNonQueryAsync(ct);
         }
     }

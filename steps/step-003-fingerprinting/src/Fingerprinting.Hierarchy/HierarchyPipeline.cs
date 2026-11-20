@@ -29,8 +29,11 @@ public sealed record HierarchyOptions(
 /// </summary>
 public sealed class HierarchyPipeline(PackageLookup lookup, HierarchyOptions options, LookupWorkers? workers = null)
 {
-    /// <summary>Matches the dependency-hierarchy step registration version.</summary>
-    public const string ScannerVersion = "1.0.0";
+    /// <summary>Matches the dependency-hierarchy step registration version. 1.1.0: the lookup answers unlisted versions
+    /// too (<see cref="PackageLookup.AnswerRule"/>), so a client feed that holds a package only unlisted answers for it
+    /// (its origin is internal, not unknown), and a range resolves to its lowest listed version, else its lowest
+    /// unlisted one. Artifact unchanged.</summary>
+    public const string ScannerVersion = "1.1.0";
 
     private static readonly string[] Severities = ["low", "moderate", "high", "critical"];
 
@@ -505,7 +508,8 @@ public sealed class HierarchyPipeline(PackageLookup lookup, HierarchyOptions opt
         }
     }
 
-    /// <summary>The lowest listed version a range allows — the one restore picks.</summary>
+    /// <summary>The lowest listed version a range allows — the one restore picks. 1.1.0: the lowest unlisted one when the
+    /// feed lists none in the range.</summary>
     private async Task<(string? Version, string? Reason)> LowestAsync(FeedSet feeds, string packageId, string rangeText, CancellationToken ct)
     {
         var key = $"{packageId}|{rangeText}";
@@ -518,10 +522,11 @@ public sealed class HierarchyPipeline(PackageLookup lookup, HierarchyOptions opt
             foreach (var feed in feeds.Authorities)
             {
                 var result = await lookup.GetAsync(feed, packageId, ct);
-                var lowest = result.Entry?.Versions
-                    .Where(v => v.Listed && NuGetVersion.TryParse(v.Version, out _))
+                var inRange = (result.Entry?.Versions ?? [])
+                    .Where(v => NuGetVersion.TryParse(v.Version, out var parsed) && range.Satisfies(parsed))
+                    .ToList();
+                var lowest = (inRange.Any(v => v.Listed) ? inRange.Where(v => v.Listed) : inRange)
                     .Select(v => NuGetVersion.Parse(v.Version))
-                    .Where(range.Satisfies)
                     .Min();
                 if (lowest is not null)
                 {

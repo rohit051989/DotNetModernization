@@ -53,6 +53,12 @@ public sealed partial class PackageLookup(ILookupCache cache, string packageCach
 
     public string PackageCacheDirectory => packageCacheDirectory;
 
+    /// <summary>The rule answers are asked under, recorded on each cache entry (<see cref="CacheEntry.Rule"/>). 2: every
+    /// version, unlisted ones included and marked. NuGet's unlisting only hides a version from search: it still restores
+    /// by exact version, so a package whose versions are all unlisted is on the feed. An entry under an older rule held
+    /// listed versions only and is asked again.</summary>
+    public const int AnswerRule = 2;
+
     /// <summary>The fetched_at of every cache entry this run read or wrote —
     /// its minimum is the snapshot the artifact is true as of (Part B6).</summary>
     public List<DateTimeOffset> SnapshotTimes { get; } = [];
@@ -85,7 +91,8 @@ public sealed partial class PackageLookup(ILookupCache cache, string packageCach
     {
         var key = $"{feed.Url}|{packageId.ToLowerInvariant()}";
         var cached = cache.Get(feed.Url, packageId);
-        if (cached is not null && (offline || _refreshed.Contains(key) || (!forceRefresh && now - cached.FetchedAt < ttl)))
+        // Offline, an entry is used whatever its rule: a frozen snapshot answers as it was frozen.
+        if (cached is not null && (offline || _refreshed.Contains(key) || (!forceRefresh && cached.Rule >= AnswerRule && now - cached.FetchedAt < ttl)))
         {
             SnapshotTimes.Add(cached.FetchedAt);
             return new LookupResult(cached, null);
@@ -99,7 +106,7 @@ public sealed partial class PackageLookup(ILookupCache cache, string packageCach
         try
         {
             var resource = await RepositoryFor(feed).GetResourceAsync<PackageMetadataResource>(ct);
-            var metadata = await resource.GetMetadataAsync(packageId, includePrerelease: true, includeUnlisted: false, _sourceCache, NullLogger.Instance, ct);
+            var metadata = await resource.GetMetadataAsync(packageId, includePrerelease: true, includeUnlisted: true, _sourceCache, NullLogger.Instance, ct);
             var versions = new List<CachedVersion>();
             foreach (var item in metadata.OrderByDescending(m => m.Identity.Version))
             {
@@ -130,7 +137,7 @@ public sealed partial class PackageLookup(ILookupCache cache, string packageCach
                 });
             }
 
-            var entry = new CacheEntry { FeedUrl = feed.Url, PackageId = packageId.ToLowerInvariant(), FetchedAt = now, Versions = versions };
+            var entry = new CacheEntry { FeedUrl = feed.Url, PackageId = packageId.ToLowerInvariant(), FetchedAt = now, Rule = AnswerRule, Versions = versions };
             cache.Put(entry);
             _refreshed.Add(key);
             SnapshotTimes.Add(now);

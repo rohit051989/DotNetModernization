@@ -47,8 +47,29 @@ public sealed class DependencyPipeline(PackageLookup lookup, DependencyOptions o
     /// progress, a timing profile, and finished projects kept so a rerun continues from there. Artifact unchanged.
     /// 1.7.1: the step reports its artifact to the engine as 1.6.0, the version it writes; it had reported 1.5.0.
     /// Artifact unchanged. 1.8.0 (artifact 1.7.0): an unknown package says why, as a code with the feeds involved
-    /// (<see cref="UnknownCauses"/>; 38-PACKAGE-ACCESS.md). Additive.</summary>
-    public const string ScannerVersion = "1.8.0";
+    /// (<see cref="UnknownCauses"/>; 38-PACKAGE-ACCESS.md). Additive. 1.9.0 (artifact 1.8.0): a feed from the engagement's
+    /// Artifactory tab is recorded as declared in <c>engagement</c>. 1.10.0 (artifact 1.9.0): unlisted versions are
+    /// looked up too (<see cref="PackageLookup.AnswerRule"/>). A referenced version that exists resolves, listed or not, an
+    /// unlisted one with a <c>listingNote</c>; compatibility is judged from every version; a proposal is a listed version
+    /// unless none fits; a package whose versions are all unlisted and do not include the referenced one is
+    /// <c>only_unlisted</c>; <c>summary.feedListing</c> counts, per feed, the packages it holds only unlisted; the
+    /// <c>not_on_feed</c> reason suggests the Artifactory tab only when the engagement lists no artifactory or a
+    /// consulted feed failed.</summary>
+    public const string ScannerVersion = "1.10.0";
+
+    /// <summary>1.10.0: a feed that reports at least this share of the versions it answered as unlisted, over at least
+    /// <see cref="MostlyUnlistedMinimum"/> versions, is said to report nearly everything unlisted (summary.feedListing).
+    /// </summary>
+    public const double MostlyUnlistedShare = 0.9;
+
+    public const int MostlyUnlistedMinimum = 10;
+
+    /// <summary>1.10.0: how many unlisted versions an <c>only_unlisted</c> reason names per feed; the field lists them all.</summary>
+    private const int UnlistedVersionsNamed = 10;
+
+    /// <summary>1.10.0: the not_on_feed reason's suggestion, made only when the engagement lists no artifactory or a
+    /// consulted feed failed.</summary>
+    public const string AddArtifactoryHint = "To look it up, add its artifactory URL in the Artifactory tab, then rescan.";
 
     /// <summary>1.5.0: the PACKAGE_VULNERABLE value's ending when no release without a known advisory supports the
     /// target.</summary>
@@ -67,6 +88,10 @@ public sealed class DependencyPipeline(PackageLookup lookup, DependencyOptions o
 
     private readonly NuGetFramework _target = NuGetFramework.Parse(options.TargetFramework);
     private readonly Dictionary<string, IReadOnlyDictionary<string, ApiType>?> _surfaces = new(StringComparer.Ordinal);
+
+    /// <summary>1.10.0: per authority feed (by url), each package it answered for and that answer's (versions, unlisted)
+    /// counts, once per package however many projects reference it. Read into summary.feedListing.</summary>
+    private readonly Dictionary<string, (string Name, Dictionary<string, (int Versions, int Unlisted)> Packages)> _listing = new(StringComparer.Ordinal);
 
     public async Task<DependencyAssessmentArtifact> RunAsync(DependencyInput input, string repositoryRoot, CancellationToken ct,
         StepProgress? progress = null, WorkLimits? limits = null, ProjectCheckpoints? checkpoints = null)
@@ -159,6 +184,7 @@ public sealed class DependencyPipeline(PackageLookup lookup, DependencyOptions o
                 NotInClientFeedCount = packages.Count(p => p.NotInClientFeed is not null),
                 VersionDriftCount = drifting.Count,
                 ContentBreakingPossibleCount = packages.Count(p => p.ContentBreakingPossible),
+                FeedListing = FeedListing(),
             },
             Projects = results,
             Warnings = input.Warnings.OrderBy(w => w.Message, StringComparer.Ordinal).ToList(),
@@ -254,7 +280,40 @@ public sealed class DependencyPipeline(PackageLookup lookup, DependencyOptions o
 
     // ---------- one package ----------
 
-    private sealed record Candidate(NuGetVersion Version, Feed Feed, CacheEntry Entry, CachedVersion Cached);
+    private sealed record Candidate(NuGetVersion Version, Feed Feed, CacheEntry Entry, CachedVersion Cached)
+    {
+        public bool Listed => Cached.Listed;
+    }
+
+    /// <summary>1.10.0: how many of each feed's answers held only unlisted versions, and a plain note for a feed that
+    /// reports nearly every version unlisted. NuGet marks an unlisted version with a published date of 1900-01-01 (a v2
+    /// feed's answer is read by that date; a v3 registration says <c>listed</c> as well), so a feed reporting nearly
+    /// everything unlisted is usually reporting its dates that way, not unlisting on purpose.</summary>
+    private IReadOnlyList<FeedListing> FeedListing() => _listing
+        .OrderBy(kv => kv.Key, StringComparer.Ordinal)
+        .Select(kv =>
+        {
+            var answers = kv.Value.Packages.Values.Where(a => a.Versions > 0).ToList();
+            var versions = answers.Sum(a => a.Versions);
+            var unlisted = answers.Sum(a => a.Unlisted);
+            var mostly = versions >= MostlyUnlistedMinimum && unlisted >= MostlyUnlistedShare * versions;
+            return new FeedListing
+            {
+                Name = kv.Value.Name,
+                Url = kv.Key,
+                PackagesAnswered = answers.Count,
+                PackagesOnlyUnlisted = answers.Count(a => a.Unlisted == a.Versions),
+                VersionsAnswered = versions,
+                VersionsUnlisted = unlisted,
+                MostlyUnlisted = mostly,
+                Note = mostly
+                    ? $"artifactory '{kv.Value.Name}' reports {unlisted} of the {versions} versions it answered as unlisted. An unlisted "
+                      + "version is one published 1900-01-01, NuGet's mark for unlisted, so this usually means how the artifactory reports "
+                      + "dates, not that the packages were unlisted on purpose. Unlisted versions still restore by exact version, and this scan treats them as present."
+                    : null,
+            };
+        })
+        .ToList();
 
     private async Task<(PackageAssessment, IReadOnlyList<Signal>)> AssessPackageAsync(
         Guid repositoryId, DependencyInputProject project, PackageDeclaration declaration, FeedSet feeds, NuGetFramework? currentFramework,
@@ -295,6 +354,7 @@ public sealed class DependencyPipeline(PackageLookup lookup, DependencyOptions o
         // client feed that cannot be reached could hold a newer version, so
         // its silence is "unknown", never a quiet substitution (Part B7).
         var candidates = new List<Candidate>();
+        var answers = new List<(Feed Feed, CacheEntry Entry)>();
         var errors = new List<string>();
         var failedFeeds = new List<FailedFeed>();
         foreach (var feed in feeds.Authorities)
@@ -317,10 +377,15 @@ public sealed class DependencyPipeline(PackageLookup lookup, DependencyOptions o
                 continue;
             }
 
-            foreach (var cached in result.Entry!.Versions.Where(v => v.Listed))
+            // 1.10.0: every version, listed or not. A version two feeds hold is taken from the first that lists it.
+            answers.Add((feed, result.Entry!));
+            Tally(feed, declaration.PackageId, result.Entry!);
+            foreach (var cached in result.Entry!.Versions)
             {
                 var version = NuGetVersion.Parse(cached.Version);
-                if (candidates.All(c => c.Version != version)) candidates.Add(new Candidate(version, feed, result.Entry, cached));
+                var held = candidates.FindIndex(c => c.Version == version);
+                if (held < 0) candidates.Add(new Candidate(version, feed, result.Entry, cached));
+                else if (!candidates[held].Listed && cached.Listed) candidates[held] = new Candidate(version, feed, result.Entry, cached);
             }
         }
 
@@ -341,8 +406,9 @@ public sealed class DependencyPipeline(PackageLookup lookup, DependencyOptions o
         }
 
         var allowPrerelease = currentVersion.IsPrerelease;
+        // Every version the feeds hold, newest first. The latest is the newest listed one, if any is listed.
         var ordered = candidates.Where(c => allowPrerelease || !c.Version.IsPrerelease).OrderByDescending(c => c.Version).ToList();
-        var latest = ordered.FirstOrDefault();
+        var latest = ordered.FirstOrDefault(c => c.Listed) ?? ordered.FirstOrDefault();
         var currentCandidate = candidates.FirstOrDefault(c => c.Version == currentVersion);
 
         if (errors.Count > 0)
@@ -356,11 +422,39 @@ public sealed class DependencyPipeline(PackageLookup lookup, DependencyOptions o
                 with { FeedSource = SourceOf(feeds), UnknownCause = cause, FailedFeeds = cause is null ? null : failedFeeds }, []);
         }
 
+        // 1.10.0: the referenced version is not there, and every version the feeds hold is unlisted. Unlisted versions
+        // still restore by exact version, so the package is on the feed: the reference names a version that is not.
+        if (currentCandidate is null && candidates.Count > 0 && candidates.All(c => !c.Listed))
+        {
+            var holders = answers.Where(a => a.Entry.Versions.Count > 0)
+                .Select(a => new UnlistedFeed
+                {
+                    Name = a.Feed.Name,
+                    Url = a.Feed.Url,
+                    Versions = a.Entry.Versions.Select(v => NuGetVersion.Parse(v.Version)).OrderByDescending(v => v).Select(v => v.ToNormalizedString()).ToList(),
+                })
+                .ToList();
+            var named = string.Join("; ", holders.Select(h => $"'{h.Name}' holds {string.Join(", ", h.Versions.Take(UnlistedVersionsNamed))}"
+                + (h.Versions.Count > UnlistedVersionsNamed ? $" and {h.Versions.Count - UnlistedVersionsNamed} more" : "")));
+            var onlyUnlisted = Result(Outcomes.Unknown,
+                $"{declaration.PackageId} {currentVersion.ToNormalizedString()} is not on the artifactories consulted, and every version they hold "
+                + $"is unlisted: {named}. An unlisted version still restores by exact version: reference one of these, or publish "
+                + $"{currentVersion.ToNormalizedString()}.", 0.0)
+                with { FeedSource = SourceOf(feeds), UnknownCause = UnknownCauses.OnlyUnlisted, UnlistedFeeds = holders };
+            return (onlyUnlisted, Signals(declaration, onlyUnlisted, null));
+        }
+
         if (ordered.Count == 0)
         {
             var gap = await PublicGapAsync(publicCandidates, allowPrerelease, null, feeds, ct);
             var where = string.Join(", ", feeds.Authorities.Select(f => f.Name));
-            var assessment = Result(Outcomes.Unknown, (feeds.UsingClientFeeds ? $"{declaration.PackageId} was not found in the public artifactory or in the private artifactories listed in the Artifactory tab. To look it up, add its artifactory URL in the Artifactory tab, then rescan." : $"{declaration.PackageId} is not on nuget.org: {where}"), 0.0)
+            // 1.10.0: the Artifactory tab is suggested only when the engagement lists no artifactory, or a consulted feed
+            // failed. With one listed and every feed answering, another URL is not the likely fix.
+            var suggest = options.EngagementFeeds is not { Count: > 0 } || failedFeeds.Count > 0;
+            var notFound = feeds.UsingClientFeeds
+                ? $"{declaration.PackageId} was not found on the artifactories consulted: {where}."
+                : $"{declaration.PackageId} is not on nuget.org: {where}.";
+            var assessment = Result(Outcomes.Unknown, suggest ? $"{notFound} {AddArtifactoryHint}" : notFound, 0.0)
                 with
                 {
                     FeedSource = SourceOf(feeds),
@@ -371,14 +465,51 @@ public sealed class DependencyPipeline(PackageLookup lookup, DependencyOptions o
             return (assessment, Signals(declaration, assessment, null));
         }
 
-        // ---- the recommended version: the newest that supports the target (Part C2).
-        var (newestCompatible, examined) = await NewestCompatibleAsync(ordered, ct);
-        var recommended = await WithoutAdvisoryAsync(newestCompatible, currentCandidate, ordered, ct);
+        // ---- the recommended version: the newest that supports the target (Part C2). 1.10.0: from the listed versions
+        // and the one in use; only when none of them supports the target at or above the version in use, from every
+        // version, unlisted ones included, which the listing note says.
+        var notes = new List<string>();
+        if (currentCandidate is { Listed: false })
+        {
+            notes.Add($"{currentVersion.ToNormalizedString()} is unlisted on '{currentCandidate.Feed.Name}': hidden from search, it still restores by exact version");
+        }
+
+        var preferred = ordered.Where(c => c.Listed || c == currentCandidate).ToList();
+        var (newestCompatible, examined) = await NewestCompatibleAsync(preferred, ct);
+        var recommended = await WithoutAdvisoryAsync(newestCompatible, currentCandidate, preferred, ct);
+        var examinedOf = preferred.Count;
+        if ((recommended is null || recommended.Version < currentVersion) && preferred.Count < ordered.Count)
+        {
+            var (anyCompatible, examinedAll) = await NewestCompatibleAsync(ordered, ct);
+            var fallback = await WithoutAdvisoryAsync(anyCompatible, currentCandidate, ordered, ct);
+            if (fallback is not null && (recommended is null || fallback.Version > recommended.Version)) recommended = fallback;
+            (examined, examinedOf) = (examinedAll, ordered.Count);
+        }
+
+        if (recommended is { Listed: false } && recommended != currentCandidate)
+        {
+            notes.Add($"no listed version supports {_target.GetShortFolderName()}{(currentCandidate is null ? "" : $" at or above {currentVersion.ToNormalizedString()}")}: "
+                + $"{recommended.Version.ToNormalizedString()} is unlisted on '{recommended.Feed.Name}'");
+        }
+
         var deprecated = Deprecation(currentCandidate, ordered);
+        if (deprecated?.NewestNotDeprecated is { } newestNotDeprecated
+            && ordered.FirstOrDefault(c => c.Version.ToNormalizedString() == newestNotDeprecated) is { Listed: false } unlistedSuccessor)
+        {
+            notes.Add($"no newer listed version is free of deprecation: {newestNotDeprecated} is unlisted on '{unlistedSuccessor.Feed.Name}'");
+        }
+
         if (deprecated is { Scope: DeprecationScopes.Package, ReplacementId: { } replacementId })
         {
-            deprecated = deprecated with { ReplacementVersion = await ReplacementVersionAsync(feeds, replacementId, deprecated.ReplacementRange, ct) };
+            var (replacementVersion, unlistedOn) = await ReplacementVersionAsync(feeds, replacementId, deprecated.ReplacementRange, ct);
+            deprecated = deprecated with { ReplacementVersion = replacementVersion };
+            if (unlistedOn is not null)
+            {
+                notes.Add($"no listed release of {replacementId} fits: {replacementVersion} is unlisted on '{unlistedOn}'");
+            }
         }
+
+        var listingNote = notes.Count == 0 ? null : string.Join("; ", notes);
 
         var vulnerable = Vulnerability(currentCandidate, recommended);
         var answering = recommended ?? currentCandidate ?? latest!;
@@ -416,6 +547,7 @@ public sealed class DependencyPipeline(PackageLookup lookup, DependencyOptions o
             Deprecated = deprecated,
             Vulnerable = vulnerable,
             NotInClientFeed = gapFlag,
+            ListingNote = listingNote,
         };
 
         if (currentCandidate is null && currentVersion > candidates.Max(c => c.Version)!)
@@ -428,7 +560,7 @@ public sealed class DependencyPipeline(PackageLookup lookup, DependencyOptions o
 
         if (recommended is null)
         {
-            var reason = examined < ordered.Count
+            var reason = examined < examinedOf
                 ? $"no version among the newest {examined} supports {_target.GetShortFolderName()} (latest {common.Latest})"
                 : $"no version supports {_target.GetShortFolderName()} (latest {common.Latest})";
             var assessment = Finish(Result(Outcomes.NoCompatibleVersion, reason, 0.9));
@@ -610,8 +742,9 @@ public sealed class DependencyPipeline(PackageLookup lookup, DependencyOptions o
 
     /// <summary>1.5.0: the version of a retired package's replacement to move to: its newest release within the
     /// publisher's range (any, when the range is <c>[*, )</c> or unreadable), stable, listed, not deprecated, with no
-    /// known advisory, supporting the target. Null when no feed answers or no release qualifies.</summary>
-    private async Task<string?> ReplacementVersionAsync(FeedSet feeds, string packageId, string? range, CancellationToken ct)
+    /// known advisory, supporting the target. Null when no feed answers or no release qualifies. 1.10.0: an unlisted
+    /// release only when no listed one qualifies, with the name of the feed holding it unlisted (null when listed).</summary>
+    private async Task<(string? Version, string? UnlistedOn)> ReplacementVersionAsync(FeedSet feeds, string packageId, string? range, CancellationToken ct)
     {
         VersionRange? allowed = range is not null && VersionRange.TryParse(range, out var parsed) ? parsed : null;
         var candidates = new List<Candidate>();
@@ -619,16 +752,32 @@ public sealed class DependencyPipeline(PackageLookup lookup, DependencyOptions o
         {
             var result = await lookup.GetAsync(feed, packageId, ct);
             if (!result.Reachable) continue;
-            foreach (var cached in result.Entry!.Versions.Where(v => v.Listed && v.Deprecation is null && v.Vulnerabilities.Count == 0))
+            foreach (var cached in result.Entry!.Versions.Where(v => v.Deprecation is null && v.Vulnerabilities.Count == 0))
             {
                 var version = NuGetVersion.Parse(cached.Version);
                 if (version.IsPrerelease || (allowed is not null && !allowed.Satisfies(version))) continue;
-                if (candidates.All(c => c.Version != version)) candidates.Add(new Candidate(version, feed, result.Entry, cached));
+                var held = candidates.FindIndex(c => c.Version == version);
+                if (held < 0) candidates.Add(new Candidate(version, feed, result.Entry, cached));
+                else if (!candidates[held].Listed && cached.Listed) candidates[held] = new Candidate(version, feed, result.Entry, cached);
             }
         }
 
-        var (compatible, _) = await NewestCompatibleAsync(candidates.OrderByDescending(c => c.Version).ToList(), ct);
-        return compatible?.Version.ToNormalizedString();
+        var newestFirst = candidates.OrderByDescending(c => c.Version).ToList();
+        var (compatible, _) = await NewestCompatibleAsync(newestFirst.Where(c => c.Listed).ToList(), ct);
+        if (compatible is null) (compatible, _) = await NewestCompatibleAsync(newestFirst.Where(c => !c.Listed).ToList(), ct);
+        return (compatible?.Version.ToNormalizedString(), compatible is { Listed: false } ? compatible.Feed.Name : null);
+    }
+
+    /// <summary>1.10.0: one authority feed's answer for one declared package, counted once per scan.</summary>
+    private void Tally(Feed feed, string packageId, CacheEntry entry)
+    {
+        if (!_listing.TryGetValue(feed.Url, out var tally))
+        {
+            tally = (feed.Name, new Dictionary<string, (int, int)>(StringComparer.OrdinalIgnoreCase));
+            _listing[feed.Url] = tally;
+        }
+
+        tally.Packages[packageId] = (entry.Versions.Count, entry.Versions.Count(v => !v.Listed));
     }
 
     /// <summary>No frameworks at all (content, tools, a meta-package) is
@@ -716,7 +865,9 @@ public sealed class DependencyPipeline(PackageLookup lookup, DependencyOptions o
         if (current?.Cached.Deprecation is not { } d) return null;
         var legacy = d.Reasons.Any(r => string.Equals(r, "Legacy", StringComparison.OrdinalIgnoreCase));
         var successor = legacy && d.AlternateId is { } alternate && !string.Equals(alternate, current.Entry.PackageId, StringComparison.OrdinalIgnoreCase);
-        var maintainedNewer = ordered.FirstOrDefault(c => c.Version > current.Version && c.Cached.Deprecation is null);
+        // 1.10.0: a listed version first; an unlisted one only when no listed version is free of deprecation.
+        var maintainedNewer = ordered.FirstOrDefault(c => c.Version > current.Version && c.Cached.Deprecation is null && c.Listed)
+                              ?? ordered.FirstOrDefault(c => c.Version > current.Version && c.Cached.Deprecation is null);
         return new DeprecationFlag
         {
             Reasons = d.Reasons, Message = d.Message, ReplacementId = d.AlternateId, ReplacementRange = d.AlternateRange,
@@ -820,17 +971,18 @@ public sealed class DependencyPipeline(PackageLookup lookup, DependencyOptions o
     }
 
     /// <summary>What NuGet resolves a dependency's minimum to: that version, or
-    /// the lowest listed one above it, on the first authoritative feed that has it.</summary>
+    /// the lowest listed one above it, on the first authoritative feed that has it.
+    /// 1.10.0: the lowest unlisted one when the feed lists none that fits.</summary>
     private async Task<Candidate?> ResolveAsync(FeedSet feeds, string id, NuGetVersion minimum, CancellationToken ct)
     {
         foreach (var feed in feeds.Authorities)
         {
             var result = await lookup.GetAsync(feed, id, ct);
             var cached = result.Entry?.Versions
-                .Where(v => v.Listed)
                 .Select(v => (Version: NuGetVersion.Parse(v.Version), Cached: v))
                 .Where(v => v.Version >= minimum)
-                .OrderBy(v => v.Version)
+                .OrderBy(v => v.Cached.Listed ? 0 : 1)
+                .ThenBy(v => v.Version)
                 .FirstOrDefault();
             if (cached?.Cached is not null)
             {

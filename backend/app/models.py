@@ -2168,6 +2168,9 @@ class PackageLookupCache(Base):
     versions: Mapped[list] = mapped_column(JSONB, nullable=False)
     metadata_: Mapped[dict] = mapped_column("metadata", JSONB, nullable=False)
     fetched_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    # The rule the answer was asked under (PackageLookup.AnswerRule): 1, listed versions only (every row written before
+    # the column existed); 2, every version, unlisted ones marked. A lookup asks a row under an older rule again.
+    lookup_rule: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
 
 
 

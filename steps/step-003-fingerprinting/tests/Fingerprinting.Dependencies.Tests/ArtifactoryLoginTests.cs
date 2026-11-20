@@ -307,8 +307,7 @@ public sealed class ArtifactoryLoginTests : IDisposable
         Assert.Equal(("engagement", Feed.RoleClient), (feed.DeclaredIn, feed.Role));
         Assert.Equal("nuget-private", Assert.Single(artifact.Projects.Single().Packages).FeedName);
 
-        var schema = Path.Combine(AppContext.BaseDirectory, "schemas", $"dependency-assessment-{artifact.ArtifactVersion}.schema.json");
-        Fingerprinting.StepHost.ArtifactSchemaValidator.Load(schema).Validate(Fingerprinting.Domain.DeterministicJson.Serialize(artifact));
+        ArtifactSchemas.Validate(artifact);
     }
 
     [Fact]

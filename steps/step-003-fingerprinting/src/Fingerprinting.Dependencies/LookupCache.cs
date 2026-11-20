@@ -3,14 +3,18 @@ using System.Text.Json.Serialization;
 
 namespace Fingerprinting.Dependencies;
 
-/// <summary>What one feed says about one package (Part B6): every listed
-/// version with the facts the assessment reads. <see cref="FetchedAt"/> is
-/// when it was true; it is never written into the artifact.</summary>
+/// <summary>What one feed says about one package (Part B6): every version, listed or not, with the facts the
+/// assessment reads. <see cref="FetchedAt"/> is when it was true; it is never written into the artifact.</summary>
 public sealed record CacheEntry
 {
     public required string FeedUrl { get; init; }
     public required string PackageId { get; init; }
     public required DateTimeOffset FetchedAt { get; init; }
+
+    /// <summary>The rule the answer was asked under (<see cref="PackageLookup.AnswerRule"/>). 1, an entry written before
+    /// the rule was recorded: listed versions only. 2: every version, unlisted ones marked. An entry under an older rule
+    /// is stale whatever its age, except while lookups are offline.</summary>
+    public int Rule { get; init; } = 1;
 
     /// <summary>Newest first.</summary>
     public required IReadOnlyList<CachedVersion> Versions { get; init; }

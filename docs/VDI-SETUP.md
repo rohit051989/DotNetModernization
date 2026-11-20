@@ -1803,6 +1803,16 @@ hand. Everything else an update brings, bootstrap applies by itself. Apply every
 had (`previousCommit` in `PLATFORM_SOURCE.json` after the update; in our own installs, the commit before step 5 of
 the appendix), oldest of them first. Entries up to 2026-10-23 were the notes of releases 2 to 7, which are named so.
 
+#### 2026-11-20, (commit of "Dependency assessment: unlisted versions are looked up"): rescan
+
+Bootstrap adds `package_lookup_cache.lookup_rule` by itself and publishes dependency-assessment 1.10.0 (artifact 1.9.0)
+and dependency-hierarchy 1.1.0. Every package lookup cached before the update was asked for listed versions only, so the
+next scan asks each artifactory again, whatever the cached answer's age: the first rescan of each repository takes as long
+as a first scan. **Rescan** each repository with a package reported unknown, "not found" on an artifactory: a package
+whose versions are unlisted there is now found (an unlisted version still restores by exact version), and one whose
+referenced version is missing while all others are unlisted now says so (`only_unlisted`). The Dependencies view says,
+per artifactory, how many packages it holds only as unlisted versions.
+
 #### 2026-11-19, (commit of "Artifactory tab: NuGet feed URLs, editing a saved URL, Test connection"): check the URLs
 
 Bootstrap adds `engagement_feeds.version`, `updated_at` and `updated_by` by itself; every saved artifactory keeps working.

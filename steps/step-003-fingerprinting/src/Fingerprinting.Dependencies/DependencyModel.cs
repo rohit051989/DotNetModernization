@@ -46,6 +46,10 @@ public static class UnknownCauses
 
     /// <summary>The PackageReference version could not be read.</summary>
     public const string VersionUnresolved = "version_unresolved";
+
+    /// <summary>1.9.0: the referenced version is on no authority feed, and every version the feeds hold is unlisted.
+    /// Unlisted versions still restore by exact version, so the package is there; the reference names one that is not.</summary>
+    public const string OnlyUnlisted = "only_unlisted";
 }
 
 public static class FeedFailures
@@ -147,8 +151,9 @@ public sealed record DependencyAssessmentArtifact
 {
     /// <summary>The version this step writes, and the schema file it is validated against before it is written
     /// (<c>schemas/dependency-assessment-&lt;version&gt;.schema.json</c>). 1.8.0: a feed may be declared in
-    /// <c>engagement</c>.</summary>
-    public const string Version = "1.8.0";
+    /// <c>engagement</c>. 1.9.0: unlisted versions (<c>only_unlisted</c>, <c>unlistedFeeds</c>, <c>listingNote</c>,
+    /// <c>summary.feedListing</c>).</summary>
+    public const string Version = "1.9.0";
 
     public string ArtifactType { get; init; } = "dependency-assessment";
     public string ArtifactVersion { get; init; } = Version;
@@ -185,6 +190,46 @@ public sealed record DependencySummary
 
     /// <summary>Content packages whose upgrade is a major version (1.1.0).</summary>
     public int ContentBreakingPossibleCount { get; init; }
+
+    /// <summary>1.9.0: per authority feed that answered, by url, how many of the declared packages it holds only
+    /// unlisted versions of, once per scan.</summary>
+    public IReadOnlyList<FeedListing> FeedListing { get; init; } = [];
+}
+
+/// <summary>1.9.0: one authority feed's answers in a scan, by listing. Each declared package is counted once, however
+/// many projects reference it; a package the feed holds no version of is not counted.</summary>
+public sealed record FeedListing
+{
+    public required string Name { get; init; }
+
+    /// <summary>Normalised, as <see cref="FeedRecord.Url"/>.</summary>
+    public required string Url { get; init; }
+
+    /// <summary>Declared packages the feed holds at least one version of.</summary>
+    public int PackagesAnswered { get; init; }
+
+    /// <summary>Of those, the packages whose every version is unlisted.</summary>
+    public int PackagesOnlyUnlisted { get; init; }
+
+    public int VersionsAnswered { get; init; }
+    public int VersionsUnlisted { get; init; }
+
+    /// <summary>At least 90% of at least 10 versions answered are unlisted: usually how the feed reports dates (a
+    /// published date of 1900-01-01 reads as unlisted), not deliberate unlisting.</summary>
+    public bool MostlyUnlisted { get; init; }
+
+    /// <summary>The plain sentence that says so, when <see cref="MostlyUnlisted"/>.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Note { get; init; }
+}
+
+/// <summary>1.9.0: for <c>only_unlisted</c>, a feed that holds the package, and the versions it holds, all unlisted,
+/// newest first.</summary>
+public sealed record UnlistedFeed
+{
+    public required string Name { get; init; }
+    public required string Url { get; init; }
+    public required IReadOnlyList<string> Versions { get; init; }
 }
 
 public sealed record ProjectDependencies
@@ -279,6 +324,16 @@ public sealed record PackageAssessment
     /// <summary>1.7.0: for <c>not_on_feed</c>, the authority feeds that were asked.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public IReadOnlyList<ConsultedFeed>? ConsultedFeeds { get; init; }
+
+    /// <summary>1.9.0: for <c>only_unlisted</c>, each authority feed holding the package, with its unlisted versions.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<UnlistedFeed>? UnlistedFeeds { get; init; }
+
+    /// <summary>1.9.0: a short note when an unlisted version is involved in a resolved package: the version in use is
+    /// unlisted (it still restores), or a proposed version is unlisted because no listed one fits. Never an unknown
+    /// cause.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? ListingNote { get; init; }
 
     /// <summary>runtime, build, tools, analyzer or content (<see cref="PackageKinds"/>);
     /// null when no version of the package could be read.</summary>

@@ -831,7 +831,7 @@ public sealed class DependencyAssessmentTests : IDisposable
         {
             FeedUrl = "repo:feeds/artifactory",
             PackageId = "acme.json",
-            FetchedAt = DateTimeOffset.Parse("2026-10-01T23:00:00Z"),
+            FetchedAt = DateTimeOffset.Parse("2026-10-01T23:00:00Z"), Rule = PackageLookup.AnswerRule,
             Versions =
             [
                 new CachedVersion { Version = "1.1.0", DependencyFrameworks = ["net8.0"] },
@@ -861,7 +861,7 @@ public sealed class DependencyAssessmentTests : IDisposable
 
     private static CacheEntry Entry(string packageId, params CachedVersion[] versions) => new()
     {
-        FeedUrl = "repo:feeds/artifactory", PackageId = packageId, FetchedAt = DateTimeOffset.Parse("2026-10-01T23:00:00Z"), Versions = versions,
+        FeedUrl = "repo:feeds/artifactory", PackageId = packageId, FetchedAt = DateTimeOffset.Parse("2026-10-01T23:00:00Z"), Rule = PackageLookup.AnswerRule, Versions = versions,
     };
 
     /// <summary>1.5.0: no recommended version carries a known advisory. The newest compatible version has one, so the
@@ -943,7 +943,7 @@ public sealed class DependencyAssessmentTests : IDisposable
         var cache = new MemoryLookupCache();
         cache.Put(new CacheEntry
         {
-            FeedUrl = "repo:feeds/artifactory", PackageId = "acme.json", FetchedAt = DateTimeOffset.Parse("2026-10-01T23:00:00Z"),
+            FeedUrl = "repo:feeds/artifactory", PackageId = "acme.json", FetchedAt = DateTimeOffset.Parse("2026-10-01T23:00:00Z"), Rule = PackageLookup.AnswerRule,
             Versions = [new CachedVersion { Version = "1.1.0", DependencyFrameworks = ["net8.0"] },
                         new CachedVersion { Version = "1.0.0", DependencyFrameworks = ["net8.0"] }],
         });
@@ -984,7 +984,7 @@ public sealed class DependencyAssessmentTests : IDisposable
         {
             FeedUrl = "repo:feeds/artifactory",
             PackageId = "acme.json",
-            FetchedAt = DateTimeOffset.Parse("2026-10-01T23:00:00Z"),
+            FetchedAt = DateTimeOffset.Parse("2026-10-01T23:00:00Z"), Rule = PackageLookup.AnswerRule,
             Versions =
             [
                 new CachedVersion { Version = "1.1.0", DependencyFrameworks = ["net8.0"], Deprecation = newerDeprecatedToo ? deprecation : null },
@@ -994,7 +994,7 @@ public sealed class DependencyAssessmentTests : IDisposable
 
         var artifact = await Run([new InputPackage("Acme.Json", "1.0.0", "packagereference")], cache);
         var json = Package(artifact, "Acme.Json");
-        Assert.Equal("1.8.0", artifact.ArtifactVersion);
+        Assert.Equal("1.9.0", artifact.ArtifactVersion);
         Assert.Equal(scope, json.Deprecated!.Scope);
         Assert.Equal(scope == "version" ? "1.1.0" : null, json.Deprecated.NewestNotDeprecated);
         Assert.Equal(signalValue, Assert.Single(artifact.Projects.Single().Signals, s => s.Name == "PACKAGE_DEPRECATED").Value);
