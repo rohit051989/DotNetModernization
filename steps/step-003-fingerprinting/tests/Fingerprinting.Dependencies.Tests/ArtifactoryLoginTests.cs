@@ -203,6 +203,20 @@ public sealed class ArtifactoryLoginTests : IDisposable
     }
 
     [Fact]
+    public async Task A_web_page_that_answers_200_is_not_a_feed()
+    {
+        using var standIn = new StandIn(acceptToken: null, anonymous: true);
+        var page = standIn.Index.Replace("/v3/index.json", "/ui/packages");
+
+        var (ok, text) = await ArtifactoryLogin.FromEnvironment(Env(), new StringWriter()).CheckAsync(page, TimeSpan.FromSeconds(30));
+
+        Assert.False(ok, text);
+        Assert.Contains("answered 200, but not with a NuGet v3 service index", text);
+        Assert.True(ArtifactoryLogin.IsServiceIndex("""{"version":"3.0.0","resources":[]}"""));
+        Assert.False(ArtifactoryLogin.IsServiceIndex("<html><body>Artifactory</body></html>"));
+    }
+
+    [Fact]
     public async Task A_timeout_is_reported_as_it_is_and_never_switches_to_the_username_and_password()
     {
         using var standIn = new StandIn(acceptToken: Token, hang: true);
@@ -418,6 +432,7 @@ public sealed class ArtifactoryLoginTests : IDisposable
 
         private string? Answer(string path) => path switch
         {
+            "/ui/packages" => "<html><body>Artifactory</body></html>",
             "/v3/index.json" => $$"""
                 {"version":"3.0.0","resources":[
                   {"@id":"{{Base}}/registration/","@type":"RegistrationsBaseUrl/3.6.0"},

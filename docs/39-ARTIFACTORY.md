@@ -66,8 +66,8 @@ password`, `token rejected, used username and password`, `token rejected` or `no
   change is recorded in the activity log. It applies to the next scan: rescan to use it.
 - **Test connection** asks the URL's service index from the person's own backend, with that machine's login, through
   the dependency step's own code (`DependencyAssessment.Cli.exe --check-artifactory`, as preflight does), so it
-  authenticates exactly as a scan does. It answers `answered`, `rejected ARTIFACTORY_TOKEN (401)`, `refused the login
-  (403)`, `answered 404`, `no answer within 30 seconds` or `could not be reached: ...`, with the login used and the
+  authenticates exactly as a scan does. It answers `answered` (a NuGet v3 service index), `answered 200, but not with a
+  NuGet v3 service index` (a web page), `rejected ARTIFACTORY_TOKEN (401)`, `refused the login (403)`, `answered 404`, `no answer within 30 seconds` or `could not be reached: ...`, with the login used and the
   machine, never a value. It works on a saved artifactory or on a URL before it is added, changes nothing, and is open to
   everyone signed in.
 - **Duplicates are refused** (409 `DUPLICATE_ARTIFACTORY_URL`) once the URL is normalised: scheme and host in lower case,

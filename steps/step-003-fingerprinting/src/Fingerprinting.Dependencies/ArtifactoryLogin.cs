@@ -126,6 +126,22 @@ public sealed class ArtifactoryLogin
         return NuGet.Protocol.Core.Types.Repository.CreateSource(providers, source);
     }
 
+    /// <summary>Whether a 2xx body is a NuGet v3 service index: a JSON object with a <c>resources</c> array.</summary>
+    public static bool IsServiceIndex(string body)
+    {
+        try
+        {
+            using var json = System.Text.Json.JsonDocument.Parse(body);
+            return json.RootElement.ValueKind == System.Text.Json.JsonValueKind.Object
+                   && json.RootElement.TryGetProperty("resources", out var resources)
+                   && resources.ValueKind == System.Text.Json.JsonValueKind.Array;
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return false;
+        }
+    }
+
     /// <summary>
     /// Preflight's connection check (<c>DependencyAssessment.Cli --check-artifactory &lt;url&gt;...</c>): asks one
     /// artifactory for its service index with this login, as a scan would ask it. The text names the artifactory by its
@@ -144,9 +160,12 @@ public sealed class ArtifactoryLogin
             // The service index asked over the network every time, never from NuGet's disk cache of it (kept for
             // 40 minutes): a check answered from a cache would say nothing about the connection or the login.
             var http = await repository.GetResourceAsync<HttpSourceResource>(limit.Token);
-            var status = await http.HttpSource.ProcessResponseAsync(new HttpSourceRequest(url.Trim(), NuGet.Common.NullLogger.Instance),
-                response => Task.FromResult((int)response.StatusCode), NuGet.Common.NullLogger.Instance, limit.Token);
-            if (status is >= 200 and < 300) return (true, $"{shown}: answered (login: {Used})");
+            var (status, index) = await http.HttpSource.ProcessResponseAsync(new HttpSourceRequest(url.Trim(), NuGet.Common.NullLogger.Instance),
+                async response => ((int)response.StatusCode, response.IsSuccessStatusCode && IsServiceIndex(await response.Content.ReadAsStringAsync(limit.Token))),
+                NuGet.Common.NullLogger.Instance, limit.Token);
+            // A web page (the Artifactory UI answers 200 with HTML) is not a feed: a scan would get no packages from it.
+            if (status is >= 200 and < 300)
+                return index ? (true, $"{shown}: answered (login: {Used})") : (false, $"{shown}: answered {status}, but not with a NuGet v3 service index (login: {Used})");
             var refused = status is 401 or 403
                 ? HasToken && TokenRejected && !HasUsernameAndPassword ? $"rejected {TokenVariable} ({status})" : $"refused the login ({status})"
                 : $"answered {status}";
