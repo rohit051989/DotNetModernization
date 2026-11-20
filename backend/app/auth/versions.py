@@ -1,5 +1,6 @@
 """Edits to shared records carry a version check: decisions, item decisions, catalog items (edit_version) and their
-resolutions, engagement settings, and matrix confirmations (by the confirmation's id). The caller names the version of
+resolutions, engagement settings, an engagement's saved artifactories, and matrix confirmations (by the
+confirmation's id). The caller names the version of
 the copy it edited in an If-Match header (0 when the record did not exist yet); the row is locked, its version
 compared, and an edit made from a stale copy is refused (409 STALE_COPY), saying who changed it first. Nothing is
 overwritten. The version goes up by one with each edit.

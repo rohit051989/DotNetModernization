@@ -482,6 +482,10 @@ class EngagementFeed(Base):
     )
     deleted_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
     deleted_by: Mapped[str | None] = mapped_column(Text)
+    # An admin may edit a saved artifactory's URL or name: the edit names this version (app.auth.versions).
+    version: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
+    updated_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
+    updated_by: Mapped[str | None] = mapped_column(Text)
 
     __table_args__ = (
         Index("uq_engagement_feeds_live_url", "engagement_id", "url_normalised", unique=True,

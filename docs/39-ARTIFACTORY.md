@@ -53,6 +53,23 @@ password`, `token rejected, used username and password`, `token rejected` or `no
 ## Rules
 
 - An artifactory URL is an absolute `http` or `https` URL without a login in it (422 `EMBEDDED_CREDENTIALS`).
+- **It is a NuGet feed, not the Artifactory web page.** A URL whose path has `/ui/` in it (the JFrog page a person
+  browses to, such as `https://host.client-a.example/ui/packages`) is refused (422 `NOT_A_NUGET_FEED`): a scan asking it
+  gets HTML, or 401 or 403, never packages. The message gives the shape to use,
+  `https://host/artifactory/api/nuget/v3/<repository-key>/index.json` (the repository's Set Me Up page shows it; the
+  trailing `/` form NuGet.config files often use works too). Any other URL that neither ends in `index.json` nor has
+  `/api/nuget/` in it is taken, with a warning, since a server may serve a feed elsewhere. Every listed artifactory
+  carries the same warning (`warning`), so one saved before this check is named on the tab and left working; an admin
+  corrects it with Edit.
+- **An admin may change a saved artifactory's URL or name** (`PUT`, below): the same checks as adding one, and a version
+  check (`If-Match`, `app.auth.versions`; a stale copy is refused, 409 `STALE_COPY`, naming who changed it first). The
+  change is recorded in the activity log. It applies to the next scan: rescan to use it.
+- **Test connection** asks the URL's service index from the person's own backend, with that machine's login, through
+  the dependency step's own code (`DependencyAssessment.Cli.exe --check-artifactory`, as preflight does), so it
+  authenticates exactly as a scan does. It answers `answered`, `rejected ARTIFACTORY_TOKEN (401)`, `refused the login
+  (403)`, `answered 404`, `no answer within 30 seconds` or `could not be reached: ...`, with the login used and the
+  machine, never a value. It works on a saved artifactory or on a URL before it is added, changes nothing, and is open to
+  everyone signed in.
 - **Duplicates are refused** (409 `DUPLICATE_ARTIFACTORY_URL`) once the URL is normalised: scheme and host in lower case,
   no user information, query, fragment or trailing slash (the same form the scan stores,
   `FeedResolver.NormaliseUrl`). A name is unique in the engagement too (409 `DUPLICATE_ARTIFACTORY_NAME`).
@@ -68,5 +85,8 @@ password`, `token rejected, used username and password`, `token rejected` or `no
 ## API
 
 `GET|POST /api/engagements/{id}/artifactories`, `DELETE /api/engagements/{id}/artifactories/{artifactory_id}`,
+`PUT /api/engagements/{id}/artifactories/{artifactory_id}` (admins; `{"url", "name"?}` with `If-Match: <version>`),
+`POST /api/engagements/{id}/artifactory/test-connection` (`{"url"}` -> `{"ok", "url", "answer", "login", "machine",
+"warning"}`, anyone signed in),
 `GET /api/engagements/{id}/artifactory/credentials-status` (`{"machine_login": true|false, "method": "token"|"username and password"|"none"}`,
 never a value).

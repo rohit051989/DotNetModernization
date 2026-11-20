@@ -73,7 +73,9 @@ class MachineLogin(unittest.TestCase):
                              {"machine_login": False, "method": "none"})
 
 
-class Artifactories(unittest.TestCase):
+class ArtifactoryCase(unittest.TestCase):
+    """The engagement and the helpers; no tests of its own."""
+
     def setUp(self):
         self.db = SessionLocal()
         self.engagement = CommittedTestEngagement(self.db)
@@ -95,6 +97,8 @@ class Artifactories(unittest.TestCase):
         self.assertEqual(caught.exception.detail[0]["code"], code)
         return caught.exception
 
+
+class Artifactories(ArtifactoryCase):
     def test_a_artifactory_is_added_and_listed(self):
         added = self.add()
         self.assertEqual((added.name, added.url), ("nuget-private", URL))
@@ -136,6 +140,133 @@ class Artifactories(unittest.TestCase):
         self.assertEqual(context, {"artifactories": [{"name": "nuget-private", "url": URL}]})
         self.assertNotIn("pw-secret", repr(context))
         self.assertEqual(executor._artifactories_context(self.db, "solution-discovery", {"engagement_id": TEST_ENGAGEMENT_ID}), {})
+
+
+UI = "https://host.client-a.example/ui/packages"
+
+
+class FeedUrls(ArtifactoryCase):
+    """Which URLs are taken (docs/39-ARTIFACTORY.md "Rules"): a web UI page is refused, a URL of no known feed shape is
+    taken with a warning, and one saved before the check is named, and left working."""
+
+    def test_a_web_ui_address_is_refused_and_says_what_to_use(self):
+        for url in (UI, "https://host.client-a.example/ui/repos/tree/General/nuget-local", "https://host.client-a.example/UI"):
+            error = self.refused("NOT_A_NUGET_FEED", url=url)
+            self.assertEqual((error.status_code, error.detail[0]["field"]), (422, "url"))
+            self.assertIn("api/nuget/v3/<repository-key>/index.json", error.detail[0]["message"])
+        self.assertEqual(self.db.query(models.EngagementFeed).filter_by(engagement_id=TEST_ENGAGEMENT_ID).count(), 0)
+
+    def test_feed_shapes_are_taken_without_a_warning_and_anything_else_with_one(self):
+        for url, name in ((URL, "a"), ("https://host.client-a.example/artifactory/api/nuget/v3/nuget-local/", "b"),
+                          ("https://host.client-a.example/artifactory/api/nuget/nuget-v2", "c")):
+            self.assertIsNone(self.add(url=url, name=name).warning, url)
+        odd = self.add(url="https://host.client-a.example/packages", name="d")
+        self.assertIn("does not look like a NuGet feed", odd.warning)
+
+    def test_a_web_ui_address_saved_before_the_check_is_listed_with_a_warning_and_left_working(self):
+        self.db.add(models.EngagementFeed(engagement_id=TEST_ENGAGEMENT_ID, name="old", url=UI, url_normalised=UI))
+        self.db.commit()
+        listed = artifactory.list_artifactories(TEST_ENGAGEMENT_ID, self.db)
+        self.assertEqual([(f.url, "web page" in (f.warning or "")) for f in listed], [(UI, True)])
+        context = executor._artifactories_context(self.db, "dependency-assessment", {"engagement_id": TEST_ENGAGEMENT_ID})
+        self.assertEqual(context, {"artifactories": [{"name": "old", "url": UI}]})
+
+
+class EditArtifactory(ArtifactoryCase):
+    """An admin changes a saved artifactory's URL (or name), with the adding checks and a version check."""
+
+    def edit(self, row, url, name=None, version="1"):
+        return artifactory.edit_artifactory(TEST_ENGAGEMENT_ID, row.id, ArtifactoryIn(url=url, name=name), self.db,
+                                            if_match=version)
+
+    def edit_refused(self, code, row, url, **kw):
+        with self.assertRaises(HTTPException) as caught:
+            self.edit(row, url, **kw)
+        self.assertEqual(caught.exception.detail[0]["code"], code)
+        return caught.exception
+
+    def test_the_url_changes_the_name_stays_the_version_goes_up_and_it_is_recorded(self):
+        row = self.add(name="nuget-private")
+        new = "https://host.client-a.example/artifactory/api/nuget/v3/nuget-local/index.json"
+        edited = self.edit(row, new)
+        self.assertEqual((edited.id, edited.url, edited.name, edited.version), (row.id, new, "nuget-private", 2))
+        self.assertIsNotNone(edited.updated_at)
+        last = self.db.query(models.ActivityRecord).filter_by(subject_type="engagement_feed", subject_id=str(row.id)).one()
+        self.assertEqual(last.action, "artifactory.edit")
+        self.assertIn(new, last.summary)
+
+    def test_the_adding_checks_apply(self):
+        row = self.add()
+        self.edit_refused("NOT_A_NUGET_FEED", row, UI)
+        self.edit_refused("EMBEDDED_CREDENTIALS", row, "https://me:example-pw@host.client-a.example/api/nuget/v3/x/index.json")
+        self.edit_refused("INVALID_ARTIFACTORY_URL", row, "not a url")
+        other = self.add(url="http://localhost:8081/repository/other/index.json", name="other")
+        self.edit_refused("DUPLICATE_ARTIFACTORY_URL", row, other.url)
+        self.edit_refused("DUPLICATE_ARTIFACTORY_NAME", row, URL, name="OTHER")
+        self.assertEqual(self.db.get(models.EngagementFeed, row.id).url, URL)
+
+    def test_an_edit_names_its_version_and_a_stale_copy_is_refused(self):
+        row = self.add()
+        self.assertEqual(self.edit_refused("VERSION_REQUIRED", row, URL, version=None).status_code, 428)
+        self.edit(row, "https://host.client-a.example/api/nuget/v3/a/index.json")
+        stale = self.edit_refused("STALE_COPY", row, "https://host.client-a.example/api/nuget/v3/b/index.json", version="1")
+        self.assertEqual(stale.status_code, 409)
+        self.assertEqual(self.db.get(models.EngagementFeed, row.id).url, "https://host.client-a.example/api/nuget/v3/a/index.json")
+
+    def test_editing_is_for_admins_and_test_connection_for_everyone_signed_in(self):
+        from app.auth import policy
+
+        self.assertNotIn(("PUT", "/api/engagements/{engagement_id}/artifactories/{artifactory_id}"), policy.RULES)
+        self.assertEqual(policy.RULES[("POST", "/api/engagements/{engagement_id}/artifactory/test-connection")], policy.ANY)
+
+
+class TestConnection(unittest.TestCase):
+    """Test connection runs the step's own check on this backend and returns what it answered, never a value."""
+
+    def setUp(self):
+        self.db = SessionLocal()
+        self.engagement = CommittedTestEngagement(self.db)
+
+    def tearDown(self):
+        self.db.rollback()
+        self.engagement.remove()
+        self.db.close()
+
+    def ask(self, stdout: str, url: str = URL):
+        done = mock.Mock(stdout=stdout)
+        with mock.patch.object(artifactory, "CHECK") as check, mock.patch.object(artifactory.subprocess, "run", return_value=done) as run:
+            check.exists.return_value = True
+            out = artifactory.test_connection(TEST_ENGAGEMENT_ID, artifactory.ConnectionIn(url=url), self.db)
+        return out, run.call_args.args[0]
+
+    def test_each_answer_is_read_with_the_login_used(self):
+        cases = [
+            ("login: token\nOK http://localhost:8081/repository/nuget-private/index.json: answered (login: token)",
+             (True, "answered", "token")),
+            ("FAILED http://localhost:8081/repository/nuget-private/index.json: rejected ARTIFACTORY_TOKEN (401) (login: token rejected)",
+             (False, "rejected ARTIFACTORY_TOKEN (401)", "token rejected")),
+            ("FAILED http://localhost:8081/repository/nuget-private/index.json: answered 404 (login: username and password)",
+             (False, "answered 404", "username and password")),
+            ("FAILED http://localhost:8081/repository/nuget-private/index.json: could not be reached: No such host is known. (localhost:8081) (login: none)",
+             (False, "could not be reached: No such host is known. (localhost:8081)", "none")),
+        ]
+        for stdout, expected in cases:
+            out, command = self.ask(stdout)
+            self.assertEqual((out.ok, out.answer, out.login), expected)
+            self.assertEqual(out.url, URL)
+            self.assertEqual(command[1:], ["--check-artifactory", URL])
+
+    def test_no_value_ever_comes_back_and_a_web_page_is_named(self):
+        with mock.patch.dict(os.environ, {"ARTIFACTORY_TOKEN": "example-token-7Qx"}):
+            out, _ = self.ask("FAILED https://host.client-a.example/ui/packages: answered 401 example-token-7Qx (login: token)", url=UI)
+        self.assertNotIn("example-token-7Qx", out.model_dump_json())
+        self.assertIn("web page", out.warning)
+
+    def test_a_login_in_the_url_is_refused_before_anything_runs(self):
+        with mock.patch.object(artifactory.subprocess, "run") as run, self.assertRaises(HTTPException) as caught:
+            artifactory.test_connection(TEST_ENGAGEMENT_ID, artifactory.ConnectionIn(url="https://me:example-pw@host/x"), self.db)
+        self.assertEqual(caught.exception.detail[0]["code"], "EMBEDDED_CREDENTIALS")
+        run.assert_not_called()
 
 
 if __name__ == "__main__":

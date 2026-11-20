@@ -22,6 +22,21 @@ export const TABS = [
 
 export type TabSlug = (typeof TABS)[number]['slug']
 
+/** The discovery steps whose results each tab shows. A tab whose step did not complete in a failed run shows an
+ * earlier run's results, and says so. */
+export const TAB_STEPS: Partial<Record<TabSlug, string[]>> = {
+  surface: ['entry-point-inventory', 'outbound-invocation-inventory'],
+  compatibility: ['entry-point-inventory', 'outbound-invocation-inventory'],
+  projects: ['solution-discovery', 'application-fingerprinting'],
+  dependencies: ['dependency-assessment'],
+  'dependency-graph': ['dependency-hierarchy'],
+  impact: ['impact-analysis'],
+  tests: ['test-coverage-assessment'],
+  scope: ['solution-discovery', 'item-detection'],
+  'work-list': ['item-detection'],
+  conversion: ['conversion-preparation'],
+}
+
 /** A count that says what it counts: "1 project", "12 projects". Every count on a tab label or a section bar is one. */
 export function counted(n: number, noun: string, nouns = `${noun}s`): string {
   return `${n} ${n === 1 ? noun : nouns}`

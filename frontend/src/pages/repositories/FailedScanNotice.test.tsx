@@ -1,8 +1,8 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { FailedScan } from '../../types/results'
-import { FailedScanBanner, OlderResultsNotice, TAB_STEPS } from './FailedScanNotice'
-import { TABS } from './repositoryTabs'
+import { FailedScanBanner, OlderResultsNotice } from './FailedScanNotice'
+import { TAB_STEPS, TABS } from './repositoryTabs'
 
 const FAILED: FailedScan = {
   job_execution_id: 'e1',

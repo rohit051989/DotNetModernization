@@ -6,16 +6,20 @@ ARTIFACTORY_USERNAME and ARTIFACTORY_PASSWORD, which backend/.env may supply). T
 machine has, never a value.
 """
 import datetime
+import os
 import re
+import subprocess
 import uuid
+from pathlib import Path
 from urllib.parse import urlsplit
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Header
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app import models
+from app.auth import activity, machine, versions
 from app.auth import actor as actors
 from app.config import artifactory_method, settings
 from app.db import get_db
@@ -40,6 +44,30 @@ def normalise_url(url: str) -> str:
     return f"{parts.scheme.lower()}://{host}{port}{parts.path.rstrip('/')}"
 
 
+EXPECTED_SHAPE = "https://host/artifactory/api/nuget/v3/<repository-key>/index.json"
+
+
+def web_page(url: str) -> bool:
+    """A JFrog web UI address (.../ui/...), the page a person browses to: never a NuGet service index."""
+    return "/ui/" in urlsplit(url).path.lower().rstrip("/") + "/"
+
+
+def url_warning(url: str) -> str | None:
+    """What looks wrong with an artifactory URL, or None. A web UI address is refused when it is added or edited; any
+    other URL that is neither a v3 service index (.../index.json) nor an Artifactory NuGet API path (.../api/nuget/...)
+    is accepted with this warning, since some servers serve a feed elsewhere. Shown on the tab for every saved one too,
+    so one saved before the check is named, and left working."""
+    if web_page(url):
+        return (f"This is the Artifactory web page, not a NuGet feed: a scan asking it gets HTML, or 401 or 403, never "
+                f"packages. Use the repository's NuGet v3 URL, of the form {EXPECTED_SHAPE} (the repository's Set Me Up "
+                "page shows it).")
+    path = urlsplit(url).path.lower().rstrip("/")
+    if path.endswith("/index.json") or "/api/nuget/" in path + "/":
+        return None
+    return (f"This does not look like a NuGet feed URL: one ends in index.json, or has /api/nuget/ in it, as "
+            f"{EXPECTED_SHAPE}. Use Test connection to see what it answers.")
+
+
 def default_name(url: str) -> str:
     """A name from the URL: its host and last path segments that say what the artifactory is, without the index file."""
     parts = urlsplit(url)
@@ -61,6 +89,29 @@ class ArtifactoryOut(BaseModel):
     url: str
     created_by: str | None
     created_at: datetime.datetime
+    version: int = Field(1, description="The version an edit names in If-Match.")
+    updated_by: str | None = None
+    updated_at: datetime.datetime | None = None
+    warning: str | None = Field(None, description="What looks wrong with the URL, if anything (a web UI address saved "
+                                                  "before the check included): a scan will not get packages from it.")
+
+
+class ConnectionIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    url: str = Field(description="The URL to ask: a saved artifactory's, or one about to be added.")
+
+
+class ConnectionOut(BaseModel):
+    ok: bool = Field(description="Whether the service index answered 2xx.")
+    url: str = Field(description="The URL asked, normalised: never a login.")
+    answer: str = Field(description="What happened: 'answered', 'rejected ARTIFACTORY_TOKEN (401)', 'refused the login "
+                                    "(403)', 'answered 404', 'no answer within 30 seconds', 'could not be reached: ...'. "
+                                    "Never a value.")
+    login: str = Field(description="The login it was asked with: 'token', 'username and password', 'token rejected, "
+                                   "used username and password', 'token rejected' or 'none'. Never a value.")
+    machine: str = Field(description="The machine whose backend asked, with its own login.")
+    warning: str | None = None
 
 
 class CredentialsStatusOut(BaseModel):
@@ -78,7 +129,33 @@ def _engagement(db: Session, engagement_id: str) -> models.Engagement:
 
 
 def _out(row: models.EngagementFeed) -> ArtifactoryOut:
-    return ArtifactoryOut(id=row.id, name=row.name, url=row.url, created_by=row.created_by, created_at=row.created_at)
+    return ArtifactoryOut(id=row.id, name=row.name, url=row.url, created_by=row.created_by, created_at=row.created_at,
+                          version=row.version or 1, updated_by=row.updated_by, updated_at=row.updated_at,
+                          warning=url_warning(row.url))
+
+
+def _url(url: str) -> str:
+    """The URL normalised: no login in it, absolute http(s). 422 otherwise."""
+    if urlsplit(url.strip()).username or urlsplit(url.strip()).password:
+        raise error(422, "Leave the login out of the URL: it comes from NuGet.config or the environment.", "url",
+                    "EMBEDDED_CREDENTIALS")
+    try:
+        return normalise_url(url)
+    except ValueError as exc:
+        raise error(422, str(exc), "url", "INVALID_ARTIFACTORY_URL") from None
+
+
+def _checked(payload: "ArtifactoryIn") -> tuple[str, str | None]:
+    """The URL normalised and the name given (None when blank), with the checks adding and editing share: no login in
+    the URL, an absolute http(s) URL, not a web UI page (422 NOT_A_NUGET_FEED), a valid name."""
+    normalised = _url(payload.url)
+    if web_page(normalised):
+        raise error(422, url_warning(normalised), "url", "NOT_A_NUGET_FEED")
+    name = (payload.name or "").strip() or None
+    if name is not None and not _NAME.match(name):
+        raise error(422, "A name is letters, digits, dots, dashes, underscores and spaces, up to 64 characters.", "name",
+                    "INVALID_ARTIFACTORY_NAME")
+    return normalised, name
 
 
 def live_artifactories(db: Session, engagement_id: str) -> list[models.EngagementFeed]:
@@ -102,14 +179,8 @@ def add_artifactory(engagement_id: str, payload: ArtifactoryIn, db: Session = De
     """Adds an artifactory the engagement's next scans ask. No login is taken here: NuGet.config or this machine's environment
     supplies it. A URL already listed is refused (409 DUPLICATE_ARTIFACTORY_URL)."""
     _engagement(db, engagement_id)
-    if urlsplit(payload.url.strip()).username or urlsplit(payload.url.strip()).password:
-        raise error(422, "Leave the login out of the URL: it comes from NuGet.config or the environment.", "url",
-                    "EMBEDDED_CREDENTIALS")
-    try:
-        normalised = normalise_url(payload.url)
-    except ValueError as exc:
-        raise error(422, str(exc), "url", "INVALID_ARTIFACTORY_URL") from None
-    name = (payload.name or "").strip() or default_name(normalised)
+    normalised, name = _checked(payload)
+    name = name or default_name(normalised)
     if not _NAME.match(name):
         raise error(422, "A name is letters, digits, dots, dashes, underscores and spaces, up to 64 characters.", "name",
                     "INVALID_ARTIFACTORY_NAME")
@@ -127,6 +198,51 @@ def add_artifactory(engagement_id: str, payload: ArtifactoryIn, db: Session = De
     except IntegrityError:               # two people adding the same URL at once: the unique index decides
         db.rollback()
         raise error(409, "This artifactory URL or name is already added to the engagement.", "url", "DUPLICATE_ARTIFACTORY_URL") from None
+    db.refresh(row)
+    return _out(row)
+
+
+@router.put("/{engagement_id}/artifactories/{artifactory_id}", response_model=ArtifactoryOut,
+            operation_id="edit_engagement_artifactory", summary="Change a saved artifactory's URL or name (admins)",
+            responses={404: _NOT_FOUND,
+                       409: {"model": ErrorResponse, "description": "Another artifactory has the URL or name, or the copy "
+                                                                    "edited is stale (STALE_COPY)."},
+                       422: {"model": ErrorResponse, "description": "The URL or name is not valid."},
+                       428: {"model": ErrorResponse, "description": "If-Match is missing."}})
+def edit_artifactory(engagement_id: str, artifactory_id: uuid.UUID, payload: ArtifactoryIn, db: Session = Depends(get_db),
+                     if_match: str | None = Header(None, alias="If-Match")):
+    """The same checks as adding one; the name is kept when none is given. The edit names the version it changes
+    (If-Match), and one made from a stale copy is refused (app.auth.versions). Applies to the next scan: rescan to use
+    it."""
+    _engagement(db, engagement_id)
+    row = versions.locked(db, models.EngagementFeed, artifactory_id)
+    if row is None or row.engagement_id != engagement_id or row.deleted_at is not None:
+        raise error(404, "Artifactory not found", code="NOT_FOUND")
+    versions.check(db, row.version, if_match, "engagement_feed", row.id, "this artifactory")
+    normalised, name = _checked(payload)
+    name = name or row.name
+    others = [f for f in live_artifactories(db, engagement_id) if f.id != row.id]
+    if any(f.url_normalised == normalised for f in others):
+        raise error(409, "This artifactory URL is already added to the engagement.", "url", "DUPLICATE_ARTIFACTORY_URL")
+    if any(f.name.lower() == name.lower() for f in others):
+        raise error(409, f"An artifactory named '{name}' is already added: choose another name.", "name",
+                    "DUPLICATE_ARTIFACTORY_NAME")
+    if (row.url_normalised, row.name) == (normalised, name):
+        return _out(row)
+    before = row.url
+    person = actors.current()
+    row.url, row.url_normalised, row.name = normalised, normalised, name
+    row.version = (row.version or 1) + 1
+    row.updated_at = datetime.datetime.now(datetime.timezone.utc)
+    row.updated_by = person.label() if person else None
+    activity.record(db, "artifactory.edit", "engagement_feed", str(row.id),
+                    f"{engagement_id}: artifactory '{name}', {before} -> {normalised}")
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise error(409, "This artifactory URL or name is already added to the engagement.", "url",
+                    "DUPLICATE_ARTIFACTORY_URL") from None
     db.refresh(row)
     return _out(row)
 
@@ -155,3 +271,62 @@ def credentials_status(engagement_id: str, db: Session = Depends(get_db)):
     # As before the token: a username and a non-empty password make the pair.
     method = artifactory_method(token, settings.artifactory_username, password or None)
     return CredentialsStatusOut(machine_login=method != "none", method=method)
+
+
+# ---------------------------------------------------------------- Test connection
+
+CHECK = (Path(__file__).resolve().parents[3] / "steps" / "step-003-fingerprinting" / "publish" / "dependency-assessment"
+         / "DependencyAssessment.Cli.exe")
+_LOGIN = re.compile(r" \(login: ([^()]*)\)$")
+
+
+def _secrets() -> list[str]:
+    """The values that must never leave this backend: the token and the password, from .env or the environment."""
+    values = [settings.artifactory_token.get_secret_value() if settings.artifactory_token else None,
+              settings.artifactory_password.get_secret_value() if settings.artifactory_password else None,
+              os.environ.get("ARTIFACTORY_TOKEN"), os.environ.get("ARTIFACTORY_PASSWORD")]
+    return sorted({v.strip() for v in values if v and v.strip()}, key=len, reverse=True)
+
+
+def parse_check(line: str) -> tuple[bool, str, str, str]:
+    """(ok, normalised url, answer, login) from one line of `DependencyAssessment.Cli.exe --check-artifactory`:
+    "OK <url>: answered (login: token)", "FAILED <url>: rejected ARTIFACTORY_TOKEN (401) (login: token rejected)"."""
+    ok = line.startswith("OK ")
+    rest = line[3:] if ok else line.removeprefix("FAILED ")
+    login = "none"
+    if found := _LOGIN.search(rest):
+        login, rest = found.group(1), rest[:found.start()]
+    url, _, answer = rest.partition(": ")
+    return ok, url, answer.strip(), login
+
+
+@router.post("/{engagement_id}/artifactory/test-connection", response_model=ConnectionOut,
+             operation_id="test_artifactory_connection",
+             summary="Ask an artifactory's service index with this machine's login, and say what it answered",
+             responses={404: _NOT_FOUND,
+                        422: {"model": ErrorResponse, "description": "Not an http(s) URL, or a login in it."},
+                        503: {"model": ErrorResponse, "description": "The step programs are not published here, or the "
+                                                                     "check could not run."}})
+def test_connection(engagement_id: str, payload: ConnectionIn, db: Session = Depends(get_db)):
+    """Runs on the caller's own backend, with that machine's login (ARTIFACTORY_TOKEN, or ARTIFACTORY_USERNAME and
+    ARTIFACTORY_PASSWORD, or none), through the dependency step's own code (`DependencyAssessment.Cli.exe
+    --check-artifactory`), so it authenticates exactly as a scan does. Says what the service index answered and which
+    login was used, never a value. A URL about to be added can be tested before it is saved. Changes nothing."""
+    _engagement(db, engagement_id)
+    normalised = _url(payload.url)
+    if not CHECK.exists():
+        raise error(503, "The step programs are not published on this machine yet: run bootstrap, then test again.",
+                    code="CHECK_NOT_AVAILABLE")
+    try:
+        done = subprocess.run([str(CHECK), "--check-artifactory", payload.url.strip()], capture_output=True, text=True,
+                              encoding="utf-8", errors="replace", timeout=90)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise error(503, f"The check could not run: {type(exc).__name__}.", code="CHECK_NOT_AVAILABLE") from None
+    line = next((line for line in done.stdout.splitlines() if line.startswith(("OK ", "FAILED "))), None)
+    if line is None:
+        raise error(503, "The check gave no answer.", code="CHECK_NOT_AVAILABLE")
+    for secret in _secrets():           # the step never writes one; this backend makes sure
+        line = line.replace(secret, "***")
+    ok, _, answer, login = parse_check(line)
+    return ConnectionOut(ok=ok, url=normalised, answer=answer, login=login, machine=machine.hostname(),
+                         warning=url_warning(normalised))

@@ -1803,6 +1803,13 @@ hand. Everything else an update brings, bootstrap applies by itself. Apply every
 had (`previousCommit` in `PLATFORM_SOURCE.json` after the update; in our own installs, the commit before step 5 of
 the appendix), oldest of them first. Entries up to 2026-10-23 were the notes of releases 2 to 7, which are named so.
 
+#### 2026-11-19, (commit of "Artifactory tab: NuGet feed URLs, editing a saved URL, Test connection"): check the URLs
+
+Bootstrap adds `engagement_feeds.version`, `updated_at` and `updated_by` by itself; every saved artifactory keeps working.
+Open each engagement's Artifactory tab: an artifactory saved with the Artifactory web page's address (`.../ui/...`) is now
+marked as not a NuGet feed. An admin changes it, with Edit, to the repository's NuGet v3 URL
+(`https://host/artifactory/api/nuget/v3/<repository-key>/index.json`); then use Test connection, and rescan.
+
 #### 2026-11-19, (commit of "Dependency assessment: an engagement artifactory in its output"): rescan after listing an artifactory
 
 Every scan of a repository whose engagement lists an artifactory on the Artifactory tab failed at dependency-assessment
