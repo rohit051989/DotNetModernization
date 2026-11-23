@@ -36,8 +36,9 @@ public sealed class FingerprintPipeline(SignalRegistry registry, IReadOnlyList<I
     // service is exposed on; WCF_CLIENT_BINDING_USAGE also recognises the MSMQ and peer bindings.
     // 1.9.0 (registry 1.14.0): Serilog sinks in code (SERILOG_FILE_SINK_USAGE, SERILOG_CONSOLE_SINK_USAGE) and the
     // Console sink in appsettings (SERILOG_CONSOLE_SINK_CONFIG).
+    // 1.10.0 (registry 1.15.0): DATETIME_NOW_USAGE also matches TimeZoneInfo.Local, DateTimeKind.Local and ToLocalTime().
     // Matches the application-fingerprinting step registration version.
-    public const string ScannerVersion = "1.9.0";
+    public const string ScannerVersion = "1.10.0";
 
     // The registry is the single source of truth for evidence_kind per
     // signal name (25-STANDARDS-AND-VIEWPOINTS.md Part A3 addendum) —

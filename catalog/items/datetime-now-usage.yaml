@@ -1,6 +1,6 @@
 category: framework
 deleted: false
-description: DateTime.Now and DateTime.Today return host-local time. On the Windows servers that is the site time zone; in a default Linux container it is UTC, so timestamps, schedules and date boundaries shift silently after migration.
+description: DateTime.Now, DateTime.Today and DateTimeOffset.Now return host-local time, and ToLocalTime(), TimeZoneInfo.Local and DateTimeKind.Local depend on the host's time zone. On the Windows servers that is the site time zone; in a default Linux container it is UTC, so timestamps, schedules and date boundaries shift silently after migration.
 detection:
   match:
     all:
@@ -15,9 +15,10 @@ detection:
     group_by: source_path
     signal: DATETIME_NOW_USAGE
 engine_guidance: |-
-  `DateTime.Now` and `DateTime.Today` return the host's local time. On the Windows servers that is
-  the site's time zone; in a Linux container it is UTC unless set, so timestamps, schedules and
-  date boundaries silently shift by the time-zone offset.
+  `DateTime.Now`, `DateTime.Today` and `DateTimeOffset.Now` return the host's local time, and
+  `ToLocalTime()`, `TimeZoneInfo.Local` and `DateTimeKind.Local` depend on the host's time zone. On
+  the Windows servers that is the site's time zone; in a Linux container it is UTC unless set, so
+  timestamps, schedules and date boundaries silently shift by the time-zone offset.
 excluded_roles: []
 id: datetime-now-usage
 name: DateTime.Now rather than UtcNow
@@ -59,5 +60,36 @@ resolutions:
   notes: null
   status: active
   target_description: UTC throughout; TimeProvider for testability
+- consumer_impact: medium
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: The current time only from UTC sources (TimeProvider, DateTime.UtcNow, DateTimeOffset.UtcNow); values returned and logged carry UTC explicitly; no dependence on the host's zone. Local time only where the business needs it, with a named zone, flagged. Stored or compared times are flagged for a decision, not changed.
+  effort: high
+  engine_guidance: |-
+    Make every time in this code UTC, whatever the host's time zone. Add a characterization test for
+    each listed place first (skill `writing-characterization-tests`). Then:
+    1. Take the current time only from a UTC source: `TimeProvider` (injected where the code uses
+       dependency injection, `TimeProvider.System` elsewhere), `DateTime.UtcNow` or
+       `DateTimeOffset.UtcNow`. `DateTime.Today` becomes the UTC date (`DateTime.UtcNow.Date`).
+    2. A value an API returns or a log writes carries UTC explicitly: `DateTimeKind.Utc`, or a
+       `DateTimeOffset` with offset zero, so it serialises with `Z` or `+00:00`.
+    3. Remove every dependence on the host's zone: `TimeZoneInfo.Local`, `ToLocalTime()` and
+       `DateTimeKind.Local`.
+    4. Do not set the container's `TZ` as the fix: the code must give UTC whatever `TZ` is.
+    5. Where the business genuinely needs local time (a cut-off, a business date, a displayed time),
+       convert explicitly with a named time zone (`TimeZoneInfo.FindSystemTimeZoneById` with an IANA
+       id from configuration), never the host's, and report the place in the task's notes.
+    6. Stop at every place where a time is stored or compared with stored values (a database, a
+       file, a message): change nothing there, because existing stored values may be local times.
+       List each such place in the task's notes, under "Stored times for a decision", with the file,
+       the line and what is stored or compared.
+  id: utc-everywhere
+  is_default: false
+  linux_compatible: true
+  name: UTC everywhere, independent of the host's time zone
+  notes: 'Setting the container''s TZ is not the fix. Existing stored values may be local times: their places are listed for a decision.'
+  status: active
+  target_description: UTC from TimeProvider or UtcNow everywhere; nothing depends on the host's time zone
 scope: occurrence
 status: active

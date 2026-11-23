@@ -66,6 +66,8 @@ export interface WorkItemTotals {
   possible_rows: number
   out_of_scope_items?: number
   out_of_scope_projects?: number
+  /** Found work items of items the engagement decided are not applicable: kept in the list, marked, never open work. */
+  not_applicable_items?: number
 }
 export const workItems = (artifactId: string, showAll: boolean) => pages(`${result(artifactId)}/work-items`, { show_all: showAll })
 export const workItemFiles = (artifactId: string, projectId: string, itemId: string, byFile: boolean) =>

@@ -470,6 +470,34 @@ also requires both `forcing_perspective` and `forcing_rationale`.
 Also retained: warn when the selected resolution has `linux_compatible: false` while
 the engagement targets Linux.
 
+### Not applicable (2026-11-23)
+
+A decision's `outcome` is `resolve` (it chooses a resolution: every decision before this, and the default) or
+`not_applicable`: the item does not apply to this engagement. The master catalog serves every engagement, so an item one
+engagement does not want is never deleted or deprecated for it; the engagement decides it is not applicable instead.
+Engagement data only (CLAUDE.md rule 9). Migration `c6e1a9d4f2b8` adds the column, every existing row `resolve`.
+
+- **The decision:** a not-applicable decision chooses no resolution (`resolution_id` null, refused otherwise:
+  `NOT_APPLICABLE_HAS_RESOLUTION`, and a database check). Approving it needs a rationale, an approver and a date, as
+  any approval; never the forcing pair, as no resolution is chosen. It is recorded, superseded and versioned like any
+  other decision, through the same endpoints (`outcome` in the upsert body).
+- **Only an approved, live one takes effect** (`app.items.applicability.not_applicable`).
+- **Its findings are kept.** Discovery still runs its signals and item detection still writes its occurrences, so
+  reversing the decision needs no code change. The work list keeps each row, marked "not applicable for this
+  engagement", and counts them apart (`not_applicable_items`), never as open work; the dashboard leaves them out of
+  its work counts.
+- **It is no work.** Nothing about the item goes into either engine's conversion inputs: `collect()` sets its
+  findings aside (`model["not_applicable"]`, which nothing renders), so neither the instructions, the decision sheet,
+  the addendum nor the runbook names it, for GitHub Copilot or Claude Code alike. The verifier counts its findings
+  apart (`rediscovery.notApplicable`, "not applicable for this engagement, not counted"), never as remaining or
+  resolved. impact-analysis 2.4.0 computes no impact for it.
+- **Reversing it:** supersede the decision, or move it back to `resolve`. The item is work again at the next
+  preparation of the conversion; the findings were never dropped, so no rescan is needed beyond the usual.
+
+The verifier's own check that every configuration file still parses (`configfiles`, "Configuration files") is not a
+work item and is unaffected: it guards against a conversion breaking a file, whatever the engagement decided about the
+`unparseable-config-file` item.
+
 ---
 
 ---

@@ -782,6 +782,9 @@ def verify(db, *, engagement_id: str, slug: str, base: str, ref: str, label: str
     rd["releasesSince"], rd["packageTargets"] = releases_since, targets_from
     rd["carriedByDeployment"] = carried
     rd["outOfScope"] = [list(k) for k in items_left_out]
+    # Items the engagement decided are not applicable: neither remaining nor resolved, counted apart.
+    not_applicable = sorted(rediscovery.work_items(base_snap["model"], "not_applicable"))
+    rd["notApplicable"] = [list(k) for k in not_applicable]
     detail = (f"{len(resolved)} of {len(before_items)} work item(s) resolved, {len(remaining)} remaining, "
               f"{len(introduced)} introduced"
               + (f", {len(not_checked)} not checked (a place in a configuration file that does not parse)"
@@ -789,6 +792,8 @@ def verify(db, *, engagement_id: str, slug: str, base: str, ref: str, label: str
               + f"; {len(off_target)} project(s) not on {target}"
               + (f"; {len(items_left_out)} work item(s) in {len(left_out)} project(s) out of scope, not counted"
                  if left_out else "")
+              + (f"; {len(not_applicable)} finding(s) of {len({i for _, i in not_applicable})} item(s) not applicable "
+                 "for this engagement, not counted" if not_applicable else "")
               + (f"; {len(rd['newerThanSnapshot'])} package(s) newer than snapshot, counted as upgraded"
                  if rd["newerThanSnapshot"] else "")
               + (f"; {len(releases_since)} package(s) at the version the inputs asked for, with a newer release since "

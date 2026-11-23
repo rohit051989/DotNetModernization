@@ -156,10 +156,11 @@ items:
     scope: occurrence
     category: framework
     description: >-
-      DateTime.Now and DateTime.Today return host-local time. On the Windows
-      servers that is the site time zone; in a default Linux container it is
-      UTC, so timestamps, schedules and date boundaries shift silently after
-      migration.
+      DateTime.Now, DateTime.Today and DateTimeOffset.Now return host-local
+      time, and ToLocalTime(), TimeZoneInfo.Local and DateTimeKind.Local depend
+      on the host's time zone. On the Windows servers that is the site time
+      zone; in a default Linux container it is UTC, so timestamps, schedules
+      and date boundaries shift silently after migration.
     detection:
       match:
         all:
@@ -184,6 +185,17 @@ items:
         target_description: "UTC throughout; TimeProvider for testability"
         consumer_impact: medium
         effort: high
+      - id: utc-everywhere
+        name: "UTC everywhere, independent of the host's time zone"
+        description: >-
+          The current time only from UTC sources (TimeProvider, DateTime.UtcNow, DateTimeOffset.UtcNow);
+          values returned and logged carry UTC explicitly; no dependence on the host's zone. Local time
+          only where the business needs it, with a named zone, flagged. Stored or compared times are
+          flagged for a decision, not changed.
+        target_description: "UTC from TimeProvider or UtcNow everywhere; nothing depends on the host's time zone"
+        consumer_impact: medium
+        effort: high
+        notes: "Setting the container's TZ is not the fix. Existing stored values may be local times: their places are listed for a decision."
 
   - id: system-drawing-common
     name: "System.Drawing, unsupported on Linux"

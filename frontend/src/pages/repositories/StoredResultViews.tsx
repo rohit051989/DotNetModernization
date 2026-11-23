@@ -593,6 +593,8 @@ interface StoredWorkRow {
   note: ItemNote | null
   /** Its project is left out of the conversion's scope: kept in the list, marked. */
   outOfScope?: boolean
+  /** The engagement decided the item is not applicable: kept in the list, marked, never open work. */
+  notApplicable?: boolean
 }
 
 /** A value-grouped item's file, with its values. */
@@ -616,7 +618,10 @@ export function StoredWorkListView({ artifactId, head, localPath, withDecisions 
 
   const occurrences = totals?.occurrence_rows ?? 0
   const possibleRows = totals?.possible_rows ?? 0
-  const { workItems: counted, possible } = workItemFigures(summary)
+  const { workItems: found, possible } = workItemFigures(summary)
+  // An item the engagement decided is not applicable is no open work: counted apart.
+  const notApplicable = totals?.not_applicable_items ?? 0
+  const counted = Math.max(found - notApplicable, 0)
 
   return (
     <div className="space-y-2">
@@ -633,6 +638,11 @@ export function StoredWorkListView({ artifactId, head, localPath, withDecisions 
         {(totals?.out_of_scope_items ?? 0) > 0 && (
           <Chip tone="amber" title="Found in projects left out of the conversion's scope (the Scope tab): listed, marked, and not converted">
             {totals!.out_of_scope_items} out of scope, in {totals!.out_of_scope_projects} project{totals!.out_of_scope_projects === 1 ? '' : 's'}
+          </Chip>
+        )}
+        {notApplicable > 0 && (
+          <Chip title="Found, but the engagement decided the item is not applicable (its decision): listed, marked, and neither converted nor counted as work">
+            {notApplicable} not applicable for this engagement
           </Chip>
         )}
         <div className="ml-auto flex flex-wrap items-center gap-3">
@@ -674,12 +684,17 @@ function StoredWorkRowView({ artifactId, row: g, localPath, withDecisions }: { a
   const files = workItemFiles(artifactId, g.projectId, g.itemId, byValue)
   const key = `${artifactId}|${g.projectId}|${g.itemId}`
   return (
-    <tr className={`border-b border-neutral-100 align-top last:border-0 ${g.outOfScope ? 'bg-neutral-50 text-neutral-500' : ''}`}>
+    <tr className={`border-b border-neutral-100 align-top last:border-0 ${g.outOfScope || g.notApplicable ? 'bg-neutral-50 text-neutral-500' : ''}`}>
       <td className="py-1.5 pr-3">
         <span className="font-medium text-neutral-800">{g.name ?? g.itemId}</span>
         {g.outOfScope && (
           <span className="ml-1.5 rounded bg-neutral-200 px-1.5 text-[11px] text-neutral-700" title="Its project is left out of the conversion's scope (the Scope tab): not converted">
             out of scope
+          </span>
+        )}
+        {g.notApplicable && (
+          <span className="ml-1.5 rounded bg-neutral-200 px-1.5 text-[11px] text-neutral-700" title="The engagement decided this item is not applicable (its decision): not converted, not counted as work">
+            not applicable for this engagement
           </span>
         )}
         {g.name && <span className="block font-mono text-[11px] text-neutral-400">{g.itemId}</span>}

@@ -131,7 +131,10 @@ public static class ImpactCli
         }
 
         var engagementId = await database.GetEngagementIdAsync(inventory.RepositoryId, CancellationToken.None);
-        var workItems = WorkItems(JsonDocument.Parse(await ReadAsync(refs["item-occurrences"])).RootElement);
+        // An item the engagement decided is not applicable is no work: no impact is computed for it (2.4.0).
+        var notApplicable = await database.GetNotApplicableAsync(engagementId, CancellationToken.None);
+        var workItems = WorkItems(JsonDocument.Parse(await ReadAsync(refs["item-occurrences"])).RootElement)
+            .Where(w => !notApplicable.Contains(w.ItemId)).ToList();
         var items = await database.GetCatalogAsync(workItems.Select(w => w.ItemId).Distinct().ToList(), CancellationToken.None);
         var decisions = await database.GetDecisionsAsync(engagementId, CancellationToken.None);
         var input = new ImpactInput(

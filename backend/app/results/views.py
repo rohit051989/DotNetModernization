@@ -425,6 +425,8 @@ class WorkItemTotalsOut(BaseModel):
     out_of_scope_items: int = Field(0, description="Found work items in projects left out of the conversion's scope "
                                                    "(app.scope): kept in the list, marked, never deleted.")
     out_of_scope_projects: int = Field(0, description="Projects left out of the conversion's scope.")
+    not_applicable_items: int = Field(0, description="Found work items of items the engagement decided are not applicable "
+                                                     "(app.items.applicability): kept in the list, marked, never open work.")
 
 
 def _left_out(db: Session, repository_id) -> list[str]:
@@ -444,13 +446,25 @@ def _left_out(db: Session, repository_id) -> list[str]:
 def get_work_item_totals(artifact_id: uuid.UUID, db: Session = Depends(get_db)):
     stored = _stored(db, artifact_id, "item-occurrences")
     left_out = _left_out(db, stored.repository_id)
+    na = sorted(_not_applicable(db, stored.repository_id))
     row = db.execute(text(f"""
         select coalesce(sum(greatest(files, 1)), 0) as occurrences, coalesce(sum(possible), 0) as possible,
-               count(*) filter (where project = any(cast(:left as text[])) and not (files > 0 and possible = files)) as out_of_scope
+               count(*) filter (where project = any(cast(:left as text[])) and not (files > 0 and possible = files)
+                                and not item_id = any(cast(:na as text[]))) as out_of_scope,
+               count(*) filter (where item_id = any(cast(:na as text[])) and not (files > 0 and possible = files)) as not_applicable
         from ({_GROUPS}) g where state = 'found'
-    """), {"a": artifact_id, "left": left_out}).one()
+    """), {"a": artifact_id, "left": left_out, "na": na}).one()
     return WorkItemTotalsOut(occurrence_rows=row.occurrences, possible_rows=row.possible,
-                             out_of_scope_items=row.out_of_scope, out_of_scope_projects=len(left_out))
+                             out_of_scope_items=row.out_of_scope, out_of_scope_projects=len(left_out),
+                             not_applicable_items=row.not_applicable)
+
+
+def _not_applicable(db: Session, repository_id) -> dict[str, dict]:
+    """Items the repository's engagement decided are not applicable (app.items.applicability)."""
+    from app.items import applicability
+
+    repository = db.get(models.Repository, repository_id) if repository_id else None
+    return applicability.not_applicable(db, repository.engagement_id) if repository else {}
 
 
 def _work_file(occurrence: dict) -> dict:
@@ -492,7 +506,8 @@ def list_work_items(artifact_id: uuid.UUID, show_all: bool = Query(False), pagin
     the item, and what another item's decision means for it on this project). Found first, then not checked; without
     show_all, only those two. The filter matches the item's name and id, the project's path, and the methods and
     types the item was found in. `outOfScope`: the
-    project is left out of the repository's conversion scope (app.scope); the row stays, marked."""
+    project is left out of the repository's conversion scope (app.scope); the row stays, marked. `notApplicable`: the
+    engagement decided the item is not applicable (app.items.applicability); the row stays, marked, and is no work."""
     stored = _stored(db, artifact_id, "item-occurrences")
     # A filter also reaches the methods and types the item was found in (each occurrence's evidence); built only then,
     # as it reads every occurrence.
@@ -517,6 +532,8 @@ def list_work_items(artifact_id: uuid.UUID, show_all: bool = Query(False), pagin
     decisions = item_decisions.work_list_decisions(db, stored.repository_id, project_ids=projects) if stored.repository_id else None
     # Part O: a row of a project left out of the conversion's scope stays in the list, marked out of scope.
     left_out = set(_left_out(db, stored.repository_id))
+    # A row of an item the engagement decided is not applicable stays in the list, marked; it is no open work.
+    not_applicable = _not_applicable(db, stored.repository_id)
     items = []
     for row in result.items:
         item = row["item"]
@@ -545,6 +562,7 @@ def list_work_items(artifact_id: uuid.UUID, show_all: bool = Query(False), pagin
             "decision": decision.model_dump(mode="json") if decision is not None else None,
             "note": note.model_dump(mode="json") if note is not None else None,
             "outOfScope": (row["project"] or "") in left_out,
+            "notApplicable": item_id in not_applicable,
         })
     return PageOut(total=result.total, matching=result.matching, offset=result.offset, items=items)
 

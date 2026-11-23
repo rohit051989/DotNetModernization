@@ -12,6 +12,7 @@ import {
   FORCING_PERSPECTIVES,
   type CatalogItem,
   type EditableDecisionStatus,
+  type EngagementDecisionOutcome,
   type EngagementDecision,
   type EngagementDecisionUpsertInput,
   type ItemResolution,
@@ -28,6 +29,7 @@ type TextField = 'rationale' | 'forcing_rationale' | 'evaluation_notes' | 'appro
 const TEXT_FIELDS: TextField[] = ['rationale', 'forcing_rationale', 'evaluation_notes', 'approver_name', 'approver_role']
 
 interface FormState {
+  outcome: EngagementDecisionOutcome
   resolution_id: string
   candidates_considered: string[]
   rationale: string
@@ -42,6 +44,7 @@ interface FormState {
 
 function toFormState(decision: EngagementDecision | null, menu: ItemResolution[]): FormState {
   return {
+    outcome: decision?.outcome ?? 'resolve',
     resolution_id: decision?.resolution_id ?? '',
     candidates_considered: decision?.candidates_considered ?? liveResolutions(menu).map((r) => r.id),
     rationale: decision?.rationale ?? '',
@@ -77,7 +80,8 @@ export function ItemDecisionForm({ item, engagement, resolutions, decision, onCl
   // Selectable: active resolutions, plus the current choice even if it has
   // since been deprecated, so an existing decision still renders.
   const selectable = menu.filter((r) => r.status === 'active' || r.id === decision?.resolution_id)
-  const selected = menu.find((r) => r.id === form.resolution_id) ?? null
+  const notApplicable = form.outcome === 'not_applicable'
+  const selected = notApplicable ? null : (menu.find((r) => r.id === form.resolution_id) ?? null)
   const lowest = lowestImpactResolution(menu)
   const forcingRequired =
     !!selected && !!lowest && CONSUMER_IMPACT_RANK[selected.consumer_impact] > CONSUMER_IMPACT_RANK[lowest.consumer_impact]
@@ -132,7 +136,9 @@ export function ItemDecisionForm({ item, engagement, resolutions, decision, onCl
     const orNull = (value: string) => (value.trim() === '' ? null : value.trim())
     const changed = (next: unknown, saved: unknown) => (decision ? next !== (saved ?? null) : next !== null)
 
-    const resolutionId = form.resolution_id || null
+    if (form.outcome !== (decision?.outcome ?? 'resolve')) payload.outcome = form.outcome
+    // A not-applicable decision chooses no resolution.
+    const resolutionId = notApplicable ? null : form.resolution_id || null
     if (changed(resolutionId, decision?.resolution_id)) payload.resolution_id = resolutionId
 
     const perspective = form.forcing_perspective || null
@@ -216,6 +222,29 @@ export function ItemDecisionForm({ item, engagement, resolutions, decision, onCl
               </div>
             </div>
 
+            <Field label="Decision" error={fieldErrors.outcome}>
+              <div className="flex flex-wrap gap-x-4 gap-y-1.5 text-sm text-neutral-700">
+                {(
+                  [
+                    ['resolve', 'Choose a resolution'],
+                    ['not_applicable', 'Not applicable for this engagement'],
+                  ] as const
+                ).map(([value, label]) => (
+                  <label key={value} className="flex items-center gap-1.5">
+                    <input type="radio" name="outcome" checked={form.outcome === value} onChange={() => update('outcome', value)} />
+                    {label}
+                  </label>
+                ))}
+              </div>
+              {notApplicable && (
+                <p className="mt-1 text-xs text-neutral-500">
+                  The item&apos;s findings are kept and marked, counted apart, and are no work: nothing about it goes into the
+                  conversion, and the verifier does not count it. Change this decision to bring the item back; no rescan is needed.
+                </p>
+              )}
+            </Field>
+
+            {!notApplicable && (
             <Field label={`Chosen resolution${requiredMark(approving)}`} error={fieldErrors.resolution_id}>
               <div
                 className={`space-y-1.5 rounded border p-2 ${
@@ -271,6 +300,7 @@ export function ItemDecisionForm({ item, engagement, resolutions, decision, onCl
                 )}
               </div>
             </Field>
+            )}
 
             {linuxWarning && selected && (
               <div className="rounded border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800">

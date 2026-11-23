@@ -63,6 +63,11 @@ def _engagement_data(db) -> dict:
 # an edited one is left as it is and reported as a conflict, for a person to correct.
 WORDING_CORRECTIONS = ("serilog-file-sink", "wcf-nettcp-client")
 
+# Items a release added to: a resolution, or wording for signals it now detects. Applied from the export the same way
+# (baseline.seed_row): a new resolution is inserted, an unedited row takes the new wording, an edited one is reported
+# as a conflict and left as it is. datetime-now-usage: the utc-everywhere resolution, and the related forms detected.
+CATALOG_ADDITIONS = ("datetime-now-usage",)
+
 
 def seed_from_export_or_database() -> dict | None:
     """Runs the export or database source and returns its report, or None
@@ -77,7 +82,8 @@ def seed_from_export_or_database() -> dict | None:
         if source == "export":
             report["baseline"] = catalog_export.import_files(db, files)
         else:
-            corrected = {f"{item}.yaml": files[f"{item}.yaml"] for item in WORDING_CORRECTIONS if f"{item}.yaml" in files}
+            corrected = {f"{item}.yaml": files[f"{item}.yaml"] for item in WORDING_CORRECTIONS + CATALOG_ADDITIONS
+                         if f"{item}.yaml" in files}
             report["corrections"] = catalog_export.import_files(db, corrected) if corrected else baseline.new_report()
         # A catalog identical to the committed export, with no export recorded (a fresh install imported it): record
         # it, so staleness reads "current", not "not in git".
@@ -106,7 +112,8 @@ def print_report(report: dict) -> None:
               "authoritative over it (merge an export explicitly with python -m app.items.catalog_export import)")
         corrections = report.get("corrections")
         if corrections is not None:
-            print(f"  wording corrections ({', '.join(WORDING_CORRECTIONS)}): {baseline.summary(corrections)}")
+            print(f"  wording corrections and additions ({', '.join(WORDING_CORRECTIONS + CATALOG_ADDITIONS)}): "
+                  f"{baseline.summary(corrections)}")
             if corrections["conflicts"]:
                 print(baseline.format_conflicts(corrections["conflicts"]))
     engagement = report["engagement"]

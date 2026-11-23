@@ -82,6 +82,12 @@ def collect(db: Session, repository: models.Repository) -> dict:
         if p not in excluded]
     current = sorted({p["framework"] for p in projects if p["framework"]})
 
+    # An item the engagement decided is not applicable (app.items.applicability) is no work: nothing about it goes into
+    # either engine's inputs. Its findings are kept apart, for the verifier to count separately.
+    from app.items import applicability
+    not_applicable = applicability.not_applicable(db, engagement.id)
+    set_aside: dict[str, list[dict]] = {}
+
     occurrences: dict[str, list[dict]] = {}
     for item_id, project, file_path, value, certainty, evidence in db.execute(text("""
             SELECT o.item_id, p.relative_path, o.file_path, o.value, o.certainty, o.evidence
@@ -90,8 +96,8 @@ def collect(db: Session, repository: models.Repository) -> dict:
             ORDER BY o.item_id, p.relative_path, o.file_path NULLS FIRST, o.value NULLS FIRST"""), {"r": r}):
         if project in excluded:
             continue
-        occurrences.setdefault(item_id, []).append({
-            "project": project, "file": file_path, "value": value, "certainty": certainty, "lines": _lines(evidence)})
+        found = {"project": project, "file": file_path, "value": value, "certainty": certainty, "lines": _lines(evidence)}
+        (set_aside if item_id in not_applicable else occurrences).setdefault(item_id, []).append(found)
 
     decisions = {item_id: resolution_id for item_id, resolution_id in db.execute(text("""
         SELECT item_id, resolution_id FROM engagement_decisions
@@ -206,6 +212,8 @@ def collect(db: Session, repository: models.Repository) -> dict:
         "projects": projects, "current_frameworks": current,
         "items": items, "packages": packages, "couplings": couplings, "version_drift": sorted(set(drift)), "deltas": deltas,
         "outbound": outbound, "soap": soap, "vocabulary": vocabulary,
+        # Items decided not applicable, with their findings: read by the verifier only (rediscovery), never rendered.
+        "not_applicable": [{"id": item_id, "occurrences": found} for item_id, found in sorted(set_aside.items())],
         # Part O: the projects left out ({path, name}), and when there are any, who left them out, when and why, named
         # in every engine's instructions, the decision sheet and the runbook.
         "scope": {"excluded": scope["left"], "build": scope["build"],

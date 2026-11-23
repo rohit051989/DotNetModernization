@@ -53,6 +53,9 @@ public sealed class ApiUsageExtractor : IFingerprintExtractor
         new("DATETIME_NOW_USAGE", SignalCategories.SourceConstruct, ["DateTime", "System.DateTime"], "Now", "System.DateTime.Now"),
         new("DATETIME_NOW_USAGE", SignalCategories.SourceConstruct, ["DateTime", "System.DateTime"], "Today", "System.DateTime.Today"),
         new("DATETIME_NOW_USAGE", SignalCategories.SourceConstruct, ["DateTimeOffset", "System.DateTimeOffset"], "Now", "System.DateTimeOffset.Now"),
+        // Registry 1.15.0: what depends on the host's time zone, beside reading the local time.
+        new("DATETIME_NOW_USAGE", SignalCategories.SourceConstruct, ["TimeZoneInfo", "System.TimeZoneInfo"], "Local", "System.TimeZoneInfo.Local"),
+        new("DATETIME_NOW_USAGE", SignalCategories.SourceConstruct, ["DateTimeKind", "System.DateTimeKind"], "Local", "System.DateTimeKind.Local"),
         new("PROCESS_START_USAGE", SignalCategories.ExecutionIndicator, ["Process", "System.Diagnostics.Process"], "Start", "System.Diagnostics.Process.Start"),
     ];
 
@@ -67,6 +70,8 @@ public sealed class ApiUsageExtractor : IFingerprintExtractor
     private static readonly MethodRule[] MethodRules =
     [
         new("USE_WINDOWS_SERVICE_INVOCATION", SignalCategories.HostingIndicator, "UseWindowsService"),
+        // Registry 1.15.0: a conversion to the host's time zone; any receiver (a DateTime or a DateTimeOffset).
+        new("DATETIME_NOW_USAGE", SignalCategories.SourceConstruct, "ToLocalTime"),
         new("USE_WINDOWS_SERVICE_INVOCATION", SignalCategories.HostingIndicator, "AddWindowsService"),
         // Registry 1.11.0: hosting behind IIS through the ASP.NET Core Module.
         new("USE_IIS_INVOCATION", SignalCategories.HostingIndicator, "UseIIS"),

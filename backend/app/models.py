@@ -1436,6 +1436,8 @@ ITEM_CATEGORY = (
 # soft delete — CLAUDE.md rule 7.
 ITEM_STATUS = ("active", "deprecated")
 ENGAGEMENT_DECISION_STATUS = ("pending", "in_review", "approved", "superseded")
+# What a decision decides (app.items.applicability): a resolution, or that the item is not applicable to the engagement.
+ENGAGEMENT_DECISION_OUTCOME = ("resolve", "not_applicable")
 DETECTION_STATE = ("found", "checked_absent", "not_checked")
 
 
@@ -1724,6 +1726,9 @@ class EngagementDecision(Base):
     approver_role: Mapped[str | None] = mapped_column(Text)
     decision_date: Mapped[datetime.date | None] = mapped_column(Date)
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default="pending")
+    # 'resolve': the decision chooses a resolution. 'not_applicable': the item does not apply to this engagement; its
+    # findings are kept and marked, and it is no work (app.items.applicability). Chooses no resolution.
+    outcome: Mapped[str] = mapped_column(Text, nullable=False, server_default="resolve")
     # Part U: 'derived' — this decision follows another item's decision
     # (derived_from_decision_id) by the catalog's resolution_derivations row
     # for that decision's resolution (app/items/coupling.py). A derived
@@ -1755,6 +1760,9 @@ class EngagementDecision(Base):
     __table_args__ = (
         CheckConstraint(f"status IN {ENGAGEMENT_DECISION_STATUS}", name="ck_engagement_decisions_status"),
         CheckConstraint("source IN ('manual', 'derived')", name="ck_engagement_decisions_source"),
+        CheckConstraint(f"outcome IN {ENGAGEMENT_DECISION_OUTCOME}", name="ck_engagement_decisions_outcome"),
+        CheckConstraint("outcome <> 'not_applicable' OR resolution_id IS NULL",
+                        name="ck_engagement_decisions_not_applicable_no_resolution"),
         CheckConstraint(
             f"forcing_perspective IS NULL OR forcing_perspective IN {FORCING_PERSPECTIVE}",
             name="ck_engagement_decisions_forcing_perspective",

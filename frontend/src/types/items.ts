@@ -14,6 +14,8 @@ export type ItemReasonCode = 'signal_mapping_pending' | 'signal_not_ready'
 export type BlockingReasonCode = 'extractor_not_implemented' | 'signal_not_registered'
 export type EngagementDecisionStatus = 'pending' | 'in_review' | 'approved' | 'superseded'
 export type EditableDecisionStatus = Exclude<EngagementDecisionStatus, 'superseded'>
+/** What a decision decides: a resolution, or that the item is not applicable to the engagement (no work, findings kept). */
+export type EngagementDecisionOutcome = 'resolve' | 'not_applicable'
 export type OccurrenceGroupBy = 'source_path' | 'source_path_and_value'
 
 export const ITEM_CATEGORIES = [
@@ -236,6 +238,9 @@ export interface EngagementDecision {
   approver_role: string | null
   decision_date: string | null
   status: EngagementDecisionStatus
+  /** 'not_applicable': the item does not apply to this engagement; once approved, its findings are kept, marked and
+   * counted apart, and it is no work. Absent from a server before the outcome existed: 'resolve'. */
+  outcome?: EngagementDecisionOutcome
   warnings: string[]
   /** Part U: 'derived' — follows another item's decision (derived_from). */
   source?: 'manual' | 'derived'
@@ -290,6 +295,7 @@ export interface WorkListDecisions {
  * whole (e.g. clearing something an approval needs is a 422). `status` can
  * be omitted but never null. */
 export interface EngagementDecisionUpsertInput {
+  outcome?: EngagementDecisionOutcome
   resolution_id?: string | null
   candidates_considered?: string[] | null
   rationale?: string | null

@@ -20,6 +20,7 @@ const server = vi.hoisted(() => {
     page,
     work,
     origins: { hierarchy_scanned: false, origin_counts: { internal: 0, external: 0, unresolved: 0, not_classified: 0 } },
+    totals: { occurrence_rows: 50, possible_rows: 0 } as Record<string, number>,
   }
 })
 
@@ -51,7 +52,7 @@ vi.mock('../../api/results', () => ({
     return server.page(part === 'internal' ? [one('Offline.Lib', 'unknown'), one('Gone.Lib', null)] : [one('Newtonsoft.Json', 'external')])
   },
   dependencyUses: () => () => server.page([{ project: 'src/A/A.csproj', pkg: { outcome: 'upgrade_safe', callSites: [] } }]),
-  getWorkItemTotals: () => Promise.resolve({ occurrence_rows: 50, possible_rows: 0 }),
+  getWorkItemTotals: () => Promise.resolve(server.totals),
   workItems: () => (_q: string, offset: number, limit: number) => {
     server.calls.push(`work:${offset}:${limit}`)
     return Promise.resolve({ total: 25, matching: 25, offset, items: server.work.slice(offset, offset + limit) })
@@ -182,6 +183,23 @@ describe('stored result views', () => {
       expect(screen.queryByText(/quiet:/)).toBeNull()
     } finally {
       server.cause = 'feed_auth'
+    }
+  })
+
+  it('the work list marks a not-applicable item, counts it apart, and not as open work', async () => {
+    const before = { totals: server.totals, row: server.work[0] }
+    server.totals = { occurrence_rows: 50, possible_rows: 0, not_applicable_items: 1 }
+    server.work[0] = { ...server.work[0], itemId: 'unparseable-config-file', name: 'Configuration file that cannot be parsed', notApplicable: true } as typeof server.work[0]
+    try {
+      await show(<StoredWorkListView artifactId="w" head={{ summary: { found: 25 } }} localPath={null} />)
+      expect(screen.getByText('24 work items')).toBeTruthy()
+      expect(screen.getByText('1 not applicable for this engagement')).toBeTruthy()
+      expect(screen.getAllByText('not applicable for this engagement')).toHaveLength(1)
+      expect(screen.getAllByText('WCF service')).toHaveLength(19)
+    } finally {
+      server.totals = before.totals
+      server.work[0] = before.row
+      server.calls.length = 0
     }
   })
 

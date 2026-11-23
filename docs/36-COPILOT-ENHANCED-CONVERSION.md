@@ -888,3 +888,17 @@ instruction that names them (`## Files` in each `SKILL.md`).
 
 **Changing conversion inputs** says, for each engine, that the change was applied there or why it does not apply
 (CLAUDE.md).
+
+## Part Q addendum — Not-applicable items and the utc-everywhere resolution (2026-11-23)
+
+Rule 20, for each engine:
+
+- **An item the engagement decided is not applicable** (`28-ITEM-AND-CONVERSION-MODEL.md` Part F, "Not applicable")
+  is absent from the content model both engines' inputs are rendered from (`collect()` sets it aside), so it is absent
+  from GitHub Copilot's and Claude Code's inputs alike: no work item, no line in the decision sheet, the addendum or
+  the runbook. Applied to both; nothing engine-specific.
+- **The resolution `utc-everywhere`** of `datetime-now-usage` ("UTC everywhere, independent of the host's time zone")
+  is a catalog resolution like any other: its `engine_guidance` is the work item's "What to do" for GitHub Copilot and,
+  through `claude.MECHANICS`' substitutions only, for Claude Code. It asks the agent to report two kinds of place in the
+  task's notes: a genuine local-time need, converted with a named zone; and every stored or compared time, left
+  unchanged and listed under "Stored times for a decision". Applied to both; nothing engine-specific.

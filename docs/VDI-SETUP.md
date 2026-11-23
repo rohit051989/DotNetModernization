@@ -1803,6 +1803,16 @@ hand. Everything else an update brings, bootstrap applies by itself. Apply every
 had (`previousCommit` in `PLATFORM_SOURCE.json` after the update; in our own installs, the commit before step 5 of
 the appendix), oldest of them first. Entries up to 2026-10-23 were the notes of releases 2 to 7, which are named so.
 
+#### 2026-11-23, (commit of "Not-applicable decisions, and UTC everywhere for DateTime.Now"): rescan for the new time forms
+
+Bootstrap adds `engagement_decisions.outcome` (every existing decision keeps choosing its resolution), brings the
+`utc-everywhere` resolution and the new wording of `datetime-now-usage` into the catalog (an item edited since it was
+seeded keeps its edit and is reported as a conflict), registers signal registry 1.15.0, and publishes
+application-fingerprinting 1.10.0 and impact-analysis 2.4.0. **Rescan** each repository to find the related forms of
+host-local time now detected (`DateTime.Today`, `DateTimeOffset.Now`, `ToLocalTime()`, `TimeZoneInfo.Local`,
+`DateTimeKind.Local`); until then the item's places are those of the last scan. An item an engagement does not want is
+now decided "not applicable" on its decision (the Catalog's decision form), never deleted from the catalog.
+
 #### 2026-11-20, (commit of "Dependency assessment: unlisted versions are looked up"): rescan
 
 Bootstrap adds `package_lookup_cache.lookup_rule` by itself and publishes dependency-assessment 1.10.0 (artifact 1.9.0)

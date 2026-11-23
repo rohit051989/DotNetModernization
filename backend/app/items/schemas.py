@@ -33,6 +33,8 @@ ItemStatus = Literal["active", "deprecated"]
 # derives. An item lists the roles it never applies to.
 ProjectRole = Literal["TEST", "DEPLOYMENT", "DATABASE", "APPLICATION", "LIBRARY", "UNKNOWN"]
 EngagementDecisionStatus = Literal["pending", "in_review", "approved", "superseded"]
+# A decision chooses a resolution, or decides the item is not applicable to the engagement (app.items.applicability).
+EngagementDecisionOutcome = Literal["resolve", "not_applicable"]
 
 _COMPUTED_FIELDS = ("state", "state_reason")
 
@@ -391,6 +393,17 @@ class EngagementDecisionUpsert(BaseModel):
     status: Literal["pending", "in_review", "approved"] | None = Field(
         default=None, description="Use the supersede endpoint to supersede. Defaults to 'pending' on create."
     )
+    outcome: EngagementDecisionOutcome | None = Field(
+        default=None, description="'resolve' (the default): the decision chooses a resolution. 'not_applicable': the item "
+                                  "does not apply to this engagement; no resolution, and once approved its findings are "
+                                  "kept, marked and counted apart, and it is no work.")
+
+    @field_validator("outcome")
+    @classmethod
+    def _outcome_not_null(cls, value):
+        if value is None:
+            raise ValueError("outcome cannot be null; omit it to keep the current outcome")
+        return value
 
 
 class EngagementDecisionOut(BaseModel):
@@ -409,6 +422,7 @@ class EngagementDecisionOut(BaseModel):
     approver_role: str | None
     decision_date: datetime.date | None
     status: EngagementDecisionStatus
+    outcome: EngagementDecisionOutcome = "resolve"
     warnings: list[str] = Field(
         description="Non-blocking, recomputed on every read — e.g. a Linux-incompatible resolution on a Linux-targeted engagement."
     )

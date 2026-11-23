@@ -38,6 +38,21 @@ public sealed class ImpactDatabase(string connectionString)
         return result;
     }
 
+    /// <summary>Items the engagement decided are not applicable (an approved, live decision with outcome
+    /// <c>not_applicable</c>; 28-ITEM-AND-CONVERSION-MODEL Part F). Their findings are kept, but they are no work:
+    /// no impact is computed for them.</summary>
+    public async Task<IReadOnlySet<string>> GetNotApplicableAsync(string engagementId, CancellationToken ct)
+    {
+        await using var connection = await OpenAsync(ct);
+        await using var command = new NpgsqlCommand(
+            "SELECT item_id FROM engagement_decisions WHERE engagement_id = @e AND status = 'approved' AND outcome = 'not_applicable'", connection);
+        command.Parameters.AddWithValue("e", engagementId);
+        var result = new HashSet<string>(StringComparer.Ordinal);
+        await using var reader = await command.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct)) result.Add(reader.GetString(0));
+        return result;
+    }
+
     /// <summary>Each item's name and live, active resolutions with their impact rules.</summary>
     public async Task<IReadOnlyDictionary<string, CatalogItemInfo>> GetCatalogAsync(IReadOnlyList<string> itemIds, CancellationToken ct)
     {

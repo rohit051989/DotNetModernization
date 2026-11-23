@@ -62,6 +62,37 @@ public sealed class ExtractorBatch2Tests
         Assert.DoesNotContain("secret-args", DeterministicJson.Serialize(signals));
     }
 
+    /// <summary>Registry 1.15.0: the forms that depend on the host's time zone are the same signal, each its own value.
+    /// UtcNow, UTC kinds and a named zone are not matched.</summary>
+    [Fact]
+    public async Task ApiUsage_HostTimeZoneForms_AreDateTimeNowUsage()
+    {
+        using var repo = new TempRepo();
+        repo.Write("Clock.cs", """
+            using System;
+            class Clock
+            {
+                DateTime Day() => DateTime.Today;
+                DateTime Back(DateTime stored) => stored.ToLocalTime();
+                DateTimeOffset Offset(DateTimeOffset at) => at.ToLocalTime();
+                TimeZoneInfo Zone() => TimeZoneInfo.Local;
+                DateTime Kind(DateTime t) => DateTime.SpecifyKind(t, DateTimeKind.Local);
+                DateTime Fine() => DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc);
+                DateTimeOffset AlsoFine() => DateTimeOffset.UtcNow;
+                TimeZoneInfo Named() => TimeZoneInfo.FindSystemTimeZoneById("Europe/London");
+            }
+            """);
+        repo.Write("App.csproj", "<Project Sdk=\"Microsoft.NET.Sdk\" />");
+
+        var signals = await Extract(new ApiUsageExtractor(), repo);
+
+        Assert.Equal(["System.DateTime.Today", "System.DateTimeKind.Local", "System.TimeZoneInfo.Local", "ToLocalTime"],
+            Values(signals, "DATETIME_NOW_USAGE"));
+        var toLocal = signals.Single(s => s.Name == "DATETIME_NOW_USAGE" && s.Value == "ToLocalTime");
+        Assert.Equal(2, toLocal.Evidence.Count);
+        Assert.Equal(0.80m, toLocal.ExtractionConfidence);
+    }
+
     [Fact]
     public async Task ApiUsage_SystemDrawing_MatchesGdiTypesButNotPrimitives()
     {
@@ -716,7 +747,7 @@ public sealed class ExtractorBatch2Tests
         // + 1.12.0 VAULT_SECRET_REFERENCE, CONFIG_FILE_UNPARSEABLE, CUSTOM_FILE_LOGGER_PROVIDER, WINDOWS_BUILD_PIPELINE
         // + 1.13.0 WCF_SERVICE_BINDING_CONFIG and WCF_SERVICE_BINDING_USAGE
         // + 1.14.0 SERILOG_FILE_SINK_USAGE, SERILOG_CONSOLE_SINK_USAGE and SERILOG_CONSOLE_SINK_CONFIG.
-        Assert.Equal("1.14.0", registry.RegistryVersion);
+        Assert.Equal("1.15.0", registry.RegistryVersion);
         Assert.Equal(154, registry.Entries.Count);
         Assert.Contains(registry.Entries, e => e.Name == ApiUsageExtractor.SerilogFileSinkUsage && e.Extractor == ApiUsageExtractor.ExtractorName);
         Assert.Contains(registry.Entries, e => e.Name == ApiUsageExtractor.SerilogConsoleSinkUsage && e.Extractor == ApiUsageExtractor.ExtractorName);

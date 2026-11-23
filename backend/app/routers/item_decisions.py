@@ -153,6 +153,7 @@ def _response(db: Session, decision: models.EngagementDecision) -> item_schemas.
         approver_role=decision.approver_role,
         decision_date=decision.decision_date,
         status=decision.status,
+        outcome=decision.outcome or "resolve",
         warnings=decision_warnings(db, decision),
         created_at=decision.created_at,
         updated_at=decision.updated_at,
@@ -186,7 +187,21 @@ def validate_decision(db: Session, item_id: str, decision: models.EngagementDeci
             )
             resolution = None
 
-    if decision.status == "approved":
+    # Not applicable (app.items.applicability): the decision chooses no resolution, and needs no forcing pair.
+    not_applicable = (decision.outcome or "resolve") == "not_applicable"
+    if not_applicable and decision.resolution_id:
+        problems.append({"field": "resolution_id", "code": "NOT_APPLICABLE_HAS_RESOLUTION",
+                         "message": "A not-applicable decision chooses no resolution: send resolution_id null."})
+
+    if decision.status == "approved" and not_applicable:
+        for field, code, what in (
+            ("rationale", "APPROVAL_REQUIRES_RATIONALE", "a rationale"),
+            ("approver_name", "APPROVAL_REQUIRES_APPROVER", "an approver name"),
+            ("decision_date", "APPROVAL_REQUIRES_DATE", "a decision date"),
+        ):
+            if not getattr(decision, field):
+                problems.append({"field": field, "message": f"An approved decision requires {what}.", "code": code})
+    elif decision.status == "approved":
         for field, code, what in (
             ("resolution_id", "APPROVAL_REQUIRES_SELECTION", "a selected resolution"),
             ("rationale", "APPROVAL_REQUIRES_RATIONALE", "a rationale"),

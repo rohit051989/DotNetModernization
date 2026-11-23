@@ -363,14 +363,26 @@ def _item_counts(db: Session, repository_ids: list, include_possible: bool = Fal
             models.ItemOccurrence.detection_state,
             models.ItemOccurrence.certainty,
             func.count(),
+            models.ItemOccurrence.repository_id,
         )
         .filter(models.ItemOccurrence.repository_id.in_(repository_ids))
         .group_by(
             models.ItemOccurrence.project_id, models.ItemOccurrence.item_id,
             models.ItemOccurrence.detection_state, models.ItemOccurrence.certainty,
+            models.ItemOccurrence.repository_id,
         )
         .all()
     )
+    if not rows:
+        return None
+    # An item the repository's engagement decided is not applicable is no work (app.items.applicability): its findings
+    # are not counted here.
+    from app.items import applicability
+
+    engagements = dict(db.query(models.Repository.id, models.Repository.engagement_id)
+                       .filter(models.Repository.id.in_({r[5] for r in rows})).all())
+    na = {e: set(applicability.not_applicable(db, e)) for e in set(engagements.values())}
+    rows = [r for r in rows if r[1] not in na.get(engagements.get(r[5]), set())]
     if not rows:
         return None
 
@@ -381,7 +393,7 @@ def _item_counts(db: Session, repository_ids: list, include_possible: bool = Fal
     with_findings = {r[0] for r in counted}
     per_item_projects: dict[str, set] = {}
     per_item_occurrences: dict[str, int] = {}
-    for project_id, item_id, _state, _certainty, count in counted:
+    for project_id, item_id, _state, _certainty, count, _repository in counted:
         per_item_projects.setdefault(item_id, set()).add(project_id)
         per_item_occurrences[item_id] = per_item_occurrences.get(item_id, 0) + count
 

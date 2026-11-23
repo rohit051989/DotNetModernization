@@ -177,10 +177,11 @@ def newer_than_snapshot(db: Session, repository_id) -> list[dict]:
             for project, package, version, recommended in rows]
 
 
-def work_items(model: dict) -> dict[tuple[str, str], dict]:
-    """{(project, item): {occurrences: n, places: [file:line ...]}} — a work item is a found (project, item)."""
+def work_items(model: dict, key: str = "items") -> dict[tuple[str, str], dict]:
+    """{(project, item): {occurrences: n, places: [file:line ...]}} — a work item is a found (project, item). With key
+    "not_applicable", the findings of items the engagement decided are not applicable (app.items.applicability)."""
     out: dict[tuple[str, str], dict] = {}
-    for item in model["items"]:
+    for item in model.get(key) or []:
         for occ in item["occurrences"]:
             entry = out.setdefault((occ["project"], item["id"]), {"occurrences": 0, "places": []})
             entry["occurrences"] += 1
