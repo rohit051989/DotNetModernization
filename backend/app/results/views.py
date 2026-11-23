@@ -490,14 +490,20 @@ def list_work_items(artifact_id: uuid.UUID, show_all: bool = Query(False), pagin
     state, reason, fileCount, possibleCount, distinctFiles, the first page of its files (`files`: occurrences, or
     files with their values for a value-grouped item), evidencePaths, and `decision` (the engagement's decision for
     the item, and what another item's decision means for it on this project). Found first, then not checked; without
-    show_all, only those two. The filter matches the item's name and id and the project's path. `outOfScope`: the
+    show_all, only those two. The filter matches the item's name and id, the project's path, and the methods and
+    types the item was found in. `outOfScope`: the
     project is left out of the repository's conversion scope (app.scope); the row stays, marked."""
     stored = _stored(db, artifact_id, "item-occurrences")
+    # A filter also reaches the methods and types the item was found in (each occurrence's evidence); built only then,
+    # as it reads every occurrence.
+    methods = """, (select string_agg(concat_ws(' ', ev->>'member', ev->>'declaring_type'), ' ')
+                    from jsonb_array_elements(coalesce(g.item->'occurrences', '[]'::jsonb)) o,
+                         jsonb_array_elements(coalesce(o->'evidence', '[]'::jsonb)) ev)""" if paging.q else ""
     source = f"""
         select jsonb_build_object('project', g.project, 'projectId', g.project_id, 'item', g.item,
                                   'name', ci.name, 'groupBy', coalesce(ci.detection->'occurrence_source'->>'group_by', 'source_path'),
                                   'fileCount', g.files, 'possibleCount', g.possible) as item,
-               lower(concat_ws(' ', ci.name, g.item_id, g.project)) as search,
+               lower(concat_ws(' ', ci.name, g.item_id, g.project{methods})) as search,
                {_STATE_RANK} as k_state, g.item_id as k_item, (g.files > 0 and g.possible = g.files) as k_possible,
                g.project as k_project, g.state
         from ({_GROUPS}) g left join catalog_items ci on ci.id = g.item_id
@@ -567,10 +573,15 @@ def list_work_item_files(artifact_id: uuid.UUID, project_id: str = Query(...), i
     files = _sorted_files(item) if item.get("detectionState") == "found" else []
     entries = _by_file(files) if by_file else files
     term = paging.q.lower()
+    # The methods and types each file's occurrences were found in, so a method name finds its files.
+    members: dict[str, str] = {}
+    for o in item.get("occurrences") or []:
+        text_of = " ".join(f"{e.get('member') or ''} {e.get('declaring_type') or ''}" for e in o.get("evidence") or [] if isinstance(e, dict))
+        members[o.get("filePath") or ""] = f"{members.get(o.get('filePath') or '', '')} {text_of}"
     if by_file:
-        hit = [e for e in entries if not term or term in " ".join([e["filePath"], *[v["value"] or "" for v in e["values"]]]).lower()]
+        hit = [e for e in entries if not term or term in " ".join([e["filePath"], members.get(e["filePath"], ""), *[v["value"] or "" for v in e["values"]]]).lower()]
     else:
-        hit = [e for e in entries if not term or term in f"{e['filePath']} {e['value'] or ''}".lower()]
+        hit = [e for e in entries if not term or term in f"{e['filePath']} {e['value'] or ''} {members.get(e['filePath'], '')}".lower()]
     # One row's occurrences, from one item of the stored content: sliced here.
     return PageOut(total=len(entries), matching=len(hit), offset=paging.offset,
                    items=hit[paging.offset:paging.offset + paging.limit])

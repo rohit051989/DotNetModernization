@@ -41,6 +41,8 @@ interface SectionGroupValue {
   command: (GroupCommand & { seq: number }) | null
   send: (command: GroupCommand) => void
   register: (id: string, title: string) => () => void
+  /** Lets the group read the section's position for its scroll-spy. */
+  track: (id: string, element: HTMLElement) => () => void
 }
 
 const SectionGroupContext = createContext<SectionGroupValue | null>(null)
@@ -76,12 +78,54 @@ export function SectionGroup({ order = [], label, barClassName = 'top-0', childr
       })
   }, [])
 
-  const value = useMemo(() => ({ command, send, register }), [command, send, register])
+  const [active, setActive] = useState<string | null>(null)
+  const elements = useRef(new Map<string, HTMLElement>())
+  const bar = useRef<HTMLElement>(null)
+  // A click scrolls its section to the top, which would otherwise be re-read as a scroll by the person.
+  const lockedUntil = useRef(0)
+
+  const track = useCallback((id: string, element: HTMLElement) => {
+    elements.current.set(id, element)
+    return () => {
+      elements.current.delete(id)
+    }
+  }, [])
+  const value = useMemo(() => ({ command, send, register, track }), [command, send, register, track])
   const ids = Object.keys(sections).sort((a, b) => rank(order, a) - rank(order, b))
+  // Until something is chosen or scrolled to, the first link is the active one.
+  const current = active !== null && ids.includes(active) ? active : (ids[0] ?? null)
+
+  // Scroll-spy: the active link is the section whose top last passed the bar; sections side by side count as one row
+  // and the first of them wins. At the very bottom of the page the last section is active, even though it can never
+  // scroll up to the bar.
+  const orderKey = order.join('|')
+  useEffect(() => {
+    const update = () => {
+      if (Date.now() < lockedUntil.current) return
+      const sorted = [...elements.current.entries()].sort(([a], [b]) => rank(order, a) - rank(order, b))
+      if (sorted.length === 0) return
+      const line = (bar.current?.getBoundingClientRect().bottom ?? 0) + 16
+      const scroller = scrollParent(bar.current)
+      const atBottom = scroller.scrollTop > 0 && scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 4
+      if (atBottom) {
+        setActive(sorted[sorted.length - 1][0])
+        return
+      }
+      const passed = sorted.map(([id, el]) => ({ id, top: el.getBoundingClientRect().top })).filter((s) => s.top <= line)
+      if (passed.length === 0) return
+      const row = Math.max(...passed.map((s) => s.top))
+      setActive(passed.find((s) => s.top >= row - 8)!.id)
+    }
+    // The page scrolls inside the app shell's <main>, not the window; scroll does not bubble, so listen in capture.
+    document.addEventListener('scroll', update, { capture: true, passive: true })
+    return () => document.removeEventListener('scroll', update, { capture: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orderKey])
 
   return (
     <SectionGroupContext.Provider value={value}>
       <nav
+        ref={bar}
         aria-label={label}
         className={`sticky z-10 flex flex-wrap items-center gap-1 border-b border-neutral-200 bg-white/95 px-4 py-1.5 backdrop-blur ${barClassName}`}
       >
@@ -89,8 +133,15 @@ export function SectionGroup({ order = [], label, barClassName = 'top-0', childr
           <button
             key={id}
             type="button"
-            onClick={() => send({ kind: 'open', id })}
-            className="whitespace-nowrap rounded px-2 py-0.5 text-xs font-medium text-neutral-600 hover:bg-violet-50 hover:text-violet-700"
+            onClick={() => {
+              setActive(id)
+              lockedUntil.current = Date.now() + 400
+              send({ kind: 'open', id })
+            }}
+            aria-current={id === current ? 'true' : undefined}
+            className={`whitespace-nowrap rounded px-2 py-0.5 text-xs font-medium ${
+              id === current ? 'bg-violet-100 text-violet-800' : 'text-neutral-600 hover:bg-violet-50 hover:text-violet-700'
+            }`}
           >
             {sections[id]}
           </button>
@@ -107,6 +158,15 @@ export function SectionGroup({ order = [], label, barClassName = 'top-0', childr
       {children}
     </SectionGroupContext.Provider>
   )
+}
+
+/** The nearest ancestor that scrolls, or the page itself. */
+function scrollParent(node: HTMLElement | null): HTMLElement {
+  for (let el = node?.parentElement ?? null; el; el = el.parentElement) {
+    const overflowY = getComputedStyle(el).overflowY
+    if (overflowY === 'auto' || overflowY === 'scroll') return el
+  }
+  return document.documentElement
 }
 
 function rank(order: string[], id: string): number {
@@ -192,6 +252,13 @@ export function CollapsibleSection({
       requestAnimationFrame(() => element.current?.scrollIntoView({ block: 'start' }))
     }
   }, [command, id, set])
+
+  const track = group?.track
+  useEffect(() => {
+    const node = element.current
+    if (!track || bare || !node) return
+    return track(id, node)
+  }, [track, bare, id])
 
   if (bare) return <>{children}</>
   const nested = variant === 'nested'

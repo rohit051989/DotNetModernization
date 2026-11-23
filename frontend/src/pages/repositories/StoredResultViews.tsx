@@ -646,6 +646,7 @@ export function StoredWorkListView({ artifactId, head, localPath, withDecisions 
         load={workItems(artifactId, showAll)}
         resetKey={`${artifactId}|${showAll}`}
         noun="work items"
+        placeholder="Filter by item, project or method…"
         empty={<p className="text-xs text-neutral-400">Nothing found — no work items for this repository.</p>}
       >
         {(visibleRows) => (

@@ -16,7 +16,7 @@ from app.db import get_db
 from app.errors import ErrorResponse, error
 from app.estate import engagement_matrix, soap_compatibility, wcf_matrix
 from app.results import store
-from app.results.paging import PageOut, PageParams, page
+from app.results.paging import PageOut, PageParams, like, page
 from app.routers import surface
 from app.surface import capabilities
 from app.surface.schemas import (
@@ -134,6 +134,25 @@ _ENTRY_PROJECTS = """
 """
 
 
+# The same, with every entry point's text of the project: built only when a filter is given, as it reads them all.
+_ENTRY_PROJECTS_WITH_ENTRIES = """
+    select ps as summary, lower(ps->>'projectPath') as search, ps->>'projectPath' as k_path,
+           coalesce(c.requests, 0) as requests, c.entries_search
+    from entry_point_scans s cross join lateral jsonb_array_elements(s.project_summaries) ps
+    left join lateral (
+        select count(*) filter (where e.entry_class = 'request') as requests,
+               string_agg(lower(concat_ws(' ', e.handler_type || coalesce('.' || e.handler_member, ''), e.detail->>'verb',
+                                          e.detail->>'routeTemplate', e.detail::text)), ' ') as entries_search
+        from entry_points e where e.repository_id = s.repository_id and e.project_id = (ps->>'projectId')::uuid
+    ) c on true
+    where s.repository_id = :r
+"""
+
+# What the filter box matches of one entry point: its handler (the operation), verb, route and the kind's detail.
+_ENTRY_SEARCH = """lower(concat_ws(' ', handler_type || coalesce('.' || handler_member, ''), detail->>'verb',
+                               detail->>'routeTemplate', detail::text))"""
+
+
 @router.get("/repositories/{repository_id}/entry-points/projects", response_model=PageOut,
             summary="Get a page of a repository's projects with their entry-point counts",
             operation_id="list_entry_point_projects", responses=_RESPONSES)
@@ -142,10 +161,17 @@ def list_entry_point_projects(repository_id: uuid.UUID,
                                                                             "those with none (the grouped line)."),
                               paging: PageParams = Depends(), db: Session = Depends(get_db)):
     """Items as the inventory's projects, without their entry points: counts, authorisation and routes, and `kinds`
-    ({entry_class, kind, count}) for the groups the entry points are listed in. By path; the filter matches it."""
+    ({entry_class, kind, count}) for the groups the entry points are listed in. By path; the filter matches the path
+    or any of the project's entry points (an operation name, a verb, a route). When it matches only through entry
+    points, `kinds` counts just the matching ones."""
     repo = _repository(db, repository_id)
     _entry_scan(db, repository_id)
-    source = f"select summary as item, search, k_path, requests from ({_ENTRY_PROJECTS}) x"
+    if paging.q:
+        # The filter also reaches the project's entry points: their text joins the project's path.
+        source = f"""select summary as item, search || ' ' || coalesce(entries_search, '') as search, k_path, requests
+                     from ({_ENTRY_PROJECTS_WITH_ENTRIES}) x"""
+    else:
+        source = f"select summary as item, search, k_path, requests from ({_ENTRY_PROJECTS}) x"
     result = page(db, source, {"r": repository_id}, paging, order="k_path",
                   where="requests > 0" if with_requests else "requests = 0")
     ids = [uuid.UUID(p["projectId"]) for p in result.items]
@@ -155,12 +181,23 @@ def list_entry_point_projects(repository_id: uuid.UUID,
     by_project: dict[uuid.UUID, list[models.EntryPoint]] = {}
     for row in rows:
         by_project.setdefault(row.project_id, []).append(row)
+    matching_kinds: dict[uuid.UUID, Counter] = {}
+    if paging.q and ids:
+        hits = db.execute(text(f"""
+            select project_id, entry_class, kind, count(*) as n from entry_points
+            where repository_id = :r and project_id = any(:ids) and {_ENTRY_SEARCH} like :pattern escape '\\'
+            group by project_id, entry_class, kind
+        """), {"r": repository_id, "ids": ids, "pattern": like(paging.q)}).all()
+        for h in hits:
+            matching_kinds.setdefault(h.project_id, Counter())[(h.entry_class, h.kind)] = h.n
     items = []
     for project in result.items:
         pid = uuid.UUID(project["projectId"])
         mine = by_project.get(pid, [])
         summary = project["summary"]
         kinds = Counter((r.entry_class, r.kind) for r in mine)
+        if paging.q and pid in matching_kinds and paging.q.lower() not in project["projectPath"].lower():
+            kinds = matching_kinds[pid]   # the project matched through its entry points: list only those
         items.append({
             "project_id": str(pid), "project_path": project["projectPath"], "status": project["status"],
             "skip_reason": project.get("skipReason"),
