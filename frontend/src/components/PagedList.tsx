@@ -37,6 +37,12 @@ interface PagedOptions<T> {
   initial?: Page<T> | null
   /** False: no filter box (a list filtered by controls of its own). */
   filterable?: boolean
+  /** Called with the filter box's text once typing pauses (and with '' when the list starts again). */
+  onTermChange?: (term: string) => void
+  /** Replaces the filter box's placeholder. */
+  placeholder?: string
+  /** Shows the filter box whatever the list's size (it is otherwise shown for more than one page). */
+  alwaysFilter?: boolean
 }
 
 /**
@@ -45,7 +51,7 @@ interface PagedOptions<T> {
  * filter box, matched by the server, so one item among thousands is found without loading them. `resetKey` names
  * what the list is of (a repository, a checkbox's state): when it changes, the list starts again.
  */
-export function usePagedList<T>(load: PageLoader<T>, resetKey: string, { noun = 'items', initial = null, filterable = true }: PagedOptions<T> = {}) {
+export function usePagedList<T>(load: PageLoader<T>, resetKey: string, { noun = 'items', initial = null, filterable = true, onTermChange, placeholder, alwaysFilter = false }: PagedOptions<T> = {}) {
   const [items, setItems] = useState<T[]>(initial?.items ?? [])
   const [total, setTotal] = useState<number | null>(initial ? initial.total : null)
   const [matching, setMatching] = useState(initial?.matching ?? 0)
@@ -57,6 +63,8 @@ export function usePagedList<T>(load: PageLoader<T>, resetKey: string, { noun = 
   loadRef.current = load
   const request = useRef(0)
   const usedInitial = useRef(!!initial)
+  const termChanged = useRef(onTermChange)
+  termChanged.current = onTermChange
 
   /** Asks for `limit` items from `offset`; `append`: after what is shown, else in place of it. */
   const fetchPage = useCallback(async (q: string, offset: number, limit: number, append: boolean) => {
@@ -88,6 +96,7 @@ export function usePagedList<T>(load: PageLoader<T>, resetKey: string, { noun = 
   useEffect(() => {
     setFilter('')
     setTerm('')
+    termChanged.current?.('')
     if (usedInitial.current) {
       usedInitial.current = false
       return
@@ -103,13 +112,14 @@ export function usePagedList<T>(load: PageLoader<T>, resetKey: string, { noun = 
     if (value === term) return
     const timer = setTimeout(() => {
       setTerm(value)
+      termChanged.current?.(value)
       void fetchPage(value, 0, LIST_PAGE, false)
     }, DEBOUNCE_MS)
     return () => clearTimeout(timer)
   }, [filter, term, fetchPage])
 
   const remaining = Math.max(matching - items.length, 0)
-  const showFilter = filterable && (total ?? 0) > LIST_PAGE
+  const showFilter = filterable && (alwaysFilter ? (total ?? 0) > 0 : (total ?? 0) > LIST_PAGE)
 
   const filterBox = showFilter ? (
     <div className="mb-2 flex flex-wrap items-center gap-2">
@@ -117,7 +127,7 @@ export function usePagedList<T>(load: PageLoader<T>, resetKey: string, { noun = 
         type="search"
         value={filter}
         onChange={(e) => setFilter(e.target.value)}
-        placeholder={`Filter ${total} ${noun}…`}
+        placeholder={placeholder ?? `Filter ${total} ${noun}…`}
         aria-label={`Filter ${noun}`}
         className="w-full max-w-xs rounded border border-neutral-300 px-2 py-1 text-xs focus:border-violet-400 focus:outline-none"
       />

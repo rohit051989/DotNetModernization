@@ -75,6 +75,21 @@ describe('CollapsibleSection', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Inbound' }))
     expect(isOpen('Inbound')).toBe(true)
   })
+
+  it('highlights the jump link last clicked', () => {
+    render(<Surface rows={10} />)
+    const inbound = screen.getByRole('button', { name: 'Inbound' })
+    const soap = screen.getByRole('button', { name: 'SOAP compatibility' })
+    // The first link is active until another is chosen.
+    expect(inbound.getAttribute('aria-current')).toBe('true')
+    expect(soap.getAttribute('aria-current')).toBeNull()
+    fireEvent.click(soap)
+    expect(soap.getAttribute('aria-current')).toBe('true')
+    expect(inbound.getAttribute('aria-current')).toBeNull()
+    fireEvent.click(inbound)
+    expect(inbound.getAttribute('aria-current')).toBe('true')
+    expect(soap.getAttribute('aria-current')).toBeNull()
+  })
 })
 
 describe('GroupedItems', () => {

@@ -99,7 +99,9 @@ def _item_rows(where: str) -> str:
                                   'whatToDo', d.name, 'whatToDoDetail', d.description) as item,
                {rank} as k_rank, p.relative_path as k_project, coalesce(o.file_path, '') as k_name,
                o.id::text as k_id,
-               lower(concat_ws(' ', i.id, i.name, i.category, p.relative_path, o.file_path, o.value, {badge})) as search
+               lower(concat_ws(' ', i.id, i.name, i.category, p.relative_path, o.file_path, o.value, {badge},
+                               (select string_agg(concat_ws(' ', e->>'member', e->>'declaring_type'), ' ')
+                                from jsonb_array_elements(coalesce(o.evidence, '[]'::jsonb)) e))) as search
         from item_occurrences o
         join catalog_items i on i.id = o.item_id and i.deleted_at is null
         join projects p on p.id = o.project_id
@@ -164,7 +166,7 @@ def _enrich_linux(result: PageOut) -> PageOut:
 def list_linux_compatibility(repository_id: uuid.UUID, paging: PageParams = Depends(), db: Session = Depends(get_db)):
     """Items with `kind` 'item' (a listed catalog item that was found) or 'package' (a Windows-only package), each
     with `treatment`: blocker, container or other. The filter matches the item, its category, the project, the file,
-    the value and the badge."""
+    the value, the badge, and the method and type the finding was found in."""
     _repository(db, repository_id)
     _scan(db, repository_id)
     return _enrich_linux(page(db, _linux_source(), {"r": repository_id, **_linux_params()}, paging, order=_ORDER))

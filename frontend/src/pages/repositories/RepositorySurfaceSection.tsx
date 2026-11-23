@@ -98,11 +98,17 @@ export function localInboundSource(projects: ProjectEntryPoints[], key: string):
   const byId = new Map(projects.map((p) => [p.project_id, p]))
   return {
     key,
-    projects: localPages(projects.filter((p) => p.request_entry_point_count > 0).map(strip), (p) => p.project_path),
-    noRequestProjects: localPages(projects.filter((p) => p.request_entry_point_count === 0).map(strip), (p) => p.project_path),
+    // A project matches by its path or by any of its entry points (an operation, a verb, a route).
+    projects: localPages(projects.filter((p) => p.request_entry_point_count > 0).map(strip), (p) => projectNames(byId.get(p.project_id))),
+    noRequestProjects: localPages(projects.filter((p) => p.request_entry_point_count === 0).map(strip), (p) => projectNames(byId.get(p.project_id))),
     entries: (projectId, entryClass, kind) =>
       localPages((byId.get(projectId)?.entry_points ?? []).filter((e) => e.entry_class === entryClass && e.kind === kind), entryNames),
   }
+}
+
+/** What the project filter matches of a project: its path and what its entry points show. */
+function projectNames(project: ProjectEntryPoints | undefined): string[] {
+  return project ? [project.project_path, ...project.entry_points.flatMap(entryNames)] : []
 }
 
 /** What a person sees of an entry point: its handler, and its route or description. */
@@ -402,15 +408,20 @@ function OtherKindTable({ load, resetKey, localPath }: { load: PageLoader<EntryP
 }
 
 /** One project's entry points of one class, grouped by kind: each group's count, and its entries a page at a time. */
-function KindGroups({ project, entryClass, source, localPath }: { project: InboundProject; entryClass: EntryClass; source: InboundSource; localPath: string | null }) {
+function KindGroups({ project, entryClass, source, localPath, filter = '' }: { project: InboundProject; entryClass: EntryClass; source: InboundSource; localPath: string | null; filter?: string }) {
+  // The project list's filter reaches the entry points: a project that matched by its path shows all of them, one that
+  // matched through its entry points shows those.
+  const term = filter.trim().toLowerCase()
+  const entryFilter = term && !project.project_path.toLowerCase().includes(term) ? term : ''
   const groups = project.kinds
     .filter((k) => k.entry_class === entryClass && k.count > 0)
     .sort((a, b) => KIND_ORDER.indexOf(a.kind as EntryPointKind) - KIND_ORDER.indexOf(b.kind as EntryPointKind))
   return (
     <>
       {groups.map(({ kind, count }) => {
-        const load = source.entries(project.project_id, entryClass, kind)
-        const key = `${source.key}|${project.project_id}|${entryClass}|${kind}`
+        const own = source.entries(project.project_id, entryClass, kind)
+        const load: PageLoader<EntryPoint> = entryFilter ? (q, offset, limit) => own(q || entryFilter, offset, limit) : own
+        const key = `${source.key}|${project.project_id}|${entryClass}|${kind}|${entryFilter}`
         return (
           <div key={kind}>
             <h5 className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-neutral-400">
@@ -427,9 +438,17 @@ function KindGroups({ project, entryClass, source, localPath }: { project: Inbou
 /** One project's entry points: request entry points first, lifecycle hooks
  * collapsed. Shared by the repository Surface panel and the
  * entry-point-inventory artifact renderer. */
-export function InboundProjectPanel({ project, source, localPath, defaultOpen = true }: { project: InboundProject; source: InboundSource; localPath: string | null; defaultOpen?: boolean }) {
+export function InboundProjectPanel({ project, source, localPath, defaultOpen = true, filter = '' }: { project: InboundProject; source: InboundSource; localPath: string | null; defaultOpen?: boolean; filter?: string }) {
   const [expanded, setExpanded] = useState(defaultOpen)
   const [showLifecycle, setShowLifecycle] = useState(false)
+  // Filtering by an operation opens the projects that hold it, and their lifecycle hooks when it is one of those.
+  const term = filter.trim().toLowerCase()
+  const matchedByEntries = term !== '' && !project.project_path.toLowerCase().includes(term)
+  const lifecycleMatches = matchedByEntries && project.kinds.some((k) => k.entry_class === 'lifecycle')
+  useEffect(() => {
+    if (term) setExpanded(true)
+    setShowLifecycle(lifecycleMatches)
+  }, [term, lifecycleMatches])
   const lifecycle = project.lifecycle_hook_count
 
   return (
@@ -453,7 +472,7 @@ export function InboundProjectPanel({ project, source, localPath, defaultOpen = 
       {expanded && (
         <div className="space-y-3 border-t border-neutral-100 px-3 py-3">
           {project.request_entry_point_count > 0 ? (
-            <KindGroups project={project} entryClass="request" source={source} localPath={localPath} />
+            <KindGroups project={project} entryClass="request" source={source} localPath={localPath} filter={filter} />
           ) : (
             <p className="text-xs text-neutral-400">No request entry points.</p>
           )}
@@ -468,7 +487,7 @@ export function InboundProjectPanel({ project, source, localPath, defaultOpen = 
               </span>
               {showLifecycle && (
                 <div className="mt-2 space-y-3">
-                  <KindGroups project={project} entryClass="lifecycle" source={source} localPath={localPath} />
+                  <KindGroups project={project} entryClass="lifecycle" source={source} localPath={localPath} filter={filter} />
                 </div>
               )}
             </div>
@@ -528,10 +547,10 @@ export function RepositorySurfaceSection({ repositoryId, localPath, refreshToken
       barClassName="top-[var(--repo-header,0px)]"
       order={SURFACE_SECTIONS.map((s) => surfaceSectionId(repositoryId, s))}
     >
-      <div className="grid items-start gap-4 p-4 xl:grid-cols-2">
+      <div className="space-y-4 p-4">
         <RepositoryInboundPanel repositoryId={repositoryId} localPath={localPath} refreshToken={refreshToken} />
         <RepositoryOutboundPanel repositoryId={repositoryId} localPath={localPath} refreshToken={refreshToken} />
-        <div className="min-w-0 xl:col-span-2">
+        <div className="min-w-0">
           <RepositoryBackendReachPanel repositoryId={repositoryId} localPath={localPath} refreshToken={refreshToken} />
         </div>
       </div>
@@ -540,10 +559,13 @@ export function RepositorySurfaceSection({ repositoryId, localPath, refreshToken
 }
 
 /** A project with no request entry points, in the grouped line: its path, and its lifecycle hooks on demand. */
-function NoRequestProject({ project, source, localPath, showAll }: { project: InboundProject; source: InboundSource; localPath: string | null; showAll: boolean }) {
+function NoRequestProject({ project, source, localPath, showAll, filter = '' }: { project: InboundProject; source: InboundSource; localPath: string | null; showAll: boolean; filter?: string }) {
   const lifecycle = project.lifecycle_hook_count
-  const [show, setShow] = useState(showAll)
-  useEffect(() => setShow(showAll), [showAll])
+  // A filter that matched through this project's hooks (an operation, a class) shows them.
+  const term = filter.trim().toLowerCase()
+  const matched = term !== '' && !project.project_path.toLowerCase().includes(term)
+  const [show, setShow] = useState(showAll || matched)
+  useEffect(() => setShow(showAll || matched), [showAll, matched])
   return (
     <li className="py-0.5">
       <span className="break-all font-mono text-neutral-700">{project.project_path}</span>
@@ -555,7 +577,7 @@ function NoRequestProject({ project, source, localPath, showAll }: { project: In
       )}
       {show && lifecycle > 0 && (
         <div className="mt-1 mb-2 space-y-3 border-l-2 border-neutral-100 pl-3">
-          <KindGroups project={project} entryClass="lifecycle" source={source} localPath={localPath} />
+          <KindGroups project={project} entryClass="lifecycle" source={source} localPath={localPath} filter={filter} />
         </div>
       )}
     </li>
@@ -566,6 +588,7 @@ function NoRequestProject({ project, source, localPath, showAll }: { project: In
  * list them, a page at a time. Lifecycle hooks can be shown for the whole group or per project. */
 export function NoRequestProjects({ source, count, hooks, localPath }: { source: InboundSource; count: number; hooks: number; localPath: string | null }) {
   const [showAll, setShowAll] = useState(false)
+  const [term, setTerm] = useState('')
   return (
     <GroupedItems
       label={`${count} project${count === 1 ? '' : 's'} with no request entry points${hooks > 0 ? ` · ${hooks} lifecycle hook${hooks === 1 ? '' : 's'}` : ''}`}
@@ -575,11 +598,18 @@ export function NoRequestProjects({ source, count, hooks, localPath }: { source:
           {showAll ? 'Hide' : 'Show'} all {hooks} lifecycle hook{hooks === 1 ? '' : 's'}
         </button>
       )}
-      <PagedList load={source.noRequestProjects} resetKey={`${source.key}|no-requests`} noun="projects">
+      <PagedList
+        load={source.noRequestProjects}
+        resetKey={`${source.key}|no-requests`}
+        noun="projects"
+        alwaysFilter
+        placeholder="Filter by project, class or operation…"
+        onTermChange={setTerm}
+      >
         {(shown: InboundProject[]) => (
           <ul className="space-y-0.5 text-xs">
             {shown.map((project) => (
-              <NoRequestProject key={project.project_id} project={project} source={source} localPath={localPath} showAll={showAll} />
+              <NoRequestProject key={project.project_id} project={project} source={source} localPath={localPath} showAll={showAll} filter={term} />
             ))}
           </ul>
         )}
@@ -591,16 +621,24 @@ export function NoRequestProjects({ source, count, hooks, localPath }: { source:
 /** The inbound projects: a panel per project with request entry points, a page at a time, then one grouped line for
  * every other project. */
 export function InboundProjectList({ source, withRequests, withoutRequests, hooks, localPath }: { source: InboundSource; withRequests: number; withoutRequests: number; hooks: number; localPath: string | null }) {
+  const [term, setTerm] = useState('')
   return (
     <div className="space-y-2">
       {withRequests === 0 && <p className="text-sm text-neutral-400">No request entry points found in any project.</p>}
       {withRequests > 0 && (
-        <PagedList load={source.projects} resetKey={`${source.key}|requests`} noun="projects">
+        <PagedList
+          load={source.projects}
+          resetKey={`${source.key}|requests`}
+          noun="projects"
+          alwaysFilter
+          placeholder="Filter by project, operation, route or verb…"
+          onTermChange={setTerm}
+        >
           {(shown: InboundProject[]) => (
             <div className="space-y-2">
               {shown.map((project) => (
                 // Open at first only when it is one of a few (release 6): its header line gives its counts.
-                <InboundProjectPanel key={project.project_id} project={project} source={source} localPath={localPath} defaultOpen={withRequests <= 3} />
+                <InboundProjectPanel key={project.project_id} project={project} source={source} localPath={localPath} defaultOpen={withRequests <= 3} filter={term} />
               ))}
             </div>
           )}
