@@ -55,7 +55,6 @@ def create_engagement(payload: schemas.EngagementCreate, db: Session = Depends(g
         engagement = engagement_service.create(
             db, payload.id, payload.client_name, payload.target_framework, description=payload.description,
             target_platform=payload.target_platform, default_posture=payload.default_posture,
-            default_engine=payload.default_engine,
         )
     except engagement_service.EngagementError as e:
         raise error(e.status_code, str(e), field=e.field, code=e.code)
@@ -110,41 +109,6 @@ def update_engagement(
     engagement.version += 1
     engagement.updated_at = datetime.datetime.now(datetime.timezone.utc)
 
-    db.commit()
-    db.refresh(engagement)
-    return engagement
-
-
-class EngineIn(BaseModel):
-    engine: schemas.ConversionEngine = Field(description="'github-copilot' or 'claude-code'.")
-
-
-@router.put(
-    "/{engagement_id}/conversion-engine",
-    response_model=schemas.Engagement,
-    summary="Set the engagement's default conversion engine",
-    operation_id="set_engagement_conversion_engine",
-    responses={404: _NOT_FOUND, 409: {"model": ErrorResponse, "description": "A stale copy (STALE_COPY)."}},
-)
-def set_engagement_engine(
-    engagement_id: str, payload: EngineIn, db: Session = Depends(get_db),
-    if_match: Annotated[str | None, Header(description="The engagement's version the edit was made on; a stale copy is refused (409 STALE_COPY).")] = None,
-):
-    """Admins only (app.auth.policy). The engine every repository of the engagement that has not chosen its own uses
-    for its next conversion (36-COPILOT-ENHANCED-CONVERSION Part Q). A conversion already prepared keeps its engine;
-    an owner re-prepares one not yet run from its Conversion tab, or by choosing the engine there."""
-    from app.auth import activity
-
-    engagement = versions.locked(db, models.Engagement, engagement_id)
-    if engagement is None or engagement.deleted_at is not None:
-        raise error(404, f"Engagement '{engagement_id}' not found", code="NOT_FOUND")
-    versions.check(db, engagement.version, if_match, "engagement", engagement_id, "this engagement's settings")
-    before = engagement.default_engine
-    engagement.default_engine = payload.engine
-    engagement.version += 1
-    engagement.updated_at = datetime.datetime.now(datetime.timezone.utc)
-    activity.record(db, "set default conversion engine", "engagement", engagement_id,
-                    summary=f"{before} -> {payload.engine}")
     db.commit()
     db.refresh(engagement)
     return engagement

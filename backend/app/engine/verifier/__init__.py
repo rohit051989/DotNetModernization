@@ -289,10 +289,11 @@ def approved_removals(missing: list[str], approvals: list[dict]) -> tuple[list[d
 FILES_SECTION = re.compile(r"^## Files\n\n[^\n]*\n\n((?:- `[^`]+`\n?)+)", re.MULTILINE)
 
 
-def instruction_files(root: Path, commit: str) -> dict[str, list[str]]:
+def instruction_files(root: Path, commit: str, engine: str | None = None) -> dict[str, list[str]]:
     """{instruction: the files its Files section names}, from the instructions in `commit`: GitHub Copilot's by file
-    name (`applying-x.md`), Claude Code's skills by name (`applying-x`)."""
-    names = gitops.git(root, "ls-tree", "-r", "--name-only", commit, "--", *paths.WORK_ITEM_DIRS).splitlines()
+    name (`applying-x.md`), Claude Code's skills by name (`applying-x`). With `engine`, only that engine's: a conversion
+    has both, and the work was done from one."""
+    names = gitops.git(root, "ls-tree", "-r", "--name-only", commit, "--", *paths.work_item_dirs(engine)).splitlines()
     out = {}
     for name in names:
         if not paths.is_work_item(name):
@@ -612,10 +613,13 @@ def verify(db, *, engagement_id: str, slug: str, base: str, ref: str, label: str
     workspace = out / "workspace"
     measured = None
     solution, unit_tests = base_snap["solution"], base_snap["unit_test_projects"]
-    # With projects left out, the conversion's own solution of exactly the kept projects, written by preparation on
-    # the branch (a conversion prepared before it existed built a solution filter). The base commit builds the same
-    # file, copied beside it, and the kept unit test projects, wherever they live.
-    own = (scope.get("build") or scope.get("filter")) if left_out else None
+    # The conversion's own solution, in-scope.sln, written by preparation on the branch: every conversion has it from
+    # 2026-11-23, with exactly the .NET projects in scope (one prepared before had it only with projects left out, and
+    # one before that built a solution filter). The base commit builds the same file, copied beside it, and the kept
+    # unit test projects, wherever they live.
+    own = scope.get("build") or (scope.get("filter") if left_out else None)
+    if own and not (tip_tree / own).is_file():
+        own = None                          # a record that names it, on a branch without it: the repository's own
     if own:
         solution, unit_tests = own, [p for p in unit_tests if p not in left_out]
         if (tip_tree / own).is_file() and not (base_tree / own).exists():
@@ -753,7 +757,9 @@ def verify(db, *, engagement_id: str, slug: str, base: str, ref: str, label: str
     tip_model, releases_since, targets_from = tip_snap["model"], [], None
     if config.get("package_targets_from_inputs"):
         commit = packages.inputs_commit(root, base_sha, tip_sha)
-        targets = (packages.asked_for(root, commit) if commit else []) + packages.applied_by_platform(root, base_sha, tip_sha)
+        # The assistant's own instructions: both engines' copies of the same targets would count each twice.
+        targets = ((packages.asked_for(root, commit, config.get("engine")) if commit else [])
+                   + packages.applied_by_platform(root, base_sha, tip_sha))
         targets_from = {"commit": commit, "targets": len(targets)}
         tip_model, releases_since = packages.judge(tip_model, targets)
     # Part N: an occurrence a deployment file on the branch carries (a CronJob running the console application, a
@@ -816,7 +822,8 @@ def verify(db, *, engagement_id: str, slug: str, base: str, ref: str, label: str
                              detail if bad else f"{len(scripts)} new or changed script(s): LF, executable, eol=lf"))
     # Part N: which instructions' files the branch changed, by each instruction's Files section.
     commit = packages.inputs_commit(root, base_sha, tip_sha)
-    attributed = attribution(instruction_files(root, commit), [c["path"] for c in changes["files"]]) if commit else None
+    attributed = (attribution(instruction_files(root, commit, config.get("engine")), [c["path"] for c in changes["files"]])
+                  if commit else None)
 
     after = fingerprint(root)
     checkout_untouched = before == after
@@ -847,8 +854,9 @@ def verify(db, *, engagement_id: str, slug: str, base: str, ref: str, label: str
                   "workItemsLeftOut": len(items_left_out), "decidedBy": scope.get("decidedBy"),
                   "decidedAt": scope.get("decidedAt"), "reason": scope.get("reason")} if left_out else None,
         "checkoutUntouched": checkout_untouched,
-        # The engine the conversion was prepared for (Part Q), when a conversion's verification names one.
+        # The assistant that did the conversion (Part Q), as the person verifying it said; null when not said.
         "engine": config.get("engine"),
+        "assistant": config.get("engine"),
         "scopeViolations": violations,
     }
     (out / "verification.json").write_text(json.dumps(report, indent=2, default=str), encoding="utf-8")
@@ -910,7 +918,7 @@ def markdown(r: dict) -> str:
            _platform_line(r.get("platform")), _lookups_line(r.get("packageLookups"))]
     if r.get("engine"):
         from app.engine import engines
-        out.append(f"Engine: {engines.name(r['engine'])}.")
+        out.append(f"Conversion done with: {engines.name(r['engine'])}.")
     out += ["", "## Reasons", ""]
     out += [f"- {x}" for x in r["reasons"]] or ["- None: every check passed."]
     out += ["", "## Checks", "", "| Check | State | Detail |", "|---|---|---|"]

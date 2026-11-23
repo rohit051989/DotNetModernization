@@ -140,6 +140,9 @@ async def lifespan(app: FastAPI):
     watch.start()
     _reconcile_orphaned_executions()
     _report_existing_data()
+    # A conversion prepared for one engine and not run yet is prepared again for both (app.engine.both_engines).
+    from app.engine import both_engines
+    both_engines.on_start()
     try:
         yield
     finally:

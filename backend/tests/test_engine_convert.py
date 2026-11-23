@@ -97,29 +97,73 @@ class OpeningMessage(unittest.TestCase):
 
 
 class Runbook(unittest.TestCase):
+    """RUNBOOK.md (Part Q, 2026-11-23): a shared header naming the full path of in-scope.sln, then a complete section for
+    each engine, each with its own first message, verbatim."""
+    WT = r"D:\runs\test-client-a\accountsapi-net10\conversions\1\wt"
     RECORD = {"repository": "accountsapi-net10", "engagement": "test-client-a", "branch": "conversion/1",
-              "worktree": r"D:\runs\test-client-a\accountsapi-net10\conversions\1\wt", "solution": "AccountsApi.sln",
+              "worktree": WT, "solution": "in-scope.sln", "head": "f00dfeed0123456789",
               "baseline": "e89bc6a147e456b730d664178d416f50bd532f31", "platform": {"commit": "0123456789abcdef", "dirty": False},
-              "goal": "Make it ready for OpenShift.", "targetFramework": "net10.0"}
+              "goal": "Make it ready for OpenShift.", "targetFramework": "net10.0",
+              "engines": {"github-copilot": {"prepared": True, "usable": True, "instructions": ".github/copilot-instructions.md"},
+                          "claude-code": {"prepared": True, "usable": True, "instructions": ".claude/CLAUDE.md",
+                                          "settings": ".claude/settings.json", "ownInstructions": []}},
+              "scope": {"build": "in-scope.sln", "notConverted": [{"path": "Source/Area/Etl/Etl.dtproj", "name": "Etl"}]}}
 
-    def test_one_page_from_the_template(self):
+    def test_one_runbook_with_a_complete_section_for_each_engine(self):
         text = convert.render_runbook(self.RECORD)
+        full = self.WT + "\\in-scope.sln"
         self.assertNotIn("${", text)
-        self.assertLess(len(text.splitlines()), 100)
-        headings = [line for line in text.splitlines() if line.startswith("## ")]
-        self.assertEqual(headings, ["## 1. Open the worktree", "## 2. Send the opening message", "## 3. Standard replies",
-                                    "## 4. A stuck terminal", "## 5. When the agent stops",
-                                    "## 6. When the agent reports done", "## 7. Verify"])
-        self.assertIn("If the agent stops without its done report (the four results from the opening message), send "
-                      "`Continue.`", text)
-        # One commit per work item, as the instructions say (Part Q): the reply agrees with them.
-        self.assertIn("Commit each instruction on its own once it builds, naming it in the commit message.", text)
-        self.assertIn("Engine: **GitHub Copilot**.", text)
-        self.assertIn(convert.opening_message("Make it ready for OpenShift.", "AccountsApi.sln"), text)
-        self.assertIn("python -m app.engine.convert verify --engagement test-client-a --repository accountsapi-net10 "
-                      "--branch conversion/1", text)
-        self.assertIn("Ctrl+C", text)
-        self.assertIn("Commit all remaining changes on the current branch.", text)
+        self.assertNotIn("the .sln in the worktree", text)
+        self.assertIn(f"`{full}`", text.split("## A.")[0])                      # the header names it, in full
+        headings = [line for line in text.splitlines() if line.startswith("## ") or line.startswith("### ")]
+        self.assertEqual(headings, [
+            "## Not converted by this track",
+            "## A. GitHub Copilot", "### A1. Open the solution in Visual Studio",
+            "### A2. Open the modernization agent and send the first message", "### A3. Standard replies",
+            "### A4. A stuck terminal", "### A5. When the agent stops or reports done", "### A6. Verify",
+            "## B. Claude Code", "### B1. Start Claude Code at the worktree's root", "### B2. Send the first message",
+            "### B3. Permission prompts", "### B4. An interrupted session", "### B5. Check that each work item was committed",
+            "### B6. Verify", "## After fixing an instruction"])
+        copilot, claude = text.split("## A. GitHub Copilot")[1].split("## B. Claude Code")
+        # GitHub Copilot: Visual Studio on the full path, the modernization agent, the first message verbatim.
+        self.assertIn(f"Open `{full}` in Visual Studio", copilot)
+        self.assertIn("choose **Modernize**", copilot)
+        self.assertIn(convert.opening_for(self.RECORD, "github-copilot"), copilot)
+        self.assertIn("--assistant github-copilot", copilot)
+        # Claude Code: the worktree's root by full path, a terminal or VS Code, its first message verbatim, permission
+        # prompts, an interrupted session, a commit per work item, then Verify; no solution is opened.
+        self.assertIn(f'cd "{self.WT}"\nclaude\n', claude)
+        self.assertIn(f"open the folder `{self.WT}` in VS Code", claude)
+        self.assertIn(convert.opening_for(self.RECORD, "claude-code"), claude)
+        self.assertIn("Never choose \"Yes, and don't ask again\"", claude)
+        self.assertIn("claude --continue", claude)
+        self.assertIn(f'git -C "{self.WT}" log --oneline f00dfeed..HEAD', claude)
+        self.assertIn("press **Verify** and choose **Claude Code**", claude)
+        self.assertIn("no solution is opened for it", claude)
+        self.assertNotIn("Visual Studio", claude)
+        self.assertNotIn("Modernize", claude)
+        # Both first messages build and test in-scope.sln.
+        for engine in ("github-copilot", "claude-code"):
+            self.assertIn("Build the solution (in-scope.sln) with 0 errors.", convert.opening_for(self.RECORD, engine))
+            self.assertIn("Run all tests of the solution (in-scope.sln).", convert.opening_for(self.RECORD, engine))
+        # The SSIS project is listed as not converted, by path.
+        self.assertIn("`Source/Area/Etl/Etl.dtproj`", text)
+
+    def test_the_tab_shows_the_header_and_one_engines_section(self):
+        claude = convert.runbook_for(self.RECORD, "claude-code")
+        self.assertIn("## B. Claude Code", claude)
+        self.assertNotIn("## A. GitHub Copilot", claude)
+        self.assertIn("## Not converted by this track", claude)
+
+    def test_unsafe_claude_code_inputs_say_so_and_copilots_stand(self):
+        record = {**self.RECORD, "engines": {**self.RECORD["engines"], "claude-code": {
+            **self.RECORD["engines"]["claude-code"], "usable": False,
+            "unsafe": convert.unsafe_text([r"D:\runs\CLAUDE.md"])}}}
+        text = convert.render_runbook(record)
+        copilot, claude = text.split("## A. GitHub Copilot")[1].split("## B. Claude Code")
+        self.assertIn(r"> **Not safe to use here: Claude Code would also read instruction files above the worktree", claude)
+        self.assertIn(r"D:\runs\CLAUDE.md", claude)
+        self.assertNotIn("Not safe", copilot)
 
 
 class GlobalInstructions(unittest.TestCase):

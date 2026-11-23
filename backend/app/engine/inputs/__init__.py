@@ -165,6 +165,32 @@ def generate(db, engagement_id: str, slug: str, out: Path, missing: list | None 
     return files
 
 
+def build_both(model: dict, repository_root: Path | None, warnings: list | None = None
+               ) -> tuple[dict[str, dict[str, str]], dict[str, str]]:
+    """Both engines' inputs from the one model: ({engine: {path: text}}, {engine: why it has none}). GitHub Copilot's
+    are always built (SecretFound and NotSelfContained raise, as in build). Claude Code's are not built when the
+    repository already has the files they would be written to (InputsCollide): that is said, and Copilot's stand."""
+    from app.engine.inputs import claude
+
+    files = {engines.COPILOT: build(model, repository_root, warnings, engines.COPILOT)}
+    missing: dict[str, str] = {}
+    try:
+        files[engines.CLAUDE] = build(model, repository_root, None, engines.CLAUDE)
+    except claude.InputsCollide as collision:
+        missing[engines.CLAUDE] = str(collision)
+    return files, missing
+
+
+def generate_both(db, engagement_id: str, slug: str, out: Path, applied: list[dict] | None = None,
+                  warnings: list | None = None) -> tuple[dict[str, dict[str, str]], dict[str, str]]:
+    """Writes both engines' inputs into `out`, from one model (build_both)."""
+    model, repository = model_for(db, engagement_id, slug, applied)
+    files, missing = build_both(model, Path(repository.local_path), warnings)
+    for engine_files in files.values():
+        write(engine_files, out)
+    return files, missing
+
+
 def merge_addendum(worktree: Path) -> Path:
     addendum = (worktree / paths.PLATFORM_INPUTS_DIR / "assessment-addendum.md").read_text(encoding="utf-8")
     found = sorted((worktree / paths.ENGINE_STATE_DIR).glob("*/assessment.md"))

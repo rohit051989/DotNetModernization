@@ -213,10 +213,16 @@ class ConversionScopeAtScale(unittest.TestCase):
         shared = next(p for p in tree["projects"] if p["path"] == path(synth.CORE[0]))
         self.assertEqual(len(shared["solutions"]), 3)
         conversion = scope.for_conversion(self.db, self.repo)
-        self.assertEqual((conversion["excluded"], conversion["build"], conversion["kept"]), ([], None, 170))
+        # Every conversion builds its own solution, in-scope.sln (2026-11-23): with a full scope, every .NET project
+        # (.csproj, .vbproj); the database and shared projects are listed as not converted by this track instead.
+        self.assertEqual((conversion["excluded"], conversion["build"], conversion["kept"]), ([], "in-scope.sln", 170))
+        not_converted = sorted(p["path"] for p in conversion["notConverted"])
+        self.assertTrue(not_converted and all(not p.endswith((".csproj", ".vbproj")) for p in not_converted), not_converted)
+        self.assertEqual(len(conversion["keptProjects"]) + len(not_converted), 170)
         from app.engine.inputs.collect import collect
         model = collect(self.db, self.repo)
-        self.assertEqual(model["scope"], {"excluded": [], "build": None})
+        self.assertEqual((model["scope"]["excluded"], model["scope"]["build"]), ([], "in-scope.sln"))
+        self.assertEqual(sorted(p["path"] for p in model["scope"]["notConverted"]), not_converted)
         self.assertEqual(len(model["projects"]), 170)
 
     def test_2_save_is_refused_while_a_dependency_is_excluded_with_every_problem_listed_then_accepted(self):
@@ -488,7 +494,7 @@ class ConversionScopeAtScale(unittest.TestCase):
         scope_check = next(c for c in report["checks"] if c["id"] == "scope")
         self.assertEqual((scope_check["state"], report["scopeViolations"]), ("pass", []))   # nothing changed in one
         md = (planner.RUNS / ENGAGEMENT / self.repo.slug / "verification" / "conversion-1" / "VERIFICATION.md").read_text(encoding="utf-8")
-        self.assertIn("Engine: GitHub Copilot.", md)
+        self.assertNotIn("Conversion done with", md)                 # not said which assistant: not named
         self.assertIn("## Conversion scope", md)
         self.assertIn(f"{len(left)} project(s) were left out of this conversion's scope", md)
 
@@ -516,30 +522,28 @@ class ConversionScopeAtScale(unittest.TestCase):
         self.assertEqual(tree["totals"]["new"], 1)
 
     def test_9z_claude_code_gets_the_scope_in_its_instructions_and_settings_and_an_edit_inside_an_excluded_project_fails(self):
-        """36-COPILOT-ENHANCED-CONVERSION Parts O and Q, on 170 projects: the owner chooses Claude Code; a run conversion
-        keeps its engine; the next is prepared for Claude Code only, its instructions naming every excluded project and
-        its settings denying edits there; a branch that edits inside one is NOT PROVEN, the files named."""
+        """36-COPILOT-ENHANCED-CONVERSION Parts O and Q, on 170 projects: every conversion is prepared for both engines;
+        Claude Code's instructions name every excluded project and its settings deny edits there; a branch Claude Code
+        edited inside one is NOT PROVEN, the files named, and the verification records the assistant."""
         from app.engine import verifier
         from app.engine.inputs import claude
         from app.engine.verifier import rediscovery
-        from app.routers import conversion as conversion_router
 
-        launched = []
         client = self.client(self.ann)
-        with on(self.ann[1], self.ann[0]),                 mock.patch.object(conversion_router, "_launch", side_effect=lambda *a: launched.append(a) or "job-3"):
+        with on(self.ann[1], self.ann[0]):
             answer = client.request("PUT", f"/api/repositories/{self.repo.id}/conversion-engine", {"engine": "claude-code"})
-        self.assertEqual(answer.status, 200, answer.body)
-        self.assertEqual((answer.json()["engine"], answer.json()["source"]), ("claude-code", "repository"))
-        self.assertEqual(launched, [])                                       # conversion 1 has been run (test 7)
-        self.assertIn("keeps its engine", answer.json()["note"])
+        self.assertIn(answer.status, (404, 405), answer.body)                # no engine to choose any more
 
         self.db.expire_all()
         with mock.patch.object(convert, "check_advisories", return_value=[]),                 mock.patch.object(siblings, "detect", return_value=[]), stand_in_dotnet([], []):
             done = convert.prepare(self.db, ENGAGEMENT, self.repo.slug, when_run="next", lookups_from_discovery=True)
-        self.assertEqual((done["engine"], done["number"], done["instructions"]), ("claude-code", 2, claude.INSTRUCTIONS))
-        self.assertEqual(convert.record(ENGAGEMENT, self.repo.slug, 1)["engine"], "github-copilot")   # 1 keeps Copilot
+        both = done["engines"]
+        self.assertEqual((done["number"], both["claude-code"]["instructions"]), (2, claude.INSTRUCTIONS))
+        self.assertTrue(all(both[e]["prepared"] for e in ("github-copilot", "claude-code")))
         wt, left = Path(done["worktree"]), done["scope"]["excluded"]
-        self.assertFalse((wt / ".github" / "copilot-instructions.md").exists())          # only the chosen engine's inputs
+        self.assertTrue((wt / ".github" / "copilot-instructions.md").exists())           # both engines' inputs
+        self.assertTrue((wt / claude.INSTRUCTIONS).exists())
+        self.assertEqual(git(wt, "log", "-1", "--format=%s", done["head"]), convert.INPUTS_COMMIT)
         instructions = (wt / claude.INSTRUCTIONS).read_text(encoding="utf-8")
         self.assertIn("## Conversion scope", instructions)
         for p in left:
@@ -550,7 +554,8 @@ class ConversionScopeAtScale(unittest.TestCase):
             self.assertTrue(f"Edit(/{p.rsplit('/', 1)[0]}/**)" in deny or f"Edit(/{p})" in deny, p)
         self.assertIn("Bash(git push *)", deny)
         runbook = Path(done["runbook"]).read_text(encoding="utf-8")
-        self.assertIn("(Claude Code)", runbook.splitlines()[0])
+        self.assertIn("## A. GitHub Copilot", runbook)
+        self.assertIn("## B. Claude Code", runbook)
         self.assertIn("## Conversion scope: the projects left out", runbook)
 
         # The agent's branch edits a kept project and, against the rules, an excluded one.
@@ -568,15 +573,17 @@ class ConversionScopeAtScale(unittest.TestCase):
             return {"built": True, "buildExit": 0, "projects": {p: {"ran": True, "exit": 0, "total": 4} for p in projects}, "trx": []}
 
         with mock.patch.object(rediscovery, "snapshot", side_effect=lambda *a, **k: json.loads(json.dumps(snapshot))),                 mock.patch.object(verifier, "build_and_test", side_effect=build_and_test):
-            report = convert.verify(self.db, ENGAGEMENT, self.repo.slug, "conversion/2", refresh_baseline=True)
+            report = convert.verify(self.db, ENGAGEMENT, self.repo.slug, "conversion/2", refresh_baseline=True,
+                                    assistant="claude-code")
         check = next(c for c in report["checks"] if c["id"] == "scope")
         self.assertEqual(check["state"], "fail")
         self.assertIn(inside, check["detail"])
         self.assertEqual(report["scopeViolations"], [inside])
         self.assertEqual(report["verdict"], "NOT PROVEN")
-        self.assertEqual(report["engine"], "claude-code")
+        self.assertEqual((report["engine"], report["assistant"]), ("claude-code", "claude-code"))
+        self.assertEqual(convert.record(ENGAGEMENT, self.repo.slug, 2)["assistant"]["engine"], "claude-code")
         md = (planner.RUNS / ENGAGEMENT / self.repo.slug / "verification" / "conversion-2" / "VERIFICATION.md").read_text(encoding="utf-8")
-        self.assertIn("Engine: Claude Code.", md)
+        self.assertIn("Conversion done with: Claude Code.", md)
         self.assertIn("## Scope violations", md)
         self.assertIn(f"- `{inside}`", md)
 

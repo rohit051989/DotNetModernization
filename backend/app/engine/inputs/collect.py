@@ -216,6 +216,8 @@ def collect(db: Session, repository: models.Repository) -> dict:
         "not_applicable": [{"id": item_id, "occurrences": found} for item_id, found in sorted(set_aside.items())],
         # Part O: the projects left out ({path, name}), and when there are any, who left them out, when and why, named
         # in every engine's instructions, the decision sheet and the runbook.
-        "scope": {"excluded": scope["left"], "build": scope["build"],
+        # Projects this track does not convert (an SSIS .dtproj, any project that is not .csproj or .vbproj): never in
+        # in-scope.sln, listed by path in both engines' instructions and the runbook.
+        "scope": {"excluded": scope["left"], "build": scope["build"], "notConverted": scope.get("notConverted") or [],
                   **({k: scope.get(k) for k in ("decidedBy", "decidedAt", "reason")} if scope["left"] else {})},
     }

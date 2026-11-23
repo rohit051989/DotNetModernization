@@ -202,22 +202,26 @@ export interface ConversionEntry {
   verifying: boolean
   plan: PlanRef | null
   superseded_plans: PlanRef[]
-  /** The scope it was prepared with: how many projects it left out, and the solution of the kept projects it builds. */
-  scope?: { left_out: number; projects: number | null; build: string | null }
-  /** The engine it was prepared for; one prepared before engines were recorded is GitHub Copilot's. */
+  /** The scope it was prepared with: how many projects it left out, the solution it builds (in-scope.sln), and the
+   * projects this track does not convert (never in it). */
+  scope?: { left_out: number; projects: number | null; build: string | null; not_converted?: string[] }
+  /** A conversion from before both engines: the one it was prepared for (GitHub Copilot when absent). */
   engine?: ConversionEngine
+  /** Both engines (36-COPILOT-ENHANCED-CONVERSION Part Q): whether each was prepared and is usable on this machine, its
+   * first message and its runbook (the shared header and its section). */
+  engines?: Partial<Record<ConversionEngine, EngineInputs>>
+  /** Which assistant did the conversion, as Verify recorded it. */
+  assistant?: ConversionEngine | null
 }
 
-/** Which engine the repository's next conversion uses, and where that comes from (36-COPILOT-ENHANCED-CONVERSION
- * Part Q): the repository owner's choice, else the engagement's default (set by an admin). */
-export interface EngineChoice {
-  engine: ConversionEngine
-  source: 'repository' | 'engagement'
-  engagement_id: string
-  engagement_default: ConversionEngine
-  engagement_version: number
-  /** What changing it does now: re-prepares a conversion not yet run, or applies to the next one. */
-  on_change: string
+export interface EngineInputs {
+  prepared: boolean
+  usable: boolean
+  /** Why Claude Code's inputs are not safe to use here: the instruction files above the worktree, named. */
+  unsafe?: string | null
+  notPrepared?: string | null
+  opening?: string
+  runbook?: string
 }
 
 export interface NextConversion {
@@ -237,5 +241,4 @@ export interface Conversions {
   verification_job: JobRef | null
   other_plans: PlanRef[]
   held?: ConversionsHeld | null
-  engine?: EngineChoice
 }

@@ -23,10 +23,6 @@ export interface EngagementCreate {
 }
 
 /** Sets the engagement's default conversion engine (admins). A stale copy is refused (409). */
-export function setEngagementEngine(engagementId: string, engine: ConversionEngine, version: number) {
-  return api.put<Engagement>(`/api/engagements/${encodeURIComponent(engagementId)}/conversion-engine`, { engine }, { version })
-}
-
 export function createEngagement(body: EngagementCreate) {
   return api.post<Engagement>('/api/engagements', body)
 }

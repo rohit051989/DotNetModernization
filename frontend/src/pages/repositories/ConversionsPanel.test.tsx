@@ -3,13 +3,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Conversions, PrepareAttempt } from '../../types/conversion'
 import type { Toolchain } from '../../types/toolchain'
 import { ConversionsPanel, preparationProblem } from './ConversionsPanel'
+import { resetEngineViewForTests } from './engineView'
 
-const api = vi.hoisted(() => ({ listConversions: vi.fn(), setConversionEngine: vi.fn() }))
+const api = vi.hoisted(() => ({ listConversions: vi.fn(), verifyConversion: vi.fn() }))
 vi.mock('../../api/conversion', () => ({
   listConversions: api.listConversions,
-  setConversionEngine: api.setConversionEngine,
   startNextConversion: vi.fn(),
-  verifyConversion: vi.fn(),
+  verifyConversion: api.verifyConversion,
   getRepositoryConversion: vi.fn(),
   evidenceHref: (url: string) => url,
 }))
@@ -27,7 +27,11 @@ async function show(last: PrepareAttempt) {
   await act(async () => {})
 }
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  resetEngineViewForTests()
+  window.localStorage.clear()
+})
 
 describe('the last preparation', () => {
   it('shows a refusal as a short summary, with the full list behind a details toggle', async () => {
@@ -102,47 +106,57 @@ describe('preparationProblem', () => {
   })
 })
 
-describe('the engine', () => {
-  const engine = {
-    engine: 'claude-code' as const, source: 'repository' as const, engagement_id: 'e', engagement_default: 'github-copilot' as const,
-    engagement_version: 3, on_change: 'Changing it prepares conversion 1 again (it has not been run yet) for the new engine.',
+describe('both engines', () => {
+  const entry = {
+    number: 1, branch: 'conversion/1', state: 'run' as const, baseline: 'e89bc6a1', baseline_from: null, scanned_at: null,
+    head: null, commits_beyond_inputs: 2, uncommitted: [], worktree: 'D:/runs/wt', prepared_at: null, runbook_path: 'D:/runs/RUNBOOK.md',
+    runbook: 'both', opening_message: 'copilot first message', package_step: {}, left_for_agent: {}, verify_refusal: null,
+    verification: null, verifying: false, plan: null, superseded_plans: [],
+    engines: {
+      'github-copilot': { prepared: true, usable: true, opening: 'copilot first message', runbook: 'COPILOT RUNBOOK: open D:/runs/wt/in-scope.sln' },
+      'claude-code': { prepared: true, usable: false, unsafe: 'not safe to use here: Claude Code would also read instruction files above the worktree, which are not the conversion’s: D:/runs/CLAUDE.md',
+                       opening: 'claude first message', runbook: 'CLAUDE RUNBOOK: cd "D:/runs/wt"' },
+    },
   }
 
-  it('says which engine the next conversion uses and where that comes from, and each conversion names its own', async () => {
-    api.listConversions.mockResolvedValue({
-      ...conversions({ at: null, status: 'prepared', message: 'conversion 1 prepared', number: 1, jobExecutionId: null }),
-      engine,
-      conversions: [{ number: 1, branch: 'conversion/1', state: 'prepared', baseline: 'e89bc6a1', baseline_from: null, scanned_at: null,
-        head: null, commits_beyond_inputs: 0, uncommitted: [], worktree: 'D:/runs/wt', prepared_at: null, runbook_path: 'RUNBOOK.md',
-        runbook: null, opening_message: null, package_step: {}, left_for_agent: {}, verify_refusal: null, verification: null,
-        verifying: false, plan: null, superseded_plans: [] }],
-    })
+  async function shown() {
+    api.listConversions.mockResolvedValue({ ...conversions({ at: null, status: 'prepared', message: 'x', number: 1, jobExecutionId: null }), conversions: [entry] })
     render(<ConversionsPanel repositoryId="r" refreshToken={0} />)
     await act(async () => {})
-    const picker = screen.getByTestId('engine-picker')
-    expect(picker.textContent).toContain('Engine: Claude Code (this repository’s choice).')
-    expect(picker.textContent).toContain('prepares conversion 1 again')
-    expect((screen.getByLabelText("This repository's engine") as HTMLSelectElement).value).toBe('claude-code')
-    // A conversion prepared before engines were recorded is GitHub Copilot's.
-    expect(screen.getByTestId('conversion-engine').textContent).toBe('GitHub Copilot')
-  })
+  }
 
-  it('the owner chooses the engine, or goes back to the engagement default', async () => {
-    api.listConversions.mockResolvedValue({ ...conversions({ at: null, status: 'prepared', message: 'x', number: 1, jobExecutionId: null }), engine })
-    api.setConversionEngine.mockResolvedValue({ engine: 'github-copilot', source: 'engagement', note: 'Saved. Conversion 1 is being prepared again for GitHub Copilot.', reprepare_job_execution_id: 'j' })
-    render(<ConversionsPanel repositoryId="r" refreshToken={0} />)
-    await act(async () => {})
+  it('every conversion has both; the dropdown switches the first message and the runbook, remembered in this browser', async () => {
+    await shown()
+    expect(screen.getByTestId('conversion-engines').textContent).toContain('GitHub Copilot: prepared')
+    expect(screen.getByTestId('conversion-engines').textContent).toContain('Claude Code: not safe to use here')
+    expect(screen.getByText('copilot first message')).toBeTruthy()
+    expect(screen.getByText('COPILOT RUNBOOK: open D:/runs/wt/in-scope.sln')).toBeTruthy()
+    expect(screen.queryByTestId('engine-unsafe')).toBeNull()
     await act(async () => {
-      fireEvent.change(screen.getByLabelText("This repository's engine"), { target: { value: '' } })
+      fireEvent.change(screen.getByLabelText("Which assistant's inputs and runbook to show"), { target: { value: 'claude-code' } })
     })
-    expect(api.setConversionEngine).toHaveBeenCalledWith('r', null)
-    expect(screen.getByText('Saved. Conversion 1 is being prepared again for GitHub Copilot.')).toBeTruthy()
+    expect(screen.getByText('claude first message')).toBeTruthy()
+    expect(screen.getByText('CLAUDE RUNBOOK: cd "D:/runs/wt"')).toBeTruthy()
+    expect(screen.getByTestId('engine-unsafe').textContent).toContain('D:/runs/CLAUDE.md')
+    expect(window.localStorage.getItem('conversion:engine-view')).toBe('claude-code')
+    expect(screen.queryByTestId('engine-picker')).toBeNull()
   })
 
-  it('cannot be changed by someone who may not act on the repository', async () => {
-    api.listConversions.mockResolvedValue({ ...conversions({ at: null, status: 'prepared', message: 'x', number: 1, jobExecutionId: null }), engine })
-    render(<ConversionsPanel repositoryId="r" refreshToken={0} refusal="Only its owner or an admin may do this." />)
-    await act(async () => {})
-    expect((screen.getByLabelText("This repository's engine") as HTMLSelectElement).disabled).toBe(true)
+  it('Verify asks which assistant did the conversion, defaulting to the one shown, and sends it', async () => {
+    window.localStorage.setItem('conversion:engine-view', 'claude-code')
+    api.verifyConversion.mockResolvedValue({ job_execution_id: 'j' })
+    await shown()
+    await act(async () => {
+      fireEvent.click(screen.getByText('Verify conversion 1'))
+    })
+    const asked = screen.getByLabelText('Which assistant did the conversion') as HTMLSelectElement
+    expect(asked.value).toBe('claude-code')
+    await act(async () => {
+      fireEvent.change(asked, { target: { value: 'github-copilot' } })
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByText('Verify'))
+    })
+    expect(api.verifyConversion).toHaveBeenCalledWith('r', 1, 'github-copilot')
   })
 })

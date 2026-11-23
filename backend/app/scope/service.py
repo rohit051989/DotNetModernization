@@ -151,26 +151,36 @@ def _entries(db: Session, repository_id) -> dict[str, dict]:
     return out
 
 
+# The projects a conversion builds and converts: buildable .NET projects. Every other project (an SSIS .dtproj, a
+# database .sqlproj, an F# .fsproj, a C++ .vcxproj, a shared .shproj) is never in in-scope.sln, and is listed as not
+# converted by this track.
+CONVERTIBLE = (".csproj", ".vbproj")
+
+
+def convertible(path: str) -> bool:
+    return any(path.lower().endswith(ext) for ext in CONVERTIBLE)
+
+
 def for_conversion(db: Session, repository: models.Repository) -> dict:
     """What a conversion is prepared with, and records: the projects left out ({path, name}), with who decided, when
-    and why, and the conversion's own solution (`build`, at the repository's root) listing exactly the kept projects
-    (`keptProjects`: {path, name, guid, type, solution}, how a solution of the repository lists each, if one does),
-    wherever they live, each once. Every project is in scope, and there is no solution of its own, when none is
-    excluded."""
+    and why; the conversion's own solution (`build`, `in-scope.sln` at the repository's root, for every conversion)
+    listing exactly the convertible projects kept (`keptProjects`: {path, name, guid, type, solution}, how a solution of
+    the repository lists each, if one does), wherever they live, each once; and the projects that are not .NET projects
+    this track converts (`notConverted`: {path, name}), never in the solution, whatever the scope."""
     scope = db.get(models.ConversionScope, repository.id)
     projects = _projects(db, repository.id)
     excluded = excluded_paths(db, repository.id)
     out = {"excluded": sorted(excluded, key=str.lower), "projects": len(projects), "kept": len(projects) - len(excluded),
            "treatment": scope.treatment if scope else LEAVE_UNTOUCHED, "version": scope.version if scope else 0,
-           "left": [], "build": None, "keptProjects": []}
-    if not excluded:
-        return out
-    out.update(decidedBy=scope.saved_by_name, decidedAt=scope.saved_at.isoformat(timespec="seconds"), reason=scope.reason,
-               left=[{"path": p["path"], "name": p["name"]} for p in projects if p["path"] in excluded])
+           "left": [], "build": SOLUTION, "keptProjects": [],
+           "notConverted": [{"path": p["path"], "name": p["name"]} for p in projects if not convertible(p["path"])]}
+    if excluded:
+        out.update(decidedBy=scope.saved_by_name, decidedAt=scope.saved_at.isoformat(timespec="seconds"),
+                   reason=scope.reason, left=[{"path": p["path"], "name": p["name"]} for p in projects if p["path"] in excluded])
     entries = _entries(db, repository.id)
     out["keptProjects"] = [{"path": p["path"], "name": p["name"], "guid": None, "type": None, "solution": None,
-                            **entries.get(p["path"], {})} for p in projects if p["path"] not in excluded]
-    out["build"] = SOLUTION
+                            **entries.get(p["path"], {})} for p in projects
+                           if p["path"] not in excluded and convertible(p["path"])]
     return out
 
 

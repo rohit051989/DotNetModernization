@@ -57,9 +57,6 @@ RULES: dict[tuple[str, str], str] = {
     ("POST", "/api/repositories/{repository_id}/conversions/{number}/verify"): OWNER,
     # Which of its projects its conversions cover: saving prepares an unrun conversion again, on its machine.
     ("PUT", "/api/repositories/{repository_id}/scope"): OWNER,
-    # Which engine its conversions are prepared for: changing it prepares an unrun conversion again, on its machine.
-    # (The engagement's default, PUT /api/engagements/{engagement_id}/conversion-engine, is admins only: not listed.)
-    ("PUT", "/api/repositories/{repository_id}/conversion-engine"): OWNER,
     # A job on the owner's repository.
     ("POST", "/api/workflow/executions/{execution_id}/resume"): EXECUTION_OWNER,
     ("POST", "/api/workflow/executions/{execution_id}/stop"): EXECUTION_OWNER,
@@ -75,7 +72,6 @@ ON_ITS_MACHINE = {
     ("POST", "/api/repositories/{repository_id}/conversions"),
     ("POST", "/api/repositories/{repository_id}/conversions/{number}/verify"),
     ("PUT", "/api/repositories/{repository_id}/scope"),
-    ("PUT", "/api/repositories/{repository_id}/conversion-engine"),
 }
 
 

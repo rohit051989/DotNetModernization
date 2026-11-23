@@ -1,5 +1,5 @@
 job_name: conversion-verification
-version: 1
+version: 2
 description: "Verifies a conversion that has been run: the conversion verifier, independent of the engine (17-LIFECYCLE-STEPS.md independent-verification; 36-COPILOT-ENHANCED-CONVERSION.md Part N)."
 
 parameters:
@@ -15,6 +15,10 @@ parameters:
     type: string
     required: true
     description: "The conversion's number."
+  - name: assistant
+    type: string
+    required: false
+    description: "Which assistant did the conversion, github-copilot or claude-code: recorded in conversion.json and VERIFICATION.md (version 2)."
   - name: run_token
     type: string
     required: true

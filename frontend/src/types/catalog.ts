@@ -24,8 +24,6 @@ export interface Engagement {
   description: string | null
   target_platform: string | null
   default_posture: string
-  /** The conversion engine its repositories use unless one chooses its own (36-COPILOT-ENHANCED-CONVERSION Part Q). */
-  default_engine?: ConversionEngine
   status: LifecycleStatus
   created_at: string
   updated_at: string

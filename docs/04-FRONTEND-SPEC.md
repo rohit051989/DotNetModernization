@@ -500,12 +500,12 @@ test its baseline on its own frameworks (36-COPILOT-ENHANCED-CONVERSION Part P),
 one line ("Baseline tests cannot run here: needs the .NET 8 runtime (x64)."), and the Conversion tab repeats it beside
 **Start the next conversion**, with each missing runtime or build tool, the projects that need it, what the machine
 has instead, and that a conversion prepared now gets no package step. A ready machine shows only the Conversion
-tab's one line; a repository of another machine says whose finding it is. Above the conversions, **Engine** says
-which engine the next conversion is prepared for, GitHub Copilot or Claude Code, and whether that is the repository's
-own choice or the engagement's default (36-COPILOT-ENHANCED-CONVERSION Part Q). Its owner chooses it from the machine it
-was registered on (or back to the default); an admin changes the engagement's default; the line under it says what a
-change does now (prepares a conversion not yet run again, or applies to the next one). Each conversion names the
-engine it was prepared for. The new-engagement drawer chooses the engagement's default, GitHub Copilot unless changed. A repository scanned before results were shared
+tab's one line; a repository of another machine says whose finding it is. Every conversion is prepared for both
+engines (36-COPILOT-ENHANCED-CONVERSION Part Q): each conversion says, per engine, prepared, not prepared (one from before
+both engines) or not safe to use here (Claude Code under a CLAUDE.md, CLAUDE.local.md or .claude folder, named). Its
+**Assistant** dropdown chooses which engine's first message and runbook it shows, remembered in this browser, since it
+depends on what is installed on this machine. **Verify** asks which assistant did the conversion, defaulting to the one
+shown, and the conversion then says "done with" it. There is no engine to choose for a repository or an engagement. A repository scanned before results were shared
 says so under its header, with the command its owner runs to copy them.
 
 ## Dependencies (repository page): Internal and External

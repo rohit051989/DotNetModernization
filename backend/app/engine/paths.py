@@ -39,6 +39,13 @@ CLAUDE_INPUT_PATHS = (CLAUDE_DIR + "/",)
 # Where each engine's work items are: one file each (GitHub Copilot), one folder with a SKILL.md each (Claude Code).
 WORK_ITEM_DIRS = (UPGRADE_SKILLS_DIR, CLAUDE_SKILLS_DIR)
 
+
+def work_item_dirs(engine: str | None) -> tuple[str, ...]:
+    """Where one engine's work items are (GitHub Copilot's, Claude Code's); both when the engine is not known."""
+    from app.engine import engines
+
+    return {engines.COPILOT: (UPGRADE_SKILLS_DIR,), engines.CLAUDE: (CLAUDE_SKILLS_DIR,)}.get(engine, WORK_ITEM_DIRS)
+
 # Excluded from the verifier's diff, impact comparison and re-discovery: inputs and records, not
 # conversion. The same list for every run of every arm, and for both engines.
 EXCLUDED_FROM_COMPARISON = (ENGINE_STATE_DIR + "/", COPILOT_INSTRUCTIONS, SKILLS_DIR + "/", PLATFORM_INPUTS_DIR + "/",

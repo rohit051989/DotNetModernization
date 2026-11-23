@@ -8,8 +8,9 @@
     python -m app.engine.convert approve-removal --engagement test-client-a --repository accountsapi-net10
         --branch conversion/2 --test <test name or test file> [--test ...] --reason "..." --by "<person>"
 
-`prepare` makes the next conversion of a repository, for its engine (app.engine.engines, Part Q: GitHub Copilot or
-Claude Code, the repository's own choice or its engagement's default): a branch `conversion/<n>` from its baseline, in a worktree at
+`prepare` makes the next conversion of a repository, for both engines (app.engine.engines, Part Q: GitHub Copilot and
+Claude Code, from one content model; whichever is installed does the work): a branch `conversion/<n>` from its baseline,
+with `in-scope.sln` at its root (app.scope.files), in a worktree at
 `<RUNS_DIR>/<engagement>/<repository>/conversions/<n>/wt`. First the platform applies the package changes that need no
 code: safe upgrades (each also fixing the vulnerability its package carries) and removals of packages the target
 framework provides. It uses the conversion unit loop (app.conversion.runner): one commit each on the conversion
@@ -51,12 +52,12 @@ from app.experiment import instrument
 from app.results import last_scan
 from app.scope import service as scope_service
 
-INPUTS_COMMIT = "Add generated upgrade inputs for GitHub Copilot (do not edit)"
-INPUTS_COMMITS = {engines.COPILOT: INPUTS_COMMIT, engines.CLAUDE: "Add generated conversion inputs for Claude Code (do not edit)"}
+INPUTS_COMMIT = "Add generated conversion inputs for GitHub Copilot and Claude Code (do not edit)"
 DEFAULT_GOAL = "Upgrade this solution to .NET 10 and make the application ready to run on OpenShift."
-RUNBOOK_TEMPLATE = Path(__file__).resolve().parent / "templates" / "conversion-runbook.md"
-RUNBOOK_TEMPLATES = {engines.COPILOT: RUNBOOK_TEMPLATE,
-                     engines.CLAUDE: Path(__file__).resolve().parent / "templates" / "conversion-runbook-claude.md"}
+TEMPLATES = Path(__file__).resolve().parent / "templates"
+RUNBOOK_TEMPLATE = TEMPLATES / "conversion-runbook.md"            # the header both sections share
+RUNBOOK_SECTIONS = {engines.COPILOT: TEMPLATES / "conversion-runbook-copilot.md",
+                    engines.CLAUDE: TEMPLATES / "conversion-runbook-claude.md"}
 RECORD = "conversion.json"
 STUCK_MINUTES = 5
 MAX_ROUNDS = 3
@@ -70,6 +71,7 @@ def opening_message(goal: str, solution: str | None, engine: str = engines.COPIL
     if engine == engines.CLAUDE:
         return _claude_opening(goal, solution, instructions)
     build = f"Build the solution ({solution})" if solution else "Build the solution"
+    tests = f"Run all tests of the solution ({solution})" if solution else "Run all tests"
     return "\n".join([
         goal.strip(),
         "",
@@ -89,7 +91,7 @@ def opening_message(goal: str, solution: str | None, engine: str = engines.COPIL
         "",
         "You are done only when all of these hold. Before you report done:",
         f"1. {build} with 0 errors.",
-        "2. Run all tests. Every test must pass. Do not weaken, skip or delete any test. If a test file must change "
+        f"2. {tests}. Every test must pass. Do not weaken, skip or delete any test. If a test file must change "
         "(a renamed namespace, for instance), keep the change minimal and list each change with its reason.",
         "3. Confirm that every JSON and XML configuration file in the repository still parses.",
         "4. Start the application without blocking the terminal, wait until it reports that it is listening or until "
@@ -105,10 +107,11 @@ def opening_message(goal: str, solution: str | None, engine: str = engines.COPIL
 
 def _done_checks(solution: str | None) -> list[str]:
     build = f"Build the solution ({solution})" if solution else "Build the solution"
+    tests = f"Run all tests of the solution ({solution})" if solution else "Run all tests"
     return [
         "You are done only when all of these hold. Before you report done:",
         f"1. {build} with 0 errors.",
-        "2. Run all tests. Every test must pass. Do not weaken, skip or delete any test. If a test file must change "
+        f"2. {tests}. Every test must pass. Do not weaken, skip or delete any test. If a test file must change "
         "(a renamed namespace, for instance), keep the change minimal and list each change with its reason.",
         "3. Confirm that every JSON and XML configuration file in the repository still parses.",
         "4. Start the application without blocking the terminal, wait until it reports that it is listening or until "
@@ -147,9 +150,13 @@ def _claude_opening(goal: str, solution: str | None, instructions: str | None) -
     ])
 
 
-def opening_for(record: dict) -> str:
-    """The opening message of a conversion, for the engine it was prepared for."""
-    return opening_message(record["goal"], record.get("solution"), engines.of_record(record), record.get("instructions"))
+def opening_for(record: dict, engine: str | None = None) -> str:
+    """The first message of a conversion for `engine` (else the one a record from before both engines was prepared
+    for). The same goal and done checks for both; each engine's own mechanics."""
+    engine = engine or engines.of_record(record)
+    own = (record.get("engines") or {}).get(engine) or {}
+    instructions = own.get("instructions") or (record.get("instructions") if engine == engines.of_record(record) else None)
+    return opening_message(record["goal"], record.get("solution"), engine, instructions)
 
 
 def framework_name(tfm: str) -> str:
@@ -252,23 +259,22 @@ def _repository(db, engagement_id: str, slug: str) -> models.Repository:
             .filter(models.Repository.deleted_at.is_(None)).one())
 
 
-def _commit_inputs(db, engagement_id: str, slug: str, worktree: Path, applied: list[dict],
-                   engine: str = engines.COPILOT) -> tuple[list[dict], dict[str, str]]:
-    """Generates and commits the inputs for `engine`, only its own. Returns ([{file, references}]: each input that
-    names a secret value by its file, key and line instead of quoting it (app.engine.inputs.secrets); the files)."""
+def _commit_inputs(db, engagement_id: str, slug: str, worktree: Path, applied: list[dict]
+                   ) -> tuple[list[dict], dict[str, dict[str, str]], dict[str, str]]:
+    """Generates both engines' inputs from one model and commits them together, as the platform. Returns ([{file,
+    references}]: each input that names a secret value by its file, key and line instead of quoting it
+    (app.engine.inputs.secrets); {engine: its files}; {engine: why it has none})."""
     from app.engine import paths
-    from app.engine.inputs import selfcontained
+    from app.engine.inputs import generate_both, selfcontained
 
     warnings: list[dict] = []
-    files = generate(db, engagement_id, slug, worktree, applied=applied, warnings=warnings, engine=engine)
-    if engine == engines.COPILOT:
-        gitops.platform_commit(worktree, INPUTS_COMMIT, vocabulary=selfcontained.vocabulary(db),
-                               paths=[p.rstrip("/") for p in paths.GENERATED_INPUT_PATHS if (worktree / p.rstrip("/")).exists()])
-    else:
-        # Exactly the files written, even where the repository's own ignore rules would hide one (.claude/ often is).
-        gitops.platform_commit(worktree, INPUTS_COMMITS[engine], vocabulary=selfcontained.vocabulary(db),
-                               paths=sorted(files), force=True)
-    return warnings, files
+    files, missing = generate_both(db, engagement_id, slug, worktree, applied=applied, warnings=warnings)
+    if engines.CLAUDE in files:
+        # Exactly Claude Code's files, even where the repository's own ignore rules would hide one (.claude/ often is).
+        gitops.git(worktree, "add", "-f", "--", *sorted(files[engines.CLAUDE]))
+    gitops.platform_commit(worktree, INPUTS_COMMIT, vocabulary=selfcontained.vocabulary(db),
+                           paths=[p.rstrip("/") for p in paths.GENERATED_INPUT_PATHS if (worktree / p.rstrip("/")).exists()])
+    return warnings, files, missing
 
 
 # ---------------------------------------------------------------- the package changes the platform applies
@@ -289,8 +295,7 @@ def plan_packages(db, engagement_id: str, slug: str, base: str, branch: str, wor
     if (why := toolchain.blocking(db, _repository(db, engagement_id, slug))) is not None:
         raise LookupError(why)
     excluded = set((scope or {}).get("excluded") or [])
-    plan = planner.create(db, engagement_id, slug, [], excluded_projects=excluded,
-                          solution=(scope or {}).get("build") if excluded else None)
+    plan = planner.create(db, engagement_id, slug, [], excluded_projects=excluded, solution=(scope or {}).get("build"))
     plan.legacy_commit, plan.branch, plan.worktree_path = base, branch, str(worktree)
     db.commit()
     units = db.query(models.ConversionUnit).filter_by(plan_id=plan.id).order_by(models.ConversionUnit.sequence).all()
@@ -429,7 +434,6 @@ def prepare(db, engagement_id: str, slug: str, *, baseline: str | None = None, g
     canaries = canaries if canaries is not None else (latest or {}).get("canaries") or []
     # Which projects the conversion covers (app.scope): read once, so the plan, the inputs and the record agree.
     scope = scope_service.for_conversion(db, repository)
-    engine = engines.of_repository(db, repository)
 
     latest_unrun = latest is not None and unrun(Path(latest["worktree"]), latest["baseline"])
     refresh = latest_unrun and when_run != "next"
@@ -443,8 +447,9 @@ def prepare(db, engagement_id: str, slug: str, *, baseline: str | None = None, g
     branch = f"conversion/{number}"
     if worktree.resolve().is_relative_to(root.resolve()):
         raise ValueError(f"{worktree} would be inside the registered checkout")
-    if engine == engines.CLAUDE:
-        _refuse_outside_context(folder)
+    # Claude Code also reads instruction files above the folder it starts in: under one, its inputs are prepared but
+    # marked not safe to use here; GitHub Copilot's stay usable (Part Q).
+    hazards = _outside_context(folder)
 
     if not refresh:
         if folder.exists():
@@ -466,37 +471,38 @@ def prepare(db, engagement_id: str, slug: str, *, baseline: str | None = None, g
     try:
         return _prepare_on(db, repository, engagement, root, latest, base, goal, sibling_links, canaries, baseline,
                            lookups_from_discovery, refresh, number, folder, worktree, branch, plan, units, not_planned,
-                           scope, engine)
+                           scope, hazards)
     except BaseException:
         if not refresh:
             _undo_creation(db, root, folder, worktree, branch, plan)
         raise
 
 
-def _refuse_outside_context(folder: Path) -> None:
+def _outside_context(folder: Path) -> list[str]:
     """Claude Code also reads CLAUDE.md, CLAUDE.local.md and .claude folders above the folder it starts in (Part Q): a
-    conversion's worktree under one would hand the agent instructions that are not the conversion's, the platform's own
-    development CLAUDE.md among them. Refused, naming each, before anything is made."""
+    conversion's worktree under one would hand it instructions that are not the conversion's, the platform's own
+    development CLAUDE.md among them. Each one found, by full path; [] when there is none."""
     from app.engine.inputs import claude
 
-    found = claude.context_hazards(folder / "wt")
-    if found:
-        raise ValueError("Claude Code would also read instruction files above the conversion's worktree "
-                         f"({folder / 'wt'}): {', '.join(found)}. Set RUNS_DIR in backend/.env to a folder with no "
-                         "CLAUDE.md, CLAUDE.local.md or .claude folder above it (outside every repository), restart the "
-                         "backend, and prepare again")
+    return claude.context_hazards(folder / "wt")
+
+
+def unsafe_text(hazards: list[str]) -> str:
+    """Why Claude Code's inputs are not safe to use here, naming each file or folder."""
+    return ("not safe to use here: Claude Code would also read instruction files above the worktree, which are not the "
+            f"conversion's: {', '.join(hazards)}. Use GitHub Copilot's inputs, or set RUNS_DIR in backend/.env to a "
+            "folder with no CLAUDE.md, CLAUDE.local.md or .claude folder above it, restart the backend and prepare again")
 
 
 def _commit_scope(worktree: Path, scope: dict) -> dict:
-    """Writes and commits, as the platform, the conversion's own solution and the OUT-OF-SCOPE.md notes of a scope
-    that leaves a project out (app.scope.files). Nothing when every project is in scope."""
+    """Writes and commits, as the platform, the conversion's own solution, in-scope.sln, and the OUT-OF-SCOPE.md notes
+    of a scope that leaves a project out (app.scope.files)."""
     from app.scope import files as scope_files
 
-    if not scope["excluded"]:
-        return {"written": [], "kept": []}
     written = scope_files.write(worktree, scope)
     if written["written"]:
-        gitops.platform_commit(worktree, scope_files.COMMIT_MESSAGE, paths=written["written"])
+        message = scope_files.COMMIT_MESSAGE if scope["excluded"] else scope_files.COMMIT_MESSAGE_FULL
+        gitops.platform_commit(worktree, message, paths=written["written"])
     return written
 
 
@@ -523,7 +529,7 @@ def _undo_creation(db, root: Path, folder: Path, worktree: Path, branch: str, pl
 def _prepare_on(db, repository, engagement, root: Path, latest: dict | None, base: str, goal: str,
                 sibling_links: list[str], canaries: list[dict], baseline: str | None, lookups_from_discovery: bool,
                 refresh: bool, number: int, folder: Path, worktree: Path, branch: str, plan, units,
-                not_planned: str | None, scope: dict, engine: str = engines.COPILOT) -> dict:
+                not_planned: str | None, scope: dict, hazards: list[str] | None = None) -> dict:
     """prepare, from the advisories check to the written record and runbook."""
     engagement_id, slug = repository.engagement_id, repository.slug
 
@@ -564,18 +570,15 @@ def _prepare_on(db, repository, engagement, root: Path, latest: dict | None, bas
         units, step = run_packages(db, plan, sibling_links)
         changes, applied = [_unit_record(u) for u in units], applied_changes(units)
     packages_head = gitops.head(worktree)
-    secret_references, written = _commit_inputs(db, engagement_id, slug, worktree, applied, engine)
+    secret_references, written, missing = _commit_inputs(db, engagement_id, slug, worktree, applied)
 
     solutions = sorted(p.name for p in worktree.glob("*.sln"))
-    # With projects left out, the conversion builds its own solution: exactly the kept projects.
+    # The conversion builds its own solution, in-scope.sln: exactly the .NET projects in scope.
     solution = scope["build"] or (solutions[0] if solutions else None)
     record = {
         "number": number, "engagement": engagement_id, "repository": slug, "baseline": base, "branch": branch,
-        # The engine it was prepared for (Part Q), and where that engine's instructions and settings are.
-        "engine": engine, "instructions": _instructions_of(engine, written), "settings": _settings_of(engine, written),
-        # The repository's own instruction files Claude Code also loads: kept unchanged, named in the runbook.
-        "ownInstructions": [p for p in ("CLAUDE.md", "CLAUDE.local.md", ".claude/CLAUDE.md")
-                            if engine == engines.CLAUDE and p not in written and (worktree / p).is_file()],
+        # Both engines (Part Q): where each one's instructions and settings are, and whether it is usable here.
+        "engines": _engines_of(written, missing, hazards or [], worktree),
         # Where the baseline came from: the commit discovery scanned, or the command line's --baseline.
         "baselineFrom": "the --baseline given" if baseline else "the commit discovery scanned"
                         if repository.ingest_commit_sha else "the checkout's HEAD",
@@ -606,6 +609,26 @@ def _prepare_on(db, repository, engagement, root: Path, latest: dict | None, bas
     _write_record(record)
     Path(record["runbook"]).write_text(render_runbook(record), encoding="utf-8", newline="\n")
     return {**record, "action": action}
+
+
+def _engines_of(written: dict[str, dict[str, str]], missing: dict[str, str], hazards: list[str], worktree: Path) -> dict:
+    """{engine: {prepared, usable, unsafe | notPrepared, instructions, settings, ownInstructions}} for the record."""
+    out = {}
+    for engine in engines.ENGINES:
+        files = written.get(engine)
+        if files is None:
+            out[engine] = {"prepared": False, "usable": False, "notPrepared": missing.get(engine) or "not prepared"}
+            continue
+        entry = {"prepared": True, "usable": True, "instructions": _instructions_of(engine, files),
+                 "settings": _settings_of(engine, files)}
+        if engine == engines.CLAUDE:
+            # The repository's own instruction files Claude Code also loads: kept unchanged, named in the runbook.
+            entry["ownInstructions"] = [p for p in ("CLAUDE.md", "CLAUDE.local.md", ".claude/CLAUDE.md")
+                                        if p not in files and (worktree / p).is_file()]
+            if hazards:
+                entry.update(usable=False, unsafe=unsafe_text(hazards), hazards=hazards)
+        out[engine] = entry
+    return out
 
 
 def _instructions_of(engine: str, files: dict[str, str]) -> str:
@@ -643,6 +666,34 @@ def verify_command(record: dict, branch: str | None = None, base: str | None = N
             f"--branch {branch or record['branch']}" + (f" --base {base[:8]}" if base else ""))
 
 
+def runbook_not_converted(record: dict) -> str:
+    """The runbook's list of the projects this track does not convert, the same as both engines' instructions."""
+    from app.engine.inputs import render
+
+    scope = record.get("scope") or {}
+    lines = render.not_converted_lines({"scope": {"notConverted": scope.get("notConverted") or [],
+                                                  "build": scope.get("build")}})
+    return ("\n".join(lines) + "\n") if lines else ""
+
+
+def solution_path(record: dict) -> str:
+    """The full path of the solution the conversion builds: the worktree's in-scope.sln."""
+    solution = record.get("solution") or "<solution>.sln"
+    return f"{record['worktree']}\\{solution}" if "\\" in record["worktree"] else f"{record['worktree']}/{solution}"
+
+
+def work_item_names(record: dict) -> list[str]:
+    """The work items of the conversion, in order, from Claude Code's skills on the branch at its inputs commit."""
+    from app.engine import paths
+
+    worktree = Path(record["worktree"])
+    if not worktree.exists() or not record.get("head"):
+        return []
+    names = gitops.git(worktree, "ls-tree", "-r", "--name-only", record["head"], "--", paths.CLAUDE_SKILLS_DIR,
+                       check=False).splitlines()
+    return sorted({paths.work_item_name(n) for n in names if paths.is_work_item(n)})
+
+
 def runbook_scope(record: dict) -> str:
     """The runbook's section on the projects left out (Part O), the same list as the instructions and the decision
     sheet: by name and path, with who, when and why. "" when every project is in scope."""
@@ -661,31 +712,66 @@ def runbook_scope(record: dict) -> str:
     return "\n".join(lines) + "\n"
 
 
-def render_runbook(record: dict) -> str:
-    from app.engine.inputs import claude
-
-    engine = engines.of_record(record)
-    template = string.Template(RUNBOOK_TEMPLATES[engine].read_text(encoding="utf-8"))
-    values = dict(
+def _runbook_values(record: dict) -> dict:
+    return dict(
         repository=record["repository"], branch=record["branch"], worktree=record["worktree"],
-        solution=record["solution"] or "<solution>.sln", base=record["baseline"][:8],
+        solution=record.get("solution") or "<solution>.sln", solution_path=solution_path(record),
+        base=record["baseline"][:8], head=(record.get("head") or "")[:8],
         platform=instrument.describe(record["platform"]),
-        opening=opening_for(record),
         target=framework_name(record["targetFramework"]), stuck_minutes=STUCK_MINUTES,
         verify_command=verify_command(record),
-        prepare_command=f"python -m app.engine.convert prepare --engagement {record['engagement']} "
-                        f"--repository {record['repository']}",
-        scope_section=("\n" + runbook_scope(record)) if runbook_scope(record) else "")
-    if engine == engines.CLAUDE:
-        own = record.get("ownInstructions") or []
-        values.update(
-            instructions=record.get("instructions") or claude.INSTRUCTIONS,
-            settings=record.get("settings") or claude.SETTINGS,
-            settings_scope=", and no edit inside a project left out of the scope" if (record.get("scope") or {}).get("left") else "",
-            own_claude_md=("| " + ", ".join(f"`{f}`" for f in own) + " | The repository's own, kept unchanged. Claude Code "
-                           "loads it too; where it and the conversion's instructions disagree, the conversion's "
-                           "instructions say they win for this conversion. |\n") if own else "")
-    return template.substitute(values)
+        scope_section=("\n" + runbook_scope(record)) if runbook_scope(record) else "",
+        not_converted_section=("\n" + runbook_not_converted(record)) if runbook_not_converted(record) else "")
+
+
+def runbook_section(record: dict, engine: str) -> str:
+    """The runbook's complete section for one engine (A: GitHub Copilot, B: Claude Code)."""
+    from app.engine.inputs import claude
+
+    state = engines.of_conversion(record)[engine]
+    values = _runbook_values(record)
+    if not state.get("prepared"):
+        return (f"## {'A' if engine == engines.COPILOT else 'B'}. {engines.name(engine)}\n\n"
+                f"Not prepared for {engines.name(engine)}: {state.get('notPrepared')}.\n")
+    # A record from before both engines keeps its one engine's paths at the top level.
+    legacy = record if not record.get("engines") else {}
+    state = {"instructions": legacy.get("instructions"), "settings": legacy.get("settings"),
+             "ownInstructions": legacy.get("ownInstructions"), **{k: v for k, v in state.items() if v is not None}}
+    own = state.get("ownInstructions") or []
+    names = work_item_names(record)
+    values.update(
+        opening=opening_for(record, engine),
+        unsafe=(f"\n> **{state['unsafe'][0].upper() + state['unsafe'][1:]}.**\n") if state.get("unsafe") else "",
+        instructions=state.get("instructions") or claude.INSTRUCTIONS,
+        settings=state.get("settings") or claude.SETTINGS,
+        settings_scope=", and no edit inside a project left out of the scope" if (record.get("scope") or {}).get("left") else "",
+        own_claude_md=("| " + ", ".join(f"`{f}`" for f in own) + " | The repository's own, kept unchanged. Claude Code "
+                       "loads it too; where it and the conversion's instructions disagree, the conversion's "
+                       "instructions say they win for this conversion. |\n") if own else "",
+        work_items=("The work items, in order: " + ", ".join(f"`{n}`" for n in names) + ".") if names else "")
+    return string.Template(RUNBOOK_SECTIONS[engine].read_text(encoding="utf-8")).substitute(values)
+
+
+def runbook_header(record: dict) -> str:
+    return string.Template(RUNBOOK_TEMPLATE.read_text(encoding="utf-8")).substitute(_runbook_values(record))
+
+
+def runbook_footer(record: dict) -> str:
+    return (f"\n## After fixing an instruction\n\nTo start again, run `python -m app.engine.convert prepare --engagement "
+            f"{record['engagement']} --repository {record['repository']}`. If this conversion has not been run, its "
+            "inputs are refreshed in place, for both assistants. Otherwise it prepares the next conversion, with its own "
+            "worktree and runbook.\n")
+
+
+def runbook_for(record: dict, engine: str) -> str:
+    """What the Conversion tab shows for one engine: the shared header, that engine's section, and the footer."""
+    return runbook_header(record) + "\n" + runbook_section(record, engine) + runbook_footer(record)
+
+
+def render_runbook(record: dict) -> str:
+    """RUNBOOK.md: the shared header, then a complete section for each engine, GitHub Copilot's and Claude Code's."""
+    return (runbook_header(record) + "".join("\n" + runbook_section(record, e) for e in engines.ENGINES)
+            + runbook_footer(record))
 
 
 # ---------------------------------------------------------------- approved test removals
@@ -716,12 +802,24 @@ def approve_removal(engagement_id: str, slug: str, branch: str, tests: list[str]
 
 # ---------------------------------------------------------------- verify
 
+def record_assistant(rec: dict, assistant: str) -> dict:
+    """Records, in conversion.json, which assistant did the conversion, as the person verifying it said."""
+    rec = {**rec, "assistant": {"engine": engines.check(assistant),
+                                "at": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")}}
+    _write_record(rec)
+    return rec
+
+
 def verify(db, engagement_id: str, slug: str, branch: str, *, base: str | None = None, label: str | None = None,
-           refresh_baseline: bool = False) -> dict:
+           refresh_baseline: bool = False, assistant: str | None = None) -> dict:
+    """`assistant`: which one did the conversion (Part Q), recorded in conversion.json and VERIFICATION.md. Omitted, the
+    one recorded at an earlier verification, else the one a record from before both engines was prepared for."""
     from app.engine import verifier
 
     known = records(engagement_id, slug)
     own = next((r for r in reversed(known) if r["branch"] == branch), None)
+    if own is not None and assistant:
+        own = record_assistant(own, assistant)
     facts = own or (known[-1] if known else {})
     base = base or (own or {}).get("baseline")
     if not base:
@@ -735,8 +833,10 @@ def verify(db, engagement_id: str, slug: str, branch: str, *, base: str | None =
               # The scope the branch's conversion was prepared with (Part O): its own solution is built and tested,
               # and the projects it left out are not counted.
               "scope": (own or {}).get("scope") or {},
-              # The engine the branch's conversion was prepared for (Part Q), named in VERIFICATION.md.
-              "engine": engines.of_record(own) if own else None}
+              # The assistant that did the conversion (Part Q), named in VERIFICATION.md: its own instructions are
+              # the ones the verifier reads on the branch, never the other engine's copy of them.
+              "engine": assistant or (engines.ran_with(own) or (engines.of_record(own) if not own.get("engines") else None))
+              if own else assistant}
     return verifier.verify(db, engagement_id=engagement_id, slug=slug, base=base, ref=branch,
                            label=label or branch.replace("/", "-"), config=config, refresh_baseline=refresh_baseline)
 
@@ -767,6 +867,7 @@ def main(argv: list[str] | None = None) -> int:
     v.add_argument("--base", help="the baseline commit (default: the conversion record's)")
     v.add_argument("--label", help="names the verification folder (default: the branch, '/' as '-')")
     v.add_argument("--refresh-baseline", action="store_true", help="re-run discovery on the base commit")
+    v.add_argument("--assistant", choices=engines.ENGINES, help="which assistant did the conversion (recorded)")
     a = sub.add_parser("approve-removal", help="approve, with a reason, the removal of tests from a branch")
     a.add_argument("--engagement", required=True)
     a.add_argument("--repository", required=True, help="repository slug")
@@ -822,7 +923,7 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"approved: {x['test']} ({x['reason']}; {x['approvedBy']}, {x['at']})")
         else:
             report = verify(db, args.engagement, args.repository, args.branch, base=args.base, label=args.label,
-                            refresh_baseline=args.refresh_baseline)
+                            refresh_baseline=args.refresh_baseline, assistant=args.assistant)
             print(f"{report['label']}: {report['verdict']}")
             for reason in report["reasons"]:
                 print(f"  - {reason}")

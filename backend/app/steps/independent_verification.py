@@ -39,7 +39,10 @@ def run(context: StepContext) -> StepResult:
         refusal = convert.verify_refusal(record)
         if refusal:
             return StepResult(exit_status="FAILED", exit_message=refusal)
-        report = convert.verify(db, repository.engagement_id, repository.slug, record["branch"])
+        # Which assistant did the conversion, as the person verifying it said (Part Q): recorded, and its own
+        # instructions are the ones the verifier reads.
+        report = convert.verify(db, repository.engagement_id, repository.slug, record["branch"],
+                                assistant=params.get("assistant") or None)
         # Everyone on another machine sees the verdict and VERIFICATION.md (app.results.conversions).
         shared_conversions.publish_after_step(db, repository)
         return StepResult(exit_status="COMPLETED",

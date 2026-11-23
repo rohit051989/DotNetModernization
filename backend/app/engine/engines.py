@@ -4,10 +4,13 @@ One content model, two renderers (app.engine.inputs.render): the work items, dec
 build and test commands and the rules are produced once, and each engine gets them in its own files. Only an engine's
 mechanics differ: where it reads instructions, how it is started, how its guardrails are enforced.
 
-Which engine a conversion uses: the repository's own choice (`repositories.conversion_engine`, set by its owner), else
-its engagement's default (`engagements.default_engine`, set at creation, editable by admins). Every engagement that
-existed before Claude Code was added keeps GitHub Copilot, and a conversion record without an engine was prepared for
-GitHub Copilot.
+Every conversion is prepared for both (2026-11-23): which one does the work depends on what is installed on the
+machine of the person running it, so there is no choice to make in advance. The Conversion tab shows either engine's
+inputs and runbook, and Verify records which assistant did the conversion. The columns that held a choice
+(`engagements.default_engine`, `repositories.conversion_engine`) are kept, unused: their migration was applied.
+
+A conversion record from before (one engine, `engine`) was prepared for that engine only, GitHub Copilot when it names
+none; the other engine's inputs come with its next preparation.
 """
 
 COPILOT = "github-copilot"
@@ -30,20 +33,24 @@ def check(engine: str) -> str:
 
 
 def of_record(record: dict | None) -> str:
-    """The engine a conversion was prepared for: a record from before engines were recorded is GitHub Copilot's."""
+    """The one engine a record from before both engines was prepared for (GitHub Copilot when it names none)."""
     return (record or {}).get("engine") or COPILOT
 
 
-def of_repository(db, repository) -> str:
-    """The engine a new conversion of this repository uses: its owner's choice, else its engagement's default."""
-    from app import models
+def of_conversion(record: dict | None) -> dict[str, dict]:
+    """{engine: {prepared, usable, unsafe, notPrepared, ...}} for both engines. A record from before both engines has
+    only its one engine prepared; the other is not prepared, and says why."""
+    record = record or {}
+    if record.get("engines"):
+        return {e: {"prepared": False, "usable": False, **(record["engines"].get(e) or {})} for e in ENGINES}
+    only = of_record(record)
+    return {e: ({"prepared": True, "usable": True} if e == only else
+                {"prepared": False, "usable": False,
+                 "notPrepared": f"prepared before every conversion got both engines' inputs, for {name(only)} only: "
+                                "they are added when it is prepared again"})
+            for e in ENGINES}
 
-    if getattr(repository, "conversion_engine", None):
-        return repository.conversion_engine
-    engagement = db.get(models.Engagement, repository.engagement_id)
-    return (getattr(engagement, "default_engine", None) if engagement is not None else None) or DEFAULT
 
-
-def source(db, repository) -> str:
-    """Where the repository's engine comes from: "repository" (its owner chose it) or "engagement" (the default)."""
-    return "repository" if getattr(repository, "conversion_engine", None) else "engagement"
+def ran_with(record: dict | None) -> str | None:
+    """The assistant that did the conversion, as Verify recorded it; None before it was verified."""
+    return ((record or {}).get("assistant") or {}).get("engine")

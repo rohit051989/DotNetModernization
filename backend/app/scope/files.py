@@ -1,9 +1,11 @@
-"""What preparation writes into a conversion's worktree for its scope (36-COPILOT-ENHANCED-CONVERSION.md Part O), when
-a project is left out: committed by the platform before the package step, so every build of the conversion, the
-platform's and the agent's, builds only what is in scope.
+"""What preparation writes into a conversion's worktree for its scope (36-COPILOT-ENHANCED-CONVERSION.md Part O):
+committed by the platform before the package step, so every build of the conversion, the platform's and the agent's,
+builds only what is in scope.
 
-- The conversion's own solution, `in-scope.sln` at the repository's root, listing exactly the kept projects: wherever
-  they live, whichever solutions list them (each shared project once), and those no solution lists. Built with
+- The conversion's own solution, `in-scope.sln` at the repository's root, for every conversion: listing exactly the
+  kept .NET projects (.csproj, .vbproj; app.scope.service.CONVERTIBLE), every one with a full scope: wherever they
+  live, whichever solutions list them (each shared project once), and those no solution lists. Never an SSIS .dtproj or
+  any other project that is not one: those are listed as not converted by this track instead. Built with
   `dotnet build`/`dotnet test` like any solution. A kept project keeps the GUID, type and Debug/Release configuration
   the first solution listing it gives it; one no solution lists gets a GUID made from its path and Debug/Release on
   Any CPU.
@@ -19,6 +21,8 @@ from pathlib import Path, PurePosixPath
 
 NOTE = "OUT-OF-SCOPE.md"
 COMMIT_MESSAGE = "Conversion scope: a solution of the kept projects, notes in the projects left untouched"
+# With nothing left out, the solution alone.
+COMMIT_MESSAGE_FULL = "Conversion scope: a solution of the projects this conversion builds"
 CONFIGURATIONS = ("Debug", "Release")
 # A project's type in a solution, by its extension, when no solution of the repository lists it.
 TYPES = {".csproj": "{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}", ".vbproj": "{F184B08F-C81C-45F6-A57F-5ABD9991F28F}",
@@ -88,11 +92,11 @@ def note_text(projects: list[dict], scope: dict) -> str:
 def planned(scope: dict, worktree: Path | None = None) -> dict[str, str]:
     """{repository-relative path: text} of every scope file: the conversion's solution and the excluded projects'
     notes. `worktree`: where the repository's solutions are read for the kept projects' configurations."""
-    if not scope.get("excluded"):
+    if not scope.get("build"):
         return {}
     files = {scope["build"]: solution_text(scope["keptProjects"], worktree)}
     folders: dict[str, list[dict]] = {}
-    for p in scope["left"]:
+    for p in scope.get("left") or []:
         folders.setdefault(str(PurePosixPath(p["path"]).parent), []).append(p)
     for folder, projects in sorted(folders.items()):
         rel = NOTE if folder == "." else f"{folder}/{NOTE}"

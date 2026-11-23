@@ -1803,6 +1803,17 @@ hand. Everything else an update brings, bootstrap applies by itself. Apply every
 had (`previousCommit` in `PLATFORM_SOURCE.json` after the update; in our own installs, the commit before step 5 of
 the appendix), oldest of them first. Entries up to 2026-10-23 were the notes of releases 2 to 7, which are named so.
 
+#### 2026-11-23, (commit of "Both engines for every conversion, and in-scope.sln always"): restart the backend
+
+Nothing to do but update, bootstrap and restart the backend. Every conversion is now prepared for GitHub Copilot and
+Claude Code together, with `in-scope.sln` at the worktree's root. When your backend starts, each of your repositories'
+latest conversions that was prepared for one engine and has not been run is prepared again, through the usual
+discovery run, and gains the other engine's inputs; a conversion already run is left as it is. There is no engine to
+choose any more: the Conversion tab's **Assistant** dropdown shows either engine's first message and runbook, and
+**Verify** asks which assistant did the conversion. If your RUNS_DIR is below a folder with a `CLAUDE.md`,
+`CLAUDE.local.md` or `.claude` folder, Claude Code's inputs are marked not safe to use there, and GitHub Copilot's are
+still usable.
+
 #### 2026-11-23, (commit of "Not-applicable decisions, and UTC everywhere for DateTime.Now"): rescan for the new time forms
 
 Bootstrap adds `engagement_decisions.outcome` (every existing decision keeps choosing its resolution), brings the

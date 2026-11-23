@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from app import models
 from app.auth import machine
+from app.engine import engines
 
 
 def _verification(rec: dict, s: dict) -> dict | None:
@@ -25,6 +26,17 @@ def _verification(rec: dict, s: dict) -> dict | None:
     md = convert.planner.RUNS / rec["engagement"] / rec["repository"] / "verification" / v["label"] / "VERIFICATION.md"
     return {"verdict": v["verdict"], "reasons": v["reasons"], "verifiedAt": v["verifiedAt"], "tip": v["tip"],
             "markdown": md.read_text(encoding="utf-8") if md.exists() else "", "current": s["verificationIsCurrent"]}
+
+
+def _engines(rec: dict) -> dict:
+    from app.engine import convert
+
+    out = {}
+    for engine, state in engines.of_conversion(rec).items():
+        out[engine] = {k: state.get(k) for k in ("prepared", "usable", "unsafe", "notPrepared")}
+        if state.get("prepared"):
+            out[engine].update(opening=convert.opening_for(rec, engine), runbook=convert.runbook_for(rec, engine))
+    return out
 
 
 def local_snapshot(repo: models.Repository) -> dict:
@@ -46,8 +58,10 @@ def local_snapshot(repo: models.Repository) -> dict:
             "prepared_at": rec.get("preparedAt"), "runbook_path": str(runbook),
             "runbook": runbook.read_text(encoding="utf-8") if runbook.exists() else None,
             "opening_message": convert.opening_for(rec),
-            # The engine it was prepared for (36-COPILOT-ENHANCED-CONVERSION Part Q); before engines, GitHub Copilot.
-            "engine": rec.get("engine") or "github-copilot",
+            # Both engines (36-COPILOT-ENHANCED-CONVERSION Part Q): whether each was prepared and is usable here, its
+            # own first message and its runbook (the shared header and its section), for the tab's engine view.
+            "engines": _engines(rec),
+            "assistant": engines.ran_with(rec),
             "package_step": rec.get("packageStep") or {}, "left_for_agent": rec.get("leftForAgent") or {},
             "verify_refusal": convert.verify_refusal(rec), "verification": _verification(rec, s),
             "plan_id": rec.get("planId"),
@@ -55,7 +69,9 @@ def local_snapshot(repo: models.Repository) -> dict:
             "scope": {"left_out": len((rec.get("scope") or {}).get("excluded") or []),
                       "projects": (rec.get("scope") or {}).get("projects"),
                       # A conversion prepared before its own solution was built built a solution filter.
-                      "build": (rec.get("scope") or {}).get("build") or (rec.get("scope") or {}).get("filter")},
+                      "build": (rec.get("scope") or {}).get("build") or (rec.get("scope") or {}).get("filter"),
+                      # Projects this track does not convert (an SSIS .dtproj, ...): never in in-scope.sln.
+                      "not_converted": [p["path"] for p in (rec.get("scope") or {}).get("notConverted") or []]},
         })
     root = Path(repo.local_path)
     head = gitops.git(root, "rev-parse", "HEAD", check=False).strip() if root.exists() else ""

@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { ApiError } from '../api/client'
 import { createEngagement } from '../api/catalog'
-import { ENGINE_NAMES, type ConversionEngine, type Engagement } from '../types/catalog'
+import type { Engagement } from '../types/catalog'
 import { Drawer } from './Drawer'
 import { Field, inputClass } from './FormField'
 
@@ -28,7 +28,6 @@ export function NewEngagementDrawer({ onClose, onCreated }: NewEngagementDrawerP
   const [targetFramework, setTargetFramework] = useState('net10.0')
   const [targetPlatform, setTargetPlatform] = useState('')
   const [description, setDescription] = useState('')
-  const [engine, setEngine] = useState<ConversionEngine>('github-copilot')
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [saving, setSaving] = useState(false)
 
@@ -45,7 +44,6 @@ export function NewEngagementDrawer({ onClose, onCreated }: NewEngagementDrawerP
         target_framework: targetFramework.trim(),
         target_platform: targetPlatform.trim() || null,
         description: description.trim() || null,
-        default_engine: engine,
       })
       onCreated(created)
     } catch (e) {
@@ -88,18 +86,6 @@ export function NewEngagementDrawer({ onClose, onCreated }: NewEngagementDrawerP
             <option value="net8.0" />
           </datalist>
           <p className="mt-1 text-xs text-neutral-500">The .NET version the estate moves to; every package is checked against it.</p>
-        </Field>
-        <Field label="Conversion engine" error={errors.default_engine}>
-          <select className={inputClass(!!errors.default_engine)} value={engine} onChange={(e) => setEngine(e.target.value as ConversionEngine)}
-            aria-label="Conversion engine">
-            {(Object.keys(ENGINE_NAMES) as ConversionEngine[]).map((id) => (
-              <option key={id} value={id}>{ENGINE_NAMES[id]}</option>
-            ))}
-          </select>
-          <p className="mt-1 text-xs text-neutral-500">
-            The engine its repositories&apos; conversions are prepared for. A repository&apos;s owner can choose another for it; an
-            admin can change this later.
-          </p>
         </Field>
         <Field label="Target platform (optional)">
           <input className={inputClass(false)} value={targetPlatform} onChange={(e) => setTargetPlatform(e.target.value)} placeholder="OpenShift 4" />

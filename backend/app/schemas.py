@@ -693,10 +693,6 @@ class EngagementCreate(EngagementBase):
     )
 
     id: str = Field(description="Slug identifying this engagement. Immutable once created.")
-    default_engine: ConversionEngine = Field(
-        default="github-copilot",
-        description="The conversion engine its repositories use unless one chooses its own: 'github-copilot' or "
-                    "'claude-code'. An admin can change it later (PUT /api/engagements/{id}/conversion-engine).")
 
 
 class EngagementUpdate(EngagementBase):
@@ -712,8 +708,6 @@ class Engagement(BaseModel):
     target_platform: str | None = Field(description="Intended deployment target, e.g. 'OpenShift 4'.")
     default_posture: str = Field(description="Default migration posture for this engagement.")
     target_framework: str = Field(description="The .NET target framework moniker packages must support (dependency-assessment).")
-    default_engine: str = Field(default="github-copilot", description="The conversion engine its repositories use unless "
-                                                                    "one chooses its own: 'github-copilot' or 'claude-code'.")
     production_environment: str | None = Field(
         default=None,
         description="The environment whose host names a service in the endpoint register (dependency-and-context-map). "

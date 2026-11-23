@@ -1,16 +1,17 @@
 import { useCallback, useEffect, useState } from 'react'
 import { ApiError } from '../../api/client'
-import { listConversions, setConversionEngine, startNextConversion, verifyConversion } from '../../api/conversion'
-import { setEngagementEngine } from '../../api/catalog'
-import { useIsAdmin } from '../../auth/AuthContext'
+import { listConversions, startNextConversion, verifyConversion } from '../../api/conversion'
 import { CopyButton } from '../../components/CopyButton'
 import { ConfirmDialog } from '../../components/ConfirmDialog'
 import { LimitedList } from '../../components/LimitedList'
 import { ENGINE_NAMES, type ConversionEngine } from '../../types/catalog'
-import type { ConversionEntry, ConversionState, Conversions, EngineChoice, JobRef, PlanRef } from '../../types/conversion'
+import type { ConversionEntry, ConversionState, Conversions, JobRef, PlanRef } from '../../types/conversion'
 import type { Toolchain } from '../../types/toolchain'
 import { RepositoryConversionSection } from './RepositoryConversionSection'
 import { ToolchainNotice } from './ToolchainNotice'
+import { setEngineView, useEngineView } from './engineView'
+
+const ENGINES = Object.keys(ENGINE_NAMES) as ConversionEngine[]
 
 /** Every conversion of the repository, newest first (36-COPILOT-ENHANCED-CONVERSION Part N): number, branch, status
  * and verdict; in each, where it starts from, its runbook and opening message, Verify, its verification, and its own
@@ -131,9 +132,15 @@ function ConversionCard({
   refreshToken: number
   defaultOpen: boolean
   verifyBusy: boolean
-  onVerify: (number: number) => void
+  onVerify: (number: number, assistant: ConversionEngine) => void
   refusal: string | null
 }) {
+  const viewed = useEngineView()
+  // A conversion from before both engines: its one engine. The server says which are prepared.
+  const state = entry.engines?.[viewed]
+  const opening = state ? (state.opening ?? null) : viewed === (entry.engine ?? 'github-copilot') ? entry.opening_message : null
+  const runbook = state ? (state.runbook ?? null) : viewed === (entry.engine ?? 'github-copilot') ? entry.runbook : null
+  const [assistant, setAssistant] = useState<ConversionEngine | null>(null)
   const step = entry.package_step ?? {}
   const items = entry.left_for_agent?.items ?? []
   const verifiable = entry.state !== 'prepared'
@@ -165,8 +172,19 @@ function ConversionCard({
             {entry.baseline_from && <span className="text-neutral-500"> — {entry.baseline_from}</span>}
             {entry.scanned_at && <span className="text-neutral-500"> ({when(entry.scanned_at)})</span>}
           </dd>
-          <dt className="text-neutral-500">Engine</dt>
-          <dd data-testid="conversion-engine">{ENGINE_NAMES[entry.engine ?? 'github-copilot']}</dd>
+          <dt className="text-neutral-500">Inputs</dt>
+          <dd data-testid="conversion-engines">
+            {ENGINES.map((e) => {
+              const s = entry.engines?.[e]
+              const said = !s ? (e === (entry.engine ?? 'github-copilot') ? 'prepared' : 'not prepared') : !s.prepared ? 'not prepared' : s.usable ? 'prepared' : 'not safe to use here'
+              return (
+                <span key={e} className="mr-3">
+                  {ENGINE_NAMES[e]}: <span className={said === 'prepared' ? 'text-emerald-700' : 'text-amber-700'}>{said}</span>
+                </span>
+              )
+            })}
+            {entry.assistant && <span className="text-neutral-500">· done with {ENGINE_NAMES[entry.assistant]}</span>}
+          </dd>
           <dt className="text-neutral-500">Scope</dt>
           <dd data-testid="conversion-scope">
             {entry.scope?.left_out
@@ -192,30 +210,57 @@ function ConversionCard({
           <dd>{items.length === 0 ? 'nothing' : items.map((i) => `${i.item} (${i.places})`).join(', ')}</dd>
         </dl>
 
+        <label className="flex items-center gap-2 text-xs text-neutral-700">
+          <span className="font-medium">Assistant</span>
+          <select
+            value={viewed}
+            onChange={(e) => setEngineView(e.target.value as ConversionEngine)}
+            aria-label="Which assistant's inputs and runbook to show"
+            title="Every conversion is prepared for both. Shown: the one installed on this machine; remembered in this browser."
+            className="rounded border border-neutral-300 px-1 py-0.5 text-xs"
+          >
+            {ENGINES.map((e) => (
+              <option key={e} value={e}>
+                {ENGINE_NAMES[e]}
+              </option>
+            ))}
+          </select>
+        </label>
+        {state?.unsafe && (
+          <p className="rounded border border-amber-300 bg-amber-50 px-2 py-1 text-xs text-amber-800" data-testid="engine-unsafe">
+            {ENGINE_NAMES[viewed]}’s inputs are {state.unsafe}.
+          </p>
+        )}
+        {state && !state.prepared && (
+          <p className="text-xs text-neutral-500" data-testid="engine-not-prepared">
+            Not prepared for {ENGINE_NAMES[viewed]}: {state.notPrepared}.
+          </p>
+        )}
+
         <div className="space-y-1">
           <div className="flex items-center gap-2">
-            <span className="text-xs font-medium text-neutral-700">Opening message</span>
-            {entry.opening_message && <CopyButton value={entry.opening_message} label="Copy message" />}
+            <span className="text-xs font-medium text-neutral-700">First message for {ENGINE_NAMES[viewed]}</span>
+            {opening && <CopyButton value={opening} label="Copy message" />}
           </div>
-          {entry.opening_message && <Pre text={entry.opening_message} />}
+          {opening && <Pre text={opening} />}
         </div>
 
-        {entry.runbook && (
+        {runbook && (
           <details className="rounded border border-neutral-200">
             <summary className="cursor-pointer px-2 py-1 text-xs font-medium text-neutral-700">
-              Runbook <span className="font-mono font-normal text-neutral-500">{entry.runbook_path}</span>
+              Runbook for {ENGINE_NAMES[viewed]} <span className="font-mono font-normal text-neutral-500">{entry.runbook_path}</span>
             </summary>
             <div className="p-2">
-              <Pre text={entry.runbook} />
+              <Pre text={runbook} />
             </div>
           </details>
         )}
 
         <div className="flex flex-wrap items-center gap-2">
-          {verifiable ? (
+          {verifiable && assistant === null ? (
             <button
               type="button"
-              onClick={() => onVerify(entry.number)}
+              onClick={() => setAssistant(entry.assistant ?? viewed)}
               disabled={verifyBusy || !!entry.verify_refusal || !!refusal}
               className="rounded border border-violet-300 bg-violet-50 px-2 py-1 text-xs font-medium text-violet-800 hover:bg-violet-100 disabled:opacity-50"
               title={refusal ?? entry.verify_refusal ?? `Verify conversion ${entry.number}, independent of the engine`}
@@ -223,6 +268,39 @@ function ConversionCard({
               Verify conversion {entry.number}
             </button>
           ) : null}
+          {verifiable && assistant !== null && (
+            <span className="flex flex-wrap items-center gap-2 text-xs text-neutral-700" data-testid="verify-assistant">
+              <label className="flex items-center gap-1">
+                Which assistant did the conversion?
+                <select
+                  value={assistant}
+                  onChange={(e) => setAssistant(e.target.value as ConversionEngine)}
+                  aria-label="Which assistant did the conversion"
+                  className="rounded border border-neutral-300 px-1 py-0.5 text-xs"
+                >
+                  {ENGINES.map((e) => (
+                    <option key={e} value={e}>
+                      {ENGINE_NAMES[e]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button
+                type="button"
+                onClick={() => {
+                  onVerify(entry.number, assistant)
+                  setAssistant(null)
+                }}
+                disabled={verifyBusy}
+                className="rounded border border-violet-300 bg-violet-50 px-2 py-1 text-xs font-medium text-violet-800 hover:bg-violet-100 disabled:opacity-50"
+              >
+                Verify
+              </button>
+              <button type="button" onClick={() => setAssistant(null)} className="text-neutral-500 hover:text-neutral-700">
+                Cancel
+              </button>
+            </span>
+          )}
           {entry.verify_refusal && (
             <span className="text-xs text-neutral-500">{verifiable ? 'Verify refuses now: ' : ''}{entry.verify_refusal}.</span>
           )}
@@ -276,70 +354,6 @@ function ConversionCard({
 
 /** `refusal`: why the signed-in person may not prepare or verify this repository's conversions (only its owner or an
  * admin, on the machine it was registered on), shown on the disabled buttons; null when they may. */
-/** Which engine the next conversion is prepared for (36-COPILOT-ENHANCED-CONVERSION Part Q): the repository's own
- * choice (its owner), else the engagement's default (an admin). A conversion not yet run is prepared again. */
-function EnginePicker({ repositoryId, choice, refusal, onChanged }: {
-  repositoryId: string
-  choice: EngineChoice
-  refusal: string | null
-  onChanged: (note: string) => void
-}) {
-  const isAdmin = useIsAdmin()
-  const [busy, setBusy] = useState(false)
-  const engines = Object.keys(ENGINE_NAMES) as ConversionEngine[]
-  const value = choice.source === 'repository' ? choice.engine : ''
-
-  async function change(next: string) {
-    setBusy(true)
-    try {
-      const saved = await setConversionEngine(repositoryId, next === '' ? null : (next as ConversionEngine))
-      onChanged(saved.note)
-    } catch (err) {
-      onChanged(err instanceof ApiError ? err.message : 'Could not change the engine.')
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function changeDefault(next: ConversionEngine) {
-    setBusy(true)
-    try {
-      await setEngagementEngine(choice.engagement_id, next, choice.engagement_version)
-      onChanged(`The engagement's default engine is now ${ENGINE_NAMES[next]}. Repositories that chose their own keep it.`)
-    } catch (err) {
-      onChanged(err instanceof ApiError ? err.message : 'Could not change the engagement default.')
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  return (
-    <div className="flex flex-wrap items-center gap-2 text-xs text-neutral-600" data-testid="engine-picker">
-      <span>
-        Engine: <strong className="text-neutral-800">{ENGINE_NAMES[choice.engine]}</strong>
-        {choice.source === 'repository' ? ' (this repository’s choice)' : ' (the engagement’s default)'}.
-      </span>
-      <label className="flex items-center gap-1">
-        This repository
-        <select value={value} disabled={busy || !!refusal} title={refusal ?? choice.on_change} aria-label="This repository's engine"
-          onChange={(e) => change(e.target.value)} className="rounded border border-neutral-300 px-1 py-0.5 text-xs">
-          <option value="">the engagement’s default ({ENGINE_NAMES[choice.engagement_default]})</option>
-          {engines.map((id) => <option key={id} value={id}>{ENGINE_NAMES[id]}</option>)}
-        </select>
-      </label>
-      <label className="flex items-center gap-1">
-        Engagement default
-        <select value={choice.engagement_default} disabled={busy || !isAdmin} title={isAdmin ? undefined : 'Only an admin may change it.'}
-          aria-label="The engagement's default engine" onChange={(e) => changeDefault(e.target.value as ConversionEngine)}
-          className="rounded border border-neutral-300 px-1 py-0.5 text-xs">
-          {engines.map((id) => <option key={id} value={id}>{ENGINE_NAMES[id]}</option>)}
-        </select>
-      </label>
-      <span className="text-neutral-500">{choice.on_change}</span>
-    </div>
-  )
-}
-
 export function ConversionsPanel({ repositoryId, refreshToken, refusal = null, toolchain = null }: {
   repositoryId: string
   refreshToken: number
@@ -372,11 +386,11 @@ export function ConversionsPanel({ repositoryId, refreshToken, refusal = null, t
     return () => clearInterval(timer)
   }, [active, load])
 
-  async function onVerify(number: number) {
+  async function onVerify(number: number, assistant: ConversionEngine) {
     setBusy(true)
     setMessage(null)
     try {
-      await verifyConversion(repositoryId, number)
+      await verifyConversion(repositoryId, number, assistant)
       setMessage(`Verification of conversion ${number} started. It runs as a workflow job; its entry shows the verdict when it ends.`)
       load()
     } catch (err) {
@@ -446,10 +460,6 @@ export function ConversionsPanel({ repositoryId, refreshToken, refusal = null, t
           {subject}, the commit discovery scans first.
         </span>
       </div>
-      {data.engine && <EnginePicker repositoryId={repositoryId} choice={data.engine} refusal={refusal} onChanged={(note) => {
-        setMessage(note)
-        load()
-      }} />}
       <ToolchainNotice toolchain={toolchain} />
       {message && <p className="text-xs text-neutral-600">{message}</p>}
 

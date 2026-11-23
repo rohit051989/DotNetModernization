@@ -734,7 +734,9 @@ as dead code", disabled and marked "coming later". Left untouched means:
   - an `OUT-OF-SCOPE.md` in each excluded project's folder, never over a file already there. It says the project is
     outside this conversion's scope and left as it was, who decided, when, the reason if one was given, and that it is
     not part of the converted build;
-  - the conversion's own solution, `in-scope.sln` at the repository's root, listing exactly the kept projects:
+  - the conversion's own solution, `in-scope.sln` at the repository's root, for every conversion since 2026-11-23
+    (with a full scope too), listing exactly the kept .NET projects (`.csproj`, `.vbproj`), never an SSIS `.dtproj` or
+    any other project, which are listed as not converted by this track instead (see the 2026-11-23 addendum):
     wherever they live, whichever solutions list them (each shared project once), and those no solution lists. A kept
     project keeps the GUID, type and Debug/Release configuration the first solution listing it gives it (by solution
     path); one no solution lists gets a GUID made from its path and Debug/Release on Any CPU. It is named in the
@@ -866,20 +868,27 @@ the repository already uses moves to the alternative above; when both are taken,
 **Context isolation.** Claude Code also reads `CLAUDE.md` and `CLAUDE.local.md` from every folder above the one it
 starts in, and project skills from `.claude` folders above it. A conversion's worktree is
 `<RUNS_DIR>/<engagement>/<repository>/conversions/<n>/wt` in both layouts (RUNS_DIR is refused inside the platform's
-folder, `app.config`). Before preparing for Claude Code, every folder above the worktree is checked
+folder, `app.config`). At every preparation, every folder above the worktree is checked
 (`claude.context_hazards`): any `CLAUDE.md`, `CLAUDE.local.md` or `.claude` folder there (other than the user's own
-`.claude` in their home folder, Claude Code's user configuration) refuses the preparation, naming each file and saying
-to move RUNS_DIR to a folder without them. So the platform's own development `CLAUDE.md`, or a host repository's, never
-reaches a conversion agent. Settings are read only from the folder Claude Code starts in, so the runbook says to start
+`.claude` in their home folder, Claude Code's user configuration) marks Claude Code's inputs **not safe to use here**,
+naming each one, in `conversion.json`, the runbook's Claude Code section and the Conversion tab, and saying to use
+GitHub Copilot's or move RUNS_DIR. Since 2026-11-23 it no longer refuses the preparation: GitHub Copilot's inputs stay
+usable. So the platform's own development `CLAUDE.md`, or a host repository's, never reaches a conversion agent unwarned. Settings are read only from the folder Claude Code starts in, so the runbook says to start
 it in the worktree.
 
-**Which engine.** An engagement's default (`engagements.default_engine`), chosen at creation and changed by an admin
-(`PUT /api/engagements/{id}/conversion-engine`); a repository's own choice, by its owner, from the machine it was
-registered on (`PUT /api/repositories/{id}/conversion-engine`; null returns to the default). Every engagement that
-existed before keeps GitHub Copilot. Preparation writes only the chosen engine's inputs; changing the engine prepares a
-conversion not yet run again, as saving a scope does, and a conversion already run keeps the engine it was prepared
-for. `conversion.json` (`engine`), RUNBOOK.md, the Conversion tab and VERIFICATION.md name the engine. A record
-without `engine` was prepared for GitHub Copilot.
+**Both engines, always (2026-11-23).** Every conversion is prepared for GitHub Copilot and Claude Code together, from
+the one content model, in one platform commit ("Add generated conversion inputs for GitHub Copilot and Claude Code (do
+not edit)"): which one does the work depends on what is installed on the machine of the person running it. There is no
+engine choice: the engagement default and the repository's own choice, and their routes, are gone; their columns
+(`engagements.default_engine`, `repositories.conversion_engine`) stay, unused, as their migration was applied.
+`conversion.json` records both (`engines`: for each, prepared, usable, why not, its instructions and settings). Claude
+Code's inputs are not written when the repository already has the files they would go to (`InputsCollide`): that is
+recorded and GitHub Copilot's stand. Verify asks which assistant did the conversion (the Conversion tab, defaulting to
+the one being viewed; `--assistant` on the command line); `conversion.json` (`assistant`) and VERIFICATION.md
+("Conversion done with") record it, and the verifier reads that assistant's instructions only, never both copies. A
+record from before has `engine` (GitHub Copilot when absent) and only that engine's inputs: when the owner's backend
+starts, an unrun one is prepared again through the discovery run a rescan starts, with both (`app.engine.both_engines`);
+a run one is left as it is.
 
 **Everything that holds for Copilot's inputs holds for Claude Code's:** the self-containedness and secret checks, the
 inputs manifest (`.claude/conversion/inputs-manifest.json`), exclusion from the diff, impact comparison and
@@ -902,3 +911,23 @@ Rule 20, for each engine:
   through `claude.MECHANICS`' substitutions only, for Claude Code. It asks the agent to report two kinds of place in the
   task's notes: a genuine local-time need, converted with a named zone; and every stored or compared time, left
   unchanged and listed under "Stored times for a decision". Applied to both; nothing engine-specific.
+
+## Part Q addendum — Both engines, in-scope.sln for every conversion, and the runbook (2026-11-23)
+
+Rule 20, for each engine:
+
+- **in-scope.sln for every conversion.** With a full scope it lists every convertible project; with a reduced scope,
+  exactly the kept ones; only `.csproj` and `.vbproj` (`app.scope.service.CONVERTIBLE`). Both engines' instructions
+  build and test it (`dotnet build in-scope.sln`, `dotnet test in-scope.sln`; the first message's done checks name it),
+  and the verifier builds and tests this one solution. Applied to both.
+- **Not converted by this track.** Every project that is not one of those (an SSIS `.dtproj`, a database `.sqlproj`, ...)
+  is never in in-scope.sln; both engines' instructions and RUNBOOK.md list them by path under "Not converted by this
+  track" (`render.not_converted_lines`). Applied to both.
+- **RUNBOOK.md** has a shared header naming the full path of in-scope.sln, then a complete section for each engine:
+  GitHub Copilot (open the full path in Visual Studio, the modernization agent, the first message verbatim, replies,
+  done, Verify choosing GitHub Copilot) and Claude Code (a terminal at the worktree's root, by full path, or that
+  folder in VS Code with the Claude Code extension; the first message verbatim; permission prompts; continuing an
+  interrupted session with `claude --continue`; checking that each work item was committed; Verify choosing Claude
+  Code). No solution is opened for Claude Code; its instructions say to build and test in-scope.sln. The Conversion tab
+  shows the header and one section, for the engine chosen in its dropdown (remembered per browser). Applied to both:
+  each section is that engine's mechanics only.

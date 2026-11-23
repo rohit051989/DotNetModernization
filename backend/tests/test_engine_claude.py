@@ -242,9 +242,11 @@ class ClaudeRunbook(unittest.TestCase):
     def test_how_to_start_claude_code_in_the_worktree(self):
         from app.engine import convert
 
+        # A record from before both engines (one engine, Claude Code's): its section, and Copilot's said not prepared.
         text = convert.render_runbook(self.RECORD)
         self.assertNotIn("${", text)
-        self.assertIn("(Claude Code)", text.splitlines()[0])
+        self.assertIn("Not prepared for GitHub Copilot", text.split("## B. Claude Code")[0])
+        text = convert.runbook_for(self.RECORD, engines.CLAUDE)
         self.assertIn('cd "' + self.RECORD["worktree"] + '"\nclaude\n', text)
         self.assertIn(convert.opening_for(self.RECORD), text)
         self.assertIn("| `CLAUDE.md` | The repository's own, kept unchanged.", text)
@@ -265,9 +267,9 @@ class ClaudeRunbook(unittest.TestCase):
                          convert.opening_for(copilot).split("You are done only when", 1)[1])
 
 
-class WhichEngine(unittest.TestCase):
-    """The repository owner's choice, else the engagement's default; every existing engagement keeps GitHub Copilot, and
-    a conversion record from before engines were recorded is GitHub Copilot's."""
+class BothEngines(unittest.TestCase):
+    """Every conversion is prepared for both engines (2026-11-23): there is no choice. The columns that held one are kept,
+    unused, with their check; a conversion record from before both engines has its one engine prepared."""
 
     def setUp(self):
         from app.db import SessionLocal
@@ -280,21 +282,22 @@ class WhichEngine(unittest.TestCase):
         self.db.rollback()
         self.db.close()
 
-    def test_an_engagement_created_without_a_choice_keeps_github_copilot(self):
-        from types import SimpleNamespace
+    def test_a_record_from_before_has_its_one_engine_and_a_new_one_has_both(self):
+        old = engines.of_conversion({"engine": engines.CLAUDE})
+        self.assertEqual((old[engines.CLAUDE]["prepared"], old[engines.COPILOT]["prepared"]), (True, False))
+        self.assertIn("prepared before every conversion got both engines' inputs", old[engines.COPILOT]["notPrepared"])
+        self.assertEqual(engines.of_conversion({})[engines.COPILOT]["prepared"], True)       # no engine: Copilot's
+        both = engines.of_conversion({"engines": {e: {"prepared": True, "usable": True} for e in engines.ENGINES}})
+        self.assertTrue(all(s["prepared"] and s["usable"] for s in both.values()))
+        self.assertIsNone(engines.ran_with({"engines": {}}))
+        self.assertEqual(engines.ran_with({"assistant": {"engine": engines.CLAUDE}}), engines.CLAUDE)
 
-        self.db.flush()
-        self.db.refresh(self.engagement)
-        self.assertEqual(self.engagement.default_engine, engines.COPILOT)
-        repository = SimpleNamespace(engagement_id=self.engagement.id, conversion_engine=None)
-        self.assertEqual((engines.of_repository(self.db, repository), engines.source(self.db, repository)),
-                         (engines.COPILOT, "engagement"))
-        self.engagement.default_engine = engines.CLAUDE
-        self.db.flush()
-        self.assertEqual(engines.of_repository(self.db, repository), engines.CLAUDE)
-        repository.conversion_engine = engines.COPILOT
-        self.assertEqual((engines.of_repository(self.db, repository), engines.source(self.db, repository)),
-                         (engines.COPILOT, "repository"))
+    def test_the_engine_choice_routes_are_gone(self):
+        from app.main import app as application
+
+        routes = {(m, r.path) for r in application.routes for m in getattr(r, "methods", ())}
+        self.assertNotIn(("PUT", "/api/repositories/{repository_id}/conversion-engine"), routes)
+        self.assertNotIn(("PUT", "/api/engagements/{engagement_id}/conversion-engine"), routes)
 
     def test_the_database_refuses_an_unknown_engine(self):
         from sqlalchemy.exc import IntegrityError

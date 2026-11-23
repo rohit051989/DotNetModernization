@@ -73,12 +73,16 @@ def applied_by_platform(root: Path, base: str, tip: str) -> list[dict]:
     return out
 
 
-def asked_for(root: Path, commit: str) -> list[dict]:
-    """[{project, package, current, asked, instruction}] from the package instructions in `commit`."""
-    names = gitops.git(root, "ls-tree", "-r", "--name-only", commit, "--", *paths.WORK_ITEM_DIRS).splitlines()
-    files = {n: gitops.git(root, "show", f"{commit}:{n}") for n in names
-             if paths.is_work_item(n) and paths.work_item_name(n).startswith("applying-package-")}
-    return render.package_targets(files)
+def asked_for(root: Path, commit: str, engine: str | None = None) -> list[dict]:
+    """[{project, package, current, asked, instruction}] from the package instructions in `commit`: the engine's own
+    when `engine` is given; else the first engine's that has any, as both engines' carry the same targets."""
+    for dirs in ([paths.work_item_dirs(engine)] if engine else [(d,) for d in paths.WORK_ITEM_DIRS]):
+        names = gitops.git(root, "ls-tree", "-r", "--name-only", commit, "--", *dirs).splitlines()
+        files = {n: gitops.git(root, "show", f"{commit}:{n}") for n in names
+                 if paths.is_work_item(n) and paths.work_item_name(n).startswith("applying-package-")}
+        if files:
+            return render.package_targets(files)
+    return []
 
 
 def _target(targets: list[dict], project: str, package: str) -> str | None:

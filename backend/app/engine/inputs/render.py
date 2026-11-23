@@ -186,8 +186,9 @@ generated_note = _generated_note
 
 
 def commands(model: dict) -> dict:
-    """The build and test commands, the same for every engine: with the conversion's own solution when it leaves
-    projects out, else the repository's solution at its root (the first by name), else whatever the root builds."""
+    """The build and test commands, the same for every engine: with the conversion's own solution, in-scope.sln (every
+    conversion has it, from 2026-11-23), else the repository's solution at its root (the first by name), else whatever
+    the root builds."""
     solution = (model.get("scope") or {}).get("build")
     if not solution:
         roots = sorted(f for f in model.get("files") or [] if "/" not in f and f.lower().endswith((".sln", ".slnx")))
@@ -656,12 +657,30 @@ def scope_listing(model: dict, heading: str) -> list[str]:
     return out
 
 
+def not_converted_lines(model: dict, heading: str = "## Not converted by this track") -> list[str]:
+    """The projects this track does not convert (an SSIS .dtproj, any project that is not a .csproj or .vbproj), by
+    path: never in in-scope.sln, never changed by the conversion. [] when there are none. The same list for both
+    engines' instructions and the runbook."""
+    listed = (model.get("scope") or {}).get("notConverted") or []
+    if not listed:
+        return []
+    out = ["", heading, "",
+           f"{len(listed)} project(s) are not .NET projects this conversion converts (an SSIS package project, a database "
+           f"project, or another project that is not a .csproj or .vbproj). They are not in {_built(model) or 'the solution'}, "
+           "and are not converted by this track: leave each exactly as it is.", "", "| Project | Path |", "|---|---|"]
+    out += [f"| {_md(p.get('name') or Path(p['path']).stem)} | `{_md(p['path'])}` |" for p in listed[:MAX_LIST]]
+    if len(listed) > MAX_LIST:
+        out.append(f"| ... and {len(listed) - MAX_LIST} more | |")
+    return out
+
+
 def scope_section(model: dict) -> str:
-    """The instructions' section for a conversion that leaves projects out (Part O), or "": where the agent reads
-    first, not only in the OUT-OF-SCOPE.md files it may never open."""
+    """The instructions' section for a conversion that leaves projects out (Part O), and the projects not converted by
+    this track, or "": where the agent reads first, not only in the OUT-OF-SCOPE.md files it may never open."""
     scope = model.get("scope") or {}
+    not_converted = not_converted_lines(model)
     if not scope.get("excluded"):
-        return ""
+        return ("\n".join(not_converted) + "\n") if not_converted else ""
     c = commands(model)
     out = ["", "## Conversion scope", "",
            f"This conversion covers only some of this repository's projects. Build and test only {_built(model)} "
@@ -675,7 +694,7 @@ def scope_section(model: dict) -> str:
     out += [f"| {_md(p.get('name') or Path(p['path']).stem)} | `{_md(p['path'])}` |" for p in scope["excluded"][:MAX_LIST]]
     if len(scope["excluded"]) > MAX_LIST:
         out.append(f"| ... and {len(scope['excluded']) - MAX_LIST} more | each with its `OUT-OF-SCOPE.md` |")
-    return "\n".join(out) + "\n"
+    return "\n".join(out + not_converted) + "\n"
 
 
 def build_section(model: dict) -> str:
