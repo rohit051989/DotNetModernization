@@ -34,6 +34,18 @@ describe('a failed scan', () => {
     expect(open).toHaveBeenCalled()
   })
 
+  it('a completed run whose conversion-preparation failed says so in the header, and no tab is labelled older for it', () => {
+    const prep: FailedScan = { job_execution_id: 'e2', status: 'COMPLETED', failed_step: 'conversion-preparation', kind: 'preparation',
+      message: 'ValueError: target v4.7 is not a .NET (5+) framework', at: '2026-11-23T22:00:00Z', results_from: {} }
+    render(<FailedScanBanner failed={prep} onOpenActivity={vi.fn()} />)
+    const banner = screen.getByTestId('failed-scan').textContent ?? ''
+    expect(banner).toContain('completed, but its conversion-preparation failed: ValueError: target v4.7')
+    expect(banner).toContain('The Conversion tab shows the conversion an earlier preparation left')
+    cleanup()
+    render(<OlderResultsNotice failed={prep} tab="conversion" />)
+    expect(screen.queryByTestId('older-results')).toBeNull()
+  })
+
   it('a tab whose step did not complete labels its results as older, with their date', () => {
     render(<OlderResultsNotice failed={FAILED} tab="dependencies" />)
     const notice = screen.getByTestId('older-results')

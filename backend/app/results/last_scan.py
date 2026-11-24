@@ -87,7 +87,29 @@ def failed_scan(db: Session, repository_id: uuid.UUID) -> dict | None:
         "message": _short((first.exit_message if first else None) or execution.exit_message),
         "at": (first.ended_at if first else None) or execution.ended_at or execution.started_at or execution.created_at,
         "results_from": results_dates(db, repository_id, not_completed),
+        "kind": "scan",
     }
+
+
+PREPARATION = "conversion-preparation"
+
+
+def failed_preparation(db: Session, repository_id: uuid.UUID) -> dict | None:
+    """The repository's latest discovery run, when it completed but its conversion-preparation did not prepare: that
+    step never fails the run (app.steps.conversion_preparation), so its failure is read from the attempt it recorded,
+    the last_prepare the owner's machine published (app.results.conversions), for that same run. In failed_scan's shape,
+    with `kind` "preparation" and no older results: the Conversion tab says the conversion it shows is the earlier one.
+    Never a reason to refuse a preparation (refusal): the next rescan prepares again."""
+    latest = runtime.list_executions(db, job_name=DISCOVERY, repository_id=str(repository_id), limit=1)
+    row = db.get(models.ConversionResult, repository_id)
+    attempt = (row.last_prepare if row is not None else None) or {}
+    if not latest or attempt.get("status") != "failed" or str(attempt.get("jobExecutionId")) != str(latest[0].id):
+        return None
+    execution = latest[0]
+    step = next((s for s in runtime.get_step_executions(db, execution.id) if s.step_name == PREPARATION), None)
+    at = (step.ended_at if step else None) or execution.ended_at or execution.started_at or execution.created_at
+    return {"job_execution_id": execution.id, "status": execution.batch_status, "failed_step": PREPARATION,
+            "message": _short(attempt.get("message")), "at": at, "results_from": {}, "kind": "preparation"}
 
 
 def refusal(db: Session, repository_id: uuid.UUID) -> str | None:

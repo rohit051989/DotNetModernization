@@ -714,6 +714,23 @@ depends on the retarget; within each side, dependencies first. "Not known" is no
 plan records the couplings, placements and reasons (`ordering`), each unit its `order_reason`
 and `depends_on`.
 
+**A .NET Framework source** (2026-11-24). Framework support and dependency minimums
+(`frameworks.py`) follow NuGet for a .NET Framework project too, in both spellings: `v4.7`,
+`v4.7.2` (an old-style project's `TargetFrameworkVersion`) and `net47`, `net472`, `net48`
+(an SDK-style one's). A .NET Framework dependency group of the same or a lower version is
+compatible with it, a .NET Standard group as NuGet's table says (`netstandard2.0` from
+`net461`, `1.3` from `net46`, `1.0` from `net45`, `2.1` never), `any` and `agnostic`; a
+.NET (5+) or platform-specific group is not. A repository whose in-scope projects all target
+one .NET Framework version (common after descoping to a pilot) therefore gets its package
+moves, couplings and placements, where before preparation failed with "target v4.7 is not a
+.NET (5+) framework" as soon as a package had recorded dependency groups. A framework none of
+these rules covers is not known, never an error: the package's dependencies are recorded as not
+known and its support as `null`, with the projects and framework in its basis. Framework deltas
+still apply only between two .NET (5+) versions (`_crosses`). The planner and the engine
+inputs share this code (`package_moves`), so both, and both engines' inputs, get the fix; no
+conversion input text changes beyond package couplings now being reported for .NET Framework
+sources.
+
 **The unit loop** (`runner.py`, Part E). Layout `in_place` only: a branch `conversion/<plan8>`
 in its own worktree under `runs/<engagement>/<repository>/conversion/<plan8>/target`; the
 registered checkout is never written. The baseline first: build the solution and run the unit

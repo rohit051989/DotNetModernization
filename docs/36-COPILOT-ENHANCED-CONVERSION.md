@@ -975,3 +975,30 @@ Rule 20, for each engine: all of this applies to GitHub Copilot and Claude Code 
 input. What a conversion is told (the work items, rules, decision sheet, addendum, scope, build and test commands,
 first message and runbook) is the same text as before for both; when a refresh happens, and what it may touch, is the
 same for both engines' files.
+
+## Part Q addendum — .NET Framework sources, old-style projects and failed preparations (2026-11-24)
+
+A repository descoped to a few projects, all on .NET Framework 4.7, failed its preparation with "target v4.7 is not a
+.NET (5+) framework": the engine inputs' model computes package moves and couplings when the in-scope projects share one
+framework, and the framework rules knew only .NET (5+) targets. The step completed, as it always does, and the
+Conversion tab went on showing the earlier conversion with no sign of the failure.
+
+- **.NET Framework sources** (34-CONVERSION-ARCHITECTURE "As built", "A .NET Framework source"): package support and
+  dependency minimums follow NuGet for a .NET Framework project, in both spellings (`v4.7`, `net472`). A framework the
+  rules do not cover is recorded as not known, never an error that stops a preparation.
+- **Old-style projects are retargeted by the engine, not the package step.** The package step's retarget edits a
+  `TargetFramework(s)` element; an old-style project declares `TargetFrameworkVersion` instead (and usually
+  packages.config), which the package step does not edit. A repository with one gets no package step, recorded as
+  "no package step: `<project>` is an old-style project (TargetFrameworkVersion v4.7): old-style projects are
+  retargeted by the conversion engine, not the package step", and its package changes go to the engine as
+  instructions, as for any repository without a package step. The package step's behaviour is unchanged; only the
+  message is plain (before: "declares no TargetFramework(s), though solution-discovery says it does").
+- **A failed preparation is visible.** The step still never fails the discovery run. The repository header's
+  failed-scan notice covers it: "The latest scan ... completed, but its conversion-preparation failed: <message>",
+  read from the attempt the owner's machine published for that same run (`app.results.last_scan.failed_preparation`),
+  so it is the same on every machine. It never refuses a preparation: the next rescan prepares again. The Conversion
+  tab shows the failure's message and labels the conversion it still shows "older: the last preparation failed".
+
+Rule 20, for each engine: the model is shared, so the fix applies to GitHub Copilot and Claude Code alike. No
+conversion input text changes for either beyond package couplings now being reported for .NET Framework sources (the
+addendum's and decision sheet's package rows, and the work items that name a package's coupling).

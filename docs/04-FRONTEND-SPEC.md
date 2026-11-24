@@ -433,6 +433,11 @@ only jumped down to it.
   (dependency-hierarchy), Impact (impact-analysis), Tests (test-coverage-assessment), Scope (solution-discovery,
   item-detection), Work list (item-detection), Conversion (conversion-preparation). A later run that completes clears
   both. No conversion is prepared until then (`36-COPILOT-ENHANCED-CONVERSION.md` Part N).
+  A run that completed but whose conversion-preparation did not prepare (that step never fails the run) is said in
+  the same header: "The latest scan, on <date>, completed, but its conversion-preparation failed: <message>"
+  (`app.results.last_scan.failed_preparation`, kind `preparation`). The Conversion tab shows the failure's message and
+  labels the conversion it still shows "older: the last preparation failed". It refuses nothing: the next rescan
+  prepares again.
 - **Overview is the summary**: the cards (size, files, main language, projects, request entry points, Linux
   incompatible, version drift, items found, last scanned), then the key figure from each tab, each a link into it —
   work items, request entry points, dependencies needing change (any outcome but current or unknown), SOAP calls

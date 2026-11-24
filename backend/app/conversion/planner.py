@@ -141,9 +141,19 @@ def _solution(db: Session, repository_id, must_include: list[str]) -> str:
     return sorted(fitting, key=lambda t: (-t[0], t[1]))[0][1]
 
 
-def _support(db: Session, package_id: str, version: str, tfm: str) -> dict:
-    s = frameworks.supports(frameworks.version_metadata(db, package_id, version), tfm)
+def _support(db: Session, package_id: str, version: str, tfm: str, projects: list[str] = ()) -> dict:
+    """Whether `version` supports `tfm`. A framework the rules do not cover (frameworks.UnknownFramework) is not known:
+    None, with the projects and framework named, never an error that stops the plan or the inputs."""
+    try:
+        s = frameworks.supports(frameworks.version_metadata(db, package_id, version), tfm)
+    except frameworks.UnknownFramework as error:
+        return {"supported": None, "basis": f"{_named_projects(projects)} on {tfm}: {error}"}
     return {"supported": s.supported, "basis": s.basis}
+
+
+def _named_projects(projects) -> str:
+    projects = sorted(set(projects))
+    return ", ".join(projects[:3]) + (f" and {len(projects) - 3} more" if len(projects) > 3 else "") if projects else "the projects"
 
 
 def _place(group: dict, from_tfm: str, to_tfm: str) -> tuple[str, str]:
@@ -329,10 +339,8 @@ def load_deltas() -> list[dict]:
 def _crosses(from_tfm: str, to_tfm: str, breaks_from: str) -> bool:
     """A delta is a breaking change between two .NET versions: it applies only when both frameworks have one. A .NET
     Framework project (net472) has no .NET version to cross from, and never compared."""
-    _, f = frameworks._parse(from_tfm)
-    _, t = frameworks._parse(to_tfm)
-    _, b = frameworks._parse(breaks_from)
-    if f is None or t is None or b is None:
+    (fk, f), (tk, t), (bk, b) = frameworks._parse(from_tfm), frameworks._parse(to_tfm), frameworks._parse(breaks_from)
+    if not fk == tk == bk == "netcore":
         return False
     return f < b <= t
 
@@ -440,17 +448,21 @@ def package_moves(db: Session, repository_id, from_tfm: str, to_tfm: str,
     moves_in: list[PackageMove] = []
     for key, p in sorted(packages.items()):
         merged_before, merged_after, known = {}, {}, True
+        projects = sorted({o[1] for o in p["occurrences"]})
         for tfm in (from_tfm, to_tfm):
-            b = frameworks.dependency_minimums(frameworks.version_metadata(db, p["package_id"], p["from"]), tfm)
-            a = frameworks.dependency_minimums(frameworks.version_metadata(db, p["package_id"], p["to"]), tfm)
+            try:
+                b = frameworks.dependency_minimums(frameworks.version_metadata(db, p["package_id"], p["from"]), tfm)
+                a = frameworks.dependency_minimums(frameworks.version_metadata(db, p["package_id"], p["to"]), tfm)
+            except frameworks.UnknownFramework:
+                b = a = None     # a framework the rules do not cover: its dependencies are not known, nothing fails
             known &= b is not None and a is not None
             for target, minimums in ((merged_before, b or {}), (merged_after, a or {})):
                 for dep, v in minimums.items():
                     target[dep] = max(target.get(dep, v), v)
         p["dependencies_known"] = known
         p["support"] = {"from": p["from"], "to": p["to"],
-                        "current": {t: _support(db, p["package_id"], p["from"], t) for t in (from_tfm, to_tfm)},
-                        "recommended": {t: _support(db, p["package_id"], p["to"], t) for t in (from_tfm, to_tfm)}}
+                        "current": {t: _support(db, p["package_id"], p["from"], t, projects) for t in (from_tfm, to_tfm)},
+                        "recommended": {t: _support(db, p["package_id"], p["to"], t, projects) for t in (from_tfm, to_tfm)}}
         moves_in.append(PackageMove(p["package_id"], p["from"], p["to"], p["outcome"], merged_before, merged_after))
     return packages, moves_in, skipped
 

@@ -44,6 +44,10 @@ class FailedScanOut(BaseModel):
     results_from: dict[str, datetime.datetime | None] = Field(
         description="Each step that did not complete in that run, and when it last did: the date of the results its "
                     "views show instead (null: it never has).")
+    kind: Literal["scan", "preparation"] = Field(
+        default="scan", description="scan: the run failed at a step. preparation: the run completed, but its "
+                                    "conversion-preparation did not prepare, so the Conversion tab shows an earlier "
+                                    "conversion (app.results.last_scan.failed_preparation).")
 
 
 class RepositoryResultsOut(BaseModel):
@@ -103,7 +107,8 @@ def get_repository_results(repository_id: uuid.UUID, db: Session = Depends(get_d
     return RepositoryResultsOut(repository_id=repository_id, results=results,
                                 held_on=where if held.elsewhere(repo.registered_host) else None,
                                 not_copied=len(missing), not_copied_note=note,
-                                failed_scan=last_scan.failed_scan(db, repository_id))
+                                failed_scan=last_scan.failed_scan(db, repository_id)
+                                or last_scan.failed_preparation(db, repository_id))
 
 
 def _stored(db: Session, artifact_id: uuid.UUID, artifact_type: str) -> models.ResultArtifact:

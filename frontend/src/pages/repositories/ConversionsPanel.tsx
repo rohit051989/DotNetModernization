@@ -126,6 +126,7 @@ function ConversionCard({
   verifyBusy,
   onVerify,
   refusal,
+  older = false,
 }: {
   repositoryId: string
   entry: ConversionEntry
@@ -134,6 +135,8 @@ function ConversionCard({
   verifyBusy: boolean
   onVerify: (number: number, assistant: ConversionEngine) => void
   refusal: string | null
+  /** The last preparation failed after this conversion was prepared: what it shows is as an earlier preparation left it. */
+  older?: boolean
 }) {
   const viewed = useEngineView()
   // A conversion from before both engines: its one engine. The server says which are prepared.
@@ -159,6 +162,12 @@ function ConversionCard({
           </span>
         )}
         {entry.verifying && <span className="text-[11px] text-sky-700">verifying…</span>}
+        {older && (
+          <span className="rounded border border-red-200 bg-red-50 px-1.5 text-[11px] text-red-800" data-testid="conversion-older"
+            title="The last preparation failed: this conversion is as an earlier preparation left it.">
+            older: the last preparation failed
+          </span>
+        )}
         <span className="text-xs text-neutral-500">
           from <span className="font-mono">{entry.baseline.slice(0, 8)}</span> · prepared {when(entry.prepared_at)}
         </span>
@@ -450,7 +459,8 @@ export function ConversionsPanel({ repositoryId, refreshToken, refusal = null, t
       )}
       {last && (last.status === 'failed' || last.status === 'kept') && (
         <PreparationNote tone={last.status === 'failed' ? 'failed' : 'kept'}
-          label={`Last preparation (${when(last.at)})${last.status === 'kept' ? ' kept the conversion' : ''}`}
+          label={`Last preparation (${when(last.at)})${last.status === 'kept' ? ' kept the conversion' : ' failed'}${
+            last.status === 'failed' && data.conversions.length > 0 ? `; conversion ${data.conversions[0].number} below is older, as an earlier preparation left it` : ''}`}
           {...preparationProblem(last.message, last.details)} />
       )}
       {last && last.status !== 'failed' && last.warnings && (
@@ -494,6 +504,7 @@ export function ConversionsPanel({ repositoryId, refreshToken, refusal = null, t
                 verifyBusy={busy || running(data.verification_job)}
                 onVerify={onVerify}
                 refusal={refusal}
+                older={!!last && last.status === 'failed' && !!last.at && !!entry.prepared_at && new Date(entry.prepared_at) < new Date(last.at)}
               />
             ))}
           </div>

@@ -5,8 +5,26 @@ function when(at: string): string {
   return new Date(at).toLocaleString()
 }
 
-/** The page header's notice: the latest discovery run failed, at which step and when, with a link to the Activity tab. */
+/** The page header's notice: the latest discovery run failed, at which step and when, with a link to the Activity tab.
+ *  Also when the run completed but its conversion-preparation did not prepare (kind "preparation"). */
 export function FailedScanBanner({ failed, onOpenActivity }: { failed: FailedScan; onOpenActivity: () => void }) {
+  if (failed.kind === 'preparation') {
+    return (
+      <div className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800" data-testid="failed-scan">
+        <p>
+          The latest scan, on {when(failed.at)}, completed, but its{' '}
+          <span className="font-mono text-xs">conversion-preparation</span> failed
+          {failed.message ? `: ${failed.message}` : '.'}{' '}
+          <button type="button" onClick={onOpenActivity} className="font-medium text-red-900 underline hover:no-underline">
+            Open Activity
+          </button>
+        </p>
+        <p className="mt-0.5 text-xs text-red-700">
+          The Conversion tab shows the conversion an earlier preparation left, and says so. The next rescan prepares again.
+        </p>
+      </div>
+    )
+  }
   return (
     <div className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800" data-testid="failed-scan">
       <p>

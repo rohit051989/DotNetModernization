@@ -33,6 +33,8 @@ export interface FailedScan {
   at: string
   /** Each step that did not complete in that run, and when it last did: the date of the results its views show. */
   results_from: Record<string, string | null>
+  /** scan: the run failed at a step. preparation: the run completed, but conversion-preparation did not prepare. */
+  kind?: 'scan' | 'preparation'
 }
 
 export interface EntryPointSummary {

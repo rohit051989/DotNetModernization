@@ -113,6 +113,29 @@ class FailedScan(unittest.TestCase):
         self.run_of(T1)
         self.assertIsNone(last_scan.failed_scan(self.db, self.repo.id))
 
+    def test_a_completed_run_whose_preparation_failed_is_in_the_header_and_refuses_nothing(self):
+        self.run_of(T0)
+        latest = self.run_of(T1)
+        attempt = {"at": T1.isoformat(), "jobExecutionId": str(latest.id), "status": "failed",
+                   "message": "ValueError: target v4.7 is not a .NET (5+) framework", "details": []}
+        self.db.add(models.ConversionResult(repository_id=self.repo.id, conversions={"entries": []}, last_prepare=attempt))
+        self.db.commit()      # removed with the repository (ON DELETE CASCADE)
+
+        out = views.get_repository_results(self.repo.id, self.db).failed_scan
+        self.assertEqual((out.kind, out.failed_step, out.status, out.job_execution_id),
+                         ("preparation", "conversion-preparation", "COMPLETED", latest.id))
+        self.assertEqual(out.message, "ValueError: target v4.7 is not a .NET (5+) framework")
+        self.assertEqual(out.results_from, {})
+        self.assertIsNone(last_scan.failed_scan(self.db, self.repo.id))
+        self.assertIsNone(last_scan.refusal(self.db, self.repo.id))       # the next rescan prepares again
+        # An attempt from an earlier run says nothing; nor does a later run's successful preparation.
+        newer = self.run_of(T1 + datetime.timedelta(hours=1))
+        self.assertIsNone(views.get_repository_results(self.repo.id, self.db).failed_scan)
+        row = self.db.get(models.ConversionResult, self.repo.id)
+        row.last_prepare = {**attempt, "jobExecutionId": str(newer.id), "status": "prepared"}
+        self.db.commit()
+        self.assertIsNone(views.get_repository_results(self.repo.id, self.db).failed_scan)
+
     def test_preparation_refuses_a_mix_of_new_and_older_results_and_says_why(self):
         self.run_of(T0)
         self.run_of(T1, fail_at="dependency-assessment")

@@ -207,3 +207,39 @@ describe('not run, kept, and one engine only', () => {
     expect(screen.queryByTestId('preparation-kept')).toBeNull()
   })
 })
+
+describe('a failed preparation', () => {
+  const earlier = {
+    number: 1, branch: 'conversion/1', state: 'prepared' as const, baseline: 'e89bc6a1', baseline_from: null, scanned_at: null,
+    head: null, commits_beyond_inputs: 0, uncommitted: [], untracked: [], run_because: null, worktree: 'D:/runs/wt',
+    prepared_at: '2026-11-20T10:00:00Z', runbook_path: 'D:/runs/RUNBOOK.md', runbook: 'runbook', opening_message: 'first message',
+    package_step: {}, left_for_agent: {}, verify_refusal: null, verification: null, verifying: false, plan: null,
+    superseded_plans: [], one_engine: null,
+    engines: { 'github-copilot': { prepared: true, usable: true, opening: 'first message', runbook: 'runbook' } },
+  }
+
+  it('shows its message and labels the conversion still shown as older', async () => {
+    api.listConversions.mockResolvedValue({
+      ...conversions({ at: '2026-11-23T22:00:00Z', status: 'failed', number: null, jobExecutionId: 'j2',
+        message: 'ValueError: target v4.7 is not a .NET (5+) framework' }),
+      conversions: [earlier],
+    })
+    render(<ConversionsPanel repositoryId="r" refreshToken={0} />)
+    await act(async () => {})
+    const note = screen.getByTestId('preparation-failed').textContent ?? ''
+    expect(note).toContain('failed; conversion 1 below is older, as an earlier preparation left it')
+    expect(note).toContain('target v4.7 is not a .NET (5+) framework')
+    expect(screen.getByTestId('conversion-older').textContent).toBe('older: the last preparation failed')
+  })
+
+  it('a conversion prepared after a successful preparation is not labelled older', async () => {
+    api.listConversions.mockResolvedValue({
+      ...conversions({ at: '2026-11-23T22:00:00Z', status: 'refreshed', number: 1, jobExecutionId: 'j2', message: 'x' }),
+      conversions: [{ ...earlier, prepared_at: '2026-11-23T22:00:00Z' }],
+    })
+    render(<ConversionsPanel repositoryId="r" refreshToken={0} />)
+    await act(async () => {})
+    expect(screen.queryByTestId('preparation-failed')).toBeNull()
+    expect(screen.queryByTestId('conversion-older')).toBeNull()
+  })
+})

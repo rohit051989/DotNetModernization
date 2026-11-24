@@ -53,6 +53,16 @@ def nearest(root: Path, project_dir: Path, file_name: str) -> Path | None:
 _TFM_ELEMENT = re.compile(r"<(?P<tag>TargetFrameworks?)>(?P<value>[^<]*)</(?P=tag)>")
 
 
+# An old-style (non-SDK) project's framework: <TargetFrameworkVersion>v4.7</TargetFrameworkVersion>.
+_OLD_STYLE = re.compile(r"<TargetFrameworkVersion>(?P<value>[^<]*)</TargetFrameworkVersion>")
+
+
+class OldStyleProject(ValueError):
+    """An old-style project declares its framework as TargetFrameworkVersion, which the package step's retarget does not
+    edit: such a repository gets no package step, and the conversion engine retargets it (converting the project to the
+    SDK style), as its instructions say. Documented in 36-COPILOT-ENHANCED-CONVERSION "Old-style projects"."""
+
+
 @dataclass
 class FrameworkDeclaration:
     file: str                  # repository-relative
@@ -75,7 +85,11 @@ def framework_declarations(root: Path, projects: list[dict]) -> list[FrameworkDe
             raise FileNotFoundError(f"{project['relative_path']}: {source} not found above the project")
         rel = file.relative_to(root).as_posix()
         if rel not in found:
-            match = _TFM_ELEMENT.search(read(file))
+            text = read(file)
+            match = _TFM_ELEMENT.search(text)
+            if match is None and (old := _OLD_STYLE.search(text)):
+                raise OldStyleProject(f"{rel} is an old-style project (TargetFrameworkVersion {old.group('value').strip()}): "
+                                      "old-style projects are retargeted by the conversion engine, not the package step")
             if match is None:
                 raise ValueError(f"{rel} declares no TargetFramework(s), though solution-discovery says it does")
             found[rel] = FrameworkDeclaration(rel, match.group("tag"), match.group("value").strip())
