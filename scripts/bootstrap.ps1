@@ -90,18 +90,8 @@ function EnvValue([string]$name) {
     }
     return ''
 }
-function TextHash([string]$text) {
-    $sha = [System.Security.Cryptography.SHA256]::Create()
-    $bytes = $sha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($text))
-    return ([System.BitConverter]::ToString($bytes) -replace '-', '').ToLowerInvariant()
-}
-function FilesHash([string[]]$paths) {
-    $lines = foreach ($p in $paths) {
-        Get-ChildItem $p -Recurse -File | Where-Object { $_.FullName -notmatch '\\(bin|obj)\\' } | Sort-Object FullName |
-            ForEach-Object { "$($_.FullName.Substring($root.Length)):$((Get-FileHash -Algorithm SHA256 $_.FullName).Hash)" }
-    }
-    return TextHash ($lines -join "`n")
-}
+# TextHash, FilesHash and the step programs: shared with run-suites.ps1, which checks they are current.
+. (Join-Path $PSScriptRoot 'step-programs.ps1')
 function Stamped([string]$file, [string]$value) {
     return (-not $Force) -and (Test-Path $file) -and ((Get-Content $file -Raw).Trim() -eq $value)
 }
@@ -219,17 +209,8 @@ if (Run 6) {
         $sdk = (& dotnet --version 2>$null)
         if ($LASTEXITCODE -ne 0 -or -not $sdk) { Fail 6 'dotnet was not found, or no SDK fits global.json (run preflight).' }
         Write-Host "SDK $sdk"
-        $sources = FilesHash @((Join-Path $steps 'src'), (Join-Path $steps 'schemas'), (Join-Path $steps 'global.json'))
-        $want = TextHash "$sources|$sdk|$(EnvValue 'NUGET_SOURCES')"
-        $programs = @(
-            @('Fingerprinting.Cli', 'publish', 'Fingerprinting.Cli.exe'),
-            @('Fingerprinting.EntryPoints.Cli', 'publish\entry-point-inventory', 'EntryPointInventory.Cli.exe'),
-            @('Fingerprinting.Impact.Cli', 'publish\impact-analysis', 'ImpactAnalysis.Cli.exe'),
-            @('Fingerprinting.Dependencies.Cli', 'publish\dependency-assessment', 'DependencyAssessment.Cli.exe'),
-            @('Fingerprinting.Hierarchy.Cli', 'publish\dependency-hierarchy', 'DependencyHierarchy.Cli.exe'),
-            @('Fingerprinting.Outbound.Cli', 'publish\outbound-invocation-inventory', 'OutboundInvocationInventory.Cli.exe'),
-            @('Fingerprinting.TestCoverage.Cli', 'publish\test-coverage-assessment', 'TestCoverageAssessment.Cli.exe')
-        )
+        $want = Get-StepProgramsWant -Root $root -Sdk $sdk -NugetSources (EnvValue 'NUGET_SOURCES')
+        $programs = $StepPrograms
         $published = 0
         foreach ($p in $programs) {
             $stampFile = Join-Path $p[1] ".bootstrap-stamp-$($p[0])"

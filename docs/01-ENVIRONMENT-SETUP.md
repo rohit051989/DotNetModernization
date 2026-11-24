@@ -216,6 +216,29 @@ Creating it needs CREATE on the database, as `python -m app.seed.reproduce` does
 `tests/test_platform_scale.py` generates the synthetic 170-project repository into a scratch folder and runs both
 discovery jobs on it, with the published step programs (stage 6 of `scripts/bootstrap.ps1`); it takes a few minutes.
 
+**Two tiers, sharded** (2026-11-24). `scripts\run-suites.ps1` runs the quick tier by default while working: the suites
+the change can affect, leaving out the backend tests marked slow (`from tests.tiers import slow`, on a test class or
+method that takes a minute or more; none is deleted for being slow). `-Full` runs every suite and every test, once, on
+the tip of master before a push (CLAUDE.md rule 17). The backend tests run split across processes
+(`scripts\backend_shards.py`, `-Shards`, default 6), spread by last measured duration (`backend\tests\durations.json`,
+rewritten by `python ..\scripts\backend_shards.py --record` from a full run); each shard imports `backend\tests` on its
+own, so each has its own schema and scratch folders. `--report 30` prints the slowest modules and tests.
+
+Before running backend tests, run-suites checks the C# step programs are built and current for the checkout, as
+bootstrap stage 6 decides (`scripts\step-programs.ps1`: the executable, and its stamp of the sources, the SDK and
+NUGET_SOURCES); when one is not, it runs nothing and names the programs and `.\scripts\bootstrap.ps1 -Stage 6`. A test
+run's teardown never hangs: every connection a run opens is named after its schema (`PGAPPNAME`), so teardown ends the
+sessions it left open and any holding a lock in its schema, reports each one ("ended N database session(s) the run had
+left open"), and gives the drop a time limit; a schema it could not drop is dropped by a later run once a day old.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\run-suites.ps1
+```
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\run-suites.ps1 -Full
+```
+
 ## 7. Verification checklist
 
 Before moving on, confirm all of these:

@@ -28,6 +28,7 @@ from unittest import mock
 from app.conversion import gitops
 from app.engine import convert, engines, siblings
 from app.engine import inputs as engine_inputs
+from tests.tiers import slow
 
 COPILOT_FILES = {".github/copilot-instructions.md": "# Conversion instructions\n",
                  ".github/upgrades/skills/applying-utc.md": "# applying-utc\n"}
@@ -105,6 +106,7 @@ class OneCheck(unittest.TestCase):
         self.assertEqual(self.check(False), "its branch no longer starts from its baseline")
 
 
+@slow
 class Refresh(unittest.TestCase):
     """A rescan's preparation on a real repository, worktree and record; the inputs' content stood in for."""
 

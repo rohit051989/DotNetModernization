@@ -54,6 +54,7 @@ from app.toolchain import service as toolchain
 from app.workflow.runtime import service as runtime
 from tests.asgi_client import Client
 from tests.fixtures import synthetic_repository as synth
+from tests.tiers import slow
 
 ENGAGEMENT = "t-engagement-scope"
 PASSWORD = "a-long-enough-password"
@@ -118,6 +119,7 @@ def stand_in_dotnet(builds: list, tests: list):
         yield
 
 
+@slow
 class ConversionScopeAtScale(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

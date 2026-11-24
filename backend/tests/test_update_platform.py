@@ -10,6 +10,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from tests.tiers import slow
 
 SCRIPTS = Path(__file__).resolve().parents[2] / "scripts"
 OURS_ALONE = ("update-platform.ps1", "write-platform-source.ps1", "our-side-only.txt")
@@ -37,6 +38,7 @@ def our_scripts(work: Path) -> None:
 
 
 @unittest.skipUnless(sys.platform == "win32", "update-platform.ps1 is Windows PowerShell")
+@slow
 class UpdatePlatform(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -440,6 +442,7 @@ class UpdatePlatform(unittest.TestCase):
 
 
 @unittest.skipUnless(sys.platform == "win32", "update-platform.ps1 is Windows PowerShell")
+@slow
 class UpdatePlatformAtRoot(unittest.TestCase):
     """The platform at the root of a repository dedicated to it, laid out exactly as ours: the whole repository is the
     platform. The client's repository was created by its git host, with a README.md and .gitignore of its own."""

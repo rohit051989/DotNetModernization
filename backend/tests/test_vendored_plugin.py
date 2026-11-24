@@ -14,6 +14,7 @@ import unittest
 from pathlib import Path
 
 from app.config import settings
+from tests.tiers import slow
 
 VENDORED = Path(settings.platform_root) / "third_party" / "code-modernization"
 SCRIPTS = VENDORED / "scripts"
@@ -68,6 +69,7 @@ class Obligations(unittest.TestCase):
         self.assertEqual([p.name for p in VENDORED.rglob("telemetry*")], [])
 
 
+@slow
 class NoNetwork(unittest.TestCase):
     def test_no_vendored_module_imports_a_network_or_process_facility(self):
         for path in sorted(SCRIPTS.glob("*.py")):

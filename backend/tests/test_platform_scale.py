@@ -34,12 +34,14 @@ from app.seed import platform
 from app.workflow.adapters.base import declared_version, local_path_from_uri
 from app.workflow.runtime import service as runtime
 from tests.fixtures import synthetic_repository
+from tests.tiers import slow
 
 ENGAGEMENT = "t-engagement-scale"
 # Generous: dependency-hierarchy takes seconds on this repository; the engine allows it an hour, 300 s per project.
 HIERARCHY_SECONDS = 120
 
 
+@slow
 class PlatformAtScaleTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

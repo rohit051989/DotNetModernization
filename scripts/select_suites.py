@@ -39,6 +39,8 @@ SEED_TESTS = ("tests.test_platform_seed", "tests.test_catalog_baseline", "tests.
 SCRIPT_TESTS = {
     "scripts/run-suites.ps1": ("tests.test_suite_selection",),
     "scripts/select_suites.py": ("tests.test_suite_selection",),
+    "scripts/backend_shards.py": ("tests.test_suite_selection",),
+    "scripts/step-programs.ps1": ("tests.test_suite_selection",),
     "scripts/update-platform.ps1": ("tests.test_update_platform", "tests.test_import_client_changes"),
     "scripts/write-platform-source.ps1": ("tests.test_update_platform", "tests.test_import_client_changes"),
     "scripts/our-side-only.txt": ("tests.test_update_platform", "tests.test_import_client_changes"),

@@ -55,7 +55,9 @@ class CentralResults(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):
         with SessionLocal() as db:
-            db.delete(db.get(models.User, cls.ann_id))
+            ann = db.get(models.User, cls.ann_id)
+            if ann is not None:             # already gone: nothing to remove, and never a session left open
+                db.delete(ann)
             db.commit()
 
     def setUp(self):

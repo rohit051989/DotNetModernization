@@ -1207,15 +1207,21 @@ and why, before starting), and with `-Push` pushes master only when they all pas
 | documentation (`docs\`, any `.md`) | none |
 | anything else | every suite |
 
-Independent suites run at the same time, as many as the machine allows. `-AllSuites` runs every suite, as before.
-When a suite fails, master keeps the merge locally, unpushed, and the script says so: fix it with a commit on top, run
-`scripts\run-suites.ps1`, then push. **`-SkipSuites`** runs none: the merge stays local, and pushing it needs `-Push`
+Independent suites run at the same time, as many as the machine allows, in the full tier (the slow tests too), as the
+merge may be pushed. `-AllSuites` runs every suite (`run-suites.ps1 -Full`). When a suite fails, master keeps the merge
+locally, unpushed, and the script says so: fix it with a commit on top, run `scripts\run-suites.ps1 -Full`, then push. **`-SkipSuites`** runs none: the merge stays local, and pushing it needs `-Push`
 together with `-SkipSuites` and a `-Reason`; the merge's commit message then records that the suites were not run, by
 whom, and why. Any other branch is pushed once the scan passes. Without `-Push` nothing is pushed.
 
-`scripts\run-suites.ps1` makes the same choice on its own, for anyone: `-Since <commit>` runs the suites the paths
-changed since that commit can affect (uncommitted ones included), `-Paths a,b` those given paths can, and `-List`
-only prints the choice. With no parameter it runs every suite.
+`scripts\run-suites.ps1` makes the same choice on its own, for anyone, in one of two tiers. **Quick**, the default while
+working: the suites the change can affect (`-Since <commit>`, uncommitted ones included; `-Paths a,b`; with neither,
+what the checkout has beyond its upstream branch), leaving out the backend tests marked slow
+(`backend\tests\tiers.py`). **Full** (`-Full`): every suite and every test, once, on the tip of master before a push.
+`-List` only prints the choice. The backend tests run split across processes (`-Shards`, default 6), each in a
+schema of its own. Before running any, it checks that the C# step programs are built and current for the checkout,
+as bootstrap stage 6 decides; when one is not, it runs nothing and says which and how to build them
+(`.\scripts\bootstrap.ps1 -Stage 6`). A run never hangs on its cleanup: each shard ends the database sessions it left
+open, names them, and gives up on its schema after a time limit (the next run drops it once it is a day old).
 
 **The report.** What was added, changed and deleted, every file where the client's version won, the commit, and
 whether it was pushed. When the client has nothing new since the last import (or only our deliveries), it says so,

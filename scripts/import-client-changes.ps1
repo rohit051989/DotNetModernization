@@ -533,9 +533,9 @@ if ($target -eq 'master' -and $SkipSuites) {
     Write-Host "No suite run (-SkipSuites)$(if ($Reason.Trim()) { ": $($Reason.Trim())" }). The merge's commit message records it." -ForegroundColor Yellow
 } elseif ($target -eq 'master') {
     # Only the suites the merge can affect, from the paths it changed (scripts\run-suites.ps1 prints which, and why),
-    # or every suite with -AllSuites.
+    # or every suite with -AllSuites; the full tier either way (the slow tests too), as the merge may be pushed.
     Write-Host ''
-    $selection = $(if ($AllSuites) { @() } else { @('-Since', $start) })
+    $selection = $(if ($AllSuites) { @('-Full') } else { @('-Since', $start, '-Tier', 'full') })
     Write-Host "Running $(if ($AllSuites) { 'every suite' } else { "the suites the merge can affect (changed since $($start.Substring(0, 12)))" }) on the merged master (scripts\run-suites.ps1)..."
     & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Repository 'scripts\run-suites.ps1') @selection
     $passed = $LASTEXITCODE -eq 0

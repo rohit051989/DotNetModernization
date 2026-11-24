@@ -37,6 +37,7 @@ from app.workflow.adapters.base import local_path_from_uri
 from app.workflow.runtime import service as runtime
 from tests.asgi_client import Client
 from tests.fixtures import synthetic_repository
+from tests.tiers import slow
 
 ENGAGEMENT = "t-engagement-shared"
 MACHINE_A, MACHINE_B, MACHINE_C = "DEVBOX-A", "DEVBOX-B", "DEVBOX-C"
@@ -70,6 +71,7 @@ def small_repository(root: Path) -> None:
         "        return Ok(stock);\n    }\n}\n", encoding="utf-8")
 
 
+@slow
 class SharedResults(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -110,15 +112,20 @@ class SharedResults(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
-        cls.db.rollback()
-        engagement = cls.db.get(models.Engagement, ENGAGEMENT)
-        if engagement is not None:
-            deletion.delete(cls.db, deletion.engagement_plan(cls.db, engagement), engagement.client_name, via="test")
-        for user in cls.users.values():
-            cls.db.delete(cls.db.get(models.User, user.id))
-        cls.db.commit()
-        cls.db.close()
-        cls.tmp.cleanup()
+        try:
+            cls.db.rollback()
+            engagement = cls.db.get(models.Engagement, ENGAGEMENT)
+            if engagement is not None:
+                deletion.delete(cls.db, deletion.engagement_plan(cls.db, engagement), engagement.client_name, via="test")
+            for user in cls.users.values():
+                row = cls.db.get(models.User, user.id)
+                if row is not None:         # already gone: nothing to remove
+                    cls.db.delete(row)
+            cls.db.commit()
+        finally:
+            cls.db.rollback()               # never a transaction left open for the schema's drop to wait on
+            cls.db.close()
+            cls.tmp.cleanup()
 
     # ---- helpers
 

@@ -190,8 +190,8 @@ modernization-platform/
     Existing data a new rule would refuse (one checkout registered in two engagements before release 2) is
     reported — in preflight, the backend's startup log and the UI — and left working, never broken or deleted;
     code that acts on such data, a hard delete included, must not damage the other side of it. A change that
-    cannot upgrade in place says so explicitly, with the reason, in `docs/VDI-SETUP.md` "Upgrade notes". Every
-    change that touches the database, step registrations or settings proves it: upgrade an installation of the
+    cannot upgrade in place says so explicitly, with the reason, in `docs/VDI-SETUP.md` "Upgrade notes". Only a
+    change that touches the database, step registrations or settings needs the proof, and it proves it: upgrade an installation of the
     previous master commit, with data in it, as "Updating the platform" (a client install) or "Appendix: upgrading
     from a bundle of master" (our own) says. A change that needs an action after updating (a rescan, a package a
     mirror must carry, a new setting) adds a dated entry, naming its commit, at the top of "Upgrade notes".
@@ -209,8 +209,11 @@ modernization-platform/
     test that only our side uses goes on that list; what a client's own developers need never does.
 
 17. **master is always deployable.** Every installation follows master (`scripts/update-platform.ps1` pulls it),
-    so every commit on master passes the full test suites: backend, frontend and C#. Unfinished work stays on a
-    branch until it does. Commit on master with neutral messages, and never rewrite its history: an update refuses
+    so the tip of master passes the full suites before every push: backend, frontend and C#
+    (`scripts/run-suites.ps1 -Full`, once, on the tip). Individual commits use the quick tier while working
+    (`scripts/run-suites.ps1`, the suites the change can affect, without the tests marked slow). If the full run
+    fails, fix it on top and rerun what the fix touches before pushing. Unfinished work stays on a branch until it
+    passes. Commit on master with neutral messages, and never rewrite its history: an update refuses
     to go backwards. **Never create, move or delete a tag; the owner does**, by hand, as a reference point for a
     bigger milestone. Nothing installs a tag. Bundles for our own installs are made from master
     (`scripts/master-bundle.ps1`), only when asked.

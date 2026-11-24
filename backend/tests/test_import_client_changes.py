@@ -13,6 +13,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from tests.tiers import slow
 
 SCRIPTS = Path(__file__).resolve().parents[2] / "scripts"
 IDENTITY = ["-c", "user.name=t", "-c", "user.email=t@t"]
@@ -37,6 +38,7 @@ def ps(script: Path, *args: str, env: dict | None = None) -> subprocess.Complete
 
 
 @unittest.skipUnless(sys.platform == "win32", "the scripts are Windows PowerShell")
+@slow
 class ImportClientChanges(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()

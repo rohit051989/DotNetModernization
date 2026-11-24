@@ -23,6 +23,7 @@ from app import models
 from app.conversion import approaches, dotnet, frameworks, gitops, msbuild, planner, runner
 from tests.support import TEST_ENGAGEMENT_ID
 from tests.test_item_catalog import ItemCatalogTestCase
+from tests.tiers import slow
 
 PROPS = """<Project>
   <PropertyGroup>
@@ -269,6 +270,7 @@ def fake_test(worktree, project, trx, timeout=0, count=3):
     return dotnet.Run(True, 0, "Passed!"), dotnet.read_trx(trx)
 
 
+@slow
 class UnitLoopTests(ItemCatalogTestCase):
     def setUp(self):
         super().setUp()

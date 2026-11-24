@@ -1,14 +1,18 @@
 <#
 .SYNOPSIS
-    Runs the platform's test suites, in this repository: every suite, or only those a change can affect. Exit code 0
-    only when every suite that ran passed (CLAUDE.md rule 17: every commit on master passes them all).
+    Runs the platform's test suites, in this repository, in one of two tiers. Exit code 0 only when every suite that
+    ran passed.
+
+      quick (the default, while working): only the suites the change can affect (-Since, or -Paths), leaving out the
+            backend tests marked slow (backend\tests\tiers.py). With neither, the change is what this checkout has
+            beyond its upstream branch, uncommitted and untracked files included (HEAD when it has no upstream).
+      full  (-Full): every suite and every test, once, on the tip of master before a push (CLAUDE.md rule 17).
 
 .DESCRIPTION
     The suites: backend; the seed and registration tests and the reproduce check; frontend tests and type check; the
     C# test projects and Python tests of each step program; third_party code-modernization.
 
-    With no parameter, every suite, as before. With -Since <commit> (or -Paths), only the suites the changed paths
-    can affect (scripts\select_suites.py says how): frontend\ the frontend tests and type check; steps\<step>\ that
+    Which suites a change can affect (scripts\select_suites.py says how): frontend\ the frontend tests and type check; steps\<step>\ that
     step's tests; a script, the backend test modules that test it (a script no test is named for, the backend
     suite); one backend test module, that module alone; backend\ otherwise the backend suite; step registrations,
     the catalog, seed data or migrations the seed and registration tests and the reproduce check; documentation
@@ -18,10 +22,23 @@
     Independent suites run at the same time, as many as the machine allows (a quarter of its logical processors, at
     least one; -MaxParallel to choose). Suites that share build output (the C# test projects) run one after another.
     Each suite's output goes to its own log; its last lines are printed when it ends, and a failing one's log is kept
-    and named. The backend suite runs in a scratch schema of its own (backend\tests\__init__.py), never touching the
-    platform's data; so does the reproduce check (backend\tests\reproduce_on_scratch.py).
+    and named. The backend tests run split across processes (scripts\backend_shards.py, -Shards), each in a scratch
+    schema of its own (backend\tests\__init__.py), never touching the platform's data; so does the reproduce check
+    (backend\tests\reproduce_on_scratch.py). A run never hangs on its cleanup: each shard's teardown ends the
+    database sessions it left open, reports them, and gives up on its schema after a time limit.
+
+    Before running backend tests it checks that each C# step program is built and current for this checkout
+    (scripts\step-programs.ps1, as bootstrap stage 6 decides). When one is not, it runs nothing, and names the
+    programs and how to build them: tests on missing or stale programs would fail for that reason alone.
 
     Uses the repository's own environments: backend\.venv (bootstrap builds it) and frontend\node_modules.
+
+.PARAMETER Full
+    The full tier: every suite and every test. Run it once on the tip of master before a push (CLAUDE.md rule 17).
+
+.PARAMETER Tier
+    quick (default) or full: whether the backend tests marked slow run, in the suites -Since or -Paths chose.
+    scripts\import-client-changes.ps1 gives full, as its merge may be pushed.
 
 .PARAMETER Since
     A commit: only the suites the paths changed since it can affect, the uncommitted and untracked ones included.
@@ -35,18 +52,27 @@
 .PARAMETER MaxParallel
     How many suites may run at the same time. Default: a quarter of the logical processors, at least one.
 
+.PARAMETER Shards
+    How many processes the backend tests are split across, each with its own schema. Default: 6.
+
 .EXAMPLE
     powershell -ExecutionPolicy Bypass -File .\scripts\run-suites.ps1
 
 .EXAMPLE
-    powershell -ExecutionPolicy Bypass -File .\scripts\run-suites.ps1 -Since origin/master
+    powershell -ExecutionPolicy Bypass -File .\scripts\run-suites.ps1 -Since HEAD~3
+
+.EXAMPLE
+    powershell -ExecutionPolicy Bypass -File .\scripts\run-suites.ps1 -Full
 #>
 [CmdletBinding(PositionalBinding = $false)]
 param(
+    [switch]$Full,
+    [ValidateSet('quick', 'full')][string]$Tier = 'quick',
     [string]$Since = '',
     [string[]]$Paths = @(),
     [switch]$List,
-    [int]$MaxParallel = 0
+    [int]$MaxParallel = 0,
+    [int]$Shards = 6
 )
 
 $ErrorActionPreference = 'Continue'
@@ -59,6 +85,15 @@ if (-not (Test-Path $python)) {
     Write-Host "No backend\.venv: run scripts\bootstrap.ps1 first." -ForegroundColor Red
     exit 1
 }
+if ($Full) {
+    if ($Since -or $Paths.Count -gt 0) { Write-Host '-Full runs every suite: give it without -Since or -Paths.' -ForegroundColor Red; exit 1 }
+    $Tier = 'full'
+} elseif (-not $Since -and $Paths.Count -eq 0) {
+    # The quick tier's change, when none is given: what this checkout has beyond its upstream branch.
+    $upstream = (& git -C $root rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' 2>$null)
+    $Since = $(if ($LASTEXITCODE -eq 0 -and $upstream) { "$upstream".Trim() } else { 'HEAD' })
+}
+Write-Host "Tier: $Tier$(if ($Tier -eq 'quick') { ' (the backend tests marked slow are left out; -Full runs everything)' })."
 
 # ---- Which suites
 $scratch = Join-Path ([IO.Path]::GetTempPath()) ('mp-suites-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '-' + [guid]::NewGuid().ToString('N').Substring(0, 6))
@@ -98,16 +133,33 @@ if ($List) {
     exit 0
 }
 
+# ---- The C# step programs the backend tests run: built and current for this checkout, or nothing runs
+if (@($chosen | Where-Object { $_.name -in @('backend', 'backend tests') }).Count -gt 0) {
+    . (Join-Path $PSScriptRoot 'step-programs.ps1')
+    $stale = @(Get-StaleStepPrograms -Root $root -Want (Get-StepProgramsWantHere -Root $root))
+    if ($stale.Count -gt 0) {
+        Write-Host ''
+        Write-Host "The backend tests need the C# step programs built and current for this checkout; $($stale.Count) are not:" -ForegroundColor Red
+        foreach ($s in $stale) { Write-Host "  $($s.Program): $($s.Why)" }
+        Write-Host 'Build them, then run the suites again: .\scripts\bootstrap.ps1 -Stage 6' -ForegroundColor Red
+        Write-Host 'No suite was run: tests on missing or stale step programs would fail for that reason alone.'
+        Remove-Item -LiteralPath $scratch -Recurse -Force -ErrorAction SilentlyContinue
+        exit 1
+    }
+}
+$env:PLATFORM_TESTS_TIER = $Tier
+
 # ---- How to run each: a command, its folder, and its lane (suites in one lane run one after another)
+$shardsScript = Join-Path $root 'scripts\backend_shards.py'
 function Get-Command-For([string]$name, [string[]]$modules) {
     $backend = Join-Path $root 'backend'
     $frontend = Join-Path $root 'frontend'
     switch -Regex ($name) {
-        '^backend$' { return @{ Exe = $python; Args = @('-m', 'unittest', 'discover', '-s', 'tests', '-t', '.'); Dir = $backend; Lane = 'backend' } }
-        '^backend tests$' { return @{ Exe = $python; Args = @('-m', 'unittest') + $modules; Dir = $backend; Lane = 'backend tests' } }
+        '^backend$' { return @{ Exe = $python; Args = @($shardsScript, '--shards', "$Shards", '--tier', $Tier); Dir = $backend; Lane = 'backend' } }
+        '^backend tests$' { return @{ Exe = $python; Args = @($shardsScript, '--shards', "$Shards", '--tier', $Tier, '--modules') + $modules; Dir = $backend; Lane = 'backend tests' } }
         '^seed and registrations$' {
             $modules = @(& $python -c "import sys; sys.path.insert(0, r'$root\scripts'); import select_suites; print(' '.join(select_suites.SEED_TESTS))") -split ' '
-            return @{ Exe = $python; Args = @('-m', 'unittest') + $modules; Dir = $backend; Lane = 'seed' }
+            return @{ Exe = $python; Args = @($shardsScript, '--shards', "$Shards", '--tier', $Tier, '--modules') + $modules; Dir = $backend; Lane = 'seed' }
         }
         '^reproduce$' { return @{ Exe = $python; Args = @('-m', 'tests.reproduce_on_scratch'); Dir = $backend; Lane = 'seed' } }
         '^frontend tests$' { return @{ Exe = 'npm.cmd'; Args = @('test'); Dir = $frontend; Lane = 'frontend tests' } }

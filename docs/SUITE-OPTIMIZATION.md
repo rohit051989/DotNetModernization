@@ -1,7 +1,35 @@
 # Suite optimization — handoff
 
-Status: analysis only, nothing implemented. Written 2026-11-06 from a discussion about why
-`scripts\run-suites.ps1` (no parameters, every suite) takes about 2 hours.
+Status: steps 1, 2, 4 and 5 below implemented on 2026-11-24 (section 0). Written 2026-11-06 from a discussion about
+why `scripts\run-suites.ps1` (no parameters, every suite) takes about 2 hours.
+
+## 0. As built (2026-11-24)
+
+**Measured** (one serial run of the whole backend suite on the developer machine, 22 logical processors, with
+`scripts\backend_shards.py --shards 1 --report 30`): 880 tests in 88.1 minutes of tests. The cause is not the
+170-project repository (`test_platform_scale`, 2.0 min) but the delivery tooling's tests, which build and update git
+repositories per test: `test_import_client_changes` 27.1 min (30.8%) and `test_update_platform` 21.9 min (24.9%);
+then `test_conversion_scope` 14.9 min (16.9%), and everything else under 4 minutes a module. The 30 slowest tests
+were each 1 to 4.3 minutes, all in those three modules, plus `test_engine_inputs.RealRepository` and
+`test_vendored_plugin.NoNetwork`.
+
+- **Shards** (`scripts\backend_shards.py`, standard library only): each shard is a process importing
+  `backend\tests` itself, so each has its own schema (the per-shard schema of step 2, without a new naming scheme).
+  Modules are spread by last measured duration (`backend\tests\durations.json`); a module whose tests each set up for
+  themselves (`split` there: the two delivery-tooling modules) is split into parts across shards, every worker
+  assigning the same tests to the same part. `test_conversion_scope` runs its tests in order from one class setup,
+  so it stays whole, and sets the floor: about 15 minutes with the default 6 shards.
+- **Tiers** (`backend\tests\tiers.py`): quick, the default while working, leaves out the classes marked slow (a minute
+  or more: the delivery tooling's, conversion scope at scale, the real-repository inputs, the vendored plugin's
+  network test, the refresh tests, the unit loop, shared results and platform scale); full runs everything, once, on
+  the tip before a push. Nothing was deleted.
+- **Build check**: before running backend tests, run-suites checks the C# step programs are built and current, as
+  bootstrap stage 6 decides (`scripts\step-programs.ps1`), and runs nothing otherwise.
+- **Teardown limit**: a run's own leftover sessions are ended and reported; the drop has a time limit. A run on
+  2026-11-24 had hung 30 minutes on a session a failed class teardown left idle in a transaction.
+
+Not done: step 3 (C# build once, then `dotnet test --no-build`), step 6 (antivirus exclusions, an IT request) and
+step 7 (template schema; each shard's schema stands up in about 10 seconds, so it is not worth it now).
 
 **Important caveat:** the cause of the 2 hours is NOT measured. Per-suite logs are deleted when a run passes, and
 nothing was run during the discussion. Everything under "Suspected causes" is inferred from reading the code.
