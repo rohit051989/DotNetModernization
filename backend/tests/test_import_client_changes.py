@@ -20,8 +20,10 @@ IDENTITY = ["-c", "user.name=t", "-c", "user.email=t@t"]
 FOLDER = "mp"
 TERM = "zebracorp"        # an invented term standing for a client's name in the deny-list
 
-SUITES = """if ($env:MP_TEST_SUITES -eq 'fail') { Write-Host 'stand-in suites: FAILED'; exit 1 }
-Write-Host "stand-in suites: passed (asked: $(if ($args.Count) { $args -join ' ' } else { 'every suite' }))"
+# The real run-suites.ps1's parameters: the import asks for -Full (every suite) or -Since <commit> -Tier full.
+SUITES = """param([switch]$Full, [string]$Since = '', [string]$Tier = 'quick')
+if ($env:MP_TEST_SUITES -eq 'fail') { Write-Host 'stand-in suites: FAILED'; exit 1 }
+Write-Host "stand-in suites: passed (asked: $(if ($Full -or -not $Since) { 'every suite' } else { "-Since $Since -Tier $Tier" }))"
 exit 0
 """
 OURS_ALONE = ("update-platform.ps1", "write-platform-source.ps1", "import-client-changes.ps1", "our-side-only.txt")
@@ -160,7 +162,8 @@ class ImportClientChanges(unittest.TestCase):
         self.assertIn("stand-in suites: passed", done.stdout)
         self.assertIn("Pushed our master", done.stdout)
         # Only the suites the merge can affect: run-suites.ps1 -Since the master the merge started from.
-        self.assertIn(f"stand-in suites: passed (asked: -Since {self.ours_master_before})", done.stdout)
+        # The full tier, the slow tests too: the merge may be pushed.
+        self.assertIn(f"stand-in suites: passed (asked: -Since {self.ours_master_before} -Tier full)", done.stdout)
         # The client's folder has none of our delivery scripts; ours are all still there, unchanged.
         for name in OURS_ALONE:
             self.assertFalse((self.platform / "scripts" / name).exists(), name)

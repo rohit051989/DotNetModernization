@@ -144,7 +144,7 @@ class Refresh(unittest.TestCase):
         def files() -> dict:
             return {engines.COPILOT: dict(COPILOT_FILES), **({engines.CLAUDE: dict(CLAUDE_FILES)} if self.both else {})}
 
-        def generate_both(db, engagement_id, slug, out, applied=None, warnings=None):
+        def generate_both(db, engagement_id, slug, out, applied=None, warnings=None, unguided=None):
             made = files()
             for engine_files in made.values():
                 engine_inputs.write(engine_files, out)
