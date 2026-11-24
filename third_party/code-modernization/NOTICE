@@ -12,7 +12,9 @@ Used by the platform's verifier (backend/app/engine/verifier) and adapted into G
 
 Vendored files
 --------------
-scripts/baseline_diff.py                 unmodified
+scripts/baseline_diff.py                 MODIFIED (2026-11-23) - header in the file says how: a TRX
+                                         result's class is read from its test definition, so tests
+                                         with the same method name in different classes keep apart.
 scripts/compare.py                       unmodified
 scripts/uplift_checks.py                 unmodified
 scripts/trace_rules.py                   unmodified

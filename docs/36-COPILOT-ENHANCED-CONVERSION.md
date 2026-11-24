@@ -611,7 +611,12 @@ refuses and says to run discovery again. The versions checked are recorded in `c
   green. `conversion.json` records the step's duration, its build-and-test cycles and its flaky tests.
 - *Flaky tests.* A test that passed at the baseline and fails is rerun once, alone (`dotnet.rerun`). If it passes, it
   is flaky: reported by prepare and in VERIFICATION.md, never counted as a failure, and never silent. The verifier
-  applies the same rule. `NormalizedKeys_RoundTripThroughEnterpriseEncryptor`, run 50 times at AccountsApi.Net10's
+  applies the same rule. It names every test by its class and method (`Ns.Class#Method`, the vendored baseline_diff,
+  which reads a TRX result's class from its test definition: MSTest and NUnit give only the method as its name), so
+  tests with the same method name in different classes or projects are counted apart; it reruns a failing test by
+  that name (`FullyQualifiedName~Ns.Class.Method`) and reads the rerun the same way, so a passing namesake never
+  stands in for it. An approved removal names the test, or its method as an earlier verification named it.
+  `NormalizedKeys_RoundTripThroughEnterpriseEncryptor`, run 50 times at AccountsApi.Net10's
   baseline, failed 2 times (4%), both with an RSA parameter-length `CryptographicException` from
   `Enterprise.Cryptography`.
 - *No instruction conflicts with the global rules.* Every instruction names the tests that exercise the code it

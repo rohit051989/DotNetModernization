@@ -266,20 +266,42 @@ def tests_changed(base_tree: Path, tip_tree: Path, test_projects: list[str], out
 def rerun_failing(tip_tree: Path, projects: list[str], failing: list[str], out: Path) -> tuple[list[str], list[str]]:
     """(flaky, still failing): each failing test rerun once, alone, in every unit test project. One that passes on its
     rerun is flaky: reported apart, never a failure, never silent. The same rule as the package step's."""
+    # The tests are named as the baseline diff names them ("Ns.Class#Method", plugin.baseline_diff), and so are the
+    # rerun's results: read by the same code, so a test of one class is never taken for its namesake in another.
+    expression = "|".join(sorted({rerun_filter(t) for t in failing}))
     passed: set[str] = set()
     for project in projects:
-        got, _ = dotnet.rerun(tip_tree, project, failing, out / f"{Path(project).stem}.trx")
-        passed |= set(got)
+        trx = out / f"{Path(project).stem}.trx"
+        dotnet.test(tip_tree, project, trx, filter=expression)
+        if trx.exists():
+            got = plugin.baseline_diff.read_results([str(trx)])["tests"]
+            passed |= {t for t in failing if got.get(t) == "PASS"}
     return sorted(passed), sorted(t for t in failing if t not in passed)
+
+
+def _plain(test: str) -> tuple[str, str]:
+    """(class, method with its data row) of a baseline diff test id, without the "~N" of a repeated id."""
+    klass, sep, name = re.sub(r"~\d+$", "", test).rpartition("#")
+    return (klass, name) if sep else ("", test)
+
+
+def rerun_filter(test: str) -> str:
+    """The `dotnet test --filter` term that runs one test again: by its class and method where the id has a class
+    (FullyQualifiedName contains "Ns.Class.Method"), else by its method name."""
+    klass, name = _plain(test)
+    method = dotnet.method_name(name)
+    return f"FullyQualifiedName~{klass}.{method}" if klass else f"Name={method}"
 
 
 def approved_removals(missing: list[str], approvals: list[dict]) -> tuple[list[dict], list[str]]:
     """(approved, not approved) of the baseline tests that no longer run. A person approves a removed test, with a
-    reason (python -m app.engine.convert approve-removal); an approval names the test, or its test file."""
+    reason (python -m app.engine.convert approve-removal); an approval names the test ("Ns.Class#Method"), its method
+    as an earlier verification named it ("Method"), or its test file."""
     named = {a["test"]: a for a in approvals}
     approved, rest = [], []
     for test in missing:
-        a = named.get(test) or named.get(dotnet.method_name(test))
+        _, name = _plain(test)
+        a = named.get(test) or named.get(name) or named.get(dotnet.method_name(name))
         (approved.append({**a, "test": test}) if a else rest.append(test))
     return approved, rest
 

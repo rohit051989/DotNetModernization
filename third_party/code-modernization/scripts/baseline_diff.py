@@ -1,3 +1,10 @@
+# MODIFIED by the Modernization Platform (2026-11-23) from anthropics/claude-plugins-official
+# plugins/code-modernization at f359d43b406057f1a8cdbc4ea93b827642c162e6, Apache License 2.0.
+# Change: a TRX result's class is read from its test definition (TestDefinitions/UnitTest/TestMethod className,
+#         joined by testId), so tests with the same method name in different classes or projects keep apart ids
+#         ("<classname>#<name>"); before, MSTest and NUnit results, whose testName is the bare method name, had none.
+#         parse_results and the new trx_case only. The shebang line moved below this header.
+# See ../../NOTICE.
 #!/usr/bin/env python3
 """Compare a fresh test run with the baseline recorded before a same-stack uplift.
 
@@ -204,10 +211,23 @@ def refuse(*_):
     raise ValueError("it declares a DTD or an entity, which test results never do")
 
 
+def trx_case(name, klass):
+    """(classname, name) of a TRX result: its class from its test definition when known (MSTest and NUnit give the bare
+    method name as testName; xUnit gives it qualified), else split from a qualified testName."""
+    head, sep, tail = name.partition("(")
+    if klass:
+        return klass[:300], (name[len(klass) + 1:] if head.startswith(klass + ".") else name)
+    prefix, dot, method = head.rpartition(".")
+    return (prefix[:300], method + sep + tail) if dot else ("", name)
+
+
 def parse_results(path):
     """[(classname, name, status, skip message given, suite name)] from one JUnit or TRX file. Raises ValueError."""
     cases, suites, cur, depth = [], [], [], [0]
     trx = {"Passed": "PASS", "Failed": "FAIL", "Error": "ERROR", "Timeout": "ERROR", "Aborted": "ERROR"}
+    # TRX: each result names its test definition (testId); the definition's TestMethod names its class. Definitions
+    # come after the results in the file, so results are resolved once it is read.
+    results, classes, definition = [], {}, []
 
     def start(tag, attrs):
         depth[0] += 1
@@ -228,11 +248,14 @@ def parse_results(path):
             if cur[2] == "PASS" or (cur[2] == "SKIP" and new != "SKIP"):
                 cur[2] = new
         elif tag == "UnitTestResult":
-            name = attrs.get("testName", "")[:400]
-            head, sep, tail = name.partition("(")
-            klass, dot, method = head.rpartition(".")
-            outcome = attrs.get("outcome", "")
-            cases.append((klass[:300] if dot else "", (method + sep + tail) if dot else name, trx.get(outcome, "SKIP"), False, ""))
+            if len(results) >= MAX_CASES:
+                raise ValueError("more than %d test cases" % MAX_CASES)
+            results.append((attrs.get("testId", ""), attrs.get("testName", "")[:400], attrs.get("outcome", "")))
+        elif tag == "UnitTest":
+            definition[:] = [attrs.get("id", "")]
+        elif tag == "TestMethod" and definition:
+            # "Ns.Class" or, from older MSTest, "Ns.Class, Assembly, Version=...".
+            classes[definition[0]] = attrs.get("className", "").split(",")[0].strip()[:300]
 
     def end(tag):
         depth[0] -= 1
@@ -241,6 +264,8 @@ def parse_results(path):
             cur.clear()
         elif tag == "testsuite" and suites:
             suites.pop()
+        elif tag == "UnitTest":
+            definition.clear()
 
     parser = expat.ParserCreate()
     parser.StartDoctypeDeclHandler = refuse
@@ -252,6 +277,9 @@ def parse_results(path):
             parser.ParseFile(fh)
     except expat.ExpatError as err:
         raise ValueError("the XML is not well formed (%s)" % expat.ErrorString(err.code))
+    for test_id, name, outcome in results:
+        klass, method = trx_case(name, classes.get(test_id, ""))
+        cases.append((klass, method, trx.get(outcome, "SKIP"), False, ""))
     return cases
 
 
