@@ -3,9 +3,11 @@ per-repository discovery job. It prepares the repository's conversion for an eng
 the branch and worktree, the package step, the engine's inputs under .github, and the runbook (app.engine.convert).
 
 - A conversion starts from the commit this discovery run scanned.
-- A rescan refreshes a conversion that has not been run yet (no commits beyond its inputs), in place, onto that
-  commit. A conversion that has been run is left as it is; a person starts the next one from the UI, which runs this
-  job with `new_conversion`: always a new conversion, no existing one changed.
+- A rescan refreshes a conversion that has not been run yet (app.engine.convert.not_run_because: only the
+  platform's commits beyond the baseline, and no tracked file modified or staged; an untracked file does not count),
+  in place, onto that commit, with both engines' inputs. A conversion that has been run is left as it is; a person
+  starts the next one from the UI, which runs this job with `new_conversion`: always a new conversion, no existing
+  one changed. A kept conversion's real cause is recorded (`keptBecause`, `message`, the files in `details`).
 - First, whether this machine has the runtimes and build tools the repository's baseline needs (app.toolchain,
   36-COPILOT-ENHANCED-CONVERSION.md Part P), recorded for its page.
 - A baseline that does not build or pass its tests still gets a conversion: the package step is skipped, the reason
@@ -122,6 +124,10 @@ def run(context: StepContext) -> StepResult:
                            f"{result['baseline'][:8]} ({result['baselineFrom']}) at {result['head'][:8]}"
                            + (f"; package step skipped: {step['skipped']}" if step.get("skipped") else
                               f"; package step {step.get('cycles', 0)} cycle(s)" if result["action"] != "kept" else "")))
+        if result["action"] == "kept":
+            # Its real cause (app.engine.convert.prepare): commits beyond the inputs, uncommitted changes to tracked
+            # files, or untracked files where the new inputs would go; the files named in `details`.
+            attempt.update(keptBecause=result.get("keptBecause"), details=result.get("reasonDetails") or [])
         if warned := warnings_of(result):
             attempt["warnings"] = warned
         record_attempt(repository.engagement_id, repository.slug, attempt)

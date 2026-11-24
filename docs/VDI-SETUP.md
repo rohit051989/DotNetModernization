@@ -1803,12 +1803,22 @@ hand. Everything else an update brings, bootstrap applies by itself. Apply every
 had (`previousCommit` in `PLATFORM_SOURCE.json` after the update; in our own installs, the commit before step 5 of
 the appendix), oldest of them first. Entries up to 2026-10-23 were the notes of releases 2 to 7, which are named so.
 
+#### 2026-11-23, (commit of "One check of whether a conversion has been run, and test projects by what they reference"): rescan for the other engine
+
+Update, bootstrap and restart the backend. A starting backend no longer prepares anything: a repository whose latest
+conversion was prepared for one engine and has not been run gains the other engine's inputs at its next **Rescan**
+(the Conversion tab says "Prepared for one engine only" and how to add the other until then). Rescan each such
+repository when you want both; a conversion already run keeps its one engine, and the next one has both. A conversion
+that an untracked file kept as "has been run" (a tool's file left in its worktree) is refreshed by that rescan too, the
+file left where it is, uncommitted; an untracked file where the new inputs go is named on the tab instead: move it,
+then rescan. Test projects are now recognised by the test framework they reference, whatever their names, so a
+rescan may find and run tests in `*.Tests`, `*Test` or plainly named projects that were not run before.
+
 #### 2026-11-23, (commit of "Both engines for every conversion, and in-scope.sln always"): restart the backend
 
 Nothing to do but update, bootstrap and restart the backend. Every conversion is now prepared for GitHub Copilot and
-Claude Code together, with `in-scope.sln` at the worktree's root. When your backend starts, each of your repositories'
-latest conversions that was prepared for one engine and has not been run is prepared again, through the usual
-discovery run, and gains the other engine's inputs; a conversion already run is left as it is. There is no engine to
+Claude Code together, with `in-scope.sln` at the worktree's root. A conversion prepared for one engine gains the other
+engine's inputs when it is prepared again (see the entry above); a conversion already run is left as it is. There is no engine to
 choose any more: the Conversion tab's **Assistant** dropdown shows either engine's first message and runbook, and
 **Verify** asks which assistant did the conversion. If your RUNS_DIR is below a folder with a `CLAUDE.md`,
 `CLAUDE.local.md` or `.claude` folder, Claude Code's inputs are marked not safe to use there, and GitHub Copilot's are

@@ -46,8 +46,8 @@ def of_conversion(record: dict | None) -> dict[str, dict]:
     only = of_record(record)
     return {e: ({"prepared": True, "usable": True} if e == only else
                 {"prepared": False, "usable": False,
-                 "notPrepared": f"prepared before every conversion got both engines' inputs, for {name(only)} only: "
-                                "they are added when it is prepared again"})
+                 "notPrepared": f"prepared for one engine only ({name(only)}), before every conversion got both "
+                                "engines' inputs"})
             for e in ENGINES}
 
 

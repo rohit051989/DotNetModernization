@@ -207,16 +207,19 @@ def verification_of(rec: dict) -> dict | None:
 
 
 def status(rec: dict) -> dict:
-    """prepared (nothing beyond its inputs), run (commits beyond them) or verified (a verification of the branch's
-    current head exists), with what each is read from."""
+    """prepared (not run: not_run_because finds nothing), run (anything else) or verified (a verification of the
+    branch's current head exists), with what each is read from. "prepared" here and `unrun` are the same check, so the
+    Conversion tab and preparation never disagree."""
     beyond = commits_beyond_inputs(rec)
     worktree = Path(rec["worktree"])
+    state = worktree_state(worktree, rec["baseline"])
+    why = not_run_because(state)
     head = gitops.head(worktree) if worktree.exists() else None
     v = verification_of(rec)
     verified = bool(v and head and v.get("tip") == head)
-    return {"state": "verified" if verified else ("run" if beyond else "prepared"), "head": head,
-            "commitsBeyondInputs": beyond, "uncommitted": uncommitted(rec), "verification": v,
-            "verificationIsCurrent": verified}
+    return {"state": "verified" if verified else ("run" if why else "prepared"), "head": head,
+            "commitsBeyondInputs": beyond, "uncommitted": uncommitted(rec), "untracked": state["untracked"],
+            "runBecause": why, "verification": v, "verificationIsCurrent": verified}
 
 
 def verify_refusal(rec: dict) -> str | None:
@@ -241,17 +244,87 @@ def _write_record(record: dict) -> None:
     path.write_text(json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
 
 
-def unrun(worktree: Path, base: str) -> bool:
-    """True when nothing has happened in the conversion's worktree since it was prepared: it is clean, and every commit
-    on its branch after the baseline is the platform's (its package commits and its inputs commit)."""
+def worktree_state(worktree: Path, base: str) -> dict:
+    """What has happened in a conversion's worktree since it was prepared, as the one check of whether it has been run
+    reads it (not_run_because): {exists, onBaseline (its branch still starts from `base`), commits (on the branch after
+    the baseline, not the platform's), tracked (tracked files modified or staged), untracked (untracked files the
+    repository does not ignore)}."""
     from app.engine.verifier.packages import PLATFORM_EMAIL
 
-    if not worktree.exists() or gitops.git(worktree, "status", "--porcelain").strip():
-        return False
-    if gitops.git(worktree, "merge-base", base, "HEAD", check=False).strip() != base:
-        return False
-    authors = gitops.git(worktree, "log", "--format=%ae", f"{base}..HEAD").split()
-    return all(a.lower() == PLATFORM_EMAIL for a in authors)
+    if not worktree.exists():
+        return {"exists": False, "onBaseline": False, "commits": 0, "tracked": [], "untracked": []}
+    on_baseline = gitops.git(worktree, "merge-base", base, "HEAD", check=False).strip() == base
+    authors = gitops.git(worktree, "log", "--format=%ae", f"{base}..HEAD", check=False).split() if on_baseline else []
+    tracked, untracked = [], []
+    for line in gitops.git(worktree, "status", "--porcelain=v1", "--untracked-files=all").splitlines():
+        if line.strip():
+            path = line[3:].split(" -> ")[-1].strip().strip('"')
+            (untracked if line.startswith("??") else tracked).append(path)
+    return {"exists": True, "onBaseline": on_baseline, "commits": sum(1 for a in authors if a.lower() != PLATFORM_EMAIL),
+            "tracked": sorted(tracked), "untracked": sorted(untracked)}
+
+
+def _named(paths: list[str], most: int = 5) -> str:
+    return ", ".join(paths[:most]) + (f" and {len(paths) - most} more" if len(paths) > most else "")
+
+
+def not_run_because(state: dict) -> str | None:
+    """Why a conversion counts as run, from worktree_state; None when it has not been run. Not run: its branch is the
+    baseline plus only the platform's commits (its package commits, its scope and inputs commits), and no tracked file
+    is modified or staged: exactly what a refresh's `git reset --hard` could not throw away. An untracked file the
+    repository does not ignore does not count: a reset leaves it as it is (it is listed in the record), unless it sits
+    where the new inputs would be written (files_in_the_way)."""
+    if not state["exists"]:
+        return "its worktree does not exist"
+    if not state["onBaseline"]:
+        return "its branch no longer starts from its baseline"
+    if state["commits"]:
+        return f"its branch has {state['commits']} commit(s) beyond its inputs that are not the platform's"
+    if state["tracked"]:
+        return (f"its worktree has uncommitted changes to {len(state['tracked'])} tracked file(s) "
+                f"({_named(state['tracked'])}): commit them on the branch, or discard them")
+    return None
+
+
+def unrun(worktree: Path, base: str) -> bool:
+    """True when the conversion has not been run (not_run_because): the one check preparation and status() use."""
+    return not_run_because(worktree_state(worktree, base)) is None
+
+
+def files_in_the_way(db, engagement_id: str, slug: str, worktree: Path, scope: dict) -> list[str]:
+    """The files at paths a refresh would write (both engines' inputs, in-scope.sln, the scope's notes) that a person
+    put there: in the worktree, not tracked, and not a file the platform wrote earlier (its hash in an inputs manifest
+    there, or the same text it would write now). A refresh refuses before changing anything while there is one."""
+    import hashlib
+
+    from app.engine.inputs import build_both, manifest_path, model_for
+    from app.scope import files as scope_files
+
+    model, repository = model_for(db, engagement_id, slug, None)      # nothing applied yet: every input it could write
+    by_engine, _ = build_both(model, Path(repository.local_path))
+    planned = {p: t for files in by_engine.values() for p, t in files.items()}
+    planned.update(scope_files.planned(scope, worktree))
+    present = sorted(p for p in planned if (worktree / p).is_file())
+    if not present:
+        return []
+    tracked = set(gitops.git(worktree, "ls-files", "--", *present).splitlines())
+    own: dict[str, str] = {}
+    for engine in engines.ENGINES:
+        manifest = worktree / manifest_path(engine)
+        if manifest.is_file():
+            try:
+                own.update({f["path"]: f["sha256"] for f in json.loads(manifest.read_text(encoding="utf-8"))["files"]})
+            except (ValueError, KeyError, TypeError):
+                pass
+    out = []
+    for p in present:
+        if p in tracked:
+            continue                                    # the platform's committed file: the reset takes it away
+        text = (worktree / p).read_text(encoding="utf-8-sig", errors="replace").replace("\r\n", "\n")
+        if text == planned[p].replace("\r\n", "\n") or own.get(p) == hashlib.sha256(text.encode("utf-8")).hexdigest():
+            continue
+        out.append(p)
+    return out
 
 
 def _repository(db, engagement_id: str, slug: str) -> models.Repository:
@@ -264,16 +337,14 @@ def _commit_inputs(db, engagement_id: str, slug: str, worktree: Path, applied: l
     """Generates both engines' inputs from one model and commits them together, as the platform. Returns ([{file,
     references}]: each input that names a secret value by its file, key and line instead of quoting it
     (app.engine.inputs.secrets); {engine: its files}; {engine: why it has none})."""
-    from app.engine import paths
     from app.engine.inputs import generate_both, selfcontained
 
     warnings: list[dict] = []
     files, missing = generate_both(db, engagement_id, slug, worktree, applied=applied, warnings=warnings)
-    if engines.CLAUDE in files:
-        # Exactly Claude Code's files, even where the repository's own ignore rules would hide one (.claude/ often is).
-        gitops.git(worktree, "add", "-f", "--", *sorted(files[engines.CLAUDE]))
-    gitops.platform_commit(worktree, INPUTS_COMMIT, vocabulary=selfcontained.vocabulary(db),
-                           paths=[p.rstrip("/") for p in paths.GENERATED_INPUT_PATHS if (worktree / p.rstrip("/")).exists()])
+    # Exactly the files generated, both engines', even where the repository's own ignore rules would hide one (.claude/
+    # often is); never a folder, so a person's untracked file beside them stays out of the platform's commit.
+    gitops.platform_commit(worktree, INPUTS_COMMIT, vocabulary=selfcontained.vocabulary(db), force=True,
+                           paths=sorted({p for engine_files in files.values() for p in engine_files}))
     return warnings, files, missing
 
 
@@ -404,13 +475,24 @@ class ResultsMixed(RuntimeError):
     """The latest discovery run failed: some steps' results are from it and others from an earlier run."""
 
 
+class FilesInTheWay(RuntimeError):
+    """A person's untracked file sits where a refresh would write: nothing was changed. `files` names each."""
+
+    def __init__(self, message: str, files: list[str]):
+        super().__init__(message)
+        self.files = files
+
+
 def prepare(db, engagement_id: str, slug: str, *, baseline: str | None = None, goal: str | None = None,
             sibling_links: list[str] | None = None, canaries: list[dict] | None = None, when_run: str = "new",
             lookups_from_discovery: bool = False) -> dict:
     """Prepares the repository's conversion. `when_run`:
-    - "keep" (a rescan): refreshes an unrun latest conversion in place; leaves one that has been run (its branch has
-      commits beyond its inputs) and prepares nothing — a person starts the next conversion from the UI;
-    - "new" (the command line): refreshes an unrun latest conversion, else starts the next one;
+    - "keep" (a rescan): refreshes an unrun latest conversion in place (unrun: one check, not_run_because); leaves
+      one that has been run, and prepares nothing — a person starts the next conversion from the UI. A kept
+      conversion's `reason` says why: commits beyond its inputs, uncommitted changes to tracked files (named), or
+      untracked files where the new inputs would be written (named, files_in_the_way);
+    - "new" (the command line): refreshes an unrun latest conversion, else starts the next one; untracked files in
+      the way raise FilesInTheWay, before anything changes;
     - "next" (the UI's "Start the next conversion"): always a new conversion; no existing one is changed.
 
     The conversion starts from the commit discovery scanned (`repository.ingest_commit_sha`), so its package step,
@@ -435,12 +517,30 @@ def prepare(db, engagement_id: str, slug: str, *, baseline: str | None = None, g
     # Which projects the conversion covers (app.scope): read once, so the plan, the inputs and the record agree.
     scope = scope_service.for_conversion(db, repository)
 
-    latest_unrun = latest is not None and unrun(Path(latest["worktree"]), latest["baseline"])
-    refresh = latest_unrun and when_run != "next"
-    if latest is not None and not latest_unrun and when_run == "keep":
-        return {**latest, "action": "kept",
-                "reason": f"conversion {latest['number']} has been run: a rescan does not start another (start the next "
-                          "conversion from the UI)"}
+    # The one check of whether the latest conversion has been run (not_run_because), the same as the tab's "prepared".
+    latest_state = worktree_state(Path(latest["worktree"]), latest["baseline"]) if latest is not None else None
+    run_because = not_run_because(latest_state) if latest is not None else None
+    refresh = latest is not None and run_because is None and when_run != "next"
+    if latest is not None and run_because is not None and when_run == "keep":
+        details = (latest_state["tracked"] if latest_state["tracked"] and not latest_state["commits"]
+                   and latest_state["onBaseline"] else [])
+        return {**latest, "action": "kept", "keptBecause": "tracked changes" if details else "run",
+                "reason": f"conversion {latest['number']} kept as it is: {run_because}. "
+                          + ("A rescan prepares it again once they are gone." if details else
+                             "A rescan does not start another: start the next conversion from the UI."),
+                "reasonDetails": details}
+    if refresh:
+        # A person's untracked file where the new inputs would be written is never overwritten: refused before
+        # anything changes, naming each file.
+        in_the_way = files_in_the_way(db, engagement_id, slug, Path(latest["worktree"]), scope)
+        if in_the_way:
+            why = (f"conversion {latest['number']} kept as it is: {len(in_the_way)} untracked file(s) in its worktree "
+                   f"sit where the new inputs would be written ({_named(in_the_way)}). Move or delete them, or commit "
+                   "them on the branch, then rescan")
+            if when_run != "keep":
+                raise FilesInTheWay(why, in_the_way)
+            return {**latest, "action": "kept", "keptBecause": "collision", "reason": why + ".",
+                    "reasonDetails": in_the_way}
     number = latest["number"] if refresh else (latest["number"] + 1 if latest else 1)
     folder = conversions_dir(engagement_id, slug) / str(number)
     worktree = folder / "wt"
@@ -605,6 +705,9 @@ def _prepare_on(db, repository, engagement, root: Path, latest: dict | None, bas
         # The projects this conversion covers (app.scope): the ones left out, who decided, when and why, the solution
         # that builds the rest, and the files written for them (`kept`: already there, left as they were).
         "scope": {**scope, "files": scope_written},
+        # Untracked files a person left in the worktree (the repository does not ignore them): not the platform's,
+        # never committed or changed by it, and no reason to count the conversion as run.
+        "untracked": worktree_state(worktree, base)["untracked"],
     }
     _write_record(record)
     Path(record["runbook"]).write_text(render_runbook(record), encoding="utf-8", newline="\n")

@@ -109,9 +109,13 @@ class ConversionStatus(unittest.TestCase):
         _git(repo, "init", "-q")
         (repo / "a.txt").write_text("a")
         _git(repo, "add", "-A")
-        _git(repo, "commit", "-qm", "inputs")
+        _git(repo, "commit", "-qm", "base")
+        base = _git(repo, "rev-parse", "HEAD")
+        (repo / "inputs.md").write_text("inputs")
+        _git(repo, "add", "-A")
+        subprocess.run(["git", "-C", str(repo), *gitops.PLATFORM_IDENTITY, "commit", "-qm", "inputs"], check=True)
         return {"number": 1, "engagement": "e", "repository": "r", "branch": "conversion/1", "worktree": str(repo),
-                "head": _git(repo, "rev-parse", "HEAD")}
+                "baseline": base, "head": _git(repo, "rev-parse", "HEAD")}
 
     def test_prepared_then_refused_then_run(self):
         with tempfile.TemporaryDirectory() as tmp:

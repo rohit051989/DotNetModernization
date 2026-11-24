@@ -505,7 +505,11 @@ engines (36-COPILOT-ENHANCED-CONVERSION Part Q): each conversion says, per engin
 both engines) or not safe to use here (Claude Code under a CLAUDE.md, CLAUDE.local.md or .claude folder, named). Its
 **Assistant** dropdown chooses which engine's first message and runbook it shows, remembered in this browser, since it
 depends on what is installed on this machine. **Verify** asks which assistant did the conversion, defaulting to the one
-shown, and the conversion then says "done with" it. There is no engine to choose for a repository or an engagement. A repository scanned before results were shared
+shown, and the conversion then says "done with" it. There is no engine to choose for a repository or an engagement. A
+conversion prepared before both engines says "Prepared for one engine only" and how to add the other (rescan, while it
+has not been run; else start the next conversion). Each conversion lists the untracked files a person left in its
+worktree, which never make it count as run, and says why one counts as run. A preparation that kept a conversion says
+its real cause, with the files behind a details toggle. A repository scanned before results were shared
 says so under its header, with the command its owner runs to copy them.
 
 ## Dependencies (repository page): Internal and External

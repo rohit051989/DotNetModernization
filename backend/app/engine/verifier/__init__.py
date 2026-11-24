@@ -53,7 +53,7 @@ from pathlib import Path
 import yaml
 
 from app import models
-from app.conversion import dotnet, gitops, planner
+from app.conversion import dotnet, gitops, planner, testprojects
 from app.conversion.runner import fingerprint
 from app.engine import configfiles, paths, siblings
 from app.engine.inputs.collect import SILENT_ITEMS
@@ -621,7 +621,9 @@ def verify(db, *, engagement_id: str, slug: str, base: str, ref: str, label: str
     if own and not (tip_tree / own).is_file():
         own = None                          # a record that names it, on a branch without it: the repository's own
     if own:
-        solution, unit_tests = own, [p for p in unit_tests if p not in left_out]
+        # The test projects it lists: found by what they reference, whatever their names (app.conversion.testprojects).
+        listed = {p.lower() for p in testprojects.in_solution(tip_tree / own)}
+        solution, unit_tests = own, [p for p in unit_tests if p not in left_out and p.lower() in listed]
         if (tip_tree / own).is_file() and not (base_tree / own).exists():
             shutil.copyfile(tip_tree / own, base_tree / own)
     elif solution is None:
@@ -636,6 +638,13 @@ def verify(db, *, engagement_id: str, slug: str, base: str, ref: str, label: str
     not_run = [p for p, r in clean["projects"].items() if not r["ran"]]
     if not clean["built"]:
         checks.append(_check("clean", "Clean re-run", "fail", f"the build failed (exit {clean['buildExit']}); see clean/build.log"))
+    elif not projects:
+        # Said plainly: a branch whose tests were not found is never PROVEN.
+        checks.append(_check("clean", "Clean re-run", "fail",
+                             f"no test project found in {solution}: no project in it references a test framework "
+                             "(Microsoft.NET.Test.Sdk, xunit, NUnit or MSTest) or sets IsTestProject, other than "
+                             "integration, functional or smoke tests, which are not run; this branch's tests were not "
+                             "found, so nothing proves it"))
     elif not_run or total == 0:
         checks.append(_check("clean", "Clean re-run", "fail",
                              f"no test executed" if total == 0 else f"test project(s) did not run: {', '.join(not_run)}"))

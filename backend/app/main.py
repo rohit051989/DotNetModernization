@@ -140,9 +140,8 @@ async def lifespan(app: FastAPI):
     watch.start()
     _reconcile_orphaned_executions()
     _report_existing_data()
-    # A conversion prepared for one engine and not run yet is prepared again for both (app.engine.both_engines).
-    from app.engine import both_engines
-    both_engines.on_start()
+    # No discovery run starts here: a conversion prepared for one engine gains the other's inputs at its next rescan
+    # or prepare, and the Conversion tab says so until then (app.results.conversions).
     try:
         yield
     finally:

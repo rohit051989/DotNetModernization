@@ -504,9 +504,19 @@ builds, passes its tests and starts, verified independently. The experiment mach
 the generated inputs committed as the platform (`gitops.platform_commit`). It writes `RUNBOOK.md` and
 `conversion.json` beside the worktree. It records the platform commit it ran at and pins nothing. There are no arms,
 generations or frozen lookups. The baseline, goal, sibling links and canaries are given once and default to the previous
-conversion's. If the latest conversion has not been run (its branch is the baseline plus the inputs commit, and its
-worktree is clean), preparing again refreshes its inputs in place. Otherwise it makes the next conversion. So fixing an
-instruction and preparing again needs nothing more.
+conversion's. If the latest conversion has not been run, preparing again refreshes its inputs in place. Otherwise it
+makes the next conversion. So fixing an instruction and preparing again needs nothing more.
+
+**Not run, one definition** (`app.engine.convert.not_run_because`, used by preparation, `status()` and the Conversion
+tab alike): the branch is the baseline plus only the platform's commits (its package, scope and inputs commits), and no
+tracked file is modified or staged. That is exactly what a refresh's `git reset --hard` could not throw away. An
+untracked file, ignored or not, does not count against it: the reset leaves it as it is, `conversion.json` lists it
+(`untracked`), and the platform never commits it (its inputs commit stages exactly the files it generated, by path).
+Only one where the new inputs, `in-scope.sln` or a scope note would be written stops a refresh: it is refused before
+anything changes, naming each file (`files_in_the_way`; a file the platform wrote earlier, by its inputs manifest or its
+text, is not one). A kept conversion says its real cause, in the result, in `last-prepare.json` (`keptBecause`,
+`message`, the files in `details`) and on the Conversion tab: commits beyond its inputs, uncommitted changes to tracked
+files (named), or the untracked files in the way (named).
 
 **The runbook** is one page, from `backend/app/engine/templates/conversion-runbook.md`. It covers: open the
 worktree; send the opening message; the standard replies; the stuck-terminal step; when the agent reports done, commit;
@@ -643,7 +653,9 @@ refuses and says to run discovery again. The versions checked are recorded in `c
     baseline: when the repository gains commits, the next conversion starts from the newest one scanned. Its record
     says so (`baseline`, `baselineFrom`, `scannedAt`).
   - **A rescan** refreshes a conversion not run yet, in place, moving it onto the commit just scanned. A conversion
-    counts as run once its branch has commits beyond its inputs; then the rescan leaves it, and a person starts the
+    counts as run by the one definition under **Prepare** (commits beyond its inputs that are not the platform's, or
+    uncommitted changes to tracked files; never an untracked file); then the rescan leaves it, saying why, and a person
+    starts the
     next one from the UI ("Start the next conversion", which runs discovery with `new_conversion`). That always
     prepares a new conversion on a new branch, and changes no existing one; no engine runs.
   - **A failed baseline**, or a repository the planner cannot plan, still gets a conversion. The package step is
@@ -793,7 +805,7 @@ machine whose platform .NET had only the .NET 10 runtime. Now the platform check
 (`app.toolchain`).
 
 **What a repository needs.** Its projects in scope (Part O), with their target frameworks from solution-discovery and
-their unit test projects from test-coverage-assessment:
+their test projects (recognised by what they reference, below):
 
 | Project | To build | To run its unit tests |
 |---|---|---|
@@ -886,9 +898,10 @@ Code's inputs are not written when the repository already has the files they wou
 recorded and GitHub Copilot's stand. Verify asks which assistant did the conversion (the Conversion tab, defaulting to
 the one being viewed; `--assistant` on the command line); `conversion.json` (`assistant`) and VERIFICATION.md
 ("Conversion done with") record it, and the verifier reads that assistant's instructions only, never both copies. A
-record from before has `engine` (GitHub Copilot when absent) and only that engine's inputs: when the owner's backend
-starts, an unrun one is prepared again through the discovery run a rescan starts, with both (`app.engine.both_engines`);
-a run one is left as it is.
+record from before has `engine` (GitHub Copilot when absent) and only that engine's inputs. Nothing prepares it again
+on its own, and no discovery run starts when a backend starts: an unrun one gains the other engine's inputs at its next
+rescan or prepare, and a run one is left as it is (the next conversion has both). Until then the Conversion tab says
+"Prepared for one engine only" and how to add the other.
 
 **Everything that holds for Copilot's inputs holds for Claude Code's:** the self-containedness and secret checks, the
 inputs manifest (`.claude/conversion/inputs-manifest.json`), exclusion from the diff, impact comparison and
@@ -931,3 +944,29 @@ Rule 20, for each engine:
   Code). No solution is opened for Claude Code; its instructions say to build and test in-scope.sln. The Conversion tab
   shows the header and one section, for the engine chosen in its dropdown (remembered per browser). Applied to both:
   each section is that engine's mechanics only.
+
+## Part Q addendum — Not run, one definition; refreshes and untracked files; test projects (2026-11-23)
+
+A conversion prepared for GitHub Copilot alone, with one untracked file a person's tool left in its worktree, was kept
+at every rescan as "has been run": preparation counted the untracked file, while the Conversion tab counted only
+commits, so the tab said "prepared" and nothing was refreshed or said.
+
+- **One definition of not run** (Part N, **Prepare**): preparation, `status()` and the tab use the same check, and an
+  untracked file does not count. A refresh never overwrites a person's untracked file at a path it would write: it is
+  refused before anything changes, naming the files. The inputs commit stages exactly the generated files, by path.
+  A kept conversion says its real cause, on the tab and in `last-prepare.json`.
+- **No discovery run at backend start.** A conversion prepared for one engine gains the other's inputs at its next
+  rescan or prepare; the tab says "Prepared for one engine only" and how to add the other until then.
+- **Test projects by what they are** (`app.conversion.testprojects`): a project is a test project when it references
+  a test framework (Microsoft.NET.Test.Sdk, xunit, NUnit or MSTest packages, `IsTestProject`, the MSTest.Sdk project
+  SDK; in a legacy project, packages.config or a `<Reference>` to a test framework assembly), whatever its name. The
+  package step's baseline and the verifier run those, less any whose tests test-coverage-assessment classified as
+  integration, functional or smoke only; before, they ran only projects whose test classes were classified "unit",
+  which needed a `*.UnitTests`-style name, a category or a mocking library, so `*.Tests`, `*Test` and plainly named
+  test projects were not run. The verifier runs those in in-scope.sln; when it lists none, the clean re-run fails
+  saying so plainly, so a branch whose tests were not found is never PROVEN.
+
+Rule 20, for each engine: all of this applies to GitHub Copilot and Claude Code alike, and changes no conversion
+input. What a conversion is told (the work items, rules, decision sheet, addendum, scope, build and test commands,
+first message and runbook) is the same text as before for both; when a refresh happens, and what it may touch, is the
+same for both engines' files.

@@ -285,7 +285,8 @@ class BothEngines(unittest.TestCase):
     def test_a_record_from_before_has_its_one_engine_and_a_new_one_has_both(self):
         old = engines.of_conversion({"engine": engines.CLAUDE})
         self.assertEqual((old[engines.CLAUDE]["prepared"], old[engines.COPILOT]["prepared"]), (True, False))
-        self.assertIn("prepared before every conversion got both engines' inputs", old[engines.COPILOT]["notPrepared"])
+        self.assertIn("prepared for one engine only (Claude Code), before every conversion got both engines' inputs",
+                      old[engines.COPILOT]["notPrepared"])
         self.assertEqual(engines.of_conversion({})[engines.COPILOT]["prepared"], True)       # no engine: Copilot's
         both = engines.of_conversion({"engines": {e: {"prepared": True, "usable": True} for e in engines.ENGINES}})
         self.assertTrue(all(s["prepared"] and s["usable"] for s in both.values()))

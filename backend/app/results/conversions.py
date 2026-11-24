@@ -39,6 +39,24 @@ def _engines(rec: dict) -> dict:
     return out
 
 
+def _one_engine(rec: dict, s: dict) -> dict | None:
+    """For a conversion prepared before every conversion got both engines' inputs: {engine, missing, how} — the engine
+    it has, the one it lacks, and how to add it. None for one prepared for both. Nothing adds it on its own: an unrun
+    one gains it at its next rescan or prepare; a run one keeps its one engine, and the next conversion has both."""
+    if rec.get("engines"):
+        return None
+    only = engines.of_record(rec)
+    missing = next(e for e in engines.ENGINES if e != only)
+    if s["state"] == "prepared":
+        how = (f"It has not been run, so its next preparation adds {engines.name(missing)}'s inputs: rescan the "
+               "repository, or prepare it from the command line (python -m app.engine.convert prepare --engagement "
+               f"{rec['engagement']} --repository {rec['repository']}).")
+    else:
+        how = (f"It counts as run ({s['runBecause'] or 'it has been verified'}), so it keeps its one engine: start the "
+               f"next conversion to have {engines.name(missing)}'s inputs too.")
+    return {"engine": only, "missing": missing, "how": how}
+
+
 def local_snapshot(repo: models.Repository) -> dict:
     """The conversions as this machine's files and git have them: one entry per conversion record, newest first, with
     its runbook and VERIFICATION.md; the last preparation attempt; and the commit the next conversion would start
@@ -55,6 +73,10 @@ def local_snapshot(repo: models.Repository) -> dict:
             "number": rec["number"], "branch": rec["branch"], "state": s["state"], "baseline": rec["baseline"],
             "baseline_from": rec.get("baselineFrom"), "scanned_at": rec.get("scannedAt"), "head": s["head"],
             "commits_beyond_inputs": s["commitsBeyondInputs"], "uncommitted": s["uncommitted"], "worktree": rec["worktree"],
+            # The one check of whether it has been run (app.engine.convert.not_run_because) and the untracked files it
+            # does not count.
+            "untracked": s["untracked"], "run_because": s["runBecause"],
+            "one_engine": _one_engine(rec, s),
             "prepared_at": rec.get("preparedAt"), "runbook_path": str(runbook),
             "runbook": runbook.read_text(encoding="utf-8") if runbook.exists() else None,
             "opening_message": convert.opening_for(rec),

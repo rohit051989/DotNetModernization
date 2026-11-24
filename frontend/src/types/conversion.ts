@@ -140,6 +140,9 @@ export interface PrepareAttempt {
   warnings?: { summary: string; details: string[] } | null
   number: number | null
   jobExecutionId: string | null
+  /** A kept conversion's cause: 'run' (commits beyond its inputs), 'tracked changes' or 'collision'; `details` names
+   * the files. */
+  keptBecause?: string | null
 }
 
 export interface ConversionVerification {
@@ -190,6 +193,12 @@ export interface ConversionEntry {
   head: string | null
   commits_beyond_inputs: number
   uncommitted: string[]
+  /** Untracked files a person left in the worktree: listed, never a reason it counts as run. */
+  untracked?: string[]
+  /** Why it counts as run; null when it has not been run. */
+  run_because?: string | null
+  /** Prepared before both engines: the engine it has, the one it lacks, and how to add it. */
+  one_engine?: { engine: ConversionEngine; missing: ConversionEngine; how: string } | null
   worktree: string
   prepared_at: string | null
   runbook_path: string

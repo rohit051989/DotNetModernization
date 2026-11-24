@@ -275,6 +275,9 @@ class PrepareAttemptOut(BaseModel):
     warnings: PrepareWarningsOut | None = None      # prepared, with secret values named by reference
     number: int | None = None
     jobExecutionId: str | None = None
+    # A kept conversion's cause: "run" (commits beyond its inputs), "tracked changes" or "collision" (details names
+    # the files).
+    keptBecause: str | None = None
 
 
 class VerificationOut(BaseModel):
@@ -337,6 +340,10 @@ class ConversionEntryOut(BaseModel):
     head: str | None = None
     commits_beyond_inputs: int = 0
     uncommitted: list[str] = []
+    untracked: list[str] = []           # untracked files a person left: listed, never a reason it counts as run
+    run_because: str | None = None      # why it counts as run (app.engine.convert.not_run_because); None: not run
+    # Prepared before both engines: {engine it has, missing, how to add the missing one}; None when it has both.
+    one_engine: dict | None = None
     worktree: str
     prepared_at: str | None = None
     runbook_path: str

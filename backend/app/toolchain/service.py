@@ -36,8 +36,11 @@ def projects_for(db: Session, repository: models.Repository) -> list[dict]:
             JOIN projects p ON p.id = r.source_project_id
             WHERE p.repository_id = :r AND r.referenced_project_id IS NOT NULL"""), {"r": repository.id}):
         references.setdefault(source, []).append(target)
-    unit = set(db.execute(text("SELECT DISTINCT project_path FROM test_classes WHERE repository_id = :r AND "
-                               "test_type = 'unit'"), {"r": repository.id}).scalars())
+    # The test projects the baseline runs: recognised by what they reference, whatever their names (app.conversion.
+    # testprojects), the same ones the package step and the verifier run.
+    from app.conversion import planner
+
+    unit = set(planner.test_projects_found(db, repository.id)["run"])
     root = Path(repository.local_path) if repository.local_path else None
 
     def sdks_reached(project_id) -> set[str]:

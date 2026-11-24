@@ -186,6 +186,11 @@ class FromTheDatabase(unittest.TestCase):
         (cls.root / "src" / "Site" / "Site.csproj").write_text(
             '<Project><Import Project="$(VSToolsPath)\\WebApplications\\Microsoft.WebApplication.targets" /></Project>\n',
             encoding="utf-8")
+        # A test project by what it references (app.conversion.testprojects), not by its name.
+        (cls.root / "tests" / "Shop.Tests").mkdir(parents=True)
+        (cls.root / "tests" / "Shop.Tests" / "Shop.Tests.csproj").write_text(
+            '<Project Sdk="Microsoft.NET.Sdk"><ItemGroup><PackageReference Include="Microsoft.NET.Test.Sdk" '
+            'Version="17.12.0" /></ItemGroup></Project>\n', encoding="utf-8")
         cls.tag = uuid.uuid4().hex[:6]
         cls.ann = (rf"CORP\ann{cls.tag}", f"HOST-A-{cls.tag}", f"ann-{cls.tag}")
         cls.db = SessionLocal()

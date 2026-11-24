@@ -160,3 +160,50 @@ describe('both engines', () => {
     expect(api.verifyConversion).toHaveBeenCalledWith('r', 1, 'github-copilot')
   })
 })
+
+describe('not run, kept, and one engine only', () => {
+  const legacy = {
+    number: 1, branch: 'conversion/1', state: 'prepared' as const, baseline: 'e89bc6a1', baseline_from: null, scanned_at: null,
+    head: null, commits_beyond_inputs: 0, uncommitted: ['.goal-workflow.md'], untracked: ['.goal-workflow.md'], run_because: null,
+    worktree: 'D:/runs/wt', prepared_at: null, runbook_path: 'D:/runs/RUNBOOK.md', runbook: 'copilot runbook',
+    opening_message: 'copilot first message', package_step: {}, left_for_agent: {}, verify_refusal: null, verification: null,
+    verifying: false, plan: null, superseded_plans: [],
+    engines: {
+      'github-copilot': { prepared: true, usable: true, opening: 'copilot first message', runbook: 'copilot runbook' },
+      'claude-code': { prepared: false, usable: false, notPrepared: 'prepared for one engine only (GitHub Copilot), before every conversion got both engines’ inputs' },
+    },
+    one_engine: { engine: 'github-copilot' as const, missing: 'claude-code' as const,
+      how: 'It has not been run, so its next preparation adds Claude Code’s inputs: rescan the repository.' },
+  }
+
+  it('a conversion prepared for one engine says so and how to add the other; an untracked file is listed, not counted', async () => {
+    const last: PrepareAttempt = {
+      at: null, status: 'kept', number: 1, jobExecutionId: null, keptBecause: 'collision', details: ['.claude/CLAUDE.md'],
+      message: 'conversion 1 kept as it is: 1 untracked file(s) in its worktree sit where the new inputs would be written (.claude/CLAUDE.md). Move or delete them, or commit them on the branch, then rescan.',
+    }
+    api.listConversions.mockResolvedValue({ ...conversions(last), conversions: [legacy] })
+    render(<ConversionsPanel repositoryId="r" refreshToken={0} />)
+    await act(async () => {})
+    expect(screen.getByTestId('one-engine').textContent).toBe(
+      'Prepared for one engine only (GitHub Copilot). It has not been run, so its next preparation adds Claude Code’s inputs: rescan the repository.')
+    expect(screen.getByTestId('conversion-untracked').textContent).toContain('1 untracked file(s) a person left (.goal-workflow.md)')
+    expect(screen.queryByTestId('run-because')).toBeNull()
+    const kept = screen.getByTestId('preparation-kept')
+    expect(kept.querySelector('p')?.textContent).toContain('kept the conversion: conversion 1 kept as it is: 1 untracked file(s)')
+    expect(kept.querySelectorAll('li')).toHaveLength(1)
+    expect(kept.querySelector('li')?.textContent).toBe('.claude/CLAUDE.md')
+  })
+
+  it('a conversion prepared for both shows no one-engine note, and one that counts as run says why', async () => {
+    api.listConversions.mockResolvedValue({
+      ...conversions({ at: null, status: 'refreshed', message: 'x', number: 1, jobExecutionId: null }),
+      conversions: [{ ...legacy, one_engine: null, state: 'run' as const, untracked: [],
+        run_because: 'its worktree has uncommitted changes to 1 tracked file(s) (a.cs): commit them on the branch, or discard them' }],
+    })
+    render(<ConversionsPanel repositoryId="r" refreshToken={0} />)
+    await act(async () => {})
+    expect(screen.queryByTestId('one-engine')).toBeNull()
+    expect(screen.getByTestId('run-because').textContent).toContain('uncommitted changes to 1 tracked file(s) (a.cs)')
+    expect(screen.queryByTestId('preparation-kept')).toBeNull()
+  })
+})

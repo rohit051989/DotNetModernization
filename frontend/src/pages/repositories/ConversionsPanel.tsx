@@ -200,6 +200,13 @@ function ConversionCard({
           <dd>
             {entry.commits_beyond_inputs} beyond its inputs
             {entry.uncommitted.length > 0 && ` · ${entry.uncommitted.length} uncommitted change(s)`}
+            {entry.run_because && <span className="block text-neutral-500" data-testid="run-because">Counts as run: {entry.run_because}.</span>}
+            {entry.untracked && entry.untracked.length > 0 && (
+              <span className="block text-neutral-500" data-testid="conversion-untracked" title={entry.untracked.join('\n')}>
+                {entry.untracked.length} untracked file(s) a person left ({entry.untracked.slice(0, 3).join(', ')}
+                {entry.untracked.length > 3 ? ', …' : ''}): not the platform’s, never committed by it, and not a reason it counts as run.
+              </span>
+            )}
           </dd>
           <dt className="text-neutral-500">Package step</dt>
           <dd>
@@ -226,6 +233,11 @@ function ConversionCard({
             ))}
           </select>
         </label>
+        {entry.one_engine && (
+          <p className="rounded border border-amber-300 bg-amber-50 px-2 py-1 text-xs text-amber-800" data-testid="one-engine">
+            Prepared for one engine only ({ENGINE_NAMES[entry.one_engine.engine]}). {entry.one_engine.how}
+          </p>
+        )}
         {state?.unsafe && (
           <p className="rounded border border-amber-300 bg-amber-50 px-2 py-1 text-xs text-amber-800" data-testid="engine-unsafe">
             {ENGINE_NAMES[viewed]}’s inputs are {state.unsafe}.
@@ -437,7 +449,8 @@ export function ConversionsPanel({ repositoryId, refreshToken, refusal = null, t
         </p>
       )}
       {last && (last.status === 'failed' || last.status === 'kept') && (
-        <PreparationNote tone={last.status === 'failed' ? 'failed' : 'kept'} label={`Last preparation (${when(last.at)})`}
+        <PreparationNote tone={last.status === 'failed' ? 'failed' : 'kept'}
+          label={`Last preparation (${when(last.at)})${last.status === 'kept' ? ' kept the conversion' : ''}`}
           {...preparationProblem(last.message, last.details)} />
       )}
       {last && last.status !== 'failed' && last.warnings && (

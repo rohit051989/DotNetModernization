@@ -103,14 +103,29 @@ def _inventory(db: Session, repository_id) -> dict:
     raise LookupError("no solution-project-inventory for this repository: run discovery first")
 
 
+def test_projects_found(db: Session, repository_id, excluded: set[str] = frozenset()) -> dict:
+    """{run, notRun} (app.conversion.testprojects.found): the repository's .NET projects that are test projects by what
+    they reference, whatever their names, less those left out of scope and those whose tests are integration,
+    functional or smoke tests only (test-coverage-assessment's classes)."""
+    from app.conversion import testprojects
+
+    repository = db.get(models.Repository, repository_id)
+    projects = [p for p in db.execute(text("""
+        SELECT relative_path FROM projects WHERE repository_id = :r AND extension IN ('.csproj', '.vbproj', '.fsproj')
+        ORDER BY 1"""), {"r": repository_id}).scalars().all() if p not in excluded]
+    classified: dict[str, set[str]] = {}
+    for path, kind in db.execute(text("SELECT DISTINCT project_path, test_type FROM test_classes WHERE repository_id = :r"),
+                                 {"r": repository_id}).all():
+        classified.setdefault(path, set()).add(kind)
+    return testprojects.found(Path(repository.local_path), projects, classified)
+
+
 def _unit_test_projects(db: Session, repository_id, excluded: set[str] = frozenset()) -> list[str]:
-    """Projects test-coverage-assessment classified as unit test projects, less those left out of scope."""
-    rows = [p for p in db.execute(text("""
-        SELECT DISTINCT project_path FROM test_classes
-        WHERE repository_id = :r AND test_type = 'unit' ORDER BY 1"""), {"r": repository_id}).scalars().all()
-            if p not in excluded]
+    """The test projects the baseline and the verifier run (test_projects_found), less those left out of scope."""
+    rows = test_projects_found(db, repository_id, excluded)["run"]
     if not rows:
-        raise LookupError("test-coverage-assessment found no unit test project: the baseline cannot run")
+        raise LookupError("no test project found: no project references a test framework (Microsoft.NET.Test.Sdk, xunit, "
+                          "NUnit or MSTest) or sets IsTestProject, so the baseline cannot run")
     return list(rows)
 
 
