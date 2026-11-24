@@ -467,6 +467,12 @@ export function ConversionsPanel({ repositoryId, refreshToken, refusal = null, t
         <PreparationNote tone="warning" label={`Last preparation (${when(last.at)})`}
           summary={last.warnings.summary} details={last.warnings.details} />
       )}
+      {last && last.status !== 'failed' && last.incomplete && (
+        <div data-testid="inputs-incomplete">
+          <PreparationNote tone="warning" label={`Inputs incomplete (${when(last.at)})`}
+            summary={last.incomplete.summary} details={last.incomplete.details} />
+        </div>
+      )}
 
       <div className="flex flex-wrap items-center gap-2">
         <button

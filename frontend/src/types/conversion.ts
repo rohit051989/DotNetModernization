@@ -138,6 +138,9 @@ export interface PrepareAttempt {
   details?: string[]
   /** Prepared, with secret values named by file, key and line instead of quoted. */
   warnings?: { summary: string; details: string[] } | null
+  /** Prepared, but some changes, or a default answer, have no instruction yet: the engine is told not to change them,
+   * and a person supplies the instruction. Each one named in `details`. */
+  incomplete?: { summary: string; details: string[] } | null
   number: number | null
   jobExecutionId: string | null
   /** A kept conversion's cause: 'run' (commits beyond its inputs), 'tracked changes' or 'collision'; `details` names

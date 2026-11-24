@@ -19,6 +19,9 @@ the branch and worktree, the package step, the engine's inputs under .github, an
   as a short `message` (what was refused, in how many files) with the full list in `details`.
 - A secret value the inputs would quote is named by its file, key and line instead (app.engine.inputs.secrets): the
   preparation completes, and `warnings` says which generated files do so.
+- A change whose approach has no engine guidance, and a default answer that would keep what cannot work on the target
+  (packages.config on .NET 5 and later), are not instructions the engine follows: it is told not to make them. The
+  preparation completes, and `incomplete` names each one, for the Conversion tab.
 
 Parameters: `prepare_conversion` (default true; the verifier's isolated re-discovery sets false), `new_conversion`
 (default false).
@@ -130,6 +133,10 @@ def run(context: StepContext) -> StepResult:
             attempt.update(keptBecause=result.get("keptBecause"), details=result.get("reasonDetails") or [])
         if warned := warnings_of(result):
             attempt["warnings"] = warned
+        if result["action"] != "kept" and result.get("incompleteInputs"):
+            # Changes the engine is told not to make for want of an instruction, each named: the person preparing the
+            # conversion sees the inputs are incomplete before running it.
+            attempt["incomplete"] = result["incompleteInputs"]
         record_attempt(repository.engagement_id, repository.slug, attempt)
         shared_conversions.publish_after_step(db, repository)
         return StepResult(exit_status="COMPLETED", exit_message=attempt["message"])

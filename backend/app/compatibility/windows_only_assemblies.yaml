@@ -1,0 +1,14 @@
+# Assemblies that only load on Windows, or only on .NET Framework, referenced by path (a <Reference> with a HintPath,
+# or one resolved from the GAC) rather than through a NuGet package: what the conversion's inputs judge an assembly
+# reference against (app.compatibility.assemblies; 36-COPILOT-ENHANCED-CONVERSION "Assembly references no package
+# declares"). A reference to one needs a replacement on Linux, and raises the catalog item windows-only-assembly-reference:
+# a person decides the replacement before the conversion, not the engine during it.
+#
+# Read from the repository, never from the database; edit it here and commit. `match: exact` compares the whole simple
+# name, `match: prefix` the start of it (both case-insensitive). `why` is shown to the engine and the person; it names no
+# client, only the product.
+assemblies:
+  - {name: Microsoft.SqlServer.ManagedDTS, match: exact, why: "the SQL Server Integration Services runtime: .NET Framework on Windows only, with the SSIS engine installed"}
+  - {name: Microsoft.SqlServer.DTSRuntimeWrap, match: exact, why: "the SQL Server Integration Services runtime's COM wrapper: Windows only"}
+  - {name: Microsoft.SqlServer.DTSPipelineWrap, match: exact, why: "the SQL Server Integration Services pipeline's COM wrapper: Windows only"}
+  - {name: Sybase.AdoNet, match: prefix, why: "the SAP (Sybase) ASE ADO.NET provider for .NET Framework, which loads native Windows libraries"}

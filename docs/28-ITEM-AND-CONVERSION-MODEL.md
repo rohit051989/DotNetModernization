@@ -421,8 +421,22 @@ list is left out of the content hash and the export.
 engine (36-COPILOT-ENHANCED-CONVERSION Part K). `description`, `target_description` and `notes`
 are for catalog authors. Factory defaults in `backend/app/seed/data/engine_guidance.yaml`, for
 the item and its resolutions together; seeded through the never-overwrite path and exported,
-optional in the baseline like `impact_rules`. Editable through the API; a write that omits it
-leaves it unchanged.
+optional in the baseline like `impact_rules`. Admins edit it, the item's and each resolution's, in
+the catalog's item and resolution editors (2026-11-24), with the item's version check, and the
+change is in the activity record; a write that omits it leaves it unchanged. Text that is not
+self-contained (a platform document, path, lifecycle step or the platform's own ids) is refused
+as a field error, `NOT_SELF_CONTAINED`: the engine reads only the repository's branch. A
+resolution without it is never an instruction to leave its places unchanged: the engine is told
+not to make the change, and a person supplies the instruction (36-COPILOT-ENHANCED-CONVERSION
+"A descoped, old-style repository's inputs").
+
+`windows-only-assembly-reference` (2026-11-24, application scope) is raised from
+dependency-hierarchy's assembly references rather than a signal: item-detection's project metadata
+field `windowsOnlyAssemblies` names the referenced assemblies on
+`backend/app/compatibility/windows_only_assemblies.yaml` (unknown, so not checked, without a
+hierarchy). Its default resolution, "Decide the replacement before converting", has no engine
+guidance on purpose: a person decides the replacement before the conversion, as an engagement
+decision, never the engine during it.
 
 `confirm_design` BOOL (default false): "Confirm the design before implementing". Set on a
 resolution that changes the design or the architecture, not only the code (SOAP to REST, a UI

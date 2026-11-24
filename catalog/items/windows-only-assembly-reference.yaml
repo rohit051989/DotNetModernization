@@ -1,0 +1,62 @@
+category: dependencies
+deleted: false
+description: The project references by path, rather than through a NuGet package, an assembly that only loads on Windows or on .NET Framework, such as a database provider with native Windows libraries or the SSIS runtime. It will not load in a Linux container, and the build or the first run is where the engine would find out. Which replacement to adopt, or whether the project stays on Windows, is decided before the conversion.
+detection:
+  match:
+    all: []
+    any: []
+    atLeast: []
+    metadata:
+    - field: windowsOnlyAssemblies
+      id: references-windows-only-assembly
+      regex: .+
+    none: []
+excluded_roles:
+- DATABASE
+- DEPLOYMENT
+- TEST
+id: windows-only-assembly-reference
+name: Reference to an assembly that only loads on Windows
+owner_team: null
+resolutions:
+- consumer_impact: none
+  container_ready: false
+  deleted: false
+  derivations: []
+  description: 'Nobody has decided yet: the conversion leaves the reference as it is, and a person records the replacement as a decision before running it.'
+  effort: low
+  id: decide-windows-only-replacement
+  is_default: true
+  linux_compatible: false
+  name: Decide the replacement before converting
+  notes: null
+  status: active
+  target_description: A recorded decision naming the replacement
+- consumer_impact: none
+  container_ready: false
+  deleted: false
+  derivations: []
+  description: 'Leave the project out of the Linux conversion: it keeps running where the assembly loads.'
+  effort: low
+  id: keep-project-on-windows
+  is_default: false
+  linux_compatible: false
+  name: Keep the project on Windows
+  notes: null
+  status: active
+  target_description: The project outside the conversion's scope, on its Windows host
+- consumer_impact: medium
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: Use a cross-platform library or service in its place; the decision names which.
+  effort: high
+  id: replace-windows-only-assembly
+  is_default: false
+  linux_compatible: true
+  name: Replace it with a library that loads on Linux
+  notes: null
+  status: active
+  target_description: A cross-platform library, declared as a package
+scope: application
+status: active

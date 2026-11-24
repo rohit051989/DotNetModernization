@@ -332,15 +332,24 @@ def _repository(db, engagement_id: str, slug: str) -> models.Repository:
             .filter(models.Repository.deleted_at.is_(None)).one())
 
 
-def _commit_inputs(db, engagement_id: str, slug: str, worktree: Path, applied: list[dict]
-                   ) -> tuple[list[dict], dict[str, dict[str, str]], dict[str, str]]:
+def rendering_incomplete(unguided: list[dict]) -> dict | None:
+    """{summary, details} for inputs missing an instruction (app.engine.inputs.render.incomplete), or None."""
+    from app.engine.inputs import render
+
+    return render.incomplete(unguided)
+
+
+def _commit_inputs(db, engagement_id: str, slug: str, worktree: Path, applied: list[dict],
+                   unguided: list | None = None) -> tuple[list[dict], dict[str, dict[str, str]], dict[str, str]]:
     """Generates both engines' inputs from one model and commits them together, as the platform. Returns ([{file,
     references}]: each input that names a secret value by its file, key and line instead of quoting it
-    (app.engine.inputs.secrets); {engine: its files}; {engine: why it has none})."""
+    (app.engine.inputs.secrets); {engine: its files}; {engine: why it has none}). `unguided` receives what has no
+    engine-facing guidance (render.without_guidance)."""
     from app.engine.inputs import generate_both, selfcontained
 
     warnings: list[dict] = []
-    files, missing = generate_both(db, engagement_id, slug, worktree, applied=applied, warnings=warnings)
+    files, missing = generate_both(db, engagement_id, slug, worktree, applied=applied, warnings=warnings,
+                                   unguided=unguided)
     # Exactly the files generated, both engines', even where the repository's own ignore rules would hide one (.claude/
     # often is); never a folder, so a person's untracked file beside them stays out of the platform's commit.
     gitops.platform_commit(worktree, INPUTS_COMMIT, vocabulary=selfcontained.vocabulary(db), force=True,
@@ -670,7 +679,8 @@ def _prepare_on(db, repository, engagement, root: Path, latest: dict | None, bas
         units, step = run_packages(db, plan, sibling_links)
         changes, applied = [_unit_record(u) for u in units], applied_changes(units)
     packages_head = gitops.head(worktree)
-    secret_references, written, missing = _commit_inputs(db, engagement_id, slug, worktree, applied)
+    unguided: list[dict] = []
+    secret_references, written, missing = _commit_inputs(db, engagement_id, slug, worktree, applied, unguided)
 
     solutions = sorted(p.name for p in worktree.glob("*.sln"))
     # The conversion builds its own solution, in-scope.sln: exactly the .NET projects in scope.
@@ -702,6 +712,11 @@ def _prepare_on(db, repository, engagement, root: Path, latest: dict | None, bas
         # The inputs that name a secret value by its file, key and line instead of quoting it: a warning, never a
         # failure (app.engine.inputs.secrets).
         "secretReferences": secret_references,
+        # What has no engine-facing guidance (render.without_guidance), the same for both engines; `incompleteInputs`:
+        # the changes the engine is told not to make for want of an instruction, and default answers that would keep
+        # what cannot work on the target, each named: a warning on the Conversion tab, never a failure.
+        "withoutGuidance": unguided,
+        "incompleteInputs": rendering_incomplete(unguided),
         # The projects this conversion covers (app.scope): the ones left out, who decided, when and why, the solution
         # that builds the rest, and the files written for them (`kept`: already there, left as they were).
         "scope": {**scope, "files": scope_written},

@@ -22,6 +22,7 @@ from pathlib import Path
 
 from app.engine import inputs, paths
 from app.engine.inputs import render, secrets, selfcontained
+from tests.tiers import slow
 
 FAKE_PASSWORD = "S3cr3t-Pa55word!"
 FAKE_KEY = "k3y-0123456789abcdef"
@@ -146,17 +147,62 @@ class Outputs(unittest.TestCase):
         self.assertNotIn("## The change", text)
         self.assertIn("## What to do\n\nDo the thing.", text)
         self.assertEqual(render.without_guidance(model(items)),
-                         [{"item": "datetime-now-usage", "resolution": "container-local-timezone", "missing": "item"}])
+                         [{"item": "datetime-now-usage", "resolution": "container-local-timezone", "missing": "item",
+                           "change": "Datetime now usage", "approach": "Container local timezone", "decided": False}])
+        self.assertIsNone(render.incomplete(model(items)))      # emitted from its steps: nothing the engine skips
 
-    def test_a_resolution_without_steps_is_not_emitted_its_places_are_left_unchanged_and_listed(self):
+    def test_a_decided_resolution_without_steps_is_not_emitted_never_told_leave_unchanged_and_warned(self):
+        """Related issue 4: a change a person decided to make, whose approach has no guidance, is not an instruction to
+        leave it unchanged. The engine is told not to make it, a person supplies the instruction, and preparation's
+        warning names it."""
         items = model()["items"]
-        items[0] = _item("datetime-now-usage", "container-local-timezone", steps=False)
+        items[0] = _item("datetime-now-usage", "container-local-timezone", steps=False, decided=True)
         files = render.render(model(items))
         self.assertNotIn(".github/upgrades/skills/applying-container-local-timezone.md", files)
-        self.assertIn("| Datetime now usage | `src/A/A.cs:10` |  | no conversion guidance is written for this change yet |",
-                      files[".github/platform-inputs/decision-sheet.md"])
-        self.assertIn("none: leave unchanged", files[".github/platform-inputs/assessment-addendum.md"])
+        addendum = files[".github/platform-inputs/assessment-addendum.md"]
+        sheet = files[".github/platform-inputs/decision-sheet.md"]
+        self.assertIn("| Datetime now usage | Container local timezone | no instruction yet: do not change; a person "
+                      "supplies it |", addendum)
+        self.assertIn("| Datetime now usage | `src/A/A.cs:10` |  | no instruction is written for this change yet: do not "
+                      "change it; a person supplies the instruction |", sheet)
+        for text in files.values():
+            self.assertNotIn("none: leave unchanged", text)
         self.assertEqual(render.without_guidance(model(items))[0]["missing"], "resolution")
+        warning = render.incomplete(model(items))
+        self.assertEqual(warning["details"], ["Datetime now usage: Container local timezone (chosen) has no instruction "
+                                              "yet; the engine is told not to change it"])
+        self.assertTrue(warning["summary"].startswith("1 change(s) have no instruction yet"))
+
+    def test_with_guidance_the_same_decided_change_is_a_work_item_for_both_engines(self):
+        items = model()["items"]
+        items[0] = _item("datetime-now-usage", "container-local-timezone", decided=True)
+        self.assertIn(".github/upgrades/skills/applying-container-local-timezone.md", render.render(model(items)))
+        claude_files = render.render(model(items), engine="claude-code")
+        self.assertTrue(any(p.endswith("applying-container-local-timezone/SKILL.md") for p in claude_files), sorted(claude_files))
+        self.assertIsNone(render.incomplete(model(items)))
+
+    def test_keeping_packages_config_on_modern_dotnet_is_reported_as_missing_guidance(self):
+        """A default that tells the engine to keep what cannot work on the target is not an instruction: packages.config
+        on .NET 10 is reported as missing guidance, in the decision sheet and preparation's warning, for both engines."""
+        m = model()
+        m["projects"] = [{"path": "src/A/A.csproj", "framework": "v4.7", "format": "old-style", "packages_config": True}]
+        options = {o["question"]: o for o in render.upgrade_options(m)}
+        package = options["Package management (Central Package Management)"]
+        self.assertTrue(package["missing"])
+        self.assertNotIn("Keep the current arrangement", package["answer"])
+        for engine in ("github-copilot", "claude-code"):
+            sheet = next(t for p, t in render.render(m, engine=engine).items() if p.endswith("decision-sheet.md"))
+            self.assertNotIn("Keep the current arrangement", sheet)
+            self.assertIn("1 project(s) use packages.config, which net10.0 cannot restore", sheet)
+            self.assertIn("| no instruction yet |", sheet)
+        warning = render.incomplete(m)
+        self.assertIn("Package management (Central Package Management): no instruction yet (missing guidance: 1 project(s) "
+                      "use packages.config", warning["details"][0])
+        # An SDK-style project with PackageReference keeps the default.
+        m["projects"] = [{"path": "src/A/A.csproj", "framework": "net8.0", "format": "sdk-style", "packages_config": False}]
+        options = {o["question"]: o for o in render.upgrade_options(m)}
+        self.assertEqual(options["Package management (Central Package Management)"]["answer"], "Keep the current arrangement")
+        self.assertIsNone(render.incomplete(m))
 
     def test_adapted_plugin_text_carries_its_attribution(self):
         for path in (".github/skills/analyzing-version-deltas.md", ".github/skills/writing-characterization-tests.md",
@@ -911,6 +957,7 @@ class NoSecretValue(unittest.TestCase):
         self.assertEqual(secrets.check(files, None), [])
 
 
+@slow
 class RealRepository(unittest.TestCase):
     """The inputs generated from each experiment application's own discovery contain none of its configuration's
     values and are self-contained."""

@@ -35,6 +35,7 @@ interface FormState {
   linux_compatible: boolean
   container_ready: boolean
   confirm_design: boolean
+  engine_guidance: string
   notes: string
   status: ItemStatus
 }
@@ -51,6 +52,7 @@ function toFormState(resolution?: ItemResolution): FormState {
     linux_compatible: resolution?.linux_compatible ?? true,
     container_ready: resolution?.container_ready ?? true,
     confirm_design: resolution?.confirm_design ?? false,
+    engine_guidance: resolution?.engine_guidance ?? '',
     notes: resolution?.notes ?? '',
     status: resolution?.status ?? 'active',
   }
@@ -100,6 +102,7 @@ export function ResolutionForm({ mode, itemId, itemVersion, resolution, existing
       linux_compatible: form.linux_compatible,
       container_ready: form.container_ready,
       confirm_design: form.confirm_design,
+      engine_guidance: form.engine_guidance.trim() || null,
       notes: form.notes.trim() || null,
       status: form.status,
     }
@@ -259,6 +262,22 @@ export function ResolutionForm({ mode, itemId, itemVersion, resolution, existing
               )}
               {fieldErrors.is_default && <p className="text-xs text-red-600">{fieldErrors.is_default}</p>}
             </div>
+
+            <Field label="Instruction for the conversion engine (engine guidance)" error={fieldErrors.engine_guidance}>
+              <textarea
+                value={form.engine_guidance}
+                onChange={(e) => update('engine_guidance', e.target.value)}
+                rows={6}
+                aria-label="Instruction for the conversion engine (engine guidance)"
+                aria-describedby="resolution-engine-guidance-help"
+                className={`${inputClass(!!fieldErrors.engine_guidance)} font-mono text-xs`}
+              />
+              <span id="resolution-engine-guidance-help" className="mt-1 block text-xs text-neutral-500">
+                What the engine does to apply this resolution, self-contained: it reads only the repository's branch, so
+                name no platform document, step or path. Empty: a conversion that chose it tells the engine not to change
+                those places, and lists it as missing an instruction.
+              </span>
+            </Field>
 
             <Field label="Notes" error={fieldErrors.notes}>
               <textarea

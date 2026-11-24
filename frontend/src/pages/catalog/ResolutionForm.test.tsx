@@ -35,6 +35,24 @@ describe('confirm the design before implementing', () => {
       expect.objectContaining({ confirm_design: true }), 7)
   })
 
+  it('an admin writes the instruction for the conversion engine, and empty sends none', async () => {
+    api.updateResolution.mockResolvedValue({ ...REST, engine_guidance: 'Expose each operation as an HTTP endpoint.' })
+    render(
+      <ToastProvider>
+        <ResolutionForm mode="edit" itemId="wcf-service" itemVersion={3} resolution={{ ...REST, engine_guidance: null }}
+          existingDefault={null} onClose={vi.fn()} onSaved={vi.fn()} />
+      </ToastProvider>,
+    )
+    const field = screen.getByLabelText(/Instruction for the conversion engine/) as HTMLTextAreaElement
+    expect(field.value).toBe('')
+    fireEvent.change(field, { target: { value: '  Expose each operation as an HTTP endpoint.  ' } })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /save/i }))
+    })
+    expect(api.updateResolution).toHaveBeenLastCalledWith('wcf-service', 'rest-net10',
+      expect.objectContaining({ engine_guidance: 'Expose each operation as an HTTP endpoint.' }), 3)
+  })
+
   it('a flagged resolution says so on its card, an unflagged one does not', () => {
     render(<ResolutionCard resolution={{ ...REST, confirm_design: true }} isLowestImpact={false} />)
     expect(screen.getByTestId('confirm-design').textContent).toBe('design confirmed first')

@@ -1809,6 +1809,16 @@ hand. Everything else an update brings, bootstrap applies by itself. Apply every
 had (`previousCommit` in `PLATFORM_SOURCE.json` after the update; in our own installs, the commit before step 5 of
 the appendix), oldest of them first. Entries up to 2026-10-23 were the notes of releases 2 to 7, which are named so.
 
+#### 2026-11-24, (commit of "Conversion inputs follow the scope, name assembly references and say what has no instruction"): rescan, and decide Windows-only references
+
+Update, bootstrap and restart the backend. Bootstrap adds the catalog item "Reference to an assembly that only loads on
+Windows" (`windows-only-assembly-reference`). Then **Rescan** each repository whose conversion has not been run: its
+inputs then keep to the conversion's scope, list the assembly references no package declares with a verdict for each,
+and say "no instruction yet" where a change has no instruction, and its Conversion tab says "Inputs incomplete" where
+one is missing. Where the item is found, record its decision (the replacement, or keeping the project on Windows)
+before running the conversion. Developers: `scripts\run-suites.ps1` now runs the quick tier by default; run
+`-Full` once on the tip of master before a push.
+
 #### 2026-11-24, (commit of "Design questions before converting, flagged in the catalog"): rescan to get the design questions
 
 Update, bootstrap and restart the backend. Bootstrap adds the catalog's new flag, "Confirm the design before

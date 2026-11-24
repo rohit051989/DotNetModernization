@@ -104,10 +104,12 @@ def _check(cid: str, label: str, state: str, detail: str, **evidence) -> dict:
 
 def verdict(checks: list[dict]) -> tuple[str, list[str]]:
     """The fixed rules: any fail is NOT PROVEN, else any gap is PARTLY PROVEN, else PROVEN. Returns the
-    verdict and every reason (each failing, then each gapped check's detail)."""
+    verdict and every reason (each failing, then each gapped check's detail). A check marked `first` (no test project
+    in the conversion's solution) is the first reason whatever else is said."""
     fails = [c for c in checks if c["state"] == "fail"]
     gaps = [c for c in checks if c["state"] == "gap"]
-    reasons = [f"{c['label']}: {c['detail']}" for c in fails + gaps]
+    ordered = [c for c in fails + gaps if c.get("first")] + [c for c in fails + gaps if not c.get("first")]
+    reasons = [f"{c['label']}: {c['detail']}" for c in ordered]
     if fails:
         return "NOT PROVEN", reasons
     if gaps:
@@ -753,12 +755,13 @@ def verify(db, *, engagement_id: str, slug: str, base: str, ref: str, label: str
     if not clean["built"]:
         checks.append(_check("clean", "Clean re-run", "fail", f"the build failed (exit {clean['buildExit']}); see clean/build.log"))
     elif not projects:
-        # Said plainly: a branch whose tests were not found is never PROVEN.
-        checks.append(_check("clean", "Clean re-run", "fail",
-                             f"no test project found in {solution}: no project in it references a test framework "
-                             "(Microsoft.NET.Test.Sdk, xunit, NUnit or MSTest) or sets IsTestProject, other than "
-                             "integration, functional or smoke tests, which are not run; this branch's tests were not "
-                             "found, so nothing proves it"))
+        # Said plainly: a branch whose tests were not found is never PROVEN. Every other check still runs and is
+        # reported; this gap holds the verdict at PARTLY PROVEN at most, and is its first reason (verdict()).
+        checks.append({**_check("clean", "Clean re-run", "gap",
+                                f"no test project found in {solution}: no project in it references a test framework "
+                                "(Microsoft.NET.Test.Sdk, xunit, NUnit or MSTest) or sets IsTestProject, other than "
+                                "integration, functional or smoke tests, which are not run; this branch's tests were not "
+                                "found, so no test proves its behaviour. Every other check below was run"), "first": True})
     elif not_run or total == 0:
         checks.append(_check("clean", "Clean re-run", "fail",
                              f"no test executed" if total == 0 else f"test project(s) did not run: {', '.join(not_run)}"))
@@ -825,6 +828,8 @@ def verify(db, *, engagement_id: str, slug: str, base: str, ref: str, label: str
                                  f"{len(base_report['rerunFlaky'])} test(s) failed and passed on a rerun: "
                                  + ", ".join(base_report["rerunFlaky"][:10])))
         (out / "baseline-diff.json").write_text(json.dumps(base_report, indent=2, default=str), encoding="utf-8")
+    elif clean["built"] and not projects:
+        checks.append(_check("diff", "Baseline diff", "na", f"no test project in {solution}: no test result to compare"))
     elif clean["built"]:
         checks.append(_check("diff", "Baseline diff", "fail", "no result file from the clean re-run to compare"))
 
@@ -853,7 +858,9 @@ def verify(db, *, engagement_id: str, slug: str, base: str, ref: str, label: str
 
     # Canary: a deliberate break in the converted code must make a test fail.
     canaries = config.get("canaries") or []
-    if not clean["built"] or not clean["trx"]:
+    if clean["built"] and not projects:
+        checks.append(_check("canary", "Canary", "na", f"not run: no test project in {solution} could catch a deliberate break"))
+    elif not clean["built"] or not clean["trx"]:
         checks.append(_check("canary", "Canary", "gap", "not run: the clean re-run did not produce test results"))
     elif not canaries:
         checks.append(_check("canary", "Canary", "gap", "no canary is configured for this repository"))

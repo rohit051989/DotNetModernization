@@ -66,7 +66,8 @@ WORDING_CORRECTIONS = ("serilog-file-sink", "wcf-nettcp-client")
 # Items a release added to: a resolution, or wording for signals it now detects. Applied from the export the same way
 # (baseline.seed_row): a new resolution is inserted, an unedited row takes the new wording, an edited one is reported
 # as a conflict and left as it is. datetime-now-usage: the utc-everywhere resolution, and the related forms detected.
-CATALOG_ADDITIONS = ("datetime-now-usage",)
+# windows-only-assembly-reference (2026-11-24): a new item, raised from dependency-hierarchy's assembly references.
+CATALOG_ADDITIONS = ("datetime-now-usage", "windows-only-assembly-reference")
 
 
 def design_flag_items(files: dict[str, str]) -> tuple[str, ...]:

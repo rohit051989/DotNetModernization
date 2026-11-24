@@ -89,9 +89,14 @@ def _signal_row(signal: models.FingerprintSignal) -> dict:
     }
 
 
-def _metadata(project: models.Project, fingerprint: models.ProjectFingerprint | None) -> dict:
-    """Part E metadata-condition fields, as the old engine named them."""
+def _metadata(project: models.Project, fingerprint: models.ProjectFingerprint | None,
+              windows_only: dict | None = None) -> dict:
+    """Part E metadata-condition fields, as the old engine named them. `windowsOnlyAssemblies`: the assemblies the
+    project references by path that only load on Windows (app.compatibility.assemblies), from dependency-hierarchy's
+    assembly references, "; "-joined; "" when it references none; None (unknown, so not checked) when the repository
+    has no dependency hierarchy."""
     return {
+        "windowsOnlyAssemblies": None if windows_only is None else "; ".join(windows_only.get(project.id, [])),
         "outputType": project.output_type,
         "projectFormat": project.project_format,
         "frameworkFamily": project.framework_family,
@@ -158,6 +163,9 @@ def detect_repository(db: Session, repository: models.Repository, step_execution
     counts = {"found": 0, "checked_absent": 0, "not_checked": 0, "excluded": 0, "skipped": 0, "occurrence_rows": 0,
               "possible_occurrence_rows": 0, "possible_only_found": 0}
 
+    from app.compatibility import assemblies
+    windows_only = assemblies.windows_only_by_project(db, repository.id)
+
     report = report or progress.Reporter(None)
     report.phase("detect", len(projects))
     for project in projects:
@@ -178,7 +186,7 @@ def detect_repository(db: Session, repository: models.Repository, step_execution
         visible: dict[str, list[dict]] = {name: list(rows) for name, rows in own.items()}
         for name, rows in repository_signals.items():
             visible.setdefault(name, []).extend(rows)
-        metadata = _metadata(project, fingerprint)
+        metadata = _metadata(project, fingerprint, windows_only)
 
         item_results = []
         for item in items:

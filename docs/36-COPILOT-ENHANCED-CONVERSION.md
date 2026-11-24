@@ -1047,3 +1047,92 @@ Rule 20, for each engine:
   the first work item; runbook section B says to expect them.
 - The decisions file, its format and the verifier's check are the same for both. The parity test
   (`tests/test_engine_claude.py`) passes unchanged.
+
+## Part Q addendum — A descoped, old-style repository's inputs (2026-11-24)
+
+A repository descoped to three old-style projects of 172 showed three gaps in what both engines are told.
+
+**The scope reaches every section** (`collect._in_scope_entry`). The addendum's Windows-only, deploy parameter and SOAP
+sections read every outbound invocation of the repository, so they named configuration files of dozens of projects
+outside the scope, which the engine must not touch and the verifier's "Scope kept" check then penalised it for. Now a
+binding is listed only when its configuration file is in scope, and an entry only when it has an in-scope binding or an
+in-scope call site; one with neither, as a project left out has, is dropped. An unscoped repository is unchanged. The
+other sections already followed the scope (items, packages, framework deltas, tests, the work items' Files); the decision
+sheet's deployment parameters come from the items, which follow it.
+
+**Restored package folders are not the repository's own.** A work item's Files listed a package's vendored scripts
+(`packages/<id>.<version>/tools/*.ps1`), because the build files it names come from the whole repository's file list. No
+instruction names a file in a restored package folder now (`paths.restored_package`, `render.concerned_files`), and the
+two backend walks that read deployment YAML skip them too (`deployment_assets`, `verifier.deployment`). Discovery never
+detects an item there, only in the repository's own files:
+
+- application-fingerprinting, entry-point-inventory, outbound-invocation-inventory, test-coverage-assessment and
+  impact-analysis walk files through one C# walk (`FileSystemWalk`), which already skips every folder named `packages`
+  (case-insensitively): unchanged;
+- item-detection reads only what fingerprinting recorded, so it inherits that: unchanged;
+- solution-discovery skipped `packages` case-sensitively, so a restored `Packages\` folder on Windows was walked for
+  project files: it now compares folder names case-insensitively, as the C# walk does;
+- dependency-assessment and dependency-hierarchy do not walk the tree (they read project files and restored assets):
+  unchanged.
+
+A real scan proves it (`tests.test_descoped_inputs.RestoredPackageFolders`): a project file, a C# file using
+`DateTime.Now` and a script inside `packages/Vendor.Lib.1.0.0/` are not recorded; the repository's own are.
+
+**Changes without an instruction.** A change a person decided to make, whose chosen resolution has no engine guidance,
+was told "Instruction: none: leave unchanged": a wrong instruction, not a missing one. Now:
+
+- The addendum's Changes table says "no instruction yet: do not change; a person supplies it", with a line telling the
+  engine not to make such a change nor choose an approach for it; the decision sheet's Unresolved row says the same.
+  "Leave unchanged" stays only where an approach with an instruction cannot apply at a place
+  (`resolution_parameters.yaml`).
+- A default answer of the decision sheet that would keep something that cannot work on the target is reported the same
+  way instead of given: "Package management: keep the current arrangement" for an in-scope project on packages.config
+  heading to .NET 5 and later, which cannot restore it, becomes "No instruction yet" with why, status "no instruction
+  yet".
+- Preparation names each one (`render.incomplete`): the record's `withoutGuidance` and `incompleteInputs`,
+  last-prepare.json's `incomplete`, shown on the Conversion tab as "Inputs incomplete", so the person preparing the
+  conversion sees the inputs are incomplete before running it. Never a failure.
+- Admins write engine guidance in the catalog's item and resolution editors, with the item's version check; every change
+  is in the activity record. Guidance that names a platform document, path, step or the platform's own ids is refused
+  as a field error, by the same check every generated input passes (`selfcontained`).
+
+No new engine guidance was written for the items still without it.
+
+**Assembly references no package declares.** Old-style projects reference most third-party code as a `<Reference>`
+with a `HintPath`, which no package assessment sees, so the inputs said "No package upgrade is recommended" while a
+Windows-only assembly would not load in the container. The addendum now has a section, "Assembly references no package
+declares", from dependency-hierarchy's assembly references (`collect.assembly_references`). A framework assembly, one a
+declared package stands for, and a project outside the scope's are not listed. It states:
+
+- each in-scope project's format (old-style or SDK-style) and whether it uses packages.config;
+- each reference: name, version, where it points (a repository DLL, a packages folder without a declaration, the GAC, or
+  outside the repository), whether the file exists, and a verdict. A `HintPath` into `packages/<id>.<version>/` is that
+  NuGet package, undeclared: declare it as a package reference, with what dependency-assessment's lookups already know
+  of its support for the target (`package_lookup_cache`, read only). An assembly on the Windows-only list
+  (`backend/app/compatibility/windows_only_assemblies.yaml`, data: the SSIS runtime and the SAP (Sybase) ASE ADO.NET
+  provider to start with) "needs a replacement on Linux: a person decides it before the conversion". Anything else is
+  "unknown: check it builds and loads on Linux".
+
+A reference to a Windows-only assembly raises a catalog item, `windows-only-assembly-reference` (application scope):
+item-detection matches it on a project metadata field, `windowsOnlyAssemblies`, read from the hierarchy (unknown, so not
+checked, for a repository without one). Its default resolution is "Decide the replacement before converting", with no
+engine guidance: the engine is told not to change the reference, and preparation's warning says "no decision recorded;
+a person decides the replacement before the conversion is run" until an engagement decision chooses another resolution
+("Replace it with a library that loads on Linux", "Keep the project on Windows"). The package step does not declare an
+undeclared package from a packages folder: the projects that reference one this way are old-style, which get no package
+step. The engine is told to declare it.
+
+**A conversion with no test project is verified.** The verifier used to fail its "Clean re-run" when in-scope.sln held
+no test project, and the baseline diff then failed for want of results. Now every other check runs and is reported: the
+clean re-run is a gap, "no test project found in in-scope.sln ... Every other check below was run", the first reason
+whatever else is said; the baseline diff and the canary are not applicable. The verdict is at most PARTLY PROVEN.
+
+Rule 20, for each engine:
+
+- **GitHub Copilot**: applied. The scoped outbound sections, the assembly section and the "no instruction yet" wording
+  are in its addendum and decision sheet.
+- **Claude Code**: applied. The same addendum and decision sheet, through the mechanics table
+  (`.claude/conversion/assessment-addendum.md`); nothing here is engine-specific.
+- The preparation warning, the catalog item and the verifier's check are the same for both. The parity test
+  (`tests/test_engine_claude.py`) passes unchanged. Rule 21: no step artifact gains a field or an enum value (the new
+  item is catalog data, and item-detection's metadata evidence already has this shape), so no schema version changes.

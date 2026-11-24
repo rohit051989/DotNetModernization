@@ -514,8 +514,16 @@ shown, and the conversion then says "done with" it. There is no engine to choose
 conversion prepared before both engines says "Prepared for one engine only" and how to add the other (rescan, while it
 has not been run; else start the next conversion). Each conversion lists the untracked files a person left in its
 worktree, which never make it count as run, and says why one counts as run. A preparation that kept a conversion says
-its real cause, with the files behind a details toggle. A repository scanned before results were shared
-says so under its header, with the command its owner runs to copy them.
+its real cause, with the files behind a details toggle. A preparation whose inputs are incomplete (2026-11-24) says so,
+"Inputs incomplete", with each change named behind the details toggle (last-prepare.json's `incomplete`): a change whose
+chosen resolution has no engine guidance, which the engine is told not to make; a default answer that would keep what
+cannot work on the target (packages.config on .NET 5 and later); and the Windows-only assembly item while no decision is
+recorded. A repository scanned before results were shared says so under its header, with the command its owner runs to
+copy them.
+
+The catalog's item and resolution editors have the engine guidance fields (admins only): "What the change is, for the
+conversion engine" on the item, "Instruction for the conversion engine" on each resolution. A save that is not
+self-contained is refused with the reason under the field.
 
 ## Dependencies (repository page): Internal and External
 

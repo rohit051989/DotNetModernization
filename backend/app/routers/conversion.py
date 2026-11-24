@@ -273,6 +273,8 @@ class PrepareAttemptOut(BaseModel):
     message: str | None = None         # a short summary: what was refused, and in how many files
     details: list[str] = []            # the full list behind it
     warnings: PrepareWarningsOut | None = None      # prepared, with secret values named by reference
+    # Prepared, with changes (or a default answer) that have no instruction yet: told not to change them, each named.
+    incomplete: PrepareWarningsOut | None = None
     number: int | None = None
     jobExecutionId: str | None = None
     # A kept conversion's cause: "run" (commits beyond its inputs), "tracked changes" or "collision" (details names

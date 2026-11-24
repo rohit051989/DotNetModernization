@@ -28,6 +28,21 @@ _ITEM_NOT_FOUND = {"model": ErrorResponse, "description": "No catalog item exist
 _INVALID_DETECTION = {"model": ErrorResponse, "description": "The detection fails a Part E rule for this item's scope."}
 
 
+def _check_guidance(db: Session, payload) -> None:
+    """Engine guidance an admin writes reaches a conversion engine that reads only the repository's branch: refused, as a
+    field error, when it names a platform document, path, step or the platform's own ids (the check every generated input
+    passes, app.engine.inputs.selfcontained), rather than refusing every preparation that would use it later."""
+    if "engine_guidance" not in payload.model_fields_set or not (payload.engine_guidance or "").strip():
+        return
+    from app.engine.inputs import selfcontained
+
+    findings = selfcontained.check({"engine_guidance": payload.engine_guidance}, selfcontained.vocabulary(db))
+    if findings:
+        named = "; ".join(f"line {f['line']}: {f['check']} ({f['match']})" for f in findings[:5])
+        raise error(422, f"The engine guidance must be self-contained: the engine reads only the repository's branch. "
+                         f"Found {len(findings)}: {named}.", field="engine_guidance", code="NOT_SELF_CONTAINED")
+
+
 def _now() -> datetime.datetime:
     return datetime.datetime.now(datetime.timezone.utc)
 
@@ -143,6 +158,7 @@ def create_item(payload: item_schemas.CatalogItemCreate, db: Session = Depends(g
     if db.get(models.CatalogItem, payload.id) is not None:
         raise error(409, f"Catalog item '{payload.id}' already exists", code="DUPLICATE_ID")
     detection, warnings = validate_detection(payload.scope, payload.detection, _registered_evidence_kinds(db))
+    _check_guidance(db, payload)
 
     item = models.CatalogItem(id=payload.id, version=1)
     _apply_item_fields(item, payload, detection)
@@ -173,6 +189,7 @@ def update_item(
     db.refresh(item, with_for_update=True)
     versions.check(db, item.edit_version, if_match, "catalog_item", item_id, "this catalog item")
     detection, warnings = validate_detection(payload.scope, payload.detection, _registered_evidence_kinds(db))
+    _check_guidance(db, payload)
     if _apply_item_fields(item, payload, detection):
         item.version += 1
     item.edit_version += 1
@@ -389,6 +406,7 @@ def create_resolution(item_id: str, payload: item_schemas.ResolutionCreate, db: 
         raise error(409, f"Resolution '{payload.id}' already exists", code="DUPLICATE_ID")
     _check_name_unique(db, item_id, payload.id, payload.name)
     _check_default_unique(db, item_id, payload.id, payload.is_default)
+    _check_guidance(db, payload)
     resolution = models.ItemResolution(id=payload.id, item_id=item_id)
     _apply_resolution_fields(resolution, payload)
     # Exactly one default per item: an item's first resolution is its default.
@@ -422,6 +440,7 @@ def update_resolution(
     _check_name_unique(db, item_id, resolution_id, payload.name)
     _check_default_unique(db, item_id, resolution_id, payload.is_default)
     _check_default_stays(db, resolution, unset=not payload.is_default, deactivate=payload.status != "active", remove=False)
+    _check_guidance(db, payload)
     _apply_resolution_fields(resolution, payload)
     item.edit_version += 1
     db.commit()

@@ -2144,3 +2144,51 @@ items:
         effort: low
         impact:
         - {id: version, from: seed, traverse: version_declaration, action: update, reason: "The version is edited where it is declared: the project file, Directory.Packages.props, or the property it names"}
+
+  # Raised from dependency-hierarchy's assembly references, not a signal: a project that references by path (a HintPath,
+  # or the GAC) an assembly that only loads on Windows (backend/app/compatibility/windows_only_assemblies.yaml). The
+  # replacement is a person's decision, made before the conversion, never the engine's during it: the default is to
+  # decide, and it has no engine guidance, so the engine is told not to change the reference and preparation warns
+  # until a decision is recorded (36-COPILOT-ENHANCED-CONVERSION "Assembly references no package declares").
+  - id: windows-only-assembly-reference
+    name: "Reference to an assembly that only loads on Windows"
+    scope: application
+    category: dependencies
+    description: >-
+      The project references by path, rather than through a NuGet package, an
+      assembly that only loads on Windows or on .NET Framework, such as a
+      database provider with native Windows libraries or the SSIS runtime.
+      It will not load in a Linux container, and the build or the first run
+      is where the engine would find out. Which replacement to adopt, or
+      whether the project stays on Windows, is decided before the conversion.
+    excluded_roles: [TEST, DEPLOYMENT, DATABASE]
+    detection:
+      match:
+        metadata:
+          - id: references-windows-only-assembly
+            field: windowsOnlyAssemblies
+            regex: ".+"
+    resolutions:
+      - id: decide-windows-only-replacement
+        name: "Decide the replacement before converting"
+        description: "Nobody has decided yet: the conversion leaves the reference as it is, and a person records the replacement as a decision before running it."
+        target_description: "A recorded decision naming the replacement"
+        consumer_impact: none
+        effort: low
+        is_default: true
+        linux_compatible: false
+        container_ready: false
+      - id: replace-windows-only-assembly
+        name: "Replace it with a library that loads on Linux"
+        description: "Use a cross-platform library or service in its place; the decision names which."
+        target_description: "A cross-platform library, declared as a package"
+        consumer_impact: medium
+        effort: high
+      - id: keep-project-on-windows
+        name: "Keep the project on Windows"
+        description: "Leave the project out of the Linux conversion: it keeps running where the assembly loads."
+        target_description: "The project outside the conversion's scope, on its Windows host"
+        consumer_impact: none
+        effort: low
+        linux_compatible: false
+        container_ready: false

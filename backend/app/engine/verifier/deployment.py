@@ -16,7 +16,10 @@ Each occurrence removed this way is listed as "carried by a deployment file", wi
 import re
 from pathlib import Path
 
+from app.engine.paths import restored_package
+
 YAML_SUFFIXES = (".yaml", ".yml")
+# Build output and tooling; a restored package folder (packages/<id>.<version>/) is skipped too: a package's files.
 SKIP_DIRS = {".git", "bin", "obj", "node_modules"}
 CRONJOB = re.compile(r"^\s*kind:\s*[\"']?CronJob[\"']?\s*$", re.MULTILINE)
 VAULT_VALUE = re.compile(r"[\"']vault:([^\"']+)[\"']")
@@ -27,7 +30,8 @@ def _files(root: Path, suffixes: tuple[str, ...] | None = None) -> dict[str, str
     out = {}
     for f in sorted(root.rglob("*")):
         rel = f.relative_to(root)
-        if not f.is_file() or SKIP_DIRS & set(rel.parts[:-1]) or (suffixes and not f.name.lower().endswith(suffixes)):
+        if (not f.is_file() or SKIP_DIRS & set(rel.parts[:-1]) or restored_package(rel.as_posix())
+                or (suffixes and not f.name.lower().endswith(suffixes))):
             continue
         try:
             out[rel.as_posix()] = f.read_text(encoding="utf-8-sig", errors="replace")

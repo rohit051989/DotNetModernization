@@ -53,6 +53,23 @@ describe('the last preparation', () => {
     expect(screen.getByTestId('preparation-warning').textContent).toContain('2 secret value(s) named by file, key and line')
     expect(screen.queryByTestId('preparation-failed')).toBeNull()
   })
+
+  it('says the inputs are incomplete, naming each change without an instruction', async () => {
+    await show({ at: null, status: 'prepared', message: 'conversion 1 prepared', number: 1, jobExecutionId: null,
+      incomplete: { summary: '2 change(s) have no instruction yet: the engine does not make them',
+        details: ['SSIS package: C# worker (chosen) has no instruction yet; the engine is told not to change it',
+          'Package management (Central Package Management): no instruction yet (missing guidance)'] } })
+    const note = screen.getByTestId('inputs-incomplete')
+    expect(note.textContent).toContain('Inputs incomplete')
+    expect(note.textContent).toContain('2 change(s) have no instruction yet')
+    expect(note.querySelectorAll('li')).toHaveLength(2)
+    expect(note.textContent).toContain('SSIS package: C# worker (chosen) has no instruction yet')
+  })
+
+  it('a preparation with complete inputs says nothing about them', async () => {
+    await show({ at: null, status: 'prepared', message: 'conversion 1 prepared', number: 1, jobExecutionId: null })
+    expect(screen.queryByTestId('inputs-incomplete')).toBeNull()
+  })
 })
 
 describe('beside Start the next conversion', () => {

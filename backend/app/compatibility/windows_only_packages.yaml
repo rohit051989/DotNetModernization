@@ -47,6 +47,7 @@ treatments:
   wcf-service-host: blocker
   wcf-iis-servicemodel: blocker
   wcf-nettcp-client: blocker
+  windows-only-assembly-reference: blocker
   # container
   container-fixed-user-writable-path: container
   container-privileged-port: container

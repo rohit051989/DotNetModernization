@@ -55,6 +55,103 @@ def _lines(evidence: list | None) -> list[dict]:
 
 KEEP_VAULT_DELIVERY = "keep-existing-vault-delivery"
 
+# solution-discovery's project_format, in the engine's words.
+PROJECT_FORMAT = {"legacy_msbuild": "old-style", "sdk_style": "SDK-style", "unknown": "unknown"}
+
+
+def _in_scope_entry(project: str, bindings: list | None, sites: list | None, in_scope, excluded: set) -> tuple[bool, list]:
+    """(keep the outbound entry, its in-scope bindings). A binding counts where its configuration file is in scope, a
+    call site where its source file is; one with no file belongs to the entry's project. An entry is kept when it has an
+    in-scope binding or an in-scope call site (related issue 3: a descoped repository's addendum listed configuration
+    files of dozens of projects outside the scope)."""
+    def owned(entry: dict) -> bool:
+        path = (entry or {}).get("sourceFile")
+        return in_scope(path) if path else project not in excluded
+    kept = [b for b in bindings or [] if owned(b)]
+    calls = [s for s in sites or [] if owned(s)]
+    if not bindings and not sites:
+        return project not in excluded, kept
+    return bool(kept or calls), kept
+
+
+def assembly_references(db: Session, repository_id, excluded: set, declared: dict[str, set], target: str | None) -> list[dict]:
+    """The in-scope projects' assembly references that no declared package stands for (dependency-hierarchy's
+    assembly_reference edges; a framework assembly is the target framework's own and not listed). Each: {project, name,
+    version, kind, path, exists, package, verdict, why, lookup}. `kind`: "packages folder" (a HintPath into
+    packages/<id>.<version>/: that NuGet package, not declared), "repository" (a DLL in the repository), "GAC", or
+    "outside the repository". `verdict`: "package" (look it up and declare it as that package), "windows-only" (needs a
+    replacement on Linux: compatibility/windows_only_assemblies.yaml) or "unknown" (check it builds and loads on Linux)."""
+    from app.compatibility import assemblies
+
+    rows = db.execute(text("""
+        SELECT p.relative_path, a.name, a.detail->'assembly'->>'version', a.detail->'assembly'->>'location',
+               a.detail->'assembly'->>'path', a.detail->'assembly'->>'exists'
+        FROM hierarchy_edges e
+        JOIN hierarchy_nodes pn ON pn.repository_id = e.repository_id AND pn.node_id = e.from_node AND pn.node_type = 'project'
+        JOIN projects p ON p.id = pn.project_id
+        JOIN hierarchy_nodes a ON a.repository_id = e.repository_id AND a.node_id = e.to_node AND a.node_type = 'assembly'
+        WHERE e.repository_id = :r AND e.kind = 'assembly_reference'
+        ORDER BY p.relative_path, a.name"""), {"r": repository_id}).all()
+    out = []
+    for project, name, version, location, path, exists in rows:
+        if project in excluded or location == "framework":
+            continue
+        package = paths_restored_package(path)
+        if package and package[0].lower() in declared.get(project, set()):
+            continue                                    # the declared package stands for it
+        windows = assemblies.windows_only(name)
+        if package:
+            kind, verdict = "packages folder", "package"
+            why = f"the NuGet package {package[0]} {package[1]}, referenced by path but not declared"
+        else:
+            kind = {"repository": "repository", "gac": "GAC", "outside_repository": "outside the repository"}.get(
+                location or "", location or "unknown")
+            verdict, why = ("windows-only", windows) if windows else ("unknown", None)
+        if package and windows:
+            verdict, why = "windows-only", f"{why}; {windows}"
+        out.append({"project": project, "name": name, "version": version, "kind": kind, "path": path,
+                    "exists": None if exists is None else exists == "true",
+                    "package": {"id": package[0], "version": package[1]} if package else None,
+                    "verdict": verdict, "why": why,
+                    "lookup": _lookup(db, package[0], package[1], target) if package else None})
+    return out
+
+
+def paths_restored_package(path: str | None) -> tuple[str, str] | None:
+    from app.engine import paths
+    return paths.restored_package(path)
+
+
+def _lookup(db: Session, package_id: str, version: str, target: str | None) -> dict:
+    """What dependency-assessment's lookups already know of an undeclared package (package_lookup_cache, every feed):
+    {known, current_supported, newest_supporting}. Read only: nothing is fetched here, so a package no scan looked up
+    is `known: False`, and declaring it lets the next scan assess it."""
+    from app.conversion import frameworks
+
+    rows = db.execute(text("SELECT versions, metadata FROM package_lookup_cache WHERE lower(package_id) = lower(:p)"),
+                      {"p": package_id}).all()
+    if not rows or not target:
+        return {"known": bool(rows), "current_supported": None, "newest_supporting": None}
+    metadata: dict = {}
+    for _, meta in rows:
+        for v, m in (meta or {}).items():
+            metadata.setdefault(v, m)
+
+    def supported(v: str):
+        try:
+            return frameworks.supports(metadata.get(v) or {}, target).supported if v in metadata else None
+        except ValueError:
+            return None
+    candidates = sorted((v for v in metadata if supported(v)), key=_version_key)
+    return {"known": True, "current_supported": supported(version),
+            "newest_supporting": candidates[-1] if candidates else None}
+
+
+def _version_key(version: str) -> tuple:
+    core, _, pre = version.partition("-")
+    parts = [int(x) if x.isdigit() else 0 for x in core.split(".")]
+    return (*parts, *([0] * (4 - len(parts))), pre == "", pre)
+
 
 def _repository_files(repository: models.Repository) -> list[str]:
     import subprocess
@@ -67,7 +164,8 @@ def _repository_files(repository: models.Repository) -> list[str]:
 
 def collect(db: Session, repository: models.Repository) -> dict:
     """The model. A project left out of the conversion's scope (app.scope, Part O) is not in it: not its findings, its
-    packages, its framework deltas nor its tests. `scope` says which were left out and the solution that builds the rest."""
+    packages, its framework deltas, its tests, its outbound and SOAP entries' configuration files nor its assembly
+    references. `scope` says which were left out and the solution that builds the rest."""
     from app.scope import service as scope_service
 
     engagement = db.get(models.Engagement, repository.engagement_id)
@@ -77,9 +175,15 @@ def collect(db: Session, repository: models.Repository) -> dict:
     every = db.execute(text("SELECT relative_path FROM projects WHERE repository_id = :r"), {"r": r}).scalars().all()
     in_scope = lambda path: not excluded or scope_service.owner(path, every) not in excluded   # noqa: E731
 
-    projects = [dict(path=p, framework=f) for p, f in db.execute(text("""
-        SELECT relative_path, target_framework_raw FROM projects WHERE repository_id = :r ORDER BY relative_path"""), {"r": r})
-        if p not in excluded]
+    # Each in-scope project's format (old-style or SDK-style) and whether it manages packages with packages.config, as
+    # solution-discovery recorded them: the addendum states both, and a packages.config project heading to .NET 5 and
+    # later makes "keep the current package arrangement" a default that cannot work (render.upgrade_options).
+    projects = [dict(path=p, framework=f, format=PROJECT_FORMAT.get(fmt, "unknown"), packages_config=bool(pc))
+                for p, f, fmt, pc in db.execute(text("""
+        SELECT relative_path, target_framework_raw, project_format,
+               has_packages_config OR package_management_style IN ('packages_config', 'mixed') FROM projects
+        WHERE repository_id = :r ORDER BY relative_path"""), {"r": r})
+                if p not in excluded]
     current = sorted({p["framework"] for p in projects if p["framework"]})
 
     # An item the engagement decided is not applicable (app.items.applicability) is no work: nothing about it goes into
@@ -176,12 +280,19 @@ def collect(db: Session, repository: models.Repository) -> dict:
             deltas.append({"id": delta["id"], "symptom": delta.get("symptom"), "description": delta["description"],
                            "fix": (delta.get("fix") or {}).get("basis"), "sites": {k: sorted(v) for k, v in sorted(sites.items())}})
 
-    # Names, key paths and verdicts only: never a value (a binding's deploy parameter is recorded as present).
+    # Names, key paths and verdicts only: never a value (a binding's deploy parameter is recorded as present). Only what
+    # is in the conversion's scope: a binding in an in-scope configuration file, an entry with an in-scope binding or
+    # call site (_in_scope_entry); the Windows-only, deploy parameter and SOAP sections all read these.
     outbound = []
-    for m, h, lv, rv, rs, bindings in db.execute(text("""
-            SELECT mechanism, endpoint_host, linux_verdict, runtime_verdict, linux_reasons, environment_bindings
-            FROM outbound_invocations WHERE repository_id = :r AND usage = 'used' AND linux_verdict <> 'compatible'
-            ORDER BY mechanism, endpoint_host NULLS LAST, linux_verdict"""), {"r": r}):
+    for m, h, lv, rv, rs, every_binding, project, sites in db.execute(text("""
+            SELECT o.mechanism, o.endpoint_host, o.linux_verdict, o.runtime_verdict, o.linux_reasons, o.environment_bindings,
+                   p.relative_path, o.call_sites
+            FROM outbound_invocations o JOIN projects p ON p.id = o.project_id
+            WHERE o.repository_id = :r AND o.usage = 'used' AND o.linux_verdict <> 'compatible'
+            ORDER BY o.mechanism, o.endpoint_host NULLS LAST, o.linux_verdict"""), {"r": r}):
+        keep, bindings = _in_scope_entry(project, every_binding, sites, in_scope, excluded)
+        if not keep:
+            continue
         entry = dict(mechanism=m, host=h, linux=lv, runtime=rv, reasons=sorted(rs or []), bindings=sorted(
             ({"environment": b.get("environment"), "file": b.get("sourceFile"), "key": b.get("keyPath"),
               "linux": b.get("linuxVerdict"), "deploy_parameter": b.get("deployParameter") is not None}
@@ -189,14 +300,27 @@ def collect(db: Session, repository: models.Repository) -> dict:
         if entry not in outbound:
             outbound.append(entry)
     soap = []
-    for h, rv, lv, bindings in db.execute(text("""
-            SELECT endpoint_host, runtime_verdict, linux_verdict, environment_bindings FROM outbound_invocations
-            WHERE repository_id = :r AND runtime_verdict IS NOT NULL ORDER BY endpoint_host NULLS LAST"""), {"r": r}):
+    for h, rv, lv, every_binding, project, sites in db.execute(text("""
+            SELECT o.endpoint_host, o.runtime_verdict, o.linux_verdict, o.environment_bindings, p.relative_path, o.call_sites
+            FROM outbound_invocations o JOIN projects p ON p.id = o.project_id
+            WHERE o.repository_id = :r AND o.runtime_verdict IS NOT NULL ORDER BY o.endpoint_host NULLS LAST"""), {"r": r}):
+        keep, bindings = _in_scope_entry(project, every_binding, sites, in_scope, excluded)
+        if not keep:
+            continue
         security = sorted({(s.get("binding"), s.get("securityMode"), s.get("clientCredentialType"))
                            for s in ((b or {}).get("soap") for b in bindings or []) if s}, key=lambda x: tuple(v or "" for v in x))
         entry = dict(host=h, runtime=rv, linux=lv, security=[list(x) for x in security])
         if entry not in soap:
             soap.append(entry)
+
+    # Assembly references no declared package stands for (related issue 2): old-style projects reference most third-party
+    # code by HintPath, which no package assessment sees.
+    declared: dict[str, set] = {}
+    for project, package in db.execute(text("""
+            SELECT p.relative_path, lower(pp.package_name) FROM project_packages pp JOIN projects p ON p.id = pp.project_id
+            WHERE p.repository_id = :r"""), {"r": r}):
+        declared.setdefault(project, set()).add(package)
+    references = assembly_references(db, r, excluded, declared, to_tfm)
 
     # The platform's own vocabulary, which no generated file may contain (selfcontained.py).
     from app.engine.inputs import selfcontained
@@ -213,7 +337,7 @@ def collect(db: Session, repository: models.Repository) -> dict:
         "repository": {"slug": repository.slug, "commit": repository.ingest_commit_sha},
         "projects": projects, "current_frameworks": current,
         "items": items, "packages": packages, "couplings": couplings, "version_drift": sorted(set(drift)), "deltas": deltas,
-        "outbound": outbound, "soap": soap, "vocabulary": vocabulary,
+        "outbound": outbound, "soap": soap, "vocabulary": vocabulary, "assembly_references": references,
         # Items decided not applicable, with their findings: read by the verifier only (rediscovery), never rendered.
         "not_applicable": [{"id": item_id, "occurrences": found} for item_id, found in sorted(set_aside.items())],
         # Part O: the projects left out ({path, name}), and when there are any, who left them out, when and why, named

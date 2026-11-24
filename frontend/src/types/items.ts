@@ -139,6 +139,8 @@ export interface CatalogItem {
   edit_version: number
   owner_team: string | null
   status: ItemStatus
+  /** Engine-facing guidance: what the change is and why, for a conversion engine. Never shown to it otherwise. */
+  engine_guidance?: string | null
   deleted_at: string | null
   deleted_by: string | null
   created_at: string
@@ -154,6 +156,7 @@ export interface CatalogItemWriteInput {
   excluded_roles: ProjectRole[]
   owner_team: string | null
   status: ItemStatus
+  engine_guidance?: string | null
 }
 
 export interface CatalogItemCreateInput extends CatalogItemWriteInput {
@@ -185,6 +188,8 @@ export interface ItemResolution {
   container_ready: boolean
   /** Changes the design or the architecture: a conversion's engine asks the developer how to implement it first. */
   confirm_design?: boolean
+  /** Engine-facing guidance: what a conversion engine does to apply this resolution. None: it is not applied. */
+  engine_guidance?: string | null
   notes: string | null
   status: ItemStatus
   deleted_at: string | null
@@ -215,6 +220,7 @@ export interface ResolutionWriteInput {
   linux_compatible: boolean
   container_ready: boolean
   confirm_design?: boolean
+  engine_guidance?: string | null
   notes: string | null
   status: ItemStatus
 }

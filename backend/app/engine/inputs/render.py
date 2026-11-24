@@ -37,7 +37,13 @@ TEMPLATES = Path(__file__).resolve().parent / "templates"
 ADDENDUM_START = "<!-- platform-assessment-addendum:start -->"
 ADDENDUM_END = "<!-- platform-assessment-addendum:end -->"
 MAX_LIST = 200
-NO_GUIDANCE = "no conversion guidance is written for this change yet"
+# A change, or a default answer, with no instruction yet. Never "leave unchanged": that would be an instruction, and a
+# wrong one for a change a person decided to make. The engine does not change it; a person supplies the instruction.
+NO_GUIDANCE = "no instruction is written for this change yet: do not change it; a person supplies the instruction"
+NO_INSTRUCTION = "no instruction yet: do not change; a person supplies it"
+# Items whose default is to decide: a person answers them before the conversion (catalog: windows-only-assembly-reference,
+# raised from an assembly reference that only loads on Windows). Undecided, preparation's warning says so.
+DECIDE_FIRST = {"windows-only-assembly-reference"}
 
 RESOLUTION_NEEDS = yaml.safe_load((Path(__file__).resolve().parent / "resolution_parameters.yaml").read_text(encoding="utf-8"))
 
@@ -126,17 +132,58 @@ def plan_item(item: dict) -> dict:
 
 
 def without_guidance(model: dict) -> list[dict]:
-    """Detected changes missing engine-facing guidance, for the person preparing the inputs: {item, resolution,
-    missing}. `item`: emitted from the resolution's guidance alone. `resolution`: not emitted; its places are listed
-    to leave unchanged."""
+    """What is missing engine-facing guidance, for the person preparing the inputs: {item, resolution, missing, change,
+    approach, decided}. `item`: emitted from the resolution's guidance alone. `resolution`: not emitted; the engine is
+    told not to change its places, and a person supplies the instruction. `default`: a default answer of the decision
+    sheet that would keep something that cannot work on the target (`item` and `resolution` None; `why` says what)."""
     out = []
     for item in model["items"]:
         res = item["resolution"]
+        named = {"change": item["name"], "approach": res["name"] if res else None, "decided": bool(item.get("decided"))}
         if res is not None and not res.get("guidance"):
-            out.append({"item": item["id"], "resolution": res["id"], "missing": "resolution"})
+            out.append({"item": item["id"], "resolution": res["id"], "missing": "resolution", **named})
         elif not item.get("guidance"):
-            out.append({"item": item["id"], "resolution": res["id"] if res else None, "missing": "item"})
+            out.append({"item": item["id"], "resolution": res["id"] if res else None, "missing": "item", **named})
+    for option in upgrade_options(model):
+        if option.get("missing"):
+            out.append({"item": None, "resolution": None, "missing": "default", "change": option["question"],
+                        "approach": option["answer"], "decided": False, "why": option["source"]})
     return out
+
+
+def incomplete(model_or_missing) -> dict | None:
+    """{summary, details} for preparation's record and the Conversion tab when the inputs are incomplete: every change
+    whose approach has no instruction (the engine is told not to change it), and every default answer that would keep
+    what cannot work on the target. None when nothing is missing. Takes the model, or without_guidance's list."""
+    missing = model_or_missing if isinstance(model_or_missing, list) else without_guidance(model_or_missing)
+    gaps = [m for m in missing if m["missing"] in ("resolution", "default")]
+    if not gaps:
+        return None
+    details = []
+    for m in gaps:
+        if m["missing"] == "default":
+            details.append(f"{m['change']}: no instruction yet ({m['why']})")
+        elif m["item"] in DECIDE_FIRST and not m["decided"]:
+            details.append(f"{m['change']}: no decision recorded; a person decides the replacement before the conversion "
+                           "is run, and the engine is told not to change it")
+        else:
+            details.append(f"{m['change']}: {m['approach']} ({'chosen' if m['decided'] else 'default'}) has no instruction "
+                           "yet; the engine is told not to change it")
+    return {"summary": f"{len(gaps)} change(s) have no instruction yet: the engine does not make them, and a person "
+                       "supplies the instruction (the catalog's engine guidance) before the conversion is run",
+            "details": details}
+
+
+def _keeps_packages_config(model: dict) -> list[str]:
+    """The in-scope projects that manage packages with packages.config while the target is .NET (5 and later), which
+    cannot restore them: keeping the arrangement cannot work there."""
+    from app.conversion import frameworks
+
+    try:
+        modern = frameworks._parse(model["engagement"]["target_framework"] or "")[0] == "netcore"
+    except ValueError:
+        modern = False
+    return [p["path"] for p in model["projects"] if modern and p.get("packages_config")]
 
 
 def deployment_parameters(model: dict) -> list[dict]:
@@ -204,6 +251,13 @@ def upgrade_options(model: dict) -> list[dict]:
     frameworks = model["current_frameworks"]
     projects = [p for p in model["projects"] if p["framework"]]
     lift = eng["posture"] == "lift-and-shift"
+    packages_config = _keeps_packages_config(model)
+    packages = ({"question": "Package management (Central Package Management)", "answer": NO_INSTRUCTION.capitalize(),
+                 "source": f"missing guidance: {len(packages_config)} project(s) use packages.config, which "
+                           f"{eng['target_framework']} cannot restore, so keeping the current arrangement cannot work",
+                 "presumptive": True, "missing": True} if packages_config else
+                {"question": "Package management (Central Package Management)", "answer": "Keep the current arrangement",
+                 "source": "default: no instruction changes how packages are managed", "presumptive": True})
     return [
         {"question": "Target framework", "answer": eng["target_framework"],
          "source": "the target framework of this upgrade", "presumptive": False},
@@ -218,8 +272,7 @@ def upgrade_options(model: dict) -> list[dict]:
          "answer": "None beyond what the instructions require: keep the current technologies" if lift
          else "As the instructions require",
          "source": f"the {eng['posture']} approach", "presumptive": True},
-        {"question": "Package management (Central Package Management)", "answer": "Keep the current arrangement",
-         "source": "default: no instruction changes how packages are managed", "presumptive": True},
+        packages,
         {"question": "Compatibility handling (unsupported APIs and packages)",
          "answer": "As each instruction says (decision sheet, Changes)",
          "source": "the approach chosen for each change, or its default", "presumptive": True},
@@ -280,7 +333,10 @@ def concerned_files(model: dict, item: dict) -> list[str]:
     if left:
         every = [p["path"] for p in model.get("projects") or []] + sorted(left)
         wanted = {f for f in wanted if _owner(f, every) not in left}
-    return sorted(f for f in wanted & existing if not paths.is_under(f, paths.GENERATED_INPUT_PATHS))
+    # Never a file in a restored package folder (packages/<id>.<version>/): a package's own scripts are not the
+    # repository's build files (related issue 3: vendored tools/*.ps1 were listed under a work item).
+    return sorted(f for f in wanted & existing
+                  if not paths.is_under(f, paths.GENERATED_INPUT_PATHS) and not paths.restored_package(f))
 
 
 def _owner(path: str, projects: list[str]) -> str | None:
@@ -466,11 +522,14 @@ def addendum(model: dict) -> str:
     out += ["## Changes required", "", "| Change | Approach | Instruction | Places | Files changed |", "|---|---|---|---|---|"]
     for item in model["items"]:
         res = item["resolution"]
-        instruction = f"`{skill_name(res['id'])}`" if res is not None and res.get("guidance") else "none: leave unchanged"
+        instruction = f"`{skill_name(res['id'])}`" if res is not None and res.get("guidance") else NO_INSTRUCTION
         out.append(f"| {_md(item['name'])} | {_md(res['name'] if res else 'none')} | {instruction} | "
                    f"{sum(max(1, len(o['lines'])) for o in item['occurrences'])} | {len(item['impact'])} |")
     out += ["", "Each change with an instruction has a custom upgrade instruction under `.github/upgrades/skills/`, "
             "named in the table."]
+    if any(not (i["resolution"] or {}).get("guidance") for i in model["items"]):
+        out += ["", f"A change marked \"{NO_INSTRUCTION}\" has no instruction yet. Do not make it, and do not choose an "
+                "approach for it yourself: its places stay as they are until a person supplies the instruction."]
     scope = model.get("scope") or {}
     if scope.get("excluded"):
         out += ["", "## Conversion scope", "",
@@ -568,8 +627,56 @@ def addendum(model: dict) -> str:
                 "between two transitive pins (NU1107) is not visible here and appears only at restore."]
     else:
         out.append("No package upgrade is recommended.")
+    out += assembly_section(model)
     out += ["", ADDENDUM_END, ""]
     return "\n".join(out)
+
+
+ASSEMBLY_HEADING = "## Assembly references no package declares"
+ASSEMBLY_VERDICT = {
+    "package": "a NuGet package referenced by path: declare it as a package reference",
+    "windows-only": "needs a replacement on Linux: a person decides it before the conversion; do not replace it yourself",
+    "unknown": "unknown: check it builds and loads on Linux",
+}
+
+
+def assembly_section(model: dict) -> list[str]:
+    """The addendum's section on the in-scope projects (format, packages.config) and their assembly references that no
+    declared package stands for, each with its verdict (related issue 2). The same for both engines."""
+    projects = [p for p in model["projects"] if p.get("format")]
+    references = model.get("assembly_references") or []
+    out = ["", ASSEMBLY_HEADING, ""]
+    if projects:
+        out += ["The projects in scope, as their project files declare them. An old-style project is converted to the SDK "
+                "style before it can target the new framework; packages.config is not restored there.", "",
+                "| Project | Format | packages.config |", "|---|---|---|"]
+        out += [f"| `{_md(p['path'])}` | {p['format']} | {'yes' if p.get('packages_config') else 'no'} |"
+                for p in projects[:MAX_LIST]]
+        out.append("")
+    if not references:
+        out.append("No in-scope project references an assembly by path that a declared package does not stand for.")
+        return out
+    out += ["References to a DLL (a HintPath, or the GAC) that no declared package stands for. No package assessment sees "
+            "them, so each is judged here:", "",
+            "| Project | Assembly | Version | Where | File exists | Verdict |", "|---|---|---|---|---|---|"]
+    for a in references[:MAX_LIST]:
+        where = a["kind"] + (f": `{_md(a['path'])}`" if a.get("path") else "")
+        verdict = ASSEMBLY_VERDICT[a["verdict"]]
+        if a["verdict"] == "package":
+            look = a.get("lookup") or {}
+            pkg = a["package"]
+            verdict += (f" `{pkg['id']}`; {look['newest_supporting']} is the newest version known to support "
+                        f"{model['engagement']['target_framework']}" if look.get("newest_supporting") else
+                        f" `{pkg['id']}`; no version known to support {model['engagement']['target_framework']} yet: "
+                        "check its support before declaring it")
+        if a.get("why") and a["verdict"] != "package":
+            verdict += f" ({a['why']})"
+        exists = "-" if a.get("exists") is None else "yes" if a["exists"] else "no"
+        out.append(f"| `{_md(a['project'])}` | {_md(a['name'])} | {_md(a.get('version') or '-')} | {_md(where)} | "
+                   f"{exists} | {_md(verdict)} |")
+    if len(references) > MAX_LIST:
+        out.append(f"| ... and {len(references) - MAX_LIST} more | | | | | |")
+    return out
 
 
 def decision_sheet(model: dict) -> str:
@@ -581,7 +688,8 @@ def decision_sheet(model: dict) -> str:
            f"approach: {eng['posture']}.", "", "## Upgrade options", "",
            "| Question | Answer | Source | Status |", "|---|---|---|---|"]
     for o in upgrade_options(model):
-        out.append(f"| {_md(o['question'])} | {_md(o['answer'])} | {_md(o['source'])} | {_status(not o['presumptive'])} |")
+        status = "no instruction yet" if o.get("missing") else _status(not o["presumptive"])
+        out.append(f"| {_md(o['question'])} | {_md(o['answer'])} | {_md(o['source'])} | {status} |")
     out += ["", "## Changes", "", "| Change | Approach | Status | Other approaches |", "|---|---|---|---|"]
     for item in model["items"]:
         res = item["resolution"]

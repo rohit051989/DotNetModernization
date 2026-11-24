@@ -22,6 +22,8 @@ Claude Code's (Part Q; app.engine.inputs.claude says where each goes and why): `
 state, excluded from comparison as `.github/upgrades/` is.
 """
 
+import re
+
 COPILOT_INSTRUCTIONS = ".github/copilot-instructions.md"
 SKILLS_DIR = ".github/skills"
 UPGRADE_SKILLS_DIR = ".github/upgrades/skills"
@@ -70,6 +72,21 @@ def work_item_name(path: str) -> str:
     """A work item's name from its file: `applying-x` for both engines' files."""
     parts = path.replace("\\", "/").split("/")
     return parts[-2] if parts[-1] == "SKILL.md" else parts[-1].rsplit(".", 1)[0]
+
+
+# A restored NuGet package's folder, as packages.config restores them: packages/<id>.<version>/ at any level. Its files
+# are a package's, not the repository's own: no instruction names one, and the engine is never sent into one.
+_RESTORED_PACKAGE = re.compile(r"(?:^|/)packages/(?P<id>[A-Za-z0-9_.-]+?)\.(?P<version>\d+(?:\.\d+){1,3}(?:-[0-9A-Za-z.-]+)?)/",
+                               re.IGNORECASE)
+
+
+def restored_package(path: str | None) -> tuple[str, str] | None:
+    """(package id, version) when the repository-relative `path` lies in a restored package folder
+    (`packages/Newtonsoft.Json.13.0.3/lib/net45/Newtonsoft.Json.dll`, `../packages/...` from a HintPath), else None."""
+    if not path:
+        return None
+    m = _RESTORED_PACKAGE.search(path.replace("\\", "/"))
+    return (m["id"], m["version"]) if m else None
 
 
 def is_under(path: str, prefixes: tuple[str, ...]) -> bool:

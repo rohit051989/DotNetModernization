@@ -13,8 +13,10 @@ SKIP_DIR_NAMES = {".git", "node_modules", "bin", "obj", "packages"}
 
 def walk_files(root: Path):
     """Yields every file under `root`, pruning SKIP_DIR_NAMES from traversal
-    entirely (not just excluding them from the results)."""
+    entirely (not just excluding them from the results). Folder names compare
+    case-insensitively, as the C# steps' walk does (FileSystemWalk): a restored
+    `Packages\\` folder on Windows is skipped like `packages\\`."""
     for current_root, dirs, files in os.walk(root):
-        dirs[:] = [d for d in dirs if d not in SKIP_DIR_NAMES]
+        dirs[:] = [d for d in dirs if d.lower() not in SKIP_DIR_NAMES]
         for filename in files:
             yield Path(current_root) / filename

@@ -182,10 +182,14 @@ def build_both(model: dict, repository_root: Path | None, warnings: list | None 
 
 
 def generate_both(db, engagement_id: str, slug: str, out: Path, applied: list[dict] | None = None,
-                  warnings: list | None = None) -> tuple[dict[str, dict[str, str]], dict[str, str]]:
-    """Writes both engines' inputs into `out`, from one model (build_both)."""
+                  warnings: list | None = None, unguided: list | None = None
+                  ) -> tuple[dict[str, dict[str, str]], dict[str, str]]:
+    """Writes both engines' inputs into `out`, from one model (build_both). `unguided`, when given, receives what has
+    no engine-facing guidance (render.without_guidance), the same for both engines."""
     model, repository = model_for(db, engagement_id, slug, applied)
     files, missing = build_both(model, Path(repository.local_path), warnings)
+    if unguided is not None:
+        unguided.extend(rendering.without_guidance(model))
     for engine_files in files.values():
         write(engine_files, out)
     return files, missing

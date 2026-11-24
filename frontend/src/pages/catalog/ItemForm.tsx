@@ -40,6 +40,7 @@ interface FormState {
   status: ItemStatus
   owner_team: string
   excluded_roles: ProjectRole[]
+  engine_guidance: string
   matchText: string
   occurrenceSignal: string
   groupBy: OccurrenceGroupBy
@@ -55,6 +56,7 @@ function toFormState(item?: CatalogItem): FormState {
     status: item?.status ?? 'active',
     owner_team: item?.owner_team ?? '',
     excluded_roles: (item?.excluded_roles ?? []) as ProjectRole[],
+    engine_guidance: item?.engine_guidance ?? '',
     matchText: JSON.stringify(compactMatch(item?.detection.match), null, 2),
     occurrenceSignal: item?.detection.occurrence_source?.signal ?? '',
     groupBy: item?.detection.occurrence_source?.group_by ?? 'source_path',
@@ -146,7 +148,8 @@ export function ItemForm({ mode, item, onClose, onSaved }: ItemFormProps) {
       .join(' ') || undefined
   const occurrenceErrors = errorsFor('detection.occurrence_source')
   const matchErrors = errorsFor('detection').filter((e) => !e.field.startsWith('detection.occurrence_source'))
-  const knownPrefixes = ['id', 'name', 'description', 'scope', 'category', 'status', 'owner_team', 'excluded_roles', 'detection']
+  const knownPrefixes = ['id', 'name', 'description', 'scope', 'category', 'status', 'owner_team', 'excluded_roles', 'detection',
+    'engine_guidance']
   const otherErrors = fieldErrors.filter(
     (e) => !knownPrefixes.some((prefix) => e.field === prefix || e.field.startsWith(`${prefix}.`)),
   )
@@ -174,6 +177,7 @@ export function ItemForm({ mode, item, onClose, onSaved }: ItemFormProps) {
       excluded_roles: form.excluded_roles,
       owner_team: form.owner_team.trim() || null,
       status: form.status,
+      engine_guidance: form.engine_guidance.trim() || null,
     }
     try {
       const result =
@@ -249,6 +253,21 @@ export function ItemForm({ mode, item, onClose, onSaved }: ItemFormProps) {
                 rows={3}
                 className={inputClass(!!firstError('description'))}
               />
+            </Field>
+
+            <Field label="What the change is, for the conversion engine (engine guidance)" error={firstError('engine_guidance')}>
+              <textarea
+                value={form.engine_guidance}
+                onChange={(e) => update('engine_guidance', e.target.value)}
+                rows={5}
+                aria-label="What the change is, for the conversion engine (engine guidance)"
+                aria-describedby="item-engine-guidance-help"
+                className={`${inputClass(!!firstError('engine_guidance'))} font-mono text-xs`}
+              />
+              <span id="item-engine-guidance-help" className="mt-1 block text-xs text-neutral-500">
+                What the change is and why, self-contained: the engine reads only the repository's branch, so name no
+                platform document, step or path. What to do goes in each resolution's own instruction.
+              </span>
             </Field>
 
             <div className="grid grid-cols-2 gap-3">
