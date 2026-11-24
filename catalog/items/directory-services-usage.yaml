@@ -32,7 +32,8 @@ resolutions:
   notes: null
   status: active
   target_description: .NET on Windows Server
-- consumer_impact: medium
+- confirm_design: true
+  consumer_impact: medium
   container_ready: true
   deleted: false
   derivations: []

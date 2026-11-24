@@ -13,7 +13,7 @@ a **new** Copilot chat thread. Send this message exactly as written. Do not add 
 ```text
 ${opening}
 ```
-
+${design_questions}
 ### A3. Standard replies
 
 | If the agent asks | Reply |
@@ -23,7 +23,7 @@ ${opening}
 | Automatic or guided flow | `Guided.` |
 | Upgrade options | `Use the answers in .github/platform-inputs/decision-sheet.md. Where it gives none, continue with your recommended option.` |
 | Whether to plan, or to execute the plan | `Proceed.` |
-| To choose between options | `Continue with your recommended option.` |
+| To choose between options (other than its design questions) | `Continue with your recommended option.` |
 | For a credential, a secret, a sign-in, an installation or a change outside the repository | `No. Continue without it.` |
 | For a value it does not have (host name, time zone, path) | `Do not invent it. Read it from configuration by name and continue.` |
 | Whether to continue after a pause | `Continue.` |

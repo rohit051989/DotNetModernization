@@ -23,7 +23,8 @@ id: windows-service-hosting
 name: Application hosts as a Windows Service
 owner_team: null
 resolutions:
-- consumer_impact: medium
+- confirm_design: true
+  consumer_impact: medium
   container_ready: true
   deleted: false
   derivations: []
@@ -36,7 +37,8 @@ resolutions:
   notes: null
   status: active
   target_description: Generic host in a container, OCP4 CronJob
-- consumer_impact: low
+- confirm_design: true
+  consumer_impact: low
   container_ready: true
   deleted: false
   derivations: []

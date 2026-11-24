@@ -47,7 +47,8 @@ resolutions:
     Known limitations: CoreWCF does not support every WCF binding. WS-* protocols, MSMQ transport and some Windows-integrated security modes need case-by-case assessment. Windows authentication requires an alternative on Linux.
   status: active
   target_description: .NET 10 + CoreWCF, container on OCP4
-- consumer_impact: high
+- confirm_design: true
+  consumer_impact: high
   container_ready: true
   deleted: false
   derivations: []
@@ -63,7 +64,8 @@ resolutions:
     Known limitations: All callers must change. Only viable where consumers are internal and in scope for coordinated change.
   status: active
   target_description: .NET 10 + gRPC, container on OCP4
-- consumer_impact: high
+- confirm_design: true
+  consumer_impact: high
   container_ready: true
   deleted: false
   derivations: []

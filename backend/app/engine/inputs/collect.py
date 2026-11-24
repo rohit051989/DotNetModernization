@@ -145,7 +145,9 @@ def collect(db: Session, repository: models.Repository) -> dict:
             "decided": decided is not None,
             "resolution": None if chosen is None else {
                 "id": chosen.id, "name": chosen.name, "guidance": chosen.engine_guidance,
-                "consumer_impact": chosen.consumer_impact},
+                "consumer_impact": chosen.consumer_impact,
+                # Changes the design: the engine asks how to implement it before any code (render.design_section).
+                **({"confirm_design": True} if chosen.confirm_design else {})},
             "alternatives": [{"id": x.id, "name": x.name, "default": x.is_default} for x in resolutions
                              if chosen is None or x.id != chosen.id],
             "occurrences": occurrences[item_id],

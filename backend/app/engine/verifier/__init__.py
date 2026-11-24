@@ -74,7 +74,8 @@ RULES = [
     "file was removed or more than 25% of test files changed; a Behavioral-silent delta's site is named by no "
     "test; a configuration file that did not parse at the base commit still does not; no canary could be run; an "
     "equivalence case is missing or differs without approval; a work item remains, was introduced or could not be "
-    "checked; a project does not target the engagement's framework.",
+    "checked; a project does not target the engagement's framework; a work item that changes the design was changed "
+    "with no answer to its design questions recorded.",
     "A work item with a place in a configuration file that does not parse on the branch is not checked, never "
     "resolved: discovery cannot read inside that file.",
     "On the simple path, a package upgrade is met at or above the version the conversion's inputs asked for; a "
@@ -365,6 +366,70 @@ def attribution(named: dict[str, list[str]], changed: list[str]) -> dict:
         rows.append({"instruction": instruction, "state": state, "named": len(files), "changed": hit})
     claimed = {f for files in named.values() for f in files}
     return {"instructions": rows, "unnamed": sorted(f for f in changed if f not in claimed)}
+
+
+# ---------------------------------------------------------------- design questions (36 "Design questions")
+
+_DESIGN_SECTION = re.compile(r"^## +(?P<name>.+?) *$", re.MULTILINE)
+
+
+def design_decisions(text: str) -> dict[str, list[dict]]:
+    """CONVERSION-DECISIONS.md as the instructions ask the engine to write it: a section per work item (`## <name>`)
+    holding a table `| Question | Default | Answer |`. {work item name: [{question, default, answer}]}; a row whose
+    answer is empty is kept, with answer "". Lenient about backticks round a name and about spacing."""
+    text = text.replace("\r\n", "\n")
+    out: dict[str, list[dict]] = {}
+    heads = list(_DESIGN_SECTION.finditer(text))
+    for i, head in enumerate(heads):
+        body = text[head.end():heads[i + 1].start() if i + 1 < len(heads) else len(text)]
+        rows = []
+        for line in body.splitlines():
+            cells = [c.strip() for c in line.strip().strip("|").split("|")] if line.strip().startswith("|") else []
+            if len(cells) < 3 or set("".join(cells)) <= set("-: ") or cells[0].lower() == "question":
+                continue
+            rows.append({"question": cells[0], "default": cells[1], "answer": "|".join(cells[2:]).strip()})
+        out[head.group("name").strip().strip("`").strip()] = rows
+    return out
+
+
+def design_check(root: Path, commit: str | None, base: str, tip: str, attributed: dict | None) -> tuple[dict | None, dict | None]:
+    """(check, record) for the work items whose approach is confirmed with the developer first (the instructions'
+    "Design questions before converting", at the inputs commit), or (None, None) when there is none. A flagged work
+    item the branch changed (a file its instruction names, or a commit named after it) needs its answers recorded in
+    CONVERSION-DECISIONS.md: a gap otherwise."""
+    from app.engine.inputs import claude, render
+
+    if not commit:
+        return None, None
+    flagged = []
+    for path in (paths.COPILOT_INSTRUCTIONS, claude.INSTRUCTIONS, claude.INSTRUCTIONS_ALTERNATIVE):
+        text = gitops.git(root, "show", f"{commit}:{path}", check=False)
+        if text.strip():
+            flagged = render.design_items_in(text)
+            break
+    if not flagged:
+        return None, None
+    touched = {row["instruction"] for row in (attributed or {}).get("instructions", []) if row["state"] != "untouched"}
+    subjects = gitops.git(root, "log", "--format=%s", f"{commit}..{tip}", check=False).splitlines()
+    changed = [n for n in flagged if n in touched or any(s.startswith(f"{n}:") or s.startswith(f"{n} ") for s in subjects)]
+    text = gitops.git(root, "show", f"{tip}:{paths.DESIGN_DECISIONS}", check=False)
+    decisions = design_decisions(text) if text.strip() else {}
+    answered = {n for n, rows in decisions.items() if any(r["answer"] for r in rows)}
+    missing = [n for n in changed if n not in answered]
+    record = {"file": paths.DESIGN_DECISIONS if text.strip() else None, "flagged": flagged, "changed": changed,
+              "missing": missing, "decisions": decisions}
+    if missing:
+        check = _check("design", "Design questions answered", "gap",
+                       f"{len(missing)} work item(s) that change the design were changed with no answer to their design "
+                       f"questions recorded in {paths.DESIGN_DECISIONS}: {', '.join(missing)}")
+    elif changed:
+        check = _check("design", "Design questions answered", "pass",
+                       f"answers recorded in {paths.DESIGN_DECISIONS} for every changed work item that changes the design "
+                       f"({', '.join(changed)})")
+    else:
+        check = _check("design", "Design questions answered", "info",
+                       f"no work item that changes the design was changed ({', '.join(flagged)})")
+    return check, record
 
 
 SHELL_SUFFIXES = (".sh", ".bash")
@@ -889,6 +954,10 @@ def verify(db, *, engagement_id: str, slug: str, base: str, ref: str, label: str
     commit = packages.inputs_commit(root, base_sha, tip_sha)
     attributed = (attribution(instruction_files(root, commit, config.get("engine")), [c["path"] for c in changes["files"]])
                   if commit else None)
+    # Design questions: a work item that changes the design, changed, has its answers recorded.
+    design, design_record = design_check(root, commit, base_sha, tip_sha, attributed)
+    if design is not None:
+        checks.append(design)
 
     after = fingerprint(root)
     checkout_untouched = before == after
@@ -914,7 +983,7 @@ def verify(db, *, engagement_id: str, slug: str, base: str, ref: str, label: str
         "flaky": (base_report or {}).get("rerunFlaky") or [],
         "approvedRemovals": (base_report or {}).get("approvedRemovals") or [],
         "reapprove": (base_report or {}).get("reapprove") or [],
-        "shellScripts": scripts, "attribution": attributed,
+        "shellScripts": scripts, "attribution": attributed, "designDecisions": design_record,
         # Part O: what the conversion left out, and what was built and tested instead of the whole solution.
         "scope": {"projectsLeftOut": sorted(left_out), "built": solution, "testProjectsLeftOut": tests_left_out,
                   "workItemsLeftOut": len(items_left_out), "decidedBy": scope.get("decidedBy"),
@@ -1049,6 +1118,19 @@ def markdown(r: dict) -> str:
         out += ["## Approved test removals", "", "| Test | Reason | Approved by | When |", "|---|---|---|---|"]
         out += [f"| `{a['test']}` | {a['reason'].replace('|', '/')} | {a['approvedBy']} | {a.get('at', '')[:10]} |"
                 for a in r["approvedRemovals"]] + [""]
+    if r.get("designDecisions"):
+        d = r["designDecisions"]
+        out += ["## Design decisions", "",
+                "Work items that change the design: " + ", ".join(f"`{n}`" for n in d["flagged"]) + ". Before changing any "
+                "code the assistant asks how to implement them, and records the questions, defaults and answers in "
+                f"`{paths.DESIGN_DECISIONS}`.", ""]
+        if d.get("missing"):
+            out += ["Changed with no answer recorded: " + ", ".join(f"`{n}`" for n in d["missing"]) + ".", ""]
+        if not d.get("decisions"):
+            out += [f"No `{paths.DESIGN_DECISIONS}` on the branch.", ""]
+        for name, rows in d.get("decisions", {}).items():
+            out += [f"### {name}", "", "| Question | Default | Answer |", "|---|---|---|"]
+            out += [f"| {x['question']} | {x['default']} | {x['answer'] or '(none)'} |" for x in rows] + [""]
     if r.get("reapprove"):
         out += ["## Approvals to renew", "",
                 "Recorded by a method name alone, before tests were named by their class: tests of several classes share "

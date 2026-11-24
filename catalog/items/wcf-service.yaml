@@ -98,7 +98,8 @@ resolutions:
   notes: 'Prerequisites: bindings in use must be supported by CoreWCF; capture a WSDL snapshot before migrating. Known limitations: not every WCF binding is supported — WS-* protocols, MSMQ transport and some Windows-integrated security modes need case-by-case assessment; Windows authentication needs an alternative on Linux.'
   status: active
   target_description: .NET 10 + CoreWCF, container on OCP4
-- consumer_impact: high
+- confirm_design: true
+  consumer_impact: high
   container_ready: true
   deleted: false
   derivations:
@@ -215,7 +216,8 @@ resolutions:
   notes: null
   status: active
   target_description: .NET Framework WCF on Windows Server
-- consumer_impact: high
+- confirm_design: true
+  consumer_impact: high
   container_ready: true
   deleted: false
   derivations:

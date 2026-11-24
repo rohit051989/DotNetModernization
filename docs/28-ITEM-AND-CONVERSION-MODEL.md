@@ -424,6 +424,16 @@ the item and its resolutions together; seeded through the never-overwrite path a
 optional in the baseline like `impact_rules`. Editable through the API; a write that omits it
 leaves it unchanged.
 
+`confirm_design` BOOL (default false): "Confirm the design before implementing". Set on a
+resolution that changes the design or the architecture, not only the code (SOAP to REST, a UI
+rewrite, a new hosting model): a conversion's engine asks the developer how to implement each of
+its work items before changing any code (36-COPILOT-ENHANCED-CONVERSION "Design questions before
+converting"). Factory defaults in `backend/app/seed/data/confirm_design.yaml`, seeded through the
+never-overwrite path and exported only where set (optional in the baseline: false is left out of
+the content hash and the export). Admins set or clear it in the catalog (the resolution form),
+with the item's version check, and the change is in the activity record; a write that omits it
+leaves it unchanged.
+
 Unique on `(item_id, name)`. **Exactly one** `is_default` per active item with any live,
 active resolution, guaranteed by the database, not just by the API: at most one by
 `uq_item_resolutions_one_default` (over live resolutions), at least one by the deferred

@@ -68,7 +68,8 @@ resolutions:
     Known limitations: Does not reach OCP4 — Windows Forms has no Linux or container story. This option keeps the application supported, not portable.
   status: active
   target_description: .NET 8+ Windows Desktop (net8.0-windows), Windows host
-- consumer_impact: high
+- confirm_design: true
+  consumer_impact: high
   container_ready: true
   deleted: false
   derivations: []

@@ -350,6 +350,8 @@ def _apply_resolution_fields(resolution: models.ItemResolution, payload: item_sc
         setattr(resolution, field, getattr(payload, field))
     if "engine_guidance" in payload.model_fields_set:   # omitted: unchanged
         resolution.engine_guidance = payload.engine_guidance
+    if payload.confirm_design is not None:             # omitted: unchanged
+        resolution.confirm_design = payload.confirm_design
     resolution.updated_at = _now()
 
 

@@ -44,7 +44,7 @@ CONTENT_FIELDS: dict[type, tuple[str, ...]] = {
                          "deleted", "engine_guidance"),
     models.ItemResolution: ("item_id", "name", "description", "target_description", "consumer_impact", "effort", "is_default",
                             "linux_compatible", "container_ready", "notes", "status", "deleted", "impact_rules",
-                            "engine_guidance"),
+                            "engine_guidance", "confirm_design"),
     models.ResolutionDerivation: ("item_id", "action", "dependent_resolution_id", "applies_to", "reason", "deleted"),
 }
 
@@ -54,10 +54,19 @@ CONTENT_FIELDS: dict[type, tuple[str, ...]] = {
 # import may omit it; omitted means empty.
 OPTIONAL_FIELDS: dict[type, dict[str, object]] = {
     models.CatalogItem: {"engine_guidance": None},                            # 36-COPILOT-ENHANCED-CONVERSION Part K
-    models.ItemResolution: {"impact_rules": [], "engine_guidance": None},   # 33-IMPACT-ANALYSIS Part D; 36 Part K
+    # 33-IMPACT-ANALYSIS Part D; 36 Part K; 36 "Design questions before converting" (unset is false).
+    models.ItemResolution: {"impact_rules": [], "engine_guidance": None, "confirm_design": False},
 }
 
 ENGINE_GUIDANCE_FILE = Path(__file__).resolve().parents[1] / "seed" / "data" / "engine_guidance.yaml"
+# The factory resolutions that change the design or the architecture: confirm_design set (36-COPILOT-ENHANCED-CONVERSION
+# "Design questions before converting").
+CONFIRM_DESIGN_FILE = Path(__file__).resolve().parents[1] / "seed" / "data" / "confirm_design.yaml"
+
+
+@functools.cache
+def _confirm_design() -> frozenset[str]:
+    return frozenset(yaml.safe_load(CONFIRM_DESIGN_FILE.read_text(encoding="utf-8"))["resolutions"])
 
 
 @functools.cache
@@ -66,13 +75,14 @@ def _engine_guidance() -> dict:
 
 
 def with_engine_guidance(model: type, row_id: str, desired: dict, item_id: str | None = None) -> dict:
-    """A factory default with its engine-facing guidance from engine_guidance.yaml, when one is written. For the
-    factory seeds only (authored items, migrated items): an import carries its own."""
+    """A factory default with its engine-facing guidance from engine_guidance.yaml, when one is written, and for a
+    resolution whether it changes the design (confirm_design.yaml). For the factory seeds only (authored items, migrated
+    items): an import carries its own."""
     if model is models.CatalogItem:
         text = (_engine_guidance().get(row_id) or {}).get("guidance")
-    else:
-        text = ((_engine_guidance().get(item_id or desired["item_id"]) or {}).get("resolutions") or {}).get(row_id)
-    return {**desired, "engine_guidance": text.strip() if text else None}
+        return {**desired, "engine_guidance": text.strip() if text else None}
+    text = ((_engine_guidance().get(item_id or desired["item_id"]) or {}).get("resolutions") or {}).get(row_id)
+    return {**desired, "engine_guidance": text.strip() if text else None, "confirm_design": row_id in _confirm_design()}
 
 TABLES = {models.CatalogItem: "catalog_items", models.ItemResolution: "item_resolutions",
           models.ResolutionDerivation: "resolution_derivations"}

@@ -37,7 +37,8 @@ resolutions:
   notes: null
   status: active
   target_description: .NET Framework on Windows Server, as a Windows Service
-- consumer_impact: low
+- confirm_design: true
+  consumer_impact: low
   container_ready: true
   deleted: false
   derivations: []

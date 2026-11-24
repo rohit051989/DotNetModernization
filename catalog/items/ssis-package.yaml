@@ -21,7 +21,8 @@ id: ssis-package
 name: SSIS package
 owner_team: null
 resolutions:
-- consumer_impact: medium
+- confirm_design: true
+  consumer_impact: medium
   container_ready: true
   deleted: false
   derivations: []
@@ -37,7 +38,8 @@ resolutions:
     Known limitations: Only applies where transformations are set-based. Row-by-row logic, external service calls and file-based sources still need application code. Moves load onto the database server.
   status: active
   target_description: .NET 10 worker + T-SQL + OCP4 CronJob
-- consumer_impact: medium
+- confirm_design: true
+  consumer_impact: medium
   container_ready: true
   deleted: false
   derivations: []

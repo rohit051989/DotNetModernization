@@ -1803,6 +1803,14 @@ hand. Everything else an update brings, bootstrap applies by itself. Apply every
 had (`previousCommit` in `PLATFORM_SOURCE.json` after the update; in our own installs, the commit before step 5 of
 the appendix), oldest of them first. Entries up to 2026-10-23 were the notes of releases 2 to 7, which are named so.
 
+#### 2026-11-24, (commit of "Design questions before converting, flagged in the catalog"): rescan to get the design questions
+
+Update, bootstrap and restart the backend. Bootstrap adds the catalog's new flag, "Confirm the design before
+implementing", and sets it on the factory resolutions that change the design (SOAP to REST, a UI rewrite, a new
+hosting model), never on a resolution your admin edited since it was seeded (the bootstrap reports a conflict for one
+whose default changed too). A conversion prepared before the update does not carry the design questions; one not yet
+run gets them at its next **Rescan**. Review the flag on your own resolutions in the catalog.
+
 #### 2026-11-23, (commit of "One check of whether a conversion has been run, and test projects by what they reference"): rescan for the other engine
 
 Update, bootstrap and restart the backend. A starting backend no longer prepares anything: a repository whose latest

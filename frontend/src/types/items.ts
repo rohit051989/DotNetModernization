@@ -183,6 +183,8 @@ export interface ItemResolution {
   is_default: boolean
   linux_compatible: boolean
   container_ready: boolean
+  /** Changes the design or the architecture: a conversion's engine asks the developer how to implement it first. */
+  confirm_design?: boolean
   notes: string | null
   status: ItemStatus
   deleted_at: string | null
@@ -212,6 +214,7 @@ export interface ResolutionWriteInput {
   is_default: boolean
   linux_compatible: boolean
   container_ready: boolean
+  confirm_design?: boolean
   notes: string | null
   status: ItemStatus
 }

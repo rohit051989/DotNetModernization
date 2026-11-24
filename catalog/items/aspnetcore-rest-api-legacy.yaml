@@ -66,7 +66,8 @@ resolutions:
     Known limitations: Pins Newtonsoft.Json explicitly rather than adopting System.Text.Json, to guarantee payload parity. Serializer modernization is deferred to a later pass.
   status: active
   target_description: .NET 10 + ASP.NET Core, container on OCP4
-- consumer_impact: none
+- confirm_design: true
+  consumer_impact: none
   container_ready: true
   deleted: false
   derivations: []

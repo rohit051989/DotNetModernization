@@ -55,7 +55,8 @@ resolutions:
   notes: null
   status: active
   target_description: Serilog console sink, CompactJsonFormatter, stdout collected by EFK
-- consumer_impact: medium
+- confirm_design: true
+  consumer_impact: medium
   container_ready: true
   deleted: false
   derivations: []

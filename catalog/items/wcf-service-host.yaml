@@ -19,7 +19,8 @@ id: wcf-service-host
 name: WCF service host
 owner_team: null
 resolutions:
-- consumer_impact: low
+- confirm_design: true
+  consumer_impact: low
   container_ready: true
   deleted: false
   derivations: []

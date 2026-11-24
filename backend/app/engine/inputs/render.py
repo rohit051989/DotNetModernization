@@ -697,6 +697,55 @@ def scope_section(model: dict) -> str:
     return "\n".join(out + not_converted) + "\n"
 
 
+DESIGN_HEADING = "## Design questions before converting"
+
+
+def design_items(model: dict) -> list[dict]:
+    """The work items whose chosen resolution changes the design (its catalog resolution's confirm_design), in work item
+    order: [{name, title}]."""
+    return [{"name": w["name"], "title": w["title"]} for w in work_items(model)
+            if (w["item"]["resolution"] or {}).get("confirm_design")]
+
+
+def design_items_in(instructions: str) -> list[str]:
+    """The work items an instructions file's "Design questions before converting" section lists, by name; [] when it
+    has none. Read by the runbook and the verifier from the inputs on the branch, for either engine's instructions."""
+    _, found, rest = instructions.replace("\r\n", "\n").partition(DESIGN_HEADING + "\n")
+    if not found:
+        return []
+    section = rest.split("\n## ", 1)[0]
+    return re.findall(r"^- `([^`]+)`: ", section, re.MULTILINE)
+
+
+def design_section(model: dict) -> str:
+    """The instructions' rule for the work items that change the design, and their list, or "" when there is none. The
+    rule only: the questions are the engine's to choose, from the code and the work item; none is written here. The
+    same for every engine (Claude Code's instructions carry it through the mechanics table)."""
+    flagged = design_items(model)
+    if not flagged:
+        return ""
+    from app.engine import paths
+
+    out = ["", DESIGN_HEADING, "",
+           "These work items change the design or the architecture, not only the code. How to implement them is "
+           "confirmed with the developer first:", ""]
+    out += [f"- `{w['name']}`: {_md(w['title'])}" for w in flagged]
+    out += ["",
+            "- At the start of the conversion, **before changing any code**, ask the developer 3 to 5 questions for each "
+            "work item above, all of them in one message: one round for every work item. This is the one time you stop "
+            "for a decision.",
+            "- Choose the questions yourself, from the code and the work item: how to implement the change (for example "
+            "logging, exposing an API description, input validation). Each question names the default you will use if "
+            "the developer does not choose. Do not ask about anything these instructions, a work item or the decision "
+            "sheet already decide.",
+            "- \"Use the defaults\" is an answer: it accepts every default. Then work through every work item without "
+            "stopping again for these questions.",
+            f"- Record every question, its default and the answer in `{paths.DESIGN_DECISIONS}` at the repository's root: "
+            "a section for each work item, headed by its name (`## <work item name>`), holding a table "
+            "`| Question | Default | Answer |` with one row per question. Commit it with the first work item."]
+    return "\n".join(out) + "\n"
+
+
 def build_section(model: dict) -> str:
     """The instructions' build and test commands, the same for every engine."""
     c = commands(model)
@@ -758,7 +807,7 @@ def _copilot(model: dict) -> dict[str, str]:
     instructions = (TEMPLATES / "copilot-instructions.md").read_text(encoding="utf-8")
     # Before the attribution at the end: sections of this repository's rules, like the others.
     head, mark, tail = instructions.partition("\n---\n")
-    instructions = head.rstrip("\n") + "\n" + build_section(model) + scope_section(model) + mark + tail
+    instructions = head.rstrip("\n") + "\n" + build_section(model) + design_section(model) + scope_section(model) + mark + tail
     files[paths.COPILOT_INSTRUCTIONS] = instructions
     files[f"{paths.PLATFORM_INPUTS_DIR}/assessment-addendum.md"] = addendum(model)
     files[f"{paths.PLATFORM_INPUTS_DIR}/decision-sheet.md"] = decision_sheet(model)

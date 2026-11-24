@@ -67,7 +67,8 @@ resolutions:
   notes: null
   status: active
   target_description: CoreWCF on .NET 10, BasicHttpBinding
-- consumer_impact: high
+- confirm_design: true
+  consumer_impact: high
   container_ready: true
   deleted: false
   derivations: []

@@ -311,6 +311,10 @@ class ResolutionWrite(BaseModel):
     engine_guidance: str | None = Field(
         default=None, description="Engine-facing guidance (36-COPILOT-ENHANCED-CONVERSION Part K): self-contained text for a "
         "conversion engine, kept apart from the author-facing description. Omit it to leave the stored guidance unchanged.")
+    confirm_design: bool | None = Field(
+        default=None, description="Confirm the design before implementing: the resolution changes the design or the "
+        "architecture (SOAP to REST), so a conversion's engine asks the developer how to implement it before changing any "
+        "code (36-COPILOT-ENHANCED-CONVERSION \"Design questions before converting\"). Omit it to leave it unchanged.")
 
 
 class ResolutionCreate(ResolutionWrite):
@@ -349,6 +353,7 @@ class ResolutionOut(BaseModel):
     container_ready: bool
     notes: str | None
     engine_guidance: str | None = None
+    confirm_design: bool = False
     status: ItemStatus
     deleted_at: datetime.datetime | None
     created_at: datetime.datetime

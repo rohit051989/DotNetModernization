@@ -1,5 +1,7 @@
 # Conversion runbook — ${repository}, ${branch}
 
+**GitHub Copilot users: follow section A. Claude Code users: follow section B.**
+
 > Written by `python -m app.engine.convert prepare` from `backend/app/engine/templates/conversion-runbook*.md`.
 > Do not edit it: change the templates or the inputs, and prepare again.
 

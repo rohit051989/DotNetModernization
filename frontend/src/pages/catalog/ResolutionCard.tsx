@@ -29,6 +29,13 @@ export function ResolutionCard({ resolution, isLowestImpact, actions, highlight 
         {resolution.is_default && <DefaultBadge />}
         <FlagBadge label="Linux" value={resolution.linux_compatible} />
         <FlagBadge label="container" value={resolution.container_ready} />
+        {resolution.confirm_design && (
+          <span className="rounded border border-violet-200 bg-violet-50 px-1.5 text-[11px] text-violet-800"
+            title="Changes the design: the conversion's assistant asks the developer how to implement it before changing code."
+            data-testid="confirm-design">
+            design confirmed first
+          </span>
+        )}
         {isLowestImpact && !deleted && (
           <span className="text-[11px] font-medium text-emerald-700">lowest impact — presumptive</span>
         )}

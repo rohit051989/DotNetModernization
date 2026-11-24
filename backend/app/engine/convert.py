@@ -797,6 +797,36 @@ def work_item_names(record: dict) -> list[str]:
     return sorted({paths.work_item_name(n) for n in names if paths.is_work_item(n)})
 
 
+def design_work_items(record: dict) -> list[str]:
+    """The work items whose approach is confirmed with the developer before any code changes (the instructions' "Design
+    questions before converting", render.design_section), from the inputs on the branch at its inputs commit."""
+    from app.engine import paths
+    from app.engine.inputs import claude, render
+
+    worktree = Path(record["worktree"])
+    if not worktree.exists() or not record.get("head"):
+        return []
+    for path in (paths.COPILOT_INSTRUCTIONS, claude.INSTRUCTIONS, claude.INSTRUCTIONS_ALTERNATIVE):
+        text = gitops.git(worktree, "show", f"{record['head']}:{path}", check=False)
+        if text.strip():
+            return render.design_items_in(text)
+    return []
+
+
+def runbook_design(record: dict) -> str:
+    """The runbook's step for the design questions both engines ask first, or "" when no work item has them."""
+    from app.engine import paths
+
+    names = design_work_items(record)
+    if not names:
+        return ""
+    return ("\n**Expect questions first.** Before changing any code, the assistant asks you 3 to 5 questions about how to "
+            "implement each of these work items, all in one round: " + ", ".join(f"`{n}`" for n in names) + ". Answer "
+            "them, or reply `Use the defaults.` to accept the default each question names. It records the questions and "
+            f"your answers in `{paths.DESIGN_DECISIONS}`, committed with the first work item, then works through every "
+            "work item without asking them again.\n")
+
+
 def runbook_scope(record: dict) -> str:
     """The runbook's section on the projects left out (Part O), the same list as the instructions and the decision
     sheet: by name and path, with who, when and why. "" when every project is in scope."""
@@ -851,7 +881,8 @@ def runbook_section(record: dict, engine: str) -> str:
         own_claude_md=("| " + ", ".join(f"`{f}`" for f in own) + " | The repository's own, kept unchanged. Claude Code "
                        "loads it too; where it and the conversion's instructions disagree, the conversion's "
                        "instructions say they win for this conversion. |\n") if own else "",
-        work_items=("The work items, in order: " + ", ".join(f"`{n}`" for n in names) + ".") if names else "")
+        work_items=("The work items, in order: " + ", ".join(f"`{n}`" for n in names) + ".") if names else "",
+        design_questions=runbook_design(record))
     return string.Template(RUNBOOK_SECTIONS[engine].read_text(encoding="utf-8")).substitute(values)
 
 

@@ -43,7 +43,8 @@ id: fx-aspnet-mvc
 name: Classic ASP.NET MVC / Web API on .NET Framework
 owner_team: null
 resolutions:
-- consumer_impact: none
+- confirm_design: true
+  consumer_impact: none
   container_ready: true
   deleted: false
   derivations: []
@@ -59,7 +60,8 @@ resolutions:
     Known limitations: Temporarily increases operational complexity by running two applications. Requires a defined end date or the interim state becomes permanent.
   status: active
   target_description: .NET 10 + ASP.NET Core + System.Web adapters + YARP
-- consumer_impact: low
+- confirm_design: true
+  consumer_impact: low
   container_ready: true
   deleted: false
   derivations: []

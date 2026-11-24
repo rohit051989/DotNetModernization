@@ -1579,6 +1579,9 @@ class ItemResolution(Base):
     # What to do, in steps, written for a conversion engine (36-COPILOT-ENHANCED-CONVERSION
     # Part K); `description`, `target_description` and `notes` are for catalog authors.
     engine_guidance: Mapped[str | None] = mapped_column(Text)
+    # Changes the design or the architecture (SOAP to REST, a UI rewrite): the conversion's engine asks the developer how
+    # to implement its work items before changing any code (36-COPILOT-ENHANCED-CONVERSION "Design questions").
+    confirm_design: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
     # Hash of the content the seed last wrote (app/items/baseline.py): a
     # reseed never overwrites a row edited since. Null: no baseline.
     seeded_hash: Mapped[str | None] = mapped_column(Text)

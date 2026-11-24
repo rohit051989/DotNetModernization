@@ -32,7 +32,7 @@ Send this message exactly as written. Do not add to it or reword it:
 ```text
 ${opening}
 ```
-
+${design_questions}
 ### B3. Permission prompts
 
 | If Claude Code asks | Reply |
@@ -41,7 +41,7 @@ ${opening}
 | To edit a file in the worktree | Allow it **once**, or switch to accepting edits for this session (Shift+Tab). |
 | For a credential, a secret, a sign-in, an installation or a change outside the repository | `No. Continue without it.` |
 | For a value it does not have (host name, time zone, path) | `Do not invent it. Read it from configuration by name and continue.` |
-| To choose between options | `Continue with your recommended option.` |
+| To choose between options (other than its design questions) | `Continue with your recommended option.` |
 | Whether to continue after a pause | `Continue.` |
 
 Never choose "Yes, and don't ask again" for a command: in a git worktree Claude Code saves that answer in the

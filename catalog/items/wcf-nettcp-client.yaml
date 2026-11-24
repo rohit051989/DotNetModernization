@@ -74,7 +74,8 @@ resolutions:
   notes: Only if the service accepts non-Windows credentials; verify before choosing.
   status: active
   target_description: System.ServiceModel.NetTcp client, certificate transport security
-- consumer_impact: low
+- confirm_design: true
+  consumer_impact: low
   container_ready: true
   deleted: false
   derivations: []

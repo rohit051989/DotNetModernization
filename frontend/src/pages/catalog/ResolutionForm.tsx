@@ -34,6 +34,7 @@ interface FormState {
   is_default: boolean
   linux_compatible: boolean
   container_ready: boolean
+  confirm_design: boolean
   notes: string
   status: ItemStatus
 }
@@ -49,6 +50,7 @@ function toFormState(resolution?: ItemResolution): FormState {
     is_default: resolution?.is_default ?? false,
     linux_compatible: resolution?.linux_compatible ?? true,
     container_ready: resolution?.container_ready ?? true,
+    confirm_design: resolution?.confirm_design ?? false,
     notes: resolution?.notes ?? '',
     status: resolution?.status ?? 'active',
   }
@@ -97,6 +99,7 @@ export function ResolutionForm({ mode, itemId, itemVersion, resolution, existing
       is_default: form.is_default,
       linux_compatible: form.linux_compatible,
       container_ready: form.container_ready,
+      confirm_design: form.confirm_design,
       notes: form.notes.trim() || null,
       status: form.status,
     }
@@ -228,6 +231,21 @@ export function ResolutionForm({ mode, itemId, itemVersion, resolution, existing
                   onChange={(e) => update('container_ready', e.target.checked)}
                 />
                 Container-ready
+              </label>
+              <label className="flex items-start gap-2">
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={form.confirm_design}
+                  onChange={(e) => update('confirm_design', e.target.checked)}
+                />
+                <span>
+                  Confirm the design before implementing
+                  <span className="block text-xs text-neutral-500">
+                    It changes the design or the architecture (SOAP to REST, a UI rewrite): before changing any code, the
+                    conversion's assistant asks the developer how to implement each of its work items.
+                  </span>
+                </span>
               </label>
               <label className="flex items-center gap-2">
                 <input type="checkbox" checked={form.is_default} onChange={(e) => update('is_default', e.target.checked)} />

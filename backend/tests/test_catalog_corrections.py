@@ -68,5 +68,66 @@ class WordingCorrectionTests(unittest.TestCase):
         self.assertEqual(self.description(), OLD)
 
 
+class DesignFlagTests(unittest.TestCase):
+    """A resolution a release flagged "confirm the design before implementing" reaches an existing catalog the same way
+    (catalog_source.design_flag_items): unflagged and unedited, it takes the flag on reseed; edited, it is left and
+    reported."""
+    RESOLUTION = "rest-net10"
+
+    def setUp(self):
+        db = SessionLocal()
+        row = db.get(models.ItemResolution, self.RESOLUTION)
+        if row is None or catalog_source.choose(db) != "database":
+            db.close()
+            self.skipTest("the catalog in this schema is not the database's own")
+        self.saved = (row.confirm_design, row.seeded_hash)
+        db.close()
+
+    def tearDown(self):
+        db = SessionLocal()
+        row = db.get(models.ItemResolution, self.RESOLUTION)
+        row.confirm_design, row.seeded_hash = self.saved
+        db.commit()
+        db.close()
+
+    def stage(self, edited: bool):
+        """The row as the release before left it: no flag, seeded (unedited) or changed since (edited)."""
+        db = SessionLocal()
+        row = db.get(models.ItemResolution, self.RESOLUTION)
+        row.confirm_design = False
+        db.flush()
+        seeded = {**baseline.content(row), **({"notes": "an older seed"} if edited else {})}
+        row.seeded_hash = baseline.digest(seeded)
+        db.commit()
+        db.close()
+
+    def flag(self) -> bool:
+        db = SessionLocal()
+        try:
+            return db.get(models.ItemResolution, self.RESOLUTION).confirm_design
+        finally:
+            db.close()
+
+    def test_the_items_are_those_with_a_flagged_resolution(self):
+        from app.items import catalog_export
+
+        items = catalog_source.design_flag_items(catalog_export.read_files(catalog_source.export_dir()))
+        self.assertIn("wcf-iis-servicemodel", items)
+        self.assertIn("serilog-file-sink", items)
+        self.assertNotIn("datetime-now-usage", items)
+
+    def test_an_unedited_resolution_takes_the_flag_on_reseed(self):
+        self.stage(edited=False)
+        report = catalog_source.seed_from_export_or_database()
+        self.assertIn(f"item_resolutions {self.RESOLUTION}", report["corrections"]["updated"])
+        self.assertTrue(self.flag())
+
+    def test_an_edited_resolution_is_left_as_it_is_and_reported(self):
+        self.stage(edited=True)
+        report = catalog_source.seed_from_export_or_database()
+        self.assertIn(self.RESOLUTION, [c["row"] for c in report["corrections"]["conflicts"]])
+        self.assertFalse(self.flag())
+
+
 if __name__ == "__main__":
     unittest.main()

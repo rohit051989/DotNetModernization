@@ -69,6 +69,18 @@ WORDING_CORRECTIONS = ("serilog-file-sink", "wcf-nettcp-client")
 CATALOG_ADDITIONS = ("datetime-now-usage",)
 
 
+def design_flag_items(files: dict[str, str]) -> tuple[str, ...]:
+    """Items a release flagged a resolution of, "Confirm the design before implementing" (confirm_design, 2026-11-24;
+    36-COPILOT-ENHANCED-CONVERSION "Design questions before converting"): the items whose export holds a resolution
+    seed/data/confirm_design.yaml lists. Applied from the export like the additions above: an unedited resolution takes
+    the flag, an edited one is reported as a conflict and left as it is."""
+    import yaml
+
+    flagged = baseline._confirm_design()
+    return tuple(sorted(name[:-len(".yaml")] for name, text in files.items()
+                        if any(r.get("id") in flagged for r in (yaml.safe_load(text) or {}).get("resolutions") or [])))
+
+
 def seed_from_export_or_database() -> dict | None:
     """Runs the export or database source and returns its report, or None
     when the factory defaults apply (the caller runs those, unchanged)."""
@@ -82,8 +94,9 @@ def seed_from_export_or_database() -> dict | None:
         if source == "export":
             report["baseline"] = catalog_export.import_files(db, files)
         else:
-            corrected = {f"{item}.yaml": files[f"{item}.yaml"] for item in WORDING_CORRECTIONS + CATALOG_ADDITIONS
-                         if f"{item}.yaml" in files}
+            report["design_items"] = design_flag_items(files)
+            corrected = {f"{item}.yaml": files[f"{item}.yaml"]
+                         for item in WORDING_CORRECTIONS + CATALOG_ADDITIONS + report["design_items"] if f"{item}.yaml" in files}
             report["corrections"] = catalog_export.import_files(db, corrected) if corrected else baseline.new_report()
         # A catalog identical to the committed export, with no export recorded (a fresh install imported it): record
         # it, so staleness reads "current", not "not in git".
@@ -112,8 +125,9 @@ def print_report(report: dict) -> None:
               "authoritative over it (merge an export explicitly with python -m app.items.catalog_export import)")
         corrections = report.get("corrections")
         if corrections is not None:
-            print(f"  wording corrections and additions ({', '.join(WORDING_CORRECTIONS + CATALOG_ADDITIONS)}): "
-                  f"{baseline.summary(corrections)}")
+            print(f"  wording corrections and additions ({', '.join(WORDING_CORRECTIONS + CATALOG_ADDITIONS)}), and the "
+                  f"{len(report.get('design_items') or ())} item(s) with a resolution flagged \"confirm the design before "
+                  f"implementing\": {baseline.summary(corrections)}")
             if corrections["conflicts"]:
                 print(baseline.format_conflicts(corrections["conflicts"]))
     engagement = report["engagement"]

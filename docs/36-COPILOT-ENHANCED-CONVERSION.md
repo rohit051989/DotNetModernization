@@ -1006,3 +1006,44 @@ Conversion tab went on showing the earlier conversion with no sign of the failur
 Rule 20, for each engine: the model is shared, so the fix applies to GitHub Copilot and Claude Code alike. No
 conversion input text changes for either beyond package couplings now being reported for .NET Framework sources (the
 addendum's and decision sheet's package rows, and the work items that name a package's coupling).
+
+## Part Q addendum — Design questions before converting (2026-11-24)
+
+Some resolutions change the design, not only the code: a SOAP service becomes a REST API, a UI is rewritten, a Windows
+service becomes a CronJob. How to implement them (logging, an API description, input validation) is the developer's
+call, and the inputs alone cannot make it. Such a resolution is flagged in the catalog, and the engine asks first.
+
+- **The flag** (`item_resolutions.confirm_design`, 28-ITEM-AND-CONVERSION-MODEL): "Confirm the design before
+  implementing", set on the factory resolutions that change the design or the architecture
+  (`backend/app/seed/data/confirm_design.yaml`), unset on the rest, editable by admins. An installation whose catalog
+  is its database's own gets the flags at its bootstrap from the export, for the items holding a flagged resolution
+  (`catalog_source.design_flag_items`, as the release's wording corrections): an unedited resolution takes the flag, an
+  edited one is left as it is and reported as a conflict.
+- **The rule, not the questions** (`render.design_section`): when a work item's chosen resolution is flagged, the
+  instructions get a section, "Design questions before converting", listing those work items by name, with the rule:
+  at the start of the conversion, before changing any code, ask the developer 3 to 5 questions for each listed work
+  item, all in one message, one round; the questions are the engine's to choose, from the code and the work item, about
+  how to implement the change, each naming the default it will use; never about anything the instructions, a work item
+  or the decision sheet already decide; "Use the defaults" accepts every default; then every work item is worked
+  through without stopping again for these questions. It is the one exception to "Never stop for a decision". No
+  question is written into the inputs.
+- **The record** (`CONVERSION-DECISIONS.md` at the worktree's root, `paths.DESIGN_DECISIONS`): a section per work item
+  (`## <work item name>`) with a table `| Question | Default | Answer |`, committed with the first work item. It is a
+  record, not a change: excluded from the diff, impact and re-discovery comparison like the inputs.
+- **The verifier** (`verifier.design_check`) reads the flagged work items from the instructions at the inputs commit. A
+  flagged work item the branch changed (a file its instruction names, or a commit named after it) with no answer
+  recorded is a gap ("Design questions answered"), so the branch is at best PARTLY PROVEN. VERIFICATION.md has a
+  "Design decisions" section with every question, default and answer.
+- **The runbook** opens with one line pointing each engine's users to their section (A: GitHub Copilot, B: Claude
+  Code), and each section, after its first message, says to expect the questions first, naming the work items, and to
+  answer them or reply `Use the defaults.`
+
+Rule 20, for each engine:
+
+- **GitHub Copilot**: applied. The section is in `.github/copilot-instructions.md`, sent with every request, so the
+  modernization agent asks before its plan's first code change; runbook section A says to expect it and how to answer.
+- **Claude Code**: applied. The same section is in its instructions (`.claude/CLAUDE.md`), through the mechanics table
+  (the work item names are the same for both), and its plan, "How to run this conversion", puts the questions before
+  the first work item; runbook section B says to expect them.
+- The decisions file, its format and the verifier's check are the same for both. The parity test
+  (`tests/test_engine_claude.py`) passes unchanged.

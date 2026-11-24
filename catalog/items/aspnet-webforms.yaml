@@ -29,7 +29,8 @@ id: aspnet-webforms
 name: ASP.NET Web Forms
 owner_team: null
 resolutions:
-- consumer_impact: high
+- confirm_design: true
+  consumer_impact: high
   container_ready: true
   deleted: false
   derivations: []
@@ -85,7 +86,8 @@ resolutions:
     Known limitations: Requires explicit reimplementation of state that ViewState previously handled implicitly.
   status: active
   target_description: .NET 10 + ASP.NET Core MVC + Razor views, container on OCP4
-- consumer_impact: high
+- confirm_design: true
+  consumer_impact: high
   container_ready: true
   deleted: false
   derivations: []

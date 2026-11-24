@@ -41,7 +41,8 @@ id: modern-worker-service
 name: Worker service built on hosted services
 owner_team: null
 resolutions:
-- consumer_impact: medium
+- confirm_design: true
+  consumer_impact: medium
   container_ready: true
   deleted: false
   derivations: []

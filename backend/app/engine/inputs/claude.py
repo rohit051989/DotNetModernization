@@ -203,6 +203,10 @@ def instructions(model: dict, items: list[dict], copilot_instructions: str) -> s
         out.append(f"{number}. `{entry['name']}`: {entry['title']}")
     if not items:
         out.append("There is no work item: nothing in this repository needs a change the instructions describe.")
+    if rendering.design_items(model):
+        # The rule itself is in the shared rules below; the plan only puts it first.
+        out += ["", "Before the first one, and before changing any code, ask the developer the questions \"Design "
+                "questions before converting\" below describes, in one round, and record the answers."]
     out += ["", "For each work item, in order:", "",
             "1. Apply it as its skill says, at the places it lists, and only there.",
             f"2. Build with {built} and test with {tested}. Both must succeed, and every test that passed before must "

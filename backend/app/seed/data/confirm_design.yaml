@@ -1,0 +1,35 @@
+# The factory resolutions that change the design or the architecture, not only the code: their confirm_design is set,
+# and a conversion's engine asks the developer how to implement each of their work items before changing any code
+# (36-COPILOT-ENHANCED-CONVERSION "Design questions before converting"). Every other resolution is unset.
+#
+# A factory default, like engine_guidance.yaml: the seed writes it through app/items/baseline.py and never over a
+# resolution edited in the UI since it was seeded. Admins set or clear the flag in the catalog; the catalog export
+# (catalog/items/) records it.
+resolutions:
+  # A service's protocol or contract changes for its callers.
+  - rest-api-rewrite                    # asmx-service: SOAP to REST
+  - grpc-net10                          # wcf-iis-servicemodel
+  - rest-net10                          # wcf-iis-servicemodel: SOAP to REST
+  - wcf-service-grpc-rewrite            # wcf-service
+  - wcf-service-rest-rewrite            # wcf-service: SOAP to REST
+  - migrate-to-service-protocol         # wcf-nettcp-client
+  - net10-api-minimal                   # aspnetcore-rest-api-legacy: controllers to minimal API
+  # A user interface or web framework is rebuilt.
+  - aspnetcore-mvc-rewrite              # aspnet-webforms
+  - blazor-server-net10                 # aspnet-webforms
+  - aspnetcore-incremental-adapters     # fx-aspnet-mvc
+  - aspnetcore-mvc-net10                # fx-aspnet-mvc
+  - winforms-ui-rewrite                 # winforms-desktop
+  - wpf-ui-rewrite                      # wpf-desktop
+  # How the workload is hosted and run changes.
+  - wcf-host-aspnetcore-web-host        # wcf-service-host
+  - generic-host-cronjob                # windows-service-hosting
+  - generic-host-deployment             # windows-service-hosting
+  - worker-service-daemon-container     # windows-service
+  - ocp4-cronjob                        # modern-worker-service: continuous to scheduled
+  - csharp-sql-pushdown                 # ssis-package
+  - csharp-worker-container             # ssis-package
+  # An integration or a cross-cutting concern is redesigned.
+  - migrate-to-message-broker           # msmq-usage
+  - identity-provider-claims            # directory-services-usage
+  - otlp-exporter                       # serilog-file-sink

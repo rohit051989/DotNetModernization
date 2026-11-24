@@ -46,10 +46,15 @@ def work_item_dirs(engine: str | None) -> tuple[str, ...]:
 
     return {engines.COPILOT: (UPGRADE_SKILLS_DIR,), engines.CLAUDE: (CLAUDE_SKILLS_DIR,)}.get(engine, WORK_ITEM_DIRS)
 
+# The engine's record of the design questions it asked and the developer's answers, at the worktree's root, committed
+# with the first work item (36-COPILOT-ENHANCED-CONVERSION "Design questions before converting"). The same for both
+# engines; the verifier reads it.
+DESIGN_DECISIONS = "CONVERSION-DECISIONS.md"
+
 # Excluded from the verifier's diff, impact comparison and re-discovery: inputs and records, not
 # conversion. The same list for every run of every arm, and for both engines.
 EXCLUDED_FROM_COMPARISON = (ENGINE_STATE_DIR + "/", COPILOT_INSTRUCTIONS, SKILLS_DIR + "/", PLATFORM_INPUTS_DIR + "/",
-                            CLAUDE_DIR + "/")
+                            CLAUDE_DIR + "/", DESIGN_DECISIONS)
 
 
 def is_work_item(path: str) -> bool:

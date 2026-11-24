@@ -20,7 +20,8 @@ id: msmq-usage
 name: MSMQ (System.Messaging)
 owner_team: null
 resolutions:
-- consumer_impact: medium
+- confirm_design: true
+  consumer_impact: medium
   container_ready: true
   deleted: false
   derivations: []
