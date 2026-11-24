@@ -28,6 +28,10 @@ were each 1 to 4.3 minutes, all in those three modules, plus `test_engine_inputs
 - **Teardown limit**: a run's own leftover sessions are ended and reported; the drop has a time limit. A run on
   2026-11-24 had hung 30 minutes on a session a failed class teardown left idle in a transaction.
 
+**Measured after** (`run-suites.ps1 -Full` on the same machine, 2026-11-24): the backend lane took 24 minutes in 6
+shards (905 tests), against 88 serially; the whole full run, every suite, about 24 minutes, the backend lane being
+the longest. Every shard's teardown finished; none hung.
+
 Not done: step 3 (C# build once, then `dotnet test --no-build`), step 6 (antivirus exclusions, an IT request) and
 step 7 (template schema; each shard's schema stands up in about 10 seconds, so it is not worth it now).
 
