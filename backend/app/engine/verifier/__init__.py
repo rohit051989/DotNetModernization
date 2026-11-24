@@ -293,11 +293,38 @@ def rerun_filter(test: str) -> str:
     return f"FullyQualifiedName~{klass}.{method}" if klass else f"Name={method}"
 
 
-def approved_removals(missing: list[str], approvals: list[dict]) -> tuple[list[dict], list[str]]:
+def _bare(approval: dict) -> bool:
+    """An approval recorded by a method name alone, as verifications named tests before they were keyed by class (not
+    "Ns.Class#Method", not a test file's path)."""
+    name = approval["test"]
+    return "#" not in name and "/" not in name and "\\" not in name and not name.lower().endswith((".cs", ".vb"))
+
+
+def _classes_named(name: str, tests: list[str]) -> list[str]:
+    """The classes, among `tests` (baseline diff ids), that have a test whose method is `name`."""
+    return sorted({klass for klass, method in map(_plain, tests)
+                   if klass and name in (method, dotnet.method_name(method))})
+
+
+def to_reapprove(approvals: list[dict], tests: list[str]) -> list[dict]:
+    """Approvals recorded by a bare method name that several classes' tests share in the repository's tests (`tests`:
+    the baseline's and the clean run's): they match none, and are listed for a person to approve again by the test's
+    full name. {test, classes, reason, approvedBy, at}."""
+    out = []
+    for a in approvals:
+        if _bare(a) and len(classes := _classes_named(a["test"], tests)) > 1:
+            out.append({**a, "classes": classes})
+    return out
+
+
+def approved_removals(missing: list[str], approvals: list[dict], tests: list[str] | None = None) -> tuple[list[dict], list[str]]:
     """(approved, not approved) of the baseline tests that no longer run. A person approves a removed test, with a
     reason (python -m app.engine.convert approve-removal); an approval names the test ("Ns.Class#Method"), its method
-    as an earlier verification named it ("Method"), or its test file."""
-    named = {a["test"]: a for a in approvals}
+    as an earlier verification named it ("Method"), or its test file. A method name alone applies only when it is
+    unambiguous in the repository's tests (`tests`, default `missing`): when tests of several classes share it, it
+    applies to none of them (to_reapprove lists it)."""
+    ambiguous = {a["test"] for a in to_reapprove(approvals, tests if tests is not None else missing)}
+    named = {a["test"]: a for a in approvals if a["test"] not in ambiguous}
     approved, rest = [], []
     for test in missing:
         _, name = _plain(test)
@@ -698,7 +725,11 @@ def verify(db, *, engagement_id: str, slug: str, base: str, ref: str, label: str
             base_report["regressionsCount"], base_report["newFailuresCount"] = len(base_report["regressions"]), len(base_report["newFailures"])
             base_report["rerunFlaky"] = flaky
         # Part N: a removed test a person approved, with a reason, is recorded and not counted.
-        approved, unapproved = approved_removals(base_report["missing"], config.get("approved_test_removals") or [])
+        # The repository's tests: the baseline's (still running or missing now) and the clean run's.
+        known_tests = sorted(set(base_report["missing"]) | set(plugin.baseline_diff.read_results(clean["trx"])["tests"]))
+        approvals = config.get("approved_test_removals") or []
+        approved, unapproved = approved_removals(base_report["missing"], approvals, known_tests)
+        base_report["reapprove"] = to_reapprove(approvals, known_tests)
         unlisted = base_report["missingCount"] - len(base_report["missing"])     # cut from the list: never approved
         base_report["approvedRemovals"] = approved
         problems = []
@@ -711,7 +742,10 @@ def verify(db, *, engagement_id: str, slug: str, base: str, ref: str, label: str
         if unapproved or unlisted or unexplained_drop or base_report["missingModulesCount"]:
             problems.append(f"{len(unapproved) + unlisted} baseline test(s) no longer run, not approved" +
                             (f": {', '.join(unapproved[:5])}" if unapproved else "") +
-                            (f"; executed {drop['now']} of {drop['before']}" if drop else ""))
+                            (f"; executed {drop['now']} of {drop['before']}" if drop else "") +
+                            (f"; {len(base_report['reapprove'])} approval(s) by a method name alone that tests of "
+                             f"several classes share ({', '.join(a['test'] for a in base_report['reapprove'][:5])}) "
+                             "approve none of them: approve again by the test's full name" if base_report["reapprove"] else ""))
         fresh = base_report["fresh"]["counts"]
         summary = f"{fresh['pass']} of {base_report['baseline']['counts']['executed'] if base_report['baseline']['counts'] else '?'} baseline tests pass now ({fresh['executed']} executed)"
         if approved:
@@ -879,6 +913,7 @@ def verify(db, *, engagement_id: str, slug: str, base: str, ref: str, label: str
         "testFiles": {k: tc[k] for k in ("changed", "added", "removed", "configuration")},
         "flaky": (base_report or {}).get("rerunFlaky") or [],
         "approvedRemovals": (base_report or {}).get("approvedRemovals") or [],
+        "reapprove": (base_report or {}).get("reapprove") or [],
         "shellScripts": scripts, "attribution": attributed,
         # Part O: what the conversion left out, and what was built and tested instead of the whole solution.
         "scope": {"projectsLeftOut": sorted(left_out), "built": solution, "testProjectsLeftOut": tests_left_out,
@@ -1014,6 +1049,14 @@ def markdown(r: dict) -> str:
         out += ["## Approved test removals", "", "| Test | Reason | Approved by | When |", "|---|---|---|---|"]
         out += [f"| `{a['test']}` | {a['reason'].replace('|', '/')} | {a['approvedBy']} | {a.get('at', '')[:10]} |"
                 for a in r["approvedRemovals"]] + [""]
+    if r.get("reapprove"):
+        out += ["## Approvals to renew", "",
+                "Recorded by a method name alone, before tests were named by their class: tests of several classes share "
+                "it, so it approves none of them. Approve the removed test again by its full name (python -m "
+                "app.engine.convert approve-removal --test \"Ns.Class#Method\").", "",
+                "| Approved name | Classes with a test of that name | Reason | Approved by |", "|---|---|---|---|"]
+        out += [f"| `{a['test']}` | {', '.join(f'`{c}`' for c in a['classes'])} | {a['reason'].replace('|', '/')} | "
+                f"{a['approvedBy']} |" for a in r["reapprove"]] + [""]
     if r.get("flaky"):
         out += ["## Flaky tests", "", "Failed, then passed when rerun once, alone. Not counted as failures:", ""]
         out += [f"- `{t}`" for t in r["flaky"]] + [""]

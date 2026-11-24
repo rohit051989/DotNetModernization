@@ -615,7 +615,11 @@ refuses and says to run discovery again. The versions checked are recorded in `c
   which reads a TRX result's class from its test definition: MSTest and NUnit give only the method as its name), so
   tests with the same method name in different classes or projects are counted apart; it reruns a failing test by
   that name (`FullyQualifiedName~Ns.Class.Method`) and reads the rerun the same way, so a passing namesake never
-  stands in for it. An approved removal names the test, or its method as an earlier verification named it.
+  stands in for it. An approved removal names the test, or its method as an earlier verification named it. A method
+  name alone (an approval recorded before 2026-11-23) applies only when it is unambiguous in the repository's tests,
+  the baseline's and the clean run's: when tests of several classes share it, it applies to none of them, the
+  baseline diff names the tests not approved, and VERIFICATION.md lists the approval under "Approvals to renew",
+  with the classes, for a person to approve again by the test's full name (2026-11-24).
   `NormalizedKeys_RoundTripThroughEnterpriseEncryptor`, run 50 times at AccountsApi.Net10's
   baseline, failed 2 times (4%), both with an RSA parameter-length `CryptographicException` from
   `Enterprise.Cryptography`.

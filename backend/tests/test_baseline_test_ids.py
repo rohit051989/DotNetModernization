@@ -117,6 +117,38 @@ class Reruns(unittest.TestCase):
         self.assertEqual([a["test"] for a in approved], ["Invoices.Tests.ClockTests#Stamps", "CloseChecks.ClockTests#StampsATime"])
         self.assertEqual(rest, ["CloseChecks.ClockTests#Stamps"])
 
+    def test_an_old_bare_name_approval_shared_by_two_classes_approves_neither_and_is_listed_for_reapproval(self):
+        # Recorded before tests were keyed by class: "Stamps" and "Totals" by method name alone.
+        approvals = [{"test": "Stamps", "reason": "moved to the clock service", "approvedBy": "A", "at": "2026-11-20"},
+                     {"test": "Totals", "reason": "duplicated", "approvedBy": "B", "at": "2026-11-20"}]
+        missing = ["CloseChecks.ClockTests#Stamps", "Invoices.Tests.ClockTests#Totals"]
+        # The repository's tests: Stamps in two classes (one still running), Totals in one.
+        tests = missing + ["Invoices.Tests.ClockTests#Stamps", "Invoices.Tests.ClockTests#StampsATime"]
+        approved, rest = verifier.approved_removals(missing, approvals, tests)
+        self.assertEqual([a["test"] for a in approved], ["Invoices.Tests.ClockTests#Totals"])
+        self.assertEqual(rest, ["CloseChecks.ClockTests#Stamps"])
+        renew = verifier.to_reapprove(approvals, tests)
+        self.assertEqual([(a["test"], a["classes"]) for a in renew],
+                         [("Stamps", ["CloseChecks.ClockTests", "Invoices.Tests.ClockTests"])])
+        # A full name or a test file is never ambiguous; a data row's method counts as its method.
+        self.assertEqual(verifier.to_reapprove([{"test": "CloseChecks.ClockTests#Stamps", "reason": "r", "approvedBy": "A"},
+                                                {"test": "Tests/ClockTests.cs", "reason": "r", "approvedBy": "A"}], tests), [])
+        self.assertEqual(verifier._classes_named("Valid", ['Ns.K#Valid ("a")', "Ns.L#Valid"]), ["Ns.K", "Ns.L"])
+        # VERIFICATION.md lists it, with the classes, under "Approvals to renew".
+        md = verifier.markdown(_report(reapprove=renew))
+        self.assertIn("## Approvals to renew", md)
+        self.assertIn("| `Stamps` | `CloseChecks.ClockTests`, `Invoices.Tests.ClockTests` | moved to the clock service | A |", md)
+
+
+def _report(**fields) -> dict:
+    """The least report markdown() renders (as tests.test_engine_convert's), with `fields`."""
+    return {"label": "x", "verdict": "NOT PROVEN", "repository": "r", "base": "b" * 8, "ref": "r", "tip": "t" * 8,
+            "verifiedAt": "now", "verifier": {"version": "v", "plugin": "p"}, "reasons": [], "checks": [], "rules": [],
+            "forAPerson": [], "rediscovery": {"before": 0, "resolved": [], "remaining": [], "introduced": [], "offTarget": []},
+            "impact": {"predictedFiles": 0, "predictedCreates": 0, "changedFiles": 0, "unpredicted": [], "predictedUntouched": []},
+            "diff": {"filesTouched": 0, "linesAdded": 0, "linesDeleted": 0, "commits": 0}, "excludedPaths": [],
+            "testFiles": {"changed": [], "added": [], "removed": []}, **fields}
+
 
 if __name__ == "__main__":
     unittest.main()
