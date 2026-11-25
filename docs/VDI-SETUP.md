@@ -1809,6 +1809,16 @@ hand. Everything else an update brings, bootstrap applies by itself. Apply every
 had (`previousCommit` in `PLATFORM_SOURCE.json` after the update; in our own installs, the commit before step 5 of
 the appendix), oldest of them first. Entries up to 2026-10-23 were the notes of releases 2 to 7, which are named so.
 
+#### 2026-11-24, (commit of "Engine guidance for the changes that had none, the project file items, and the reviewer's guide"): rescan, or start the next conversion, for the new instructions
+
+Update, bootstrap and restart the backend. Bootstrap writes the new engine guidance into catalog rows nobody has edited
+since they were seeded, and reports, without overwriting, each one your admin edited; it adds the items "Old-style
+(non-SDK) project file" and "NuGet packages listed in packages.config". Then **Rescan** each repository whose
+conversion has not been run, and **start the next conversion** for one already run, to get the new instructions: SSIS
+packages, .NET Framework class libraries, WCF and ASMX services, the project file and packages.config, among others.
+Have the client's subject-matter expert review the new guidance in the catalog; an admin edits it there.
+`docs/REVIEWING-A-PREPARATION.md` says what a correct preparation contains.
+
 #### 2026-11-24, (commit of "Conversion inputs follow the scope, name assembly references and say what has no instruction"): rescan, and decide Windows-only references
 
 Update, bootstrap and restart the backend. Bootstrap adds the catalog item "Reference to an assembly that only loads on

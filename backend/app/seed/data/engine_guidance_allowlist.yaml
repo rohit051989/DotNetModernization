@@ -1,0 +1,66 @@
+# Resolutions with no engine guidance yet, on purpose, each with the reason (reviewed 2026-11-24).
+#
+# Every active resolution of every active catalog item has engine guidance (engine_guidance.yaml, or written by an admin
+# in the catalog's resolution form) or is listed here; tests/test_engine_guidance_allowlist.py fails for one that is
+# neither, and for an entry here that no longer needs to be (it has guidance, or is gone). A conversion that chooses a
+# listed resolution tells the engine "no instruction yet: do not change", and preparation's warning names it with the
+# reason below (docs/REVIEWING-A-PREPARATION.md). Remove an entry in the same change that writes its guidance.
+#
+# The reason is for the reviewer and the operator; it never reaches a repository's branch.
+
+items:
+  aspnet-webforms:
+    aspnetcore-mvc-rewrite: {reason: "A UI rewrite: the steps depend on how pages, view state and controls map to the new UI; to be written with the client's subject-matter expert from a first pilot of it."}
+    blazor-server-net10: {reason: "A UI rewrite into components: as for the MVC rewrite, to be written from a first pilot of it."}
+  container-fixed-user-writable-path:
+    group-zero-writable: {reason: "Not met in a conversion yet; to be written when an application that writes to a fixed path is converted."}
+    writable-volume: {reason: "Not met in a conversion yet; to be written with the deployment's volume conventions."}
+  directory-services-usage:
+    directory-services-usage-remain-windows-hosted: {reason: "Keeps the application on Windows: nothing for the engine to change; its text (record it as left unchanged) is to be written with the item's other resolutions."}
+    ldap-protocols: {reason: "Needs the directory's bind account and search base conventions, which differ by client; to be written with the client's subject-matter expert."}
+  encoding-default:
+    explicit-utf8: {reason: "Changes stored bytes: it needs a data migration plan for files and tables written in the old code page, which is the client's to define."}
+  fx-aspnet-mvc:
+    aspnetcore-mvc-net10: {reason: "A single-pass migration of a whole application; only its incremental counterpart is written so far, from which this is to be derived after a first pilot."}
+  interactive-console-tool:
+    interactive-tool-automated-test: {reason: "Not met in a conversion yet; depends on what the tool exercises."}
+    interactive-tool-keep-not-deployed: {reason: "Keeps the tool as it is, outside the deployment: nothing for the engine to change; its text (record it as left unchanged) is to be written with the item's other resolutions."}
+    interactive-tool-ops-container: {reason: "Not met in a conversion yet; depends on how operations run tools in the cluster."}
+    interactive-tool-retire: {reason: "A retirement is a person's change, not the engine's: to be written as 'record it' text with the item's other resolutions."}
+  missing-dockerfile:
+    multistage-dockerfile: {reason: "The Dockerfile is written from the repository's existing container conventions and base-image policy, which differ by client; the current conversions add it through their container instructions."}
+    sdk-container-publish: {reason: "As for the multi-stage Dockerfile: depends on the client's base-image policy."}
+  modern-worker-service:
+    ocp4-cronjob: {reason: "Not met in a conversion yet; the schedule and its manifest conventions are the client's (the console batch job's CronJob text is the model to follow)."}
+    ocp4-deployment: {reason: "Not met in a conversion yet; to be written with the deployment manifest conventions."}
+  msmq-usage:
+    migrate-to-message-broker: {reason: "The broker, its client library and its topology are the client's choice; to be written with the client's subject-matter expert."}
+    msmq-usage-remain-windows-hosted: {reason: "Keeps the application on Windows: nothing for the engine to change; to be written with the item's other resolutions."}
+  package-not-approved:
+    package-not-approved-latest-approved: {reason: "A package version choice the package upgrade instructions already carry out; its own text is to be written when the client's approval process is known."}
+    package-not-approved-request-approval: {reason: "A request to the client's package approval process: a person's action, not the engine's."}
+  registry-access:
+    move-to-configuration: {reason: "Not met in a conversion yet; to be written with the configuration conventions (environment variables, ConfigMap)."}
+    registry-access-remain-windows-hosted: {reason: "Keeps the application on Windows: nothing for the engine to change; to be written with the item's other resolutions."}
+  system-drawing-common:
+    imagesharp-replacement: {reason: "Not met in a conversion yet; the image operations in use decide the steps."}
+    skiasharp-replacement: {reason: "Not met in a conversion yet; the image operations in use decide the steps."}
+    system-drawing-common-remain-windows-hosted: {reason: "Keeps the application on Windows: nothing for the engine to change; to be written with the item's other resolutions."}
+  wcf-nettcp-client:
+    call-http-binding: {reason: "Depends on which HTTP binding the service exposes and its security; to be written when a NetTcp client is converted."}
+    keep-nettcp-certificate-security: {reason: "Needs the client's certificate conventions; to be written with the client's subject-matter expert."}
+    migrate-to-service-protocol: {reason: "Follows the service's own rewrite; to be written once a service rewrite and its callers are converted together."}
+    wcf-nettcp-client-remain-windows-hosted: {reason: "Keeps the caller on Windows: nothing for the engine to change; to be written with the item's other resolutions."}
+  windows-service-hosting:
+    generic-host-cronjob: {reason: "Not met in a conversion yet; follows the console batch job's CronJob text, with the schedule the client sets."}
+    generic-host-deployment: {reason: "Not met in a conversion yet; to be written with the deployment manifest conventions."}
+    windows-service-hosting-remain-windows-hosted: {reason: "Keeps the service on Windows: nothing for the engine to change; to be written with the item's other resolutions."}
+  windows-service:
+    windows-service-remain-windows-hosted: {reason: "Keeps the service on Windows: nothing for the engine to change; to be written with the item's other resolutions."}
+    worker-service-daemon-container: {reason: "Not met in a conversion yet; to be written with the deployment manifest conventions, as for the hosting item."}
+  winforms-desktop:
+    winforms-net-windows-retarget: {reason: "A desktop application stays on Windows: not part of the Linux move these conversions make; to be written if a desktop retarget is ever in scope."}
+    winforms-ui-rewrite: {reason: "A UI rewrite into a new technology: to be written with the client's subject-matter expert from a first pilot of it."}
+  wpf-desktop:
+    wpf-net-windows-retarget: {reason: "A desktop application stays on Windows: not part of the Linux move these conversions make; to be written if a desktop retarget is ever in scope."}
+    wpf-ui-rewrite: {reason: "A UI rewrite into a new technology: to be written with the client's subject-matter expert from a first pilot of it."}

@@ -99,6 +99,8 @@ def _metadata(project: models.Project, fingerprint: models.ProjectFingerprint | 
         "windowsOnlyAssemblies": None if windows_only is None else "; ".join(windows_only.get(project.id, [])),
         "outputType": project.output_type,
         "projectFormat": project.project_format,
+        # solution-discovery's packagereference / packages_config / mixed / none (packages-config, 2026-11-24).
+        "packageManagement": project.package_management_style,
         "frameworkFamily": project.framework_family,
         "frameworkVersion": project.framework_version,
         # Step 2's declared SDK; step 3's evaluated value when it ever exists.

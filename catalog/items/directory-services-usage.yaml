@@ -39,6 +39,24 @@ resolutions:
   derivations: []
   description: Stop querying the directory at runtime; take users and groups from the identity provider's token claims.
   effort: high
+  engine_guidance: |-
+    Stop querying the directory at run time: take the user's identity and group memberships from the
+    claims in the token the identity provider issues (OpenID Connect, or an OAuth 2.0 bearer token),
+    and remove the directory lookups.
+    1. Configure authentication with the identity provider: `AddJwtBearer()` for an API,
+       `AddOpenIdConnect()` for an interactive web application. The authority, client id and
+       audience are configuration names, never values in code.
+    2. Replace each listed lookup. A user's name, e-mail address or identifier comes from the
+       matching claim of the signed-in `ClaimsPrincipal`; a group membership check becomes a claim
+       check (`User.IsInRole`, or an authorization policy with `RequireClaim`).
+    3. Name the claim each check reads in configuration, so it follows the identity provider's claim
+       names; never hard-code a group's name, distinguished name or identifier in code.
+    4. Where the code needs directory data a token cannot carry (another user's details, a group's
+       members), do not invent a source: leave that place unchanged and record it in the task's
+       notes.
+    5. Remove `System.DirectoryServices` and `System.DirectoryServices.AccountManagement` once nothing
+       uses them.
+    6. Add a test per replaced check with a made-up `ClaimsPrincipal`: with the claim and without it.
   id: identity-provider-claims
   is_default: false
   linux_compatible: true

@@ -61,6 +61,12 @@ detection:
     - id: no-web-builder
       signal:
         name: WEB_APPLICATION_CREATE_BUILDER_ENTRY_POINT
+engine_guidance: |-
+  A class library on .NET Framework, often referenced by several applications in this repository.
+  A .NET Framework project cannot reference a library built only for the target framework, and a
+  project on the target framework cannot reference one built only for .NET Framework, so how this
+  library is retargeted decides which of its consumers still build. Its consumers are the projects
+  whose `ProjectReference` names it.
 excluded_roles: []
 id: fx47-class-library
 name: .NET Framework 4.7 class library
@@ -72,6 +78,21 @@ resolutions:
   derivations: []
   description: Retarget directly to .NET 10. Requires all consumers to migrate in the same wave.
   effort: low
+  engine_guidance: |-
+    Retarget the library to the target framework alone, in the same change as every project that
+    references it.
+    1. The project must be SDK-style first (the instruction for old-style project files does it,
+       in an earlier task), keeping `RootNamespace`, `AssemblyName`, the strong-name key and the
+       compiled files.
+    2. Set `<TargetFramework>` to the target framework.
+    3. Replace each .NET Framework assembly reference with the target framework's own API or the
+       NuGet package that provides it; remove the references the target framework provides itself.
+    4. Fix only the compile errors this causes, keeping the behaviour identical.
+    5. Every project that references the library must reach the target framework in this same
+       change, since a .NET Framework project can no longer reference it. If one of them is not part
+       of this conversion, do not retarget the library: record it as left unchanged in the task's
+       notes, naming that project.
+    6. Build the library and every project that references it, and run their tests.
   id: net10-class-library
   is_default: false
   linux_compatible: true
@@ -88,6 +109,30 @@ resolutions:
   derivations: []
   description: Retarget to .NET Standard 2.0 so both legacy and modern consumers can reference it during a phased migration.
   effort: low
+  engine_guidance: |-
+    Build the library for both the project's current framework and .NET Standard 2.0, so its .NET
+    Framework consumers and its consumers on the target framework can all reference it while the
+    applications move one by one.
+    1. The project must be SDK-style first (the instruction for old-style project files does it,
+       in an earlier task). Then set `<TargetFrameworks>` to the project's current framework, in its
+       SDK-style short form, and `netstandard2.0`, separated by a semicolon. Not the current
+       framework alone: consumers on the target framework could not reference it. Not
+       `netstandard2.0` alone: its .NET Framework consumers then fail with CS0012 for types from the
+       framework's own assemblies.
+    2. Keep `RootNamespace`, `AssemblyName` and the strong-name key (`SignAssembly`,
+       `AssemblyOriginatorKeyFile`) exactly as they are: the assembly's identity must not change.
+    3. If `Properties/AssemblyInfo.cs` exists, keep it and set
+       `<GenerateAssemblyInfo>false</GenerateAssemblyInfo>`, so the attributes are not generated a
+       second time.
+    4. Compile exactly the files the project compiled before: none added, none left out.
+    5. A reference to a .NET Framework assembly (`System.Configuration`, `System.Data` and the like)
+       stays, for the current framework only. For `netstandard2.0`, reference the NuGet package that
+       provides the same API (for `System.Configuration`, `System.Configuration.ConfigurationManager`),
+       in an `ItemGroup` with `Condition="'$(TargetFramework)' == 'netstandard2.0'"`.
+    6. Change no source file unless a `netstandard2.0` compile error needs it, and then keep the
+       .NET Framework behaviour identical (`#if NETSTANDARD2_0` only where there is no common API).
+    7. Build the library, then build every project that references it, the .NET Framework ones
+       included, and run their tests.
   id: netstandard20-bridge
   is_default: true
   linux_compatible: true

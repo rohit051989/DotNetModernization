@@ -84,7 +84,8 @@ def _context(repository_id):
 class DescopedRepository(unittest.TestCase):
     """Two old-style projects, Archive left out of scope; Jobs references the SSIS runtime and a Sybase client (Windows
     only), an undeclared Enterprise Library package by its packages folder, and a vendor DLL; outbound bindings in both
-    projects' configuration files; SSIS decided (no guidance), DateTime.Now (guidance), and the Windows-only item."""
+    projects' configuration files; Encoding.Default decided on explicit UTF-8 (no guidance yet: on the allow-list),
+    DateTime.Now (guidance), and the Windows-only item."""
 
     def setUp(self):
         self.db = SessionLocal()
@@ -183,11 +184,11 @@ class DescopedRepository(unittest.TestCase):
                 file_path=file, value=value, signal_registry_version="test", detection_state="found",
                 evidence=[{"line_start": line, "value": value}] if line else None,
                 detected_at=datetime.datetime.now(datetime.timezone.utc)))
-        found("ssis-package", JOBS)
+        found("encoding-default", JOBS, "Jobs/Clock.cs", "Encoding.Default", 1)
         found("datetime-now-usage", JOBS, "Jobs/Clock.cs", "System.DateTime.Now", 1)
         found("windows-only-assembly-reference", JOBS)
-        self.db.add(models.EngagementDecision(engagement_id=TEST_ENGAGEMENT_ID, item_id="ssis-package",
-                                              resolution_id="csharp-worker-container", status="approved",
+        self.db.add(models.EngagementDecision(engagement_id=TEST_ENGAGEMENT_ID, item_id="encoding-default",
+                                              resolution_id="explicit-utf8", status="approved",
                                               approver_name="Test", rationale="decided for the test"))
 
     def remove(self):
@@ -198,7 +199,7 @@ class DescopedRepository(unittest.TestCase):
                 self.db.execute(text(f"delete from {table} where repository_id = :r"), {"r": self.repo.id})
             self.db.execute(text("delete from package_lookup_cache where feed_url_normalised = :f"),
                             {"f": f"https://feed.client-a.example/{self.tag}"})
-            self.db.execute(text("delete from engagement_decisions where engagement_id = :e and item_id = 'ssis-package' "
+            self.db.execute(text("delete from engagement_decisions where engagement_id = :e and item_id = 'encoding-default' "
                                  "and rationale = 'decided for the test'"), {"e": TEST_ENGAGEMENT_ID})
             self.db.execute(text("delete from projects where repository_id = :r"), {"r": self.repo.id})
             self.db.commit()
@@ -258,18 +259,18 @@ class DescopedRepository(unittest.TestCase):
 
     def test_issue_4_a_decided_change_without_guidance_is_never_told_leave_unchanged_and_is_warned(self):
         model = self.model()
-        ssis = next(i for i in model["items"] if i["id"] == "ssis-package")
-        self.assertTrue(ssis["decided"])
-        self.assertIsNone(ssis["resolution"]["guidance"])
+        changed = next(i for i in model["items"] if i["id"] == "encoding-default")
+        self.assertTrue(changed["decided"])
+        self.assertIsNone(changed["resolution"]["guidance"])
         for engine, files in self.both(model).items():
-            self.assertFalse([p for p in files if "csharp-worker-container" in p], engine)   # no work item
+            self.assertFalse([p for p in files if "explicit-utf8" in p], engine)   # no work item
             for path, body in files.items():
                 self.assertNotIn("none: leave unchanged", body, (engine, path))
-            self.assertIn(f"| {ssis['name']} | {ssis['resolution']['name']} | no instruction yet: do not change; a person "
+            self.assertIn(f"| {changed['name']} | {changed['resolution']['name']} | no instruction yet: do not change; a person "
                           "supplies it |", self.addendum(files), engine)
         warning = render.incomplete(model)
-        self.assertIn(f"{ssis['name']}: {ssis['resolution']['name']} (chosen) has no instruction yet; the engine is told "
-                      "not to change it", warning["details"])
+        line = f"{changed['name']}: {changed['resolution']['name']} (chosen) has no instruction yet; the engine is told not to change it"
+        self.assertTrue(any(d.startswith(line) for d in warning["details"]), warning["details"])
 
     def test_issue_4_preparation_records_the_warning_for_the_conversion_tab(self):
         result = conversion_preparation.run(_context(self.repo.id))
@@ -278,13 +279,14 @@ class DescopedRepository(unittest.TestCase):
                              .read_text(encoding="utf-8"))
         self.assertEqual(attempt["status"], "prepared", attempt.get("message"))
         details = attempt["incomplete"]["details"]
-        self.assertTrue(any(d.startswith("SSIS") or "SSIS" in d or "Integration Services" in d for d in details), details)
+        self.assertTrue(any(d.startswith("Encoding.Default") and "on the guidance allow-list: Changes stored bytes" in d
+                            for d in details), details)
         self.assertTrue(any("no decision recorded; a person decides the replacement before the conversion is run" in d
                             for d in details), details)
         self.assertTrue(any(d.startswith("Package management") for d in details) is False)   # no packages.config here
         record = convert.records(TEST_ENGAGEMENT_ID, self.slug)[-1]
         self.assertEqual(record["incompleteInputs"], attempt["incomplete"])
-        self.assertTrue(any(m["item"] == "ssis-package" and m["missing"] == "resolution" for m in record["withoutGuidance"]))
+        self.assertTrue(any(m["item"] == "encoding-default" and m["missing"] == "resolution" for m in record["withoutGuidance"]))
         worktree = Path(record["worktree"])
         for engine_file in (".github/platform-inputs/assessment-addendum.md", f"{claude.INPUTS_DIR}/assessment-addendum.md"):
             self.assertNotIn("none: leave unchanged", (worktree / engine_file).read_text(encoding="utf-8"), engine_file)
@@ -420,11 +422,11 @@ class EngineGuidanceEditing(unittest.TestCase):
         from app.items import baseline
         from app.routers import catalog_items
 
-        item = self.db.get(models.CatalogItem, "ssis-package")
-        r = self.db.get(models.ItemResolution, "csharp-worker-container")
+        item = self.db.get(models.CatalogItem, "msmq-usage")
+        r = self.db.get(models.ItemResolution, "migrate-to-message-broker")
         self.assertIsNone(r.engine_guidance)
         with self.assertRaises(HTTPException) as refused:
-            catalog_items.update_resolution("ssis-package", r.id, self.payload(r, "Follow docs/28-ITEM-AND-CONVERSION-MODEL.md "
+            catalog_items.update_resolution("msmq-usage", r.id, self.payload(r, "Follow docs/28-ITEM-AND-CONVERSION-MODEL.md "
                                                                                "and the item-detection step."),
                                             db=self.db, if_match=str(item.edit_version))
         self.assertEqual(refused.exception.status_code, 422)
@@ -432,13 +434,13 @@ class EngineGuidanceEditing(unittest.TestCase):
         self.assertEqual((detail["field"], detail["code"]), ("engine_guidance", "NOT_SELF_CONTAINED"))
         self.assertIn("platform document", detail["message"])
         version = str(item.edit_version)
-        out = catalog_items.update_resolution("ssis-package", r.id, self.payload(
-            r, "Move each package's control flow into a C# worker that runs the same steps in order."),
+        out = catalog_items.update_resolution("msmq-usage", r.id, self.payload(
+            r, "Send each message to the broker topic named in configuration, in the same order."),
             db=self.db, if_match=version)
-        self.assertTrue(out.engine_guidance.startswith("Move each package's control flow"))
+        self.assertTrue(out.engine_guidance.startswith("Send each message to the broker"))
         self.assertEqual(baseline.edit_state(self.db.get(models.ItemResolution, r.id)), "edited")   # a reseed keeps it
         with self.assertRaises(HTTPException) as stale:
-            catalog_items.update_resolution("ssis-package", r.id, self.payload(r, "Something else."), db=self.db,
+            catalog_items.update_resolution("msmq-usage", r.id, self.payload(r, "Something else."), db=self.db,
                                             if_match=version)
         self.assertEqual(stale.exception.status_code, 409)
 

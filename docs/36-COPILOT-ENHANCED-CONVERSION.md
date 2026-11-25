@@ -1136,3 +1136,49 @@ Rule 20, for each engine:
 - The preparation warning, the catalog item and the verifier's check are the same for both. The parity test
   (`tests/test_engine_claude.py`) passes unchanged. Rule 21: no step artifact gains a field or an enum value (the new
   item is catalog data, and item-detection's metadata evidence already has this shape), so no schema version changes.
+
+## Part Q addendum — Engine guidance written, frameworks by role, the project file, the allow-list (2026-11-24)
+
+The changes a descoped .NET Framework repository's conversion met with "no instruction yet" now have engine guidance
+(`backend/app/seed/data/engine_guidance.yaml`, seeded through `baseline.py`, exported to `catalog/items/`): SSIS
+packages, .NET Framework class libraries, WCF services and their hosts, ASMX services and the Windows-only assembly
+reference, the item and every resolution; and the identity provider claims, explicit legacy code page and incremental
+ASP.NET Core resolutions. The first pilot run's lessons are in the text: the .NET Standard bridge multi-targets the
+current framework and `netstandard2.0` and keeps the assembly's identity; the C# worker treats the `.dtsx` as its
+specification, null handling and statement order included; the REST rewrite keeps each operation's data and maps
+faults to status codes with problem details.
+
+- **Frameworks by role.** Guidance never names a framework version: it says "the target framework" and "the project's
+  current framework". Each work item has a "Frameworks" section (`render.frameworks_section`) with the real values: the
+  target framework of this upgrade, and each concerned project's current framework, with its SDK-style short form
+  (`v4.7` is `net47` in an SDK-style project file).
+- **The project file.** Two catalog items, detected from solution-discovery's project metadata: an old-style project
+  file (`legacy-project-format`: convert it to an SDK-style project, keeping `RootNamespace`, `AssemblyName`, the
+  strong-name key and the compiled files, `GenerateAssemblyInfo=false` when `Properties/AssemblyInfo.cs` exists) and
+  packages.config (`packages-config`: move to PackageReference, the same packages and versions, transitive ones dropped
+  unless the code uses them, `HintPath` references into `packages` removed). The second runs as one unit with the
+  first, and the first before a class library's retarget. With the packages.config item's instruction present, the
+  decision sheet's Package management answer points to it; the fixed "missing guidance" answer stays only for a
+  repository scanned before the item existed.
+- **Decisions first.** The Windows-only assembly item's default now has guidance (leave the references unchanged), and
+  preparation still names it as a decision a person makes first until one is recorded. Choosing a replacement library
+  is a design decision: "Replace it with a library that loads on Linux" is flagged "Confirm the design before
+  implementing".
+- **The allow-list.** Every active resolution has guidance or is on `engine_guidance_allowlist.yaml` with a reason
+  (`tests/test_engine_guidance_allowlist.py` fails otherwise, and for a stale entry). Preparation's warning repeats the
+  reason for an allow-listed resolution a conversion chose.
+- **Existing installations.** The bootstrap takes the new text from the export for every item that has guidance
+  (`catalog_source.guidance_items`), into rows not edited since they were seeded; a row an admin edited is kept and
+  reported as a conflict (rule 10).
+
+Rule 20, for each engine:
+
+- **GitHub Copilot**: applied. The guidance reaches its work items (`.github/upgrades/skills/`), each with the
+  Frameworks section; the decision sheet's Package management answer changes.
+- **Claude Code**: applied. The same work items through the mechanics table (`.claude/skills/*/SKILL.md`), the same
+  decision sheet; nothing is engine-specific. The parity test passes unchanged.
+- Proved on a made-up repository scanned by the real job (`tests/fixtures/guidance_repository.py`,
+  `tests/test_guidance_fixtures.py`): each item detected on its project; each resolution, chosen in turn, carried to
+  both engines with no gap; preparation end to end with the defaults and with the alternatives.
+
+`docs/REVIEWING-A-PREPARATION.md` says what a correct preparation contains, for whoever reviews one before it is run.

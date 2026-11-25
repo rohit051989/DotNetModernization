@@ -562,6 +562,8 @@ class AuthoredItemTests(unittest.TestCase):
     # 2026-11-24, application scope, matched on project metadata read from dependency-hierarchy's assembly references:
     # an assembly referenced by path that only loads on Windows. Its default is to decide the replacement first.
     ASSEMBLY = {"windows-only-assembly-reference"}
+    # 2026-11-24, application scope, matched on solution-discovery's project metadata: the project file itself.
+    PROJECT_FILE = {"legacy-project-format", "packages-config"}
     # The engagement's target framework, from dependency-assessment; converted by
     # the retarget-tfm approach (34-CONVERSION-ARCHITECTURE "As built").
     FRAMEWORK = {"target-framework-retarget"}
@@ -592,7 +594,7 @@ class AuthoredItemTests(unittest.TestCase):
     def test_every_authored_item_has_a_menu_and_no_computed_state(self):
         items = self._items()
         self.assertEqual(set(items), self.OCCURRENCE | self.ABSENCE | self.HOSTING | self.APPLICATION_WORK | self.PACKAGE | self.FRAMEWORK | self.READINESS
-                         | self.ASSEMBLY)
+                         | self.ASSEMBLY | self.PROJECT_FILE)
         for item_id, data in items.items():
             with self.subTest(item=item_id):
                 self.assertNotIn("state", data)

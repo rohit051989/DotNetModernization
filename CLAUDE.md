@@ -2,6 +2,8 @@
 
 Repo-level context for Claude Code. Read this before any task in this repository.
 
+Asked to review a prepared conversion before it is run? Read `docs/REVIEWING-A-PREPARATION.md` first.
+
 ## What this is
 
 The **Modernization Platform** — a control plane for running .NET legacy modernization
@@ -283,6 +285,12 @@ Use these terms exactly and consistently in code, APIs, and UI copy.
     against the schema file of the version it declares, the file the step validates against before it writes. A test
     of the parts alone is not enough: dependency-assessment wrote `declaredIn: "engagement"` that its schema refused,
     and every scan of an engagement with an artifactory failed while each part's tests passed.
+
+22. **A change to what preparation produces updates the reviewer's guide in the same commit.** Whoever reviews a
+    prepared conversion at an installation, a person or an AI assistant, judges it against
+    `docs/REVIEWING-A-PREPARATION.md`. A change to the inputs either engine gets, the scope files, in-scope.sln, the
+    runbook, the records or last-prepare.json updates that guide in the same commit, so it never describes a
+    preparation that no longer exists.
 
 ## Out of scope for this build
 

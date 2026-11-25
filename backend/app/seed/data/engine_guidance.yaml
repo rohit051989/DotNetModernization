@@ -19,14 +19,21 @@
 #
 # Written so far: every item detected in the first experiment's three applications
 # (AccountsApi.Net10, AccountsApi.Net8, eShopOnWeb), with every one of their resolutions, and the
-# four items the first pilot run exposed (registry 1.12.0).
-# Still to write (no guidance yet; the generator lists any of them it meets): asmx-service,
-# aspnet-webforms, container-fixed-user-writable-path, directory-services-usage,
-# encoding-default, fx-aspnet-mvc, fx47-class-library, interactive-console-tool,
-# missing-dockerfile, modern-worker-service, msmq-usage, package-not-approved, registry-access,
-# ssis-package, system-drawing-common, wcf-nettcp-client, wcf-non-http-client-binding,
-# wcf-non-http-service-binding, wcf-service, wcf-service-host,
-# windows-service, windows-service-hosting, winforms-desktop, wpf-desktop.
+# four items the first pilot run exposed (registry 1.12.0); and (2026-11-24) ssis-package,
+# fx47-class-library, wcf-service, wcf-service-host, asmx-service, windows-only-assembly-reference,
+# legacy-project-format and packages-config with every resolution, and one resolution each of
+# directory-services-usage, encoding-default and fx-aspnet-mvc.
+# Name frameworks by role, never by version: "the target framework", "the project's current
+# framework" (in its SDK-style short form where a project file needs it). Each work item lists the
+# real values for its projects.
+# Still to write: every active resolution without guidance is on the reviewed allow-list,
+# engine_guidance_allowlist.yaml beside this file, with the reason; a test fails for one that is on
+# neither. Items whose own text is still to write: aspnet-webforms,
+# container-fixed-user-writable-path, directory-services-usage, encoding-default, fx-aspnet-mvc,
+# interactive-console-tool, missing-dockerfile, modern-worker-service, msmq-usage,
+# package-not-approved, registry-access, system-drawing-common, wcf-nettcp-client,
+# wcf-non-http-client-binding, wcf-non-http-service-binding, windows-service,
+# windows-service-hosting, winforms-desktop, wpf-desktop.
 
 items:
 
@@ -472,3 +479,430 @@ items:
       keep-windows-build-agents: |-
         Keep the Windows agents and batch scripts. Make the publish step target `linux-x64`, and build the
         container image with a Linux builder the pipeline calls, not on the Windows agent.
+
+  # ---- 2026-11-24: the items a descoped .NET Framework repository's conversion met with no instruction, and the two
+  # project-file items. Every framework is named by role ("the target framework", "the project's current framework"):
+  # each work item lists the real values for its projects.
+
+  ssis-package:
+    guidance: |-
+      This project is a SQL Server Integration Services package project: a `.dtproj` with `.dtsx`
+      packages holding a control flow, data flows, connection managers and often script tasks or
+      script components in C# or VB.NET. The SSIS runtime (`Microsoft.SqlServer.Dts.Runtime`, in
+      `Microsoft.SqlServer.ManagedDTS`) runs only on .NET Framework on Windows with the SSIS engine
+      installed: it does not exist on the target framework or in a Linux container, so code that loads
+      and executes a package (`Application.LoadPackage`, `Package.Execute`) stops working. The
+      packages are the exact record of what the job does today.
+    resolutions:
+      csharp-worker-container: |-
+        Reimplement each package as C# code on the target framework, and replace the code that
+        executes the package with a call to it. The `.dtsx` file is the specification: reproduce what
+        it does, exactly; do not improve, reorder or correct it.
+        1. Leave the `.dtsx` files and the `.dtproj` unchanged: they stay as the reference until the
+           cutover.
+        2. Run the control flow's tasks in the package's order: each Execute SQL task as one SQL command
+           with the same text and parameters; each data flow as code, as below.
+        3. For each data flow, write one reader per source and one writer per destination. A flat-file
+           source gets its own parser, with exactly the format its connection manager declares: fixed
+           widths or delimiters, header rows, text qualifier and code page. Write to SQL Server with
+           `SqlBulkCopy` and explicit column mappings, the same as the destination's mappings.
+        4. Keep null handling exactly as the package declares it. A flat-file source with
+           `RetainNulls=true` turns an empty field into `DBNull.Value`; with `RetainNulls=false` an empty
+           field stays an empty string. A destination with `FastLoadKeepNulls=false` does not set
+           `SqlBulkCopyOptions.KeepNulls`; only `FastLoadKeepNulls=true` sets it. Keep the destination's
+           batch size and table lock setting.
+        5. Translate derived columns and expressions to the same results, with SSIS's own semantics:
+           `SUBSTRING` counts from 1, and a null input gives a null output.
+        6. Translate each script task and script component line by line, keeping every branch, its null
+           handling and the case sensitivity of its comparisons (a VB.NET `=` on strings is
+           case-sensitive by default: use `StringComparison.Ordinal`).
+        7. Keep the method that executed the package: its signature, its return values and its log
+           lines, so its callers do not change. Replace only the package loading and execution inside
+           it.
+        8. Read connection strings and file paths from configuration (environment variables, a
+           ConfigMap or a Secret), named after the package's connection managers; never a value in code.
+        9. Log progress as counts and line numbers, never a line's content.
+        10. Remove the references to `Microsoft.SqlServer.ManagedDTS` and
+            `Microsoft.SqlServer.Dts.Runtime` once nothing uses them.
+        11. Add unit tests on made-up input that need no database: each flat file's offsets or
+            delimiters, each branch of each script, empty and null fields, a malformed line, the order
+            of the SQL statements, and each writer's column mappings (through an interface over the bulk
+            copy, asserting on what would be sent).
+      csharp-sql-pushdown: |-
+        Move each package's set-based transformations into SQL run by the database, and keep a small C#
+        orchestrator on the target framework for the control flow. The `.dtsx` file is the
+        specification: reproduce what it does, exactly; do not improve, reorder or correct it.
+        1. Leave the `.dtsx` files and the `.dtproj` unchanged until the cutover.
+        2. Run the control flow's tasks in the package's order from the orchestrator: each Execute SQL
+           task with the same text and parameters.
+        3. For each data flow whose source and destination are in the same database, write the
+           transformation as one SQL statement or stored procedure (`INSERT ... SELECT`, `MERGE`) giving
+           the same rows: the same filters, lookups, derived columns, data types and null handling as
+           the package declares.
+        4. A data flow that reads a file, or moves rows between databases, cannot be pushed down as it
+           is: load the rows into a staging table first, with `SqlBulkCopy`, explicit column mappings
+           and the package's null handling (`RetainNulls`, `FastLoadKeepNulls`, as declared), then
+           transform them in SQL.
+        5. Translate script tasks and script components into SQL where they work on whole sets, and
+           otherwise into C# in the orchestrator, line by line, keeping every branch and the case
+           sensitivity of its comparisons.
+        6. Keep the method that executed the package: its signature, its return values and its log
+           lines. Replace only the package loading and execution inside it.
+        7. Read connection strings and file paths from configuration, named after the package's
+           connection managers. Log counts and line numbers, never a row's content.
+        8. Remove the references to `Microsoft.SqlServer.ManagedDTS` and
+           `Microsoft.SqlServer.Dts.Runtime` once nothing uses them.
+        9. Add unit tests that need no database: the order and parameters of the orchestrator's
+           statements, each statement's text, and the parsing of each staged file on made-up input.
+
+  fx47-class-library:
+    guidance: |-
+      A class library on .NET Framework, often referenced by several applications in this repository.
+      A .NET Framework project cannot reference a library built only for the target framework, and a
+      project on the target framework cannot reference one built only for .NET Framework, so how this
+      library is retargeted decides which of its consumers still build. Its consumers are the projects
+      whose `ProjectReference` names it.
+    resolutions:
+      netstandard20-bridge: |-
+        Build the library for both the project's current framework and .NET Standard 2.0, so its .NET
+        Framework consumers and its consumers on the target framework can all reference it while the
+        applications move one by one.
+        1. The project must be SDK-style first (the instruction for old-style project files does it,
+           in an earlier task). Then set `<TargetFrameworks>` to the project's current framework, in its
+           SDK-style short form, and `netstandard2.0`, separated by a semicolon. Not the current
+           framework alone: consumers on the target framework could not reference it. Not
+           `netstandard2.0` alone: its .NET Framework consumers then fail with CS0012 for types from the
+           framework's own assemblies.
+        2. Keep `RootNamespace`, `AssemblyName` and the strong-name key (`SignAssembly`,
+           `AssemblyOriginatorKeyFile`) exactly as they are: the assembly's identity must not change.
+        3. If `Properties/AssemblyInfo.cs` exists, keep it and set
+           `<GenerateAssemblyInfo>false</GenerateAssemblyInfo>`, so the attributes are not generated a
+           second time.
+        4. Compile exactly the files the project compiled before: none added, none left out.
+        5. A reference to a .NET Framework assembly (`System.Configuration`, `System.Data` and the like)
+           stays, for the current framework only. For `netstandard2.0`, reference the NuGet package that
+           provides the same API (for `System.Configuration`, `System.Configuration.ConfigurationManager`),
+           in an `ItemGroup` with `Condition="'$(TargetFramework)' == 'netstandard2.0'"`.
+        6. Change no source file unless a `netstandard2.0` compile error needs it, and then keep the
+           .NET Framework behaviour identical (`#if NETSTANDARD2_0` only where there is no common API).
+        7. Build the library, then build every project that references it, the .NET Framework ones
+           included, and run their tests.
+      net10-class-library: |-
+        Retarget the library to the target framework alone, in the same change as every project that
+        references it.
+        1. The project must be SDK-style first (the instruction for old-style project files does it,
+           in an earlier task), keeping `RootNamespace`, `AssemblyName`, the strong-name key and the
+           compiled files.
+        2. Set `<TargetFramework>` to the target framework.
+        3. Replace each .NET Framework assembly reference with the target framework's own API or the
+           NuGet package that provides it; remove the references the target framework provides itself.
+        4. Fix only the compile errors this causes, keeping the behaviour identical.
+        5. Every project that references the library must reach the target framework in this same
+           change, since a .NET Framework project can no longer reference it. If one of them is not part
+           of this conversion, do not retarget the library: record it as left unchanged in the task's
+           notes, naming that project.
+        6. Build the library and every project that references it, and run their tests.
+
+  wcf-service:
+    guidance: |-
+      This project implements a WCF service (`System.ServiceModel`): `[ServiceContract]` interfaces with
+      `[OperationContract]` methods, `[DataContract]` types and often `[FaultContract]` faults, hosted
+      by IIS through a `.svc` file or by a `ServiceHost`. Hosting a WCF service does not exist on the
+      target framework. The service's contract (its operations, the data they take and return, and its
+      faults) is what its callers depend on: how the service is converted decides whether they change.
+    resolutions:
+      wcf-service-corewcf: |-
+        Port the service to CoreWCF on the target framework, keeping its contract exactly, so its
+        callers keep working unchanged.
+        1. Before changing anything, save the service's current WSDL contract in the repository beside
+           the service, as the reference.
+        2. Keep every `[ServiceContract]`, `[OperationContract]`, `[DataContract]`, `[DataMember]` and
+           `[FaultContract]` with the same names, namespaces, order and types. Change only the `using`
+           directives from `System.ServiceModel` to `CoreWCF` where CoreWCF provides the type.
+        3. Host the service in ASP.NET Core (`AddServiceModelServices()`, `UseServiceModel()`), with the
+           same binding, security mode and credential type as each endpoint in web.config or
+           app.config, at the same relative address.
+        4. Keep the service's implementation classes, and the code they call, unchanged.
+        5. Expose metadata (`ServiceMetadataBehavior`) where the service exposed it, and compare the new
+           WSDL with the saved one: the same operations, messages and types.
+        6. A binding CoreWCF does not support stays as it is: record it in the task's notes, and do not
+           choose another binding.
+        7. Add a test per operation that calls the service through a client generated from the saved
+           WSDL.
+      wcf-service-rest-rewrite: |-
+        Rewrite the service as a REST API on ASP.NET Core on the target framework, retiring SOAP. Each
+        operation keeps what it does and the data it takes and returns.
+        1. Keep the old contract (the `[ServiceContract]` interfaces and `[DataContract]` types) in the
+           repository as the reference until the cutover; do not delete it.
+        2. Add one HTTP endpoint per `[OperationContract]`, in controllers or minimal API endpoints,
+           matching how the rest of the solution is written. Its request and response types carry the
+           same data as the data contracts: the same field names, types and nullability. An operation
+           that only reads is a GET; any other is a POST, PUT or DELETE as it changes data.
+        3. Map each `[FaultContract]`, and each fault the service throws, to an HTTP status code (invalid
+           input 400, not found 404, a conflict or broken business rule 409 or 422, anything else 500),
+           with a problem-details body (`application/problem+json`, `ProblemDetails`) carrying the
+           fault's message and code.
+        4. Keep the service's business classes and call them from the endpoints; move no logic into
+           them.
+        5. Publish an OpenAPI document of the new API for its callers, describing every endpoint,
+           request, response and error.
+        6. Carry over the service's authentication and authorisation to every endpoint: nothing that was
+           protected is left open.
+        7. Add a test per operation: the same input as through the old contract gives the same output
+           data, and each fault gives its status code and problem details.
+      wcf-service-grpc-rewrite: |-
+        Rewrite the service as a contract-first gRPC service on ASP.NET Core on the target framework.
+        1. Keep the old contract in the repository as the reference until the cutover.
+        2. Write one `.proto` file per service contract: one `rpc` per `[OperationContract]` and one
+           `message` per `[DataContract]`, carrying the same data (names and types; a nullable value as a
+           wrapper type or an `optional` field).
+        3. Map each fault to a gRPC status code (`InvalidArgument`, `NotFound`, `FailedPrecondition`,
+           `Internal`) with the fault's message.
+        4. Implement each `rpc` by calling the service's existing business classes; move no logic into
+           the gRPC service class.
+        5. Host it in ASP.NET Core (`AddGrpc()`, `MapGrpcService`) over HTTP/2, and carry over the
+           service's authentication and authorisation.
+        6. Add a test per `rpc`: the same input gives the same output data, and each fault its status
+           code.
+      wcf-service-remain-windows-hosted: |-
+        Do not convert this service: it stays on .NET Framework WCF on its Windows hosts, outside the
+        Linux move.
+        1. Change nothing in the service's contract, implementation, hosting or configuration.
+        2. A project being converted that calls this service keeps its client, binding and address as
+           they are configured.
+        3. Record the service in the task's notes as left unchanged because it stays on Windows.
+
+  wcf-service-host:
+    guidance: |-
+      This project is the process a WCF service runs in: it creates a `ServiceHost` (in a console
+      application or a Windows service) or holds the service's `.svc` file for IIS. Neither a
+      `ServiceHost` process nor IIS exists in a Linux container on the target framework. The service's
+      implementation usually lives in another project; this one hosts it, with its endpoints, bindings
+      and behaviours configured in web.config or app.config.
+    resolutions:
+      wcf-host-aspnetcore-web-host: |-
+        Replace the host with an ASP.NET Core application on the target framework, served by Kestrel,
+        that hosts the service's new endpoints (CoreWCF, REST or gRPC, as the service's own instruction
+        says).
+        1. Make the project an ASP.NET Core application (`Microsoft.NET.Sdk.Web`) on the target
+           framework, with a `Program.cs` that builds a `WebApplication`.
+        2. Move each endpoint's address, binding settings, behaviours and limits from web.config or
+           app.config to the new host's configuration (`appsettings.json` and environment variables),
+           environment by environment, keeping every value. A value that differs per environment
+           becomes a configuration name, never a value in code.
+        3. Register the service as its own instruction says, at the same relative addresses.
+        4. Listen on port 8080: set `ASPNETCORE_HTTP_PORTS=8080` in the container image, not in code.
+        5. Remove the `ServiceHost` code and the `system.serviceModel` configuration once the new host
+           serves every endpoint. Keep a `.svc` file's address as a route if callers use it.
+        6. Keep the host's logging, now through `ILogger` to standard output.
+        7. Build, start the host in a test, and call each endpoint once.
+      wcf-host-remain-windows-hosted: |-
+        Do not convert this host: it stays on Windows, outside the Linux move. Change nothing in it or in
+        its configuration, and record it in the task's notes as left unchanged because it stays on
+        Windows.
+      wcf-host-retire: |-
+        Remove this host: each service it hosted gets an ASP.NET Core host of its own in this
+        conversion.
+        1. Check that every service this project hosts has its own new host in this conversion. If one
+           does not, leave this host as it is and record why in the task's notes.
+        2. Remove the project, its configuration and every reference to it from the solution and the
+           repository.
+        3. Move nothing of its configuration into another project unless a service's new host needs it,
+           as that host's instruction says.
+        4. Build the solution and run its tests.
+
+  asmx-service:
+    guidance: |-
+      This project exposes an ASP.NET web service through `.asmx` files: classes with `[WebService]` and
+      `[WebMethod]` methods, served by IIS through System.Web. ASMX does not exist on the target
+      framework. Its callers depend on its SOAP contract: the operations, the data they take and
+      return, and the service's namespace.
+    resolutions:
+      corewcf-basichttp: |-
+        Re-host the operations on CoreWCF with `BasicHttpBinding` on the target framework, keeping the
+        SOAP contract, so its callers keep working unchanged.
+        1. Before changing anything, save the service's current WSDL contract in the repository beside
+           the service, as the reference.
+        2. For each class with `[WebService]`, write a `[ServiceContract]` interface with the same
+           namespace (the `[WebService(Namespace = ...)]` value) and one `[OperationContract]` per
+           `[WebMethod]`, with the same operation name and SOAP action, and make the class implement it.
+           Mark the contract `[XmlSerializerFormat]`, so messages serialise as ASMX serialised them.
+        3. Keep every parameter and return type, and the classes' logic, unchanged.
+        4. Host it in ASP.NET Core with CoreWCF (`AddServiceModelServices()`, `UseServiceModel()`) and
+           `BasicHttpBinding`, at the same relative address as the `.asmx` file.
+        5. Compare the new WSDL with the saved one: the same operations, messages and types.
+        6. Remove the `.asmx` files and their System.Web registration once the new endpoint serves every
+           operation.
+        7. Add a test per operation that calls it through a client generated from the saved WSDL.
+      rest-api-rewrite: |-
+        Rewrite the service as a REST API on ASP.NET Core on the target framework, retiring SOAP. Each
+        operation keeps what it does and the data it takes and returns.
+        1. Keep the `.asmx` classes in the repository as the reference until the cutover; do not delete
+           them.
+        2. Add one HTTP endpoint per `[WebMethod]`, in controllers or minimal API endpoints, matching how
+           the rest of the solution is written. Its request and response types carry the same data as the
+           method's parameters and return type: the same names, types and nullability. A method that
+           only reads is a GET; any other is a POST, PUT or DELETE as it changes data.
+        3. Map each `SoapException` the service throws, and each error it reports, to an HTTP status code
+           (invalid input 400, not found 404, a conflict or broken business rule 409 or 422, anything
+           else 500), with a problem-details body (`application/problem+json`, `ProblemDetails`)
+           carrying the message and code.
+        4. Keep the service's business code and call it from the endpoints; move no logic into them.
+        5. Publish an OpenAPI document of the new API for its callers, describing every endpoint,
+           request, response and error.
+        6. Carry over the service's authentication and authorisation to every endpoint: nothing that was
+           protected is left open.
+        7. Add a test per operation: the same input as through the old service gives the same output
+           data, and each error gives its status code and problem details.
+
+  directory-services-usage:
+    resolutions:
+      identity-provider-claims: |-
+        Stop querying the directory at run time: take the user's identity and group memberships from the
+        claims in the token the identity provider issues (OpenID Connect, or an OAuth 2.0 bearer token),
+        and remove the directory lookups.
+        1. Configure authentication with the identity provider: `AddJwtBearer()` for an API,
+           `AddOpenIdConnect()` for an interactive web application. The authority, client id and
+           audience are configuration names, never values in code.
+        2. Replace each listed lookup. A user's name, e-mail address or identifier comes from the
+           matching claim of the signed-in `ClaimsPrincipal`; a group membership check becomes a claim
+           check (`User.IsInRole`, or an authorization policy with `RequireClaim`).
+        3. Name the claim each check reads in configuration, so it follows the identity provider's claim
+           names; never hard-code a group's name, distinguished name or identifier in code.
+        4. Where the code needs directory data a token cannot carry (another user's details, a group's
+           members), do not invent a source: leave that place unchanged and record it in the task's
+           notes.
+        5. Remove `System.DirectoryServices` and `System.DirectoryServices.AccountManagement` once nothing
+           uses them.
+        6. Add a test per replaced check with a made-up `ClaimsPrincipal`: with the claim and without it.
+
+  encoding-default:
+    resolutions:
+      explicit-legacy-code-page: |-
+        Keep the bytes exactly as the Windows servers produced them: use their legacy code page
+        explicitly instead of `Encoding.Default`, which is UTF-8 on the target framework.
+        1. Add the `System.Text.Encoding.CodePages` package if the target framework does not provide it,
+           and register the provider once at startup:
+           `Encoding.RegisterProvider(CodePagesEncodingProvider.Instance)`.
+        2. Replace each listed use of `Encoding.Default` with one encoding,
+           `Encoding.GetEncoding(codePage)`, whose code page is read from configuration under a single
+           name for the whole application; never a number in code.
+        3. Change only the encoding: keep how each place reads and writes.
+        4. Before changing a place, add a characterization test that writes and reads a string with
+           non-ASCII characters through it (skill `writing-characterization-tests`), and keep it passing
+           with the configured code page.
+
+  fx-aspnet-mvc:
+    resolutions:
+      aspnetcore-incremental-adapters: |-
+        Move the application to ASP.NET Core on the target framework step by step, keeping the existing
+        application running behind it: a new ASP.NET Core application in front serves the routes
+        already moved and forwards every other request to the existing application through a reverse
+        proxy (YARP), and the System.Web adapters share session state and the signed-in user between
+        the two.
+        1. Add a new ASP.NET Core project on the target framework beside the existing one, with YARP
+           forwarding every route it does not serve to the existing application, whose address is a
+           configuration name.
+        2. Add the System.Web adapters (`Microsoft.AspNetCore.SystemWebAdapters`) to both: the remote
+           application side to the existing application, the client side to the new one. Their shared
+           key is a Secret named in configuration, never a value in code.
+        3. Move code both need (models, services, data access) into a library both reference, retargeted
+           as that library's own instruction says; never copy it.
+        4. Move controllers one at a time, starting with those that depend least on `HttpContext` and
+           System.Web: each with its views and filters, rewritten for ASP.NET Core MVC with the same
+           routes, parameters, responses and status codes. Every other route stays in the existing
+           application.
+        5. Move each setting a moved route uses from web.config to the new project's configuration, with
+           the same value.
+        6. Leave the existing application working for every route not moved; do not remove it.
+        7. Add a test per moved route: the same request gives the same response through the new
+           application as through the old one.
+
+  windows-only-assembly-reference:
+    guidance: |-
+      This project references an assembly that only loads on Windows, or only on .NET Framework, by a
+      path to a DLL or from the Global Assembly Cache rather than through a NuGet package: a database
+      provider that loads native Windows libraries, or the SQL Server Integration Services runtime, for
+      example. It will not load in a Linux container on the target framework. The build may still
+      succeed: the failure comes when the code first runs. The assemblies are named in the assessment
+      addendum's section on assembly references no package declares.
+    resolutions:
+      decide-windows-only-replacement: |-
+        No replacement has been chosen for these assemblies yet. Do not replace or remove the
+        references, and do not choose a replacement yourself: leave each reference, and the code that
+        uses it, exactly as it is, and record each in the task's notes as left unchanged because its
+        replacement is not chosen. Convert the rest of the project as its other instructions say.
+      replace-windows-only-assembly: |-
+        Replace each Windows-only assembly with a cross-platform library that runs on the target
+        framework, declared as a NuGet package.
+        1. Remove the `<Reference>` to the assembly, with its `HintPath`, and add a package reference to
+           the replacement at a version that supports the target framework.
+        2. Rewrite each use of the old assembly's types against the replacement, keeping the behaviour:
+           the same operations, the same results, the same error handling.
+        3. Keep connection strings and other settings as configuration names. If the replacement needs a
+           value in a different format, record the format it needs in the task's notes, never a value.
+        4. Add tests of each rewritten use that need no external system; where one needs a database or
+           another service, record it in the task's notes.
+      keep-project-on-windows: |-
+        Leave this project on Windows, outside the Linux move: do not convert, retarget or otherwise
+        change it, its references or its configuration. Record it in the task's notes as left unchanged
+        because it stays on Windows, together with every project being converted that depends on it.
+
+  legacy-project-format:
+    guidance: |-
+      This project file is in the old, non-SDK format: a `<Project ToolsVersion="...">` root in the
+      MSBuild namespace, a `TargetFrameworkVersion` property, and every compiled file listed one by
+      one. A project in this format cannot target the target framework: it must become an SDK-style
+      project (`<Project Sdk="Microsoft.NET.Sdk">`) first. The conversion must change neither what is
+      compiled nor the assembly's identity.
+    resolutions:
+      sdk-style-project-conversion: |-
+        Convert the project file to the SDK style, keeping what it builds exactly. This task does not
+        retarget: a later one does.
+        1. Replace the root with `<Project Sdk="Microsoft.NET.Sdk">` (`Microsoft.NET.Sdk.Web` for a web
+           application). Remove the MSBuild namespace, `ToolsVersion`, the imports of
+           `Microsoft.Common.props` and `Microsoft.CSharp.targets`, and the properties the SDK sets by
+           default.
+        2. Keep `RootNamespace`, `AssemblyName`, `OutputType` and the strong-name key (`SignAssembly`,
+           `AssemblyOriginatorKeyFile`) exactly as they are.
+        3. Set `<TargetFramework>` to the project's current framework, in its SDK-style short form.
+        4. If `Properties/AssemblyInfo.cs` exists, keep it and set
+           `<GenerateAssemblyInfo>false</GenerateAssemblyInfo>`.
+        5. Compile exactly the files the old project compiled. The SDK compiles every `.cs` file under
+           the project's folder, so exclude with `<Compile Remove="..." />` each file the old project did
+           not list. Keep `Content`, `EmbeddedResource` and `None` items with their copy settings.
+        6. Keep each `ProjectReference`, and each `<Reference>` to a .NET Framework assembly the project
+           needs. Move its NuGet packages as the instruction for packages.config says, in this same task.
+        7. Build the project and every project that references it, and run their tests. The output
+           assembly keeps its name, version and public key token.
+
+      keep-old-style-project: |-
+        Leave this project file exactly as it is: the project stays on .NET Framework, outside the move to
+        the target framework. Do not convert it to the SDK style, retarget it or change its references.
+        Record it in the task's notes as left unchanged because it stays on .NET Framework, with every
+        project being converted that references it.
+
+  packages-config:
+    guidance: |-
+      This project lists its NuGet packages in `packages.config`: they are restored into a `packages`
+      folder and referenced through `HintPath` elements. An SDK-style project, which the target
+      framework needs, does not restore `packages.config`: its packages must become `PackageReference`
+      items.
+    resolutions:
+      packagereference-migration: |-
+        Move the project's packages from `packages.config` to `PackageReference` items, in the same task
+        as the project's conversion to the SDK style.
+        1. For each package in `packages.config`, add `<PackageReference Include="..." Version="..." />`
+           with the same id and the same version. Version upgrades other instructions ask for come
+           afterwards, in their own tasks.
+        2. Leave out a package that is there only because another package depends on it, unless this
+           project's own code uses its types directly: restore brings it in.
+        3. Remove each `<Reference>` whose `HintPath` points into the `packages` folder: the package
+           reference replaces it. Remove the imports of `.props` and `.targets` files from the `packages`
+           folder, and the `EnsureNuGetPackageBuildImports` target: restore supplies them now.
+        4. Delete `packages.config`.
+        5. Restore and build the project and every project that references it, and run their tests.
+      keep-packages-config: |-
+        Leave `packages.config` and the project's `HintPath` references exactly as they are: the project
+        stays on .NET Framework with its old-style project file. Record it in the task's notes as left
+        unchanged because it stays on .NET Framework.

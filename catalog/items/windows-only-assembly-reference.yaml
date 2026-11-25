@@ -11,6 +11,13 @@ detection:
       id: references-windows-only-assembly
       regex: .+
     none: []
+engine_guidance: |-
+  This project references an assembly that only loads on Windows, or only on .NET Framework, by a
+  path to a DLL or from the Global Assembly Cache rather than through a NuGet package: a database
+  provider that loads native Windows libraries, or the SQL Server Integration Services runtime, for
+  example. It will not load in a Linux container on the target framework. The build may still
+  succeed: the failure comes when the code first runs. The assemblies are named in the assessment
+  addendum's section on assembly references no package declares.
 excluded_roles:
 - DATABASE
 - DEPLOYMENT
@@ -25,6 +32,11 @@ resolutions:
   derivations: []
   description: 'Nobody has decided yet: the conversion leaves the reference as it is, and a person records the replacement as a decision before running it.'
   effort: low
+  engine_guidance: |-
+    No replacement has been chosen for these assemblies yet. Do not replace or remove the
+    references, and do not choose a replacement yourself: leave each reference, and the code that
+    uses it, exactly as it is, and record each in the task's notes as left unchanged because its
+    replacement is not chosen. Convert the rest of the project as its other instructions say.
   id: decide-windows-only-replacement
   is_default: true
   linux_compatible: false
@@ -38,6 +50,10 @@ resolutions:
   derivations: []
   description: 'Leave the project out of the Linux conversion: it keeps running where the assembly loads.'
   effort: low
+  engine_guidance: |-
+    Leave this project on Windows, outside the Linux move: do not convert, retarget or otherwise
+    change it, its references or its configuration. Record it in the task's notes as left unchanged
+    because it stays on Windows, together with every project being converted that depends on it.
   id: keep-project-on-windows
   is_default: false
   linux_compatible: false
@@ -45,12 +61,24 @@ resolutions:
   notes: null
   status: active
   target_description: The project outside the conversion's scope, on its Windows host
-- consumer_impact: medium
+- confirm_design: true
+  consumer_impact: medium
   container_ready: true
   deleted: false
   derivations: []
   description: Use a cross-platform library or service in its place; the decision names which.
   effort: high
+  engine_guidance: |-
+    Replace each Windows-only assembly with a cross-platform library that runs on the target
+    framework, declared as a NuGet package.
+    1. Remove the `<Reference>` to the assembly, with its `HintPath`, and add a package reference to
+       the replacement at a version that supports the target framework.
+    2. Rewrite each use of the old assembly's types against the replacement, keeping the behaviour:
+       the same operations, the same results, the same error handling.
+    3. Keep connection strings and other settings as configuration names. If the replacement needs a
+       value in a different format, record the format it needs in the task's notes, never a value.
+    4. Add tests of each rewritten use that need no external system; where one needs a database or
+       another service, record it in the task's notes.
   id: replace-windows-only-assembly
   is_default: false
   linux_compatible: true

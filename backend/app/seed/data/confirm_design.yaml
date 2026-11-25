@@ -33,3 +33,4 @@ resolutions:
   - migrate-to-message-broker           # msmq-usage
   - identity-provider-claims            # directory-services-usage
   - otlp-exporter                       # serilog-file-sink
+  - replace-windows-only-assembly       # windows-only-assembly-reference: which library replaces it

@@ -16,6 +16,14 @@ detection:
       field: structuralType
       id: is-ssis-project
     none: []
+engine_guidance: |-
+  This project is a SQL Server Integration Services package project: a `.dtproj` with `.dtsx`
+  packages holding a control flow, data flows, connection managers and often script tasks or
+  script components in C# or VB.NET. The SSIS runtime (`Microsoft.SqlServer.Dts.Runtime`, in
+  `Microsoft.SqlServer.ManagedDTS`) runs only on .NET Framework on Windows with the SSIS engine
+  installed: it does not exist on the target framework or in a Linux container, so code that loads
+  and executes a package (`Application.LoadPackage`, `Package.Execute`) stops working. The
+  packages are the exact record of what the job does today.
 excluded_roles: []
 id: ssis-package
 name: SSIS package
@@ -28,6 +36,32 @@ resolutions:
   derivations: []
   description: Push set-based transformation logic into SQL and keep a thin C# orchestrator for control flow.
   effort: medium
+  engine_guidance: |-
+    Move each package's set-based transformations into SQL run by the database, and keep a small C#
+    orchestrator on the target framework for the control flow. The `.dtsx` file is the
+    specification: reproduce what it does, exactly; do not improve, reorder or correct it.
+    1. Leave the `.dtsx` files and the `.dtproj` unchanged until the cutover.
+    2. Run the control flow's tasks in the package's order from the orchestrator: each Execute SQL
+       task with the same text and parameters.
+    3. For each data flow whose source and destination are in the same database, write the
+       transformation as one SQL statement or stored procedure (`INSERT ... SELECT`, `MERGE`) giving
+       the same rows: the same filters, lookups, derived columns, data types and null handling as
+       the package declares.
+    4. A data flow that reads a file, or moves rows between databases, cannot be pushed down as it
+       is: load the rows into a staging table first, with `SqlBulkCopy`, explicit column mappings
+       and the package's null handling (`RetainNulls`, `FastLoadKeepNulls`, as declared), then
+       transform them in SQL.
+    5. Translate script tasks and script components into SQL where they work on whole sets, and
+       otherwise into C# in the orchestrator, line by line, keeping every branch and the case
+       sensitivity of its comparisons.
+    6. Keep the method that executed the package: its signature, its return values and its log
+       lines. Replace only the package loading and execution inside it.
+    7. Read connection strings and file paths from configuration, named after the package's
+       connection managers. Log counts and line numbers, never a row's content.
+    8. Remove the references to `Microsoft.SqlServer.ManagedDTS` and
+       `Microsoft.SqlServer.Dts.Runtime` once nothing uses them.
+    9. Add unit tests that need no database: the order and parameters of the orchestrator's
+       statements, each statement's text, and the parsing of each staged file on made-up input.
   id: csharp-sql-pushdown
   is_default: true
   linux_compatible: true
@@ -45,6 +79,40 @@ resolutions:
   derivations: []
   description: Convert the package to a C# worker that reimplements the data flow in code, containerized for OCP4.
   effort: high
+  engine_guidance: |-
+    Reimplement each package as C# code on the target framework, and replace the code that
+    executes the package with a call to it. The `.dtsx` file is the specification: reproduce what
+    it does, exactly; do not improve, reorder or correct it.
+    1. Leave the `.dtsx` files and the `.dtproj` unchanged: they stay as the reference until the
+       cutover.
+    2. Run the control flow's tasks in the package's order: each Execute SQL task as one SQL command
+       with the same text and parameters; each data flow as code, as below.
+    3. For each data flow, write one reader per source and one writer per destination. A flat-file
+       source gets its own parser, with exactly the format its connection manager declares: fixed
+       widths or delimiters, header rows, text qualifier and code page. Write to SQL Server with
+       `SqlBulkCopy` and explicit column mappings, the same as the destination's mappings.
+    4. Keep null handling exactly as the package declares it. A flat-file source with
+       `RetainNulls=true` turns an empty field into `DBNull.Value`; with `RetainNulls=false` an empty
+       field stays an empty string. A destination with `FastLoadKeepNulls=false` does not set
+       `SqlBulkCopyOptions.KeepNulls`; only `FastLoadKeepNulls=true` sets it. Keep the destination's
+       batch size and table lock setting.
+    5. Translate derived columns and expressions to the same results, with SSIS's own semantics:
+       `SUBSTRING` counts from 1, and a null input gives a null output.
+    6. Translate each script task and script component line by line, keeping every branch, its null
+       handling and the case sensitivity of its comparisons (a VB.NET `=` on strings is
+       case-sensitive by default: use `StringComparison.Ordinal`).
+    7. Keep the method that executed the package: its signature, its return values and its log
+       lines, so its callers do not change. Replace only the package loading and execution inside
+       it.
+    8. Read connection strings and file paths from configuration (environment variables, a
+       ConfigMap or a Secret), named after the package's connection managers; never a value in code.
+    9. Log progress as counts and line numbers, never a line's content.
+    10. Remove the references to `Microsoft.SqlServer.ManagedDTS` and
+        `Microsoft.SqlServer.Dts.Runtime` once nothing uses them.
+    11. Add unit tests on made-up input that need no database: each flat file's offsets or
+        delimiters, each branch of each script, empty and null fields, a malformed line, the order
+        of the SQL statements, and each writer's column mappings (through an interface over the bulk
+        copy, asserting on what would be sent).
   id: csharp-worker-container
   is_default: false
   linux_compatible: true

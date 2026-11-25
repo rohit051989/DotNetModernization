@@ -434,9 +434,20 @@ not to make the change, and a person supplies the instruction (36-COPILOT-ENHANC
 dependency-hierarchy's assembly references rather than a signal: item-detection's project metadata
 field `windowsOnlyAssemblies` names the referenced assemblies on
 `backend/app/compatibility/windows_only_assemblies.yaml` (unknown, so not checked, without a
-hierarchy). Its default resolution, "Decide the replacement before converting", has no engine
-guidance on purpose: a person decides the replacement before the conversion, as an engagement
-decision, never the engine during it.
+hierarchy). Its default resolution, "Decide the replacement before converting", tells the engine to
+leave the references unchanged: a person decides the replacement before the conversion, as an
+engagement decision, never the engine during it, and preparation names it until one is recorded.
+
+`legacy-project-format` and `packages-config` (2026-11-24, application scope) are the project file
+itself, matched on solution-discovery's metadata: `projectFormat` `legacy_msbuild` (a `.csproj` or
+`.vbproj`), and `packageManagement` (`package_management_style`) `packages_config` or `mixed`. Each
+defaults to its conversion (to an SDK-style project; to PackageReference, in the same task), with
+"keep" as the other resolution, for a project that stays on .NET Framework.
+
+Every active resolution has `engine_guidance` or is on the reviewed allow-list,
+`backend/app/seed/data/engine_guidance_allowlist.yaml`, with a reason; a test keeps it so. Guidance
+names frameworks by role ("the target framework", "the project's current framework"), never a
+version: each work item lists the real ones.
 
 `confirm_design` BOOL (default false): "Confirm the design before implementing". Set on a
 resolution that changes the design or the architecture, not only the code (SOAP to REST, a UI

@@ -1,0 +1,78 @@
+category: dependencies
+deleted: false
+description: |-
+  The project lists its NuGet packages in packages.config and references
+  them by HintPath into the packages folder. An SDK-style project does not
+  restore packages.config, so the packages move to PackageReference in the
+  same task as the SDK-style conversion.
+
+  Conversion ordering (docs/28 Part E): runs as ONE UNIT with legacy-project-format.
+detection:
+  match:
+    all: []
+    any: []
+    atLeast: []
+    metadata:
+    - field: packageManagement
+      id: packages-config
+      in:
+      - packages_config
+      - mixed
+    none: []
+engine_guidance: |-
+  This project lists its NuGet packages in `packages.config`: they are restored into a `packages`
+  folder and referenced through `HintPath` elements. An SDK-style project, which the target
+  framework needs, does not restore `packages.config`: its packages must become `PackageReference`
+  items.
+excluded_roles:
+- DATABASE
+- DEPLOYMENT
+id: packages-config
+name: NuGet packages listed in packages.config
+owner_team: null
+resolutions:
+- consumer_impact: none
+  container_ready: false
+  deleted: false
+  derivations: []
+  description: The project stays on .NET Framework and keeps its old-style project file, so packages.config stays as it is.
+  effort: low
+  engine_guidance: |-
+    Leave `packages.config` and the project's `HintPath` references exactly as they are: the project
+    stays on .NET Framework with its old-style project file. Record it in the task's notes as left
+    unchanged because it stays on .NET Framework.
+  id: keep-packages-config
+  is_default: false
+  linux_compatible: false
+  name: Keep packages.config
+  notes: null
+  status: active
+  target_description: packages.config unchanged, on .NET Framework
+- consumer_impact: none
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: Same packages and versions as PackageReference items; transitive packages dropped unless the code uses them directly; HintPath references into the packages folder removed; packages.config deleted.
+  effort: low
+  engine_guidance: |-
+    Move the project's packages from `packages.config` to `PackageReference` items, in the same task
+    as the project's conversion to the SDK style.
+    1. For each package in `packages.config`, add `<PackageReference Include="..." Version="..." />`
+       with the same id and the same version. Version upgrades other instructions ask for come
+       afterwards, in their own tasks.
+    2. Leave out a package that is there only because another package depends on it, unless this
+       project's own code uses its types directly: restore brings it in.
+    3. Remove each `<Reference>` whose `HintPath` points into the `packages` folder: the package
+       reference replaces it. Remove the imports of `.props` and `.targets` files from the `packages`
+       folder, and the `EnsureNuGetPackageBuildImports` target: restore supplies them now.
+    4. Delete `packages.config`.
+    5. Restore and build the project and every project that references it, and run their tests.
+  id: packagereference-migration
+  is_default: true
+  linux_compatible: true
+  name: Move to PackageReference
+  notes: null
+  status: active
+  target_description: PackageReference items in the SDK-style project file
+scope: application
+status: active

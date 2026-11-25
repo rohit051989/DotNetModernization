@@ -1,0 +1,89 @@
+category: packaging
+deleted: false
+description: |-
+  A C# or VB.NET project file in the old, non-SDK format (ToolsVersion,
+  TargetFrameworkVersion, every compiled file listed). It cannot target
+  .NET 5 or later until it is an SDK-style project, so it is converted
+  first, keeping the assembly identity and the compiled files.
+
+  Conversion ordering (docs/28 Part E): runs BEFORE fx47-class-library, whose retarget needs an SDK-style project file.
+detection:
+  match:
+    all: []
+    any: []
+    atLeast: []
+    metadata:
+    - equals: legacy_msbuild
+      field: projectFormat
+      id: old-style-project-file
+    - field: extension
+      id: csharp-or-vb
+      in:
+      - .csproj
+      - .vbproj
+    none: []
+engine_guidance: |-
+  This project file is in the old, non-SDK format: a `<Project ToolsVersion="...">` root in the
+  MSBuild namespace, a `TargetFrameworkVersion` property, and every compiled file listed one by
+  one. A project in this format cannot target the target framework: it must become an SDK-style
+  project (`<Project Sdk="Microsoft.NET.Sdk">`) first. The conversion must change neither what is
+  compiled nor the assembly's identity.
+excluded_roles:
+- DATABASE
+- DEPLOYMENT
+id: legacy-project-format
+name: Old-style (non-SDK) project file
+owner_team: null
+resolutions:
+- consumer_impact: none
+  container_ready: false
+  deleted: false
+  derivations: []
+  description: 'The project stays on .NET Framework, outside the move to the target framework: its project file is left as it is.'
+  effort: low
+  engine_guidance: |-
+    Leave this project file exactly as it is: the project stays on .NET Framework, outside the move to
+    the target framework. Do not convert it to the SDK style, retarget it or change its references.
+    Record it in the task's notes as left unchanged because it stays on .NET Framework, with every
+    project being converted that references it.
+  id: keep-old-style-project
+  is_default: false
+  linux_compatible: false
+  name: Keep the old-style project file
+  notes: null
+  status: active
+  target_description: The project file unchanged, on .NET Framework
+- consumer_impact: none
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: Rewrite the project file in the SDK style on the current framework, keeping RootNamespace, AssemblyName, the strong-name key and the compiled files; GenerateAssemblyInfo false when Properties/AssemblyInfo.cs exists.
+  effort: low
+  engine_guidance: |-
+    Convert the project file to the SDK style, keeping what it builds exactly. This task does not
+    retarget: a later one does.
+    1. Replace the root with `<Project Sdk="Microsoft.NET.Sdk">` (`Microsoft.NET.Sdk.Web` for a web
+       application). Remove the MSBuild namespace, `ToolsVersion`, the imports of
+       `Microsoft.Common.props` and `Microsoft.CSharp.targets`, and the properties the SDK sets by
+       default.
+    2. Keep `RootNamespace`, `AssemblyName`, `OutputType` and the strong-name key (`SignAssembly`,
+       `AssemblyOriginatorKeyFile`) exactly as they are.
+    3. Set `<TargetFramework>` to the project's current framework, in its SDK-style short form.
+    4. If `Properties/AssemblyInfo.cs` exists, keep it and set
+       `<GenerateAssemblyInfo>false</GenerateAssemblyInfo>`.
+    5. Compile exactly the files the old project compiled. The SDK compiles every `.cs` file under
+       the project's folder, so exclude with `<Compile Remove="..." />` each file the old project did
+       not list. Keep `Content`, `EmbeddedResource` and `None` items with their copy settings.
+    6. Keep each `ProjectReference`, and each `<Reference>` to a .NET Framework assembly the project
+       needs. Move its NuGet packages as the instruction for packages.config says, in this same task.
+    7. Build the project and every project that references it, and run their tests. The output
+       assembly keeps its name, version and public key token.
+  id: sdk-style-project-conversion
+  is_default: true
+  linux_compatible: true
+  name: Convert to an SDK-style project
+  notes: null
+  status: active
+  target_description: An SDK-style project file on the same framework, ready to retarget
+scope: application
+status: active

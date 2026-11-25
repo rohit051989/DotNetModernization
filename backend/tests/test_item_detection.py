@@ -250,7 +250,9 @@ class DetectionTests(DetectionTestCase):
         self.scan("1.5.0")
         project = self.add_project("src/Legacy/Legacy.csproj", output_type="Exe", fingerprinted=False)
         states = self.states()
-        signal_based = {s for (p, i), s in states.items() if p == project.id and i != "ssis-package"}
+        # Items matched on solution-discovery's metadata alone are checked without fingerprinting.
+        metadata_only = {"ssis-package", "legacy-project-format", "packages-config"}
+        signal_based = {s for (p, i), s in states.items() if p == project.id and i not in metadata_only}
         self.assertEqual(signal_based, {"not_checked"})
 
     def test_project_step3_skipped_as_out_of_scope_writes_no_signal_rows(self):

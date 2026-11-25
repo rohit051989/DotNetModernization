@@ -44,6 +44,20 @@ NO_INSTRUCTION = "no instruction yet: do not change; a person supplies it"
 # Items whose default is to decide: a person answers them before the conversion (catalog: windows-only-assembly-reference,
 # raised from an assembly reference that only loads on Windows). Undecided, preparation's warning says so.
 DECIDE_FIRST = {"windows-only-assembly-reference"}
+# The item whose instruction answers "Package management" for packages.config projects (catalog: packages-config).
+PACKAGES_CONFIG_ITEM = "packages-config"
+# Resolutions without engine guidance on purpose for now, each with the reason (reviewed; a test keeps every other
+# active resolution written): the reason goes into preparation's warning, never into the branch.
+ALLOWLIST_FILE = Path(__file__).resolve().parents[2] / "seed" / "data" / "engine_guidance_allowlist.yaml"
+
+
+def allowlist() -> dict[str, str]:
+    """{resolution id: why it has no engine guidance yet}."""
+    try:
+        data = yaml.safe_load(ALLOWLIST_FILE.read_text(encoding="utf-8")) or {}
+    except OSError:
+        return {}
+    return {r: entry["reason"] for item in (data.get("items") or {}).values() for r, entry in (item or {}).items()}
 
 RESOLUTION_NEEDS = yaml.safe_load((Path(__file__).resolve().parent / "resolution_parameters.yaml").read_text(encoding="utf-8"))
 
@@ -144,6 +158,9 @@ def without_guidance(model: dict) -> list[dict]:
             out.append({"item": item["id"], "resolution": res["id"], "missing": "resolution", **named})
         elif not item.get("guidance"):
             out.append({"item": item["id"], "resolution": res["id"] if res else None, "missing": "item", **named})
+        if item["id"] in DECIDE_FIRST and not item.get("decided"):
+            # Its default has an instruction (leave it unchanged), but a person decides before the conversion runs.
+            out.append({"item": item["id"], "resolution": res["id"] if res else None, "missing": "decision", **named})
     for option in upgrade_options(model):
         if option.get("missing"):
             out.append({"item": None, "resolution": None, "missing": "default", "change": option["question"],
@@ -156,21 +173,26 @@ def incomplete(model_or_missing) -> dict | None:
     whose approach has no instruction (the engine is told not to change it), and every default answer that would keep
     what cannot work on the target. None when nothing is missing. Takes the model, or without_guidance's list."""
     missing = model_or_missing if isinstance(model_or_missing, list) else without_guidance(model_or_missing)
-    gaps = [m for m in missing if m["missing"] in ("resolution", "default")]
+    deciding = {m["item"] for m in missing if m["missing"] == "decision"}
+    gaps = [m for m in missing if m["missing"] in ("default", "decision")
+            or (m["missing"] == "resolution" and m["item"] not in deciding)]     # one line per change
     if not gaps:
         return None
+    reasons = allowlist()
     details = []
     for m in gaps:
         if m["missing"] == "default":
             details.append(f"{m['change']}: no instruction yet ({m['why']})")
-        elif m["item"] in DECIDE_FIRST and not m["decided"]:
+        elif m["missing"] == "decision":
             details.append(f"{m['change']}: no decision recorded; a person decides the replacement before the conversion "
                            "is run, and the engine is told not to change it")
         else:
+            why = reasons.get(m["resolution"])
             details.append(f"{m['change']}: {m['approach']} ({'chosen' if m['decided'] else 'default'}) has no instruction "
-                           "yet; the engine is told not to change it")
-    return {"summary": f"{len(gaps)} change(s) have no instruction yet: the engine does not make them, and a person "
-                       "supplies the instruction (the catalog's engine guidance) before the conversion is run",
+                           "yet; the engine is told not to change it"
+                           + (f" (on the guidance allow-list: {why})" if why else ""))
+    return {"summary": f"{len(gaps)} change(s) need a person before the conversion is run: the engine does not make a "
+                       "change that has no instruction yet (the catalog's engine guidance), nor one awaiting a decision",
             "details": details}
 
 
@@ -252,7 +274,14 @@ def upgrade_options(model: dict) -> list[dict]:
     projects = [p for p in model["projects"] if p["framework"]]
     lift = eng["posture"] == "lift-and-shift"
     packages_config = _keeps_packages_config(model)
-    packages = ({"question": "Package management (Central Package Management)", "answer": NO_INSTRUCTION.capitalize(),
+    instructed = next((i for i in model["items"] if i["id"] == PACKAGES_CONFIG_ITEM
+                       and (i["resolution"] or {}).get("guidance")), None)
+    packages = ({"question": "Package management (Central Package Management)",
+                 "answer": "Move each packages.config project to PackageReference, as its instruction says",
+                 "source": f"the instruction for packages.config: {len(packages_config)} project(s), each in the same task "
+                           "as its conversion to an SDK-style project", "presumptive": not instructed["decided"]}
+                if packages_config and instructed else
+                {"question": "Package management (Central Package Management)", "answer": NO_INSTRUCTION.capitalize(),
                  "source": f"missing guidance: {len(packages_config)} project(s) use packages.config, which "
                            f"{eng['target_framework']} cannot restore, so keeping the current arrangement cannot work",
                  "presumptive": True, "missing": True} if packages_config else
@@ -357,6 +386,41 @@ def tests_of(model: dict, item: dict) -> list[dict]:
     return [m for m in model.get("test_mappings") or [] if m["source_file"] in touched]
 
 
+def sdk_short_form(framework: str | None) -> str | None:
+    """A .NET Framework version as an SDK-style project names it (`v4.7.2` -> `net472`, `v4.8` -> `net48`); any other
+    framework as it is; None when unknown."""
+    if not framework:
+        return None
+    from app.conversion import frameworks
+
+    try:
+        kind, version = frameworks._parse(framework)
+    except ValueError:
+        return framework
+    if kind != "netfx" or not version:
+        return framework
+    major, minor, patch = (list(version) + [0, 0, 0])[:3]
+    return f"net{major}{minor}{patch if patch else ''}"
+
+
+def frameworks_section(model: dict, item: dict) -> list[str]:
+    """The real frameworks a work item's text names by role ("the target framework", "the project's current
+    framework"): the target framework of this upgrade, and the current framework of each project the item concerns,
+    with its SDK-style short form where that differs. Guidance never hard-codes a version; this section supplies them."""
+    current = {p["path"]: p.get("framework") for p in model.get("projects") or []}
+    concerned = sorted({o["project"] for o in item["occurrences"] if o.get("project")})
+    out = ["", "## Frameworks", "", f"- The target framework: `{model['engagement']['target_framework']}`."]
+    for project in concerned[:MAX_LIST]:
+        framework = current.get(project)
+        short = sdk_short_form(framework)
+        if not framework:
+            out.append(f"- `{project}`: the project's current framework is not recorded; read it from its project file.")
+        else:
+            out.append(f"- `{project}`: the project's current framework is `{framework}`"
+                       + (f", `{short}` in an SDK-style project file" if short and short != framework else "") + ".")
+    return out
+
+
 def _instruction(model: dict, item: dict, present: set[str], by_id: dict) -> str:
     res = item["resolution"]
     eng = model["engagement"]
@@ -382,6 +446,7 @@ def _instruction(model: dict, item: dict, present: set[str], by_id: dict) -> str
     if item.get("guidance"):
         out += ["", "## The change", "", item["guidance"].strip()]
     out += ["", "## What to do", "", res["guidance"].strip()]
+    out += frameworks_section(model, item)
     if item["id"] == "windows-build-pipeline" and _built(model):
         out += ["", f"The Linux build pipeline builds {_built(model)}, not the repository's other solutions: the "
                 "projects it leaves out are outside this conversion's scope and not part of the converted build."]

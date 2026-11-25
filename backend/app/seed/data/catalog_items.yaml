@@ -2192,3 +2192,79 @@ items:
         effort: low
         linux_compatible: false
         container_ready: false
+
+  # 2026-11-24: the project file itself, from what solution-discovery records. An old-style project file cannot target
+  # .NET 5 or later; packages.config is not restored by an SDK-style project. They replace the decision sheet's fixed
+  # "missing guidance" answer for packages.config (the Package management answer now points to their instruction).
+  - id: legacy-project-format
+    name: "Old-style (non-SDK) project file"
+    scope: application
+    category: packaging
+    description: |-
+      A C# or VB.NET project file in the old, non-SDK format (ToolsVersion,
+      TargetFrameworkVersion, every compiled file listed). It cannot target
+      .NET 5 or later until it is an SDK-style project, so it is converted
+      first, keeping the assembly identity and the compiled files.
+
+      Conversion ordering (docs/28 Part E): runs BEFORE fx47-class-library, whose retarget needs an SDK-style project file.
+    excluded_roles: [DEPLOYMENT, DATABASE]
+    detection:
+      match:
+        metadata:
+          - id: old-style-project-file
+            field: projectFormat
+            equals: legacy_msbuild
+          - id: csharp-or-vb
+            field: extension
+            in: [.csproj, .vbproj]
+    resolutions:
+      - id: sdk-style-project-conversion
+        name: "Convert to an SDK-style project"
+        description: "Rewrite the project file in the SDK style on the current framework, keeping RootNamespace, AssemblyName, the strong-name key and the compiled files; GenerateAssemblyInfo false when Properties/AssemblyInfo.cs exists."
+        target_description: "An SDK-style project file on the same framework, ready to retarget"
+        consumer_impact: none
+        effort: low
+        is_default: true
+      - id: keep-old-style-project
+        name: "Keep the old-style project file"
+        description: "The project stays on .NET Framework, outside the move to the target framework: its project file is left as it is."
+        target_description: "The project file unchanged, on .NET Framework"
+        consumer_impact: none
+        effort: low
+        linux_compatible: false
+        container_ready: false
+
+  - id: packages-config
+    name: "NuGet packages listed in packages.config"
+    scope: application
+    category: dependencies
+    description: |-
+      The project lists its NuGet packages in packages.config and references
+      them by HintPath into the packages folder. An SDK-style project does not
+      restore packages.config, so the packages move to PackageReference in the
+      same task as the SDK-style conversion.
+
+      Conversion ordering (docs/28 Part E): runs as ONE UNIT with legacy-project-format.
+    excluded_roles: [DEPLOYMENT, DATABASE]
+    detection:
+      match:
+        metadata:
+          - id: packages-config
+            field: packageManagement
+            in: [packages_config, mixed]
+    resolutions:
+      - id: packagereference-migration
+        name: "Move to PackageReference"
+        description: "Same packages and versions as PackageReference items; transitive packages dropped unless the code uses them directly; HintPath references into the packages folder removed; packages.config deleted."
+        target_description: "PackageReference items in the SDK-style project file"
+        consumer_impact: none
+        effort: low
+        is_default: true
+      - id: keep-packages-config
+        name: "Keep packages.config"
+        description: "The project stays on .NET Framework and keeps its old-style project file, so packages.config stays as it is."
+        target_description: "packages.config unchanged, on .NET Framework"
+        consumer_impact: none
+        effort: low
+        linux_compatible: false
+        container_ready: false

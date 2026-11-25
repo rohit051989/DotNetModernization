@@ -25,6 +25,19 @@ resolutions:
   derivations: []
   description: Register CodePagesEncodingProvider and use Encoding.GetEncoding(<code page>) so bytes match the Windows servers exactly.
   effort: low
+  engine_guidance: |-
+    Keep the bytes exactly as the Windows servers produced them: use their legacy code page
+    explicitly instead of `Encoding.Default`, which is UTF-8 on the target framework.
+    1. Add the `System.Text.Encoding.CodePages` package if the target framework does not provide it,
+       and register the provider once at startup:
+       `Encoding.RegisterProvider(CodePagesEncodingProvider.Instance)`.
+    2. Replace each listed use of `Encoding.Default` with one encoding,
+       `Encoding.GetEncoding(codePage)`, whose code page is read from configuration under a single
+       name for the whole application; never a number in code.
+    3. Change only the encoding: keep how each place reads and writes.
+    4. Before changing a place, add a characterization test that writes and reads a string with
+       non-ASCII characters through it (skill `writing-characterization-tests`), and keep it passing
+       with the configured code page.
   id: explicit-legacy-code-page
   is_default: true
   linux_compatible: true

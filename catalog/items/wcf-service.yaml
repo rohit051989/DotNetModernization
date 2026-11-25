@@ -17,6 +17,12 @@ detection:
       field: frameworkFamily
       id: legacy-framework
     none: []
+engine_guidance: |-
+  This project implements a WCF service (`System.ServiceModel`): `[ServiceContract]` interfaces with
+  `[OperationContract]` methods, `[DataContract]` types and often `[FaultContract]` faults, hosted
+  by IIS through a `.svc` file or by a `ServiceHost`. Hosting a WCF service does not exist on the
+  target framework. The service's contract (its operations, the data they take and return, and its
+  faults) is what its callers depend on: how the service is converted decides whether they change.
 excluded_roles:
 - TEST
 id: wcf-service
@@ -47,6 +53,24 @@ resolutions:
     reason: 'CoreWCF runs inside ASP.NET Core: the process hosting the service becomes an ASP.NET Core web host.'
   description: Port to CoreWCF, preserving service contracts, bindings and the published WSDL.
   effort: medium
+  engine_guidance: |-
+    Port the service to CoreWCF on the target framework, keeping its contract exactly, so its
+    callers keep working unchanged.
+    1. Before changing anything, save the service's current WSDL contract in the repository beside
+       the service, as the reference.
+    2. Keep every `[ServiceContract]`, `[OperationContract]`, `[DataContract]`, `[DataMember]` and
+       `[FaultContract]` with the same names, namespaces, order and types. Change only the `using`
+       directives from `System.ServiceModel` to `CoreWCF` where CoreWCF provides the type.
+    3. Host the service in ASP.NET Core (`AddServiceModelServices()`, `UseServiceModel()`), with the
+       same binding, security mode and credential type as each endpoint in web.config or
+       app.config, at the same relative address.
+    4. Keep the service's implementation classes, and the code they call, unchanged.
+    5. Expose metadata (`ServiceMetadataBehavior`) where the service exposed it, and compare the new
+       WSDL with the saved one: the same operations, messages and types.
+    6. A binding CoreWCF does not support stays as it is: record it in the task's notes, and do not
+       choose another binding.
+    7. Add a test per operation that calls the service through a client generated from the saved
+       WSDL.
   id: wcf-service-corewcf
   impact_rules:
   - action: update
@@ -123,6 +147,20 @@ resolutions:
     reason: 'gRPC on .NET runs in ASP.NET Core: the process hosting the service becomes an ASP.NET Core web host.'
   description: Rewrite as a contract-first gRPC service.
   effort: high
+  engine_guidance: |-
+    Rewrite the service as a contract-first gRPC service on ASP.NET Core on the target framework.
+    1. Keep the old contract in the repository as the reference until the cutover.
+    2. Write one `.proto` file per service contract: one `rpc` per `[OperationContract]` and one
+       `message` per `[DataContract]`, carrying the same data (names and types; a nullable value as a
+       wrapper type or an `optional` field).
+    3. Map each fault to a gRPC status code (`InvalidArgument`, `NotFound`, `FailedPrecondition`,
+       `Internal`) with the fault's message.
+    4. Implement each `rpc` by calling the service's existing business classes; move no logic into
+       the gRPC service class.
+    5. Host it in ASP.NET Core (`AddGrpc()`, `MapGrpcService`) over HTTP/2, and carry over the
+       service's authentication and authorisation.
+    6. Add a test per `rpc`: the same input gives the same output data, and each fault its status
+       code.
   id: wcf-service-grpc-rewrite
   impact_rules:
   - action: rewrite
@@ -203,6 +241,13 @@ resolutions:
     reason: 'The service stays where it is, so its decision does not settle the host: usually it stays Windows-hosted too, but decide it on its own.'
   description: Out of scope for the Linux move; the service stays on .NET Framework WCF on Windows.
   effort: low
+  engine_guidance: |-
+    Do not convert this service: it stays on .NET Framework WCF on its Windows hosts, outside the
+    Linux move.
+    1. Change nothing in the service's contract, implementation, hosting or configuration.
+    2. A project being converted that calls this service keeps its client, binding and address as
+       they are configured.
+    3. Record the service in the task's notes as left unchanged because it stays on Windows.
   id: wcf-service-remain-windows-hosted
   impact_rules:
   - action: review
@@ -241,6 +286,27 @@ resolutions:
     reason: 'A REST API runs in ASP.NET Core: the process hosting the service becomes an ASP.NET Core web host.'
   description: Rewrite as a conventional REST API on ASP.NET Core, retiring SOAP entirely.
   effort: high
+  engine_guidance: |-
+    Rewrite the service as a REST API on ASP.NET Core on the target framework, retiring SOAP. Each
+    operation keeps what it does and the data it takes and returns.
+    1. Keep the old contract (the `[ServiceContract]` interfaces and `[DataContract]` types) in the
+       repository as the reference until the cutover; do not delete it.
+    2. Add one HTTP endpoint per `[OperationContract]`, in controllers or minimal API endpoints,
+       matching how the rest of the solution is written. Its request and response types carry the
+       same data as the data contracts: the same field names, types and nullability. An operation
+       that only reads is a GET; any other is a POST, PUT or DELETE as it changes data.
+    3. Map each `[FaultContract]`, and each fault the service throws, to an HTTP status code (invalid
+       input 400, not found 404, a conflict or broken business rule 409 or 422, anything else 500),
+       with a problem-details body (`application/problem+json`, `ProblemDetails`) carrying the
+       fault's message and code.
+    4. Keep the service's business classes and call them from the endpoints; move no logic into
+       them.
+    5. Publish an OpenAPI document of the new API for its callers, describing every endpoint,
+       request, response and error.
+    6. Carry over the service's authentication and authorisation to every endpoint: nothing that was
+       protected is left open.
+    7. Add a test per operation: the same input as through the old contract gives the same output
+       data, and each fault gives its status code and problem details.
   id: wcf-service-rest-rewrite
   impact_rules:
   - action: update

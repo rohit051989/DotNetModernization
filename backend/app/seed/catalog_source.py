@@ -67,7 +67,16 @@ WORDING_CORRECTIONS = ("serilog-file-sink", "wcf-nettcp-client")
 # (baseline.seed_row): a new resolution is inserted, an unedited row takes the new wording, an edited one is reported
 # as a conflict and left as it is. datetime-now-usage: the utc-everywhere resolution, and the related forms detected.
 # windows-only-assembly-reference (2026-11-24): a new item, raised from dependency-hierarchy's assembly references.
-CATALOG_ADDITIONS = ("datetime-now-usage", "windows-only-assembly-reference")
+# legacy-project-format and packages-config (2026-11-24): new items, from solution-discovery's project metadata.
+CATALOG_ADDITIONS = ("datetime-now-usage", "windows-only-assembly-reference", "legacy-project-format", "packages-config")
+
+
+def guidance_items(files: dict[str, str]) -> tuple[str, ...]:
+    """Items a release wrote engine guidance for, or whose resolutions it did (engine_guidance.yaml): applied from the
+    export like the additions above, so an installation whose catalog is its database's own takes the new text where a
+    row is unedited, and keeps (and reports) a row an admin edited."""
+    written = baseline._engine_guidance()
+    return tuple(sorted(name[:-len(".yaml")] for name in files if name[:-len(".yaml")] in written))
 
 
 def design_flag_items(files: dict[str, str]) -> tuple[str, ...]:
@@ -96,8 +105,10 @@ def seed_from_export_or_database() -> dict | None:
             report["baseline"] = catalog_export.import_files(db, files)
         else:
             report["design_items"] = design_flag_items(files)
+            report["guidance_items"] = guidance_items(files)
             corrected = {f"{item}.yaml": files[f"{item}.yaml"]
-                         for item in WORDING_CORRECTIONS + CATALOG_ADDITIONS + report["design_items"] if f"{item}.yaml" in files}
+                         for item in WORDING_CORRECTIONS + CATALOG_ADDITIONS + report["design_items"] + report["guidance_items"]
+                         if f"{item}.yaml" in files}
             report["corrections"] = catalog_export.import_files(db, corrected) if corrected else baseline.new_report()
         # A catalog identical to the committed export, with no export recorded (a fresh install imported it): record
         # it, so staleness reads "current", not "not in git".
@@ -128,7 +139,8 @@ def print_report(report: dict) -> None:
         if corrections is not None:
             print(f"  wording corrections and additions ({', '.join(WORDING_CORRECTIONS + CATALOG_ADDITIONS)}), and the "
                   f"{len(report.get('design_items') or ())} item(s) with a resolution flagged \"confirm the design before "
-                  f"implementing\": {baseline.summary(corrections)}")
+                  f"implementing\", and the {len(report.get('guidance_items') or ())} item(s) with engine guidance: "
+                  f"{baseline.summary(corrections)}")
             if corrections["conflicts"]:
                 print(baseline.format_conflicts(corrections["conflicts"]))
     engagement = report["engagement"]

@@ -171,7 +171,7 @@ class Outputs(unittest.TestCase):
         warning = render.incomplete(model(items))
         self.assertEqual(warning["details"], ["Datetime now usage: Container local timezone (chosen) has no instruction "
                                               "yet; the engine is told not to change it"])
-        self.assertTrue(warning["summary"].startswith("1 change(s) have no instruction yet"))
+        self.assertTrue(warning["summary"].startswith("1 change(s) need a person before the conversion is run"))
 
     def test_with_guidance_the_same_decided_change_is_a_work_item_for_both_engines(self):
         items = model()["items"]
@@ -693,14 +693,32 @@ class SelfContained(unittest.TestCase):
 
         guidance = yaml.safe_load(baseline.ENGINE_GUIDANCE_FILE.read_text(encoding="utf-8"))["items"]
         authored = {i["id"]: {r["id"] for r in i["resolutions"]} for i in _load("catalog_items.yaml")["items"]}
-        ids = set(guidance) | {r for g in guidance.values() for r in g["resolutions"]}
-        texts = {f"{item}.md": g["guidance"] for item, g in guidance.items()}
+        ids = set(guidance) | {r for g in guidance.values() for r in g["resolutions"]} | set(authored) \
+            | {r for rs in authored.values() for r in rs}
+        texts = {f"{item}.md": g["guidance"] for item, g in guidance.items() if g.get("guidance")}
         texts |= {f"{item}/{res}.md": text for item, g in guidance.items() for res, text in g["resolutions"].items()}
         vocabulary = {**model()["vocabulary"], "item_ids": sorted(ids), "resolution_ids": sorted(ids)}
         self.assertEqual(selfcontained.check(texts, vocabulary), [])
-        for item, g in guidance.items():                                   # every resolution of an authored item
+        # Every resolution of an authored item with guidance is written, or on the reviewed allow-list with its reason.
+        allowed = render.allowlist()
+        for item, g in guidance.items():
             if item in authored:
-                self.assertEqual(set(g["resolutions"]), authored[item], item)
+                self.assertEqual(authored[item] - set(g["resolutions"]) - set(allowed), set(), item)
+
+    def test_no_guidance_hard_codes_a_target_framework_version(self):
+        """Frameworks are named by role ("the target framework", "the project's current framework"); each work item's
+        Frameworks section gives the real values."""
+        import yaml
+        from app.items import baseline
+
+        guidance = yaml.safe_load(baseline.ENGINE_GUIDANCE_FILE.read_text(encoding="utf-8"))["items"]
+        written = ("ssis-package", "fx47-class-library", "wcf-service", "wcf-service-host", "asmx-service",
+                   "directory-services-usage", "encoding-default", "fx-aspnet-mvc", "windows-only-assembly-reference",
+                   "legacy-project-format", "packages-config")
+        for item in written:
+            texts = [guidance[item].get("guidance") or ""] + list(guidance[item]["resolutions"].values())
+            for text in texts:
+                self.assertIsNone(re.search(r"\bnet\d+\.\d+\b|\.NET \d+\b|\bnet4\d+\b|\bv4\.\d", text), (item, text[:80]))
 
     def test_the_static_templates_are_self_contained(self):
         files = {p.name: p.read_text(encoding="utf-8") for p in render.TEMPLATES.rglob("*.md")}

@@ -13,6 +13,12 @@ detection:
     atLeast: []
     metadata: []
     none: []
+engine_guidance: |-
+  This project is the process a WCF service runs in: it creates a `ServiceHost` (in a console
+  application or a Windows service) or holds the service's `.svc` file for IIS. Neither a
+  `ServiceHost` process nor IIS exists in a Linux container on the target framework. The service's
+  implementation usually lives in another project; this one hosts it, with its endpoints, bindings
+  and behaviours configured in web.config or app.config.
 excluded_roles:
 - TEST
 id: wcf-service-host
@@ -26,6 +32,22 @@ resolutions:
   derivations: []
   description: Replace the ServiceHost or IIS hosting with an ASP.NET Core application on .NET 10 (Kestrel) that hosts the service's new endpoints — CoreWCF, REST or gRPC.
   effort: medium
+  engine_guidance: |-
+    Replace the host with an ASP.NET Core application on the target framework, served by Kestrel,
+    that hosts the service's new endpoints (CoreWCF, REST or gRPC, as the service's own instruction
+    says).
+    1. Make the project an ASP.NET Core application (`Microsoft.NET.Sdk.Web`) on the target
+       framework, with a `Program.cs` that builds a `WebApplication`.
+    2. Move each endpoint's address, binding settings, behaviours and limits from web.config or
+       app.config to the new host's configuration (`appsettings.json` and environment variables),
+       environment by environment, keeping every value. A value that differs per environment
+       becomes a configuration name, never a value in code.
+    3. Register the service as its own instruction says, at the same relative addresses.
+    4. Listen on port 8080: set `ASPNETCORE_HTTP_PORTS=8080` in the container image, not in code.
+    5. Remove the `ServiceHost` code and the `system.serviceModel` configuration once the new host
+       serves every endpoint. Keep a `.svc` file's address as a route if callers use it.
+    6. Keep the host's logging, now through `ILogger` to standard output.
+    7. Build, start the host in a test, and call each endpoint once.
   id: wcf-host-aspnetcore-web-host
   impact_rules:
   - action: rewrite
@@ -102,6 +124,10 @@ resolutions:
   derivations: []
   description: Out of scope for the Linux move; the host stays on Windows.
   effort: low
+  engine_guidance: |-
+    Do not convert this host: it stays on Windows, outside the Linux move. Change nothing in it or in
+    its configuration, and record it in the task's notes as left unchanged because it stays on
+    Windows.
   id: wcf-host-remain-windows-hosted
   impact_rules:
   - action: review
@@ -121,6 +147,16 @@ resolutions:
   derivations: []
   description: The re-platformed services each get their own ASP.NET Core project; this host is removed.
   effort: low
+  engine_guidance: |-
+    Remove this host: each service it hosted gets an ASP.NET Core host of its own in this
+    conversion.
+    1. Check that every service this project hosts has its own new host in this conversion. If one
+       does not, leave this host as it is and record why in the task's notes.
+    2. Remove the project, its configuration and every reference to it from the solution and the
+       repository.
+    3. Move nothing of its configuration into another project unless a service's new host needs it,
+       as that host's instruction says.
+    4. Build the solution and run its tests.
   id: wcf-host-retire
   is_default: false
   linux_compatible: true

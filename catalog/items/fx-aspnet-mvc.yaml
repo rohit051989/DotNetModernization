@@ -50,6 +50,29 @@ resolutions:
   derivations: []
   description: Run ASP.NET Core alongside the existing app using System.Web adapters and a YARP strangler proxy, migrating routes progressively.
   effort: medium
+  engine_guidance: |-
+    Move the application to ASP.NET Core on the target framework step by step, keeping the existing
+    application running behind it: a new ASP.NET Core application in front serves the routes
+    already moved and forwards every other request to the existing application through a reverse
+    proxy (YARP), and the System.Web adapters share session state and the signed-in user between
+    the two.
+    1. Add a new ASP.NET Core project on the target framework beside the existing one, with YARP
+       forwarding every route it does not serve to the existing application, whose address is a
+       configuration name.
+    2. Add the System.Web adapters (`Microsoft.AspNetCore.SystemWebAdapters`) to both: the remote
+       application side to the existing application, the client side to the new one. Their shared
+       key is a Secret named in configuration, never a value in code.
+    3. Move code both need (models, services, data access) into a library both reference, retargeted
+       as that library's own instruction says; never copy it.
+    4. Move controllers one at a time, starting with those that depend least on `HttpContext` and
+       System.Web: each with its views and filters, rewritten for ASP.NET Core MVC with the same
+       routes, parameters, responses and status codes. Every other route stays in the existing
+       application.
+    5. Move each setting a moved route uses from web.config to the new project's configuration, with
+       the same value.
+    6. Leave the existing application working for every route not moved; do not remove it.
+    7. Add a test per moved route: the same request gives the same response through the new
+       application as through the old one.
   id: aspnetcore-incremental-adapters
   is_default: true
   linux_compatible: true
