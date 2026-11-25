@@ -142,11 +142,12 @@ modernization-platform/
     made in the UI. The database is authoritative for the item catalog;
     `catalog_items.yaml`, the pattern tables and the amendments in code are
     factory defaults. Every seed write to `catalog_items`, `item_resolutions`
-    and `resolution_derivations` goes through `app/items/baseline.py`. A row is
-    updated only if it has not been edited since it was seeded (its
-    `seeded_hash`). Where both the database and the default changed, the seed
-    reports a conflict and leaves the row as it is. Never write catalog rows
-    from a seed, script or migration any other way.
+    and `resolution_derivations` goes through `app/items/baseline.py`. Seeding
+    works field by field: a field nobody changed since it was seeded (its
+    `seeded_fields` digest) takes the new default, even on a row whose other
+    fields were edited; a field an admin changed is left as it is, and where the
+    default changed too the seed reports a conflict on that field. Never write
+    catalog rows from a seed, script or migration any other way.
 11. **The platform reproduces from the repository alone.** Every implemented
     step registration lives in a file (`steps/*/registration/*.json` or
     `backend/app/steps/*.registration.json`), every job definition in

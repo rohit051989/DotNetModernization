@@ -138,8 +138,39 @@ def digest(values: dict) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+def values(row) -> dict:
+    """Every content field's value, an empty optional one included (content() leaves those out)."""
+    fields = CONTENT_FIELDS[type(row)]
+    return {f: (row.deleted_at is not None) if f == "deleted" else getattr(row, f) for f in fields}
+
+
+def field_digest(value) -> str:
+    """One field's value, as a field baseline records it."""
+    text = json.dumps(value, sort_keys=True, separators=(",", ":"), default=str, ensure_ascii=False)
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def field_baseline(row) -> dict | None:
+    """{field: digest of the value the seed last wrote} (`seeded_fields`), or, for a row seeded before field baselines
+    were recorded, what its whole-row hash tells: every field when the row is unedited; when it was edited, only the
+    optional fields still at their empty value, which no edit can have emptied of a value the seed never wrote (a field
+    added since, such as a resolution's phase). None: no baseline at all."""
+    if row.seeded_fields:
+        return dict(row.seeded_fields)
+    if row.seeded_hash is None:
+        return None
+    current = values(row)
+    if digest(content(row)) == row.seeded_hash:
+        return {f: field_digest(v) for f, v in current.items()}
+    optional = OPTIONAL_FIELDS.get(type(row), {})
+    return {f: field_digest(v) for f, v in current.items() if f in optional and (v is None or v == optional[f])}
+
+
 def edit_state(row) -> str:
-    """'unedited', 'edited' (changed since seeded), or 'no_baseline'."""
+    """'unedited', 'edited' (a field changed since it was seeded), or 'no_baseline'."""
+    if row.seeded_fields:
+        base = row.seeded_fields
+        return "edited" if any(field_digest(v) != base.get(f) for f, v in values(row).items()) else "unedited"
     if row.seeded_hash is None:
         return "no_baseline"
     return "unedited" if digest(content(row)) == row.seeded_hash else "edited"
@@ -177,19 +208,20 @@ def _apply(row, desired: dict, now: datetime.datetime) -> None:
 
 
 def seed_row(db: Session, model: type, key: dict, desired: dict, report: dict) -> tuple[object, str]:
-    """Brings one row to its factory default unless it has been edited.
-    `key`: primary-key fields. `desired`: every CONTENT_FIELDS field; keys
-    starting with "_" (`_deleted_at`, `_deleted_by`) are applied on a write
-    but not hashed. Returns (row, outcome): inserted, updated, unchanged,
-    adopted, kept_edit or conflict. Flushes nothing; the caller does."""
+    """Brings one row to its factory default, field by field (rule 10): a field nobody changed since the seed wrote it
+    takes the new default, even on a row whose other fields were edited; a field an admin changed is left as it is, and
+    reported as a conflict when the default changed too. `key`: primary-key fields. `desired`: every CONTENT_FIELDS
+    field; keys starting with "_" (`_deleted_at`, `_deleted_by`) are applied with `deleted` but not compared. Returns
+    (row, outcome): inserted, updated (some field written; a conflict on another is reported beside it), unchanged,
+    adopted, kept_edit or conflict. Records the row's field baseline (`seeded_fields`). Flushes nothing."""
     optional = OPTIONAL_FIELDS.get(model, {})
     missing = set(CONTENT_FIELDS[model]) - set(desired) - set(optional)
     if missing:
         raise ValueError(f"{TABLES[model]} {key}: desired content lacks {sorted(missing)}")
-    # An omitted optional field is its empty value, applied as such, and left
-    # out of the comparison and the hash like any empty one.
+    # An omitted optional field is its empty value, applied as such, and left out of the whole-row hash like any empty one.
     desired = _without_empty_optional(model, {**optional, **desired})
     applied = {**optional, **desired}
+    want = {f: v for f, v in applied.items() if not f.startswith("_")}
     now = datetime.datetime.now(datetime.timezone.utc)
     row = db.get(model, tuple(key.values()) if len(key) > 1 else next(iter(key.values())))
     if row is None:
@@ -198,37 +230,72 @@ def seed_row(db: Session, model: type, key: dict, desired: dict, report: dict) -
             row.version = 1
         _apply(row, applied, now)
         row.seeded_hash = digest(desired)
+        row.seeded_fields = {f: field_digest(v) for f, v in want.items()}
         db.add(row)
         report["inserted"].append(f"{TABLES[model]} {row_label(row)}")
         return row, "inserted"
 
     label = f"{TABLES[model]} {row_label(row)}"
-    current = content(row)
-    target = {k: v for k, v in desired.items() if not k.startswith("_")}
-    state = edit_state(row)
-    if current == target:
-        if row.seeded_hash != digest(desired):
-            row.seeded_hash = digest(desired)
-            if state == "no_baseline":
-                report["adopted"].append(label)
-                return row, "adopted"
-        return row, "unchanged"
-    if state == "unedited":
-        _apply(row, applied, now)
+    current = values(row)
+    base = field_baseline(row)
+    if base is None and current != want:
+        report["conflicts"].append({
+            "table": TABLES[model], "row": row_label(row),
+            "reason": "no seed baseline (seeded before baselines were recorded, or created in the UI): which side "
+                      "changed is unknown",
+            "fields": _diff(content(row), {k: v for k, v in desired.items() if not k.startswith("_")}),
+        })
+        return row, "conflict"
+    if base is None:
         row.seeded_hash = digest(desired)
-        report["updated"].append(label)
+        row.seeded_fields = {f: field_digest(v) for f, v in want.items()}
+        report["adopted"].append(label)
+        return row, "adopted"
+
+    update, conflicts, kept, unknown = {}, {}, [], False
+    recorded = dict(base)
+    for field, value in want.items():
+        have = current[field]
+        if have == value:
+            recorded[field] = field_digest(value)
+        elif base.get(field) == field_digest(have):
+            update[field] = value                               # nobody changed it: the new default
+            recorded[field] = field_digest(value)
+        elif base.get(field) == field_digest(value):
+            kept.append(field)                                  # an admin changed it; the default did not
+        else:
+            conflicts[field] = {"database": have, "seed": value}  # both changed, or which side is unknown
+            unknown = unknown or field not in base
+    if update.get("deleted") is True and (conflicts or kept):
+        # A row the seed no longer authors is soft-deleted only while nobody has edited it: removing it would undo
+        # the edit. The removal is reported instead, with every edited field.
+        del update["deleted"]
+        recorded["deleted"] = base.get("deleted")
+        conflicts.update({f: {"database": current[f], "seed": want[f]} for f in kept})
+        conflicts["deleted"] = {"database": current["deleted"], "seed": True}
+        kept = []
+    if update:
+        _apply(row, {**update, **({k: v for k, v in applied.items() if k.startswith("_")} if "deleted" in update else {})},
+               now)
+    row.seeded_fields = recorded
+    if not conflicts and not kept:
+        row.seeded_hash = digest(desired)
+    if conflicts:
+        report["conflicts"].append({
+            "table": TABLES[model], "row": row_label(row),
+            "reason": ("edited before field baselines were recorded, and the seed's default differs: which side changed "
+                       "is unknown" if unknown else "edited since seeding, and the seed's default changed too"),
+            "fields": conflicts,
+        })
+    if update:
+        report["updated"].append(label + (f" ({', '.join(sorted(update))}; edited fields kept)" if conflicts or kept else ""))
         return row, "updated"
-    if state == "edited" and digest(desired) == row.seeded_hash:
-        # Only the database changed: the edit stands; nothing to report but that.
+    if conflicts:
+        return row, "conflict"
+    if kept:
         report["kept_edits"].append(label)
         return row, "kept_edit"
-    report["conflicts"].append({
-        "table": TABLES[model], "row": row_label(row),
-        "reason": "edited since seeding, and the seed's default changed too" if state == "edited"
-        else "no seed baseline (seeded before baselines were recorded, or created in the UI): which side changed is unknown",
-        "fields": _diff(current, target),
-    })
-    return row, "conflict"
+    return row, "unchanged"
 
 
 def merge(report: dict, other: dict) -> dict:

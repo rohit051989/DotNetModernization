@@ -21,7 +21,7 @@ Not compared — client data and run history (engagements, decisions,
 repositories, scans and their outputs, executions, validation queue,
 engagement-scoped policies, catalog exports), and computed or bookkeeping
 columns: timestamps (a soft delete is compared as deleted or not), seed
-baselines (`seeded_hash`), and the catalog's `version` counters, which count
+baselines (`seeded_hash`, `seeded_fields`), and the catalog's `version` counters, which count
 the edits made on one machine.
 
 Historical records are intentionally not reproduced and are not differences:
@@ -59,9 +59,9 @@ TABLES: dict[str, tuple[tuple[str, ...], str | None, tuple[str, ...]]] = {
     "extractors": (("name",), None, ()),
     "patterns": (("id",), None, ("version",)),
     "target_state_options": (("id",), None, ("version",)),
-    "catalog_items": (("id",), None, ("seeded_hash", "version")),
-    "item_resolutions": (("id",), None, ("seeded_hash",)),
-    "resolution_derivations": (("resolution_id", "dependent_item_id"), None, ("seeded_hash",)),
+    "catalog_items": (("id",), None, ("seeded_hash", "seeded_fields", "version")),
+    "item_resolutions": (("id",), None, ("seeded_hash", "seeded_fields")),
+    "resolution_derivations": (("resolution_id", "dependent_item_id"), None, ("seeded_hash", "seeded_fields")),
     "conversion_recipes": (("id",), None, ()),
     "conversion_recipe_steps": (("recipe_id", "step_id"), None, ()),
 }

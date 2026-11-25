@@ -1809,6 +1809,14 @@ hand. Everything else an update brings, bootstrap applies by itself. Apply every
 had (`previousCommit` in `PLATFORM_SOURCE.json` after the update; in our own installs, the commit before step 5 of
 the appendix), oldest of them first. Entries up to 2026-10-23 were the notes of releases 2 to 7, which are named so.
 
+#### 2026-11-26, (commit of "Engagement guidance on the master catalog, and seeding field by field"): set any phase still missing
+
+Update, bootstrap and restart the backend. Bootstrap now seeds field by field: a catalog field nobody edited takes its
+new default even on a row your admin edited elsewhere, so an edited resolution with no phase gets its phase, and only a
+field your admin changed is kept and reported. A resolution still without a phase shows "phase not set" on its card:
+set it in the resolution's form. Engagement notes and conventions are new and empty: an admin adds them on the
+engagement's view of the catalog and its "Engagement settings" tab; the next conversion prepared carries them.
+
 #### 2026-11-25, (commit of "Phases in the plan, the SSIS work item's places, replaced assemblies, Event Log and backslash paths, Files"): rescan; a conversion not yet run is refreshed
 
 Update, bootstrap and restart the backend. Bootstrap adds a phase to every catalog resolution nobody has edited since it

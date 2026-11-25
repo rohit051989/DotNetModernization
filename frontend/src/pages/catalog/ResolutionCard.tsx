@@ -36,8 +36,9 @@ export function ResolutionCard({ resolution, isLowestImpact, actions, highlight 
             phase {resolution.phase}: {RESOLUTION_PHASES[resolution.phase]}
           </span>
         ) : (
-          <span className="rounded border border-amber-200 bg-amber-50 px-1.5 text-[11px] text-amber-800" data-testid="phase">
-            no phase
+          <span className="rounded border border-amber-200 bg-amber-50 px-1.5 text-[11px] text-amber-800" data-testid="phase"
+            title="No phase: a conversion places its work item with phase 5 and its preparation warns until an admin sets one.">
+            phase not set
           </span>
         )}
         {resolution.confirm_design && (

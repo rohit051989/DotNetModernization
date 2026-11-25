@@ -26,13 +26,13 @@ class WordingCorrectionTests(unittest.TestCase):
         if row is None or catalog_source.choose(db) != "database":
             db.close()
             self.skipTest("the catalog in this schema is not the database's own")
-        self.saved = (row.description, row.seeded_hash)
+        self.saved = (row.description, row.seeded_hash, row.seeded_fields)
         db.close()
 
     def tearDown(self):
         db = SessionLocal()
         row = db.get(models.CatalogItem, ITEM)
-        row.description, row.seeded_hash = self.saved
+        row.description, row.seeded_hash, row.seeded_fields = self.saved
         db.commit()
         db.close()
 
@@ -44,6 +44,7 @@ class WordingCorrectionTests(unittest.TestCase):
         db.flush()
         seeded = {**baseline.content(row), "description": OLD + (" (an older seed)" if edited else "")}
         row.seeded_hash = baseline.digest(seeded)
+        row.seeded_fields = None             # an older release recorded the whole-row hash only
         db.commit()
         db.close()
 
@@ -80,13 +81,13 @@ class DesignFlagTests(unittest.TestCase):
         if row is None or catalog_source.choose(db) != "database":
             db.close()
             self.skipTest("the catalog in this schema is not the database's own")
-        self.saved = (row.confirm_design, row.seeded_hash)
+        self.saved = (row.confirm_design, row.seeded_hash, row.seeded_fields)
         db.close()
 
     def tearDown(self):
         db = SessionLocal()
         row = db.get(models.ItemResolution, self.RESOLUTION)
-        row.confirm_design, row.seeded_hash = self.saved
+        row.confirm_design, row.seeded_hash, row.seeded_fields = self.saved
         db.commit()
         db.close()
 
@@ -98,6 +99,7 @@ class DesignFlagTests(unittest.TestCase):
         db.flush()
         seeded = {**baseline.content(row), **({"notes": "an older seed"} if edited else {})}
         row.seeded_hash = baseline.digest(seeded)
+        row.seeded_fields = None             # an older release recorded the whole-row hash only
         db.commit()
         db.close()
 
@@ -122,11 +124,14 @@ class DesignFlagTests(unittest.TestCase):
         self.assertIn(f"item_resolutions {self.RESOLUTION}", report["corrections"]["updated"])
         self.assertTrue(self.flag())
 
-    def test_an_edited_resolution_is_left_as_it_is_and_reported(self):
+    def test_an_edited_resolution_still_takes_the_flag_a_field_nobody_changed(self):
+        """Seeding field by field (2026-11-26): the row was edited (another field), but its flag never was: an optional
+        field still empty on a row from before field baselines counts as never set, so it takes the flag."""
         self.stage(edited=True)
         report = catalog_source.seed_from_export_or_database()
-        self.assertIn(self.RESOLUTION, [c["row"] for c in report["corrections"]["conflicts"]])
-        self.assertFalse(self.flag())
+        self.assertIn(f"item_resolutions {self.RESOLUTION}", [u.split(" (")[0] for u in report["corrections"]["updated"]])
+        self.assertNotIn(self.RESOLUTION, [c["row"] for c in report["corrections"]["conflicts"]])
+        self.assertTrue(self.flag())
 
 
 if __name__ == "__main__":

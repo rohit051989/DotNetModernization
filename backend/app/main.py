@@ -26,6 +26,7 @@ from app.routers import (
     decisions,
     estate,
     estate_pages,
+    engagement_guidance,
     engagement_patterns,
     engagements,
     health,
@@ -409,3 +410,4 @@ app.include_router(deletion.router)
 app.include_router(editors.router)
 app.include_router(hierarchy.router)
 app.include_router(results_views.router)
+app.include_router(engagement_guidance.router)

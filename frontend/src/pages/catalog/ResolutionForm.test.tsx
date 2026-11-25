@@ -68,7 +68,7 @@ describe('the phase of a resolution', () => {
     expect(screen.getByTestId('phase').textContent).toBe('phase 4: Retarget and host applications')
     cleanup()
     render(<ResolutionCard resolution={{ ...REST, phase: null }} isLowestImpact={false} />)
-    expect(screen.getByTestId('phase').textContent).toBe('no phase')
+    expect(screen.getByTestId('phase').textContent).toBe('phase not set')
   })
 
   it('an admin changes it in the form, and it is sent as a number', async () => {

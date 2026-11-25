@@ -470,7 +470,8 @@ class PatternMigrationTests(ItemCatalogTestCase):
             "resolution_derivations wcf-service-corewcf -> fx47-class-library has been edited since it was seeded")
 
     def test_revert_refuses_a_row_with_no_baseline(self):
-        self.db.get(models.CatalogItem, "windows-service").seeded_hash = None
+        row = self.db.get(models.CatalogItem, "windows-service")
+        row.seeded_hash = row.seeded_fields = None             # neither baseline: the whole-row hash nor the field one
         self.db.flush()
         self.assert_revert_refused_naming("catalog_items windows-service has no seed baseline to prove it unedited")
 

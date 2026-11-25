@@ -5,6 +5,7 @@ import { ExtractorBacklogView } from './catalog/ExtractorBacklogView'
 import { SignalIndexView } from './catalog/SignalIndexView'
 import { MasterRuleConflictsView } from './RuleConflictsViews'
 import { EmptyState } from '../components/EmptyState'
+import { EngagementConventions } from './catalog/EngagementConventions'
 import type { Engagement } from '../types/catalog'
 
 interface CatalogPageProps {
@@ -13,7 +14,7 @@ interface CatalogPageProps {
   selectedEngagementId: string | null
 }
 
-type MasterSection = 'items' | 'signals' | 'backlog' | 'rule-conflicts'
+type MasterSection = 'items' | 'signals' | 'backlog' | 'rule-conflicts' | 'settings'
 
 /** The item catalog — 28-ITEM-AND-CONVERSION-MODEL.md. Master view: the
  * client-agnostic items, their resolutions and the extractor backlog, all
@@ -68,7 +69,9 @@ export function CatalogPage({ engagements, selectedEngagementId }: CatalogPagePr
   // it too: signal names in an item's detection link there from either view.
   // The extractor backlog is master-only.
   // Catalog rule conflicts are master-only too: they are for catalog authors.
-  const activeSection: MasterSection = !isMaster && (section === 'backlog' || section === 'rule-conflicts') ? 'items' : section
+  const activeSection: MasterSection =
+    (!isMaster && (section === 'backlog' || section === 'rule-conflicts')) || (isMaster && section === 'settings') ? 'items' : section
+  const showSettings = activeSection === 'settings'
   const showBacklog = activeSection === 'backlog'
   const showRuleConflicts = activeSection === 'rule-conflicts'
   const showSignals = activeSection === 'signals'
@@ -80,7 +83,7 @@ export function CatalogPage({ engagements, selectedEngagementId }: CatalogPagePr
           { key: 'backlog' as const, label: 'Extractor backlog & coverage' },
           { key: 'rule-conflicts' as const, label: 'Rule conflicts' },
         ]
-      : []),
+      : [{ key: 'settings' as const, label: 'Engagement settings' }]),
   ]
 
   return (
@@ -102,7 +105,11 @@ export function CatalogPage({ engagements, selectedEngagementId }: CatalogPagePr
         ))}
       </div>
 
-      {showSignals ? (
+      {showSettings && engagement ? (
+        <div className="flex-1 overflow-y-auto">
+          <EngagementConventions engagementId={engagement.id} />
+        </div>
+      ) : showSignals ? (
         <div className="flex-1 overflow-y-auto">
           <SignalIndexView
             refreshToken={refreshToken}

@@ -1300,3 +1300,40 @@ Rule 20, for each engine:
   assembly, Files, the new items), `tests/test_plan_order.py` (the second repository: the library's bridge before the
   MVC move and the WCF rewrite), `tests/test_resolution_phases.py`, `tests/test_verifier_platform.py` (CA1416 on a
   converted job calling the Event Log).
+
+## Part Q addendum — Engagement guidance, and seeding field by field (2026-11-26)
+
+- **Engagement guidance**, inheriting from the master catalog rather than forking it:
+  - **A note on a resolution** (`engagement_resolution_notes`, one per engagement and resolution), edited on the
+    engagement's view of the catalog, under each resolution (admins; a version check; an activity record;
+    `PUT /api/engagements/{id}/resolutions/{resolution}/note`). Both engines' work items carry the master guidance, then
+    "**For this engagement:**" and the note, then a line saying the note is followed where the two disagree. The note
+    never replaces or copies the master text, so a master text change keeps reaching the engagement, the note kept.
+    Another engagement never gets it.
+  - **Conventions** (`engagements.conventions`), edited on the engagement's settings (the catalog's "Engagement
+    settings" tab; admins; the engagement settings' version; an activity record;
+    `PUT /api/engagements/{id}/conventions`), carried in the top-level instructions of every conversion of its
+    repositories, for both engines (`render.conventions_section`). The design-question rule adds: do not ask about
+    anything the conventions decide.
+  - Both pass the self-containedness and secret checks when saved, with field errors (`app.items.engine_text`, which
+    master guidance now uses too). A note adds to guidance and never stands in for it: a resolution without master
+    guidance, on the allow-list or not, still has no work item and still warns.
+- **Seeding field by field** (rule 10): `seeded_fields` records a digest of each field as the seed wrote it
+  (`baseline.seed_row`). A field nobody changed takes the new default, even on a row with other edited fields; a field
+  an admin changed is kept, and reported as a conflict only when the default changed too. For a row seeded before
+  field baselines, an optional field still at its empty value (a resolution's phase) counts as never set: an edited
+  resolution with no phase gets its phase and keeps its edited text, which is reported.
+- **Phase not set**: a resolution without a phase shows "phase not set" on its card, and its work item says so in its
+  Prerequisites, Claude Code's plan and the decision sheet; it is placed with phase 5, and preparation warns, until it
+  is set.
+
+Rule 20, for each engine:
+
+- **GitHub Copilot**: applied. Its work items carry the note after the master guidance; its instructions carry the
+  conventions and the design-question rule; "phase not set" is in its work items and decision sheet.
+- **Claude Code**: applied. The same through the mechanics table: the work items, the conventions in its instructions,
+  and "phase not set" in its plan. The parity test passes.
+- Proved by `tests/test_engagement_guidance.py` (seeding, the saves and their checks, the rendering in both engines)
+  and `tests/test_guidance_fixtures.py` test 13 (on a scanned repository: the note in both engines after the master
+  text, another engagement's note absent, a master text change reaching the engagement with the note kept, the
+  conventions in both engines' instructions).

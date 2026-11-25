@@ -107,10 +107,10 @@ class BaselineTests(ItemCatalogTestCase):
 
     def test_a_row_without_a_baseline_is_adopted_only_when_it_equals_the_default(self):
         self.seed()
-        self.item().seeded_hash = None
+        self.item().seeded_hash = self.item().seeded_fields = None
         self.assertEqual(self.seed()["adopted"], ["catalog_items t-seeded"])
 
-        self.item().seeded_hash = None
+        self.item().seeded_hash = self.item().seeded_fields = None
         self.item().description = "Written before baselines existed."
         report = self.seed()
         self.assertEqual([c["reason"][:16] for c in report["conflicts"]], ["no seed baseline"])

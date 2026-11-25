@@ -158,6 +158,8 @@ def without_guidance(model: dict) -> list[dict]:
             out.append({"item": item["id"], "resolution": res["id"], "missing": "resolution", **named})
         elif not item.get("guidance"):
             out.append({"item": item["id"], "resolution": res["id"] if res else None, "missing": "item", **named})
+        if res is not None and res.get("guidance") and not phase_set(item):
+            out.append({"item": item["id"], "resolution": res["id"], "missing": "phase", **named})
         if item["id"] in DECIDE_FIRST and not item.get("decided"):
             # Its default has an instruction (leave it unchanged), but a person decides before the conversion runs.
             out.append({"item": item["id"], "resolution": res["id"] if res else None, "missing": "decision",
@@ -175,7 +177,7 @@ def incomplete(model_or_missing) -> dict | None:
     what cannot work on the target. None when nothing is missing. Takes the model, or without_guidance's list."""
     missing = model_or_missing if isinstance(model_or_missing, list) else without_guidance(model_or_missing)
     deciding = {m["item"] for m in missing if m["missing"] == "decision"}
-    gaps = [m for m in missing if m["missing"] in ("default", "decision")
+    gaps = [m for m in missing if m["missing"] in ("default", "decision", "phase")
             or (m["missing"] == "resolution" and m["item"] not in deciding)]     # one line per change
     if not gaps:
         return None
@@ -184,6 +186,10 @@ def incomplete(model_or_missing) -> dict | None:
     for m in gaps:
         if m["missing"] == "default":
             details.append(f"{m['change']}: no instruction yet ({m['why']})")
+        elif m["missing"] == "phase":
+            details.append(f"{m['change']}: {m['approach']} has no phase set in the catalog; its work item is placed with "
+                           f"phase {DEFAULT_PHASE} ({PHASES[DEFAULT_PHASE].lower()}) until an admin sets it in the "
+                           "resolution's form")
         elif m["missing"] == "decision":
             names = f" for {', '.join(m['assemblies'])}" if m.get("assemblies") else ""
             details.append(f"{m['change']}: no decision recorded{names}; a person decides the replacement before the "
@@ -321,7 +327,11 @@ def _prerequisites(item: dict, present: set[str], by_id: dict, entry: dict | Non
     earlier work items it follows (on the same project or on a project it references, or by an ordering rule), and the
     ordering rules that name a later one."""
     lines = []
-    if entry is not None:
+    if entry is not None and not entry.get("phase_set", True):
+        lines.append(f"- Phase not set in the catalog for this approach: placed with phase {entry['phase']}, "
+                     f"{PHASES[entry['phase']].lower()}, until it is set. Apply it after every work item of the phases "
+                     "before that.")
+    elif entry is not None:
         phase = entry["phase"]
         lines.append(f"- Phase {phase} of {len(PHASES)}, {PHASES[phase].lower()}: apply it after every work item of the "
                      "phases before it." if phase > 1 else f"- Phase 1 of {len(PHASES)}, {PHASES[1].lower()}: apply it "
@@ -503,6 +513,9 @@ def _instruction(model: dict, item: dict, present: set[str], by_id: dict, entry:
     if item.get("guidance"):
         out += ["", "## The change", "", item["guidance"].strip()]
     out += ["", "## What to do", "", res["guidance"].strip()]
+    if res.get("engagement_note"):
+        out += ["", "**For this engagement:**", "", res["engagement_note"].strip(), "",
+                "Where this note and the steps above disagree, follow this note: it is this engagement's decision."]
     out += frameworks_section(model, item)
     if item["id"] == "windows-build-pipeline" and _built(model):
         out += ["", f"The Linux build pipeline builds {_built(model)}, not the repository's other solutions: the "
@@ -842,7 +855,9 @@ def decision_sheet(model: dict) -> str:
     for w in plan:
         if not w["together_with"]:
             step += 1
-            out.append(f"{step}. `{w['name']}`: {_md(w['title'])} (phase {w['phase']}, {PHASES[w['phase']].lower()})")
+            said = (f"phase {w['phase']}, {PHASES[w['phase']].lower()}" if w.get("phase_set", True)
+                    else f"phase not set: placed with phase {w['phase']}")
+            out.append(f"{step}. `{w['name']}`: {_md(w['title'])} ({said})")
         else:
             out.append(f"   with `{w['name']}`: {_md(w['title'])}, in the same task and commit")
     if not plan:
@@ -988,13 +1003,33 @@ def design_section(model: dict) -> str:
             "- Choose the questions yourself, from the code and the work item: how to implement the change (for example "
             "logging, exposing an API description, input validation). Each question names the default you will use if "
             "the developer does not choose. Do not ask about anything these instructions, a work item or the decision "
-            "sheet already decide.",
+            "sheet already decide" + (", nor about anything this engagement's conventions decide (\"This engagement's "
+                                      "conventions\" above)." if _conventions(model) else "."),
             "- \"Use the defaults\" is an answer: it accepts every default. Then work through every work item without "
             "stopping again for these questions.",
             f"- Record every question, its default and the answer in `{paths.DESIGN_DECISIONS}` at the repository's root: "
             "a section for each work item, headed by its name (`## <work item name>`), holding a table "
             "`| Question | Default | Answer |` with one row per question. Commit it with the first work item."]
     return "\n".join(out) + "\n"
+
+
+CONVENTIONS_HEADING = "## This engagement's conventions"
+
+
+def _conventions(model: dict) -> str:
+    return ((model.get("engagement") or {}).get("conventions") or "").strip()
+
+
+def conventions_section(model: dict) -> str:
+    """The engagement's conventions (logging, naming, error format and the like), in the top-level instructions of every
+    conversion of its repositories, for both engines; "" when it has none."""
+    text = _conventions(model)
+    if not text:
+        return ""
+    return "\n".join(["", CONVENTIONS_HEADING, "",
+                      "Follow these conventions in every change of this conversion, in every work item. They are this "
+                      "engagement's decisions: do not ask about them, and do not depart from them unless a work item's "
+                      "\"For this engagement\" note says otherwise.", "", text]) + "\n"
 
 
 def build_section(model: dict) -> str:
@@ -1028,6 +1063,12 @@ DEFAULT_PHASE = 5
 def phase_of(item: dict) -> int:
     phase = (item.get("resolution") or {}).get("phase")
     return phase if phase in PHASES else DEFAULT_PHASE
+
+
+def phase_set(item: dict) -> bool:
+    """Whether the catalog gives the chosen resolution a phase. One without is placed with DEFAULT_PHASE, and the plan,
+    its Prerequisites and preparation's warning say "phase not set"."""
+    return (item.get("resolution") or {}).get("phase") in PHASES
 
 
 def _referenced(model: dict, projects: set[str]) -> set[str]:
@@ -1120,7 +1161,7 @@ def work_items(model: dict) -> list[dict]:
                 else:
                     continue
                 follows.append({"name": h_name, "title": h_title, "why": why})
-            out.append({"name": name, "item": item, "title": title, "phase": phase[g],
+            out.append({"name": name, "item": item, "title": title, "phase": phase[g], "phase_set": phase_set(item),
                         "together_with": None if i == g else skill_name(by_id[g]["resolution"]["id"]),
                         "follows": follows})
         seen += [(g, skill_name(by_id[i]["resolution"]["id"]), f"{by_id[i]['resolution']['name']} ({by_id[i]['name']})")
@@ -1152,7 +1193,8 @@ def _copilot(model: dict) -> dict[str, str]:
     instructions = (TEMPLATES / "copilot-instructions.md").read_text(encoding="utf-8")
     # Before the attribution at the end: sections of this repository's rules, like the others.
     head, mark, tail = instructions.partition("\n---\n")
-    instructions = head.rstrip("\n") + "\n" + build_section(model) + design_section(model) + scope_section(model) + mark + tail
+    instructions = (head.rstrip("\n") + "\n" + build_section(model) + conventions_section(model) + design_section(model)
+                    + scope_section(model) + mark + tail)
     files[paths.COPILOT_INSTRUCTIONS] = instructions
     files[f"{paths.PLATFORM_INPUTS_DIR}/assessment-addendum.md"] = addendum(model)
     files[f"{paths.PLATFORM_INPUTS_DIR}/decision-sheet.md"] = decision_sheet(model)

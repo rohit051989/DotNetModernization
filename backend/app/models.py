@@ -373,6 +373,9 @@ class Engagement(Base):
     deleted_by: Mapped[str | None] = mapped_column(Text)
     # Bumped on every edit of the engagement's settings: an edit from a stale copy is refused (app.auth.versions).
     version: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
+    # The engagement's conventions (logging, naming, error format and the like), carried in the top-level instructions
+    # of every conversion of its repositories, for both engines (36-COPILOT-ENHANCED-CONVERSION "Engagement guidance").
+    conventions: Mapped[str | None] = mapped_column(Text)
 
     __table_args__ = (
         CheckConstraint(f"status IN {LIFECYCLE_STATUS}", name="ck_engagements_status"),
@@ -1541,6 +1544,8 @@ class CatalogItem(Base):
     # Hash of the content the seed last wrote (app/items/baseline.py): a
     # reseed never overwrites a row edited since. Null: no baseline.
     seeded_hash: Mapped[str | None] = mapped_column(Text)
+    # {field: digest of the value the seed last wrote} (app/items/baseline.py): a reseed decides field by field.
+    seeded_fields: Mapped[dict | None] = mapped_column(JSONB)
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -1555,6 +1560,22 @@ class CatalogItem(Base):
         CheckConstraint(f"status IN {ITEM_STATUS}", name="ck_catalog_items_status"),
         Index("ix_catalog_items_state", "state"),
     )
+
+
+class EngagementResolutionNote(Base):
+    """One engagement's note on one catalog resolution (36-COPILOT-ENHANCED-CONVERSION "Engagement guidance"): carried
+    after the master guidance in its conversions' work items, and taking precedence over it where they conflict. It
+    never replaces or changes the master text, which keeps reaching the engagement. Engagement data (rule 6)."""
+
+    __tablename__ = "engagement_resolution_notes"
+
+    engagement_id: Mapped[str] = mapped_column(Text, ForeignKey("engagements.id", ondelete="CASCADE"), primary_key=True)
+    resolution_id: Mapped[str] = mapped_column(Text, ForeignKey("item_resolutions.id"), primary_key=True)
+    note: Mapped[str | None] = mapped_column(Text)
+    # Bumped on every edit: an edit from a stale copy is refused (app.auth.versions).
+    version: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
+    updated_by: Mapped[str | None] = mapped_column(Text)
+    updated_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
 class ItemResolution(Base):
@@ -1589,6 +1610,8 @@ class ItemResolution(Base):
     # Hash of the content the seed last wrote (app/items/baseline.py): a
     # reseed never overwrites a row edited since. Null: no baseline.
     seeded_hash: Mapped[str | None] = mapped_column(Text)
+    # {field: digest of the value the seed last wrote} (app/items/baseline.py): a reseed decides field by field.
+    seeded_fields: Mapped[dict | None] = mapped_column(JSONB)
     # What converting an item this way touches (33-IMPACT-ANALYSIS Part D): rules
     # impact-analysis evaluates. Empty: the default rule (app/items/impact_rules.py).
     impact_rules: Mapped[list] = mapped_column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
@@ -1654,6 +1677,8 @@ class ResolutionDerivation(Base):
     # Hash of the content the seed last wrote (app/items/baseline.py): a
     # reseed never overwrites a row edited since. Null: no baseline.
     seeded_hash: Mapped[str | None] = mapped_column(Text)
+    # {field: digest of the value the seed last wrote} (app/items/baseline.py): a reseed decides field by field.
+    seeded_fields: Mapped[dict | None] = mapped_column(JSONB)
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

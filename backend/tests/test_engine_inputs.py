@@ -41,7 +41,7 @@ def _item(item_id, resolution_id, *, decided=False, ordering=(), value=None, fil
         "guidance": f"Why {_name(item_id).lower()} matters on the target." if guidance else None,
         "ordering": list(ordering), "decided": decided,
         "resolution": {"id": resolution_id, "name": _name(resolution_id), "guidance": "Do the thing." if steps else None,
-                       "consumer_impact": "low"},
+                       "consumer_impact": "low", "phase": 5},
         "alternatives": [{"id": resolution_id + "-other", "name": "Other way", "default": False}],
         "occurrences": [{"project": "src/A/A.csproj", "file": file, "value": value, "certainty": "confirmed",
                          "lines": [{"line": line, "value": value or "System.DateTime.Now", "member": "M", "type": "T", "certainty": None}]}],

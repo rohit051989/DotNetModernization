@@ -30,17 +30,13 @@ _INVALID_DETECTION = {"model": ErrorResponse, "description": "The detection fail
 
 def _check_guidance(db: Session, payload) -> None:
     """Engine guidance an admin writes reaches a conversion engine that reads only the repository's branch: refused, as a
-    field error, when it names a platform document, path, step or the platform's own ids (the check every generated input
-    passes, app.engine.inputs.selfcontained), rather than refusing every preparation that would use it later."""
-    if "engine_guidance" not in payload.model_fields_set or not (payload.engine_guidance or "").strip():
+    field error, when it is not self-contained or holds a secret value (app.items.engine_text), rather than refusing
+    every preparation that would use it later."""
+    if "engine_guidance" not in payload.model_fields_set:
         return
-    from app.engine.inputs import selfcontained
+    from app.items import engine_text
 
-    findings = selfcontained.check({"engine_guidance": payload.engine_guidance}, selfcontained.vocabulary(db))
-    if findings:
-        named = "; ".join(f"line {f['line']}: {f['check']} ({f['match']})" for f in findings[:5])
-        raise error(422, f"The engine guidance must be self-contained: the engine reads only the repository's branch. "
-                         f"Found {len(findings)}: {named}.", field="engine_guidance", code="NOT_SELF_CONTAINED")
+    engine_text.check(db, "engine_guidance", payload.engine_guidance, "engine guidance")
 
 
 def _now() -> datetime.datetime:

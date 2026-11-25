@@ -88,6 +88,19 @@ work item's Frameworks section gives the values. A version written into a work i
 A change kept unchanged (stays on Windows, stays on .NET Framework, kept out of the move) has a short work item of its
 own: leave it as it is, change nothing, and record it as left unchanged with the reason it names. It gives no warning.
 
+**Engagement guidance.** An engagement can add to the master catalog without forking it. A note on a resolution
+appears in that work item's "What to do" after the master guidance, under "**For this engagement:**", with a line
+saying the note is followed where the two disagree; the master text above it is the catalog's current text. The
+engagement's conventions (logging, naming, error format) appear in the top-level instructions of both engines, under
+"This engagement's conventions", and the design-question rule says not to ask about what they decide. A note in another
+engagement's conversion, a work item whose master text is missing because a note stands in for it, or a resolution with
+only a note and no warning, is a gap: a note adds to guidance, it never replaces it, so a resolution on the allow-list
+still warns.
+
+**Phase not set.** A work item whose catalog resolution has no phase says "phase not set" in its Prerequisites, in
+Claude Code's plan and in the decision sheet; it is placed with phase 5, and preparation's warning names it, until an
+admin sets the phase in the resolution's form.
+
 **An SSIS package reimplemented in C#.** Its work item's places are the code that loads and runs the package (the
 member calling `LoadPackage` or `Execute`, and each in-scope project referencing the SSIS runtime), not the package
 project. "Files this changes" lists the `.dtproj` and each `.dtsx` as reference (read, never changed), the executing

@@ -208,7 +208,9 @@ def instructions(model: dict, items: list[dict], copilot_instructions: str) -> s
         else:
             steps.append([entry])
     for number, step in enumerate(steps, 1):
-        phase = f" (phase {step[0]['phase']}, {rendering.PHASES[step[0]['phase']].lower()})" if step[0].get("phase") else ""
+        phase = ("" if not step[0].get("phase") else
+                 f" (phase {step[0]['phase']}, {rendering.PHASES[step[0]['phase']].lower()})" if step[0].get("phase_set", True)
+                 else f" (phase not set: placed with phase {step[0]['phase']})")
         if len(step) == 1:
             out.append(f"{number}. `{step[0]['name']}`: {step[0]['title']}{phase}")
         else:

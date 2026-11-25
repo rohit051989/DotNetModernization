@@ -463,6 +463,10 @@ decisions a person still has to make). The plan goes by phase, then by the proje
 above hold within a phase. Factory values in `backend/app/seed/data/phases.yaml`, seeded through `baseline.py`; every
 active resolution has one (`tests/test_resolution_phases.py`).
 
+Engagement guidance (2026-11-26) is engagement data, never the master catalog: an engagement's note on a
+resolution (`engagement_resolution_notes`), carried after the master guidance in its work items, and its conventions
+(`engagements.conventions`), carried in its conversions' instructions. A note never replaces the master text.
+
 `event-log-usage` and `backslash-path-building` (2026-11-25, occurrence scope) come from registry 1.16.0's
 `EVENT_LOG_USAGE` and `BACKSLASH_PATH_BUILDING`.
 

@@ -401,6 +401,11 @@ def collect(db: Session, repository: models.Repository) -> dict:
         SELECT source_file, production_type, test_file, test_class, test_methods FROM test_mappings
         WHERE repository_id = :r ORDER BY source_file, test_file, test_class"""), {"r": r}) if in_scope(tf)]
 
+    # The engagement's notes on resolutions (engagement guidance): each carried after its resolution's master guidance.
+    notes = {resolution_id: note for resolution_id, note in db.execute(text("""
+        SELECT resolution_id, note FROM engagement_resolution_notes WHERE engagement_id = :e AND note IS NOT NULL"""),
+        {"e": engagement.id})}
+
     items = []
     for item_id in sorted(occurrences):
         item = db.get(models.CatalogItem, item_id)
@@ -419,8 +424,10 @@ def collect(db: Session, repository: models.Repository) -> dict:
             "resolution": None if chosen is None else {
                 "id": chosen.id, "name": chosen.name, "guidance": chosen.engine_guidance,
                 "consumer_impact": chosen.consumer_impact,
-                # Where its work item stands in the plan (render.PHASES, render.work_items); unset reads as 5.
+                # Where its work item stands in the plan (render.PHASES, render.work_items); unset is said so.
                 "phase": chosen.phase,
+                # The engagement's note, after the master guidance; it adds to it and never stands in for it.
+                **({"engagement_note": notes[chosen.id]} if notes.get(chosen.id) else {}),
                 # Changes the design: the engine asks how to implement it before any code (render.design_section).
                 **({"confirm_design": True} if chosen.confirm_design else {})},
             "alternatives": [{"id": x.id, "name": x.name, "default": x.is_default} for x in resolutions
@@ -510,7 +517,7 @@ def collect(db: Session, repository: models.Repository) -> dict:
         "vault_delivery": [{"file": v.file, "kind": v.kind, "description": v.description} for v in vault],
         "test_mappings": test_mappings,
         "engagement": {"id": engagement.id, "target_framework": to_tfm, "target_platform": engagement.target_platform,
-                       "posture": engagement.default_posture},
+                       "posture": engagement.default_posture, "conventions": engagement.conventions},
         "repository": {"slug": repository.slug, "commit": repository.ingest_commit_sha},
         "projects": projects, "current_frameworks": current, "references": project_graph,
         "items": items, "packages": packages, "couplings": couplings, "version_drift": sorted(set(drift)), "deltas": deltas,

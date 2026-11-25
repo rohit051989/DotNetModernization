@@ -420,5 +420,57 @@ class GuidanceOnAScannedRepository(unittest.TestCase):
         self.assertIn("`successfulJobsHistoryLimit: 3`", flat)
 
 
+    def test_13_engagement_guidance_adds_to_the_master_text_for_this_engagement_only(self):
+        """Engagement guidance (2026-11-26) on a scanned repository: this engagement's note follows the master guidance in
+        both engines; another engagement's note never reaches it; a master text change still reaches the engagement
+        with the note kept; the engagement's conventions are in both engines' top-level instructions."""
+        from app.routers import engagement_guidance as routes
+
+        other = f"t-guidance-other-{self.TAG}"
+        mine, theirs = "Load each package's connection names from the job's settings file.", "Theirs: never reach this one."
+        resolution = self.db.get(models.ItemResolution, "csharp-worker-container")
+        original = resolution.engine_guidance
+        self.db.add(models.Engagement(id=other, client_name="Test engagement (other)", default_posture="lift-and-shift"))
+        self.db.commit()
+        try:
+            routes.put_note(self.ENGAGEMENT, resolution.id, routes.NoteWrite(note=mine), self.db, if_match="0")
+            routes.put_note(other, resolution.id, routes.NoteWrite(note=theirs), self.db, if_match="0")
+            version = self.db.get(models.Engagement, self.ENGAGEMENT).version
+            routes.put_conventions(self.ENGAGEMENT, routes.ConventionsWrite(conventions="- Log through ILogger to standard "
+                                   "output.\n- Name settings in PascalCase."), self.db, if_match=str(version))
+            self.decide({"ssis-package": "csharp-worker-container"})
+
+            def texts():
+                files = self.both(collect.collect(self.db, self.repo))
+                return files, [files[engines.COPILOT][".github/upgrades/skills/applying-csharp-worker-container.md"],
+                               files[engines.CLAUDE][claude.skill_path("applying-csharp-worker-container")]]
+
+            files, work = texts()
+            for text_ in work:
+                flat = " ".join(text_.split())
+                self.assertLess(flat.index(_first_words(original)), flat.index("**For this engagement:** " + mine))
+                self.assertNotIn(theirs, flat)
+            model = collect.collect(self.db, self.repo)
+            for engine, top in ((engines.COPILOT, ".github/copilot-instructions.md"), (engines.CLAUDE, claude.instructions_path(model))):
+                self.assertIn("## This engagement's conventions", files[engine][top])
+                self.assertIn("- Name settings in PascalCase.", files[engine][top])
+            # The master text changes (an admin's edit of the master catalog): it reaches the engagement, the note kept.
+            resolution.engine_guidance = "Rewrite the package as C# on the target framework, step by step.\n" + original
+            self.db.commit()
+            files, work = texts()
+            for text_ in work:
+                flat = " ".join(text_.split())
+                self.assertIn("Rewrite the package as C# on the target framework, step by step.", flat)
+                self.assertIn("**For this engagement:** " + mine, flat)
+        finally:
+            resolution.engine_guidance = original
+            self.db.query(models.EngagementResolutionNote).filter(
+                models.EngagementResolutionNote.engagement_id.in_([self.ENGAGEMENT, other])).delete(synchronize_session=False)
+            engagement = self.db.get(models.Engagement, self.ENGAGEMENT)
+            engagement.conventions = None
+            self.db.delete(self.db.get(models.Engagement, other))
+            self.db.commit()
+
+
 if __name__ == "__main__":
     unittest.main()

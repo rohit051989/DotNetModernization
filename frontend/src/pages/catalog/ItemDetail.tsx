@@ -40,6 +40,8 @@ import { ResolutionCard } from './ResolutionCard'
 import { ResolutionForm } from './ResolutionForm'
 import { formatDate, lowestImpactResolution } from './itemHelpers'
 import { useIsAdmin } from '../../auth/AuthContext'
+import { listResolutionNotes, type ResolutionNote } from '../../api/engagementGuidance'
+import { EngagementNote } from './EngagementNote'
 
 interface ItemDetailProps {
   itemId: string
@@ -78,6 +80,17 @@ export function ItemDetail({
   onSelectSignal,
 }: ItemDetailProps) {
   const isAdmin = useIsAdmin()
+  // The engagement's notes on resolutions (engagement guidance), by resolution id: shown under each resolution in the
+  // engagement's view of the catalog.
+  const [notes, setNotes] = useState<Record<string, ResolutionNote>>({})
+  useEffect(() => {
+    if (!engagement) return
+    let live = true
+    listResolutionNotes(engagement.id)
+      .then((rows) => { if (live) setNotes(Object.fromEntries(rows.map((n) => [n.resolution_id, n]))) })
+      .catch(() => { if (live) setNotes({}) })
+    return () => { live = false }
+  }, [engagement?.id, refreshToken])
   const isMaster = engagement === null
   const { showToast } = useToast()
   const [item, setItem] = useState<CatalogItem | null>(null)
@@ -480,8 +493,8 @@ export function ItemDetail({
               {visible.map((resolution) => {
                 const resolutionDeleted = resolution.deleted_at !== null
                 return (
+                  <div key={resolution.id} className="space-y-1">
                   <ResolutionCard
-                    key={resolution.id}
                     resolution={resolution}
                     isLowestImpact={lowest?.consumer_impact === resolution.consumer_impact && resolution.status === 'active'}
                     actions={
@@ -512,6 +525,17 @@ export function ItemDetail({
                       ) : undefined
                     }
                   />
+                  {engagement && !resolutionDeleted && (
+                    <EngagementNote
+                      key={`${resolution.id}:${notes[resolution.id]?.version ?? 0}`}
+                      engagementId={engagement.id}
+                      resolutionId={resolution.id}
+                      note={notes[resolution.id]}
+                      isAdmin={isAdmin}
+                      onSaved={(saved) => setNotes((current) => ({ ...current, [saved.resolution_id]: saved }))}
+                    />
+                  )}
+                  </div>
                 )
               })}
             </div>
