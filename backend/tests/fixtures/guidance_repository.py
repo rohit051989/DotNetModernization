@@ -310,9 +310,11 @@ EXPECTED = {
 }
 
 # And where they must not be: a classic ASP.NET web project becomes SDK-style in its move to ASP.NET Core, never in a
-# project file conversion of its own (2026-11-25).
+# project file conversion of its own (2026-11-25); and a project with .svc or .asmx files is a web service project,
+# with or without web.config or a web project type GUID (Legacy has neither), never a class library.
 NOT_EXPECTED = {
     "legacy-project-format": {"Orders/Orders.csproj", "Legacy/Legacy.csproj", "Web/Web.csproj"},
+    "fx47-class-library": {"Orders/Orders.csproj", "Legacy/Legacy.csproj"},
     "packages-config": {"Orders/Orders.csproj"},
 }
 

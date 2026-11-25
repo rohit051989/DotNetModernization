@@ -67,7 +67,13 @@ another listed package. A package pinned higher than restore would choose is kep
 A classic ASP.NET web project (System.Web: .svc, .asmx, MVC, Web API 2, Web Forms) gets neither work item: it has no
 supported SDK-style form on .NET Framework, so its WCF, ASMX or MVC work item makes it SDK-style, and moves its
 packages, in its move to ASP.NET Core. An old-style project file or packages.config work item that lists a web project
-is a gap.
+is a gap. A project with `.svc` or `.asmx` files is a web service project even without web.config or a web project
+type GUID: it gets the WCF or ASMX work item, and a ".NET Framework 4.7 class library" work item that lists it is a
+gap too.
+
+Guidance names no framework version: it says "the target framework" and "the project's current framework", and each
+work item's Frameworks section gives the values. A version written into a work item's text, other than the
+`netstandard2.0` a .NET Standard bridge targets, is a gap.
 
 A change kept unchanged (stays on Windows, stays on .NET Framework, kept out of the move) has a short work item of its
 own: leave it as it is, change nothing, and record it as left unchanged with the reason it names. It gives no warning.

@@ -229,6 +229,12 @@ patterns:
           signal:
             name: SVC_FILE
           disqualify: true
+        # A project with .asmx files is a web service project, with or without web.config or a web project type
+        # GUID: it gets the ASMX guidance, never this item (2026-11-25).
+        - id: no-asmx
+          signal:
+            name: ASMX_FILE
+          disqualify: true
         - id: no-service-contract
           signal:
             name: SERVICE_CONTRACT_ATTRIBUTE

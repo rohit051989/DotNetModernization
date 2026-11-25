@@ -1809,6 +1809,13 @@ hand. Everything else an update brings, bootstrap applies by itself. Apply every
 had (`previousCommit` in `PLATFORM_SOURCE.json` after the update; in our own installs, the commit before step 5 of
 the appendix), oldest of them first. Entries up to 2026-10-23 were the notes of releases 2 to 7, which are named so.
 
+#### 2026-11-25, (commit of "Web service projects are never class libraries; no framework version in guidance"): rescan, or start the next conversion
+
+Update, bootstrap and restart the backend. Bootstrap updates catalog rows nobody has edited since they were seeded,
+and reports each one your admin edited. Then **Rescan** each repository whose conversion has not been run, and
+**start the next conversion** for one already run: a project with `.asmx` files no longer gets a class-library work
+item, and the console batch job and legacy ASP.NET Core API instructions name the target framework by role.
+
 #### 2026-11-25, (commit of "Classic web projects, pinned packages, one text for unchanged, the project file first"): rescan, or start the next conversion
 
 Update, bootstrap and restart the backend. Bootstrap writes the corrected guidance into catalog rows nobody has edited

@@ -1231,3 +1231,23 @@ Rule 20, for each engine:
   instructions carry the SDK-style step; System.Runtime.CompilerServices.Unsafe pinned at 6.0.0, above the 4.5.3
   System.Memory asks for, is kept at 6.0.0 while System.Buffers, pinned at what restore resolves, is left out; the
   task order for both engines; choosing the keep and remain resolutions gives no warning.
+
+## Part Q addendum — Web service projects are never class libraries; no framework version in guidance (2026-11-25)
+
+- **A project with `.svc` or `.asmx` files is a web service project**, with or without web.config or a web project
+  type GUID. `fx47-class-library` already excluded `.svc` files; it now excludes `.asmx` files too (`no-asmx`, in
+  `patterns.yaml` and the export), so such a project gets the ASMX guidance and never the class-library one.
+  `legacy-project-format` already skipped both (`classicWebProject`).
+- **No framework version in guidance.** The console batch job and the legacy ASP.NET Core API texts said "Target .NET
+  10"; they now say "the target framework", like the rest. A test reads every guidance text, the factory file's and
+  the catalog export's, and fails on any framework version; `netstandard2.0`, the bridge's own fixed target, is the
+  one exception.
+
+Rule 20, for each engine:
+
+- **GitHub Copilot**: applied. Its work items carry the corrected text, and the class-library work item no longer
+  lists an ASMX project.
+- **Claude Code**: applied. The same work items through the mechanics table; nothing is engine-specific. The parity
+  test passes.
+- Proved on the fixture (`tests/test_guidance_fixtures.py`, test 1): its ASMX project, with neither web.config nor a
+  web project type GUID, raises the ASMX item and no class-library item.

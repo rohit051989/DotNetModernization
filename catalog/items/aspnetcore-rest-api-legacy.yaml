@@ -33,8 +33,8 @@ detection:
         name: WEB_APPLICATION_CREATE_BUILDER_ENTRY_POINT
 engine_guidance: |-
   A REST API built on ASP.NET Core with a `Startup` class (`ConfigureServices` and `Configure`) and
-  `WebHost.CreateDefaultBuilder` or `Host.CreateDefaultBuilder`. On .NET 10 the hosting model is
-  `WebApplication.CreateBuilder`. The controllers, routes, status codes and JSON payloads that
+  `WebHost.CreateDefaultBuilder` or `Host.CreateDefaultBuilder`. On the target framework the hosting
+  model is `WebApplication.CreateBuilder`. The controllers, routes, status codes and JSON payloads that
   callers depend on must not change.
 excluded_roles: []
 id: aspnetcore-rest-api-legacy
@@ -48,7 +48,7 @@ resolutions:
   description: Retarget to .NET 10, move to WebApplicationBuilder, keep controller classes and routes exactly as they are.
   effort: low
   engine_guidance: |-
-    1. Target .NET 10 (`net10.0`).
+    1. Set `<TargetFramework>` to the target framework.
     2. Replace `Program` and `Startup` with `WebApplication.CreateBuilder`: move each registration in
        `ConfigureServices` to `builder.Services`, and each middleware call in `Configure` to the
        `app` pipeline, in the same order.
@@ -74,9 +74,9 @@ resolutions:
   description: Retarget and additionally rewrite controllers as minimal API endpoints.
   effort: medium
   engine_guidance: |-
-    Target .NET 10, move to `WebApplication.CreateBuilder`, and rewrite each controller action as a
-    minimal API endpoint with the same route, HTTP method, request and response shapes, and status
-    codes. Callers must see no difference.
+    Retarget to the target framework, move to `WebApplication.CreateBuilder`, and rewrite each controller
+    action as a minimal API endpoint with the same route, HTTP method, request and response shapes,
+    and status codes. Callers must see no difference.
   id: net10-api-minimal
   is_default: false
   linux_compatible: true

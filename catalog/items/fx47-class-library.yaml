@@ -28,6 +28,9 @@ detection:
     - id: no-svc
       signal:
         name: SVC_FILE
+    - id: no-asmx
+      signal:
+        name: ASMX_FILE
     - id: no-service-contract
       signal:
         name: SERVICE_CONTRACT_ATTRIBUTE

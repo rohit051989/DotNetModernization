@@ -705,20 +705,26 @@ class SelfContained(unittest.TestCase):
             if item in authored:
                 self.assertEqual(authored[item] - set(g["resolutions"]) - set(allowed), set(), item)
 
-    def test_no_guidance_hard_codes_a_target_framework_version(self):
+    def test_no_guidance_hard_codes_a_framework_version(self):
         """Frameworks are named by role ("the target framework", "the project's current framework"); each work item's
-        Frameworks section gives the real values."""
+        Frameworks section gives the real values. Every guidance text: the factory file's (the shared text for
+        unchanged resolutions included) and the catalog export's, which an installation reads. `netstandard2.0`, the
+        bridge's own fixed target, is not a framework a role names."""
         import yaml
-        from app.items import baseline
+        from app.items import baseline, catalog_export
 
-        guidance = baseline.engine_guidance()
-        written = ("ssis-package", "fx47-class-library", "wcf-service", "wcf-service-host", "asmx-service",
-                   "directory-services-usage", "encoding-default", "fx-aspnet-mvc", "windows-only-assembly-reference",
-                   "legacy-project-format", "packages-config")
-        for item in written:
-            texts = [guidance[item].get("guidance") or ""] + list(guidance[item]["resolutions"].values())
-            for text in texts:
-                self.assertIsNone(re.search(r"\bnet\d+\.\d+\b|\.NET \d+\b|\bnet4\d+\b|\bv4\.\d", text), (item, text[:80]))
+        version = re.compile(r"\bnet\d+\.\d+\b|\.NET (Framework )?\d+(\.\d+)*\b|\bnet[45]\d+\b|\bv[234]\.\d|\bnetcoreapp\d")
+        texts = {}
+        for item, g in baseline.engine_guidance().items():
+            texts[item] = g.get("guidance") or ""
+            texts |= {f"{item}/{res}": text for res, text in (g.get("resolutions") or {}).items()}
+        for path in sorted(catalog_export.DEFAULT_DIR.glob("*.yaml")):
+            doc = yaml.safe_load(path.read_text(encoding="utf-8"))
+            texts[f"export {doc['id']}"] = doc.get("engine_guidance") or ""
+            texts |= {f"export {doc['id']}/{r['id']}": r.get("engine_guidance") or "" for r in doc.get("resolutions") or []}
+        self.assertGreater(len([t for t in texts.values() if t]), 150)
+        found = {where: version.search(text).group(0) for where, text in texts.items() if version.search(text)}
+        self.assertEqual(found, {})
 
     def test_the_static_templates_are_self_contained(self):
         files = {p.name: p.read_text(encoding="utf-8") for p in render.TEMPLATES.rglob("*.md")}

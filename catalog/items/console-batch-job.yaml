@@ -113,7 +113,7 @@ resolutions:
   description: Retarget to .NET 10, containerize, and schedule as an OpenShift CronJob.
   effort: medium
   engine_guidance: |-
-    1. Target .NET 10.
+    1. Set `<TargetFramework>` to the target framework.
     2. Make the program run to completion without user input, and return a non-zero exit code when
        it fails.
     3. Read file and directory locations from configuration, never from fixed Windows paths.

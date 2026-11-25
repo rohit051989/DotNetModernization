@@ -66,12 +66,12 @@ items:
   aspnetcore-rest-api-legacy:
     guidance: |-
       A REST API built on ASP.NET Core with a `Startup` class (`ConfigureServices` and `Configure`) and
-      `WebHost.CreateDefaultBuilder` or `Host.CreateDefaultBuilder`. On .NET 10 the hosting model is
-      `WebApplication.CreateBuilder`. The controllers, routes, status codes and JSON payloads that
+      `WebHost.CreateDefaultBuilder` or `Host.CreateDefaultBuilder`. On the target framework the hosting
+      model is `WebApplication.CreateBuilder`. The controllers, routes, status codes and JSON payloads that
       callers depend on must not change.
     resolutions:
       net10-api-controllers-preserved: |-
-        1. Target .NET 10 (`net10.0`).
+        1. Set `<TargetFramework>` to the target framework.
         2. Replace `Program` and `Startup` with `WebApplication.CreateBuilder`: move each registration in
            `ConfigureServices` to `builder.Services`, and each middleware call in `Configure` to the
            `app` pipeline, in the same order.
@@ -80,9 +80,9 @@ items:
            (`AddNewtonsoftJson`), keep it with the same settings, so responses do not change.
         5. Build and run the existing tests; no test may be edited to make it pass.
       net10-api-minimal: |-
-        Target .NET 10, move to `WebApplication.CreateBuilder`, and rewrite each controller action as a
-        minimal API endpoint with the same route, HTTP method, request and response shapes, and status
-        codes. Callers must see no difference.
+        Retarget to the target framework, move to `WebApplication.CreateBuilder`, and rewrite each controller
+        action as a minimal API endpoint with the same route, HTTP method, request and response shapes,
+        and status codes. Callers must see no difference.
 
   console-batch-job:
     guidance: |-
@@ -92,7 +92,7 @@ items:
       keyboard input, and must exit with a non-zero code when it fails.
     resolutions:
       ocp4-cronjob-container: |-
-        1. Target .NET 10.
+        1. Set `<TargetFramework>` to the target framework.
         2. Make the program run to completion without user input, and return a non-zero exit code when
            it fails.
         3. Read file and directory locations from configuration, never from fixed Windows paths.
