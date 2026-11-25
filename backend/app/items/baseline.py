@@ -307,7 +307,8 @@ def merge(report: dict, other: dict) -> dict:
 def format_conflicts(conflicts: list[dict]) -> str:
     lines = []
     for conflict in conflicts:
-        lines.append(f"  CONFLICT {conflict['table']} {conflict['row']}: {conflict['reason']}. Database row left as it is.")
+        lines.append(f"  CONFLICT {conflict['table']} {conflict['row']}: {conflict['reason']}. The database's "
+                     f"{', '.join(conflict['fields']) or 'row'} left as it is.")
         for field, versions in conflict["fields"].items():
             lines.append(f"    {field}:")
             lines.append(f"      database: {json.dumps(versions['database'], default=str, ensure_ascii=False)[:400]}")
