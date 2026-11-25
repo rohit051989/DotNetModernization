@@ -102,6 +102,7 @@ resolutions:
   derivations: []
   description: The tool stays in the repository, built and run by hand by developers or operators. It is not part of the OCP4 deployment.
   effort: low
+  engine_guidance: 'Leave this exactly as it is: the tool stays in the repository as one a person runs by hand, outside the deployment. Change nothing this instruction is about: not its code, its project file, its references or its configuration. Record it in the task''s notes as left unchanged, with that reason.'
   id: interactive-tool-keep-not-deployed
   is_default: true
   linux_compatible: true

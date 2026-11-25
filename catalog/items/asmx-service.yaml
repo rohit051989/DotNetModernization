@@ -20,8 +20,10 @@ detection:
 engine_guidance: |-
   This project exposes an ASP.NET web service through `.asmx` files: classes with `[WebService]` and
   `[WebMethod]` methods, served by IIS through System.Web. ASMX does not exist on the target
-  framework. Its callers depend on its SOAP contract: the operations, the data they take and
-  return, and the service's namespace.
+  framework. Its callers depend on its SOAP contract: the operations, the data they take and return,
+  and the service's namespace. A classic ASP.NET web project's old-style project file has no
+  supported SDK-style form on .NET Framework: it becomes an SDK-style ASP.NET Core project in the
+  move itself, as the instruction below says, not in a conversion of its own first.
 excluded_roles:
 - TEST
 id: asmx-service
@@ -39,17 +41,25 @@ resolutions:
     SOAP contract, so its callers keep working unchanged.
     1. Before changing anything, save the service's current WSDL contract in the repository beside
        the service, as the reference.
-    2. For each class with `[WebService]`, write a `[ServiceContract]` interface with the same
+    2. If this project is a classic ASP.NET web project (System.Web, configured by web.config), make
+       it an SDK-style ASP.NET Core project in this same task, not before:
+       `<Project Sdk="Microsoft.NET.Sdk.Web">` with `<TargetFramework>` set to the target framework,
+       keeping `RootNamespace`, `AssemblyName` and the strong-name key. Move its packages from
+       `packages.config` to `PackageReference` items with the same ids and versions, as the
+       instruction for packages.config says. Remove `ProjectTypeGuids`, the import of the Web
+       Application targets and the IIS Express settings. A classic ASP.NET project has no supported
+       SDK-style form on .NET Framework, so it is never converted to the SDK style on its own first.
+    3. For each class with `[WebService]`, write a `[ServiceContract]` interface with the same
        namespace (the `[WebService(Namespace = ...)]` value) and one `[OperationContract]` per
        `[WebMethod]`, with the same operation name and SOAP action, and make the class implement it.
        Mark the contract `[XmlSerializerFormat]`, so messages serialise as ASMX serialised them.
-    3. Keep every parameter and return type, and the classes' logic, unchanged.
-    4. Host it in ASP.NET Core with CoreWCF (`AddServiceModelServices()`, `UseServiceModel()`) and
+    4. Keep every parameter and return type, and the classes' logic, unchanged.
+    5. Host it in ASP.NET Core with CoreWCF (`AddServiceModelServices()`, `UseServiceModel()`) and
        `BasicHttpBinding`, at the same relative address as the `.asmx` file.
-    5. Compare the new WSDL with the saved one: the same operations, messages and types.
-    6. Remove the `.asmx` files and their System.Web registration once the new endpoint serves every
+    6. Compare the new WSDL with the saved one: the same operations, messages and types.
+    7. Remove the `.asmx` files and their System.Web registration once the new endpoint serves every
        operation.
-    7. Add a test per operation that calls it through a client generated from the saved WSDL.
+    8. Add a test per operation that calls it through a client generated from the saved WSDL.
   id: corewcf-basichttp
   impact_rules:
   - action: rewrite
@@ -100,20 +110,28 @@ resolutions:
     operation keeps what it does and the data it takes and returns.
     1. Keep the `.asmx` classes in the repository as the reference until the cutover; do not delete
        them.
-    2. Add one HTTP endpoint per `[WebMethod]`, in controllers or minimal API endpoints, matching how
+    2. If this project is a classic ASP.NET web project (System.Web, configured by web.config), make
+       it an SDK-style ASP.NET Core project in this same task, not before:
+       `<Project Sdk="Microsoft.NET.Sdk.Web">` with `<TargetFramework>` set to the target framework,
+       keeping `RootNamespace`, `AssemblyName` and the strong-name key. Move its packages from
+       `packages.config` to `PackageReference` items with the same ids and versions, as the
+       instruction for packages.config says. Remove `ProjectTypeGuids`, the import of the Web
+       Application targets and the IIS Express settings. A classic ASP.NET project has no supported
+       SDK-style form on .NET Framework, so it is never converted to the SDK style on its own first.
+    3. Add one HTTP endpoint per `[WebMethod]`, in controllers or minimal API endpoints, matching how
        the rest of the solution is written. Its request and response types carry the same data as the
        method's parameters and return type: the same names, types and nullability. A method that
        only reads is a GET; any other is a POST, PUT or DELETE as it changes data.
-    3. Map each `SoapException` the service throws, and each error it reports, to an HTTP status code
+    4. Map each `SoapException` the service throws, and each error it reports, to an HTTP status code
        (invalid input 400, not found 404, a conflict or broken business rule 409 or 422, anything
        else 500), with a problem-details body (`application/problem+json`, `ProblemDetails`)
        carrying the message and code.
-    4. Keep the service's business code and call it from the endpoints; move no logic into them.
-    5. Publish an OpenAPI document of the new API for its callers, describing every endpoint,
+    5. Keep the service's business code and call it from the endpoints; move no logic into them.
+    6. Publish an OpenAPI document of the new API for its callers, describing every endpoint,
        request, response and error.
-    6. Carry over the service's authentication and authorisation to every endpoint: nothing that was
+    7. Carry over the service's authentication and authorisation to every endpoint: nothing that was
        protected is left open.
-    7. Add a test per operation: the same input as through the old service gives the same output
+    8. Add a test per operation: the same input as through the old service gives the same output
        data, and each error gives its status code and problem details.
   id: rest-api-rewrite
   impact_rules:

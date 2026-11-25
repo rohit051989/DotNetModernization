@@ -22,7 +22,8 @@
 # four items the first pilot run exposed (registry 1.12.0); and (2026-11-24) ssis-package,
 # fx47-class-library, wcf-service, wcf-service-host, asmx-service, windows-only-assembly-reference,
 # legacy-project-format and packages-config with every resolution, and one resolution each of
-# directory-services-usage, encoding-default and fx-aspnet-mvc.
+# directory-services-usage, encoding-default and fx-aspnet-mvc; and (2026-11-25) one shared text for
+# every resolution that keeps something unchanged (the `unchanged` section at the end).
 # Name frameworks by role, never by version: "the target framework", "the project's current
 # framework" (in its SDK-style short form where a project file needs it). Each work item lists the
 # real values for its projects.
@@ -258,10 +259,6 @@ items:
       package-replacement-framework-builtin: |-
         Remove the package and use the capability the target framework provides itself, changing the
         calling code to the framework's API.
-      package-replacement-remain-windows-hosted: |-
-        Leave the package and the project's target framework unchanged: this project stays on .NET
-        Framework on Windows.
-
   package-upgrade-breaking:
     guidance: |-
       The recommended version of a NuGet package removes or changes public members this code calls.
@@ -347,9 +344,6 @@ items:
         Change the target framework where it is declared (the project file's `TargetFramework`, or the
         `Directory.Build.props` that sets it) to the target shown, and update the SDK version in
         `global.json` to match, if there is one.
-      stay-on-current-framework: |-
-        Leave the target framework unchanged.
-
   unqualified-hostname:
     guidance: |-
       An endpoint URL uses a single-label host name (for example `http://appsrv0341/...`). On Windows
@@ -609,83 +603,112 @@ items:
       `[OperationContract]` methods, `[DataContract]` types and often `[FaultContract]` faults, hosted
       by IIS through a `.svc` file or by a `ServiceHost`. Hosting a WCF service does not exist on the
       target framework. The service's contract (its operations, the data they take and return, and its
-      faults) is what its callers depend on: how the service is converted decides whether they change.
+      faults) is what its callers depend on: how the service is converted decides whether they change. A
+      classic ASP.NET web project's old-style project file has no supported SDK-style form on .NET
+      Framework: it becomes an SDK-style ASP.NET Core project in the move itself, as the instruction
+      below says, not in a conversion of its own first.
     resolutions:
       wcf-service-corewcf: |-
         Port the service to CoreWCF on the target framework, keeping its contract exactly, so its
         callers keep working unchanged.
         1. Before changing anything, save the service's current WSDL contract in the repository beside
            the service, as the reference.
-        2. Keep every `[ServiceContract]`, `[OperationContract]`, `[DataContract]`, `[DataMember]` and
+        2. If this project is a classic ASP.NET web project (System.Web, configured by web.config), make
+           it an SDK-style ASP.NET Core project in this same task, not before:
+           `<Project Sdk="Microsoft.NET.Sdk.Web">` with `<TargetFramework>` set to the target framework,
+           keeping `RootNamespace`, `AssemblyName` and the strong-name key. Move its packages from
+           `packages.config` to `PackageReference` items with the same ids and versions, as the
+           instruction for packages.config says. Remove `ProjectTypeGuids`, the import of the Web
+           Application targets and the IIS Express settings. A classic ASP.NET project has no supported
+           SDK-style form on .NET Framework, so it is never converted to the SDK style on its own first.
+        3. Keep every `[ServiceContract]`, `[OperationContract]`, `[DataContract]`, `[DataMember]` and
            `[FaultContract]` with the same names, namespaces, order and types. Change only the `using`
            directives from `System.ServiceModel` to `CoreWCF` where CoreWCF provides the type.
-        3. Host the service in ASP.NET Core (`AddServiceModelServices()`, `UseServiceModel()`), with the
+        4. Host the service in ASP.NET Core (`AddServiceModelServices()`, `UseServiceModel()`), with the
            same binding, security mode and credential type as each endpoint in web.config or
            app.config, at the same relative address.
-        4. Keep the service's implementation classes, and the code they call, unchanged.
-        5. Expose metadata (`ServiceMetadataBehavior`) where the service exposed it, and compare the new
+        5. Keep the service's implementation classes, and the code they call, unchanged.
+        6. Expose metadata (`ServiceMetadataBehavior`) where the service exposed it, and compare the new
            WSDL with the saved one: the same operations, messages and types.
-        6. A binding CoreWCF does not support stays as it is: record it in the task's notes, and do not
+        7. A binding CoreWCF does not support stays as it is: record it in the task's notes, and do not
            choose another binding.
-        7. Add a test per operation that calls the service through a client generated from the saved
+        8. Add a test per operation that calls the service through a client generated from the saved
            WSDL.
       wcf-service-rest-rewrite: |-
         Rewrite the service as a REST API on ASP.NET Core on the target framework, retiring SOAP. Each
         operation keeps what it does and the data it takes and returns.
         1. Keep the old contract (the `[ServiceContract]` interfaces and `[DataContract]` types) in the
            repository as the reference until the cutover; do not delete it.
-        2. Add one HTTP endpoint per `[OperationContract]`, in controllers or minimal API endpoints,
+        2. If this project is a classic ASP.NET web project (System.Web, configured by web.config), make
+           it an SDK-style ASP.NET Core project in this same task, not before:
+           `<Project Sdk="Microsoft.NET.Sdk.Web">` with `<TargetFramework>` set to the target framework,
+           keeping `RootNamespace`, `AssemblyName` and the strong-name key. Move its packages from
+           `packages.config` to `PackageReference` items with the same ids and versions, as the
+           instruction for packages.config says. Remove `ProjectTypeGuids`, the import of the Web
+           Application targets and the IIS Express settings. A classic ASP.NET project has no supported
+           SDK-style form on .NET Framework, so it is never converted to the SDK style on its own first.
+        3. Add one HTTP endpoint per `[OperationContract]`, in controllers or minimal API endpoints,
            matching how the rest of the solution is written. Its request and response types carry the
            same data as the data contracts: the same field names, types and nullability. An operation
            that only reads is a GET; any other is a POST, PUT or DELETE as it changes data.
-        3. Map each `[FaultContract]`, and each fault the service throws, to an HTTP status code (invalid
+        4. Map each `[FaultContract]`, and each fault the service throws, to an HTTP status code (invalid
            input 400, not found 404, a conflict or broken business rule 409 or 422, anything else 500),
            with a problem-details body (`application/problem+json`, `ProblemDetails`) carrying the
            fault's message and code.
-        4. Keep the service's business classes and call them from the endpoints; move no logic into
+        5. Keep the service's business classes and call them from the endpoints; move no logic into
            them.
-        5. Publish an OpenAPI document of the new API for its callers, describing every endpoint,
+        6. Publish an OpenAPI document of the new API for its callers, describing every endpoint,
            request, response and error.
-        6. Carry over the service's authentication and authorisation to every endpoint: nothing that was
+        7. Carry over the service's authentication and authorisation to every endpoint: nothing that was
            protected is left open.
-        7. Add a test per operation: the same input as through the old contract gives the same output
+        8. Add a test per operation: the same input as through the old contract gives the same output
            data, and each fault gives its status code and problem details.
       wcf-service-grpc-rewrite: |-
         Rewrite the service as a contract-first gRPC service on ASP.NET Core on the target framework.
         1. Keep the old contract in the repository as the reference until the cutover.
-        2. Write one `.proto` file per service contract: one `rpc` per `[OperationContract]` and one
+        2. If this project is a classic ASP.NET web project (System.Web, configured by web.config), make
+           it an SDK-style ASP.NET Core project in this same task, not before:
+           `<Project Sdk="Microsoft.NET.Sdk.Web">` with `<TargetFramework>` set to the target framework,
+           keeping `RootNamespace`, `AssemblyName` and the strong-name key. Move its packages from
+           `packages.config` to `PackageReference` items with the same ids and versions, as the
+           instruction for packages.config says. Remove `ProjectTypeGuids`, the import of the Web
+           Application targets and the IIS Express settings. A classic ASP.NET project has no supported
+           SDK-style form on .NET Framework, so it is never converted to the SDK style on its own first.
+        3. Write one `.proto` file per service contract: one `rpc` per `[OperationContract]` and one
            `message` per `[DataContract]`, carrying the same data (names and types; a nullable value as a
            wrapper type or an `optional` field).
-        3. Map each fault to a gRPC status code (`InvalidArgument`, `NotFound`, `FailedPrecondition`,
+        4. Map each fault to a gRPC status code (`InvalidArgument`, `NotFound`, `FailedPrecondition`,
            `Internal`) with the fault's message.
-        4. Implement each `rpc` by calling the service's existing business classes; move no logic into
+        5. Implement each `rpc` by calling the service's existing business classes; move no logic into
            the gRPC service class.
-        5. Host it in ASP.NET Core (`AddGrpc()`, `MapGrpcService`) over HTTP/2, and carry over the
+        6. Host it in ASP.NET Core (`AddGrpc()`, `MapGrpcService`) over HTTP/2, and carry over the
            service's authentication and authorisation.
-        6. Add a test per `rpc`: the same input gives the same output data, and each fault its status
+        7. Add a test per `rpc`: the same input gives the same output data, and each fault its status
            code.
-      wcf-service-remain-windows-hosted: |-
-        Do not convert this service: it stays on .NET Framework WCF on its Windows hosts, outside the
-        Linux move.
-        1. Change nothing in the service's contract, implementation, hosting or configuration.
-        2. A project being converted that calls this service keeps its client, binding and address as
-           they are configured.
-        3. Record the service in the task's notes as left unchanged because it stays on Windows.
-
   wcf-service-host:
     guidance: |-
       This project is the process a WCF service runs in: it creates a `ServiceHost` (in a console
       application or a Windows service) or holds the service's `.svc` file for IIS. Neither a
       `ServiceHost` process nor IIS exists in a Linux container on the target framework. The service's
       implementation usually lives in another project; this one hosts it, with its endpoints, bindings
-      and behaviours configured in web.config or app.config.
+      and behaviours configured in web.config or app.config. A classic ASP.NET web project's old-style
+      project file has no supported SDK-style form on .NET Framework: it becomes an SDK-style ASP.NET
+      Core project in the move itself, as the instruction below says, not in a conversion of its own
+      first.
     resolutions:
       wcf-host-aspnetcore-web-host: |-
         Replace the host with an ASP.NET Core application on the target framework, served by Kestrel,
         that hosts the service's new endpoints (CoreWCF, REST or gRPC, as the service's own instruction
         says).
         1. Make the project an ASP.NET Core application (`Microsoft.NET.Sdk.Web`) on the target
-           framework, with a `Program.cs` that builds a `WebApplication`.
+           framework, with a `Program.cs` that builds a `WebApplication`. The project file becomes
+           SDK-style in this same task, not before: `<Project Sdk="Microsoft.NET.Sdk.Web">` with
+           `<TargetFramework>` set to the target framework, keeping `RootNamespace`, `AssemblyName` and
+           the strong-name key. Move its packages from `packages.config` to `PackageReference` items
+           with the same ids and versions, as the instruction for packages.config says. Remove
+           `ProjectTypeGuids`, the import of the Web Application targets and the IIS Express settings. A
+           classic ASP.NET project has no supported SDK-style form on .NET Framework, so it is never
+           converted to the SDK style on its own first.
         2. Move each endpoint's address, binding settings, behaviours and limits from web.config or
            app.config to the new host's configuration (`appsettings.json` and environment variables),
            environment by environment, keeping every value. A value that differs per environment
@@ -696,10 +719,6 @@ items:
            serves every endpoint. Keep a `.svc` file's address as a route if callers use it.
         6. Keep the host's logging, now through `ILogger` to standard output.
         7. Build, start the host in a test, and call each endpoint once.
-      wcf-host-remain-windows-hosted: |-
-        Do not convert this host: it stays on Windows, outside the Linux move. Change nothing in it or in
-        its configuration, and record it in the task's notes as left unchanged because it stays on
-        Windows.
       wcf-host-retire: |-
         Remove this host: each service it hosted gets an ASP.NET Core host of its own in this
         conversion.
@@ -715,44 +734,62 @@ items:
     guidance: |-
       This project exposes an ASP.NET web service through `.asmx` files: classes with `[WebService]` and
       `[WebMethod]` methods, served by IIS through System.Web. ASMX does not exist on the target
-      framework. Its callers depend on its SOAP contract: the operations, the data they take and
-      return, and the service's namespace.
+      framework. Its callers depend on its SOAP contract: the operations, the data they take and return,
+      and the service's namespace. A classic ASP.NET web project's old-style project file has no
+      supported SDK-style form on .NET Framework: it becomes an SDK-style ASP.NET Core project in the
+      move itself, as the instruction below says, not in a conversion of its own first.
     resolutions:
       corewcf-basichttp: |-
         Re-host the operations on CoreWCF with `BasicHttpBinding` on the target framework, keeping the
         SOAP contract, so its callers keep working unchanged.
         1. Before changing anything, save the service's current WSDL contract in the repository beside
            the service, as the reference.
-        2. For each class with `[WebService]`, write a `[ServiceContract]` interface with the same
+        2. If this project is a classic ASP.NET web project (System.Web, configured by web.config), make
+           it an SDK-style ASP.NET Core project in this same task, not before:
+           `<Project Sdk="Microsoft.NET.Sdk.Web">` with `<TargetFramework>` set to the target framework,
+           keeping `RootNamespace`, `AssemblyName` and the strong-name key. Move its packages from
+           `packages.config` to `PackageReference` items with the same ids and versions, as the
+           instruction for packages.config says. Remove `ProjectTypeGuids`, the import of the Web
+           Application targets and the IIS Express settings. A classic ASP.NET project has no supported
+           SDK-style form on .NET Framework, so it is never converted to the SDK style on its own first.
+        3. For each class with `[WebService]`, write a `[ServiceContract]` interface with the same
            namespace (the `[WebService(Namespace = ...)]` value) and one `[OperationContract]` per
            `[WebMethod]`, with the same operation name and SOAP action, and make the class implement it.
            Mark the contract `[XmlSerializerFormat]`, so messages serialise as ASMX serialised them.
-        3. Keep every parameter and return type, and the classes' logic, unchanged.
-        4. Host it in ASP.NET Core with CoreWCF (`AddServiceModelServices()`, `UseServiceModel()`) and
+        4. Keep every parameter and return type, and the classes' logic, unchanged.
+        5. Host it in ASP.NET Core with CoreWCF (`AddServiceModelServices()`, `UseServiceModel()`) and
            `BasicHttpBinding`, at the same relative address as the `.asmx` file.
-        5. Compare the new WSDL with the saved one: the same operations, messages and types.
-        6. Remove the `.asmx` files and their System.Web registration once the new endpoint serves every
+        6. Compare the new WSDL with the saved one: the same operations, messages and types.
+        7. Remove the `.asmx` files and their System.Web registration once the new endpoint serves every
            operation.
-        7. Add a test per operation that calls it through a client generated from the saved WSDL.
+        8. Add a test per operation that calls it through a client generated from the saved WSDL.
       rest-api-rewrite: |-
         Rewrite the service as a REST API on ASP.NET Core on the target framework, retiring SOAP. Each
         operation keeps what it does and the data it takes and returns.
         1. Keep the `.asmx` classes in the repository as the reference until the cutover; do not delete
            them.
-        2. Add one HTTP endpoint per `[WebMethod]`, in controllers or minimal API endpoints, matching how
+        2. If this project is a classic ASP.NET web project (System.Web, configured by web.config), make
+           it an SDK-style ASP.NET Core project in this same task, not before:
+           `<Project Sdk="Microsoft.NET.Sdk.Web">` with `<TargetFramework>` set to the target framework,
+           keeping `RootNamespace`, `AssemblyName` and the strong-name key. Move its packages from
+           `packages.config` to `PackageReference` items with the same ids and versions, as the
+           instruction for packages.config says. Remove `ProjectTypeGuids`, the import of the Web
+           Application targets and the IIS Express settings. A classic ASP.NET project has no supported
+           SDK-style form on .NET Framework, so it is never converted to the SDK style on its own first.
+        3. Add one HTTP endpoint per `[WebMethod]`, in controllers or minimal API endpoints, matching how
            the rest of the solution is written. Its request and response types carry the same data as the
            method's parameters and return type: the same names, types and nullability. A method that
            only reads is a GET; any other is a POST, PUT or DELETE as it changes data.
-        3. Map each `SoapException` the service throws, and each error it reports, to an HTTP status code
+        4. Map each `SoapException` the service throws, and each error it reports, to an HTTP status code
            (invalid input 400, not found 404, a conflict or broken business rule 409 or 422, anything
            else 500), with a problem-details body (`application/problem+json`, `ProblemDetails`)
            carrying the message and code.
-        4. Keep the service's business code and call it from the endpoints; move no logic into them.
-        5. Publish an OpenAPI document of the new API for its callers, describing every endpoint,
+        5. Keep the service's business code and call it from the endpoints; move no logic into them.
+        6. Publish an OpenAPI document of the new API for its callers, describing every endpoint,
            request, response and error.
-        6. Carry over the service's authentication and authorisation to every endpoint: nothing that was
+        7. Carry over the service's authentication and authorisation to every endpoint: nothing that was
            protected is left open.
-        7. Add a test per operation: the same input as through the old service gives the same output
+        8. Add a test per operation: the same input as through the old service gives the same output
            data, and each error gives its status code and problem details.
 
   directory-services-usage:
@@ -802,7 +839,11 @@ items:
         the two.
         1. Add a new ASP.NET Core project on the target framework beside the existing one, with YARP
            forwarding every route it does not serve to the existing application, whose address is a
-           configuration name.
+           configuration name. The new project is SDK-style (`<Project Sdk="Microsoft.NET.Sdk.Web">`),
+           with its packages as `PackageReference` items. Leave the existing application's project file
+           and its `packages.config` as they are: a classic ASP.NET project has no supported SDK-style
+           form on .NET Framework, so it is not converted to the SDK style; its routes reach an
+           SDK-style project as they move.
         2. Add the System.Web adapters (`Microsoft.AspNetCore.SystemWebAdapters`) to both: the remote
            application side to the existing application, the client side to the new one. Their shared
            key is a Secret named in configuration, never a value in code.
@@ -843,11 +884,6 @@ items:
            value in a different format, record the format it needs in the task's notes, never a value.
         4. Add tests of each rewritten use that need no external system; where one needs a database or
            another service, record it in the task's notes.
-      keep-project-on-windows: |-
-        Leave this project on Windows, outside the Linux move: do not convert, retarget or otherwise
-        change it, its references or its configuration. Record it in the task's notes as left unchanged
-        because it stays on Windows, together with every project being converted that depends on it.
-
   legacy-project-format:
     guidance: |-
       This project file is in the old, non-SDK format: a `<Project ToolsVersion="...">` root in the
@@ -859,10 +895,9 @@ items:
       sdk-style-project-conversion: |-
         Convert the project file to the SDK style, keeping what it builds exactly. This task does not
         retarget: a later one does.
-        1. Replace the root with `<Project Sdk="Microsoft.NET.Sdk">` (`Microsoft.NET.Sdk.Web` for a web
-           application). Remove the MSBuild namespace, `ToolsVersion`, the imports of
-           `Microsoft.Common.props` and `Microsoft.CSharp.targets`, and the properties the SDK sets by
-           default.
+        1. Replace the root with `<Project Sdk="Microsoft.NET.Sdk">`. Remove the MSBuild namespace,
+           `ToolsVersion`, the imports of `Microsoft.Common.props` and `Microsoft.CSharp.targets`, and
+           the properties the SDK sets by default.
         2. Keep `RootNamespace`, `AssemblyName`, `OutputType` and the strong-name key (`SignAssembly`,
            `AssemblyOriginatorKeyFile`) exactly as they are.
         3. Set `<TargetFramework>` to the project's current framework, in its SDK-style short form.
@@ -875,12 +910,6 @@ items:
            needs. Move its NuGet packages as the instruction for packages.config says, in this same task.
         7. Build the project and every project that references it, and run their tests. The output
            assembly keeps its name, version and public key token.
-
-      keep-old-style-project: |-
-        Leave this project file exactly as it is: the project stays on .NET Framework, outside the move to
-        the target framework. Do not convert it to the SDK style, retarget it or change its references.
-        Record it in the task's notes as left unchanged because it stays on .NET Framework, with every
-        project being converted that references it.
 
   packages-config:
     guidance: |-
@@ -895,14 +924,55 @@ items:
         1. For each package in `packages.config`, add `<PackageReference Include="..." Version="..." />`
            with the same id and the same version. Version upgrades other instructions ask for come
            afterwards, in their own tasks.
-        2. Leave out a package that is there only because another package depends on it, unless this
-           project's own code uses its types directly: restore brings it in.
+        2. A package that is there only because another package depends on it: leave it out only when
+           restore then resolves the same version `packages.config` pinned. Otherwise keep it as a
+           direct `PackageReference` at the pinned version: restore takes the lowest version the
+           depending package allows, and a pinned, higher version is often a security fix. Keep it too
+           when this project's own code uses its types directly.
         3. Remove each `<Reference>` whose `HintPath` points into the `packages` folder: the package
            reference replaces it. Remove the imports of `.props` and `.targets` files from the `packages`
            folder, and the `EnsureNuGetPackageBuildImports` target: restore supplies them now.
         4. Delete `packages.config`.
         5. Restore and build the project and every project that references it, and run their tests.
-      keep-packages-config: |-
-        Leave `packages.config` and the project's `HintPath` references exactly as they are: the project
-        stays on .NET Framework with its old-style project file. Record it in the task's notes as left
-        unchanged because it stays on .NET Framework.
+
+# One text for every resolution that keeps something unchanged on Windows or .NET Framework, or keeps it
+# out of the move (2026-11-25): the loader (app/items/baseline.py) puts it in each listed resolution's
+# guidance with that resolution's reason, so the database row and the export carry the whole text and an
+# admin may still edit one. A resolution is listed here or above, never both. Retirements are not
+# listed: removing something is a person's change, so they stay on the allow-list.
+unchanged:
+  text: >-
+    Leave this exactly as it is: {reason}. Change nothing this instruction is about: not its code, its
+    project file, its references or its configuration. Record it in the task's notes as left
+    unchanged, with that reason.
+  resolutions:
+    directory-services-usage:
+      directory-services-usage-remain-windows-hosted: "the application stays on Windows, outside the Linux move"
+    interactive-console-tool:
+      interactive-tool-keep-not-deployed: "the tool stays in the repository as one a person runs by hand, outside the deployment"
+    legacy-project-format:
+      keep-old-style-project: "the project stays on .NET Framework, outside the move to the target framework"
+    msmq-usage:
+      msmq-usage-remain-windows-hosted: "the application stays on Windows, outside the Linux move"
+    package-replacement-required:
+      package-replacement-remain-windows-hosted: "the project stays on .NET Framework on Windows, and so does the package it needs"
+    packages-config:
+      keep-packages-config: "the project stays on .NET Framework with its old-style project file"
+    registry-access:
+      registry-access-remain-windows-hosted: "the application stays on Windows, outside the Linux move"
+    system-drawing-common:
+      system-drawing-common-remain-windows-hosted: "the application stays on Windows, outside the Linux move"
+    target-framework-retarget:
+      stay-on-current-framework: "the project stays on its current framework for now, outside the move to the target framework"
+    wcf-nettcp-client:
+      wcf-nettcp-client-remain-windows-hosted: "the caller stays on Windows, outside the Linux move"
+    wcf-service:
+      wcf-service-remain-windows-hosted: "the service stays on .NET Framework WCF on its Windows hosts, outside the Linux move"
+    wcf-service-host:
+      wcf-host-remain-windows-hosted: "the host stays on Windows, outside the Linux move"
+    windows-only-assembly-reference:
+      keep-project-on-windows: "the project stays on Windows, outside the Linux move"
+    windows-service:
+      windows-service-remain-windows-hosted: "the service stays on Windows, outside the Linux move"
+    windows-service-hosting:
+      windows-service-hosting-remain-windows-hosted: "the service stays on Windows, outside the Linux move"

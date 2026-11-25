@@ -6,7 +6,14 @@ description: |-
   .NET 5 or later until it is an SDK-style project, so it is converted
   first, keeping the assembly identity and the compiled files.
 
-  Conversion ordering (docs/28 Part E): runs BEFORE fx47-class-library, whose retarget needs an SDK-style project file.
+  Not raised for a classic ASP.NET web project (System.Web: .svc, .asmx,
+  MVC, Web API 2, Web Forms; a web project type GUID, or web.config with
+  system.web or system.serviceModel hosting): it has no supported
+  SDK-style form on .NET Framework, and becomes SDK-style in its move to
+  ASP.NET Core, which wcf-service, wcf-service-host, asmx-service and
+  fx-aspnet-mvc carry.
+
+  Conversion ordering (docs/28 Part E): runs FIRST, before every other change: the changes that retarget a project (fx47-class-library, target-framework-retarget, console-batch-job, ...) need its SDK-style project file.
 detection:
   match:
     all: []
@@ -21,6 +28,9 @@ detection:
       in:
       - .csproj
       - .vbproj
+    - equals: ''
+      field: classicWebProject
+      id: not-classic-aspnet-web-project
     none: []
 engine_guidance: |-
   This project file is in the old, non-SDK format: a `<Project ToolsVersion="...">` root in the
@@ -41,11 +51,7 @@ resolutions:
   derivations: []
   description: 'The project stays on .NET Framework, outside the move to the target framework: its project file is left as it is.'
   effort: low
-  engine_guidance: |-
-    Leave this project file exactly as it is: the project stays on .NET Framework, outside the move to
-    the target framework. Do not convert it to the SDK style, retarget it or change its references.
-    Record it in the task's notes as left unchanged because it stays on .NET Framework, with every
-    project being converted that references it.
+  engine_guidance: 'Leave this exactly as it is: the project stays on .NET Framework, outside the move to the target framework. Change nothing this instruction is about: not its code, its project file, its references or its configuration. Record it in the task''s notes as left unchanged, with that reason.'
   id: keep-old-style-project
   is_default: false
   linux_compatible: false
@@ -62,10 +68,9 @@ resolutions:
   engine_guidance: |-
     Convert the project file to the SDK style, keeping what it builds exactly. This task does not
     retarget: a later one does.
-    1. Replace the root with `<Project Sdk="Microsoft.NET.Sdk">` (`Microsoft.NET.Sdk.Web` for a web
-       application). Remove the MSBuild namespace, `ToolsVersion`, the imports of
-       `Microsoft.Common.props` and `Microsoft.CSharp.targets`, and the properties the SDK sets by
-       default.
+    1. Replace the root with `<Project Sdk="Microsoft.NET.Sdk">`. Remove the MSBuild namespace,
+       `ToolsVersion`, the imports of `Microsoft.Common.props` and `Microsoft.CSharp.targets`, and
+       the properties the SDK sets by default.
     2. Keep `RootNamespace`, `AssemblyName`, `OutputType` and the strong-name key (`SignAssembly`,
        `AssemblyOriginatorKeyFile`) exactly as they are.
     3. Set `<TargetFramework>` to the project's current framework, in its SDK-style short form.

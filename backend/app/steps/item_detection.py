@@ -50,7 +50,7 @@ import json
 import sys
 from pathlib import Path
 
-
+from sqlalchemy import text
 from sqlalchemy.orm import Session, sessionmaker
 
 from app import models
@@ -89,14 +89,51 @@ def _signal_row(signal: models.FingerprintSignal) -> dict:
     }
 
 
+# A classic ASP.NET project (System.Web: .svc, .asmx, MVC, Web API 2, Web Forms) has no supported SDK-style form on
+# .NET Framework: it becomes SDK-style only in its move to ASP.NET Core (legacy-project-format, 2026-11-25).
+CLASSIC_WEB_FILES = ("SVC_FILE", "ASMX_FILE", "ASPX_FILE", "GLOBAL_ASAX_FILE")
+CLASSIC_WEB_CONFIG = ("SYSTEM_WEB_CONFIG", "SYSTEM_SERVICE_MODEL_CONFIG", "SERVICE_HOSTING_ENVIRONMENT_CONFIG")
+
+
+def legacy_web_project_types(db: Session, repository_id) -> dict:
+    """{project id: the legacy web project type its ProjectTypeGuids name ("ASP.NET web application", "ASP.NET MVC 4",
+    "WCF service application", ...)}, from dependency-hierarchy's kind basis. Empty without a hierarchy."""
+    out = {}
+    for project_id, basis in db.execute(text("""
+            SELECT project_id, detail->'project'->>'kindBasis' FROM hierarchy_nodes
+            WHERE repository_id = :r AND node_type = 'project' AND project_id IS NOT NULL
+              AND detail->'project'->>'kindBasis' LIKE 'the legacy % project type'"""), {"r": repository_id}):
+        kind = basis[len("the legacy "):-len(" project type")]
+        if kind.startswith("ASP.NET") or kind in ("WCF service application", "web site"):
+            out[project_id] = kind
+    return out
+
+
+def classic_web_project(own_signals: dict, legacy_web_type: str | None) -> str:
+    """Why the project is a classic ASP.NET web project, or "" when it is not: its project type GUID, a web.config
+    with system.web or system.serviceModel hosting, or a .svc, .asmx, .aspx or Global.asax file of its own."""
+    if legacy_web_type:
+        return f"the {legacy_web_type} project type"
+    for name in CLASSIC_WEB_CONFIG:
+        if any((r["source_path"] or "").replace("\\", "/").rsplit("/", 1)[-1].lower() == "web.config"
+               for r in own_signals.get(name, [])):
+            return f"web.config ({name})"
+    for name in CLASSIC_WEB_FILES:
+        if own_signals.get(name):
+            return name
+    return ""
+
+
 def _metadata(project: models.Project, fingerprint: models.ProjectFingerprint | None,
-              windows_only: dict | None = None) -> dict:
+              windows_only: dict | None = None, classic_web: str = "") -> dict:
     """Part E metadata-condition fields, as the old engine named them. `windowsOnlyAssemblies`: the assemblies the
     project references by path that only load on Windows (app.compatibility.assemblies), from dependency-hierarchy's
     assembly references, "; "-joined; "" when it references none; None (unknown, so not checked) when the repository
     has no dependency hierarchy."""
     return {
         "windowsOnlyAssemblies": None if windows_only is None else "; ".join(windows_only.get(project.id, [])),
+        # "" or why the project is a classic ASP.NET web project (classic_web_project).
+        "classicWebProject": classic_web,
         "outputType": project.output_type,
         "projectFormat": project.project_format,
         # solution-discovery's packagereference / packages_config / mixed / none (packages-config, 2026-11-24).
@@ -167,6 +204,7 @@ def detect_repository(db: Session, repository: models.Repository, step_execution
 
     from app.compatibility import assemblies
     windows_only = assemblies.windows_only_by_project(db, repository.id)
+    legacy_web = legacy_web_project_types(db, repository.id)
 
     report = report or progress.Reporter(None)
     report.phase("detect", len(projects))
@@ -188,7 +226,7 @@ def detect_repository(db: Session, repository: models.Repository, step_execution
         visible: dict[str, list[dict]] = {name: list(rows) for name, rows in own.items()}
         for name, rows in repository_signals.items():
             visible.setdefault(name, []).extend(rows)
-        metadata = _metadata(project, fingerprint, windows_only)
+        metadata = _metadata(project, fingerprint, windows_only, classic_web_project(own, legacy_web.get(project.id)))
 
         item_results = []
         for item in items:

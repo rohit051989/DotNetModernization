@@ -1182,3 +1182,52 @@ Rule 20, for each engine:
   both engines with no gap; preparation end to end with the defaults and with the alternatives.
 
 `docs/REVIEWING-A-PREPARATION.md` says what a correct preparation contains, for whoever reviews one before it is run.
+
+## Part Q addendum — Classic web projects, pinned packages, one text for unchanged, the project file first (2026-11-25)
+
+Three fixes to the guidance written on 2026-11-24, and the plan's order checked for both engines.
+
+- **Classic ASP.NET web projects.** A System.Web project (.svc, .asmx, MVC, Web API 2, Web Forms) has no supported
+  SDK-style form on .NET Framework, and `Microsoft.NET.Sdk.Web` is for ASP.NET Core. item-detection gives each project
+  a metadata field, `classicWebProject` (`app/steps/item_detection.py`): why it is one (its legacy web project type
+  GUID, read from dependency-hierarchy's kind basis; a web.config with `system.web` or `system.serviceModel` hosting; a
+  `.svc`, `.asmx`, `.aspx` or `Global.asax` file of its own), or empty. `legacy-project-format` and `packages-config`
+  require it empty. The WCF service, WCF host, ASMX and incremental MVC guidance says the project becomes SDK-style,
+  and moves its packages, in its move to ASP.NET Core, in the same task, never in a conversion of its own first; the
+  incremental MVC text leaves the existing application's project file and packages.config as they are. The old-style
+  project text no longer mentions `Microsoft.NET.Sdk.Web`.
+- **Pinned packages.** A package in packages.config that is there only as another listed package's dependency is left
+  out only when restore resolves the version packages.config pinned; otherwise it stays a direct `PackageReference` at
+  the pinned version (restore takes the lowest version the ranges allow, and a pinned, higher one is often a security
+  fix). The generator works it out (`collect.packages_config`, from dependency-hierarchy's `packages_config` and
+  `package_dependency` edges, whose versions are what restore would choose) and the PackageReference work item has a
+  table, "The packages", of each project's packages and what each becomes. A package whose dependents' dependencies
+  could not be checked is kept. Found while proving it: dependency-hierarchy never checked an old-style project's
+  package dependencies, because it took `v4.7` as the target framework (fixed in step version 1.1.1,
+  `37-DEPENDENCY-HIERARCHY.md` B4).
+- **One text for unchanged.** Every resolution that keeps something unchanged on Windows or .NET Framework, or keeps it
+  out of the move (remain Windows-hosted, keep the project on Windows, keep the old-style project file, keep
+  packages.config, stay on the current framework, remain on .NET Framework, keep a tool undeployed), has one shared
+  text with its own reason: change nothing, and record it as left unchanged with the reason (`engine_guidance.yaml`,
+  section `unchanged`, put in each resolution by `baseline.engine_guidance`). Eight of them leave the allow-list;
+  retirements stay on it, a person's change.
+- **The project file first, as one task.** An ordering rule, "runs FIRST" (`collect.ORDERING`), puts a change before
+  every other of the repository: the SDK-style conversion has it, and packages.config runs as one unit with it. Changes
+  that run as one unit are one work item group (`render.work_items`, `together_with`): Claude Code's plan lists them as
+  one step, "in one task and one commit"; every instruction names its constraints both ways (`render._prerequisites`):
+  the first says "Apply this **first**", each other says to apply it first, and both members of a unit say "Apply
+  **together with**" the other, without the package-bump wording that belongs to package upgrades. Checked on the
+  fixture: before, the console job's container task, which retargets the same project, came before the SDK-style
+  conversion, and the two project-file work items were separate commits for Claude Code.
+
+Rule 20, for each engine:
+
+- **GitHub Copilot**: applied. The changed guidance, the packages table and the prerequisites reach its work items; its
+  decision sheet's Ordering names the change that runs first. It plans for itself, so the order is in each work item.
+- **Claude Code**: applied. The same work items and decision sheet through the mechanics table; its plan, the one
+  engine mechanic that differs, groups a one-unit pair into one step and one commit. The parity test passes.
+- Proved on the fixture (`tests/test_guidance_fixtures.py`, tests 1, 4b, 6, 7, 8): the project-file items are raised
+  for the old-style library and console job, not for the classic WCF, ASMX or MVC projects; the WCF and ASMX
+  instructions carry the SDK-style step; System.Runtime.CompilerServices.Unsafe pinned at 6.0.0, above the 4.5.3
+  System.Memory asks for, is kept at 6.0.0 while System.Buffers, pinned at what restore resolves, is left out; the
+  task order for both engines; choosing the keep and remain resolutions gives no warning.

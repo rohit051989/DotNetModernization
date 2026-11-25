@@ -117,6 +117,7 @@ resolutions:
   derivations: []
   description: Out of scope for the Linux move; the application stays on Windows.
   effort: low
+  engine_guidance: 'Leave this exactly as it is: the caller stays on Windows, outside the Linux move. Change nothing this instruction is about: not its code, its project file, its references or its configuration. Record it in the task''s notes as left unchanged, with that reason.'
   id: wcf-nettcp-client-remain-windows-hosted
   impact_rules:
   - action: review

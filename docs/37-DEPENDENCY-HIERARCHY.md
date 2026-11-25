@@ -99,7 +99,10 @@ A package's own dependencies come from:
 - otherwise **the artifactory's metadata**: the nuspec dependency group nearest the project's target framework (NuGet's
   framework reducer), each dependency at the lowest listed version its range allows — what restore would choose, not
   what it chose. Resolution `feed_metadata`. Each such edge records the frameworks it was found for, because one package
-  version can depend on different packages per framework.
+  version can depend on different packages per framework. An old-style project's framework is its
+  `TargetFrameworkVersion` read as .NET Framework (`v4.7` is `net47`). Before step version 1.1.1 (2026-11-25) it was
+  taken as written, which is no target framework, so no package of an old-style project had its dependencies checked
+  ("the project's target framework is not known").
 
 ### B5. Guards
 

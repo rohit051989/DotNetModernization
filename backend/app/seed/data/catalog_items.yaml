@@ -2206,7 +2206,14 @@ items:
       .NET 5 or later until it is an SDK-style project, so it is converted
       first, keeping the assembly identity and the compiled files.
 
-      Conversion ordering (docs/28 Part E): runs BEFORE fx47-class-library, whose retarget needs an SDK-style project file.
+      Not raised for a classic ASP.NET web project (System.Web: .svc, .asmx,
+      MVC, Web API 2, Web Forms; a web project type GUID, or web.config with
+      system.web or system.serviceModel hosting): it has no supported
+      SDK-style form on .NET Framework, and becomes SDK-style in its move to
+      ASP.NET Core, which wcf-service, wcf-service-host, asmx-service and
+      fx-aspnet-mvc carry.
+
+      Conversion ordering (docs/28 Part E): runs FIRST, before every other change: the changes that retarget a project (fx47-class-library, target-framework-retarget, console-batch-job, ...) need its SDK-style project file.
     excluded_roles: [DEPLOYMENT, DATABASE]
     detection:
       match:
@@ -2217,6 +2224,9 @@ items:
           - id: csharp-or-vb
             field: extension
             in: [.csproj, .vbproj]
+          - id: not-classic-aspnet-web-project
+            field: classicWebProject
+            equals: ""
     resolutions:
       - id: sdk-style-project-conversion
         name: "Convert to an SDK-style project"
@@ -2244,7 +2254,11 @@ items:
       restore packages.config, so the packages move to PackageReference in the
       same task as the SDK-style conversion.
 
-      Conversion ordering (docs/28 Part E): runs as ONE UNIT with legacy-project-format.
+      Not raised for a classic ASP.NET web project, as legacy-project-format:
+      its packages move with it to ASP.NET Core, which the web items'
+      guidance carries.
+
+      Conversion ordering (docs/28 Part E): runs as ONE UNIT with legacy-project-format, and runs FIRST.
     excluded_roles: [DEPLOYMENT, DATABASE]
     detection:
       match:
@@ -2252,10 +2266,13 @@ items:
           - id: packages-config
             field: packageManagement
             in: [packages_config, mixed]
+          - id: not-classic-aspnet-web-project
+            field: classicWebProject
+            equals: ""
     resolutions:
       - id: packagereference-migration
         name: "Move to PackageReference"
-        description: "Same packages and versions as PackageReference items; transitive packages dropped unless the code uses them directly; HintPath references into the packages folder removed; packages.config deleted."
+        description: "Same packages and versions as PackageReference items; a package there only as another's dependency dropped only when restore resolves the version packages.config pinned (otherwise kept at that version), and kept when the code uses it directly; HintPath references into the packages folder removed; packages.config deleted."
         target_description: "PackageReference items in the SDK-style project file"
         consumer_impact: none
         effort: low

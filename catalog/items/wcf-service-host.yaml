@@ -18,7 +18,10 @@ engine_guidance: |-
   application or a Windows service) or holds the service's `.svc` file for IIS. Neither a
   `ServiceHost` process nor IIS exists in a Linux container on the target framework. The service's
   implementation usually lives in another project; this one hosts it, with its endpoints, bindings
-  and behaviours configured in web.config or app.config.
+  and behaviours configured in web.config or app.config. A classic ASP.NET web project's old-style
+  project file has no supported SDK-style form on .NET Framework: it becomes an SDK-style ASP.NET
+  Core project in the move itself, as the instruction below says, not in a conversion of its own
+  first.
 excluded_roles:
 - TEST
 id: wcf-service-host
@@ -37,7 +40,14 @@ resolutions:
     that hosts the service's new endpoints (CoreWCF, REST or gRPC, as the service's own instruction
     says).
     1. Make the project an ASP.NET Core application (`Microsoft.NET.Sdk.Web`) on the target
-       framework, with a `Program.cs` that builds a `WebApplication`.
+       framework, with a `Program.cs` that builds a `WebApplication`. The project file becomes
+       SDK-style in this same task, not before: `<Project Sdk="Microsoft.NET.Sdk.Web">` with
+       `<TargetFramework>` set to the target framework, keeping `RootNamespace`, `AssemblyName` and
+       the strong-name key. Move its packages from `packages.config` to `PackageReference` items
+       with the same ids and versions, as the instruction for packages.config says. Remove
+       `ProjectTypeGuids`, the import of the Web Application targets and the IIS Express settings. A
+       classic ASP.NET project has no supported SDK-style form on .NET Framework, so it is never
+       converted to the SDK style on its own first.
     2. Move each endpoint's address, binding settings, behaviours and limits from web.config or
        app.config to the new host's configuration (`appsettings.json` and environment variables),
        environment by environment, keeping every value. A value that differs per environment
@@ -124,10 +134,7 @@ resolutions:
   derivations: []
   description: Out of scope for the Linux move; the host stays on Windows.
   effort: low
-  engine_guidance: |-
-    Do not convert this host: it stays on Windows, outside the Linux move. Change nothing in it or in
-    its configuration, and record it in the task's notes as left unchanged because it stays on
-    Windows.
+  engine_guidance: 'Leave this exactly as it is: the host stays on Windows, outside the Linux move. Change nothing this instruction is about: not its code, its project file, its references or its configuration. Record it in the task''s notes as left unchanged, with that reason.'
   id: wcf-host-remain-windows-hosted
   impact_rules:
   - action: review

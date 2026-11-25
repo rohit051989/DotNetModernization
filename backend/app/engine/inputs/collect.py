@@ -20,8 +20,10 @@ from sqlalchemy.orm import Session
 from app import models
 from app.conversion import planner
 
-# "Conversion ordering (docs/28 Part E): ... runs BEFORE x / runs AFTER x / runs as ONE UNIT with x".
-ORDERING = re.compile(r"(?i)runs\s+(?:as\s+)?(BEFORE|AFTER|ONE UNIT with)\s+([a-z0-9-]+)")
+# "Conversion ordering (docs/28 Part E): ... runs BEFORE x / runs AFTER x / runs as ONE UNIT with x / runs FIRST".
+# FIRST (2026-11-25): before every other change of the repository, for a change that prepares the projects others
+# retarget (the SDK-style project file).
+ORDERING = re.compile(r"(?i)runs\s+(?:as\s+)?(?:(BEFORE|AFTER|ONE UNIT with)\s+([a-z0-9-]+)|(FIRST)\b)")
 
 # Version and platform changes that compile and run but give a different result: the delta categories
 # the plugin's uplift_checks judges (Behavioral-silent). Item ids whose occurrences are such deltas on the
@@ -37,7 +39,10 @@ def _ordering(description: str | None) -> list[dict]:
     for paragraph in (description or "").split("\n"):
         if not paragraph.lower().startswith("conversion ordering"):
             continue
-        for relation, other in ORDERING.findall(paragraph):
+        for relation, other, first in ORDERING.findall(paragraph):
+            if first:
+                rules.append({"relation": "first", "item": None})
+                continue
             rules.append({"relation": {"BEFORE": "before", "AFTER": "after"}.get(relation.upper(), "together"),
                           "item": other})
     return rules
@@ -114,6 +119,61 @@ def assembly_references(db: Session, repository_id, excluded: set, declared: dic
                     "package": {"id": package[0], "version": package[1]} if package else None,
                     "verdict": verdict, "why": why,
                     "lookup": _lookup(db, package[0], package[1], target) if package else None})
+    return out
+
+
+def packages_config(db: Session, repository_id, excluded: set) -> list[dict]:
+    """Each in-scope packages.config project's packages, and whether the move to PackageReference keeps each as a direct
+    reference (packages-config, 2026-11-25), from dependency-hierarchy's packages_config and package_dependency edges.
+    A package another listed package depends on is left out only when restore resolves the version packages.config
+    pinned; otherwise it is kept at the pinned version, since restore takes the lowest version the ranges allow and a
+    pinned, higher one is often a security fix. Each: {project, packages: [{id, version, action, why}]}, `action`
+    "keep" (a direct dependency, or restore would resolve another version), "leave out" (restore resolves the pinned
+    version) or "keep (not known)" (a listed package's own dependencies could not be checked)."""
+    from app.engine.verifier.packages import version_key
+
+    declared: dict[str, dict[str, dict]] = {}
+    for project, node, name, version, deps_checked in db.execute(text("""
+            SELECT p.relative_path, k.node_id, k.name, k.detail->'package'->>'version',
+                   k.detail->'package'->>'dependenciesResolution' IS NOT NULL
+            FROM hierarchy_edges e
+            JOIN hierarchy_nodes pn ON pn.repository_id = e.repository_id AND pn.node_id = e.from_node AND pn.node_type = 'project'
+            JOIN projects p ON p.id = pn.project_id
+            JOIN hierarchy_nodes k ON k.repository_id = e.repository_id AND k.node_id = e.to_node AND k.node_type = 'package'
+            WHERE e.repository_id = :r AND e.kind = 'packages_config'
+            ORDER BY p.relative_path, lower(k.name)"""), {"r": repository_id}):
+        if project not in excluded:
+            declared.setdefault(project, {})[name.lower()] = {"node": node, "id": name, "version": version,
+                                                              "checked": bool(deps_checked)}
+    depends: dict[str, list[tuple[str, str]]] = {}          # package node -> [(dependency id, version restore chooses)]
+    for node, name, version in db.execute(text("""
+            SELECT e.from_node, d.name, d.detail->'package'->>'version' FROM hierarchy_edges e
+            JOIN hierarchy_nodes d ON d.repository_id = e.repository_id AND d.node_id = e.to_node
+            WHERE e.repository_id = :r AND e.kind = 'package_dependency'"""), {"r": repository_id}):
+        depends.setdefault(node, []).append((name.lower(), version))
+
+    out = []
+    for project, packages in sorted(declared.items()):
+        unchecked = sorted(p["id"] for p in packages.values() if not p["checked"])
+        listed = []
+        for key, package in sorted(packages.items()):
+            through = [(other, version) for other in packages.values() if other is not package
+                       for dep, version in depends.get(other["node"], []) if dep == key and version]
+            pinned = package["version"]
+            if through and pinned:
+                chosen = max((v for _, v in through), key=version_key)       # every range must hold: the highest minimum
+                names = ", ".join(f"`{o['id']}` {o['version']}" for o, _ in through)
+                if version_key(chosen) == version_key(pinned):
+                    action, why = "leave out", f"restore resolves the same version through {names}"
+                else:
+                    action, why = "keep", f"restore would resolve {chosen} through {names}"
+            elif unchecked:
+                action, why = "keep (not known)", ("the dependencies of " + ", ".join(f"`{u}`" for u in unchecked)
+                                                   + " could not be checked")
+            else:
+                action, why = "keep", "no other package listed here depends on it"
+            listed.append({"id": package["id"], "version": pinned, "action": action, "why": why})
+        out.append({"project": project, "packages": listed})
     return out
 
 
@@ -321,6 +381,7 @@ def collect(db: Session, repository: models.Repository) -> dict:
             WHERE p.repository_id = :r"""), {"r": r}):
         declared.setdefault(project, set()).add(package)
     references = assembly_references(db, r, excluded, declared, to_tfm)
+    pinned_packages = packages_config(db, r, excluded)
 
     # The platform's own vocabulary, which no generated file may contain (selfcontained.py).
     from app.engine.inputs import selfcontained
@@ -338,6 +399,7 @@ def collect(db: Session, repository: models.Repository) -> dict:
         "projects": projects, "current_frameworks": current,
         "items": items, "packages": packages, "couplings": couplings, "version_drift": sorted(set(drift)), "deltas": deltas,
         "outbound": outbound, "soap": soap, "vocabulary": vocabulary, "assembly_references": references,
+        "packages_config": pinned_packages,
         # Items decided not applicable, with their findings: read by the verifier only (rediscovery), never rendered.
         "not_applicable": [{"id": item_id, "occurrences": found} for item_id, found in sorted(set_aside.items())],
         # Part O: the projects left out ({path, name}), and when there are any, who left them out, when and why, named

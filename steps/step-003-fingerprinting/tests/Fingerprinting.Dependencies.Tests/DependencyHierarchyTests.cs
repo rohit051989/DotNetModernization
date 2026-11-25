@@ -92,7 +92,8 @@ public sealed class DependencyHierarchyTests : IDisposable
 
         var path = $"src/{name}/{name}.csproj";
         _projects.Add(new HierarchyInputProject(path, Guid.NewGuid(), name, "csharp_project", "success", legacy ? "legacy_msbuild" : "sdk_style",
-            outputType, legacy ? "none" : sdk, [legacy ? "v4.8" : framework], legacy ? "net48" : framework,
+            // An old-style project's current framework as the step's command line passes it: TargetFrameworkVersion as written.
+            outputType, legacy ? "none" : sdk, [legacy ? "v4.8" : framework], legacy ? "v4.8" : framework,
             packagesConfig ? "packages_config" : (packages ?? []).Length > 0 ? "packagereference" : "none",
             (packages ?? []).Select(p => new InventoryPackageRef(p.Id, p.Version, packagesConfig ? "packages_config" : "packagereference")).ToList()));
         foreach (var reference in references ?? [])

@@ -71,7 +71,23 @@ def _confirm_design() -> frozenset[str]:
 
 @functools.cache
 def _engine_guidance() -> dict:
-    return yaml.safe_load(ENGINE_GUIDANCE_FILE.read_text(encoding="utf-8"))["items"]
+    """engine_guidance.yaml's items, with the shared text for resolutions that keep something unchanged (its
+    `unchanged` section) put in each listed resolution's guidance with that resolution's reason."""
+    data = yaml.safe_load(ENGINE_GUIDANCE_FILE.read_text(encoding="utf-8"))
+    items = data["items"]
+    unchanged = data.get("unchanged") or {}
+    for item_id, reasons in (unchanged.get("resolutions") or {}).items():
+        resolutions = items.setdefault(item_id, {}).setdefault("resolutions", {})
+        for resolution_id, reason in reasons.items():
+            if resolution_id in resolutions:
+                raise ValueError(f"engine_guidance.yaml: {item_id}/{resolution_id} has its own text and the shared one")
+            resolutions[resolution_id] = unchanged["text"].strip().format(reason=reason)
+    return items
+
+
+def engine_guidance() -> dict:
+    """{item id: {"guidance": text, "resolutions": {resolution id: text}}}: the factory engine guidance, as seeded."""
+    return _engine_guidance()
 
 
 def with_engine_guidance(model: type, row_id: str, desired: dict, item_id: str | None = None) -> dict:

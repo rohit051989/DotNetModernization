@@ -6,7 +6,11 @@ description: |-
   restore packages.config, so the packages move to PackageReference in the
   same task as the SDK-style conversion.
 
-  Conversion ordering (docs/28 Part E): runs as ONE UNIT with legacy-project-format.
+  Not raised for a classic ASP.NET web project, as legacy-project-format:
+  its packages move with it to ASP.NET Core, which the web items'
+  guidance carries.
+
+  Conversion ordering (docs/28 Part E): runs as ONE UNIT with legacy-project-format, and runs FIRST.
 detection:
   match:
     all: []
@@ -18,6 +22,9 @@ detection:
       in:
       - packages_config
       - mixed
+    - equals: ''
+      field: classicWebProject
+      id: not-classic-aspnet-web-project
     none: []
 engine_guidance: |-
   This project lists its NuGet packages in `packages.config`: they are restored into a `packages`
@@ -37,10 +44,7 @@ resolutions:
   derivations: []
   description: The project stays on .NET Framework and keeps its old-style project file, so packages.config stays as it is.
   effort: low
-  engine_guidance: |-
-    Leave `packages.config` and the project's `HintPath` references exactly as they are: the project
-    stays on .NET Framework with its old-style project file. Record it in the task's notes as left
-    unchanged because it stays on .NET Framework.
+  engine_guidance: 'Leave this exactly as it is: the project stays on .NET Framework with its old-style project file. Change nothing this instruction is about: not its code, its project file, its references or its configuration. Record it in the task''s notes as left unchanged, with that reason.'
   id: keep-packages-config
   is_default: false
   linux_compatible: false
@@ -52,7 +56,7 @@ resolutions:
   container_ready: true
   deleted: false
   derivations: []
-  description: Same packages and versions as PackageReference items; transitive packages dropped unless the code uses them directly; HintPath references into the packages folder removed; packages.config deleted.
+  description: Same packages and versions as PackageReference items; a package there only as another's dependency dropped only when restore resolves the version packages.config pinned (otherwise kept at that version), and kept when the code uses it directly; HintPath references into the packages folder removed; packages.config deleted.
   effort: low
   engine_guidance: |-
     Move the project's packages from `packages.config` to `PackageReference` items, in the same task
@@ -60,8 +64,11 @@ resolutions:
     1. For each package in `packages.config`, add `<PackageReference Include="..." Version="..." />`
        with the same id and the same version. Version upgrades other instructions ask for come
        afterwards, in their own tasks.
-    2. Leave out a package that is there only because another package depends on it, unless this
-       project's own code uses its types directly: restore brings it in.
+    2. A package that is there only because another package depends on it: leave it out only when
+       restore then resolves the same version `packages.config` pinned. Otherwise keep it as a
+       direct `PackageReference` at the pinned version: restore takes the lowest version the
+       depending package allows, and a pinned, higher version is often a security fix. Keep it too
+       when this project's own code uses its types directly.
     3. Remove each `<Reference>` whose `HintPath` points into the `packages` folder: the package
        reference replaces it. Remove the imports of `.props` and `.targets` files from the `packages`
        folder, and the `EnsureNuGetPackageBuildImports` target: restore supplies them now.

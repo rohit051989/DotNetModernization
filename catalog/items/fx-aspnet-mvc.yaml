@@ -58,7 +58,11 @@ resolutions:
     the two.
     1. Add a new ASP.NET Core project on the target framework beside the existing one, with YARP
        forwarding every route it does not serve to the existing application, whose address is a
-       configuration name.
+       configuration name. The new project is SDK-style (`<Project Sdk="Microsoft.NET.Sdk.Web">`),
+       with its packages as `PackageReference` items. Leave the existing application's project file
+       and its `packages.config` as they are: a classic ASP.NET project has no supported SDK-style
+       form on .NET Framework, so it is not converted to the SDK style; its routes reach an
+       SDK-style project as they move.
     2. Add the System.Web adapters (`Microsoft.AspNetCore.SystemWebAdapters`) to both: the remote
        application side to the existing application, the client side to the new one. Their shared
        key is a Secret named in configuration, never a value in code.

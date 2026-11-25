@@ -57,7 +57,20 @@ ordering between changes, the values to supply before deployment, and the places
 concerns (the target framework, and each project's current framework, with its SDK-style short form), its
 prerequisites, its places, the deployment values it needs, the tests that use its code, and the files it may change.
 An old-style project file and packages.config each have their own work item (convert to an SDK-style project; move to
-PackageReference), done in one task, before any retarget that needs them.
+PackageReference), done in one task, before every other: Claude Code's plan lists them as its first step, "in one task
+and one commit", and in GitHub Copilot's inputs the first says "Apply this **first**", each says "Apply **together
+with**" the other, every other work item says to apply them first, and the decision sheet's Ordering says so. The
+PackageReference work item has a table, "The packages", of what each project's packages.config pins and what each
+becomes: kept as a direct reference at its pinned version, or left out when restore resolves that same version through
+another listed package. A package pinned higher than restore would choose is kept, at its version.
+
+A classic ASP.NET web project (System.Web: .svc, .asmx, MVC, Web API 2, Web Forms) gets neither work item: it has no
+supported SDK-style form on .NET Framework, so its WCF, ASMX or MVC work item makes it SDK-style, and moves its
+packages, in its move to ASP.NET Core. An old-style project file or packages.config work item that lists a web project
+is a gap.
+
+A change kept unchanged (stays on Windows, stays on .NET Framework, kept out of the move) has a short work item of its
+own: leave it as it is, change nothing, and record it as left unchanged with the reason it names. It gives no warning.
 
 **Decisions to answer first.** A reference to an assembly that only loads on Windows raises "Reference to an assembly
 that only loads on Windows". Until a person records its decision (the replacement, or keeping the project on Windows),

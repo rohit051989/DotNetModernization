@@ -30,6 +30,7 @@ resolutions:
   derivations: []
   description: Out of scope for the Linux move; the service stays on Windows as a .NET Framework Windows Service.
   effort: low
+  engine_guidance: 'Leave this exactly as it is: the service stays on Windows, outside the Linux move. Change nothing this instruction is about: not its code, its project file, its references or its configuration. Record it in the task''s notes as left unchanged, with that reason.'
   id: windows-service-remain-windows-hosted
   is_default: false
   linux_compatible: false

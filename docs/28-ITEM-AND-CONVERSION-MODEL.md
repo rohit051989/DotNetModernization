@@ -355,6 +355,13 @@ on the later item's approaches when they are written.
 | `wcf-service-host` → ASP.NET Core web host: its configuration migration | `hardcoded-windows-path`, `unqualified-hostname`, and any item fixing a value held in a Web Deploy SetParam file | The host's move to ASP.NET Core moves each environment's values out of `SetParam.xml` into `appsettings.{Environment}.json` and deletes the SetParam files (`33-IMPACT-ANALYSIS.md`, `deploy_parameter_files`). The fixes then apply where the values now live | A fix edits a SetParam file the host conversion is about to delete: the edit is lost, or carried across by hand. `impact-analysis` reports the pair as a `delete_with_change` conflict on each SetParam file, and wherever it recurs across the estate, as one catalog rule conflict: the rule pair is the catalog's, not the application's |
 | `package-upgrade-safe` | `package-upgrade-breaking` — **one unit** for the same package | Bump the version everywhere the package is referenced, then fix the call sites, in one change (`30-DEPENDENCY-ASSESSMENT.md` Part D2). One package can be safe in one project and breaking in another | Fixing call sites first writes against an API the project does not reference yet; bumping only the safe projects splits the solution across two versions of one library, and bumping alone leaves the build broken in between |
 
+| `legacy-project-format` with `packages-config` — **one unit** | every other change of the repository (**runs FIRST**) | An old-style project file cannot target .NET 5 or later, and an SDK-style one does not restore packages.config: the projects others retarget (`fx47-class-library`, `target-framework-retarget`, `console-batch-job` and the rest) need both done first, together (2026-11-25) | A retarget edits an old-style project file the conversion then rewrites, or the packages move into a project that cannot build them |
+
+An item's description states its constraints in one paragraph, read by the input generator
+(`app/engine/inputs/collect.py`, `ORDERING`): "Conversion ordering (docs/28 Part E): runs BEFORE
+x", "runs AFTER x", "runs as ONE UNIT with x", or "runs FIRST" (before every other change of
+the repository; 2026-11-25). Items in one unit are one task and one commit.
+
 Same-line pairs that are *not* ordered: an XML connection string also fires
 `sensitive-config-key` through its `connectionString` attribute. That is the first row
 above, not a separate constraint.
@@ -442,7 +449,13 @@ engagement decision, never the engine during it, and preparation names it until 
 itself, matched on solution-discovery's metadata: `projectFormat` `legacy_msbuild` (a `.csproj` or
 `.vbproj`), and `packageManagement` (`package_management_style`) `packages_config` or `mixed`. Each
 defaults to its conversion (to an SDK-style project; to PackageReference, in the same task), with
-"keep" as the other resolution, for a project that stays on .NET Framework.
+"keep" as the other resolution, for a project that stays on .NET Framework. Neither is raised for a
+classic ASP.NET web project (2026-11-25): both require the metadata field `classicWebProject`
+empty, which item-detection fills with why a project is one (a legacy web project type GUID from
+dependency-hierarchy's kind basis, a web.config with `system.web` or `system.serviceModel`
+hosting, or its own `.svc`, `.asmx`, `.aspx` or `Global.asax`). Such a project has no supported
+SDK-style form on .NET Framework; it becomes SDK-style in its move to ASP.NET Core, which the WCF,
+ASMX and MVC items' guidance carries.
 
 Every active resolution has `engine_guidance` or is on the reviewed allow-list,
 `backend/app/seed/data/engine_guidance_allowlist.yaml`, with a reason; a test keeps it so. Guidance

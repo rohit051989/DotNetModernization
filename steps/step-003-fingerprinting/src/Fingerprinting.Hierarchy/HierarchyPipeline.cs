@@ -408,7 +408,7 @@ public sealed class HierarchyPipeline(PackageLookup lookup, HierarchyOptions opt
         else
         {
             resolution = Resolutions.FeedMetadata;
-            var target = framework is null ? null : NuGetFramework.Parse(framework);
+            var target = DependencyPipeline.ParseFramework(framework);    // "v4.7" (an old-style project) included
             if (target is null || target.IsUnsupported)
             {
                 NoteDependencies(nodeId, null, "the project's target framework is not known: the package's dependencies were not checked");

@@ -46,7 +46,7 @@ resolutions:
   derivations: []
   description: 'Leave the target framework as it is, for now: the current framework is still supported, and something holds the application back (a package with no target-framework version, a platform constraint). Record the reason and the current framework''s support end date.'
   effort: low
-  engine_guidance: Leave the target framework unchanged.
+  engine_guidance: 'Leave this exactly as it is: the project stays on its current framework for now, outside the move to the target framework. Change nothing this instruction is about: not its code, its project file, its references or its configuration. Record it in the task''s notes as left unchanged, with that reason.'
   id: stay-on-current-framework
   is_default: false
   linux_compatible: true

@@ -119,9 +119,7 @@ resolutions:
   derivations: []
   description: Keep the package; the application stays on .NET Framework on Windows.
   effort: low
-  engine_guidance: |-
-    Leave the package and the project's target framework unchanged: this project stays on .NET
-    Framework on Windows.
+  engine_guidance: 'Leave this exactly as it is: the project stays on .NET Framework on Windows, and so does the package it needs. Change nothing this instruction is about: not its code, its project file, its references or its configuration. Record it in the task''s notes as left unchanged, with that reason.'
   id: package-replacement-remain-windows-hosted
   is_default: false
   linux_compatible: false

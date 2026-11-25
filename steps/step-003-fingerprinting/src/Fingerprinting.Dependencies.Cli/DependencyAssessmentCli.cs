@@ -323,7 +323,9 @@ public static class DependencyAssessmentCli
     /// for a .NET Framework project, family and version (4.7.2 → net472).</summary>
     public static string? CurrentFramework(InventoryProject project)
     {
-        if (project.TargetFrameworksRaw is { Count: > 0 } frameworks) return frameworks[0];
+        // An old-style project's TargetFrameworkVersion ("v4.7") is not a target framework moniker: the family and version
+        // below give it ("net47").
+        if (project.TargetFrameworksRaw is { Count: > 0 } frameworks && !frameworks[0].StartsWith('v')) return frameworks[0];
         if (!string.IsNullOrWhiteSpace(project.TargetFrameworkRaw) && !project.TargetFrameworkRaw.StartsWith('v')) return project.TargetFrameworkRaw;
         if (project.FrameworkFamily == "net-framework" && project.FrameworkVersion is { } version)
         {

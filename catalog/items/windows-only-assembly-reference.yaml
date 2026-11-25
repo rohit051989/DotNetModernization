@@ -50,10 +50,7 @@ resolutions:
   derivations: []
   description: 'Leave the project out of the Linux conversion: it keeps running where the assembly loads.'
   effort: low
-  engine_guidance: |-
-    Leave this project on Windows, outside the Linux move: do not convert, retarget or otherwise
-    change it, its references or its configuration. Record it in the task's notes as left unchanged
-    because it stays on Windows, together with every project being converted that depends on it.
+  engine_guidance: 'Leave this exactly as it is: the project stays on Windows, outside the Linux move. Change nothing this instruction is about: not its code, its project file, its references or its configuration. Record it in the task''s notes as left unchanged, with that reason.'
   id: keep-project-on-windows
   is_default: false
   linux_compatible: false

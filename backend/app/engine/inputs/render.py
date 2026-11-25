@@ -315,19 +315,40 @@ def _status(chosen: bool) -> str:
 # ---------------------------------------------------------------- per-change upgrade instructions
 
 def _prerequisites(item: dict, present: set[str], by_id: dict) -> list[str]:
+    """The ordering constraints this instruction takes part in: its own rules, and the rules of other changes that name
+    it (an item another must run before learns to wait for it; both sides of "one unit" learn it)."""
     lines = []
-    for rule in item["ordering"]:
-        other = by_id.get(rule["item"])
-        if rule["item"] not in present or other is None or other["resolution"] is None:
+    if any(rule["relation"] == "first" for rule in item["ordering"]):
+        lines.append("- Apply this **first**, before every other instruction of this repository.")
+    rules = [(rule["relation"], rule["item"]) for rule in item["ordering"] if rule["relation"] != "first"]
+    reverse = {"before": "after", "after": "before", "together": "together"}
+    own = {(r["relation"], r["item"]) for r in item["ordering"]}
+    for other in by_id.values():
+        if other["id"] == item["id"]:
+            continue
+        for rule in other["ordering"]:
+            if rule["relation"] == "first":
+                # Every change waits for one that runs first, but one that runs first or with it.
+                if ("first", None) not in own and ("together", other["id"]) not in own:
+                    rules.append(("after", other["id"]))
+            elif rule["item"] == item["id"]:
+                rules.append((reverse[rule["relation"]], other["id"]))
+    for relation, other_id in rules:
+        other = by_id.get(other_id)
+        if other_id not in present or other is None or other["resolution"] is None:
             continue
         name = skill_name(other["resolution"]["id"])
-        if rule["relation"] == "before":
-            lines.append(f"- Apply this **before** `{name}` ({other['name']}).")
-        elif rule["relation"] == "after":
-            lines.append(f"- Apply `{name}` ({other['name']}) **first**; this one depends on it.")
+        if relation == "before":
+            line = f"- Apply this **before** `{name}` ({other['name']})."
+        elif relation == "after":
+            line = f"- Apply `{name}` ({other['name']}) **first**; this one depends on it."
+        elif item["id"].startswith("package-upgrade") and other_id.startswith("package-upgrade"):
+            line = (f"- Apply **together with** `{name}` ({other['name']}), in the same task and commit: "
+                    f"for one package, bump the version everywhere, then fix its call sites.")
         else:
-            lines.append(f"- Apply **together with** `{name}` ({other['name']}), in the same task and commit: "
-                         f"for one package, bump the version everywhere, then fix its call sites.")
+            line = f"- Apply **together with** `{name}` ({other['name']}), in the same task and commit."
+        if line not in lines:
+            lines.append(line)
     return lines
 
 
@@ -421,6 +442,32 @@ def frameworks_section(model: dict, item: dict) -> list[str]:
     return out
 
 
+def packages_section(model: dict, places: set[str]) -> list[str]:
+    """The packages of each of `places` (the instruction's projects), with what the move to PackageReference does with
+    each (collect.packages_config): the instruction's step on packages only another package depends on, worked out."""
+    projects = [p for p in model.get("packages_config") or [] if p["project"] in places]
+    if not projects:
+        return []
+    out = ["", "## The packages", "",
+           "What `packages.config` pins, and what each becomes. \"Leave out\" holds only while this project's own code "
+           "does not use the package's types directly: keep it otherwise.", "",
+           "| Project | Package | Pinned version | What to do | Why |", "|---|---|---|---|---|"]
+    count = 0
+    for project in projects:
+        for p in project["packages"]:
+            if count >= MAX_LIST:
+                break
+            count += 1
+            action = ("Leave out: restore brings it in" if p["action"] == "leave out"
+                      else f"Keep as a direct `PackageReference` at {p['version']}")
+            out.append(f"| `{_md(project['project'])}` | `{_md(p['id'])}` | {_md(p['version'] or 'unknown')} | {action} | "
+                       f"{_md(p['why'])} |")
+    total = sum(len(p["packages"]) for p in projects)
+    if total > count:
+        out.append(f"| ... and {total - count} more | | | as step 2 above says | |")
+    return out
+
+
 def _instruction(model: dict, item: dict, present: set[str], by_id: dict) -> str:
     res = item["resolution"]
     eng = model["engagement"]
@@ -450,6 +497,8 @@ def _instruction(model: dict, item: dict, present: set[str], by_id: dict) -> str
     if item["id"] == "windows-build-pipeline" and _built(model):
         out += ["", f"The Linux build pipeline builds {_built(model)}, not the repository's other solutions: the "
                 "projects it leaves out are outside this conversion's scope and not part of the converted build."]
+    if item["id"] == PACKAGES_CONFIG_ITEM and res["id"] == "packagereference-migration":
+        out += packages_section(model, {o["project"] for o in plan_item(item)["apply"]})
     prereq = _prerequisites(item, present, by_id)
     out += ["", "## Prerequisites", ""] + (prereq or ["- None among this repository's other instructions."])
 
@@ -765,6 +814,10 @@ def decision_sheet(model: dict) -> str:
     shown = []
     for i in model["items"]:
         for r in i["ordering"]:
+            if r["relation"] == "first":
+                if i["resolution"] is not None:
+                    shown.append(f"- `{skill_name(i['resolution']['id'])}` runs first, before every other change")
+                continue
             other = by_id.get(r["item"])
             if other is None or i["resolution"] is None or other["resolution"] is None:
                 continue
@@ -934,28 +987,54 @@ def _applies(item: dict) -> bool:
 
 def work_items(model: dict) -> list[dict]:
     """The work items, one per change with an instruction, in the order to apply them: the model's order, moved only
-    as far as an ordering constraint needs (an item that must run before another goes first). [{name, item, title}]"""
+    as far as an ordering constraint needs (an item that must run before another goes first). Changes that run as one
+    unit stay next to each other, and each after the first names it (`together_with`): one task and one commit.
+    [{name, item, title, together_with}]"""
     items = [i for i in model["items"] if _applies(i)]
     ids = [i["id"] for i in items]
-    after: dict[str, set] = {i: set() for i in ids}            # item -> the items that must come before it
+    # One unit: each item's group is its first member in the model's order.
+    group = {i: i for i in ids}
+    def lead(i):
+        while group[i] != i:
+            i = group[i]
+        return i
+    for i in items:
+        for rule in i["ordering"]:
+            if rule["relation"] == "together" and rule["item"] in group and rule["item"] != i["id"]:
+                a, b = lead(i["id"]), lead(rule["item"])
+                if a != b:
+                    first, second = sorted((a, b), key=ids.index)
+                    group[second] = first
+    groups = [g for g in ids if lead(g) == g]
+    members = {g: [i for i in ids if lead(i) == g] for g in groups}
+    after: dict[str, set] = {g: set() for g in groups}          # group -> the groups that must come before it
+    first = {lead(i["id"]) for i in items if any(rule["relation"] == "first" for rule in i["ordering"])}
+    for g in groups:
+        if g not in first:
+            after[g] |= first
     for i in items:
         for rule in i["ordering"]:
             other = rule["item"]
-            if other not in after or other == i["id"]:
+            if other not in group or lead(other) == lead(i["id"]):
                 continue
             if rule["relation"] == "before":
-                after[other].add(i["id"])
+                after[lead(other)].add(lead(i["id"]))
             elif rule["relation"] == "after":
-                after[i["id"]].add(other)
+                after[lead(i["id"])].add(lead(other))
     ordered, placed = [], set()
-    while len(ordered) < len(ids):
-        ready = [i for i in ids if i not in placed and after[i] <= placed]
-        nxt = ready[0] if ready else next(i for i in ids if i not in placed)     # a cycle: keep the model's order
+    while len(ordered) < len(groups):
+        ready = [g for g in groups if g not in placed and after[g] <= placed]
+        nxt = ready[0] if ready else next(g for g in groups if g not in placed)     # a cycle: keep the model's order
         ordered.append(nxt)
         placed.add(nxt)
     by_id = {i["id"]: i for i in items}
-    return [{"name": skill_name(by_id[i]["resolution"]["id"]), "item": by_id[i],
-             "title": f"{by_id[i]['resolution']['name']} ({by_id[i]['name']})"} for i in ordered]
+    out = []
+    for g in ordered:
+        for i in members[g]:
+            out.append({"name": skill_name(by_id[i]["resolution"]["id"]), "item": by_id[i],
+                        "title": f"{by_id[i]['resolution']['name']} ({by_id[i]['name']})",
+                        "together_with": None if i == g else skill_name(by_id[g]["resolution"]["id"])})
+    return out
 
 
 def render(model: dict, engine: str = engines.COPILOT) -> dict[str, str]:

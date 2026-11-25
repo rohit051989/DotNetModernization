@@ -199,8 +199,18 @@ def instructions(model: dict, items: list[dict], copilot_instructions: str) -> s
     out += ["", "## How to run this conversion", "",
             "There is no separate upgrade tool: this is the plan. Work through these work items in this order, one at a "
             f"time. Each one is a skill under `{SKILLS_DIR}/`: read it in full before changing anything.", ""]
-    for number, entry in enumerate(items, 1):
-        out.append(f"{number}. `{entry['name']}`: {entry['title']}")
+    steps: list[list[dict]] = []            # changes that run as one unit share a step (render.work_items)
+    for entry in items:
+        if entry.get("together_with") and steps:
+            steps[-1].append(entry)
+        else:
+            steps.append([entry])
+    for number, step in enumerate(steps, 1):
+        if len(step) == 1:
+            out.append(f"{number}. `{step[0]['name']}`: {step[0]['title']}")
+        else:
+            out.append(f"{number}. " + " and ".join(f"`{e['name']}`" for e in step) + ", in one task and one commit: "
+                       + "; ".join(e["title"] for e in step))
     if not items:
         out.append("There is no work item: nothing in this repository needs a change the instructions describe.")
     if rendering.design_items(model):
@@ -213,6 +223,9 @@ def instructions(model: dict, items: list[dict], copilot_instructions: str) -> s
             "still pass. Fix what the work item broke before going on.",
             "3. Commit only that work item's changes, on the current branch, with a message that starts with its name: "
             "`<name>: <what changed>`. Record in the message any place left unchanged and why, and any surprise.",
+            *(["", "A step that names more than one work item is one task: apply them all, then build and test, and "
+                   "commit them once, with a message that starts with the first one's name."]
+              if any(len(step) > 1 for step in steps) else []),
             "",
             f"Before the first one, read `{INPUTS_DIR}/assessment-addendum.md` (facts about this code a general assessment "
             f"misses) and `{INPUTS_DIR}/decision-sheet.md` (the approach chosen for each change). The subagents "

@@ -691,7 +691,7 @@ class SelfContained(unittest.TestCase):
         from app.items import baseline
         from app.seed.seed_data import _load
 
-        guidance = yaml.safe_load(baseline.ENGINE_GUIDANCE_FILE.read_text(encoding="utf-8"))["items"]
+        guidance = baseline.engine_guidance()
         authored = {i["id"]: {r["id"] for r in i["resolutions"]} for i in _load("catalog_items.yaml")["items"]}
         ids = set(guidance) | {r for g in guidance.values() for r in g["resolutions"]} | set(authored) \
             | {r for rs in authored.values() for r in rs}
@@ -711,7 +711,7 @@ class SelfContained(unittest.TestCase):
         import yaml
         from app.items import baseline
 
-        guidance = yaml.safe_load(baseline.ENGINE_GUIDANCE_FILE.read_text(encoding="utf-8"))["items"]
+        guidance = baseline.engine_guidance()
         written = ("ssis-package", "fx47-class-library", "wcf-service", "wcf-service-host", "asmx-service",
                    "directory-services-usage", "encoding-default", "fx-aspnet-mvc", "windows-only-assembly-reference",
                    "legacy-project-format", "packages-config")
