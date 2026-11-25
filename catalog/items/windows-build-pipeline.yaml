@@ -38,6 +38,7 @@ resolutions:
   linux_compatible: true
   name: Keep the Windows agents
   notes: null
+  phase: 5
   status: active
   target_description: Windows agents publishing linux-x64; image built on a Linux builder
 - consumer_impact: none
@@ -63,6 +64,7 @@ resolutions:
   linux_compatible: true
   name: Build on Linux agents
   notes: null
+  phase: 5
   status: active
   target_description: dotnet CLI on Linux agents; container image built by the pipeline
 scope: application

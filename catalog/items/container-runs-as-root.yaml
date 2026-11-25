@@ -39,6 +39,7 @@ resolutions:
   linux_compatible: true
   name: Grant a dedicated security context constraint
   notes: 'A platform exception: needs the cluster owners'' approval, and is often refused.'
+  phase: 5
   status: active
   target_description: A service account bound to a non-restricted SCC
 - consumer_impact: none
@@ -59,6 +60,7 @@ resolutions:
   linux_compatible: true
   name: Run as a numeric non-root user
   notes: null
+  phase: 5
   status: active
   target_description: USER 1001 in the image; the restricted SCC assigns the run-time UID
 scope: application

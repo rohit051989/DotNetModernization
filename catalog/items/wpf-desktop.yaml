@@ -61,6 +61,7 @@ resolutions:
     Prerequisites: A Windows host remains available for build and run. Third-party control suites and custom themes checked for modern .NET support.
 
     Known limitations: Does not reach OCP4 — WPF has no Linux or container story. Keeps the application supported, not portable.
+  phase: 4
   status: active
   target_description: .NET 8+ Windows Desktop (net8.0-windows), Windows host
 - confirm_design: true
@@ -78,6 +79,7 @@ resolutions:
     Prerequisites: Domain logic separable from the views and view models. User-facing change accepted by the business.
 
     Known limitations: A rewrite, not a migration. MVVM view models often port further than WinForms code-behind does, but no accelerator covers the UI layer.
+  phase: 4
   status: active
   target_description: Blazor on ASP.NET Core (container on OCP4), or .NET MAUI
 scope: application

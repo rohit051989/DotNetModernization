@@ -549,6 +549,8 @@ class AuthoredItemTests(unittest.TestCase):
         "directory-services-usage", "sensitive-config-key", "unqualified-hostname",
         # Registry 1.12.0, from the first pilot run.
         "enterprise-vault-secret-reference", "unparseable-config-file", "custom-file-logger-provider",
+        # Registry 1.16.0, from a conversion review (2026-11-25).
+        "event-log-usage", "backslash-path-building",
     }
     ABSENCE = {"missing-dockerfile", "missing-health-endpoint", "missing-ocp4-manifests"}
     HOSTING = {"windows-service-hosting", "modern-worker-service", "wcf-service-host", "interactive-console-tool"}

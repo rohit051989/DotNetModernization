@@ -57,6 +57,7 @@ resolutions:
   linux_compatible: false
   name: Keep the old-style project file
   notes: null
+  phase: 1
   status: active
   target_description: The project file unchanged, on .NET Framework
 - consumer_impact: none
@@ -88,6 +89,7 @@ resolutions:
   linux_compatible: true
   name: Convert to an SDK-style project
   notes: null
+  phase: 1
   status: active
   target_description: An SDK-style project file on the same framework, ready to retarget
 scope: application

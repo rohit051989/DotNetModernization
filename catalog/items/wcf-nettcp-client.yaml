@@ -59,6 +59,7 @@ resolutions:
   linux_compatible: true
   name: Call an HTTP binding of the service
   notes: Usually needs the backend team; the endpoint register (lifecycle step 10) groups the callers into one conversation.
+  phase: 3
   status: active
   target_description: System.ServiceModel.Http client over HTTPS
 - consumer_impact: none
@@ -72,6 +73,7 @@ resolutions:
   linux_compatible: true
   name: Keep NetTcp with non-Windows security
   notes: Only if the service accepts non-Windows credentials; verify before choosing.
+  phase: 3
   status: active
   target_description: System.ServiceModel.NetTcp client, certificate transport security
 - confirm_design: true
@@ -109,6 +111,7 @@ resolutions:
   linux_compatible: true
   name: Migrate to the service's new protocol
   notes: For internal clients only — a service owned outside the migration is a conversation, not a coordinated change (call-http-binding). Derived from the service's wcf-service decision.
+  phase: 3
   status: active
   target_description: A REST or gRPC client of the rewritten service
 - consumer_impact: none
@@ -129,6 +132,7 @@ resolutions:
   linux_compatible: false
   name: Remain Windows-hosted
   notes: null
+  phase: 3
   status: active
   target_description: .NET on Windows Server
 scope: application

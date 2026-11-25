@@ -36,6 +36,7 @@ resolutions:
   linux_compatible: true
   name: Keep the package reference
   notes: null
+  phase: 3
   status: active
   target_description: The PackageReference, at or above the framework's version
 - consumer_impact: none
@@ -64,6 +65,7 @@ resolutions:
   linux_compatible: true
   name: Remove the package reference
   notes: null
+  phase: 3
   status: active
   target_description: No PackageReference; the shared framework's version
 scope: occurrence

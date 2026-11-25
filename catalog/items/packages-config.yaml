@@ -50,6 +50,7 @@ resolutions:
   linux_compatible: false
   name: Keep packages.config
   notes: null
+  phase: 1
   status: active
   target_description: packages.config unchanged, on .NET Framework
 - consumer_impact: none
@@ -79,6 +80,7 @@ resolutions:
   linux_compatible: true
   name: Move to PackageReference
   notes: null
+  phase: 1
   status: active
   target_description: PackageReference items in the SDK-style project file
 scope: application

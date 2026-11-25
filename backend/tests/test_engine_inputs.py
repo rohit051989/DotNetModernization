@@ -122,7 +122,9 @@ class Outputs(unittest.TestCase):
         secret = self.files[".github/upgrades/skills/applying-sql-auth-from-secret.md"]
         self.assertIn("Apply this **before** `applying-move-to-secret`", secret)
         safe = self.files[".github/upgrades/skills/applying-package-upgrade-safe-bump.md"]
-        self.assertIn("None among this repository's other instructions.", safe)  # its partner is not present here
+        # Its partner is not present here: no "together with" line, only its phase and the work items it follows.
+        self.assertNotIn("together with", safe)
+        self.assertIn("- Phase 5 of 6, platform and deployment: apply it after every work item of the phases before it.", safe)
 
     def test_each_instruction_is_the_engine_guidance_and_its_places(self):
         text = self.files[".github/upgrades/skills/applying-container-local-timezone.md"]

@@ -6,9 +6,14 @@
 #
 # Read from the repository, never from the database; edit it here and commit. `match: exact` compares the whole simple
 # name, `match: prefix` the start of it (both case-insensitive). `why` is shown to the engine and the person; it names no
-# client, only the product.
+# client, only the product. `replaced_by` (2026-11-25): the catalog resolutions that replace the assembly when a
+# conversion chooses one (the SSIS runtime under a C# reimplementation of the package): the Windows-only item then
+# neither lists it nor asks about it, and the addendum names the work item that replaces it.
 assemblies:
-  - {name: Microsoft.SqlServer.ManagedDTS, match: exact, why: "the SQL Server Integration Services runtime: .NET Framework on Windows only, with the SSIS engine installed"}
-  - {name: Microsoft.SqlServer.DTSRuntimeWrap, match: exact, why: "the SQL Server Integration Services runtime's COM wrapper: Windows only"}
-  - {name: Microsoft.SqlServer.DTSPipelineWrap, match: exact, why: "the SQL Server Integration Services pipeline's COM wrapper: Windows only"}
+  - {name: Microsoft.SqlServer.ManagedDTS, match: exact, why: "the SQL Server Integration Services runtime: .NET Framework on Windows only, with the SSIS engine installed",
+     replaced_by: [csharp-worker-container, csharp-sql-pushdown]}
+  - {name: Microsoft.SqlServer.DTSRuntimeWrap, match: exact, why: "the SQL Server Integration Services runtime's COM wrapper: Windows only",
+     replaced_by: [csharp-worker-container, csharp-sql-pushdown]}
+  - {name: Microsoft.SqlServer.DTSPipelineWrap, match: exact, why: "the SQL Server Integration Services pipeline's COM wrapper: Windows only",
+     replaced_by: [csharp-worker-container, csharp-sql-pushdown]}
   - {name: Sybase.AdoNet, match: prefix, why: "the SAP (Sybase) ASE ADO.NET provider for .NET Framework, which loads native Windows libraries"}

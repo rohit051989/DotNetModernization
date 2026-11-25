@@ -31,6 +31,7 @@ resolutions:
   linux_compatible: false
   name: Remain Windows-hosted (out of scope)
   notes: null
+  phase: 3
   status: active
   target_description: .NET on Windows Server
 - confirm_design: true
@@ -63,6 +64,7 @@ resolutions:
   linux_compatible: true
   name: Use identity provider claims
   notes: null
+  phase: 3
   status: active
   target_description: OIDC claims from the platform identity provider
 - consumer_impact: low
@@ -76,6 +78,7 @@ resolutions:
   linux_compatible: true
   name: Port to System.DirectoryServices.Protocols
   notes: null
+  phase: 3
   status: active
   target_description: System.DirectoryServices.Protocols (LDAP)
 scope: occurrence

@@ -41,6 +41,7 @@ resolutions:
   linux_compatible: true
   name: Kerberos in the container
   notes: Preserves the database's existing permissions model. Needs the directory team for the service account and SPN.
+  phase: 5
   status: active
   target_description: Kerberos-authenticated SqlClient on Linux
 - consumer_impact: low
@@ -60,6 +61,7 @@ resolutions:
   linux_compatible: true
   name: SQL authentication from an OCP4 Secret
   notes: null
+  phase: 5
   status: active
   target_description: User ID/Password from a Secret, Integrated Security removed
 scope: occurrence

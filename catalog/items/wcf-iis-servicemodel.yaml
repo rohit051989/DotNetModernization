@@ -45,6 +45,7 @@ resolutions:
     Prerequisites: Bindings in use must be supported by CoreWCF. WSDL snapshot captured before migration.
 
     Known limitations: CoreWCF does not support every WCF binding. WS-* protocols, MSMQ transport and some Windows-integrated security modes need case-by-case assessment. Windows authentication requires an alternative on Linux.
+  phase: 4
   status: active
   target_description: .NET 10 + CoreWCF, container on OCP4
 - confirm_design: true
@@ -62,6 +63,7 @@ resolutions:
     Prerequisites: Every consumer must be able to adopt a gRPC client. Requires HTTP/2 support through the OCP4 ingress path.
 
     Known limitations: All callers must change. Only viable where consumers are internal and in scope for coordinated change.
+  phase: 4
   status: active
   target_description: .NET 10 + gRPC, container on OCP4
 - confirm_design: true
@@ -79,6 +81,7 @@ resolutions:
     Prerequisites: All consumers able to change. Resource model designed and agreed.
 
     Known limitations: The largest change of the three options. SOAP faults, message-level security and transactional semantics have no direct REST equivalent.
+  phase: 4
   status: active
   target_description: .NET 10 + ASP.NET Core, container on OCP4
 scope: application

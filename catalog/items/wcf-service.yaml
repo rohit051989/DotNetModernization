@@ -131,6 +131,7 @@ resolutions:
   linux_compatible: true
   name: CoreWCF on .NET 10
   notes: 'Prerequisites: bindings in use must be supported by CoreWCF; capture a WSDL snapshot before migrating. Known limitations: not every WCF binding is supported — WS-* protocols, MSMQ transport and some Windows-integrated security modes need case-by-case assessment; Windows authentication needs an alternative on Linux.'
+  phase: 4
   status: active
   target_description: .NET 10 + CoreWCF, container on OCP4
 - confirm_design: true
@@ -234,6 +235,7 @@ resolutions:
   linux_compatible: true
   name: gRPC rewrite on .NET 10
   notes: 'Prerequisites: every consumer able to adopt a gRPC client; HTTP/2 through the OCP4 ingress path. Known limitations: all callers must change — only viable where consumers are internal and in scope for coordinated change.'
+  phase: 4
   status: active
   target_description: .NET 10 + gRPC, container on OCP4
 - consumer_impact: none
@@ -272,6 +274,7 @@ resolutions:
   linux_compatible: false
   name: Remain Windows-hosted
   notes: null
+  phase: 4
   status: active
   target_description: .NET Framework WCF on Windows Server
 - confirm_design: true
@@ -402,6 +405,7 @@ resolutions:
   linux_compatible: true
   name: REST rewrite on .NET 10
   notes: 'Prerequisites: every consumer able to change; resource model designed and agreed. Known limitations: the largest change of the three; SOAP faults, message-level security and transactional semantics have no direct REST equivalent.'
+  phase: 4
   status: active
   target_description: .NET 10 + ASP.NET Core, container on OCP4
 scope: application

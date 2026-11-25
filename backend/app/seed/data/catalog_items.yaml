@@ -2285,3 +2285,78 @@ items:
         effort: low
         linux_compatible: false
         container_ready: false
+
+  # 2026-11-25: what a conversion review found on Linux that no item raised (registry 1.16.0).
+  - id: event-log-usage
+    name: "Windows Event Log usage"
+    scope: occurrence
+    category: logging
+    description: |-
+      Code writing to or managing the Windows Event Log
+      (System.Diagnostics.EventLog: WriteEntry, SourceExists,
+      CreateEventSource, an EventLog instance). It throws
+      PlatformNotSupportedException on Linux, often at startup. One
+      occurrence per file.
+    excluded_roles: [TEST]
+    detection:
+      match:
+        all:
+          - id: event-log
+            signal:
+              name: EVENT_LOG_USAGE
+      occurrence_source:
+        signal: EVENT_LOG_USAGE
+        group_by: source_path
+    resolutions:
+      - id: event-log-to-standard-error
+        name: "Write the same text to standard error"
+        description: "Each Event Log write becomes the same text on standard error (or the application's logger), with the same severity; source creation and existence checks are removed; exit codes unchanged."
+        target_description: "Standard error, collected by the container platform"
+        consumer_impact: low
+        effort: low
+        is_default: true
+      - id: event-log-remain-windows-hosted
+        name: "Remain Windows-hosted"
+        description: "The application stays on Windows, outside the Linux move: the Event Log stays."
+        target_description: ".NET on Windows Server"
+        consumer_impact: none
+        effort: low
+        linux_compatible: false
+        container_ready: false
+
+  - id: backslash-path-building
+    name: "Path built with a backslash"
+    scope: occurrence
+    category: configuration
+    description: |-
+      A path built by joining parts with a backslash literal (dir + "\\" +
+      name, string.Concat(dir, @"\", name), $"{dir}\{name}"). On Linux a
+      backslash is an ordinary character of a file name, so the file is
+      written to or read from the wrong place, with no error. One occurrence
+      per file.
+    excluded_roles: [TEST]
+    detection:
+      match:
+        all:
+          - id: backslash-path
+            signal:
+              name: BACKSLASH_PATH_BUILDING
+      occurrence_source:
+        signal: BACKSLASH_PATH_BUILDING
+        group_by: source_path
+    resolutions:
+      - id: path-combine
+        name: "Join paths with Path.Combine"
+        description: "Each path joined with a backslash uses Path.Combine (or Path.DirectorySeparatorChar); the path's case matches the file's real case."
+        target_description: "Path.Combine, portable separators"
+        consumer_impact: none
+        effort: low
+        is_default: true
+      - id: backslash-path-remain-windows-hosted
+        name: "Remain Windows-hosted"
+        description: "The application stays on Windows, outside the Linux move: the paths stay as they are."
+        target_description: ".NET on Windows Server"
+        consumer_impact: none
+        effort: low
+        linux_compatible: false
+        container_ready: false

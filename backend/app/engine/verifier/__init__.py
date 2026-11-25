@@ -25,6 +25,7 @@ The checks, and what fails or caps the verdict:
 | Canary | Plugin method | a deliberate break that no test catches | no canary could be run |
 | Equivalence | Plugin `compare` | | (no cases: not applicable) |
 | Re-discovery | Platform | | a work item remains, is introduced or is not checked; a project not on the target framework |
+| Windows-only APIs | .NET analyzer CA1416 | | a call to an API only supported on Windows remains, or the analysis could not run |
 | Impact comparison | Platform | reported, never judged | reported, never judged |
 
 Engine state under `.github/upgrades/` and the generated inputs are excluded from the diff, the impact
@@ -61,7 +62,7 @@ from app.engine.verifier import deployment, packages, plugin, rediscovery
 from app.experiment import instrument, lookups
 from app.scope import service as scope_service
 
-VERIFIER_VERSION = "1.5.0"
+VERIFIER_VERSION = "1.6.0"
 RUNS = planner.RUNS          # the same runs folder as the conversion runner, whatever the working directory
 
 RULES = [
@@ -75,7 +76,8 @@ RULES = [
     "test; a configuration file that did not parse at the base commit still does not; no canary could be run; an "
     "equivalence case is missing or differs without approval; a work item remains, was introduced or could not be "
     "checked; a project does not target the engagement's framework; a work item that changes the design was changed "
-    "with no answer to its design questions recorded.",
+    "with no answer to its design questions recorded; a call to an API only supported on Windows remains (the platform "
+    "compatibility analyzer, CA1416, on a rebuild of the branch), or that analysis could not run.",
     "A work item with a place in a configuration file that does not parse on the branch is not checked, never "
     "resolved: discovery cannot read inside that file.",
     "On the simple path, a package upgrade is met at or above the version the conversion's inputs asked for; a "
@@ -593,6 +595,57 @@ def build_and_test(worktree: Path, solution: str, projects: list[str], out: Path
     return result
 
 
+# MSBuild's warning line for the platform compatibility analyzer:
+#   C:\w\src\Job\Program.cs(12,13): warning CA1416: This call site is reachable on all platforms. ... [C:\w\src\Job\Job.csproj]
+CA1416 = re.compile(r"^\s*(?P<file>[^\r\n]+?)\((?P<line>\d+),\d+(?:,\d+,\d+)?\): warning CA1416: (?P<message>.+?)"
+                    r"(?: \[(?P<project>[^\]\r\n]+)\])?\s*$", re.MULTILINE)
+
+
+def platform_findings(log: str, worktree: Path) -> list[dict]:
+    """Each Windows-only call the analyzer reported, once: {file (repository path), line, message}, by file and line."""
+    root = str(worktree.resolve()).replace("\\", "/").rstrip("/") + "/"
+    seen: dict[tuple, dict] = {}
+    for m in CA1416.finditer(log):
+        path = m["file"].strip().replace("\\", "/")
+        file = path[len(root):] if path.lower().startswith(root.lower()) else path
+        key = (file, int(m["line"]), m["message"].strip())
+        seen.setdefault(key, {"file": file, "line": int(m["line"]), "message": m["message"].strip()})
+    return sorted(seen.values(), key=lambda f: (f["file"].lower(), f["line"], f["message"]))
+
+
+def platform_check(worktree: Path, solution: str, out: Path) -> tuple[dict, list[dict]]:
+    """Gap 4 (2026-11-25): rebuilds the branch with the platform compatibility analyzer on (CA1416) and lists every call
+    to an API only supported on Windows. Any listed call, or an analysis that could not run, is a gap: the verdict stays
+    below PROVEN."""
+    run = dotnet.analyze_platform(worktree, solution)
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "platform-analysis.log").write_text(run.log, encoding="utf-8")
+    findings = platform_findings(run.log, worktree)
+    if not run.ok:
+        return _check("windows-apis", "Windows-only APIs", "gap",
+                      f"the rebuild with the platform compatibility analyzer (CA1416) failed (exit {run.exit_code}): "
+                      "Windows-only calls were not checked; see platform-analysis.log"), findings
+    if findings:
+        return _check("windows-apis", "Windows-only APIs", "gap",
+                      f"{len(findings)} call(s) to an API only supported on Windows remain (CA1416), listed under "
+                      "\"Windows-only API calls\""), findings
+    return _check("windows-apis", "Windows-only APIs", "pass",
+                  "no call to an API only supported on Windows (CA1416, on a rebuild with the analyzers on)"), findings
+
+
+def platform_md(findings: list[dict] | None) -> list[str]:
+    """VERIFICATION.md's list of the Windows-only calls left, with file and line, or nothing."""
+    if not findings:
+        return []
+    out = ["", "## Windows-only API calls", "",
+           "Calls the platform compatibility analyzer (CA1416) reports as supported only on Windows. Each fails on Linux, "
+           "and keeps the verdict below PROVEN.", "", "| File | Line | What the analyzer says |", "|---|---|---|"]
+    out += [f"| `{f['file']}` | {f['line']} | {f['message'].replace('|', '/')} |" for f in findings[:200]]
+    if len(findings) > 200:
+        out.append(f"| ... and {len(findings) - 200} more | | see platform-analysis.log |")
+    return out
+
+
 def run_canary(worktree: Path, solution: str, projects: list[str], canary: dict, clean_failed: set[str], out: Path) -> dict:
     target = worktree / canary["file"]
     if not target.is_file():
@@ -768,6 +821,10 @@ def verify(db, *, engagement_id: str, slug: str, base: str, ref: str, label: str
     else:
         checks.append(_check("clean", "Clean re-run", "pass",
                              f"bin/obj absent, built {solution}, {total} test(s) executed in {len(projects)} project(s)"))
+    windows_apis: list[dict] = []
+    if clean["built"]:
+        platform, windows_apis = platform_check(tip_tree, solution, out / "clean")
+        checks.append(platform)
 
     base_report = None
     try:
@@ -986,6 +1043,7 @@ def verify(db, *, engagement_id: str, slug: str, base: str, ref: str, label: str
         "forAPerson": person, "baseline": baseline_info, "baselineSnapshot": {"commit": base_snap["commit"], "at": base_snap["at"]},
         "cleanRun": clean, "diff": {k: v for k, v in changes.items() if k not in ("files", "excluded")},
         "excludedPaths": [e["path"] for e in changes["excluded"]], "rediscovery": rd, "impact": impact,
+        "windowsOnlyCalls": windows_apis,
         "testFiles": {k: tc[k] for k in ("changed", "added", "removed", "configuration")},
         "flaky": (base_report or {}).get("rerunFlaky") or [],
         "approvedRemovals": (base_report or {}).get("approvedRemovals") or [],
@@ -1066,6 +1124,7 @@ def markdown(r: dict) -> str:
     out += ["", "## Checks", "", "| Check | State | Detail |", "|---|---|---|"]
     out += [f"| {c['label']} | {c['state']} | {c['detail'].replace('|', '/')} |" for c in r["checks"]]
     out += scope_md(r.get("scope"))
+    out += platform_md(r.get("windowsOnlyCalls"))
     if r.get("scopeViolations"):
         out += ["", "## Scope violations", "",
                 "Changed inside projects outside the conversion's scope. A branch with one cannot be PROVEN.", ""]

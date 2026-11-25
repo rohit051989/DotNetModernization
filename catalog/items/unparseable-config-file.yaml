@@ -42,6 +42,7 @@ resolutions:
   linux_compatible: true
   name: Correct the file's syntax
   notes: null
+  phase: 5
   status: active
   target_description: A configuration file that parses
 - consumer_impact: none
@@ -58,6 +59,7 @@ resolutions:
   linux_compatible: true
   name: Remove the file
   notes: null
+  phase: 5
   status: active
   target_description: No such file
 scope: occurrence

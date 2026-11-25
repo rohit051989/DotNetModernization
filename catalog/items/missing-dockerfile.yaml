@@ -57,6 +57,7 @@ resolutions:
   linux_compatible: true
   name: Multi-stage Dockerfile
   notes: null
+  phase: 5
   status: active
   target_description: Dockerfile beside the project, built by the pipeline
 - consumer_impact: none
@@ -70,6 +71,7 @@ resolutions:
   linux_compatible: true
   name: SDK container publish
   notes: Less control over the image layers; check it meets the platform's base-image policy.
+  phase: 5
   status: active
   target_description: Container image from MSBuild properties in the project file
 scope: application

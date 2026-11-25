@@ -68,7 +68,9 @@ WORDING_CORRECTIONS = ("serilog-file-sink", "wcf-nettcp-client")
 # as a conflict and left as it is. datetime-now-usage: the utc-everywhere resolution, and the related forms detected.
 # windows-only-assembly-reference (2026-11-24): a new item, raised from dependency-hierarchy's assembly references.
 # legacy-project-format and packages-config (2026-11-24): new items, from solution-discovery's project metadata.
-CATALOG_ADDITIONS = ("datetime-now-usage", "windows-only-assembly-reference", "legacy-project-format", "packages-config")
+# event-log-usage and backslash-path-building (2026-11-25): new items, from registry 1.16.0's signals.
+CATALOG_ADDITIONS = ("datetime-now-usage", "windows-only-assembly-reference", "legacy-project-format", "packages-config",
+                     "event-log-usage", "backslash-path-building")
 
 
 def guidance_items(files: dict[str, str]) -> tuple[str, ...]:
@@ -77,6 +79,16 @@ def guidance_items(files: dict[str, str]) -> tuple[str, ...]:
     row is unedited, and keeps (and reports) a row an admin edited."""
     written = baseline._engine_guidance()
     return tuple(sorted(name[:-len(".yaml")] for name in files if name[:-len(".yaml")] in written))
+
+
+def phase_items(files: dict[str, str]) -> tuple[str, ...]:
+    """Items whose export gives a resolution a phase (36-COPILOT-ENHANCED-CONVERSION "Phases", 2026-11-25): applied from
+    the export like the additions above, so an unedited resolution takes its phase and an edited one is reported as a
+    conflict and left as it is (rule 10)."""
+    import yaml
+
+    return tuple(sorted(name[:-len(".yaml")] for name, text in files.items()
+                        if any(r.get("phase") for r in (yaml.safe_load(text) or {}).get("resolutions") or [])))
 
 
 def design_flag_items(files: dict[str, str]) -> tuple[str, ...]:
@@ -106,8 +118,10 @@ def seed_from_export_or_database() -> dict | None:
         else:
             report["design_items"] = design_flag_items(files)
             report["guidance_items"] = guidance_items(files)
+            report["phase_items"] = phase_items(files)
             corrected = {f"{item}.yaml": files[f"{item}.yaml"]
-                         for item in WORDING_CORRECTIONS + CATALOG_ADDITIONS + report["design_items"] + report["guidance_items"]
+                         for item in dict.fromkeys(WORDING_CORRECTIONS + CATALOG_ADDITIONS + report["design_items"]
+                                                   + report["guidance_items"] + report["phase_items"])
                          if f"{item}.yaml" in files}
             report["corrections"] = catalog_export.import_files(db, corrected) if corrected else baseline.new_report()
         # A catalog identical to the committed export, with no export recorded (a fresh install imported it): record
@@ -139,8 +153,8 @@ def print_report(report: dict) -> None:
         if corrections is not None:
             print(f"  wording corrections and additions ({', '.join(WORDING_CORRECTIONS + CATALOG_ADDITIONS)}), and the "
                   f"{len(report.get('design_items') or ())} item(s) with a resolution flagged \"confirm the design before "
-                  f"implementing\", and the {len(report.get('guidance_items') or ())} item(s) with engine guidance: "
-                  f"{baseline.summary(corrections)}")
+                  f"implementing\", the {len(report.get('guidance_items') or ())} item(s) with engine guidance, and the "
+                  f"{len(report.get('phase_items') or ())} item(s) whose resolutions have a phase: {baseline.summary(corrections)}")
             if corrections["conflicts"]:
                 print(baseline.format_conflicts(corrections["conflicts"]))
     engagement = report["engagement"]

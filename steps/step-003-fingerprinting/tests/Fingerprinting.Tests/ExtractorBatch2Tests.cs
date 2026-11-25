@@ -747,8 +747,9 @@ public sealed class ExtractorBatch2Tests
         // + 1.12.0 VAULT_SECRET_REFERENCE, CONFIG_FILE_UNPARSEABLE, CUSTOM_FILE_LOGGER_PROVIDER, WINDOWS_BUILD_PIPELINE
         // + 1.13.0 WCF_SERVICE_BINDING_CONFIG and WCF_SERVICE_BINDING_USAGE
         // + 1.14.0 SERILOG_FILE_SINK_USAGE, SERILOG_CONSOLE_SINK_USAGE and SERILOG_CONSOLE_SINK_CONFIG.
-        Assert.Equal("1.15.0", registry.RegistryVersion);
-        Assert.Equal(154, registry.Entries.Count);
+        // + 1.16.0 EVENT_LOG_USAGE, SSIS_PACKAGE_EXECUTION and BACKSLASH_PATH_BUILDING.
+        Assert.Equal("1.16.0", registry.RegistryVersion);
+        Assert.Equal(157, registry.Entries.Count);
         Assert.Contains(registry.Entries, e => e.Name == ApiUsageExtractor.SerilogFileSinkUsage && e.Extractor == ApiUsageExtractor.ExtractorName);
         Assert.Contains(registry.Entries, e => e.Name == ApiUsageExtractor.SerilogConsoleSinkUsage && e.Extractor == ApiUsageExtractor.ExtractorName);
         Assert.Contains(registry.Entries, e => e.Name == "SERILOG_CONSOLE_SINK_CONFIG" && e.Extractor == ConfigurationExtractor.ExtractorName);
@@ -759,12 +760,101 @@ public sealed class ExtractorBatch2Tests
         Assert.Equal(8, registry.Entries.Count(e => e.Extractor == "EntryPointInventory"));
         Assert.Equal(7, registry.Entries.Count(e => e.Extractor == "DependencyAssessment" && e.Category == SignalCategories.PackageDependency));
         Assert.Contains(registry.Entries, e => e.Name == "WCF_CLIENT_BINDING_CONFIG" && e.Extractor == ConfigurationExtractor.ExtractorName);
-        Assert.Equal(16, registry.Entries.Count(e => e.Extractor == ApiUsageExtractor.ExtractorName));
+        Assert.Equal(18, registry.Entries.Count(e => e.Extractor == ApiUsageExtractor.ExtractorName));
         Assert.Equal(3, registry.Entries.Count(e => e.Name.StartsWith("CONTAINER_") && e.Extractor == FileIndicatorExtractor.ExtractorName));
         Assert.Contains(registry.Entries, e => e.Name == IisHostingExtractor.HostingModel && e.Extractor == IisHostingExtractor.ExtractorName);
-        Assert.Equal(3, registry.Entries.Count(e => e.Extractor == PathLiteralExtractor.ExtractorName));
+        Assert.Equal(4, registry.Entries.Count(e => e.Extractor == PathLiteralExtractor.ExtractorName));
         Assert.All(registry.Entries.Where(e => e.Type is SignalTypes.ApiInvocation or SignalTypes.Literal),
             e => Assert.Equal(SignalEvidenceKinds.File, e.EvidenceKind));
+    }
+
+    // ---- registry 1.16.0 ----
+
+    [Fact]
+    public async Task ApiUsage_finds_the_event_log_static_and_instance_but_not_a_lookalike()
+    {
+        using var repo = new TempRepo();
+        repo.Write("Job.cs", """
+            using System.Diagnostics;
+            class Job
+            {
+                void Run()
+                {
+                    if (!EventLog.SourceExists("Job")) EventLog.CreateEventSource("Job", "Application");
+                    EventLog.WriteEntry("Job", "started", EventLogEntryType.Information);
+                    var log = new EventLog("Application");
+                    var other = new MyEventLogWriter();
+                    other.WriteEntry("not the event log");
+                }
+            }
+            """);
+
+        var signals = await Extract(new ApiUsageExtractor(), repo);
+
+        Assert.Equal(
+            ["System.Diagnostics.EventLog", "System.Diagnostics.EventLog.CreateEventSource",
+             "System.Diagnostics.EventLog.SourceExists", "System.Diagnostics.EventLog.WriteEntry"],
+            Values(signals, "EVENT_LOG_USAGE"));
+        var write = Assert.Single(signals, s => s.Name == "EVENT_LOG_USAGE" && s.Value == "System.Diagnostics.EventLog.WriteEntry");
+        Assert.Equal(("Job", "Run", 7), (write.Evidence[0].DeclaringType, write.Evidence[0].Member, write.Evidence[0].LineStart));
+    }
+
+    [Fact]
+    public async Task ApiUsage_finds_where_an_ssis_package_is_loaded_and_run_only_where_the_runtime_is_imported()
+    {
+        using var repo = new TempRepo();
+        repo.Write("Runner.cs", """
+            using Microsoft.SqlServer.Dts.Runtime;
+            class Runner
+            {
+                int RunPackage(string path)
+                {
+                    var app = new Application();
+                    Package package = app.LoadPackage(path, null);
+                    return package.Execute() == DTSExecResult.Success ? 0 : 1;
+                }
+            }
+            """);
+        repo.Write("Other.cs", """
+            class Other
+            {
+                void Go(dynamic loader, dynamic command) { loader.LoadPackage("x", null); command.Execute(); }
+            }
+            """);
+
+        var signals = await Extract(new ApiUsageExtractor(), repo);
+
+        var found = signals.Where(s => s.Name == "SSIS_PACKAGE_EXECUTION").ToList();
+        Assert.Equal(["Microsoft.SqlServer.Dts.Runtime.Application.LoadPackage", "Microsoft.SqlServer.Dts.Runtime.Package.Execute"],
+            Values(found, "SSIS_PACKAGE_EXECUTION"));
+        Assert.All(found, s => Assert.Equal("Runner.cs", s.SourcePath));
+        Assert.All(found.SelectMany(s => s.Evidence), e => Assert.Equal(("Runner", "RunPackage"), (e.DeclaringType, e.Member)));
+    }
+
+    [Fact]
+    public async Task PathLiteral_finds_paths_joined_with_a_backslash_but_not_a_drive_path_or_a_regex()
+    {
+        using var repo = new TempRepo();
+        repo.Write("Logs.cs", """
+            using System.Text.RegularExpressions;
+            class Logs
+            {
+                string A(string dir, string name) => dir + "\\" + name;
+                string B(string dir, string name) => string.Concat(dir, @"\", name);
+                string C(string dir, string name) => $"{dir}\\logs\\{name}.log";
+                string D(string root) => root + "logs\\";
+                string E() => "C:\\data\\in";
+                bool F(string s) => Regex.IsMatch(s, "^" + "\\d+" + "$");
+                string G() => "\\";
+            }
+            """);
+
+        var signals = await Extract(new PathLiteralExtractor(), repo);
+
+        Assert.Equal(["\\", "\\logs\\", "logs\\"], Values(signals, "BACKSLASH_PATH_BUILDING"));
+        var single = Assert.Single(signals, s => s.Name == "BACKSLASH_PATH_BUILDING" && s.Value == "\\");
+        Assert.Equal([4, 5], single.Evidence.Select(e => e.LineStart!.Value).Order().ToArray());
+        Assert.Contains(signals, s => s.Name == PathLiteralExtractor.WindowsPathLiteral);
     }
 
     // ---- helpers ----

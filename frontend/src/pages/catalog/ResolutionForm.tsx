@@ -6,7 +6,7 @@ import { ConfirmDialog } from '../../components/ConfirmDialog'
 import { Field, inputClass } from '../../components/FormField'
 import { useToast } from '../../components/Toast'
 import type { ConsumerImpact, EffortLevel } from '../../types/catalog'
-import type { ItemResolution, ItemStatus, ResolutionWriteInput } from '../../types/items'
+import { RESOLUTION_PHASES, type ItemResolution, type ItemStatus, type ResolutionWriteInput } from '../../types/items'
 import { fieldErrorMap, slugify } from './itemHelpers'
 
 const IMPACTS: ConsumerImpact[] = ['none', 'low', 'medium', 'high']
@@ -35,6 +35,7 @@ interface FormState {
   linux_compatible: boolean
   container_ready: boolean
   confirm_design: boolean
+  phase: string
   engine_guidance: string
   notes: string
   status: ItemStatus
@@ -52,6 +53,7 @@ function toFormState(resolution?: ItemResolution): FormState {
     linux_compatible: resolution?.linux_compatible ?? true,
     container_ready: resolution?.container_ready ?? true,
     confirm_design: resolution?.confirm_design ?? false,
+    phase: resolution?.phase ? String(resolution.phase) : '',
     engine_guidance: resolution?.engine_guidance ?? '',
     notes: resolution?.notes ?? '',
     status: resolution?.status ?? 'active',
@@ -102,6 +104,7 @@ export function ResolutionForm({ mode, itemId, itemVersion, resolution, existing
       linux_compatible: form.linux_compatible,
       container_ready: form.container_ready,
       confirm_design: form.confirm_design,
+      ...(form.phase ? { phase: Number(form.phase) } : {}),
       engine_guidance: form.engine_guidance.trim() || null,
       notes: form.notes.trim() || null,
       status: form.status,
@@ -217,6 +220,26 @@ export function ResolutionForm({ mode, itemId, itemVersion, resolution, existing
                 </select>
               </Field>
             </div>
+
+            <Field label="Phase" error={fieldErrors.phase}>
+              <select
+                value={form.phase}
+                onChange={(e) => update('phase', e.target.value)}
+                className={inputClass(!!fieldErrors.phase)}
+                aria-label="Phase"
+              >
+                {!form.phase && <option value="">not set</option>}
+                {Object.entries(RESOLUTION_PHASES).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {value}. {label}
+                  </option>
+                ))}
+              </select>
+              <span className="mt-1 block text-xs text-neutral-500">
+                Where its work item stands in a conversion's plan: work items are applied by phase, and within a phase
+                each project's referenced projects first.
+              </span>
+            </Field>
 
             <div className="space-y-2 rounded border border-neutral-200 p-3 text-sm text-neutral-700">
               <label className="flex items-center gap-2">

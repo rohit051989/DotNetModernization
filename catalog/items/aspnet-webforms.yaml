@@ -84,6 +84,7 @@ resolutions:
     Prerequisites: Same as Blazor Server. Preferred where the team's skills favour MVC over Blazor.
 
     Known limitations: Requires explicit reimplementation of state that ViewState previously handled implicitly.
+  phase: 4
   status: active
   target_description: .NET 10 + ASP.NET Core MVC + Razor views, container on OCP4
 - confirm_design: true
@@ -141,6 +142,7 @@ resolutions:
     Prerequisites: Screen inventory and behavioural specification captured before starting. Business sign-off on UI change.
 
     Known limitations: No automated path preserves ViewState or the page lifecycle. Expect genuine redesign of stateful screens. Requires a persistent connection, which changes load-balancer and session-affinity requirements on OCP4.
+  phase: 4
   status: active
   target_description: .NET 10 + Blazor Server, container on OCP4
 scope: application

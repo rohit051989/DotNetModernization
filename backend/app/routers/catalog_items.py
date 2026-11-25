@@ -369,6 +369,8 @@ def _apply_resolution_fields(resolution: models.ItemResolution, payload: item_sc
         resolution.engine_guidance = payload.engine_guidance
     if payload.confirm_design is not None:             # omitted: unchanged
         resolution.confirm_design = payload.confirm_design
+    if payload.phase is not None:                      # omitted: unchanged
+        resolution.phase = payload.phase
     resolution.updated_at = _now()
 
 

@@ -64,6 +64,7 @@ resolutions:
     Prerequisites: Repository builds cleanly on the current framework. Contract snapshot captured before any change.
 
     Known limitations: Pins Newtonsoft.Json explicitly rather than adopting System.Text.Json, to guarantee payload parity. Serializer modernization is deferred to a later pass.
+  phase: 4
   status: active
   target_description: .NET 10 + ASP.NET Core, container on OCP4
 - confirm_design: true
@@ -85,6 +86,7 @@ resolutions:
     Prerequisites: Good test coverage, since endpoint code is restructured rather than retargeted.
 
     Known limitations: External contract is unchanged but internal structure churns significantly, enlarging the review surface for no consumer-visible benefit. Not the default choice under a lift-and-shift posture.
+  phase: 4
   status: active
   target_description: .NET 10 + Minimal APIs, container on OCP4
 scope: application

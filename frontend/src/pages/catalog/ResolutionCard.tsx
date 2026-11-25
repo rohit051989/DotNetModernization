@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import type { DerivationAction, ItemResolution } from '../../types/items'
+import { RESOLUTION_PHASES, type DerivationAction, type ItemResolution } from '../../types/items'
 import { DefaultBadge, DeletedBadge, EffortBadge, FlagBadge, ImpactBadge } from '../../components/Badge'
 import { LimitedList } from '../../components/LimitedList'
 
@@ -29,6 +29,17 @@ export function ResolutionCard({ resolution, isLowestImpact, actions, highlight 
         {resolution.is_default && <DefaultBadge />}
         <FlagBadge label="Linux" value={resolution.linux_compatible} />
         <FlagBadge label="container" value={resolution.container_ready} />
+        {resolution.phase ? (
+          <span className="rounded border border-sky-200 bg-sky-50 px-1.5 text-[11px] text-sky-800"
+            title="Where its work item stands in a conversion's plan: by phase, then each project's referenced projects first."
+            data-testid="phase">
+            phase {resolution.phase}: {RESOLUTION_PHASES[resolution.phase]}
+          </span>
+        ) : (
+          <span className="rounded border border-amber-200 bg-amber-50 px-1.5 text-[11px] text-amber-800" data-testid="phase">
+            no phase
+          </span>
+        )}
         {resolution.confirm_design && (
           <span className="rounded border border-violet-200 bg-violet-50 px-1.5 text-[11px] text-violet-800"
             title="Changes the design: the conversion's assistant asks the developer how to implement it before changing code."

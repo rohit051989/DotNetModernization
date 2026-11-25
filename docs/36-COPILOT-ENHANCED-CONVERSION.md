@@ -1251,3 +1251,52 @@ Rule 20, for each engine:
   test passes.
 - Proved on the fixture (`tests/test_guidance_fixtures.py`, test 1): its ASMX project, with neither web.config nor a
   web project type GUID, raises the ASMX item and no class-library item.
+
+## Part Q addendum — Phases, the SSIS work item's places, replaced assemblies, Linux items, Files (2026-11-25)
+
+From a review of two prepared conversions (the plan retargeted an application before its libraries and before its SSIS
+runtime was removed; the SSIS work item's only place was the package it says to leave alone; the Windows-only item
+forbade what the SSIS work item does; the Event Log and backslash paths went unseen).
+
+- **Phases.** Every catalog resolution has a phase (`item_resolutions.phase`, migration `e7a3c5f9b2d4`; factory values
+  in `seed/data/phases.yaml`, seeded through `baseline.py`, exported, edited in the catalog's resolution form): 1 project
+  format, 2 libraries, 3 replace framework-only dependencies, 4 retarget and host applications, 5 platform and
+  deployment, 6 decisions a person still has to make (`render.PHASES`; unset counts as 5). The plan
+  (`render.work_items`) orders work items by phase; within a phase, a work item on a project's referenced projects
+  (solution-discovery's `project_references`, the model's `references`) before the one on the project; then the
+  catalog's ordering rules (which now hold within a phase, never across one); then the model's order. Each work item's
+  Prerequisites name its phase and the earlier work items it follows, with why. The decision sheet's Ordering lists the
+  plan, with phases.
+- **The SSIS work item** (resolutions `csharp-worker-container`, `csharp-sql-pushdown`): its places are the code that
+  executes the package (registry 1.16.0's `SSIS_PACKAGE_EXECUTION`, with the member, and the in-scope projects
+  referencing the SSIS runtime); its impact lists the `.dtproj` and `.dtsx` as `reference`, the executing files and
+  project file as `update`, and as `create` the new code per package and the test project beside the executing project
+  (`collect.ssis_places`). The addendum's in-scope project table leaves out projects this track does not convert.
+- **Replaced assemblies.** `compatibility/windows_only_assemblies.yaml` names, per assembly, the resolutions that replace
+  it (`replaced_by`). With one chosen, the assembly is not the Windows-only item's (`collect.windows_only_left`): the
+  addendum's verdict names the replacing work item, the item keeps only the assemblies left, and preparation's warning
+  names those.
+- **New items**, from registry 1.16.0 (scanner 1.11.0): `event-log-usage` (`EVENT_LOG_USAGE`: write the same text to
+  standard error) and `backslash-path-building` (`BACKSLASH_PATH_BUILDING`: `Path.Combine`), each with guidance; the path
+  guidance says file names are case-sensitive on Linux.
+- **The CronJob** guidance mounts a writable volume at each path the job writes (OpenShift runs it as an arbitrary user,
+  so it cannot write inside the image), sets `concurrencyPolicy: Forbid` unless overlapping runs are safe, and limits
+  the job history. The build section, and the scope section, say a new test project for in-scope code is created beside
+  the project it tests and joins the conversion's solution.
+- **Files** list only the files of the work item's own in-scope projects and the repository level (`concerned_files`).
+- **The verifier** (1.6.0) rebuilds the branch with the platform compatibility analyzer on (CA1416,
+  `dotnet.analyze_platform`), lists each Windows-only call left with file and line in VERIFICATION.md ("Windows-only API
+  calls"), and any listed call, or an analysis that could not run, is a gap: the verdict stays below PROVEN.
+
+Rule 20, for each engine:
+
+- **GitHub Copilot**: applied. Its work items carry the phase and what each follows, the SSIS places and impact, the new
+  items and guidance; its addendum and decision sheet carry the replaced verdict and the plan's order. It makes its own
+  plan, so the order is in each work item and the decision sheet.
+- **Claude Code**: applied. The same work items, addendum and decision sheet through the mechanics table; its plan, the
+  one engine mechanic that differs, lists the steps in phase order, each with its phase. The parity test passes.
+- Proved on fixtures: `tests/test_guidance_fixtures.py` (test 4b, the first repository's order SDK-style, bridge, SSIS
+  C# worker, CronJob, platform, Windows-only decision, in both engines; tests 9 to 12, the SSIS places, the replaced
+  assembly, Files, the new items), `tests/test_plan_order.py` (the second repository: the library's bridge before the
+  MVC move and the WCF rewrite), `tests/test_resolution_phases.py`, `tests/test_verifier_platform.py` (CA1416 on a
+  converted job calling the Event Log).

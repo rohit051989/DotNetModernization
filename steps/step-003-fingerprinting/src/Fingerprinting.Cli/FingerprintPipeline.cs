@@ -37,8 +37,9 @@ public sealed class FingerprintPipeline(SignalRegistry registry, IReadOnlyList<I
     // 1.9.0 (registry 1.14.0): Serilog sinks in code (SERILOG_FILE_SINK_USAGE, SERILOG_CONSOLE_SINK_USAGE) and the
     // Console sink in appsettings (SERILOG_CONSOLE_SINK_CONFIG).
     // 1.10.0 (registry 1.15.0): DATETIME_NOW_USAGE also matches TimeZoneInfo.Local, DateTimeKind.Local and ToLocalTime().
+    // 1.11.0 (registry 1.16.0): EVENT_LOG_USAGE, SSIS_PACKAGE_EXECUTION and BACKSLASH_PATH_BUILDING.
     // Matches the application-fingerprinting step registration version.
-    public const string ScannerVersion = "1.10.0";
+    public const string ScannerVersion = "1.11.0";
 
     // The registry is the single source of truth for evidence_kind per
     // signal name (25-STANDARDS-AND-VIEWPOINTS.md Part A3 addendum) —

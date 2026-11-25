@@ -15,6 +15,7 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
     text,
+    SmallInteger,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -1582,6 +1583,9 @@ class ItemResolution(Base):
     # Changes the design or the architecture (SOAP to REST, a UI rewrite): the conversion's engine asks the developer how
     # to implement its work items before changing any code (36-COPILOT-ENHANCED-CONVERSION "Design questions").
     confirm_design: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    # Where its work item stands in a conversion's plan, 1 to 6 (36-COPILOT-ENHANCED-CONVERSION "Phases"; render.PHASES):
+    # the plan orders work items by phase, then by the project dependency graph. Null: not set (the plan treats it as 5).
+    phase: Mapped[int | None] = mapped_column(SmallInteger)
     # Hash of the content the seed last wrote (app/items/baseline.py): a
     # reseed never overwrites a row edited since. Null: no baseline.
     seeded_hash: Mapped[str | None] = mapped_column(Text)
@@ -1599,6 +1603,7 @@ class ItemResolution(Base):
         CheckConstraint(f"consumer_impact IN {CONSUMER_IMPACT}", name="ck_item_resolutions_consumer_impact"),
         CheckConstraint(f"effort IN {EFFORT}", name="ck_item_resolutions_effort"),
         CheckConstraint(f"status IN {ITEM_STATUS}", name="ck_item_resolutions_status"),
+        CheckConstraint("phase IS NULL OR phase BETWEEN 1 AND 6", name="ck_item_resolutions_phase"),
         UniqueConstraint("item_id", "name", name="uq_item_resolutions_item_id_name"),
         # At most one default per item. A soft-deleted default doesn't count.
         # Exactly one is enforced by trg_item_resolutions_one_default, a

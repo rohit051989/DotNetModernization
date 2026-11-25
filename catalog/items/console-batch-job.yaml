@@ -104,6 +104,7 @@ resolutions:
   linux_compatible: true
   name: Not a deployable workload — developer or test tool
   notes: null
+  phase: 4
   status: active
   target_description: Stays in the repository, run by hand outside OCP4
 - consumer_impact: low
@@ -118,8 +119,18 @@ resolutions:
        it fails.
     3. Read file and directory locations from configuration, never from fixed Windows paths.
     4. Add a Dockerfile for the program (numeric non-root user, no ports) and an OpenShift CronJob
-       manifest. Take the schedule from the deployment parameter named below; never write a
-       schedule yourself.
+       manifest. Take the schedule from the deployment parameter named below; never write a schedule
+       yourself.
+    5. OpenShift runs the container as an arbitrary user, not the user named in the image, so the
+       program cannot write inside the image. For each folder the program writes to (logs, output,
+       work files), mount a writable volume (`emptyDir`, or a persistent volume claim where the
+       files must outlive the run) at the path its configuration setting names, and set that setting
+       to the mount path in the manifest. Write nowhere outside those mounts.
+    6. Set `concurrencyPolicy: Forbid`, so a run never starts while the previous one is still
+       running, unless the program is safe to run twice at once (it never empties, refills or locks
+       shared data); then record why in the task's notes.
+    7. Set `successfulJobsHistoryLimit: 3` and `failedJobsHistoryLimit: 3`, and `backoffLimit` on
+       the job template, so finished runs and failed retries do not pile up.
   id: ocp4-cronjob-container
   is_default: true
   linux_compatible: true
@@ -128,6 +139,7 @@ resolutions:
     Prerequisites: Job is idempotent and safe to retry. File paths externalized to configuration.
 
     Known limitations: Scheduling moves from Windows Task Scheduler to OpenShift, changing who owns the schedule. Local file dependencies must move to a mounted volume or object storage.
+  phase: 4
   status: active
   target_description: .NET 10 console + OCP4 CronJob
 - consumer_impact: low
@@ -148,6 +160,7 @@ resolutions:
     Prerequisites: Job frequency high enough that a persistently running pod is justified.
 
     Known limitations: Consumes resources continuously. Scheduling logic moves into the application, which makes it less visible to platform operators than a CronJob.
+  phase: 4
   status: active
   target_description: .NET 10 Worker Service + OCP4 Deployment
 scope: application

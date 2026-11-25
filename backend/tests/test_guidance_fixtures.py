@@ -18,6 +18,7 @@ Runs in this run's own schema. Run from backend/:  python -m unittest tests.test
 """
 import datetime
 import json
+import re
 import shutil
 import subprocess
 import tempfile
@@ -188,39 +189,56 @@ class GuidanceOnAScannedRepository(unittest.TestCase):
             self.assertNotIn("Keep the current arrangement", sheet, engine)
             self.assertNotIn("missing guidance", sheet, engine)
 
-    def test_4b_the_project_file_and_its_packages_are_one_task_before_every_other_for_both_engines(self):
-        self.decide({})
+    def test_4b_the_plan_goes_by_phase_then_by_the_dependency_graph_for_both_engines(self):
+        """Gap 1 (review hand-off, first repository): an old-style console job referencing an old-style class library and
+        the SSIS runtime by path. Expected: SDK-style (one task with packages.config), the library's bridge, the SSIS C#
+        worker, the CronJob container, the platform changes, then the Windows-only decision."""
+        self.decide({"ssis-package": "csharp-worker-container"})
         model = collect.collect(self.db, self.repo)
         work = render.work_items(model)
         names = [w["name"] for w in work]
         self.assertEqual(names[:2], ["applying-sdk-style-project-conversion", "applying-packagereference-migration"])
         self.assertEqual(work[1]["together_with"], "applying-sdk-style-project-conversion")
-        # Every task that retargets Batch or the library it depends on comes after them.
-        for later in ("applying-netstandard20-bridge", "applying-ocp4-cronjob-container"):
-            self.assertIn(later, names[2:])
+        self.assertEqual([w["phase"] for w in work], sorted(w["phase"] for w in work))
+        expected = ["applying-sdk-style-project-conversion", "applying-netstandard20-bridge", "applying-csharp-worker-container",
+                    "applying-ocp4-cronjob-container", "applying-path-combine", "applying-decide-windows-only-replacement"]
+        self.assertEqual([n for n in names if n in expected], expected)
+        self.assertEqual(names[-1], "applying-decide-windows-only-replacement")
+        phases = {w["name"]: w["phase"] for w in work}
+        self.assertEqual([phases[n] for n in expected], [1, 2, 3, 4, 5, 6])
         files = self.both(model)
-        # Claude Code: its plan is the order, and the two are one step, one commit.
+        # Claude Code: its plan is the order, each step with its phase; the project file and its packages are one step.
         plan = files[engines.CLAUDE][claude.instructions_path(model)]
         self.assertIn("1. `applying-sdk-style-project-conversion` and `applying-packagereference-migration`, in one task "
                       "and one commit: Convert to an SDK-style project (Old-style (non-SDK) project file); Move to "
-                      "PackageReference (NuGet packages listed in packages.config)", plan)
-        self.assertIn("A step that names more than one work item is one task", plan)
-        self.assertLess(plan.index("`applying-packagereference-migration`, in one task"), plan.index("`applying-netstandard20-bridge`"))
-        # GitHub Copilot plans for itself: each instruction says where it stands, and the decision sheet lists it.
-        copilot = files[engines.COPILOT]
-        skill = lambda name: copilot[f".github/upgrades/skills/{name}.md"]          # noqa: E731
-        self.assertIn("- Apply this **first**, before every other instruction of this repository.",
-                      skill("applying-sdk-style-project-conversion"))
-        self.assertIn("- Apply **together with** `applying-packagereference-migration` (NuGet packages listed in "
-                      "packages.config), in the same task and commit.", skill("applying-sdk-style-project-conversion"))
-        self.assertIn("- Apply **together with** `applying-sdk-style-project-conversion` (Old-style (non-SDK) project "
-                      "file), in the same task and commit.", skill("applying-packagereference-migration"))
-        for later in ("applying-netstandard20-bridge", "applying-ocp4-cronjob-container"):
-            self.assertIn("- Apply `applying-sdk-style-project-conversion` (Old-style (non-SDK) project file) **first**; "
-                          "this one depends on it.", skill(later))
-        sheet = copilot[f"{paths.PLATFORM_INPUTS_DIR}/decision-sheet.md"]
-        self.assertIn("- `applying-sdk-style-project-conversion` runs first, before every other change", sheet)
-        self.assertNotIn("bump the version everywhere", skill("applying-packagereference-migration"))
+                      "PackageReference (NuGet packages listed in packages.config) (phase 1, project format)", plan)
+        at = [plan.index(f"`{n}`") for n in expected]
+        self.assertEqual(at, sorted(at))
+        self.assertIn("`applying-csharp-worker-container`: C# worker with in-process pipeline (SSIS package) (phase 3, "
+                      "replace framework-only dependencies)", plan)
+        # Both engines: each work item's Prerequisites name its phase and the work items it follows.
+        for engine in engines.ENGINES:
+            skill = (lambda name: files[engine][f".github/upgrades/skills/{name}.md"]) if engine == engines.COPILOT else \
+                (lambda name: files[engine][claude.skill_path(name)])
+            cron = " ".join(skill("applying-ocp4-cronjob-container").split())
+            self.assertIn("Phase 4 of 6, retarget and host applications: apply it after every work item of the phases "
+                          "before it.", cron)
+            self.assertIn("Apply after `applying-csharp-worker-container` (C# worker with in-process pipeline (SSIS "
+                          "package)): it changes the same project first.", cron)
+            self.assertIn("Apply after `applying-netstandard20-bridge` (.NET Standard 2.0 bridge (.NET Framework 4.7 class "
+                          "library)): it changes a project this one references.", cron)
+            self.assertIn("Apply after `applying-sdk-style-project-conversion`", cron)
+            bridge = " ".join(skill("applying-netstandard20-bridge").split())
+            self.assertIn("Phase 2 of 6, libraries", bridge)
+            self.assertNotIn("Apply after `applying-csharp-worker-container`", bridge)
+            sdk = " ".join(skill("applying-sdk-style-project-conversion").split())
+            self.assertIn("- Apply **together with** `applying-packagereference-migration` (NuGet packages listed in "
+                          "packages.config), in the same task and commit.", sdk)
+            sheet = next(t for p_, t in files[engine].items() if p_.endswith("decision-sheet.md"))
+            ordering = sheet.split("## Ordering", 1)[1].split("\n## ", 1)[0]
+            listed = [n for n in re.findall(r"`(applying-[^`]+)`", ordering) if n in expected]
+            self.assertEqual(listed, expected, engine)
+            self.assertIn("(phase 6, decisions a person still has to make)", ordering)
 
     def test_6_the_wcf_web_project_becomes_sdk_style_in_its_move(self):
         """Orders is a classic ASP.NET WCF web project: no project-file item of its own (test 1), and the WCF
@@ -320,6 +338,86 @@ class GuidanceOnAScannedRepository(unittest.TestCase):
                 # The Windows-only assemblies wait for a person's decision, by design.
                 self.assertTrue(any(d.startswith("Reference to an assembly that only loads on Windows: no decision")
                                     for d in details), details)
+
+
+    def test_9_the_ssis_work_item_changes_the_code_that_runs_the_package(self):
+        """Gap 2: places are the code that loads and runs the package; the .dtproj and .dtsx are references; the new
+        code and its test project are created. The .dtproj is not in the addendum's project table."""
+        self.decide({"ssis-package": "csharp-worker-container"})
+        model = collect.collect(self.db, self.repo)
+        files = self.both(model)
+        for text_ in (files[engines.COPILOT][".github/upgrades/skills/applying-csharp-worker-container.md"],
+                      files[engines.CLAUDE][claude.skill_path("applying-csharp-worker-container")]):
+            places = text_.split("## Places", 1)[1].split("\n## ", 1)[0]
+            self.assertRegex(places, r"`Batch/Program\.cs:\d+` \(Batch/Batch\.csproj\): "
+                                     r"`Microsoft\.SqlServer\.Dts\.Runtime\.Application\.LoadPackage` in `Program\.Main`")
+            self.assertNotIn("Etl/Etl.dtproj", places)
+            impact = text_.split("## Files this changes", 1)[1].split("\n## ", 1)[0]
+            self.assertIn("| reference (read, never change) | `Etl/Etl.dtproj` | Etl/Etl.dtproj | confirmed |", impact)
+            self.assertIn("| reference (read, never change) | `Etl/Load.dtsx` | Etl/Etl.dtproj | confirmed |", impact)
+            self.assertIn("| update | `Batch/Program.cs` | Batch/Batch.csproj | confirmed |", impact)
+            self.assertIn("| create | `new: Batch/Load/*.cs` | Batch/Batch.csproj | expected |", impact)
+            self.assertIn("| create | `new: Batch.Tests/Batch.Tests.csproj` | Batch/Batch.csproj | expected |", impact)
+            self.assertIn("A file marked reference is the specification of this change", impact)
+            self.assertIn("- `Batch/Batch.csproj`: the project's current framework is `v4.7`", text_)
+            self.assertIn("added to the conversion's solution", " ".join(text_.split()))
+        addendum = files[engines.COPILOT][f"{paths.PLATFORM_INPUTS_DIR}/assessment-addendum.md"]
+        table = addendum.split("| Project | Format | packages.config |", 1)[1].split("\n\n", 1)[0]
+        self.assertNotIn("Etl/Etl.dtproj", table)
+        self.assertIn("`Batch/Batch.csproj`", table)
+
+    def test_10_an_assembly_the_ssis_work_item_replaces_is_not_the_windows_only_items(self):
+        """Gap 3: with an SSIS C# resolution chosen, the SSIS runtime is not listed or asked about by the Windows-only
+        item; the addendum names the work item that replaces it; the decision names only the Sybase provider."""
+        self.decide({"ssis-package": "csharp-worker-container"})
+        model = collect.collect(self.db, self.repo)
+        windows = next(i for i in model["items"] if i["id"] == "windows-only-assembly-reference")
+        self.assertEqual(windows["assemblies"], ["Sybase.AdoNet4.AseClient"])
+        self.assertEqual([o["project"] for o in windows["occurrences"]], ["Shared/Shared.csproj"])
+        files = self.both(model)
+        for engine in engines.ENGINES:
+            addendum = next(t for p_, t in files[engine].items() if p_.endswith("assessment-addendum.md"))
+            row = next(line for line in addendum.splitlines() if "Microsoft.SqlServer.ManagedDTS" in line and line.startswith("|"))
+            self.assertIn("replaced by `applying-csharp-worker-container`: that work item removes the reference", row)
+            item_text = (files[engine][".github/upgrades/skills/applying-decide-windows-only-replacement.md"]
+                         if engine == engines.COPILOT else files[engine][claude.skill_path("applying-decide-windows-only-replacement")])
+            places = item_text.split("## Places", 1)[1].split("\n## ", 1)[0]
+            self.assertIn("Shared/Shared.csproj", places)
+            self.assertIn("Sybase.AdoNet4.AseClient", places)
+            self.assertNotIn("ManagedDTS", places)
+        details = render.incomplete(model)["details"]
+        self.assertIn("Reference to an assembly that only loads on Windows: no decision recorded for "
+                      "Sybase.AdoNet4.AseClient; a person decides the replacement before the conversion is run, and the "
+                      "engine is told not to change it", details)
+        self.assertFalse(any("ManagedDTS" in d for d in details), details)
+
+    def test_11_each_work_item_lists_only_its_own_projects_files_and_the_repositorys(self):
+        """Gap 7: a build script at the repository's level is listed; one in another project's folder is not."""
+        self.decide({})
+        model = collect.collect(self.db, self.repo)
+        item = next(i for i in model["items"] if i["id"] == "event-log-usage")
+        listed = render.concerned_files(model, item)
+        self.assertIn("build/build.cmd", listed)
+        self.assertIn("Batch/Program.cs", listed)
+        self.assertNotIn("Legacy/deploy.cmd", listed)
+        self.assertFalse(any(f.startswith("Etl/") for f in listed), listed)
+
+    def test_12_the_event_log_and_backslash_path_items_reach_both_engines(self):
+        """Gaps 4 and 5, on the scanned fixture: each item raised at its call site, with its guidance."""
+        self.decide({})
+        model = collect.collect(self.db, self.repo)
+        files = self.both(model)
+        for name, place, words in (
+                ("applying-event-log-to-standard-error", "`Batch/Program.cs:", "Write the same text to standard error"),
+                ("applying-path-combine", "`Batch/Program.cs:", "File names are case-sensitive on Linux")):
+            for text_ in (files[engines.COPILOT][f".github/upgrades/skills/{name}.md"], files[engines.CLAUDE][claude.skill_path(name)]):
+                self.assertIn(place, text_.split("## Places", 1)[1])
+                self.assertIn(words, " ".join(text_.split()))
+        cron = files[engines.COPILOT][".github/upgrades/skills/applying-ocp4-cronjob-container.md"]
+        flat = " ".join(cron.split())
+        self.assertIn("OpenShift runs the container as an arbitrary user", flat)
+        self.assertIn("`concurrencyPolicy: Forbid`", flat)
+        self.assertIn("`successfulJobsHistoryLimit: 3`", flat)
 
 
 if __name__ == "__main__":

@@ -66,6 +66,7 @@ resolutions:
     Prerequisites: A Windows host remains available for build and run. Third-party control suites checked for modern .NET support before starting.
 
     Known limitations: Does not reach OCP4 — Windows Forms has no Linux or container story. This option keeps the application supported, not portable.
+  phase: 4
   status: active
   target_description: .NET 8+ Windows Desktop (net8.0-windows), Windows host
 - confirm_design: true
@@ -83,6 +84,7 @@ resolutions:
     Prerequisites: Domain logic separable from the forms. User-facing change accepted by the business, with retraining planned.
 
     Known limitations: A rewrite, not a migration — no accelerator covers the UI layer. Scope this from the business case, not from the code.
+  phase: 4
   status: active
   target_description: Blazor on ASP.NET Core (container on OCP4), or .NET MAUI
 scope: application

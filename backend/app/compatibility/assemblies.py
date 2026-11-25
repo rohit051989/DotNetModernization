@@ -34,6 +34,23 @@ def windows_only_by_project(db, repository_id) -> dict | None:
     return out
 
 
+def _entry(name: str | None) -> dict | None:
+    simple = (name or "").split(",")[0].strip().lower()
+    if not simple:
+        return None
+    for entry in _entries():
+        listed = entry["name"].lower()
+        if (simple == listed) if entry.get("match", "exact") == "exact" else simple.startswith(listed):
+            return entry
+    return None
+
+
+def replaced_by(name: str | None) -> list[str]:
+    """The catalog resolutions that replace the assembly `name` when a conversion chooses one (its entry's
+    `replaced_by`): [] when none does, or the list does not name it."""
+    return list((_entry(name) or {}).get("replaced_by") or [])
+
+
 def windows_only(name: str | None) -> str | None:
     """Why the assembly `name` (its simple name) only loads on Windows, or None when the list does not name it."""
     simple = (name or "").split(",")[0].strip().lower()

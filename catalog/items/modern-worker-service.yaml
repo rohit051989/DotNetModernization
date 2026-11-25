@@ -53,6 +53,7 @@ resolutions:
   linux_compatible: true
   name: OCP4 CronJob (scheduled)
   notes: null
+  phase: 4
   status: active
   target_description: Worker in a container, OCP4 CronJob
 - consumer_impact: none
@@ -66,6 +67,7 @@ resolutions:
   linux_compatible: true
   name: OCP4 Deployment (continuous)
   notes: null
+  phase: 4
   status: active
   target_description: Worker in a container, OCP4 Deployment
 scope: application

@@ -44,7 +44,7 @@ CONTENT_FIELDS: dict[type, tuple[str, ...]] = {
                          "deleted", "engine_guidance"),
     models.ItemResolution: ("item_id", "name", "description", "target_description", "consumer_impact", "effort", "is_default",
                             "linux_compatible", "container_ready", "notes", "status", "deleted", "impact_rules",
-                            "engine_guidance", "confirm_design"),
+                            "engine_guidance", "confirm_design", "phase"),
     models.ResolutionDerivation: ("item_id", "action", "dependent_resolution_id", "applies_to", "reason", "deleted"),
 }
 
@@ -55,13 +55,27 @@ CONTENT_FIELDS: dict[type, tuple[str, ...]] = {
 OPTIONAL_FIELDS: dict[type, dict[str, object]] = {
     models.CatalogItem: {"engine_guidance": None},                            # 36-COPILOT-ENHANCED-CONVERSION Part K
     # 33-IMPACT-ANALYSIS Part D; 36 Part K; 36 "Design questions before converting" (unset is false).
-    models.ItemResolution: {"impact_rules": [], "engine_guidance": None, "confirm_design": False},
+    # 36 "Phases" (unset is null).
+    models.ItemResolution: {"impact_rules": [], "engine_guidance": None, "confirm_design": False, "phase": None},
 }
 
 ENGINE_GUIDANCE_FILE = Path(__file__).resolve().parents[1] / "seed" / "data" / "engine_guidance.yaml"
 # The factory resolutions that change the design or the architecture: confirm_design set (36-COPILOT-ENHANCED-CONVERSION
 # "Design questions before converting").
 CONFIRM_DESIGN_FILE = Path(__file__).resolve().parents[1] / "seed" / "data" / "confirm_design.yaml"
+# The phase of each factory resolution (36-COPILOT-ENHANCED-CONVERSION "Phases"): by item, with overrides by resolution.
+PHASES_FILE = Path(__file__).resolve().parents[1] / "seed" / "data" / "phases.yaml"
+
+
+@functools.cache
+def _phases() -> dict:
+    return yaml.safe_load(PHASES_FILE.read_text(encoding="utf-8"))
+
+
+def factory_phase(item_id: str, resolution_id: str) -> int | None:
+    """The factory phase of a resolution: its own entry in phases.yaml, else its item's, else None."""
+    data = _phases()
+    return (data.get("resolutions") or {}).get(resolution_id) or (data.get("items") or {}).get(item_id)
 
 
 @functools.cache
@@ -98,7 +112,9 @@ def with_engine_guidance(model: type, row_id: str, desired: dict, item_id: str |
         text = (_engine_guidance().get(row_id) or {}).get("guidance")
         return {**desired, "engine_guidance": text.strip() if text else None}
     text = ((_engine_guidance().get(item_id or desired["item_id"]) or {}).get("resolutions") or {}).get(row_id)
-    return {**desired, "engine_guidance": text.strip() if text else None, "confirm_design": row_id in _confirm_design()}
+    item_id = item_id or desired["item_id"]
+    return {**desired, "engine_guidance": text.strip() if text else None, "confirm_design": row_id in _confirm_design(),
+            "phase": factory_phase(item_id, row_id)}
 
 TABLES = {models.CatalogItem: "catalog_items", models.ItemResolution: "item_resolutions",
           models.ResolutionDerivation: "resolution_derivations"}

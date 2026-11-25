@@ -177,6 +177,105 @@ def packages_config(db: Session, repository_id, excluded: set) -> list[dict]:
     return out
 
 
+# The SSIS resolutions that reimplement a package in C# (catalog: ssis-package). Their place is the code that loads and
+# runs the package, not the package project: the .dtproj and .dtsx are the specification, read and never changed.
+SSIS_ITEM = "ssis-package"
+SSIS_REIMPLEMENTING = ("csharp-worker-container", "csharp-sql-pushdown")
+SSIS_RUNTIME = "Microsoft.SqlServer.ManagedDTS"
+
+
+def ssis_places(db: Session, repository_id, excluded: set, files: list[str], item: dict, references: list[dict]) -> None:
+    """For an ssis-package item whose chosen resolution reimplements the package: its places become the code that
+    executes the package (registry 1.16.0's SSIS_PACKAGE_EXECUTION, with the member, and each in-scope project that
+    references the SSIS runtime by path); its impact lists the .dtproj and each .dtsx as `reference` (read, never
+    changed), the executing files and project files as `update`, and as `create` the new code (a path pattern per
+    package) and the test project beside each executing project, certainty `expected`. No executing code in scope: left
+    as it was."""
+    res = item.get("resolution") or {}
+    if item["id"] != SSIS_ITEM or res.get("id") not in SSIS_REIMPLEMENTING:
+        return
+    places: list[dict] = []
+    for project, source, value, evidence in db.execute(text("""
+            SELECT p.relative_path, s.source_path, s.value, s.evidence FROM fingerprint_signals s
+            JOIN projects p ON p.id = s.project_id
+            WHERE s.repository_id = :r AND s.signal_name = 'SSIS_PACKAGE_EXECUTION'
+            ORDER BY p.relative_path, s.source_path, s.value"""), {"r": repository_id}):
+        if project in excluded:
+            continue
+        lines = [{"line": e.get("lineStart"), "value": value, "member": e.get("member"), "type": e.get("declaringType"),
+                  "certainty": None} for e in evidence or [] if e.get("lineStart") is not None]
+        found = next((o for o in places if o["project"] == project and o["file"] == source), None)
+        if found is None:
+            places.append({"project": project, "file": source, "value": value, "certainty": "confirmed", "lines": lines})
+        else:
+            found["lines"] = sorted(found["lines"] + lines, key=lambda x: (x["line"], x["value"] or ""))
+    executing = {o["project"] for o in places}
+    for project in sorted({a["project"] for a in references if a["name"].split(",")[0].strip().lower() == SSIS_RUNTIME.lower()}
+                          - executing):
+        places.append({"project": project, "file": None, "value": f"references {SSIS_RUNTIME}", "certainty": "confirmed",
+                       "lines": []})
+    if not places:
+        return
+    packages = sorted({o["project"] for o in item["occurrences"]})
+    impact = []
+    for dtproj in packages:
+        folder = dtproj.rsplit("/", 1)[0] + "/" if "/" in dtproj else ""
+        for f in [dtproj] + sorted(f for f in files if f.startswith(folder) and f.lower().endswith(".dtsx")):
+            impact.append({"project": dtproj, "resolution": res["id"], "action": "reference", "file": f, "proposed": None,
+                           "certainty": "confirmed", "reasons": ["the package is the specification: read it, never change it"]})
+    stems = sorted({f.rsplit("/", 1)[-1][:-len(".dtsx")] for f in files if f.lower().endswith(".dtsx")
+                    and any(f.startswith(d.rsplit("/", 1)[0] + "/") for d in packages if "/" in d)}) or ["Package"]
+    for project in sorted({o["project"] for o in places}):
+        folder = project.rsplit("/", 1)[0] if "/" in project else ""
+        name = project.rsplit("/", 1)[-1].rsplit(".", 1)[0]
+        updated = sorted({o["file"] for o in places if o["project"] == project and o["file"]}) + [project]
+        for f in updated:
+            impact.append({"project": project, "resolution": res["id"], "action": "update", "file": f, "proposed": None,
+                           "certainty": "confirmed", "reasons": ["it loads or runs the package, or references the SSIS runtime"]})
+        for stem in stems:
+            impact.append({"project": project, "resolution": res["id"], "action": "create", "file": None,
+                           "proposed": f"{folder + '/' if folder else ''}{stem}/*.cs", "certainty": "expected",
+                           "reasons": [f"the C# that does what {stem}.dtsx does"]})
+        parent = folder.rsplit("/", 1)[0] + "/" if "/" in folder else ""
+        impact.append({"project": project, "resolution": res["id"], "action": "create", "file": None,
+                       "proposed": f"{parent}{name}.Tests/{name}.Tests.csproj", "certainty": "expected",
+                       "reasons": ["its unit tests, a test project beside it that joins the conversion's solution"]})
+    item["occurrences"] = places
+    item["impact"] = impact
+    item["package_projects"] = packages
+
+
+def windows_only_left(items: list[dict], references: list[dict]) -> list[dict]:
+    """Gap 3 (2026-11-25): a Windows-only assembly that another chosen resolution in this conversion replaces (its entry's
+    `replaced_by` in compatibility/windows_only_assemblies.yaml) is not the Windows-only item's: its reference's verdict
+    names the work item that replaces it, and the item keeps only the assemblies left, per project (each occurrence's
+    value), listed for its decision (`assemblies`). An item with none left is dropped. Returns the items."""
+    from app.compatibility import assemblies
+    from app.engine.inputs.render import skill_name
+
+    chosen = {i["resolution"]["id"] for i in items if i.get("resolution") and i["resolution"].get("guidance")}
+    for a in references:
+        if a["verdict"] != "windows-only":
+            continue
+        replacing = [r for r in assemblies.replaced_by(a["name"]) if r in chosen]
+        if replacing:
+            a["verdict"], a["replaced_by"] = "replaced", skill_name(replacing[0])
+    left: dict[str, list[str]] = {}
+    for a in references:
+        if a["verdict"] == "windows-only" and a["name"] not in left.setdefault(a["project"], []):
+            left[a["project"]].append(a["name"])
+    out = []
+    for item in items:
+        if item["id"] == "windows-only-assembly-reference":
+            occurrences = [{**o, "value": "; ".join(left[o["project"]])} for o in item["occurrences"] if left.get(o["project"])]
+            if not occurrences:
+                continue
+            item = {**item, "occurrences": occurrences,
+                    "assemblies": sorted({n for o in occurrences for n in o["value"].split("; ")})}
+        out.append(item)
+    return out
+
+
 def paths_restored_package(path: str | None) -> tuple[str, str] | None:
     from app.engine import paths
     return paths.restored_package(path)
@@ -246,6 +345,16 @@ def collect(db: Session, repository: models.Repository) -> dict:
                 if p not in excluded]
     current = sorted({p["framework"] for p in projects if p["framework"]})
 
+    # The project dependency graph, in scope only: {project: [the projects it references]} (solution-discovery's
+    # ProjectReference declarations). Within a phase, a project's referenced projects are converted first (render.work_items).
+    project_graph: dict[str, list[str]] = {}
+    for source, target in db.execute(text("""
+            SELECT s.relative_path, t.relative_path FROM project_references r
+            JOIN projects s ON s.id = r.source_project_id JOIN projects t ON t.id = r.referenced_project_id
+            WHERE s.repository_id = :r ORDER BY 1, 2"""), {"r": r}):
+        if source not in excluded and target not in excluded and target not in project_graph.get(source, []):
+            project_graph.setdefault(source, []).append(target)
+
     # An item the engagement decided is not applicable (app.items.applicability) is no work: nothing about it goes into
     # either engine's inputs. Its findings are kept apart, for the verifier to count separately.
     from app.items import applicability
@@ -310,6 +419,8 @@ def collect(db: Session, repository: models.Repository) -> dict:
             "resolution": None if chosen is None else {
                 "id": chosen.id, "name": chosen.name, "guidance": chosen.engine_guidance,
                 "consumer_impact": chosen.consumer_impact,
+                # Where its work item stands in the plan (render.PHASES, render.work_items); unset reads as 5.
+                "phase": chosen.phase,
                 # Changes the design: the engine asks how to implement it before any code (render.design_section).
                 **({"confirm_design": True} if chosen.confirm_design else {})},
             "alternatives": [{"id": x.id, "name": x.name, "default": x.is_default} for x in resolutions
@@ -382,6 +493,11 @@ def collect(db: Session, repository: models.Repository) -> dict:
         declared.setdefault(project, set()).add(package)
     references = assembly_references(db, r, excluded, declared, to_tfm)
     pinned_packages = packages_config(db, r, excluded)
+    # Gap 2: the SSIS C# resolutions change the code that runs the package; gap 3: an assembly another chosen resolution
+    # replaces is not the Windows-only item's (2026-11-25).
+    for item in items:
+        ssis_places(db, r, excluded, files, item, references)
+    items = windows_only_left(items, references)
 
     # The platform's own vocabulary, which no generated file may contain (selfcontained.py).
     from app.engine.inputs import selfcontained
@@ -396,7 +512,7 @@ def collect(db: Session, repository: models.Repository) -> dict:
         "engagement": {"id": engagement.id, "target_framework": to_tfm, "target_platform": engagement.target_platform,
                        "posture": engagement.default_posture},
         "repository": {"slug": repository.slug, "commit": repository.ingest_commit_sha},
-        "projects": projects, "current_frameworks": current,
+        "projects": projects, "current_frameworks": current, "references": project_graph,
         "items": items, "packages": packages, "couplings": couplings, "version_drift": sorted(set(drift)), "deltas": deltas,
         "outbound": outbound, "soap": soap, "vocabulary": vocabulary, "assembly_references": references,
         "packages_config": pinned_packages,

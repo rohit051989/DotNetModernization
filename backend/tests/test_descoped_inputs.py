@@ -281,8 +281,8 @@ class DescopedRepository(unittest.TestCase):
         details = attempt["incomplete"]["details"]
         self.assertTrue(any(d.startswith("Encoding.Default") and "on the guidance allow-list: Changes stored bytes" in d
                             for d in details), details)
-        self.assertTrue(any("no decision recorded; a person decides the replacement before the conversion is run" in d
-                            for d in details), details)
+        self.assertTrue(any("no decision recorded for " in d and "a person decides the replacement before the conversion "
+                            "is run" in d for d in details), details)
         self.assertTrue(any(d.startswith("Package management") for d in details) is False)   # no packages.config here
         record = convert.records(TEST_ENGAGEMENT_ID, self.slug)[-1]
         self.assertEqual(record["incompleteInputs"], attempt["incomplete"])
@@ -341,8 +341,11 @@ class DescopedRepository(unittest.TestCase):
         item = next(i for i in model["items"] if i["id"] == "windows-only-assembly-reference")
         self.assertFalse(item["decided"])
         self.assertEqual(item["resolution"]["id"], "decide-windows-only-replacement")
-        self.assertIn(f"{item['name']}: no decision recorded; a person decides the replacement before the conversion is "
-                      "run, and the engine is told not to change it", render.incomplete(model)["details"])
+        # The decision names the assemblies it is about (2026-11-25): no SSIS reimplementation is chosen here, so the SSIS
+        # runtime is one of them.
+        self.assertIn(f"{item['name']}: no decision recorded for Microsoft.SqlServer.ManagedDTS, Sybase.AdoNet4.AseClient; a "
+                      "person decides the replacement before the conversion is run, and the engine is told not to change it",
+                      render.incomplete(model)["details"])
 
     def test_detection_without_a_dependency_hierarchy_does_not_claim_the_item_absent(self):
         self.db.execute(text("delete from hierarchy_edges where repository_id = :r"), {"r": self.repo.id})

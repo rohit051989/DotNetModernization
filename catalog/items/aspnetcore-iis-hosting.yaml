@@ -48,6 +48,7 @@ resolutions:
   linux_compatible: true
   name: Keep IIS hosting for remaining Windows hosts
   notes: Two hosting models to keep equivalent until the last Windows host is retired.
+  phase: 4
   status: active
   target_description: One build that runs under IIS on Windows and on Kestrel in the container
 - consumer_impact: none
@@ -71,6 +72,7 @@ resolutions:
   linux_compatible: true
   name: Kestrel on the container's port
   notes: null
+  phase: 4
   status: active
   target_description: Kestrel listening on 8080 in the container, behind the OpenShift route
 scope: application

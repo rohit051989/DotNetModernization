@@ -40,6 +40,7 @@ resolutions:
   linux_compatible: true
   name: Set the container time zone
   notes: Lift-and-shift. Leaves the underlying local-time dependency in place.
+  phase: 5
   status: active
   target_description: TZ environment variable plus tzdata in the image
 - consumer_impact: medium
@@ -58,6 +59,7 @@ resolutions:
   linux_compatible: true
   name: UtcNow internally, convert at the edges
   notes: null
+  phase: 5
   status: active
   target_description: UTC throughout; TimeProvider for testability
 - consumer_impact: medium
@@ -89,6 +91,7 @@ resolutions:
   linux_compatible: true
   name: UTC everywhere, independent of the host's time zone
   notes: 'Setting the container''s TZ is not the fix. Existing stored values may be local times: their places are listed for a decision.'
+  phase: 5
   status: active
   target_description: UTC from TimeProvider or UtcNow everywhere; nothing depends on the host's time zone
 scope: occurrence

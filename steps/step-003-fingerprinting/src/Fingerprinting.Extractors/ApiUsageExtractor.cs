@@ -46,6 +46,11 @@ public sealed class ApiUsageExtractor : IFingerprintExtractor
 
     private sealed record MemberRule(string Signal, string Category, string[] TypeNames, string Member, string Value);
 
+    // Registry 1.16.0: the Windows Event Log members (before MemberRules, which reads them).
+    private static readonly string[] EventLogMembers =
+        ["WriteEntry", "WriteEvent", "SourceExists", "CreateEventSource", "DeleteEventSource", "Exists", "Delete",
+         "GetEventLogs", "LogNameFromSourceName"];
+
     // Type.Member accesses, matched on the written receiver.
     private static readonly MemberRule[] MemberRules =
     [
@@ -57,7 +62,14 @@ public sealed class ApiUsageExtractor : IFingerprintExtractor
         new("DATETIME_NOW_USAGE", SignalCategories.SourceConstruct, ["TimeZoneInfo", "System.TimeZoneInfo"], "Local", "System.TimeZoneInfo.Local"),
         new("DATETIME_NOW_USAGE", SignalCategories.SourceConstruct, ["DateTimeKind", "System.DateTimeKind"], "Local", "System.DateTimeKind.Local"),
         new("PROCESS_START_USAGE", SignalCategories.ExecutionIndicator, ["Process", "System.Diagnostics.Process"], "Start", "System.Diagnostics.Process.Start"),
+        // Registry 1.16.0: the Windows Event Log, which throws PlatformNotSupportedException on Linux.
+        .. EventLogMembers.Select(m => new MemberRule("EVENT_LOG_USAGE", SignalCategories.SourceConstruct,
+            ["EventLog", "System.Diagnostics.EventLog"], m, $"System.Diagnostics.EventLog.{m}")),
     ];
+
+    // Registry 1.16.0: what loads and runs an SSIS package through the SSIS runtime, in a file that imports it.
+    private static readonly HashSet<string> SsisLoadMethods = new(StringComparer.Ordinal)
+        { "LoadPackage", "LoadFromSqlServer", "LoadFromSqlServer2", "LoadFromDtsServer" };
 
     private static readonly string[] RegistryMembers =
         ["LocalMachine", "CurrentUser", "ClassesRoot", "Users", "CurrentConfig", "PerformanceData", "GetValue", "SetValue"];
@@ -186,6 +198,8 @@ public sealed class ApiUsageExtractor : IFingerprintExtractor
                 ? "CoreWCF" : "System.ServiceModel";
             var importsSpectre = usings.Any(u => u == "Spectre.Console");
             var importsSharprompt = usings.Any(u => u == "Sharprompt");
+            var importsDts = usings.Any(u => u == "Microsoft.SqlServer.Dts.Runtime");
+            var importsDiagnostics = usings.Any(u => u == "System.Diagnostics");
             var serilogFile = !file.IsGenerated && IsSerilogFile(usings, root);
 
             foreach (var node in root.DescendantNodes())
@@ -211,11 +225,19 @@ public sealed class ApiUsageExtractor : IFingerprintExtractor
                     case InvocationExpressionSyntax invocation:
                         MatchMethodCall(invocation, file.RelativePath, accumulator);
                         MatchConsoleInput(invocation, importsSpectre, importsSharprompt, file.RelativePath, accumulator);
+                        MatchSsisExecution(invocation, importsDts, file.RelativePath, accumulator);
                         if (serilogFile)
                         {
                             MatchSerilogSink(invocation, file.RelativePath, accumulator);
                         }
 
+                        break;
+                    case ObjectCreationExpressionSyntax { Type: var eventLogType }
+                        when (eventLogType.ToString() == "System.Diagnostics.EventLog"
+                              || (importsDiagnostics && eventLogType.ToString() == "EventLog")):
+                        // Registry 1.16.0: an EventLog instance, whose WriteEntry is then an instance call.
+                        Add(accumulator, "EVENT_LOG_USAGE", SignalCategories.SourceConstruct,
+                            "System.Diagnostics.EventLog", file.RelativePath, node, QualifiedMember);
                         break;
                     case ObjectCreationExpressionSyntax { Type: var promptType }
                         when RoslynNameHelpers.RightmostIdentifier(promptType) is { } promptName
@@ -300,6 +322,35 @@ public sealed class ApiUsageExtractor : IFingerprintExtractor
             {
                 Add(accumulator, rule.Signal, rule.Category, rule.Method, path, invocation, NameOnly);
             }
+        }
+    }
+
+    /// <summary>Registry 1.16.0: a call that loads an SSIS package (Application.LoadPackage, LoadFromSqlServer,
+    /// LoadFromDtsServer) or executes one (Execute), in a file that imports Microsoft.SqlServer.Dts.Runtime or on a
+    /// receiver written with that namespace. Where the code runs a package: the place a reimplementation changes.</summary>
+    private static void MatchSsisExecution(InvocationExpressionSyntax invocation, bool importsDts, string path, SignalAccumulator accumulator)
+    {
+        if (invocation.Expression is not MemberAccessExpressionSyntax access)
+        {
+            return;
+        }
+
+        var member = access.Name.Identifier.Text;
+        var qualified = access.Expression.ToString().StartsWith("Microsoft.SqlServer.Dts.Runtime.", StringComparison.Ordinal);
+        if (!importsDts && !qualified)
+        {
+            return;
+        }
+
+        if (SsisLoadMethods.Contains(member))
+        {
+            Add(accumulator, "SSIS_PACKAGE_EXECUTION", SignalCategories.ExecutionIndicator,
+                $"Microsoft.SqlServer.Dts.Runtime.Application.{member}", path, invocation, NameOnly);
+        }
+        else if (member == "Execute")
+        {
+            Add(accumulator, "SSIS_PACKAGE_EXECUTION", SignalCategories.ExecutionIndicator,
+                "Microsoft.SqlServer.Dts.Runtime.Package.Execute", path, invocation, NameOnly);
         }
     }
 

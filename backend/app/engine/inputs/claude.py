@@ -198,7 +198,9 @@ def instructions(model: dict, items: list[dict], copilot_instructions: str) -> s
                 "instructions win for this conversion."]
     out += ["", "## How to run this conversion", "",
             "There is no separate upgrade tool: this is the plan. Work through these work items in this order, one at a "
-            f"time. Each one is a skill under `{SKILLS_DIR}/`: read it in full before changing anything.", ""]
+            f"time. Each one is a skill under `{SKILLS_DIR}/`: read it in full before changing anything. The order is by "
+            "phase, and within a phase each project's referenced projects first, so every step builds on the ones "
+            "before it.", ""]
     steps: list[list[dict]] = []            # changes that run as one unit share a step (render.work_items)
     for entry in items:
         if entry.get("together_with") and steps:
@@ -206,11 +208,12 @@ def instructions(model: dict, items: list[dict], copilot_instructions: str) -> s
         else:
             steps.append([entry])
     for number, step in enumerate(steps, 1):
+        phase = f" (phase {step[0]['phase']}, {rendering.PHASES[step[0]['phase']].lower()})" if step[0].get("phase") else ""
         if len(step) == 1:
-            out.append(f"{number}. `{step[0]['name']}`: {step[0]['title']}")
+            out.append(f"{number}. `{step[0]['name']}`: {step[0]['title']}{phase}")
         else:
             out.append(f"{number}. " + " and ".join(f"`{e['name']}`" for e in step) + ", in one task and one commit: "
-                       + "; ".join(e["title"] for e in step))
+                       + "; ".join(e["title"] for e in step) + phase)
     if not items:
         out.append("There is no work item: nothing in this repository needs a change the instructions describe.")
     if rendering.design_items(model):

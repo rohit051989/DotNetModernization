@@ -457,6 +457,15 @@ hosting, or its own `.svc`, `.asmx`, `.aspx` or `Global.asax`). Such a project h
 SDK-style form on .NET Framework; it becomes SDK-style in its move to ASP.NET Core, which the WCF,
 ASMX and MVC items' guidance carries.
 
+`phase` SMALLINT 1-6 (2026-11-25): where a resolution's work item stands in a conversion's plan (1 project format, 2
+libraries, 3 replace framework-only dependencies, 4 retarget and host applications, 5 platform and deployment, 6
+decisions a person still has to make). The plan goes by phase, then by the project dependency graph; the ordering rules
+above hold within a phase. Factory values in `backend/app/seed/data/phases.yaml`, seeded through `baseline.py`; every
+active resolution has one (`tests/test_resolution_phases.py`).
+
+`event-log-usage` and `backslash-path-building` (2026-11-25, occurrence scope) come from registry 1.16.0's
+`EVENT_LOG_USAGE` and `BACKSLASH_PATH_BUILDING`.
+
 Every active resolution has `engine_guidance` or is on the reviewed allow-list,
 `backend/app/seed/data/engine_guidance_allowlist.yaml`, with a reason; a test keeps it so. Guidance
 names frameworks by role ("the target framework", "the project's current framework"), never a

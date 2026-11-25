@@ -1809,6 +1809,15 @@ hand. Everything else an update brings, bootstrap applies by itself. Apply every
 had (`previousCommit` in `PLATFORM_SOURCE.json` after the update; in our own installs, the commit before step 5 of
 the appendix), oldest of them first. Entries up to 2026-10-23 were the notes of releases 2 to 7, which are named so.
 
+#### 2026-11-25, (commit of "Phases in the plan, the SSIS work item's places, replaced assemblies, Event Log and backslash paths, Files"): rescan; a conversion not yet run is refreshed
+
+Update, bootstrap and restart the backend. Bootstrap adds a phase to every catalog resolution nobody has edited since it
+was seeded (an edited one is reported and kept: set its phase in the catalog's resolution form), and adds the items
+"Windows Event Log usage" and "Path built with a backslash". Then **Rescan** every repository: the new signals (the
+Event Log, paths built with a backslash, where an SSIS package is run) come from the rescan. A conversion prepared but
+not yet run is refreshed by that rescan, with the plan in phase order; **start the next conversion** for one already
+run. The verifier now also lists each Windows-only API call left on the branch.
+
 #### 2026-11-25, (commit of "Web service projects are never class libraries; no framework version in guidance"): rescan, or start the next conversion
 
 Update, bootstrap and restart the backend. Bootstrap updates catalog rows nobody has edited since they were seeded,

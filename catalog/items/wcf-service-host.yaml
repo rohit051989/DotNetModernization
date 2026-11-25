@@ -126,6 +126,7 @@ resolutions:
   linux_compatible: true
   name: ASP.NET Core web host
   notes: null
+  phase: 4
   status: active
   target_description: .NET 10 ASP.NET Core web host, container on OCP4
 - consumer_impact: none
@@ -146,6 +147,7 @@ resolutions:
   linux_compatible: false
   name: Remain Windows-hosted
   notes: null
+  phase: 4
   status: active
   target_description: .NET Framework on Windows Server
 - consumer_impact: low
@@ -169,6 +171,7 @@ resolutions:
   linux_compatible: true
   name: Retire the host
   notes: null
+  phase: 4
   status: active
   target_description: No separate host process
 scope: application

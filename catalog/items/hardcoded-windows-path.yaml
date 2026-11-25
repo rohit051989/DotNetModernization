@@ -35,12 +35,14 @@ resolutions:
     Replace each literal path with a configuration setting read through `IConfiguration` or
     options, with the same meaning. Do not write a Linux path: the value is supplied at deployment
     under the parameter named below. In configuration files, remove the Windows path value rather
-    than replacing it with another literal.
+    than replacing it with another literal. File names are case-sensitive on Linux: a path the code
+    builds or a setting holds must match the file's real case, letter for letter.
   id: externalize-path-setting
   is_default: true
   linux_compatible: true
   name: Externalize to configuration
   notes: null
+  phase: 5
   status: active
   target_description: IConfiguration / IOptions setting, value set per environment
 - consumer_impact: low
@@ -52,11 +54,13 @@ resolutions:
   engine_guidance: |-
     Replace each Windows path with the equivalent path under a volume mounted into the container
     (for example `/mnt/data/...`), and add that volume and its mount to the deployment manifest.
+    File names are case-sensitive on Linux: a path must match the file's real case, letter for letter.
   id: rewrite-linux-mount-path
   is_default: false
   linux_compatible: true
   name: Rewrite to a mounted Linux path
   notes: Faster, but leaves a literal behind; the path is now fixed to the deployment manifest.
+  phase: 5
   status: active
   target_description: Literal /mnt/<volume>/... backed by a PVC
 scope: occurrence

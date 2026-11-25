@@ -40,6 +40,7 @@ resolutions:
   linux_compatible: true
   name: Add the domain to the pod's DNS search list
   notes: Platform-level change; every workload relying on it depends on cluster configuration staying in place.
+  phase: 5
   status: active
   target_description: Pod dnsConfig.searches includes the corporate domain
 - consumer_impact: none
@@ -57,6 +58,7 @@ resolutions:
   linux_compatible: true
   name: Use the fully qualified name
   notes: null
+  phase: 5
   status: active
   target_description: http://appsrv0341.corp.example.com/... (FQDN)
 scope: occurrence

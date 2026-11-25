@@ -1,0 +1,75 @@
+category: configuration
+deleted: false
+description: |-
+  A path built by joining parts with a backslash literal (dir + "\\" +
+  name, string.Concat(dir, @"\", name), $"{dir}\{name}"). On Linux a
+  backslash is an ordinary character of a file name, so the file is
+  written to or read from the wrong place, with no error. One occurrence
+  per file.
+detection:
+  match:
+    all:
+    - id: backslash-path
+      signal:
+        name: BACKSLASH_PATH_BUILDING
+    any: []
+    atLeast: []
+    metadata: []
+    none: []
+  occurrence_source:
+    group_by: source_path
+    signal: BACKSLASH_PATH_BUILDING
+engine_guidance: |-
+  This code builds a path by joining its parts with a backslash (`dir + "\\" + name`,
+  `string.Concat(dir, @"\", name)`, `$"{dir}\\{name}"`). On Linux the separator is `/` and a
+  backslash is an ordinary character of a file name, so the file is written to, or looked for in, a
+  different place, with no error. File names are also case-sensitive on Linux.
+excluded_roles:
+- TEST
+id: backslash-path-building
+name: Path built with a backslash
+owner_team: null
+resolutions:
+- consumer_impact: none
+  container_ready: false
+  deleted: false
+  derivations: []
+  description: 'The application stays on Windows, outside the Linux move: the paths stay as they are.'
+  effort: low
+  engine_guidance: 'Leave this exactly as it is: the application stays on Windows, outside the Linux move. Change nothing this instruction is about: not its code, its project file, its references or its configuration. Record it in the task''s notes as left unchanged, with that reason.'
+  id: backslash-path-remain-windows-hosted
+  is_default: false
+  linux_compatible: false
+  name: Remain Windows-hosted
+  notes: null
+  phase: 5
+  status: active
+  target_description: .NET on Windows Server
+- consumer_impact: none
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: Each path joined with a backslash uses Path.Combine (or Path.DirectorySeparatorChar); the path's case matches the file's real case.
+  effort: low
+  engine_guidance: |-
+    1. Replace each path joined with a backslash by `Path.Combine(dir, name)` (several parts:
+       `Path.Combine(dir, sub, name)`). Where a separator is needed on its own, use
+       `Path.DirectorySeparatorChar`; never a backslash or a slash written in the code.
+    2. A literal that holds several segments (`"logs\\archive"`) becomes separate arguments of
+       `Path.Combine`.
+    3. Keep the path's meaning: the same folder and file names, in the same order. File names are
+       case-sensitive on Linux: each name must match the file's real case, letter for letter; where
+       the code and the file on disk differ, use the file's case and record it in the task's notes.
+    4. Keep how each place reads and writes the file.
+    5. Add a test per changed place that builds the path from made-up parts and asserts it equals
+       `Path.Combine` of those parts, with no backslash in it.
+  id: path-combine
+  is_default: true
+  linux_compatible: true
+  name: Join paths with Path.Combine
+  notes: null
+  phase: 5
+  status: active
+  target_description: Path.Combine, portable separators
+scope: occurrence
+status: active

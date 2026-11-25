@@ -61,3 +61,31 @@ describe('confirm the design before implementing', () => {
     expect(screen.queryByTestId('confirm-design')).toBeNull()
   })
 })
+
+describe('the phase of a resolution', () => {
+  it('the card names it, or says it is not set', () => {
+    render(<ResolutionCard resolution={{ ...REST, phase: 4 }} isLowestImpact={false} />)
+    expect(screen.getByTestId('phase').textContent).toBe('phase 4: Retarget and host applications')
+    cleanup()
+    render(<ResolutionCard resolution={{ ...REST, phase: null }} isLowestImpact={false} />)
+    expect(screen.getByTestId('phase').textContent).toBe('no phase')
+  })
+
+  it('an admin changes it in the form, and it is sent as a number', async () => {
+    api.updateResolution.mockResolvedValue({ ...REST, phase: 2 })
+    render(
+      <ToastProvider>
+        <ResolutionForm mode="edit" itemId="wcf-service" itemVersion={5} resolution={{ ...REST, phase: 4 }}
+          existingDefault={null} onClose={vi.fn()} onSaved={vi.fn()} />
+      </ToastProvider>,
+    )
+    const select = screen.getByLabelText('Phase') as HTMLSelectElement
+    expect(select.value).toBe('4')
+    fireEvent.change(select, { target: { value: '2' } })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /save/i }))
+    })
+    expect(api.updateResolution).toHaveBeenLastCalledWith('wcf-service', 'rest-net10',
+      expect.objectContaining({ phase: 2 }), 5)
+  })
+})

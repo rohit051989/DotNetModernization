@@ -41,6 +41,7 @@ resolutions:
   linux_compatible: true
   name: External secret store
   notes: null
+  phase: 5
   status: active
   target_description: Vault-sourced secret, delivered to the pod
 - consumer_impact: none
@@ -62,6 +63,7 @@ resolutions:
   linux_compatible: true
   name: OCP4 Secret, injected at runtime
   notes: null
+  phase: 5
   status: active
   target_description: Kubernetes Secret -> environment variable / volume -> IConfiguration
 scope: occurrence

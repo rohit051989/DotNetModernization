@@ -46,6 +46,18 @@ def build(worktree: Path, solution: str, timeout: int = 1800) -> Run:
     return Run(_ok(done), _exit_code(done), f"{header}\n$ {' '.join(args)}\n{done.stdout}{done.stderr}{_ended(done, timeout)}")
 
 
+def analyze_platform(worktree: Path, solution: str, timeout: int = 1800) -> Run:
+    """A full rebuild of an already restored solution with the .NET analyzers on, so the platform compatibility analyzer
+    (CA1416: an API only supported on some platforms, called where the project runs on all of them) reports every
+    Windows-only call left. Warnings stay warnings: this build only reads them, and never fails on one."""
+    args = ["dotnet", "build", solution, "-nologo", "-v", "minimal", "--no-restore", "--no-incremental",
+            "-p:EnableNETAnalyzers=true", "-p:RunAnalyzersDuringBuild=true", "-p:TreatWarningsAsErrors=false",
+            "-p:MSBuildTreatWarningsAsErrors=false", *NO_SERVERS]
+    header = sdk(worktree)
+    done = processes.run(args, cwd=worktree, timeout=timeout)
+    return Run(_ok(done), _exit_code(done), f"{header}\n$ {' '.join(args)}\n{done.stdout}{done.stderr}{_ended(done, timeout)}")
+
+
 def _ok(done: processes.Outcome) -> bool:
     return done.returncode == 0 and not done.timed_out and not done.stopped_why
 

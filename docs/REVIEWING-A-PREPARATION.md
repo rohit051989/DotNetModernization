@@ -56,10 +56,20 @@ ordering between changes, the values to supply before deployment, and the places
 **The work items**, one per change with an instruction. Each holds what the change is, what to do, the frameworks it
 concerns (the target framework, and each project's current framework, with its SDK-style short form), its
 prerequisites, its places, the deployment values it needs, the tests that use its code, and the files it may change.
+
+**The plan's order.** Every work item has a phase, from its catalog resolution: 1 project format, 2 libraries, 3 replace
+framework-only dependencies, 4 retarget and host applications, 5 platform and deployment, 6 decisions a person still has
+to make. The plan goes by phase, and within a phase each project's referenced projects first. So a class library's
+bridge comes before the application that references it moves, and an SSIS reimplementation comes before the job that
+runs the package is retargeted. Claude Code's plan lists the steps in that order, each with its phase; the decision
+sheet's Ordering lists the same order for both engines; and each work item's Prerequisites say its phase and name the
+earlier work items it follows ("it changes the same project first", "it changes a project this one references"). A
+work item that comes before one it depends on, or a Prerequisites section that names neither its phase nor what it
+follows, is a gap.
+
 An old-style project file and packages.config each have their own work item (convert to an SDK-style project; move to
-PackageReference), done in one task, before every other: Claude Code's plan lists them as its first step, "in one task
-and one commit", and in GitHub Copilot's inputs the first says "Apply this **first**", each says "Apply **together
-with**" the other, every other work item says to apply them first, and the decision sheet's Ordering says so. The
+PackageReference), done in one task, in phase 1: Claude Code's plan lists them as its first step, "in one task and one
+commit", and each says "Apply **together with**" the other. The
 PackageReference work item has a table, "The packages", of what each project's packages.config pins and what each
 becomes: kept as a direct reference at its pinned version, or left out when restore resolves that same version through
 another listed package. A package pinned higher than restore would choose is kept, at its version.
@@ -78,10 +88,29 @@ work item's Frameworks section gives the values. A version written into a work i
 A change kept unchanged (stays on Windows, stays on .NET Framework, kept out of the move) has a short work item of its
 own: leave it as it is, change nothing, and record it as left unchanged with the reason it names. It gives no warning.
 
+**An SSIS package reimplemented in C#.** Its work item's places are the code that loads and runs the package (the
+member calling `LoadPackage` or `Execute`, and each in-scope project referencing the SSIS runtime), not the package
+project. "Files this changes" lists the `.dtproj` and each `.dtsx` as reference (read, never changed), the executing
+files and project file as update, and as create the new code (a path pattern per package) and a test project beside the
+executing project. The `.dtproj` is not in the addendum's table of in-scope projects. A place in the `.dtproj`, or a
+`.dtproj` marked update, is a gap.
+
+**Files.** Each work item's "Files" lists the files of its own in-scope projects and the repository's own pipeline,
+build and deployment files, never a file of another project (in scope or not).
+
+**Linux behaviour.** A call to the Windows Event Log raises "Windows Event Log usage" (write the same text to standard
+error); a path joined with a backslash raises "Path built with a backslash" (`Path.Combine`; file names are
+case-sensitive on Linux). The CronJob work item mounts a writable volume at each path the job writes (OpenShift runs it
+as an arbitrary user), sets `concurrencyPolicy: Forbid` unless overlapping runs are safe, and limits the job history.
+The build section says a new test project for in-scope code is created beside the project it tests and joins the
+conversion's solution.
+
 **Decisions to answer first.** A reference to an assembly that only loads on Windows raises "Reference to an assembly
 that only loads on Windows". Until a person records its decision (the replacement, or keeping the project on Windows),
 the engine is told not to touch those references, and the warning below says so. Answer it before running the
-conversion.
+conversion. An assembly another chosen resolution replaces (the SSIS runtime, under a C# reimplementation of the
+package) is not that item's: the addendum's verdict says "replaced by" the work item that removes it, and the warning
+names only the assemblies left. A warning that asks about a replaced assembly is a gap.
 
 **`RUNBOOK.md`.** It opens by sending GitHub Copilot users to section A and Claude Code users to section B. Section A:
 open the solution, send the first message, standard replies, a stuck terminal, when the agent stops, verify. Section B:

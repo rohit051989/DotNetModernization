@@ -38,6 +38,7 @@ resolutions:
   linux_compatible: true
   name: Grant NET_BIND_SERVICE
   notes: A platform exception, like a dedicated SCC.
+  phase: 5
   status: active
   target_description: Port below 1024 with a granted capability
 - consumer_impact: none
@@ -57,6 +58,7 @@ resolutions:
   linux_compatible: true
   name: Listen on 8080
   notes: null
+  phase: 5
   status: active
   target_description: Kestrel on 8080; Service port 80 -> targetPort 8080
 scope: application

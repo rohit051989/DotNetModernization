@@ -97,8 +97,18 @@ items:
            it fails.
         3. Read file and directory locations from configuration, never from fixed Windows paths.
         4. Add a Dockerfile for the program (numeric non-root user, no ports) and an OpenShift CronJob
-           manifest. Take the schedule from the deployment parameter named below; never write a
-           schedule yourself.
+           manifest. Take the schedule from the deployment parameter named below; never write a schedule
+           yourself.
+        5. OpenShift runs the container as an arbitrary user, not the user named in the image, so the
+           program cannot write inside the image. For each folder the program writes to (logs, output,
+           work files), mount a writable volume (`emptyDir`, or a persistent volume claim where the
+           files must outlive the run) at the path its configuration setting names, and set that setting
+           to the mount path in the manifest. Write nowhere outside those mounts.
+        6. Set `concurrencyPolicy: Forbid`, so a run never starts while the previous one is still
+           running, unless the program is safe to run twice at once (it never empties, refills or locks
+           shared data); then record why in the task's notes.
+        7. Set `successfulJobsHistoryLimit: 3` and `failedJobsHistoryLimit: 3`, and `backoffLimit` on
+           the job template, so finished runs and failed retries do not pile up.
       console-batch-job-not-deployable: |-
         This program is a tool a person runs by hand, not a workload: do not containerize or deploy it.
         Only make it build and run on the target framework.
@@ -189,10 +199,12 @@ items:
         Replace each literal path with a configuration setting read through `IConfiguration` or
         options, with the same meaning. Do not write a Linux path: the value is supplied at deployment
         under the parameter named below. In configuration files, remove the Windows path value rather
-        than replacing it with another literal.
+        than replacing it with another literal. File names are case-sensitive on Linux: a path the code
+        builds or a setting holds must match the file's real case, letter for letter.
       rewrite-linux-mount-path: |-
         Replace each Windows path with the equivalent path under a volume mounted into the container
         (for example `/mnt/data/...`), and add that volume and its mount to the deployment manifest.
+        File names are case-sensitive on Linux: a path must match the file's real case, letter for letter.
 
   missing-health-endpoint:
     guidance: |-
@@ -521,7 +533,9 @@ items:
         11. Add unit tests on made-up input that need no database: each flat file's offsets or
             delimiters, each branch of each script, empty and null fields, a malformed line, the order
             of the SQL statements, and each writer's column mappings (through an interface over the bulk
-            copy, asserting on what would be sent).
+            copy, asserting on what would be sent). When there is no test project for this code, create
+            one beside the project it tests and add it to the conversion's solution: a test project for
+            in-scope code is in scope.
       csharp-sql-pushdown: |-
         Move each package's set-based transformations into SQL run by the database, and keep a small C#
         orchestrator on the target framework for the control flow. The `.dtsx` file is the
@@ -547,7 +561,9 @@ items:
         8. Remove the references to `Microsoft.SqlServer.ManagedDTS` and
            `Microsoft.SqlServer.Dts.Runtime` once nothing uses them.
         9. Add unit tests that need no database: the order and parameters of the orchestrator's
-           statements, each statement's text, and the parsing of each staged file on made-up input.
+           statements, each statement's text, and the parsing of each staged file on made-up input. When
+           there is no test project for this code, create one beside the project it tests and add it to
+           the conversion's solution: a test project for in-scope code is in scope.
 
   fx47-class-library:
     guidance: |-
@@ -935,6 +951,52 @@ items:
         4. Delete `packages.config`.
         5. Restore and build the project and every project that references it, and run their tests.
 
+  # ---- 2026-11-25: what a conversion review found on Linux that no item raised.
+
+  event-log-usage:
+    guidance: |-
+      This code writes to or manages the Windows Event Log (`System.Diagnostics.EventLog`: `WriteEntry`,
+      `SourceExists`, `CreateEventSource`, or an `EventLog` instance). The Event Log exists only on
+      Windows: on Linux these calls throw `PlatformNotSupportedException`, often at startup, so the
+      program fails before it does any work. In a container, what a program writes to standard error is
+      what the platform collects.
+    resolutions:
+      event-log-to-standard-error: |-
+        Write the same text to standard error instead of the Event Log, and keep the program's behaviour
+        and exit codes as they are.
+        1. Replace each `EventLog.WriteEntry` (static or on an instance) with one line on standard error
+           (`Console.Error.WriteLine`), or with the application's logger where it already has one that
+           writes to standard output or standard error. Keep the message text, and put the entry's type
+           first: `Error:`, `Warning:` or `Information:`.
+        2. Remove `EventLog.SourceExists`, `EventLog.CreateEventSource`, `EventLog.DeleteEventSource`
+           and the creation of `EventLog` instances: there is no source to create. Keep every branch
+           around them that does other work.
+        3. Keep every exit code and every exception the program throws or catches: only where the text
+           goes changes.
+        4. Remove the reference to `System.Diagnostics.EventLog` once nothing uses it.
+        5. Add a test per replaced write that captures standard error (`Console.SetError`) and asserts
+           the same text and type.
+
+  backslash-path-building:
+    guidance: |-
+      This code builds a path by joining its parts with a backslash (`dir + "\\" + name`,
+      `string.Concat(dir, @"\", name)`, `$"{dir}\\{name}"`). On Linux the separator is `/` and a
+      backslash is an ordinary character of a file name, so the file is written to, or looked for in, a
+      different place, with no error. File names are also case-sensitive on Linux.
+    resolutions:
+      path-combine: |-
+        1. Replace each path joined with a backslash by `Path.Combine(dir, name)` (several parts:
+           `Path.Combine(dir, sub, name)`). Where a separator is needed on its own, use
+           `Path.DirectorySeparatorChar`; never a backslash or a slash written in the code.
+        2. A literal that holds several segments (`"logs\\archive"`) becomes separate arguments of
+           `Path.Combine`.
+        3. Keep the path's meaning: the same folder and file names, in the same order. File names are
+           case-sensitive on Linux: each name must match the file's real case, letter for letter; where
+           the code and the file on disk differ, use the file's case and record it in the task's notes.
+        4. Keep how each place reads and writes the file.
+        5. Add a test per changed place that builds the path from made-up parts and asserts it equals
+           `Path.Combine` of those parts, with no backslash in it.
+
 # One text for every resolution that keeps something unchanged on Windows or .NET Framework, or keeps it
 # out of the move (2026-11-25): the loader (app/items/baseline.py) puts it in each listed resolution's
 # guidance with that resolution's reason, so the database row and the export carry the whole text and an
@@ -946,8 +1008,12 @@ unchanged:
     project file, its references or its configuration. Record it in the task's notes as left
     unchanged, with that reason.
   resolutions:
+    backslash-path-building:
+      backslash-path-remain-windows-hosted: "the application stays on Windows, outside the Linux move"
     directory-services-usage:
       directory-services-usage-remain-windows-hosted: "the application stays on Windows, outside the Linux move"
+    event-log-usage:
+      event-log-remain-windows-hosted: "the application stays on Windows, outside the Linux move"
     interactive-console-tool:
       interactive-tool-keep-not-deployed: "the tool stays in the repository as one a person runs by hand, outside the deployment"
     legacy-project-format:

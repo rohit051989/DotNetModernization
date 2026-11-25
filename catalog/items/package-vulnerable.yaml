@@ -32,6 +32,7 @@ resolutions:
   linux_compatible: true
   name: Accept the risk with a mitigation
   notes: Needs the client's security sign-off, recorded in the decision rationale.
+  phase: 2
   status: active
   target_description: Unchanged package, risk accepted
 - consumer_impact: medium
@@ -59,6 +60,7 @@ resolutions:
   linux_compatible: true
   name: Replace the package
   notes: null
+  phase: 2
   status: active
   target_description: A maintained alternative without the advisory
 - consumer_impact: low
@@ -84,6 +86,7 @@ resolutions:
   linux_compatible: true
   name: Upgrade to a version without the advisory
   notes: null
+  phase: 2
   status: active
   target_description: A package version with no open advisory
 scope: occurrence

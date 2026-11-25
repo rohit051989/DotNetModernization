@@ -1,0 +1,79 @@
+category: logging
+deleted: false
+description: |-
+  Code writing to or managing the Windows Event Log
+  (System.Diagnostics.EventLog: WriteEntry, SourceExists,
+  CreateEventSource, an EventLog instance). It throws
+  PlatformNotSupportedException on Linux, often at startup. One
+  occurrence per file.
+detection:
+  match:
+    all:
+    - id: event-log
+      signal:
+        name: EVENT_LOG_USAGE
+    any: []
+    atLeast: []
+    metadata: []
+    none: []
+  occurrence_source:
+    group_by: source_path
+    signal: EVENT_LOG_USAGE
+engine_guidance: |-
+  This code writes to or manages the Windows Event Log (`System.Diagnostics.EventLog`: `WriteEntry`,
+  `SourceExists`, `CreateEventSource`, or an `EventLog` instance). The Event Log exists only on
+  Windows: on Linux these calls throw `PlatformNotSupportedException`, often at startup, so the
+  program fails before it does any work. In a container, what a program writes to standard error is
+  what the platform collects.
+excluded_roles:
+- TEST
+id: event-log-usage
+name: Windows Event Log usage
+owner_team: null
+resolutions:
+- consumer_impact: none
+  container_ready: false
+  deleted: false
+  derivations: []
+  description: 'The application stays on Windows, outside the Linux move: the Event Log stays.'
+  effort: low
+  engine_guidance: 'Leave this exactly as it is: the application stays on Windows, outside the Linux move. Change nothing this instruction is about: not its code, its project file, its references or its configuration. Record it in the task''s notes as left unchanged, with that reason.'
+  id: event-log-remain-windows-hosted
+  is_default: false
+  linux_compatible: false
+  name: Remain Windows-hosted
+  notes: null
+  phase: 3
+  status: active
+  target_description: .NET on Windows Server
+- consumer_impact: low
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: Each Event Log write becomes the same text on standard error (or the application's logger), with the same severity; source creation and existence checks are removed; exit codes unchanged.
+  effort: low
+  engine_guidance: |-
+    Write the same text to standard error instead of the Event Log, and keep the program's behaviour
+    and exit codes as they are.
+    1. Replace each `EventLog.WriteEntry` (static or on an instance) with one line on standard error
+       (`Console.Error.WriteLine`), or with the application's logger where it already has one that
+       writes to standard output or standard error. Keep the message text, and put the entry's type
+       first: `Error:`, `Warning:` or `Information:`.
+    2. Remove `EventLog.SourceExists`, `EventLog.CreateEventSource`, `EventLog.DeleteEventSource`
+       and the creation of `EventLog` instances: there is no source to create. Keep every branch
+       around them that does other work.
+    3. Keep every exit code and every exception the program throws or catches: only where the text
+       goes changes.
+    4. Remove the reference to `System.Diagnostics.EventLog` once nothing uses it.
+    5. Add a test per replaced write that captures standard error (`Console.SetError`) and asserts
+       the same text and type.
+  id: event-log-to-standard-error
+  is_default: true
+  linux_compatible: true
+  name: Write the same text to standard error
+  notes: null
+  phase: 3
+  status: active
+  target_description: Standard error, collected by the container platform
+scope: occurrence
+status: active

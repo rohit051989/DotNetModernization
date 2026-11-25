@@ -38,6 +38,7 @@ resolutions:
   linux_compatible: true
   name: Retarget to the target framework
   notes: null
+  phase: 4
   status: active
   target_description: The engagement's target framework, e.g. net10.0
 - consumer_impact: none
@@ -52,6 +53,7 @@ resolutions:
   linux_compatible: true
   name: Stay on the current framework
   notes: null
+  phase: 4
   status: active
   target_description: The current target framework, unchanged
 scope: application

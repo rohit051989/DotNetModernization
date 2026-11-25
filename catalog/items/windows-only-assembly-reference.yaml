@@ -42,6 +42,7 @@ resolutions:
   linux_compatible: false
   name: Decide the replacement before converting
   notes: null
+  phase: 6
   status: active
   target_description: A recorded decision naming the replacement
 - consumer_impact: none
@@ -56,6 +57,7 @@ resolutions:
   linux_compatible: false
   name: Keep the project on Windows
   notes: null
+  phase: 3
   status: active
   target_description: The project outside the conversion's scope, on its Windows host
 - confirm_design: true
@@ -81,6 +83,7 @@ resolutions:
   linux_compatible: true
   name: Replace it with a library that loads on Linux
   notes: null
+  phase: 3
   status: active
   target_description: A cross-platform library, declared as a package
 scope: application

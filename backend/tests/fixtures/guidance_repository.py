@@ -4,7 +4,9 @@ guidance was written on 2026-11-24 (tests/test_guidance_fixtures.py). Nothing he
     Batch/      old-style console job on .NET Framework 4.7: packages.config with HintPath references into packages/
                 (System.Memory with the packages it depends on, one of them pinned higher than System.Memory asks), the
                 SSIS runtime referenced by path (Windows-only), Encoding.Default, a directory lookup
-    Shared/     old-style class library on .NET Framework 4.7, referenced by Batch
+    Shared/     old-style class library on .NET Framework 4.7, referenced by Batch; a database provider referenced by
+                path that only loads on Windows
+    Batch also writes to the Windows Event Log and builds its log path with a backslash (2026-11-25).
     Etl/        an SSIS package project: an Execute SQL task, a ragged-right flat file source, a derived column and an
                 OLE DB destination
     Orders/     a classic ASP.NET WCF web project (the web application project type GUID, web.config, a .svc file, a
@@ -66,7 +68,9 @@ FILES = {
                              '  <package id="System.Numerics.Vectors" version="4.5.0" targetFramework="net47" />\n'
                              '  <package id="System.Runtime.CompilerServices.Unsafe" version="6.0.0" targetFramework="net47" />\n'
                              '</packages>\n',
-    "Batch/Program.cs": """using Microsoft.SqlServer.Dts.Runtime;
+    "Batch/Program.cs": """using System.Diagnostics;
+using System.IO;
+using Microsoft.SqlServer.Dts.Runtime;
 
 namespace Batch
 {
@@ -74,9 +78,12 @@ namespace Batch
     {
         public static int Main(string[] args)
         {
+            if (!EventLog.SourceExists("Batch")) EventLog.CreateEventSource("Batch", "Application");
+            File.AppendAllText(args[1] + "\\\\" + "batch.log", "started");
             var app = new Application();
             Package package = app.LoadPackage(args[0], null);
             DTSExecResult result = package.Execute();
+            EventLog.WriteEntry("Batch", "finished: " + result);
             return result == DTSExecResult.Success ? 0 : 1;
         }
     }
@@ -114,11 +121,16 @@ namespace Batch
 }
 """,
     "lib/Microsoft.SqlServer.ManagedDTS.dll": "not a real assembly: stands for a DLL kept in the repository\n",
+    "lib/Sybase.AdoNet4.AseClient.dll": "not a real assembly: a database provider kept in the repository\n",
+    # Gap 7: a repository-level build script, and one in another project's folder that no Batch work item may list.
+    "build/build.cmd": "@echo off\r\ndotnet build in-scope.sln\r\n",
+    "Legacy/deploy.cmd": "@echo off\r\nxcopy /y bin\\*.dll \\\\web-host.client-a.example\\legacy\\\r\n",
     "packages/Newtonsoft.Json.13.0.1/lib/net45/Newtonsoft.Json.dll": "not a real assembly: a restored package\n",
 
     # ---- the shared class library
     "Shared/Shared.csproj": _project("Shared", "Library", [
         '<Reference Include="System" />', '<Reference Include="System.Configuration" />', '<Reference Include="System.Data" />',
+        '<Reference Include="Sybase.AdoNet4.AseClient, Version=16.0.0.0"><HintPath>..\\lib\\Sybase.AdoNet4.AseClient.dll</HintPath></Reference>',
     ], ["Settings.cs", "Properties\\AssemblyInfo.cs"]),
     "Shared/Settings.cs": """using System.Configuration;
 
@@ -304,7 +316,9 @@ EXPECTED = {
     "directory-services-usage": {"Batch/Batch.csproj"},
     "encoding-default": {"Batch/Batch.csproj"},
     "fx-aspnet-mvc": {"Web/Web.csproj"},
-    "windows-only-assembly-reference": {"Batch/Batch.csproj"},
+    "windows-only-assembly-reference": {"Batch/Batch.csproj", "Shared/Shared.csproj"},
+    "event-log-usage": {"Batch/Batch.csproj"},
+    "backslash-path-building": {"Batch/Batch.csproj"},
     "legacy-project-format": {"Batch/Batch.csproj", "Shared/Shared.csproj"},
     "packages-config": {"Batch/Batch.csproj"},
 }

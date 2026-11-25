@@ -52,6 +52,7 @@ resolutions:
   linux_compatible: true
   name: Bump and adapt the call sites
   notes: null
+  phase: 2
   status: active
   target_description: The recommended package version, calling code adapted
 - consumer_impact: medium
@@ -84,6 +85,7 @@ resolutions:
   linux_compatible: true
   name: Replace the package
   notes: null
+  phase: 2
   status: active
   target_description: An alternative library supporting the target framework
 scope: occurrence

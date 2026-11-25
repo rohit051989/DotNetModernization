@@ -1,0 +1,76 @@
+# The phase of each factory resolution: where its work item stands in a conversion's plan (36-COPILOT-ENHANCED-CONVERSION
+# "Phases"). Seeded through app/items/baseline.py like every catalog default: a resolution edited since it was seeded keeps
+# its phase, and the phase is exported with the catalog (catalog/items/) and edited in the catalog's resolution form.
+#
+#   1  project format                          the project file, so the projects can target the new framework
+#   2  libraries                               class libraries and package versions the applications build on
+#   3  replace framework-only dependencies     what only .NET Framework or Windows provides, before a project moves
+#   4  retarget and host applications          the applications, on the target framework, in their new host
+#   5  platform and deployment                 what changes on Linux and OpenShift: time, paths, secrets, images, pipeline
+#   6  decisions a person still has to make    left unchanged until a person decides
+#
+# The plan orders work items by phase, and within a phase by the project dependency graph (a project's referenced
+# projects first). `items` gives each item's resolutions a phase; `resolutions` overrides one resolution's.
+
+items:
+  legacy-project-format: 1
+  packages-config: 1
+
+  fx47-class-library: 2
+  package-upgrade-safe: 2
+  package-upgrade-breaking: 2
+  package-vulnerable: 2
+  package-not-approved: 2
+
+  ssis-package: 3
+  package-replacement-required: 3
+  package-provided-by-framework: 3
+  directory-services-usage: 3
+  registry-access: 3
+  system-drawing-common: 3
+  msmq-usage: 3
+  event-log-usage: 3
+  wcf-nettcp-client: 3
+  windows-only-assembly-reference: 3
+
+  target-framework-retarget: 4
+  console-batch-job: 4
+  interactive-console-tool: 4
+  modern-worker-service: 4
+  windows-service: 4
+  windows-service-hosting: 4
+  aspnetcore-rest-api-legacy: 4
+  aspnetcore-iis-hosting: 4
+  aspnet-webforms: 4
+  fx-aspnet-mvc: 4
+  wcf-service: 4
+  wcf-service-host: 4
+  wcf-iis-servicemodel: 4
+  asmx-service: 4
+  winforms-desktop: 4
+  wpf-desktop: 4
+
+  datetime-now-usage: 5
+  encoding-default: 5
+  hardcoded-windows-path: 5
+  backslash-path-building: 5
+  unqualified-hostname: 5
+  unparseable-config-file: 5
+  sensitive-config-key: 5
+  enterprise-vault-secret-reference: 5
+  windows-auth-connection-string: 5
+  custom-file-logger-provider: 5
+  serilog-file-sink: 5
+  missing-health-endpoint: 5
+  missing-dockerfile: 5
+  missing-ocp4-manifests: 5
+  container-fixed-user-writable-path: 5
+  container-privileged-port: 5
+  container-runs-as-root: 5
+  windows-build-pipeline: 5
+
+resolutions:
+  # No replacement chosen yet: the references stay as they are until a person decides.
+  decide-windows-only-replacement: 6
+  # A request to the client's approval process: a person's action.
+  package-not-approved-request-approval: 6

@@ -104,6 +104,7 @@ resolutions:
     Prerequisites: All consuming applications scheduled in the same migration wave.
 
     Known limitations: Legacy Framework consumers cannot reference a net10.0 library. Sequencing is mandatory, not optional.
+  phase: 2
   status: active
   target_description: .NET 10
 - consumer_impact: none
@@ -144,6 +145,7 @@ resolutions:
     Prerequisites: No dependency on Framework-only APIs such as System.Web, AppDomain or Windows-specific configuration.
 
     Known limitations: Interim state, not a destination. Some Framework APIs have no .NET Standard equivalent. Plan a later move to net10.0 once all consumers are migrated.
+  phase: 2
   status: active
   target_description: .NET Standard 2.0
 scope: application

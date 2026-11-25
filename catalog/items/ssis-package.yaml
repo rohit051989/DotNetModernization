@@ -61,7 +61,9 @@ resolutions:
     8. Remove the references to `Microsoft.SqlServer.ManagedDTS` and
        `Microsoft.SqlServer.Dts.Runtime` once nothing uses them.
     9. Add unit tests that need no database: the order and parameters of the orchestrator's
-       statements, each statement's text, and the parsing of each staged file on made-up input.
+       statements, each statement's text, and the parsing of each staged file on made-up input. When
+       there is no test project for this code, create one beside the project it tests and add it to
+       the conversion's solution: a test project for in-scope code is in scope.
   id: csharp-sql-pushdown
   is_default: true
   linux_compatible: true
@@ -70,6 +72,7 @@ resolutions:
     Prerequisites: Source and target reside on the same database platform, and the transformation is expressible as set operations.
 
     Known limitations: Only applies where transformations are set-based. Row-by-row logic, external service calls and file-based sources still need application code. Moves load onto the database server.
+  phase: 3
   status: active
   target_description: .NET 10 worker + T-SQL + OCP4 CronJob
 - confirm_design: true
@@ -112,7 +115,9 @@ resolutions:
     11. Add unit tests on made-up input that need no database: each flat file's offsets or
         delimiters, each branch of each script, empty and null fields, a malformed line, the order
         of the SQL statements, and each writer's column mappings (through an interface over the bulk
-        copy, asserting on what would be sent).
+        copy, asserting on what would be sent). When there is no test project for this code, create
+        one beside the project it tests and add it to the conversion's solution: a test project for
+        in-scope code is in scope.
   id: csharp-worker-container
   is_default: false
   linux_compatible: true
@@ -121,6 +126,7 @@ resolutions:
     Prerequisites: Source and target schemas documented. Representative input data available for equivalence testing.
 
     Known limitations: Complex data flows with many transformations translate poorly to straight-line code. Package-level variables and expression evaluation need explicit reimplementation. Script tasks require porting on their own terms.
+  phase: 3
   status: active
   target_description: .NET 10 worker + OCP4 CronJob
 scope: application

@@ -38,6 +38,16 @@ public sealed class PathLiteralExtractor : IFingerprintExtractor
     /// cover it. The value is the host alone, never the rest of the URL.</summary>
     public const string UnqualifiedHostnameUrl = "UNQUALIFIED_HOSTNAME_URL";
 
+    /// <summary>Registry 1.16.0: a path built by joining parts with a backslash (<c>dir + "\\" + name</c>,
+    /// <c>string.Concat(dir, @"\", name)</c>, <c>$"{dir}\\{name}"</c>). On Linux a backslash is an ordinary character of
+    /// a file name, so the file lands somewhere else. The value is the literal's text.</summary>
+    public const string BackslashPathBuilding = "BACKSLASH_PATH_BUILDING";
+
+    // A path fragment that a backslash starts or ends: "\", "\logs\", "logs\". No drive letter, no colon, no
+    // character a Windows path cannot hold, no space-only text.
+    private static readonly Regex BackslashFragment = new(@"^(\\[^\\""<>|*?:\r\n]*)+\\?$|^[^\\""<>|*?:\r\n]+\\$",
+        RegexOptions.CultureInvariant);
+
     private const int MaxMatchedValueLength = 512;
 
     public string Name => ExtractorName;
@@ -163,7 +173,53 @@ public sealed class PathLiteralExtractor : IFingerprintExtractor
                 token.Parent.FirstAncestorOrSelf<BaseTypeDeclarationSyntax>()?.Identifier.Text,
                 ApiUsageExtractor.EnclosingMemberName(token.Parent),
                 accumulator);
+            if (JoinsPathWithBackslash(token))
+            {
+                Add(BackslashPathBuilding, Clean(token.ValueText), relativePath, EvidenceSourceTypes.SourceCode, line,
+                    token.Parent.FirstAncestorOrSelf<BaseTypeDeclarationSyntax>()?.Identifier.Text,
+                    ApiUsageExtractor.EnclosingMemberName(token.Parent), accumulator);
+            }
         }
+    }
+
+    /// <summary>Registry 1.16.0: the literal is a backslash path fragment that joins parts of a path: an operand of
+    /// <c>+</c>, an argument of <c>string.Concat</c>, or interpolated-string text beside an interpolation. A drive or
+    /// UNC path is its own signal; text passed to a Regex is a pattern, not a path.</summary>
+    private static bool JoinsPathWithBackslash(SyntaxToken token)
+    {
+        var text = token.ValueText;
+        if (text.Length == 0 || !BackslashFragment.IsMatch(text) || DrivePath.IsMatch(text) || UncPath.IsMatch(text))
+        {
+            return false;
+        }
+
+        if (token.Parent?.FirstAncestorOrSelf<InvocationExpressionSyntax>() is { } call
+            && call.Expression.ToString().Contains("Regex", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        if (token.IsKind(SyntaxKind.InterpolatedStringTextToken))
+        {
+            return token.Parent is InterpolatedStringTextSyntax part
+                   && part.Parent is InterpolatedStringExpressionSyntax whole
+                   && whole.Contents.IndexOf(part) is var at
+                   && ((at > 0 && whole.Contents[at - 1] is InterpolationSyntax)
+                       || (at < whole.Contents.Count - 1 && whole.Contents[at + 1] is InterpolationSyntax));
+        }
+
+        if (!token.IsKind(SyntaxKind.StringLiteralToken) || token.Parent is not LiteralExpressionSyntax literal)
+        {
+            return false;
+        }
+
+        return literal.Parent switch
+        {
+            BinaryExpressionSyntax binary => binary.IsKind(SyntaxKind.AddExpression),
+            ArgumentSyntax { Parent: ArgumentListSyntax { Parent: InvocationExpressionSyntax invocation } } =>
+                invocation.Expression.ToString() is "string.Concat" or "String.Concat" or "System.String.Concat",
+            _ => false,
+        };
     }
 
     /// <summary>A literal whose destination is named like a secret

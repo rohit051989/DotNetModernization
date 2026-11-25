@@ -36,6 +36,7 @@ resolutions:
   linux_compatible: false
   name: Remain Windows-hosted (out of scope)
   notes: null
+  phase: 4
   status: active
   target_description: .NET Framework on Windows Server, as a Windows Service
 - confirm_design: true
@@ -53,6 +54,7 @@ resolutions:
     Prerequisites: Service account permissions mapped to an alternative identity mechanism on OCP4.
 
     Known limitations: Windows-integrated authentication to SQL Server or file shares has no direct Linux equivalent. Expect a security-driven forcing factor here rather than a pure lift-and-shift.
+  phase: 4
   status: active
   target_description: .NET 10 Worker Service + OCP4 Deployment
 scope: application

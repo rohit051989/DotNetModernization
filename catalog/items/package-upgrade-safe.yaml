@@ -46,6 +46,7 @@ resolutions:
   linux_compatible: true
   name: Bump to the recommended version
   notes: null
+  phase: 2
   status: active
   target_description: The recommended package version, from the authoritative feed
 - consumer_impact: none
@@ -60,6 +61,7 @@ resolutions:
   linux_compatible: true
   name: Keep the current version
   notes: null
+  phase: 2
   status: active
   target_description: The current package version, unchanged
 scope: occurrence

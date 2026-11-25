@@ -160,7 +160,8 @@ def without_guidance(model: dict) -> list[dict]:
             out.append({"item": item["id"], "resolution": res["id"] if res else None, "missing": "item", **named})
         if item["id"] in DECIDE_FIRST and not item.get("decided"):
             # Its default has an instruction (leave it unchanged), but a person decides before the conversion runs.
-            out.append({"item": item["id"], "resolution": res["id"] if res else None, "missing": "decision", **named})
+            out.append({"item": item["id"], "resolution": res["id"] if res else None, "missing": "decision",
+                        "assemblies": item.get("assemblies") or [], **named})
     for option in upgrade_options(model):
         if option.get("missing"):
             out.append({"item": None, "resolution": None, "missing": "default", "change": option["question"],
@@ -184,8 +185,9 @@ def incomplete(model_or_missing) -> dict | None:
         if m["missing"] == "default":
             details.append(f"{m['change']}: no instruction yet ({m['why']})")
         elif m["missing"] == "decision":
-            details.append(f"{m['change']}: no decision recorded; a person decides the replacement before the conversion "
-                           "is run, and the engine is told not to change it")
+            names = f" for {', '.join(m['assemblies'])}" if m.get("assemblies") else ""
+            details.append(f"{m['change']}: no decision recorded{names}; a person decides the replacement before the "
+                           "conversion is run, and the engine is told not to change it")
         else:
             why = reasons.get(m["resolution"])
             details.append(f"{m['change']}: {m['approach']} ({'chosen' if m['decided'] else 'default'}) has no instruction "
@@ -314,24 +316,23 @@ def _status(chosen: bool) -> str:
 
 # ---------------------------------------------------------------- per-change upgrade instructions
 
-def _prerequisites(item: dict, present: set[str], by_id: dict) -> list[str]:
-    """The ordering constraints this instruction takes part in: its own rules, and the rules of other changes that name
-    it (an item another must run before learns to wait for it; both sides of "one unit" learn it)."""
+def _prerequisites(item: dict, present: set[str], by_id: dict, entry: dict | None = None) -> list[str]:
+    """Where this instruction stands in the plan (render.work_items): its phase, the changes it is one task with, the
+    earlier work items it follows (on the same project or on a project it references, or by an ordering rule), and the
+    ordering rules that name a later one."""
     lines = []
-    if any(rule["relation"] == "first" for rule in item["ordering"]):
-        lines.append("- Apply this **first**, before every other instruction of this repository.")
+    if entry is not None:
+        phase = entry["phase"]
+        lines.append(f"- Phase {phase} of {len(PHASES)}, {PHASES[phase].lower()}: apply it after every work item of the "
+                     "phases before it." if phase > 1 else f"- Phase 1 of {len(PHASES)}, {PHASES[1].lower()}: apply it "
+                     "before the work items of every later phase.")
     rules = [(rule["relation"], rule["item"]) for rule in item["ordering"] if rule["relation"] != "first"]
     reverse = {"before": "after", "after": "before", "together": "together"}
-    own = {(r["relation"], r["item"]) for r in item["ordering"]}
     for other in by_id.values():
         if other["id"] == item["id"]:
             continue
         for rule in other["ordering"]:
-            if rule["relation"] == "first":
-                # Every change waits for one that runs first, but one that runs first or with it.
-                if ("first", None) not in own and ("together", other["id"]) not in own:
-                    rules.append(("after", other["id"]))
-            elif rule["item"] == item["id"]:
+            if rule["relation"] != "first" and rule["item"] == item["id"]:
                 rules.append((reverse[rule["relation"]], other["id"]))
     for relation, other_id in rules:
         other = by_id.get(other_id)
@@ -348,6 +349,10 @@ def _prerequisites(item: dict, present: set[str], by_id: dict) -> list[str]:
         else:
             line = f"- Apply **together with** `{name}` ({other['name']}), in the same task and commit."
         if line not in lines:
+            lines.append(line)
+    for follows in (entry or {}).get("follows") or []:
+        line = f"- Apply after `{follows['name']}` ({follows['title']}): {follows['why']}."
+        if not any(f"`{follows['name']}`" in existing for existing in lines):
             lines.append(line)
     return lines
 
@@ -375,14 +380,19 @@ def concerned_files(model: dict, item: dict) -> list[str]:
         return []
     wanted = {o["file"] for o in item["occurrences"] if o.get("file")}
     wanted |= {o["project"] for o in item["occurrences"] if o.get("project")}
-    wanted |= {e["file"] for e in item["impact"] if e.get("file")}
+    wanted |= {e["file"] for e in item["impact"] if e.get("file") and e.get("action") != "reference"}
+    # Gap 7 (2026-11-25): the files of a kind it touches (build, deployment, CI, container, project settings) only where
+    # they belong to one of this item's own projects or to no project at all (the repository's pipeline and deployment):
+    # never a batch file or manifest of another project, in scope or not.
+    scope = model.get("scope") or {}
+    left = {p["path"] for p in scope.get("excluded") or []} | {p["path"] for p in scope.get("notConverted") or []}
+    every = [p["path"] for p in model.get("projects") or []] + sorted(left)
+    own = {o["project"] for o in item["occurrences"] if o.get("project")} | {e["project"] for e in item["impact"]
+                                                                              if e.get("project")}
     kinds = PACKAGE_KINDS if item["id"].startswith("package-") else tuple(FILE_KINDS)
-    wanted |= {f for f in existing if any(FILE_KINDS[k].search(f) for k in kinds)}
-    # Never a file of a project outside the conversion's scope (Part O): no instruction points into one.
-    left = {p["path"] for p in (model.get("scope") or {}).get("excluded") or []}
-    if left:
-        every = [p["path"] for p in model.get("projects") or []] + sorted(left)
-        wanted = {f for f in wanted if _owner(f, every) not in left}
+    wanted |= {f for f in existing if any(FILE_KINDS[k].search(f) for k in kinds) and _owner(f, every) in own | {None}}
+    # Never a file of a project outside the conversion's scope (Part O), nor of one this track does not convert.
+    wanted = {f for f in wanted if _owner(f, every) not in left}
     # Never a file in a restored package folder (packages/<id>.<version>/): a package's own scripts are not the
     # repository's build files (related issue 3: vendored tools/*.ps1 were listed under a work item).
     return sorted(f for f in wanted & existing
@@ -468,7 +478,7 @@ def packages_section(model: dict, places: set[str]) -> list[str]:
     return out
 
 
-def _instruction(model: dict, item: dict, present: set[str], by_id: dict) -> str:
+def _instruction(model: dict, item: dict, present: set[str], by_id: dict, entry: dict | None = None) -> str:
     res = item["resolution"]
     eng = model["engagement"]
     name = skill_name(res["id"])
@@ -499,7 +509,9 @@ def _instruction(model: dict, item: dict, present: set[str], by_id: dict) -> str
                 "projects it leaves out are outside this conversion's scope and not part of the converted build."]
     if item["id"] == PACKAGES_CONFIG_ITEM and res["id"] == "packagereference-migration":
         out += packages_section(model, {o["project"] for o in plan_item(item)["apply"]})
-    prereq = _prerequisites(item, present, by_id)
+    if entry is None and "items" in model:
+        entry = next((w for w in work_items(model) if w["item"]["id"] == item["id"]), None)
+    prereq = _prerequisites(item, present, by_id, entry)
     out += ["", "## Prerequisites", ""] + (prereq or ["- None among this repository's other instructions."])
 
     plan = plan_item(item)
@@ -578,7 +590,15 @@ def _instruction(model: dict, item: dict, present: set[str], by_id: dict) -> str
         out += ["", "## Files this changes", "", "| Action | File | Project | Certainty |", "|---|---|---|---|"]
         for e in item["impact"][:MAX_LIST]:
             target = e["file"] or f"new: {e['proposed']}"
-            out.append(f"| {e['action']} | `{_md(target)}` | {_md(e['project'])} | {_md(e['certainty'])} |")
+            action = "reference (read, never change)" if e.get("action") == "reference" else e.get("action")
+            out.append(f"| {action} | `{_md(target)}` | {_md(e['project'])} | {_md(e['certainty'])} |")
+        if any(e.get("action") == "reference" for e in item["impact"]):
+            out += ["", "A file marked reference is the specification of this change: read it, and never change, move or "
+                    "delete it."]
+        if any(e.get("action") == "create" for e in item["impact"]):
+            out += ["", "A new file is created where its row says (`*` stands for the names you choose). A new test "
+                    "project for in-scope code is created beside the project it tests and added to the conversion's "
+                    "solution."]
         out += ["", "A change to a file not in this table needs a reason in the task's notes."]
 
     out += ["", "## Done when", "",
@@ -750,6 +770,7 @@ ASSEMBLY_HEADING = "## Assembly references no package declares"
 ASSEMBLY_VERDICT = {
     "package": "a NuGet package referenced by path: declare it as a package reference",
     "windows-only": "needs a replacement on Linux: a person decides it before the conversion; do not replace it yourself",
+    "replaced": "replaced by",
     "unknown": "unknown: check it builds and loads on Linux",
 }
 
@@ -757,7 +778,9 @@ ASSEMBLY_VERDICT = {
 def assembly_section(model: dict) -> list[str]:
     """The addendum's section on the in-scope projects (format, packages.config) and their assembly references that no
     declared package stands for, each with its verdict (related issue 2). The same for both engines."""
-    projects = [p for p in model["projects"] if p.get("format")]
+    # A project this track does not convert (an SSIS .dtproj) is not an in-scope project of this table (gap 2).
+    not_converted = {p["path"] for p in (model.get("scope") or {}).get("notConverted") or []}
+    projects = [p for p in model["projects"] if p.get("format") and p["path"] not in not_converted]
     references = model.get("assembly_references") or []
     out = ["", ASSEMBLY_HEADING, ""]
     if projects:
@@ -783,7 +806,9 @@ def assembly_section(model: dict) -> list[str]:
                         f"{model['engagement']['target_framework']}" if look.get("newest_supporting") else
                         f" `{pkg['id']}`; no version known to support {model['engagement']['target_framework']} yet: "
                         "check its support before declaring it")
-        if a.get("why") and a["verdict"] != "package":
+        if a["verdict"] == "replaced":
+            verdict += f" `{a['replaced_by']}`: that work item removes the reference and the code that uses it"
+        if a.get("why") and a["verdict"] not in ("package", "replaced"):
             verdict += f" ({a['why']})"
         exists = "-" if a.get("exists") is None else "yes" if a["exists"] else "no"
         out.append(f"| `{_md(a['project'])}` | {_md(a['name'])} | {_md(a.get('version') or '-')} | {_md(where)} | "
@@ -809,21 +834,19 @@ def decision_sheet(model: dict) -> str:
         res = item["resolution"]
         out.append(f"| {_md(item['name'])} | {_md(res['name'] if res else 'none defined')} | {_status(item['decided'])} | "
                    f"{_md(', '.join(a['name'] for a in item['alternatives']))} |")
-    out += ["", "## Ordering", ""]
-    by_id = {i["id"]: i for i in model["items"]}
-    shown = []
-    for i in model["items"]:
-        for r in i["ordering"]:
-            if r["relation"] == "first":
-                if i["resolution"] is not None:
-                    shown.append(f"- `{skill_name(i['resolution']['id'])}` runs first, before every other change")
-                continue
-            other = by_id.get(r["item"])
-            if other is None or i["resolution"] is None or other["resolution"] is None:
-                continue
-            relation = {"before": "before", "after": "after"}.get(r["relation"], "together with")
-            shown.append(f"- `{skill_name(i['resolution']['id'])}` runs {relation} `{skill_name(other['resolution']['id'])}`")
-    out += shown or ["- No ordering constraint between this repository's changes."]
+    out += ["", "## Ordering", "",
+            "The work items in the order to apply them: by phase, and within a phase each project's referenced projects "
+            "first. Items in one step are one task and one commit.", ""]
+    plan = work_items(model)
+    step = 0
+    for w in plan:
+        if not w["together_with"]:
+            step += 1
+            out.append(f"{step}. `{w['name']}`: {_md(w['title'])} (phase {w['phase']}, {PHASES[w['phase']].lower()})")
+        else:
+            out.append(f"   with `{w['name']}`: {_md(w['title'])}, in the same task and commit")
+    if not plan:
+        out.append("- No work item.")
 
     out += ["", "## To supply before deployment", "",
             "Values a default approach needs that nobody has supplied. The conversion references each by name and "
@@ -911,7 +934,9 @@ def scope_section(model: dict) -> str:
     out = ["", "## Conversion scope", "",
            f"This conversion covers only some of this repository's projects. Build and test only {_built(model)} "
            f"(`{c['build']}`, `{c['test']}`), never the repository's other solutions: it lists exactly the projects in "
-           "scope, wherever they live, each once. Do not add a project outside the scope to it.",
+           "scope, wherever they live, each once. Do not add a project outside the scope to it. A new test project "
+           "for in-scope code is not outside the scope: create it beside the project it tests and add it to "
+           f"{_built(model)}.",
            "", "**Never change, retarget or fix a project outside the scope**, not even to make a build or a test pass: "
            "not its code, its project file, its packages or its tests. Each one has an `OUT-OF-SCOPE.md` in its folder "
            "and is left exactly as it is; it is not part of the converted build. If a change seems to need one of them, "
@@ -978,20 +1003,56 @@ def build_section(model: dict) -> str:
     return "\n".join(["", "## Build and test", "",
                       f"- Build with `{c['build']}` and test with `{c['test']}`, from the repository's root. Run both "
                       "after each change and before reporting done; these are the build and the tests the result is "
-                      "judged by."]) + "\n"
+                      "judged by.",
+                      "- A new test project for in-scope code is created beside the project it tests and added to "
+                      f"{_built(model) or 'the solution'}, so the build and the tests include it."]) + "\n"
 
 
 def _applies(item: dict) -> bool:
     return item["resolution"] is not None and bool(item["resolution"].get("guidance")) and bool(plan_item(item)["apply"])
 
 
+# The phases of a conversion's plan (36-COPILOT-ENHANCED-CONVERSION "Phases"): every catalog resolution has one
+# (item_resolutions.phase, seeded from seed/data/phases.yaml). A resolution with none counts as platform and deployment.
+PHASES = {
+    1: "Project format",
+    2: "Libraries",
+    3: "Replace framework-only dependencies",
+    4: "Retarget and host applications",
+    5: "Platform and deployment",
+    6: "Decisions a person still has to make",
+}
+DEFAULT_PHASE = 5
+
+
+def phase_of(item: dict) -> int:
+    phase = (item.get("resolution") or {}).get("phase")
+    return phase if phase in PHASES else DEFAULT_PHASE
+
+
+def _referenced(model: dict, projects: set[str]) -> set[str]:
+    """Every project `projects` reference, directly or through others, not counting themselves."""
+    graph = model.get("references") or {}
+    seen: set[str] = set()
+    todo = [t for p in projects for t in graph.get(p, [])]
+    while todo:
+        project = todo.pop()
+        if project not in seen:
+            seen.add(project)
+            todo.extend(graph.get(project, []))
+    return seen - projects
+
+
 def work_items(model: dict) -> list[dict]:
-    """The work items, one per change with an instruction, in the order to apply them: the model's order, moved only
-    as far as an ordering constraint needs (an item that must run before another goes first). Changes that run as one
-    unit stay next to each other, and each after the first names it (`together_with`): one task and one commit.
-    [{name, item, title, together_with}]"""
+    """The work items, one per change with an instruction, in the order to apply them: by phase (PHASES); within a phase,
+    a work item on a project's referenced projects before the one on the project itself, then the ordering rules of
+    the catalog's descriptions, then the model's order. Changes that run as one unit stay next to each other, and each
+    after the first names it (`together_with`): one task and one commit. Each names the earlier work items it follows
+    (`follows`: on the same project or on a project it references, or by an ordering rule).
+    [{name, item, title, phase, together_with, follows}]"""
     items = [i for i in model["items"] if _applies(i)]
     ids = [i["id"] for i in items]
+    by_id = {i["id"]: i for i in items}
     # One unit: each item's group is its first member in the model's order.
     group = {i: i for i in ids}
     def lead(i):
@@ -1007,33 +1068,63 @@ def work_items(model: dict) -> list[dict]:
                     group[second] = first
     groups = [g for g in ids if lead(g) == g]
     members = {g: [i for i in ids if lead(i) == g] for g in groups}
-    after: dict[str, set] = {g: set() for g in groups}          # group -> the groups that must come before it
+    phase = {g: min(phase_of(by_id[i]) for i in members[g]) for g in groups}
+    projects = {g: {o["project"] for i in members[g] for o in by_id[i]["occurrences"] if o.get("project")} for g in groups}
+    below = {g: _referenced(model, projects[g]) for g in groups}
+    ruled: dict[str, set] = {g: set() for g in groups}           # group -> the groups an ordering rule puts before it
     first = {lead(i["id"]) for i in items if any(rule["relation"] == "first" for rule in i["ordering"])}
-    for g in groups:
-        if g not in first:
-            after[g] |= first
     for i in items:
         for rule in i["ordering"]:
             other = rule["item"]
             if other not in group or lead(other) == lead(i["id"]):
                 continue
             if rule["relation"] == "before":
-                after[lead(other)].add(lead(i["id"]))
+                ruled[lead(other)].add(lead(i["id"]))
             elif rule["relation"] == "after":
-                after[lead(i["id"])].add(lead(other))
-    ordered, placed = [], set()
-    while len(ordered) < len(groups):
-        ready = [g for g in groups if g not in placed and after[g] <= placed]
-        nxt = ready[0] if ready else next(g for g in groups if g not in placed)     # a cycle: keep the model's order
-        ordered.append(nxt)
-        placed.add(nxt)
-    by_id = {i["id"]: i for i in items}
-    out = []
+                ruled[lead(i["id"])].add(lead(other))
+    after: dict[str, set] = {g: set() for g in groups}            # within its phase, the groups that must come before
+    for g in groups:
+        for h in groups:
+            if h == g or phase[h] != phase[g]:
+                continue
+            graph = bool(projects[h] & below[g]) and not (projects[g] & below[h])
+            if graph or h in ruled[g] or (h in first and g not in first):
+                after[g].add(h)
+    ordered: list[str] = []
+    for p in sorted(set(phase.values())):
+        todo = [g for g in groups if phase[g] == p]
+        placed: set[str] = set()
+        while todo:
+            ready = [g for g in todo if after[g] <= placed]
+            nxt = ready[0] if ready else todo[0]                  # a cycle: keep the model's order
+            ordered.append(nxt)
+            placed.add(nxt)
+            todo.remove(nxt)
+
+    out, seen = [], []
     for g in ordered:
         for i in members[g]:
-            out.append({"name": skill_name(by_id[i]["resolution"]["id"]), "item": by_id[i],
-                        "title": f"{by_id[i]['resolution']['name']} ({by_id[i]['name']})",
-                        "together_with": None if i == g else skill_name(by_id[g]["resolution"]["id"])})
+            item = by_id[i]
+            name = skill_name(item["resolution"]["id"])
+            title = f"{item['resolution']['name']} ({item['name']})"
+            follows = []
+            for h, h_name, h_title in seen:
+                if h == g:
+                    continue
+                if h in ruled[g] or (h in first and g not in first):
+                    why = "an ordering rule puts it first"
+                elif projects[h] & projects[g]:
+                    why = "it changes the same project first"
+                elif projects[h] & below[g]:
+                    why = "it changes a project this one references"
+                else:
+                    continue
+                follows.append({"name": h_name, "title": h_title, "why": why})
+            out.append({"name": name, "item": item, "title": title, "phase": phase[g],
+                        "together_with": None if i == g else skill_name(by_id[g]["resolution"]["id"]),
+                        "follows": follows})
+        seen += [(g, skill_name(by_id[i]["resolution"]["id"]), f"{by_id[i]['resolution']['name']} ({by_id[i]['name']})")
+                 for i in members[g]]
     return out
 
 
@@ -1050,10 +1141,12 @@ def _copilot(model: dict) -> dict[str, str]:
     files: dict[str, str] = {}
     by_id = {i["id"]: i for i in model["items"]}
     present = set(by_id)
+    plan = {w["item"]["id"]: w for w in work_items(model)}
     for item in model["items"]:
         if not _applies(item):
             continue                # nothing to apply: listed as unresolved in the decision sheet
-        files[f"{paths.UPGRADE_SKILLS_DIR}/{skill_name(item['resolution']['id'])}.md"] = _instruction(model, item, present, by_id)
+        files[f"{paths.UPGRADE_SKILLS_DIR}/{skill_name(item['resolution']['id'])}.md"] = _instruction(
+            model, item, present, by_id, plan.get(item["id"]))
     for template in sorted((TEMPLATES / "skills").glob("*.md")):
         files[f"{paths.SKILLS_DIR}/{template.name}"] = template.read_text(encoding="utf-8")
     instructions = (TEMPLATES / "copilot-instructions.md").read_text(encoding="utf-8")

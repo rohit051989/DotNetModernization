@@ -53,6 +53,7 @@ resolutions:
   linux_compatible: true
   name: Console JSON only
   notes: null
+  phase: 5
   status: active
   target_description: Serilog console sink, CompactJsonFormatter, stdout collected by EFK
 - confirm_design: true
@@ -70,6 +71,7 @@ resolutions:
   linux_compatible: true
   name: OpenTelemetry exporter
   notes: null
+  phase: 5
   status: active
   target_description: Serilog.Sinks.OpenTelemetry to the platform collector
 scope: occurrence

@@ -63,6 +63,7 @@ resolutions:
   linux_compatible: true
   name: ASP.NET Core health checks
   notes: null
+  phase: 5
   status: active
   target_description: /health/live and /health/ready, wired to the OCP4 probes
 - consumer_impact: none
@@ -79,6 +80,7 @@ resolutions:
   linux_compatible: true
   name: TCP socket probe only
   notes: Proves the process is listening, not that it can serve requests. Choosing health checks over this needs a forcing perspective (AVAILABILITY_RESILIENCE).
+  phase: 5
   status: active
   target_description: tcpSocket liveness and readiness probes
 scope: application

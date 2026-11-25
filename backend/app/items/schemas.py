@@ -315,6 +315,11 @@ class ResolutionWrite(BaseModel):
         default=None, description="Confirm the design before implementing: the resolution changes the design or the "
         "architecture (SOAP to REST), so a conversion's engine asks the developer how to implement it before changing any "
         "code (36-COPILOT-ENHANCED-CONVERSION \"Design questions before converting\"). Omit it to leave it unchanged.")
+    phase: int | None = Field(
+        default=None, ge=1, le=6, description="Where its work item stands in a conversion's plan (36-COPILOT-ENHANCED-"
+        "CONVERSION \"Phases\"): 1 project format, 2 libraries, 3 replace framework-only dependencies, 4 retarget and "
+        "host applications, 5 platform and deployment, 6 decisions a person still has to make. Omit it to leave it "
+        "unchanged.")
 
 
 class ResolutionCreate(ResolutionWrite):
@@ -354,6 +359,7 @@ class ResolutionOut(BaseModel):
     notes: str | None
     engine_guidance: str | None = None
     confirm_design: bool = False
+    phase: int | None = None
     status: ItemStatus
     deleted_at: datetime.datetime | None
     created_at: datetime.datetime

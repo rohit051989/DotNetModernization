@@ -39,6 +39,7 @@ resolutions:
   linux_compatible: true
   name: Keep the provider, writing to standard output
   notes: null
+  phase: 5
   status: active
   target_description: The same provider, writing to standard output
 - consumer_impact: none
@@ -58,6 +59,7 @@ resolutions:
   linux_compatible: true
   name: Remove the provider and its tests; log to standard output
   notes: null
+  phase: 5
   status: active
   target_description: Console logging only, collected from standard output
 - consumer_impact: none
@@ -77,6 +79,7 @@ resolutions:
   linux_compatible: true
   name: Unregister the provider; keep the class and its tests
   notes: null
+  phase: 5
   status: active
   target_description: Console logging only, collected from standard output; the provider class unused
 scope: occurrence

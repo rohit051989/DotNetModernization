@@ -67,6 +67,7 @@ resolutions:
   linux_compatible: true
   name: Helm chart
   notes: null
+  phase: 5
   status: active
   target_description: Chart deployed by the pipeline or GitOps
 - consumer_impact: none
@@ -86,6 +87,7 @@ resolutions:
   linux_compatible: true
   name: Plain manifests
   notes: null
+  phase: 5
   status: active
   target_description: OCP4 manifests applied by the pipeline
 scope: application

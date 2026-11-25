@@ -36,6 +36,7 @@ resolutions:
   linux_compatible: true
   name: Stay on the latest approved version
   notes: null
+  phase: 2
   status: active
   target_description: The newest version the client feed holds
 - consumer_impact: none
@@ -55,6 +56,7 @@ resolutions:
   linux_compatible: true
   name: Request approval into the client feed
   notes: null
+  phase: 6
   status: active
   target_description: The public version, mirrored into the client feed
 scope: occurrence

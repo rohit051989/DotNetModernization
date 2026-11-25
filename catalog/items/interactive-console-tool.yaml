@@ -94,6 +94,7 @@ resolutions:
   linux_compatible: true
   name: Convert to an automated test
   notes: null
+  phase: 4
   status: active
   target_description: Automated test in the CI pipeline
 - consumer_impact: none
@@ -108,6 +109,7 @@ resolutions:
   linux_compatible: true
   name: Keep as a developer or operations tool, not deployed
   notes: null
+  phase: 4
   status: active
   target_description: Run by hand outside OCP4; retargeted only if its own build needs it
 - consumer_impact: none
@@ -121,6 +123,7 @@ resolutions:
   linux_compatible: true
   name: Containerise as an operations tool
   notes: 'The pod needs stdin: true and tty: true, or every read sees end of input.'
+  phase: 4
   status: active
   target_description: On-demand image run with stdin and a TTY; never a Deployment or CronJob
 - consumer_impact: none
@@ -134,6 +137,7 @@ resolutions:
   linux_compatible: true
   name: Retire
   notes: null
+  phase: 4
   status: active
   target_description: Removed
 scope: application

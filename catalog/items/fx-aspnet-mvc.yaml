@@ -85,6 +85,7 @@ resolutions:
     Prerequisites: Ability to run two processes during transition. Route inventory captured up front.
 
     Known limitations: Temporarily increases operational complexity by running two applications. Requires a defined end date or the interim state becomes permanent.
+  phase: 4
   status: active
   target_description: .NET 10 + ASP.NET Core + System.Web adapters + YARP
 - confirm_design: true
@@ -102,6 +103,7 @@ resolutions:
     Prerequisites: Strong test coverage. Limited HttpContext and session sprawl.
 
     Known limitations: Big-bang cutover with a large review surface. Only appropriate for small or well-tested applications.
+  phase: 4
   status: active
   target_description: .NET 10 + ASP.NET Core MVC, container on OCP4
 scope: application

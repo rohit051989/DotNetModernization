@@ -188,6 +188,8 @@ export interface ItemResolution {
   container_ready: boolean
   /** Changes the design or the architecture: a conversion's engine asks the developer how to implement it first. */
   confirm_design?: boolean
+  /** Where its work item stands in a conversion's plan, 1 to 6 (RESOLUTION_PHASES). Null: not set. */
+  phase?: number | null
   /** Engine-facing guidance: what a conversion engine does to apply this resolution. None: it is not applied. */
   engine_guidance?: string | null
   notes: string | null
@@ -220,9 +222,21 @@ export interface ResolutionWriteInput {
   linux_compatible: boolean
   container_ready: boolean
   confirm_design?: boolean
+  phase?: number | null
   engine_guidance?: string | null
   notes: string | null
   status: ItemStatus
+}
+
+/** The phases of a conversion's plan (backend render.PHASES): work items are applied by phase, and within a phase each
+ * project's referenced projects first. */
+export const RESOLUTION_PHASES: Record<number, string> = {
+  1: 'Project format',
+  2: 'Libraries',
+  3: 'Replace framework-only dependencies',
+  4: 'Retarget and host applications',
+  5: 'Platform and deployment',
+  6: 'Decisions a person still has to make',
 }
 
 export interface ResolutionCreateInput extends ResolutionWriteInput {

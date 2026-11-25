@@ -43,6 +43,7 @@ resolutions:
   linux_compatible: true
   name: Explicit legacy code page
   notes: null
+  phase: 5
   status: active
   target_description: System.Text.Encoding.CodePages, code page from the source servers (typically 1252)
 - consumer_impact: medium
@@ -56,6 +57,7 @@ resolutions:
   linux_compatible: true
   name: Explicit UTF-8
   notes: null
+  phase: 5
   status: active
   target_description: UTF-8 everywhere
 scope: occurrence
