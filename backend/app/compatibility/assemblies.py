@@ -61,3 +61,30 @@ def windows_only(name: str | None) -> str | None:
         if (simple == listed) if entry.get("match", "exact") == "exact" else simple.startswith(listed):
             return entry["why"]
     return None
+
+
+PACKAGES = Path(__file__).resolve().parent / "framework_only_packages.yaml"
+
+
+@functools.lru_cache(maxsize=1)
+def _packages() -> tuple[dict, ...]:
+    return tuple(yaml.safe_load(PACKAGES.read_text(encoding="utf-8")).get("packages") or [])
+
+
+def known_replacement(package_id: str | None, version: str | None = None) -> str | None:
+    """The known replacement for a package built only for .NET Framework (framework_only_packages.yaml), or None when
+    the list does not name it, or names it only below a version `version` is not below (gap 4, 2026-11-26)."""
+    from app.conversion.frameworks import parse_version
+
+    wanted = (package_id or "").strip().lower()
+    if not wanted:
+        return None
+    for entry in _packages():
+        listed = entry["id"].lower()
+        if not ((wanted == listed) if entry.get("match", "exact") == "exact" else wanted.startswith(listed)):
+            continue
+        below = entry.get("below")
+        if below and version and parse_version(version) >= parse_version(below):
+            continue
+        return entry["replacement"]
+    return None

@@ -502,9 +502,11 @@ items:
     scope: application
     category: packaging
     description: >-
-      A deployable .NET (Core) application with no Dockerfile in its project
-      directory or anywhere else in its repository. A repository-level
-      Dockerfile counts for every project in the repository.
+      A deployable .NET application with no Dockerfile in its project
+      directory or anywhere else in its repository: on modern .NET, or on
+      .NET Framework (a conversion acts on it only when the application's
+      chosen approach moves it to the target framework in a container). A
+      repository-level Dockerfile counts for every project in the repository.
     excluded_roles: [TEST, LIBRARY, DATABASE, DEPLOYMENT]
     detection:
       match:
@@ -524,14 +526,22 @@ items:
           - id: top-level-statements
             signal:
               name: TOP_LEVEL_STATEMENTS_ENTRY_POINT
+          # A classic web application on .NET Framework (2026-11-26): its .svc, .asmx, .aspx or Global.asax.
+          - {id: svc-host, signal: {name: SVC_FILE}}
+          - {id: asmx-host, signal: {name: ASMX_FILE}}
+          - {id: aspx-host, signal: {name: ASPX_FILE}}
+          - {id: global-asax-host, signal: {name: GLOBAL_ASAX_FILE}}
         none:
           - id: has-dockerfile
             signal:
               name: DOCKERFILE_FILE
         metadata:
-          - id: modern-dotnet
+          # .NET Framework too (2026-11-26): an application on .NET Framework whose chosen approach moves it to the
+          # target framework in a container needs an image and manifests as much as a modern one. Preparation keeps
+          # it only then (app.engine.inputs.collect.containers_needed); detection cannot know the decision.
+          - id: dotnet-application
             field: frameworkFamily
-            in: [net, net-core]
+            in: [net, net-core, net-framework]
           # A desktop application needs no Dockerfile, health endpoint or
           # OCP4 manifest: it does not run on the platform.
           - id: not-desktop
@@ -619,10 +629,12 @@ items:
     scope: application
     category: packaging
     description: >-
-      A deployable .NET (Core) application with no Kubernetes/OpenShift
-      manifest and no Helm chart in its project directory or anywhere else
-      in its repository. A repository-level k8s/ or charts/ folder counts for
-      every project in the repository.
+      A deployable .NET application with no Kubernetes/OpenShift manifest
+      and no Helm chart in its project directory or anywhere else in its
+      repository: on modern .NET, or on .NET Framework (a conversion acts on
+      it only when the application's chosen approach moves it to the target
+      framework in a container). A repository-level k8s/ or charts/ folder
+      counts for every project in the repository.
     excluded_roles: [TEST, LIBRARY, DATABASE, DEPLOYMENT]
     detection:
       match:
@@ -642,6 +654,11 @@ items:
           - id: top-level-statements
             signal:
               name: TOP_LEVEL_STATEMENTS_ENTRY_POINT
+          # A classic web application on .NET Framework (2026-11-26): its .svc, .asmx, .aspx or Global.asax.
+          - {id: svc-host, signal: {name: SVC_FILE}}
+          - {id: asmx-host, signal: {name: ASMX_FILE}}
+          - {id: aspx-host, signal: {name: ASPX_FILE}}
+          - {id: global-asax-host, signal: {name: GLOBAL_ASAX_FILE}}
         none:
           - id: has-manifest
             signal:
@@ -650,9 +667,12 @@ items:
             signal:
               name: HELM_CHART_FILE
         metadata:
-          - id: modern-dotnet
+          # .NET Framework too (2026-11-26): an application on .NET Framework whose chosen approach moves it to the
+          # target framework in a container needs an image and manifests as much as a modern one. Preparation keeps
+          # it only then (app.engine.inputs.collect.containers_needed); detection cannot know the decision.
+          - id: dotnet-application
             field: frameworkFamily
-            in: [net, net-core]
+            in: [net, net-core, net-framework]
           # A desktop application needs no Dockerfile, health endpoint or
           # OCP4 manifest: it does not run on the platform.
           - id: not-desktop
@@ -1136,16 +1156,33 @@ items:
       System.DirectoryServices.AccountManagement (DirectoryEntry,
       DirectorySearcher, PrincipalContext), which is Windows-only.
       System.DirectoryServices.Protocols is not flagged: it works on Linux,
-      and is the usual target. One occurrence per file.
+      and is the usual target. One occurrence per file. The signed-in user's
+      own identity and group checks (WindowsIdentity.GetCurrent,
+      UserPrincipal.Current, IsInRole) are located too (2026-11-26): they are
+      the places the identity provider's claims replace, while a directory
+      query for other users or groups is left unchanged by that resolution.
     detection:
       match:
         all:
           - id: directory-services
             signal:
               name: DIRECTORY_SERVICES_USAGE
+        # Always met when the directory is used (its first condition): it makes the identity checks located places,
+        # never a reason the item applies on their own.
+        atLeast:
+          - id: directory-or-identity-check
+            count: 1
+            of:
+              - id: directory-lookup
+                signal:
+                  name: DIRECTORY_SERVICES_USAGE
+              - id: current-user-check
+                signal:
+                  name: CURRENT_USER_IDENTITY_CHECK
       occurrence_source:
         signal: DIRECTORY_SERVICES_USAGE
         group_by: source_path
+        also: [CURRENT_USER_IDENTITY_CHECK]
     resolutions:
       - id: ldap-protocols
         name: "Port to System.DirectoryServices.Protocols"
@@ -2356,6 +2393,246 @@ items:
         name: "Remain Windows-hosted"
         description: "The application stays on Windows, outside the Linux move: the paths stay as they are."
         target_description: ".NET on Windows Server"
+        consumer_impact: none
+        effort: low
+        linux_compatible: false
+        container_ready: false
+
+  # 2026-11-26: framework-only APIs in class libraries, which no work item named, so the bridge was chosen for libraries
+  # that cannot take it (registry 1.17.0). Each blocks the move to the target framework and to Linux: there is no
+  # implementation on the target framework and no package that provides one. The engagement policy behind them: a
+  # library that does not support the target framework is rewritten, not kept on .NET Framework, so each default is a
+  # rewrite; "Remain Windows-hosted" is offered for other engagements, never as the default.
+  - id: linq-to-sql-usage
+    name: "LINQ to SQL (System.Data.Linq)"
+    scope: occurrence
+    category: data-access
+    description: |-
+      Code using LINQ to SQL: System.Data.Linq, a DataContext subclass,
+      Table<T>, or a .dbml mapping file. LINQ to SQL exists only on .NET
+      Framework: no target framework or .NET Standard implementation, and no
+      package provides one. One occurrence per file (the .dbml files and the
+      project's assembly reference included).
+    excluded_roles: [TEST]
+    detection:
+      match:
+        any:
+          - id: linq-namespace
+            signal:
+              name: SYSTEM_DATA_LINQ_NAMESPACE
+          - id: linq-assembly
+            signal:
+              name: SYSTEM_DATA_LINQ_ASSEMBLY
+          - id: datacontext-subclass
+            signal:
+              name: DATACONTEXT_BASE_CLASS
+          - id: dbml-file
+            signal:
+              name: DBML_FILE
+      occurrence_source:
+        signal: SYSTEM_DATA_LINQ_NAMESPACE
+        group_by: source_path
+        also: [DATACONTEXT_BASE_CLASS, DBML_FILE, SYSTEM_DATA_LINQ_ASSEMBLY]
+    resolutions:
+      - id: rewrite-to-ef-core
+        name: "Rewrite to EF Core"
+        description: "Map each .dbml table and association to an EF Core entity and DbContext with the same names; keep each repository method's results, order and transactions."
+        target_description: "EF Core on the target framework"
+        consumer_impact: low
+        effort: high
+        is_default: true
+        notes: "Current EF Core runs only on the target framework, not on .NET Framework or .NET Standard 2.0: the library is retargeted with all its consumers (the direct retarget), in the same task, never put on the bridge. Chosen with the bridge, preparation warns."
+      - id: rewrite-to-ado-or-dapper
+        name: "Rewrite to ADO.NET or Dapper"
+        description: "Rewrite each query against Microsoft.Data.SqlClient (with Dapper where the repository already uses it), with the same SQL behaviour."
+        target_description: "Microsoft.Data.SqlClient (and Dapper) on the target framework"
+        consumer_impact: low
+        effort: high
+        notes: "Builds for .NET Framework and .NET Standard 2.0 too, so it suits a library on the bridge."
+      - id: linq-to-sql-remain-windows-hosted
+        name: "Remain Windows-hosted"
+        description: "The library and its applications stay on .NET Framework on Windows, outside the move: LINQ to SQL stays."
+        target_description: ".NET Framework on Windows Server"
+        consumer_impact: none
+        effort: low
+        linux_compatible: false
+        container_ready: false
+
+  - id: system-web-in-library
+    name: "System.Web in a class library"
+    scope: occurrence
+    category: framework
+    description: |-
+      A class library on .NET Framework whose code uses System.Web:
+      HttpContext, HttpRequest, IHttpModule, System.Web.Configuration,
+      JavaScriptSerializer, System.Web.UI, session state or System.Web.Security.
+      System.Web exists only on .NET Framework. A web application's own use of
+      System.Web is its web framework's item (classic MVC, Web Forms, WCF),
+      not this one. One occurrence per file.
+    excluded_roles: [TEST]
+    detection:
+      match:
+        any:
+          - id: system-web-namespace
+            signal:
+              name: SYSTEM_WEB_NAMESPACE
+          - id: system-web-ui-namespace
+            signal:
+              name: SYSTEM_WEB_UI_NAMESPACE
+          - id: system-web-http-namespace
+            signal:
+              name: SYSTEM_WEB_HTTP_NAMESPACE
+          - id: system-web-mvc-namespace
+            signal:
+              name: SYSTEM_WEB_MVC_NAMESPACE
+          - id: http-module
+            signal:
+              name: IHTTP_MODULE_BASE_CLASS
+          - id: http-handler
+            signal:
+              name: IHTTP_HANDLER_BASE_CLASS
+          - id: system-web-assembly
+            signal:
+              name: SYSTEM_WEB_ASSEMBLY
+        metadata:
+          - id: legacy-framework
+            field: frameworkFamily
+            equals: net-framework
+          - id: not-an-executable
+            field: outputType
+            notIn: [WinExe, Exe]
+          - id: not-a-classic-web-project
+            field: classicWebProject
+            equals: ""
+        none:
+          - {id: no-aspx, signal: {name: ASPX_FILE}}
+          - {id: no-svc, signal: {name: SVC_FILE}}
+          - {id: no-asmx, signal: {name: ASMX_FILE}}
+          - {id: no-global-asax, signal: {name: GLOBAL_ASAX_FILE}}
+          - {id: no-service-base, signal: {name: SERVICE_BASE_BASE_CLASS}}
+          - {id: no-main-entry, signal: {name: MAIN_METHOD_ENTRY_POINT}}
+          - {id: no-toplevel-entry, signal: {name: TOP_LEVEL_STATEMENTS_ENTRY_POINT}}
+          - {id: no-startup-class, signal: {name: STARTUP_CLASS_ENTRY_POINT}}
+          - {id: no-webhost-builder, signal: {name: WEBHOST_CREATE_DEFAULT_BUILDER_ENTRY_POINT}}
+          - {id: no-host-builder, signal: {name: HOST_CREATE_DEFAULT_BUILDER_ENTRY_POINT}}
+          - {id: no-web-builder, signal: {name: WEB_APPLICATION_CREATE_BUILDER_ENTRY_POINT}}
+      occurrence_source:
+        signal: SYSTEM_WEB_NAMESPACE
+        group_by: source_path
+        also: [SYSTEM_WEB_UI_NAMESPACE, SYSTEM_WEB_HTTP_NAMESPACE, SYSTEM_WEB_MVC_NAMESPACE, IHTTP_MODULE_BASE_CLASS,
+               IHTTP_HANDLER_BASE_CLASS, SYSTEM_WEB_ASSEMBLY]
+    resolutions:
+      - id: compile-against-system-web-adapters
+        name: "Compile against the System.Web adapters"
+        description: "HttpContext, HttpRequest, HttpResponse, HttpRuntime.Cache and session compile against Microsoft.AspNetCore.SystemWebAdapters (it has a .NET Standard 2.0 build); the consuming ASP.NET Core host registers the adapters."
+        target_description: "Microsoft.AspNetCore.SystemWebAdapters"
+        consumer_impact: low
+        effort: medium
+        is_default: true
+        notes: "Covers the request, response, cache and session; a type the package does not provide goes behind an interface (the next resolution) at that place."
+      - id: move-behind-an-interface
+        name: "Move behind an interface"
+        description: "IHttpModule to the host's middleware, System.Web.Configuration to ConfigurationManager, JavaScriptSerializer to the library's own serializer, System.Web.Security to the identity provider; System.Web.UI code is a design question."
+        target_description: "Interfaces the host implements; ASP.NET Core middleware"
+        consumer_impact: medium
+        effort: high
+      - id: system-web-in-library-remain-windows-hosted
+        name: "Remain Windows-hosted"
+        description: "The library and its applications stay on .NET Framework on Windows, outside the move: System.Web stays."
+        target_description: ".NET Framework on Windows Server"
+        consumer_impact: none
+        effort: low
+        linux_compatible: false
+        container_ready: false
+
+  - id: wif-usage
+    name: "Windows Identity Foundation (System.IdentityModel.Services)"
+    scope: occurrence
+    category: security
+    description: |-
+      Code using Windows Identity Foundation: System.IdentityModel.Services
+      (FederatedAuthentication, SessionAuthenticationModule,
+      WSFederationAuthenticationModule) or a ClaimsAuthenticationManager or
+      ClaimsAuthorizationManager subclass. WIF exists only on .NET Framework,
+      wired into System.Web's pipeline. One occurrence per file.
+    excluded_roles: [TEST]
+    detection:
+      match:
+        any:
+          - id: wif-namespace
+            signal:
+              name: SYSTEM_IDENTITYMODEL_SERVICES_NAMESPACE
+          - id: wif-assembly
+            signal:
+              name: SYSTEM_IDENTITYMODEL_SERVICES_ASSEMBLY
+          - id: wif-api
+            signal:
+              name: WIF_API_USAGE
+      occurrence_source:
+        signal: SYSTEM_IDENTITYMODEL_SERVICES_NAMESPACE
+        group_by: source_path
+        also: [WIF_API_USAGE, SYSTEM_IDENTITYMODEL_SERVICES_ASSEMBLY]
+    resolutions:
+      - id: move-to-aspnetcore-authentication
+        name: "Move to ASP.NET Core authentication"
+        description: "Validate tokens with Microsoft.IdentityModel and ASP.NET Core authentication (JWT bearer or OpenID Connect) in the host, with claims mapped by configured names."
+        target_description: "ASP.NET Core authentication with the platform identity provider"
+        consumer_impact: medium
+        effort: high
+        is_default: true
+      - id: wif-remain-windows-hosted
+        name: "Remain Windows-hosted"
+        description: "The code and its applications stay on .NET Framework on Windows, outside the move: WIF stays."
+        target_description: ".NET Framework on Windows Server"
+        consumer_impact: none
+        effort: low
+        linux_compatible: false
+        container_ready: false
+
+  - id: windows-workflow-usage
+    name: "Windows Workflow Foundation (System.Activities)"
+    scope: occurrence
+    category: framework
+    description: |-
+      Code or XAML using Windows Workflow Foundation: System.Activities,
+      activities, or a .xaml or .xamlx workflow definition. Windows Workflow
+      Foundation exists only on .NET Framework. One occurrence per file.
+    excluded_roles: [TEST]
+    detection:
+      match:
+        any:
+          - id: activities-namespace
+            signal:
+              name: SYSTEM_ACTIVITIES_NAMESPACE
+          - id: activities-assembly
+            signal:
+              name: SYSTEM_ACTIVITIES_ASSEMBLY
+          - id: workflow-xaml
+            signal:
+              name: WORKFLOW_XAML_FILE
+      occurrence_source:
+        signal: SYSTEM_ACTIVITIES_NAMESPACE
+        group_by: source_path
+        also: [WORKFLOW_XAML_FILE, SYSTEM_ACTIVITIES_ASSEMBLY]
+    resolutions:
+      - id: rewrite-as-plain-code
+        name: "Rewrite as plain code"
+        description: "Each activity becomes a method, keeping the order, branches, persistence and error handling; a test per branch."
+        target_description: "Plain C# on the target framework"
+        consumer_impact: low
+        effort: high
+        is_default: true
+      - id: workflow-third-party-port
+        name: "Port to a workflow library"
+        description: "Port the workflow to the third-party workflow library the decision names (a new dependency)."
+        target_description: "The workflow library the decision names"
+        consumer_impact: low
+        effort: high
+        notes: "A new dependency: the decision names the library, in the engagement's note on this resolution."
+      - id: windows-workflow-remain-windows-hosted
+        name: "Remain Windows-hosted"
+        description: "The workflow and its applications stay on .NET Framework on Windows, outside the move."
+        target_description: ".NET Framework on Windows Server"
         consumer_impact: none
         effort: low
         linux_compatible: false

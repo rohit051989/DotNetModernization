@@ -23,7 +23,9 @@
 # fx47-class-library, wcf-service, wcf-service-host, asmx-service, windows-only-assembly-reference,
 # legacy-project-format and packages-config with every resolution, and one resolution each of
 # directory-services-usage, encoding-default and fx-aspnet-mvc; and (2026-11-25) one shared text for
-# every resolution that keeps something unchanged (the `unchanged` section at the end).
+# every resolution that keeps something unchanged (the `unchanged` section at the end); and (2026-11-26)
+# linq-to-sql-usage, system-web-in-library, wif-usage and windows-workflow-usage with every resolution, and
+# missing-dockerfile with its multi-stage Dockerfile.
 # Name frameworks by role, never by version: "the target framework", "the project's current
 # framework" (in its SDK-style short form where a project file needs it). Each work item lists the
 # real values for its projects.
@@ -31,7 +33,7 @@
 # engine_guidance_allowlist.yaml beside this file, with the reason; a test fails for one that is on
 # neither. Items whose own text is still to write: aspnet-webforms,
 # container-fixed-user-writable-path, directory-services-usage, encoding-default, fx-aspnet-mvc,
-# interactive-console-tool, missing-dockerfile, modern-worker-service, msmq-usage,
+# interactive-console-tool, modern-worker-service, msmq-usage,
 # package-not-approved, registry-access, system-drawing-common, wcf-nettcp-client,
 # wcf-non-http-client-binding, wcf-non-http-service-binding, windows-service,
 # windows-service-hosting, winforms-desktop, wpf-desktop.
@@ -577,6 +579,11 @@ items:
         Build the library for both the project's current framework and .NET Standard 2.0, so its .NET
         Framework consumers and its consumers on the target framework can all reference it while the
         applications move one by one.
+        The work items that replace what only .NET Framework provides in this library (LINQ to SQL, System.Web,
+        Windows Identity Foundation, Windows Workflow, directory services, Windows-only assemblies, the Event
+        Log and the like) come first, and Prerequisites names them; each kept its replacement buildable for
+        both frameworks. A use of a .NET Framework-only API that is still left and has no `netstandard2.0`
+        equivalent is a compile error to report in the task's notes, never one to stub out or remove.
         1. The project must be SDK-style first (the instruction for old-style project files does it,
            in an earlier task). Then set `<TargetFrameworks>` to the project's current framework, in its
            SDK-style short form, and `netstandard2.0`, separated by a semicolon. Not the current
@@ -600,6 +607,11 @@ items:
       net10-class-library: |-
         Retarget the library to the target framework alone, in the same change as every project that
         references it.
+        The work items that replace what only .NET Framework provides in this library (System.Web, Windows
+        Identity Foundation, Windows Workflow, directory services, Windows-only assemblies, the Event Log and the
+        like) come first, and Prerequisites names them. A rewrite of LINQ to SQL to EF Core is the exception: it
+        needs the target framework, so it is made in this same task. A use of a .NET Framework-only API that is
+        still left is a compile error to report in the task's notes, never one to stub out or remove.
         1. The project must be SDK-style first (the instruction for old-style project files does it,
            in an earlier task), keeping `RootNamespace`, `AssemblyName`, the strong-name key and the
            compiled files.
@@ -817,14 +829,15 @@ items:
         1. Configure authentication with the identity provider: `AddJwtBearer()` for an API,
            `AddOpenIdConnect()` for an interactive web application. The authority, client id and
            audience are configuration names, never values in code.
-        2. Replace each listed lookup. A user's name, e-mail address or identifier comes from the
-           matching claim of the signed-in `ClaimsPrincipal`; a group membership check becomes a claim
-           check (`User.IsInRole`, or an authorization policy with `RequireClaim`).
+        2. Replace each listed place: the signed-in user's identity and group checks. A user's name, e-mail
+           address or identifier comes from the matching claim of the signed-in `ClaimsPrincipal`; a group
+           membership check becomes a claim check (`User.IsInRole`, or an authorization policy with
+           `RequireClaim`).
         3. Name the claim each check reads in configuration, so it follows the identity provider's claim
            names; never hard-code a group's name, distinguished name or identifier in code.
         4. Where the code needs directory data a token cannot carry (another user's details, a group's
-           members), do not invent a source: leave that place unchanged and record it in the task's
-           notes.
+           members), do not invent a source: those places are listed under "Leave unchanged". Leave each
+           as it is and record it in the task's notes.
         5. Remove `System.DirectoryServices` and `System.DirectoryServices.AccountManagement` once nothing
            uses them.
         6. Add a test per replaced check with a made-up `ClaimsPrincipal`: with the claim and without it.
@@ -997,6 +1010,194 @@ items:
         5. Add a test per changed place that builds the path from made-up parts and asserts it equals
            `Path.Combine` of those parts, with no backslash in it.
 
+  # ---- 2026-11-26: the image of an application converted to the target framework on Linux, .NET Framework ones
+  # included (gap 5).
+
+  missing-dockerfile:
+    guidance: |-
+      This application has no Dockerfile, in its folder or anywhere else in the repository. On OpenShift it runs as a
+      container image, so once it builds for the target framework it needs one: built by the pipeline, run as an
+      arbitrary user, listening on an unprivileged port.
+    resolutions:
+      multistage-dockerfile: |-
+        Add a multi-stage Dockerfile beside the project, so the pipeline builds one image of this application.
+        1. If the repository already has a Dockerfile for another application, follow its conventions: the same
+           base image registry and tags, build arguments and layout. Never add a second Dockerfile for a project
+           that has one.
+        2. Build stage: the .NET SDK image for the target framework. Copy the project files and restore first
+           (`dotnet restore`), then copy the sources and `dotnet publish -c Release -o /app/publish` for this
+           project only.
+        3. Run stage: the ASP.NET Core runtime image for a web application, or the .NET runtime image otherwise, for
+           the target framework; copy only the published output.
+        4. Run as a non-root user with a numeric id (`USER 1001`), and make every path the application writes to
+           writable by group 0: OpenShift runs the container as an arbitrary user in group 0.
+        5. Listen on an unprivileged port (8080), set with `ASPNETCORE_HTTP_PORTS` for a web application, and
+           `EXPOSE` it.
+        6. Take the base images' registry from a build argument (`ARG BASE_REGISTRY`), so the pipeline can use its
+           own mirror; never a credential in the file.
+        7. Add a `.dockerignore` that leaves out `bin/`, `obj/` and test output.
+        8. Build the image if a container engine is available here; otherwise record in the task's notes that it was
+           not built.
+
+  # ---- 2026-11-26: framework-only APIs in class libraries, which no instruction named.
+
+  linq-to-sql-usage:
+    guidance: |-
+      This code uses LINQ to SQL (`System.Data.Linq`): a `DataContext` subclass, `Table<T>`, queries against
+      them, and the `.dbml` files that map classes to tables. LINQ to SQL exists only on .NET Framework: there
+      is no implementation for the target framework or for .NET Standard 2.0, and no package provides one. The
+      project builds neither for the target framework nor for `netstandard2.0` until nothing uses it.
+    resolutions:
+      rewrite-to-ef-core: |-
+        Rewrite the data access to EF Core, keeping what every query returns.
+        Current EF Core runs only on the target framework, not on .NET Framework or .NET Standard 2.0. So this
+        rewrite is made in the same task as this library's retarget to the target framework alone (the
+        direct retarget, named in Prerequisites), together with every project that references the library. If
+        the library is to keep building for its current framework or for `netstandard2.0` (the bridge), do not
+        make this rewrite: leave the LINQ to SQL code unchanged and record in the task's notes that EF Core
+        cannot build for those frameworks.
+        1. Map each table and association in each listed `.dbml` file to an entity class and a `DbContext`,
+           with the same table, column, key and relationship names; configure each one explicitly where it
+           differs from EF Core's conventions.
+        2. Keep each public method of the data-access classes, with the same signature and results. Translate
+           each query so it reads the same rows in the same order (an explicit `OrderBy` where the old query
+           relied on one), and keep each transaction boundary: `SubmitChanges` becomes `SaveChanges` at the
+           same point.
+        3. Read each connection string by its existing name from configuration; never a value in code.
+        4. Remove the `.dbml` files, their generated designer files and the `System.Data.Linq` reference once
+           nothing uses them.
+        5. Add tests that need no database: each entity's mapping (table, columns, keys) and each query's shape
+           (`ToQueryString()`). Record in the task's notes that the same queries must be run against a copy of
+           the real database to confirm they return the same rows.
+      rewrite-to-ado-or-dapper: |-
+        Rewrite the data access against `Microsoft.Data.SqlClient`, keeping what every query does in the
+        database.
+        1. Replace each LINQ to SQL query with the SQL it ran, parameterised (never a value concatenated into
+           SQL), executed with `SqlCommand`, or with Dapper where the repository already uses it. Read the rows
+           in the same order and map them to the same classes.
+        2. Keep each public method of the data-access classes, with the same signature and results, and each
+           transaction boundary: `SubmitChanges` becomes a `SqlTransaction` committed at the same point.
+        3. Read each connection string by its existing name from configuration; never a value in code.
+        4. If this project builds for its current framework and `netstandard2.0` (the bridge), keep every
+           replacement compatible with both: only APIs and package versions available to both.
+        5. Remove the `.dbml` files, their generated designer files and the `System.Data.Linq` reference once
+           nothing uses them.
+        6. Add tests that need no database for how rows map to classes. Record in the task's notes that the
+           queries must be run against a copy of the real database to confirm they return the same rows.
+
+  system-web-in-library:
+    guidance: |-
+      This class library uses System.Web: `HttpContext`, `HttpRequest`, `HttpResponse`, `HttpRuntime.Cache`,
+      session state, an `IHttpModule`, `System.Web.Configuration`, `JavaScriptSerializer`, `System.Web.UI` or
+      `System.Web.Security`. System.Web exists only on .NET Framework, inside IIS: there is no implementation for
+      the target framework or for .NET Standard 2.0. The library builds neither for the target framework nor for
+      `netstandard2.0` until each use is replaced. On the target framework its host is an ASP.NET Core
+      application.
+    resolutions:
+      compile-against-system-web-adapters: |-
+        Compile the library's request, response, cache and session code against the System.Web adapters, which
+        provide those System.Web types for ASP.NET Core and have a `netstandard2.0` build.
+        1. Add a package reference to `Microsoft.AspNetCore.SystemWebAdapters`, at a version that supports the
+           target framework and has a `netstandard2.0` build, for every framework the library builds for except
+           its current .NET Framework one, which keeps its `System.Web` reference (a `Condition` on
+           `$(TargetFramework)`).
+        2. At each listed place, check that every System.Web type it uses is one the package provides
+           (`HttpContext`, `HttpRequest`, `HttpResponse`, `HttpRuntime.Cache`, session state). Keep that code as
+           it is.
+        3. A type the package does not provide (`IHttpModule`, `System.Web.Configuration`,
+           `JavaScriptSerializer`, `System.Web.UI`, `System.Web.Security`): do not stub it. Leave that place
+           unchanged and record it in the task's notes as needing to move behind an interface the host
+           implements.
+        4. Record in the task's notes that each ASP.NET Core application referencing the library must register
+           the adapters (`AddSystemWebAdapters()` and `UseSystemWebAdapters()`); change no application here.
+        5. Build the library for every framework it targets, and every project that references it, and run
+           their tests.
+      move-behind-an-interface: |-
+        Move each System.Web dependency out of the library, behind something its host on the target framework
+        provides.
+        1. An `IHttpModule`: move its logic into a class with no System.Web dependency, and record in the task's
+           notes that the host registers it as ASP.NET Core middleware at the same point of the pipeline (before
+           or after authentication, as the module's events were). Keep the module for the .NET Framework
+           applications that still load it, calling the new class.
+        2. `System.Web.Configuration` (`WebConfigurationManager`): read the same settings, by the same names,
+           with `System.Configuration.ConfigurationManager`.
+        3. `JavaScriptSerializer`: use the serializer the library already uses elsewhere (or `System.Text.Json`),
+           and add tests that pin what callers see: date format, property name casing, null handling and enums,
+           exactly as before.
+        4. `System.Web.Security` (membership, forms authentication, roles): define an interface for what the
+           library asks (the current user's name, a role check), and record in the task's notes that the host
+           implements it from the identity provider's claims. Never keep a password or a user store in the
+           library.
+        5. `System.Web.UI` code (controls, pages, view state) in a library: do not convert it. Ask how before
+           changing it, as the design questions say; until then leave it unchanged and record it.
+        6. If this project builds for its current framework and `netstandard2.0` (the bridge), keep every
+           replacement compatible with both: only APIs and package versions available to both.
+        7. Remove the `System.Web` reference for every framework but the library's current .NET Framework one,
+           once nothing uses it there.
+        8. Add a test per moved behaviour with made-up input; build the library and every project that
+           references it, and run their tests.
+
+  wif-usage:
+    guidance: |-
+      This code uses Windows Identity Foundation (`System.IdentityModel.Services`: `FederatedAuthentication`,
+      `SessionAuthenticationModule`, `WSFederationAuthenticationModule`, or a `ClaimsAuthenticationManager` or
+      `ClaimsAuthorizationManager` subclass). It exists only on .NET Framework, as modules in IIS's System.Web
+      pipeline: there is no implementation for the target framework or for .NET Standard 2.0. Sign-in, the
+      session cookie and claims transformation move to ASP.NET Core authentication in the host.
+    resolutions:
+      move-to-aspnetcore-authentication: |-
+        Move authentication from Windows Identity Foundation to ASP.NET Core authentication with the identity
+        provider, keeping who may do what.
+        1. In the ASP.NET Core application that hosts this code, configure authentication with the identity
+           provider: `AddJwtBearer()` for an API, `AddOpenIdConnect()` with a cookie for an interactive web
+           application. The authority, client id and audience are configuration names, never values in code.
+           Validate the issuer, audience, lifetime and signing key of every token (`Microsoft.IdentityModel`).
+        2. Replace each `FederatedAuthentication` and session module use: the signed-in user is the request's
+           `ClaimsPrincipal`, and signing out is `SignOutAsync`.
+        3. A `ClaimsAuthenticationManager` subclass becomes an `IClaimsTransformation` that adds or changes the
+           same claims; a `ClaimsAuthorizationManager` becomes authorization policies with the same rules.
+        4. Read each claim by a name in configuration, so it follows the identity provider's claim names; never
+           hard-code a claim type or a group's name in code. Where this repository's instruction for directory
+           lookups also moves checks to claims, use the same claim names.
+        5. In a library, depend only on `ClaimsPrincipal` (or an interface the host implements), never on the
+           authentication middleware. If the library builds for its current framework and `netstandard2.0` (the
+           bridge), keep every replacement compatible with both.
+        6. Remove the `System.IdentityModel.Services` reference once nothing uses it.
+        7. Add a test per rule with a made-up `ClaimsPrincipal`: with the claim and without it.
+
+  windows-workflow-usage:
+    guidance: |-
+      This code uses Windows Workflow Foundation (`System.Activities`): activities, a workflow host
+      (`WorkflowInvoker`, `WorkflowApplication`), or a `.xaml` or `.xamlx` workflow definition. It exists only
+      on .NET Framework: there is no implementation for the target framework or for .NET Standard 2.0.
+    resolutions:
+      rewrite-as-plain-code: |-
+        Rewrite each workflow as plain code, keeping what it does.
+        1. For each listed workflow, write a class whose methods perform its activities in the same order, with
+           the same branches (each `If`, `Switch` and `FlowDecision` becomes the same condition), the same loops,
+           the same inputs and outputs, and the same error handling (`TryCatch` and compensation become
+           `try`/`catch` with the same handling).
+        2. Where a workflow waits and resumes (a bookmark, a delay, persistence to a store), do not invent a
+           mechanism: ask how before changing it, as the design questions say; until then leave that workflow
+           unchanged and record it.
+        3. Replace each place that runs a workflow (`WorkflowInvoker.Invoke`, `WorkflowApplication`) with a call
+           to the new class, with the same inputs and outputs.
+        4. If this project builds for its current framework and `netstandard2.0` (the bridge), keep the new code
+           compatible with both.
+        5. Remove the workflow definitions and the `System.Activities` reference once nothing uses them.
+        6. Add a test per branch of each workflow, with made-up inputs, asserting the same outputs.
+      workflow-third-party-port: |-
+        Port each workflow to the third-party workflow library chosen for this repository, keeping what it does.
+        1. The library is named in the note after these steps. If no note names one, change nothing: leave each
+           workflow unchanged and record in the task's notes that no library is named.
+        2. Add a package reference to that library, at a version that supports the target framework (and
+           `netstandard2.0`, if this project builds for it too).
+        3. Rebuild each workflow in it with the same activities in the same order, and the same branches,
+           inputs, outputs, persistence and error handling.
+        4. Replace each place that runs a workflow with the library's equivalent.
+        5. Remove the workflow definitions and the `System.Activities` reference once nothing uses them.
+        6. Add a test per branch of each workflow, with made-up inputs, asserting the same outputs.
+
 # One text for every resolution that keeps something unchanged on Windows or .NET Framework, or keeps it
 # out of the move (2026-11-25): the loader (app/items/baseline.py) puts it in each listed resolution's
 # guidance with that resolution's reason, so the database row and the export carry the whole text and an
@@ -1012,6 +1213,14 @@ unchanged:
       backslash-path-remain-windows-hosted: "the application stays on Windows, outside the Linux move"
     directory-services-usage:
       directory-services-usage-remain-windows-hosted: "the application stays on Windows, outside the Linux move"
+    linq-to-sql-usage:
+      linq-to-sql-remain-windows-hosted: "the library and its applications stay on .NET Framework on Windows, outside the move"
+    system-web-in-library:
+      system-web-in-library-remain-windows-hosted: "the library and its applications stay on .NET Framework on Windows, outside the move"
+    wif-usage:
+      wif-remain-windows-hosted: "the code and its applications stay on .NET Framework on Windows, outside the move"
+    windows-workflow-usage:
+      windows-workflow-remain-windows-hosted: "the workflow and its applications stay on .NET Framework on Windows, outside the move"
     event-log-usage:
       event-log-remain-windows-hosted: "the application stays on Windows, outside the Linux move"
     interactive-console-tool:

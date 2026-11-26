@@ -29,8 +29,10 @@ the seed only to rows not edited since they were seeded.
     no split; EXPOSES_WEBFORMS_UI is added as a further `any` rule (a page
     whose markup sits in an unfingerprinted folder still counts).
   - fx-aspnet-mvc: controllers in a class library, Global.asax in the web
-    host, is a real split; step 3's controller signals still fire on the
-    library, and EXPOSES_HTTP_API (step 4's resolved actions) is added.
+    host, is a real split; EXPOSES_HTTP_API (step 4's resolved actions) is
+    added. Since 2026-11-26 the item needs an application (its Global.asax,
+    web.config or a self-hosting Main, patterns.yaml): the host carries it,
+    and a library's own System.Web use is system-web-in-library's.
   - asmx-service: code-behind in App_Code or a library is a real split;
     EXPOSES_ASMX_SERVICE is added. asmx-service is authored, so that rule
     is in catalog_items.yaml; AMENDMENTS holds only migrated items'.

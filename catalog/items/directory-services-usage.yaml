@@ -1,6 +1,6 @@
 category: security
 deleted: false
-description: 'Code using System.DirectoryServices or System.DirectoryServices.AccountManagement (DirectoryEntry, DirectorySearcher, PrincipalContext), which is Windows-only. System.DirectoryServices.Protocols is not flagged: it works on Linux, and is the usual target. One occurrence per file.'
+description: 'Code using System.DirectoryServices or System.DirectoryServices.AccountManagement (DirectoryEntry, DirectorySearcher, PrincipalContext), which is Windows-only. System.DirectoryServices.Protocols is not flagged: it works on Linux, and is the usual target. One occurrence per file. The signed-in user''s own identity and group checks (WindowsIdentity.GetCurrent, UserPrincipal.Current, IsInRole) are located too (2026-11-26): they are the places the identity provider''s claims replace, while a directory query for other users or groups is left unchanged by that resolution.'
 detection:
   match:
     all:
@@ -8,10 +8,21 @@ detection:
       signal:
         name: DIRECTORY_SERVICES_USAGE
     any: []
-    atLeast: []
+    atLeast:
+    - count: 1
+      id: directory-or-identity-check
+      of:
+      - id: directory-lookup
+        signal:
+          name: DIRECTORY_SERVICES_USAGE
+      - id: current-user-check
+        signal:
+          name: CURRENT_USER_IDENTITY_CHECK
     metadata: []
     none: []
   occurrence_source:
+    also:
+    - CURRENT_USER_IDENTITY_CHECK
     group_by: source_path
     signal: DIRECTORY_SERVICES_USAGE
 excluded_roles: []
@@ -31,7 +42,7 @@ resolutions:
   linux_compatible: false
   name: Remain Windows-hosted (out of scope)
   notes: null
-  phase: 3
+  phase: 2
   status: active
   target_description: .NET on Windows Server
 - confirm_design: true
@@ -48,14 +59,15 @@ resolutions:
     1. Configure authentication with the identity provider: `AddJwtBearer()` for an API,
        `AddOpenIdConnect()` for an interactive web application. The authority, client id and
        audience are configuration names, never values in code.
-    2. Replace each listed lookup. A user's name, e-mail address or identifier comes from the
-       matching claim of the signed-in `ClaimsPrincipal`; a group membership check becomes a claim
-       check (`User.IsInRole`, or an authorization policy with `RequireClaim`).
+    2. Replace each listed place: the signed-in user's identity and group checks. A user's name, e-mail
+       address or identifier comes from the matching claim of the signed-in `ClaimsPrincipal`; a group
+       membership check becomes a claim check (`User.IsInRole`, or an authorization policy with
+       `RequireClaim`).
     3. Name the claim each check reads in configuration, so it follows the identity provider's claim
        names; never hard-code a group's name, distinguished name or identifier in code.
     4. Where the code needs directory data a token cannot carry (another user's details, a group's
-       members), do not invent a source: leave that place unchanged and record it in the task's
-       notes.
+       members), do not invent a source: those places are listed under "Leave unchanged". Leave each
+       as it is and record it in the task's notes.
     5. Remove `System.DirectoryServices` and `System.DirectoryServices.AccountManagement` once nothing
        uses them.
     6. Add a test per replaced check with a made-up `ClaimsPrincipal`: with the claim and without it.
@@ -64,7 +76,7 @@ resolutions:
   linux_compatible: true
   name: Use identity provider claims
   notes: null
-  phase: 3
+  phase: 2
   status: active
   target_description: OIDC claims from the platform identity provider
 - consumer_impact: low
@@ -78,7 +90,7 @@ resolutions:
   linux_compatible: true
   name: Port to System.DirectoryServices.Protocols
   notes: null
-  phase: 3
+  phase: 2
   status: active
   target_description: System.DirectoryServices.Protocols (LDAP)
 scope: occurrence

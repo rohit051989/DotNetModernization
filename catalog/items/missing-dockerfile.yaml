@@ -1,6 +1,6 @@
 category: packaging
 deleted: false
-description: A deployable .NET (Core) application with no Dockerfile in its project directory or anywhere else in its repository. A repository-level Dockerfile counts for every project in the repository.
+description: 'A deployable .NET application with no Dockerfile in its project directory or anywhere else in its repository: on modern .NET, or on .NET Framework (a conversion acts on it only when the application''s chosen approach moves it to the target framework in a container). A repository-level Dockerfile counts for every project in the repository.'
 detection:
   match:
     all: []
@@ -20,13 +20,26 @@ detection:
     - id: top-level-statements
       signal:
         name: TOP_LEVEL_STATEMENTS_ENTRY_POINT
+    - id: svc-host
+      signal:
+        name: SVC_FILE
+    - id: asmx-host
+      signal:
+        name: ASMX_FILE
+    - id: aspx-host
+      signal:
+        name: ASPX_FILE
+    - id: global-asax-host
+      signal:
+        name: GLOBAL_ASAX_FILE
     atLeast: []
     metadata:
     - field: frameworkFamily
-      id: modern-dotnet
+      id: dotnet-application
       in:
       - net
       - net-core
+      - net-framework
     - field: outputType
       id: not-desktop
       notEquals: WinExe
@@ -37,6 +50,10 @@ detection:
     - id: has-dockerfile
       signal:
         name: DOCKERFILE_FILE
+engine_guidance: |-
+  This application has no Dockerfile, in its folder or anywhere else in the repository. On OpenShift it runs as a
+  container image, so once it builds for the target framework it needs one: built by the pipeline, run as an
+  arbitrary user, listening on an unprivileged port.
 excluded_roles:
 - DATABASE
 - DEPLOYMENT
@@ -52,6 +69,25 @@ resolutions:
   derivations: []
   description: 'Add a multi-stage Dockerfile: SDK image to build and publish, aspnet or runtime image to run, non-root user.'
   effort: low
+  engine_guidance: |-
+    Add a multi-stage Dockerfile beside the project, so the pipeline builds one image of this application.
+    1. If the repository already has a Dockerfile for another application, follow its conventions: the same
+       base image registry and tags, build arguments and layout. Never add a second Dockerfile for a project
+       that has one.
+    2. Build stage: the .NET SDK image for the target framework. Copy the project files and restore first
+       (`dotnet restore`), then copy the sources and `dotnet publish -c Release -o /app/publish` for this
+       project only.
+    3. Run stage: the ASP.NET Core runtime image for a web application, or the .NET runtime image otherwise, for
+       the target framework; copy only the published output.
+    4. Run as a non-root user with a numeric id (`USER 1001`), and make every path the application writes to
+       writable by group 0: OpenShift runs the container as an arbitrary user in group 0.
+    5. Listen on an unprivileged port (8080), set with `ASPNETCORE_HTTP_PORTS` for a web application, and
+       `EXPOSE` it.
+    6. Take the base images' registry from a build argument (`ARG BASE_REGISTRY`), so the pipeline can use its
+       own mirror; never a credential in the file.
+    7. Add a `.dockerignore` that leaves out `bin/`, `obj/` and test output.
+    8. Build the image if a container engine is available here; otherwise record in the task's notes that it was
+       not built.
   id: multistage-dockerfile
   is_default: true
   linux_compatible: true

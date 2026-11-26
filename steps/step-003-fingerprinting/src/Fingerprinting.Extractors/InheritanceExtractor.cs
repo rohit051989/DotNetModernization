@@ -32,6 +32,8 @@ public sealed class InheritanceExtractor : IFingerprintExtractor
             ["MasterPage"] = "MASTER_PAGE_BASE_CLASS",
             ["IHttpHandler"] = "IHTTP_HANDLER_BASE_CLASS",
             ["IHttpModule"] = "IHTTP_MODULE_BASE_CLASS",
+            // Registry 1.17.0: LINQ to SQL's context, which has no implementation on the target framework.
+            ["DataContext"] = "DATACONTEXT_BASE_CLASS",
         };
 
     public bool CanProcess(ProjectContext context) => Directory.Exists(context.ProjectDirectory);

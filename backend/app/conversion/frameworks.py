@@ -96,20 +96,38 @@ def compatible(target: str, group: str) -> bool:
 class Support:
     supported: bool | None    # None: not known — no data, or only an incompatible dependency group
     basis: str                # what the answer rests on
+    # Gap 4 (2026-11-26): every lib/ref asset is a .NET Framework one, so on a .NET (5+) target the package resolves only
+    # through NuGet's .NET Framework fallback (AssetTargetFallback), with warning NU1701, and still needs .NET
+    # Framework at run time. Not support.
+    fallback_only: bool = False
+
+
+FALLBACK_ONLY = "loads only through .NET Framework fallback (NU1701)"
 
 
 def supports(metadata: dict | None, target: str) -> Support:
-    """From one version's cached metadata: {dependencyFrameworks, libFrameworks}."""
+    """From one version's cached metadata: {dependencyFrameworks, libFrameworks}.
+
+    A dependency list without framework groups is recorded as the group `any`: it says nothing about which frameworks
+    the package's assemblies are built for (Enterprise Library 6, whose only assets are lib/net45, declares its
+    dependencies so), so it is no answer on its own; the lib/ref frameworks decide (gap 4, 2026-11-26), as
+    dependency-assessment decides since the same change."""
     if metadata is None:
         return Support(None, "no cached metadata for this version")
-    deps = metadata.get("dependencyFrameworks") or []
+    recorded = metadata.get("dependencyFrameworks") or []
+    deps = [g for g in recorded if _parse(g)[0] != "any"]
     libs = metadata.get("libFrameworks")
     if deps and any(compatible(target, g) for g in deps):
         return Support(True, f"dependency group compatible with {target} ({', '.join(deps)})")
     if libs is not None:
         if not libs or any(compatible(target, g) for g in libs):
             return Support(True, f"lib/ref compatible with {target} ({', '.join(libs) or 'none: framework-neutral'})")
+        if _parse(target)[0] == "netcore" and all(_parse(g)[0] == "netfx" for g in libs):
+            return Support(False, f"only .NET Framework assets ({', '.join(libs)}): {FALLBACK_ONLY}", fallback_only=True)
         return Support(False, f"no lib/ref group compatible with {target} ({', '.join(libs)})")
+    if recorded and not deps:
+        return Support(None, "dependencies without framework groups, which say nothing of its assemblies; lib/ref not "
+                             "examined")
     if not deps:
         return Support(True, "no framework groups: framework-neutral")
     # dependency-assessment downloads lib/ref only for the newest version it

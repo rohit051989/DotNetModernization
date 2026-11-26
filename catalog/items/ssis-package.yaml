@@ -72,7 +72,7 @@ resolutions:
     Prerequisites: Source and target reside on the same database platform, and the transformation is expressible as set operations.
 
     Known limitations: Only applies where transformations are set-based. Row-by-row logic, external service calls and file-based sources still need application code. Moves load onto the database server.
-  phase: 3
+  phase: 2
   status: active
   target_description: .NET 10 worker + T-SQL + OCP4 CronJob
 - confirm_design: true
@@ -126,7 +126,7 @@ resolutions:
     Prerequisites: Source and target schemas documented. Representative input data available for equivalence testing.
 
     Known limitations: Complex data flows with many transformations translate poorly to straight-line code. Package-level variables and expression evaluation need explicit reimplementation. Script tasks require porting on their own terms.
-  phase: 3
+  phase: 2
   status: active
   target_description: .NET 10 worker + OCP4 CronJob
 scope: application

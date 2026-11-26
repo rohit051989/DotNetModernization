@@ -552,6 +552,8 @@ class AuthoredItemTests(unittest.TestCase):
         "enterprise-vault-secret-reference", "unparseable-config-file", "custom-file-logger-provider",
         # Registry 1.16.0, from a conversion review (2026-11-25).
         "event-log-usage", "backslash-path-building",
+        # Registry 1.17.0: APIs only .NET Framework has, in class libraries (2026-11-26).
+        "linq-to-sql-usage", "system-web-in-library", "wif-usage", "windows-workflow-usage",
     }
     ABSENCE = {"missing-dockerfile", "missing-health-endpoint", "missing-ocp4-manifests"}
     HOSTING = {"windows-service-hosting", "modern-worker-service", "wcf-service-host", "interactive-console-tool"}

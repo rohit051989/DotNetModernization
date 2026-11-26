@@ -1,6 +1,6 @@
 category: packaging
 deleted: false
-description: A deployable .NET (Core) application with no Kubernetes/OpenShift manifest and no Helm chart in its project directory or anywhere else in its repository. A repository-level k8s/ or charts/ folder counts for every project in the repository.
+description: 'A deployable .NET application with no Kubernetes/OpenShift manifest and no Helm chart in its project directory or anywhere else in its repository: on modern .NET, or on .NET Framework (a conversion acts on it only when the application''s chosen approach moves it to the target framework in a container). A repository-level k8s/ or charts/ folder counts for every project in the repository.'
 detection:
   match:
     all: []
@@ -20,13 +20,26 @@ detection:
     - id: top-level-statements
       signal:
         name: TOP_LEVEL_STATEMENTS_ENTRY_POINT
+    - id: svc-host
+      signal:
+        name: SVC_FILE
+    - id: asmx-host
+      signal:
+        name: ASMX_FILE
+    - id: aspx-host
+      signal:
+        name: ASPX_FILE
+    - id: global-asax-host
+      signal:
+        name: GLOBAL_ASAX_FILE
     atLeast: []
     metadata:
     - field: frameworkFamily
-      id: modern-dotnet
+      id: dotnet-application
       in:
       - net
       - net-core
+      - net-framework
     - field: outputType
       id: not-desktop
       notEquals: WinExe

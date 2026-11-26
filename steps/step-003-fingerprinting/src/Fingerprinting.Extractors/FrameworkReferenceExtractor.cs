@@ -37,6 +37,11 @@ public sealed class FrameworkReferenceExtractor : IFingerprintExtractor
         new("System.ServiceProcess", "SYSTEM_SERVICEPROCESS_NAMESPACE"),
         new("System.Messaging", "SYSTEM_MESSAGING_NAMESPACE"),
         new("System.Data.Entity", "SYSTEM_DATA_ENTITY_NAMESPACE"),
+        // Registry 1.17.0: .NET Framework-only APIs with no implementation on the target framework and no package that
+        // provides them: LINQ to SQL, WIF and Windows Workflow Foundation.
+        new("System.Data.Linq", "SYSTEM_DATA_LINQ_NAMESPACE"),
+        new("System.IdentityModel.Services", "SYSTEM_IDENTITYMODEL_SERVICES_NAMESPACE"),
+        new("System.Activities", "SYSTEM_ACTIVITIES_NAMESPACE"),
         new("Microsoft.AspNetCore.Mvc", "MICROSOFT_ASPNETCORE_MVC_NAMESPACE"),
         new("Microsoft.AspNetCore", "MICROSOFT_ASPNETCORE_NAMESPACE"),
         new("Microsoft.EntityFrameworkCore", "MICROSOFT_ENTITYFRAMEWORKCORE_NAMESPACE"),
@@ -61,6 +66,10 @@ public sealed class FrameworkReferenceExtractor : IFingerprintExtractor
             ["System.ServiceModel"] = "SYSTEM_SERVICEMODEL_ASSEMBLY",
             ["System.ServiceProcess"] = "SYSTEM_SERVICEPROCESS_ASSEMBLY",
             ["System.Messaging"] = "SYSTEM_MESSAGING_ASSEMBLY",
+            // Registry 1.17.0.
+            ["System.Data.Linq"] = "SYSTEM_DATA_LINQ_ASSEMBLY",
+            ["System.IdentityModel.Services"] = "SYSTEM_IDENTITYMODEL_SERVICES_ASSEMBLY",
+            ["System.Activities"] = "SYSTEM_ACTIVITIES_ASSEMBLY",
         };
 
     private static readonly IReadOnlyList<PackageRule> PackageRules =

@@ -1809,6 +1809,19 @@ hand. Everything else an update brings, bootstrap applies by itself. Apply every
 had (`previousCommit` in `PLATFORM_SOURCE.json` after the update; in our own installs, the commit before step 5 of
 the appendix), oldest of them first. Entries up to 2026-10-23 were the notes of releases 2 to 7, which are named so.
 
+#### 2026-11-26, (commit of "Framework-only APIs in class libraries, the class libraries' approach, containers for .NET Framework applications"): rescan; a conversion not yet run is refreshed
+
+Update, bootstrap and restart the backend. Bootstrap adds the items "LINQ to SQL", "System.Web in a class library",
+"Windows Identity Foundation" and "Windows Workflow Foundation", swaps phases 2 and 3 on every resolution nobody has
+edited since it was seeded (replacing framework-only dependencies now comes before the libraries; an edited one is
+reported and kept: set its phase in the resolution's form), and updates the detection of four items (directory
+services, classic MVC / Web API, no Dockerfile, no OpenShift manifests) and the Dockerfile's guidance where nobody
+edited them. Then **Rescan** every repository: the new signals (LINQ to SQL, WIF, Windows Workflow, the signed-in user's
+identity checks), the corrected package support (a package built only for .NET Framework) and the claim-type URIs no
+longer read as hostnames come from the rescan. A conversion prepared but not yet run is refreshed by that rescan: its
+decision sheet recommends each class library's bridge or direct retarget, and with no recorded decision the conversion
+follows it; **start the next conversion** for one already run. Nothing to set: no setting, no package for the mirror.
+
 #### 2026-11-26, (commit of "Engagement guidance on the master catalog, and seeding field by field"): set any phase still missing
 
 Update, bootstrap and restart the backend. Bootstrap now seeds field by field: a catalog field nobody edited takes its

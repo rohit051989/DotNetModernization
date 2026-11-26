@@ -172,7 +172,9 @@ class GuidanceOnAScannedRepository(unittest.TestCase):
         self.decide({})
         model = collect.collect(self.db, self.repo)
         files = render.render(model)
-        bridge = files[".github/upgrades/skills/applying-netstandard20-bridge.md"]
+        # Shared's one consumer, Batch, moves to the target framework: the direct retarget is recommended and, with no
+        # decision recorded, applied (2026-11-26).
+        bridge = files[".github/upgrades/skills/applying-net10-class-library.md"]
         self.assertIn("- `Shared/Shared.csproj`: the project's current framework is `v4.7`, `net47` in an SDK-style "
                       "project file.", bridge)
         self.assertIn("- The target framework: `net10.0`.", bridge)
@@ -191,8 +193,9 @@ class GuidanceOnAScannedRepository(unittest.TestCase):
 
     def test_4b_the_plan_goes_by_phase_then_by_the_dependency_graph_for_both_engines(self):
         """Gap 1 (review hand-off, first repository): an old-style console job referencing an old-style class library and
-        the SSIS runtime by path. Expected: SDK-style (one task with packages.config), the library's bridge, the SSIS C#
-        worker, the CronJob container, the platform changes, then the Windows-only decision."""
+        the SSIS runtime by path. Expected: SDK-style (one task with packages.config), the SSIS C# worker (phase 2, which
+        replaces framework-only dependencies first since 2026-11-26), the library's retarget (the direct one: its one
+        consumer moves), the CronJob container, the platform changes, then the Windows-only decision."""
         self.decide({"ssis-package": "csharp-worker-container"})
         model = collect.collect(self.db, self.repo)
         work = render.work_items(model)
@@ -200,7 +203,7 @@ class GuidanceOnAScannedRepository(unittest.TestCase):
         self.assertEqual(names[:2], ["applying-sdk-style-project-conversion", "applying-packagereference-migration"])
         self.assertEqual(work[1]["together_with"], "applying-sdk-style-project-conversion")
         self.assertEqual([w["phase"] for w in work], sorted(w["phase"] for w in work))
-        expected = ["applying-sdk-style-project-conversion", "applying-netstandard20-bridge", "applying-csharp-worker-container",
+        expected = ["applying-sdk-style-project-conversion", "applying-csharp-worker-container", "applying-net10-class-library",
                     "applying-ocp4-cronjob-container", "applying-path-combine", "applying-decide-windows-only-replacement"]
         self.assertEqual([n for n in names if n in expected], expected)
         self.assertEqual(names[-1], "applying-decide-windows-only-replacement")
@@ -214,7 +217,7 @@ class GuidanceOnAScannedRepository(unittest.TestCase):
                       "PackageReference (NuGet packages listed in packages.config) (phase 1, project format)", plan)
         at = [plan.index(f"`{n}`") for n in expected]
         self.assertEqual(at, sorted(at))
-        self.assertIn("`applying-csharp-worker-container`: C# worker with in-process pipeline (SSIS package) (phase 3, "
+        self.assertIn("`applying-csharp-worker-container`: C# worker with in-process pipeline (SSIS package) (phase 2, "
                       "replace framework-only dependencies)", plan)
         # Both engines: each work item's Prerequisites name its phase and the work items it follows.
         for engine in engines.ENGINES:
@@ -225,11 +228,11 @@ class GuidanceOnAScannedRepository(unittest.TestCase):
                           "before it.", cron)
             self.assertIn("Apply after `applying-csharp-worker-container` (C# worker with in-process pipeline (SSIS "
                           "package)): it changes the same project first.", cron)
-            self.assertIn("Apply after `applying-netstandard20-bridge` (.NET Standard 2.0 bridge (.NET Framework 4.7 class "
+            self.assertIn("Apply after `applying-net10-class-library` (.NET 10 class library (.NET Framework 4.7 class "
                           "library)): it changes a project this one references.", cron)
             self.assertIn("Apply after `applying-sdk-style-project-conversion`", cron)
-            bridge = " ".join(skill("applying-netstandard20-bridge").split())
-            self.assertIn("Phase 2 of 6, libraries", bridge)
+            bridge = " ".join(skill("applying-net10-class-library").split())
+            self.assertIn("Phase 3 of 6, libraries", bridge)
             self.assertNotIn("Apply after `applying-csharp-worker-container`", bridge)
             sdk = " ".join(skill("applying-sdk-style-project-conversion").split())
             self.assertIn("- Apply **together with** `applying-packagereference-migration` (NuGet packages listed in "

@@ -34,3 +34,10 @@ resolutions:
   - identity-provider-claims            # directory-services-usage
   - otlp-exporter                       # serilog-file-sink
   - replace-windows-only-assembly       # windows-only-assembly-reference: which library replaces it
+  # A framework-only API in a library is rewritten (2026-11-26).
+  - rewrite-to-ef-core                  # linq-to-sql-usage: LINQ to SQL to EF Core
+  - rewrite-to-ado-or-dapper            # linq-to-sql-usage: LINQ to SQL to ADO.NET or Dapper
+  - move-behind-an-interface            # system-web-in-library: modules, configuration, security out of System.Web
+  - move-to-aspnetcore-authentication   # wif-usage: WIF to ASP.NET Core authentication
+  - rewrite-as-plain-code               # windows-workflow-usage: activities to methods
+  - workflow-third-party-port           # windows-workflow-usage: a new workflow library

@@ -32,7 +32,7 @@ resolutions:
   linux_compatible: true
   name: Migrate to the platform message broker
   notes: null
-  phase: 3
+  phase: 2
   status: active
   target_description: Broker client on .NET, queue topology recreated on the broker
 - consumer_impact: none
@@ -47,7 +47,7 @@ resolutions:
   linux_compatible: false
   name: Remain Windows-hosted (out of scope)
   notes: null
-  phase: 3
+  phase: 2
   status: active
   target_description: .NET Framework on Windows Server with MSMQ
 scope: application

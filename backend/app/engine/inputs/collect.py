@@ -53,8 +53,10 @@ def _lines(evidence: list | None) -> list[dict]:
     for e in evidence or []:
         if e.get("line_start") is None:
             continue
+        # `signal`: which signal located the line, for an item whose places differ by it (render.plan_item: the
+        # signed-in user's checks versus other directory lookups, 2026-11-26).
         out.append({"line": e["line_start"], "value": e.get("value"), "member": e.get("member"),
-                    "type": e.get("declaring_type"), "certainty": e.get("certainty")})
+                    "type": e.get("declaring_type"), "certainty": e.get("certainty"), "signal": e.get("signal_name")})
     return sorted(out, key=lambda x: (x["line"], x["value"] or ""))
 
 
@@ -245,6 +247,166 @@ def ssis_places(db: Session, repository_id, excluded: set, files: list[str], ite
     item["package_projects"] = packages
 
 
+PACKAGE_REPLACEMENT = "package-replacement-required"
+NO_SUGGESTED = "no suggested replacement"
+
+
+def framework_only_packages(occurrences: dict[str, list[dict]], references: list[dict]) -> None:
+    """Gap 4 (2026-11-26). A package version whose only assets are .NET Framework ones is not support for the target
+    framework: it resolves only through NuGet's .NET Framework fallback (NU1701) and still needs .NET Framework at run
+    time. An undeclared one referenced by path (a HintPath into packages/) gets the verdict "fallback-only" and becomes a
+    place of the package replacement item, on its project file; a declared one is already a place of it
+    (dependency-assessment finds no compatible version). Either names the known replacement
+    (compatibility/framework_only_packages.yaml) where the publisher names none. Changes `occurrences` and `references`
+    in place."""
+    from app.compatibility import assemblies
+    from app.conversion.frameworks import FALLBACK_ONLY
+
+    found = occurrences.setdefault(PACKAGE_REPLACEMENT, [])
+    for a in references:
+        if a["verdict"] != "package" or not (a.get("lookup") or {}).get("fallback_only"):
+            continue
+        a["verdict"] = "fallback-only"
+        package = a["package"]
+        replacement = assemblies.known_replacement(package["id"], package["version"])
+        a["replacement"] = replacement
+        value = (f"{package['id']} {package['version']}: {FALLBACK_ONLY}; "
+                 + (f"replacement {replacement}" if replacement else NO_SUGGESTED))
+        if not any(o["project"] == a["project"] and (o.get("value") or "").split(" ")[0].lower() == package["id"].lower()
+                   for o in found):
+            found.append({"project": a["project"], "file": a["project"], "value": value, "certainty": "confirmed",
+                          "lines": []})
+    for o in found:
+        value = o.get("value") or ""
+        if value.endswith(NO_SUGGESTED):
+            package_id, _, rest = value.partition(" ")
+            replacement = assemblies.known_replacement(package_id, rest.split(":")[0].strip())
+            if replacement:
+                o["value"] = value[: -len(NO_SUGGESTED)] + f"replacement {replacement}"
+    if not found:
+        occurrences.pop(PACKAGE_REPLACEMENT)
+    else:
+        found.sort(key=lambda o: (o["project"], o.get("file") or "", o.get("value") or ""))
+
+
+# Gap 5 (2026-11-26): the image and manifest items, and the application items whose chosen approach decides whether a
+# .NET Framework application lands in a container on the target framework.
+CONTAINER_ITEMS = ("missing-dockerfile", "missing-ocp4-manifests")
+HOSTING_ITEMS = ("asmx-service", "aspnet-webforms", "fx-aspnet-mvc", "wcf-service", "wcf-service-host",
+                 "console-batch-job", "windows-service", "ssis-package")
+
+
+def containers_needed(items: list[dict], frameworks: dict[str, str | None]) -> list[dict]:
+    """A .NET Framework application needs an image and manifests only when its conversion lands it in a container on the
+    target framework: an application item on its project whose chosen approach is container-ready, and none that keeps
+    it on Windows. Detection cannot know the decision, so it raises the image and manifest items on every such
+    application, and the conversion keeps them only there. A modern application keeps them as before. Their phase
+    (platform and deployment) puts them after the application's own conversion."""
+    from app.conversion import frameworks as fw
+
+    moving: dict[str, bool] = {}
+    for item in items:
+        res = item.get("resolution")
+        if item["id"] not in HOSTING_ITEMS or not res:
+            continue
+        for o in item["occurrences"]:
+            moving[o["project"]] = moving.get(o["project"], True) and bool(res.get("container_ready"))
+    out = []
+    for item in items:
+        if item["id"] in CONTAINER_ITEMS:
+            kept = [o for o in item["occurrences"]
+                    if not fw.is_netfx(frameworks.get(o["project"]) or "") or moving.get(o["project"], False)]
+            if not kept:
+                continue
+            item = {**item, "occurrences": kept}
+        out.append(item)
+    return out
+
+
+# 1c (2026-11-26): what keeps a consumer of a class library on .NET Framework: a chosen approach that leaves the project
+# on .NET Framework, or runs the existing application beside its new one (the incremental adapters).
+LIBRARY_ITEM = "fx47-class-library"
+BRIDGE = "netstandard20-bridge"
+DIRECT = "net10-class-library"
+STAYS_ON_FRAMEWORK = frozenset({
+    "keep-old-style-project", "keep-packages-config", "aspnetcore-incremental-adapters",
+    "msmq-usage-remain-windows-hosted", "package-replacement-remain-windows-hosted", "keep-project-on-windows",
+    "wcf-service-remain-windows-hosted", "wcf-host-remain-windows-hosted", "windows-service-remain-windows-hosted",
+    "linq-to-sql-remain-windows-hosted", "system-web-in-library-remain-windows-hosted", "wif-remain-windows-hosted",
+    "windows-workflow-remain-windows-hosted",
+})
+
+
+def class_library_recommendations(items: list[dict], references: list[tuple[str, str]], left_out: set[str]) -> list[dict]:
+    """Each .NET Framework class library of the conversion (the library item's places) with the resolution its
+    consumers call for: the direct retarget when every consumer is in scope and moving to the target framework, the
+    bridge when one stays on .NET Framework (left out of the scope or not converted by this track, a chosen approach
+    that keeps it there, or a library itself on the bridge). [{project, recommended, reason, consumers, staying}]"""
+    library = next((i for i in items if i["id"] == LIBRARY_ITEM), None)
+    if library is None:
+        return []
+    libraries = sorted({o["project"] for o in library["occurrences"]})
+    consumers: dict[str, list[str]] = {}
+    for source, target in references:
+        if target in libraries and source not in consumers.setdefault(target, []):
+            consumers[target].append(source)
+    stays: dict[str, str] = {}
+    for item in items:
+        res = item.get("resolution") or {}
+        if res.get("id") in STAYS_ON_FRAMEWORK:
+            for o in item["occurrences"]:
+                stays.setdefault(o["project"], f"{item['name']}: {res['name']}")
+    for project in sorted(left_out):
+        stays.setdefault(project, "outside this conversion's scope")
+    bridged: set[str] = set()
+    changed = True
+    while changed:              # a library on the bridge keeps building for .NET Framework, and so must its own libraries
+        changed = False
+        for lib in libraries:
+            if lib not in bridged and any(c in stays or c in bridged for c in consumers.get(lib, [])):
+                bridged.add(lib)
+                changed = True
+    out = []
+    for lib in libraries:
+        users = sorted(consumers.get(lib, []))
+        staying = [{"project": c, "why": stays.get(c) or "a class library on the bridge"} for c in users
+                   if c in stays or c in bridged]
+        if staying:
+            reason = (f"{len(staying)} of its {len(users)} consumer(s) stay on .NET Framework, so it must keep building "
+                      "for .NET Framework: " + "; ".join(f"`{s['project']}` ({s['why']})" for s in staying))
+        elif users:
+            reason = f"all {len(users)} consumer(s) are in this conversion's scope and move to the target framework"
+        else:
+            reason = "no project in the repository references it"
+        out.append({"project": lib, "recommended": BRIDGE if staying else DIRECT, "reason": reason,
+                    "consumers": users, "staying": staying})
+    return out
+
+
+def adopt_recommendation(db: Session, items: list[dict], libraries: list[dict], notes: dict[str, str]) -> list[dict]:
+    """With no recorded decision, the library item's approach is the recommended one: the direct retarget when every
+    library's consumers move, otherwise the bridge, which every consumer can build against. A recorded decision is never
+    overridden: the decision sheet shows the recommendation beside it."""
+    library = next((i for i in items if i["id"] == LIBRARY_ITEM), None)
+    if library is None or library["decided"] or not libraries:
+        return items
+    wanted = DIRECT if all(lib["recommended"] == DIRECT for lib in libraries) else BRIDGE
+    if (library.get("resolution") or {}).get("id") == wanted:
+        return items
+    chosen = db.get(models.ItemResolution, wanted)
+    if chosen is None or chosen.deleted_at is not None or chosen.status != "active" or chosen.item_id != LIBRARY_ITEM:
+        return items
+    previous = library["resolution"]
+    alternatives = [a for a in library["alternatives"] if a["id"] != wanted]
+    if previous:
+        alternatives.append({"id": previous["id"], "name": previous["name"], "default": True})
+    library = {**library, "recommended": True, "alternatives": sorted(alternatives, key=lambda a: a["id"]), "resolution": {
+        "id": chosen.id, "name": chosen.name, "guidance": chosen.engine_guidance, "consumer_impact": chosen.consumer_impact,
+        "container_ready": chosen.container_ready, "phase": chosen.phase,
+        **({"engagement_note": notes[chosen.id]} if notes.get(chosen.id) else {}),
+        **({"confirm_design": True} if chosen.confirm_design else {})}}
+    return [library if i["id"] == LIBRARY_ITEM else i for i in items]
+
 def windows_only_left(items: list[dict], references: list[dict]) -> list[dict]:
     """Gap 3 (2026-11-25): a Windows-only assembly that another chosen resolution in this conversion replaces (its entry's
     `replaced_by` in compatibility/windows_only_assemblies.yaml) is not the Windows-only item's: its reference's verdict
@@ -290,7 +452,7 @@ def _lookup(db: Session, package_id: str, version: str, target: str | None) -> d
     rows = db.execute(text("SELECT versions, metadata FROM package_lookup_cache WHERE lower(package_id) = lower(:p)"),
                       {"p": package_id}).all()
     if not rows or not target:
-        return {"known": bool(rows), "current_supported": None, "newest_supporting": None}
+        return {"known": bool(rows), "current_supported": None, "newest_supporting": None, "fallback_only": False}
     metadata: dict = {}
     for _, meta in rows:
         for v, m in (meta or {}).items():
@@ -302,8 +464,15 @@ def _lookup(db: Session, package_id: str, version: str, target: str | None) -> d
         except ValueError:
             return None
     candidates = sorted((v for v in metadata if supported(v)), key=_version_key)
+    def fallback_only(v: str) -> bool:
+        try:
+            return v in metadata and frameworks.supports(metadata[v] or {}, target).fallback_only
+        except ValueError:
+            return False
     return {"known": True, "current_supported": supported(version),
-            "newest_supporting": candidates[-1] if candidates else None}
+            "newest_supporting": candidates[-1] if candidates else None,
+            # Gap 4: the referenced version's only assets are .NET Framework ones (frameworks.FALLBACK_ONLY).
+            "fallback_only": fallback_only(version)}
 
 
 def _version_key(version: str) -> tuple:
@@ -337,6 +506,8 @@ def collect(db: Session, repository: models.Repository) -> dict:
     # Each in-scope project's format (old-style or SDK-style) and whether it manages packages with packages.config, as
     # solution-discovery recorded them: the addendum states both, and a packages.config project heading to .NET 5 and
     # later makes "keep the current package arrangement" a default that cannot work (render.upgrade_options).
+    project_frameworks = {p: f for p, f in db.execute(text(
+        "SELECT relative_path, target_framework_raw FROM projects WHERE repository_id = :r"), {"r": r})}
     projects = [dict(path=p, framework=f, format=PROJECT_FORMAT.get(fmt, "unknown"), packages_config=bool(pc))
                 for p, f, fmt, pc in db.execute(text("""
         SELECT relative_path, target_framework_raw, project_format,
@@ -406,6 +577,19 @@ def collect(db: Session, repository: models.Repository) -> dict:
         SELECT resolution_id, note FROM engagement_resolution_notes WHERE engagement_id = :e AND note IS NOT NULL"""),
         {"e": engagement.id})}
 
+    # Assembly references no declared package stands for (related issue 2): old-style projects reference most third-party
+    # code by HintPath, which no package assessment sees.
+    declared: dict[str, set] = {}
+    for project, package in db.execute(text("""
+            SELECT p.relative_path, lower(pp.package_name) FROM project_packages pp JOIN projects p ON p.id = pp.project_id
+            WHERE p.repository_id = :r"""), {"r": r}):
+        declared.setdefault(project, set()).add(package)
+    references = assembly_references(db, r, excluded, declared, engagement.target_framework)
+    # Gap 4 (2026-11-26): a package whose only assets are .NET Framework ones loads on the target framework only through
+    # NuGet's fallback (NU1701): a place of the package replacement item, with its known replacement where there is one.
+    if PACKAGE_REPLACEMENT not in not_applicable:
+        framework_only_packages(occurrences, references)
+
     items = []
     for item_id in sorted(occurrences):
         item = db.get(models.CatalogItem, item_id)
@@ -423,7 +607,7 @@ def collect(db: Session, repository: models.Repository) -> dict:
             "decided": decided is not None,
             "resolution": None if chosen is None else {
                 "id": chosen.id, "name": chosen.name, "guidance": chosen.engine_guidance,
-                "consumer_impact": chosen.consumer_impact,
+                "consumer_impact": chosen.consumer_impact, "container_ready": chosen.container_ready,
                 # Where its work item stands in the plan (render.PHASES, render.work_items); unset is said so.
                 "phase": chosen.phase,
                 # The engagement's note, after the master guidance; it adds to it and never stands in for it.
@@ -491,20 +675,23 @@ def collect(db: Session, repository: models.Repository) -> dict:
         if entry not in soap:
             soap.append(entry)
 
-    # Assembly references no declared package stands for (related issue 2): old-style projects reference most third-party
-    # code by HintPath, which no package assessment sees.
-    declared: dict[str, set] = {}
-    for project, package in db.execute(text("""
-            SELECT p.relative_path, lower(pp.package_name) FROM project_packages pp JOIN projects p ON p.id = pp.project_id
-            WHERE p.repository_id = :r"""), {"r": r}):
-        declared.setdefault(project, set()).add(package)
-    references = assembly_references(db, r, excluded, declared, to_tfm)
     pinned_packages = packages_config(db, r, excluded)
     # Gap 2: the SSIS C# resolutions change the code that runs the package; gap 3: an assembly another chosen resolution
     # replaces is not the Windows-only item's (2026-11-25).
     for item in items:
         ssis_places(db, r, excluded, files, item, references)
     items = windows_only_left(items, references)
+    # Gap 5: the image and manifests of a .NET Framework application only when its chosen approach moves it to a
+    # container on the target framework.
+    items = containers_needed(items, project_frameworks)
+    # 1c: each .NET Framework class library's bridge or direct retarget, from its consumers; adopted when nobody decided.
+    every_reference = [(s, t) for s, t in db.execute(text("""
+            SELECT s.relative_path, t.relative_path FROM project_references r
+            JOIN projects s ON s.id = r.source_project_id JOIN projects t ON t.id = r.referenced_project_id
+            WHERE s.repository_id = :r ORDER BY 1, 2"""), {"r": r})]
+    left_out = set(excluded) | {p["path"] for p in scope.get("notConverted") or []}
+    libraries = class_library_recommendations(items, every_reference, left_out)
+    items = adopt_recommendation(db, items, libraries, notes)
 
     # The platform's own vocabulary, which no generated file may contain (selfcontained.py).
     from app.engine.inputs import selfcontained
@@ -523,6 +710,8 @@ def collect(db: Session, repository: models.Repository) -> dict:
         "items": items, "packages": packages, "couplings": couplings, "version_drift": sorted(set(drift)), "deltas": deltas,
         "outbound": outbound, "soap": soap, "vocabulary": vocabulary, "assembly_references": references,
         "packages_config": pinned_packages,
+        # 1c (2026-11-26): each .NET Framework class library's recommended resolution, from its consumers, and why.
+        "class_libraries": libraries,
         # Items decided not applicable, with their findings: read by the verifier only (rediscovery), never rendered.
         "not_applicable": [{"id": item_id, "occurrences": found} for item_id, found in sorted(set_aside.items())],
         # Part O: the projects left out ({path, name}), and when there are any, who left them out, when and why, named

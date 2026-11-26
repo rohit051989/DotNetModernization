@@ -54,7 +54,7 @@ resolutions:
   linux_compatible: true
   name: Adopt an alternative library
   notes: null
-  phase: 3
+  phase: 2
   status: active
   target_description: A maintained alternative supporting the target framework
 - consumer_impact: low
@@ -82,7 +82,7 @@ resolutions:
   linux_compatible: true
   name: 'Remove it: use the framework''s own equivalent'
   notes: null
-  phase: 3
+  phase: 2
   status: active
   target_description: Built-in .NET capability, no package
 - consumer_impact: low
@@ -113,7 +113,7 @@ resolutions:
   linux_compatible: true
   name: Adopt the publisher's suggested replacement
   notes: null
-  phase: 3
+  phase: 2
   status: active
   target_description: The publisher's suggested replacement package
 - consumer_impact: none
@@ -128,7 +128,7 @@ resolutions:
   linux_compatible: false
   name: Remain on .NET Framework
   notes: null
-  phase: 3
+  phase: 2
   status: active
   target_description: .NET Framework on Windows Server
 scope: occurrence

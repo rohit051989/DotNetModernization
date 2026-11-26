@@ -1,0 +1,128 @@
+category: data-access
+deleted: false
+description: |-
+  Code using LINQ to SQL: System.Data.Linq, a DataContext subclass,
+  Table<T>, or a .dbml mapping file. LINQ to SQL exists only on .NET
+  Framework: no target framework or .NET Standard implementation, and no
+  package provides one. One occurrence per file (the .dbml files and the
+  project's assembly reference included).
+detection:
+  match:
+    all: []
+    any:
+    - id: linq-namespace
+      signal:
+        name: SYSTEM_DATA_LINQ_NAMESPACE
+    - id: linq-assembly
+      signal:
+        name: SYSTEM_DATA_LINQ_ASSEMBLY
+    - id: datacontext-subclass
+      signal:
+        name: DATACONTEXT_BASE_CLASS
+    - id: dbml-file
+      signal:
+        name: DBML_FILE
+    atLeast: []
+    metadata: []
+    none: []
+  occurrence_source:
+    also:
+    - DATACONTEXT_BASE_CLASS
+    - DBML_FILE
+    - SYSTEM_DATA_LINQ_ASSEMBLY
+    group_by: source_path
+    signal: SYSTEM_DATA_LINQ_NAMESPACE
+engine_guidance: |-
+  This code uses LINQ to SQL (`System.Data.Linq`): a `DataContext` subclass, `Table<T>`, queries against
+  them, and the `.dbml` files that map classes to tables. LINQ to SQL exists only on .NET Framework: there
+  is no implementation for the target framework or for .NET Standard 2.0, and no package provides one. The
+  project builds neither for the target framework nor for `netstandard2.0` until nothing uses it.
+excluded_roles:
+- TEST
+id: linq-to-sql-usage
+name: LINQ to SQL (System.Data.Linq)
+owner_team: null
+resolutions:
+- consumer_impact: none
+  container_ready: false
+  deleted: false
+  derivations: []
+  description: 'The library and its applications stay on .NET Framework on Windows, outside the move: LINQ to SQL stays.'
+  effort: low
+  engine_guidance: 'Leave this exactly as it is: the library and its applications stay on .NET Framework on Windows, outside the move. Change nothing this instruction is about: not its code, its project file, its references or its configuration. Record it in the task''s notes as left unchanged, with that reason.'
+  id: linq-to-sql-remain-windows-hosted
+  is_default: false
+  linux_compatible: false
+  name: Remain Windows-hosted
+  notes: null
+  phase: 2
+  status: active
+  target_description: .NET Framework on Windows Server
+- confirm_design: true
+  consumer_impact: low
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: Rewrite each query against Microsoft.Data.SqlClient (with Dapper where the repository already uses it), with the same SQL behaviour.
+  effort: high
+  engine_guidance: |-
+    Rewrite the data access against `Microsoft.Data.SqlClient`, keeping what every query does in the
+    database.
+    1. Replace each LINQ to SQL query with the SQL it ran, parameterised (never a value concatenated into
+       SQL), executed with `SqlCommand`, or with Dapper where the repository already uses it. Read the rows
+       in the same order and map them to the same classes.
+    2. Keep each public method of the data-access classes, with the same signature and results, and each
+       transaction boundary: `SubmitChanges` becomes a `SqlTransaction` committed at the same point.
+    3. Read each connection string by its existing name from configuration; never a value in code.
+    4. If this project builds for its current framework and `netstandard2.0` (the bridge), keep every
+       replacement compatible with both: only APIs and package versions available to both.
+    5. Remove the `.dbml` files, their generated designer files and the `System.Data.Linq` reference once
+       nothing uses them.
+    6. Add tests that need no database for how rows map to classes. Record in the task's notes that the
+       queries must be run against a copy of the real database to confirm they return the same rows.
+  id: rewrite-to-ado-or-dapper
+  is_default: false
+  linux_compatible: true
+  name: Rewrite to ADO.NET or Dapper
+  notes: Builds for .NET Framework and .NET Standard 2.0 too, so it suits a library on the bridge.
+  phase: 2
+  status: active
+  target_description: Microsoft.Data.SqlClient (and Dapper) on the target framework
+- confirm_design: true
+  consumer_impact: low
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: Map each .dbml table and association to an EF Core entity and DbContext with the same names; keep each repository method's results, order and transactions.
+  effort: high
+  engine_guidance: |-
+    Rewrite the data access to EF Core, keeping what every query returns.
+    Current EF Core runs only on the target framework, not on .NET Framework or .NET Standard 2.0. So this
+    rewrite is made in the same task as this library's retarget to the target framework alone (the
+    direct retarget, named in Prerequisites), together with every project that references the library. If
+    the library is to keep building for its current framework or for `netstandard2.0` (the bridge), do not
+    make this rewrite: leave the LINQ to SQL code unchanged and record in the task's notes that EF Core
+    cannot build for those frameworks.
+    1. Map each table and association in each listed `.dbml` file to an entity class and a `DbContext`,
+       with the same table, column, key and relationship names; configure each one explicitly where it
+       differs from EF Core's conventions.
+    2. Keep each public method of the data-access classes, with the same signature and results. Translate
+       each query so it reads the same rows in the same order (an explicit `OrderBy` where the old query
+       relied on one), and keep each transaction boundary: `SubmitChanges` becomes `SaveChanges` at the
+       same point.
+    3. Read each connection string by its existing name from configuration; never a value in code.
+    4. Remove the `.dbml` files, their generated designer files and the `System.Data.Linq` reference once
+       nothing uses them.
+    5. Add tests that need no database: each entity's mapping (table, columns, keys) and each query's shape
+       (`ToQueryString()`). Record in the task's notes that the same queries must be run against a copy of
+       the real database to confirm they return the same rows.
+  id: rewrite-to-ef-core
+  is_default: true
+  linux_compatible: true
+  name: Rewrite to EF Core
+  notes: 'Current EF Core runs only on the target framework, not on .NET Framework or .NET Standard 2.0: the library is retargeted with all its consumers (the direct retarget), in the same task, never put on the bridge. Chosen with the bridge, preparation warns.'
+  phase: 3
+  status: active
+  target_description: EF Core on the target framework
+scope: occurrence
+status: active

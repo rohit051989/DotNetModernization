@@ -1,0 +1,111 @@
+category: framework
+deleted: false
+description: |-
+  Code or XAML using Windows Workflow Foundation: System.Activities,
+  activities, or a .xaml or .xamlx workflow definition. Windows Workflow
+  Foundation exists only on .NET Framework. One occurrence per file.
+detection:
+  match:
+    all: []
+    any:
+    - id: activities-namespace
+      signal:
+        name: SYSTEM_ACTIVITIES_NAMESPACE
+    - id: activities-assembly
+      signal:
+        name: SYSTEM_ACTIVITIES_ASSEMBLY
+    - id: workflow-xaml
+      signal:
+        name: WORKFLOW_XAML_FILE
+    atLeast: []
+    metadata: []
+    none: []
+  occurrence_source:
+    also:
+    - WORKFLOW_XAML_FILE
+    - SYSTEM_ACTIVITIES_ASSEMBLY
+    group_by: source_path
+    signal: SYSTEM_ACTIVITIES_NAMESPACE
+engine_guidance: |-
+  This code uses Windows Workflow Foundation (`System.Activities`): activities, a workflow host
+  (`WorkflowInvoker`, `WorkflowApplication`), or a `.xaml` or `.xamlx` workflow definition. It exists only
+  on .NET Framework: there is no implementation for the target framework or for .NET Standard 2.0.
+excluded_roles:
+- TEST
+id: windows-workflow-usage
+name: Windows Workflow Foundation (System.Activities)
+owner_team: null
+resolutions:
+- confirm_design: true
+  consumer_impact: low
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: Each activity becomes a method, keeping the order, branches, persistence and error handling; a test per branch.
+  effort: high
+  engine_guidance: |-
+    Rewrite each workflow as plain code, keeping what it does.
+    1. For each listed workflow, write a class whose methods perform its activities in the same order, with
+       the same branches (each `If`, `Switch` and `FlowDecision` becomes the same condition), the same loops,
+       the same inputs and outputs, and the same error handling (`TryCatch` and compensation become
+       `try`/`catch` with the same handling).
+    2. Where a workflow waits and resumes (a bookmark, a delay, persistence to a store), do not invent a
+       mechanism: ask how before changing it, as the design questions say; until then leave that workflow
+       unchanged and record it.
+    3. Replace each place that runs a workflow (`WorkflowInvoker.Invoke`, `WorkflowApplication`) with a call
+       to the new class, with the same inputs and outputs.
+    4. If this project builds for its current framework and `netstandard2.0` (the bridge), keep the new code
+       compatible with both.
+    5. Remove the workflow definitions and the `System.Activities` reference once nothing uses them.
+    6. Add a test per branch of each workflow, with made-up inputs, asserting the same outputs.
+  id: rewrite-as-plain-code
+  is_default: true
+  linux_compatible: true
+  name: Rewrite as plain code
+  notes: null
+  phase: 2
+  status: active
+  target_description: Plain C# on the target framework
+- consumer_impact: none
+  container_ready: false
+  deleted: false
+  derivations: []
+  description: The workflow and its applications stay on .NET Framework on Windows, outside the move.
+  effort: low
+  engine_guidance: 'Leave this exactly as it is: the workflow and its applications stay on .NET Framework on Windows, outside the move. Change nothing this instruction is about: not its code, its project file, its references or its configuration. Record it in the task''s notes as left unchanged, with that reason.'
+  id: windows-workflow-remain-windows-hosted
+  is_default: false
+  linux_compatible: false
+  name: Remain Windows-hosted
+  notes: null
+  phase: 2
+  status: active
+  target_description: .NET Framework on Windows Server
+- confirm_design: true
+  consumer_impact: low
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: Port the workflow to the third-party workflow library the decision names (a new dependency).
+  effort: high
+  engine_guidance: |-
+    Port each workflow to the third-party workflow library chosen for this repository, keeping what it does.
+    1. The library is named in the note after these steps. If no note names one, change nothing: leave each
+       workflow unchanged and record in the task's notes that no library is named.
+    2. Add a package reference to that library, at a version that supports the target framework (and
+       `netstandard2.0`, if this project builds for it too).
+    3. Rebuild each workflow in it with the same activities in the same order, and the same branches,
+       inputs, outputs, persistence and error handling.
+    4. Replace each place that runs a workflow with the library's equivalent.
+    5. Remove the workflow definitions and the `System.Activities` reference once nothing uses them.
+    6. Add a test per branch of each workflow, with made-up inputs, asserting the same outputs.
+  id: workflow-third-party-port
+  is_default: false
+  linux_compatible: true
+  name: Port to a workflow library
+  notes: 'A new dependency: the decision names the library, in the engagement''s note on this resolution.'
+  phase: 2
+  status: active
+  target_description: The workflow library the decision names
+scope: occurrence
+status: active

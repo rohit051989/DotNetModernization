@@ -43,7 +43,7 @@ resolutions:
   linux_compatible: false
   name: Remain Windows-hosted
   notes: null
-  phase: 3
+  phase: 2
   status: active
   target_description: .NET on Windows Server
 - consumer_impact: low
@@ -72,7 +72,7 @@ resolutions:
   linux_compatible: true
   name: Write the same text to standard error
   notes: null
-  phase: 3
+  phase: 2
   status: active
   target_description: Standard error, collected by the container platform
 scope: occurrence

@@ -84,6 +84,11 @@ resolutions:
   engine_guidance: |-
     Retarget the library to the target framework alone, in the same change as every project that
     references it.
+    The work items that replace what only .NET Framework provides in this library (System.Web, Windows
+    Identity Foundation, Windows Workflow, directory services, Windows-only assemblies, the Event Log and the
+    like) come first, and Prerequisites names them. A rewrite of LINQ to SQL to EF Core is the exception: it
+    needs the target framework, so it is made in this same task. A use of a .NET Framework-only API that is
+    still left is a compile error to report in the task's notes, never one to stub out or remove.
     1. The project must be SDK-style first (the instruction for old-style project files does it,
        in an earlier task), keeping `RootNamespace`, `AssemblyName`, the strong-name key and the
        compiled files.
@@ -104,7 +109,7 @@ resolutions:
     Prerequisites: All consuming applications scheduled in the same migration wave.
 
     Known limitations: Legacy Framework consumers cannot reference a net10.0 library. Sequencing is mandatory, not optional.
-  phase: 2
+  phase: 3
   status: active
   target_description: .NET 10
 - consumer_impact: none
@@ -117,6 +122,11 @@ resolutions:
     Build the library for both the project's current framework and .NET Standard 2.0, so its .NET
     Framework consumers and its consumers on the target framework can all reference it while the
     applications move one by one.
+    The work items that replace what only .NET Framework provides in this library (LINQ to SQL, System.Web,
+    Windows Identity Foundation, Windows Workflow, directory services, Windows-only assemblies, the Event
+    Log and the like) come first, and Prerequisites names them; each kept its replacement buildable for
+    both frameworks. A use of a .NET Framework-only API that is still left and has no `netstandard2.0`
+    equivalent is a compile error to report in the task's notes, never one to stub out or remove.
     1. The project must be SDK-style first (the instruction for old-style project files does it,
        in an earlier task). Then set `<TargetFrameworks>` to the project's current framework, in its
        SDK-style short form, and `netstandard2.0`, separated by a semicolon. Not the current
@@ -145,7 +155,7 @@ resolutions:
     Prerequisites: No dependency on Framework-only APIs such as System.Web, AppDomain or Windows-specific configuration.
 
     Known limitations: Interim state, not a destination. Some Framework APIs have no .NET Standard equivalent. Plan a later move to net10.0 once all consumers are migrated.
-  phase: 2
+  phase: 3
   status: active
   target_description: .NET Standard 2.0
 scope: application

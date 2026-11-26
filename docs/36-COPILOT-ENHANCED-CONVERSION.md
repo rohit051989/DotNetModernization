@@ -1260,8 +1260,8 @@ forbade what the SSIS work item does; the Event Log and backslash paths went uns
 
 - **Phases.** Every catalog resolution has a phase (`item_resolutions.phase`, migration `e7a3c5f9b2d4`; factory values
   in `seed/data/phases.yaml`, seeded through `baseline.py`, exported, edited in the catalog's resolution form): 1 project
-  format, 2 libraries, 3 replace framework-only dependencies, 4 retarget and host applications, 5 platform and
-  deployment, 6 decisions a person still has to make (`render.PHASES`; unset counts as 5). The plan
+  format, 2 libraries, 3 replace framework-only dependencies (swapped on 2026-11-26: see the last addendum), 4 retarget
+  and host applications, 5 platform and deployment, 6 decisions a person still has to make (`render.PHASES`; unset counts as 5). The plan
   (`render.work_items`) orders work items by phase; within a phase, a work item on a project's referenced projects
   (solution-discovery's `project_references`, the model's `references`) before the one on the project; then the
   catalog's ordering rules (which now hold within a phase, never across one); then the model's order. Each work item's
@@ -1337,3 +1337,93 @@ Rule 20, for each engine:
   and `tests/test_guidance_fixtures.py` test 13 (on a scanned repository: the note in both engines after the master
   text, another engagement's note absent, a master text change reaching the engagement with the note kept, the
   conventions in both engines' instructions).
+
+## Part Q addendum — Framework-only APIs in class libraries, the class libraries' approach, containers for .NET Framework applications (2026-11-26)
+
+From a review of a prepared conversion of a SOAP services repository: five old-style class libraries on .NET Framework
+and one WCF web project. The bridge was chosen for libraries using APIs with no `netstandard2.0` or target framework
+implementation, which no work item named.
+
+- **New items**, from registry 1.17.0 (scanner 1.12.0), occurrence scope, one place per file, each with guidance:
+  `linq-to-sql-usage` (`SYSTEM_DATA_LINQ_NAMESPACE`/`_ASSEMBLY`, `DATACONTEXT_BASE_CLASS`, `DBML_FILE`; default
+  `rewrite-to-ef-core`, also `rewrite-to-ado-or-dapper`), `system-web-in-library` (the `SYSTEM_WEB_*` signals and
+  `IHTTP_MODULE`/`IHTTP_HANDLER_BASE_CLASS` on a .NET Framework library that is not a classic web project; default
+  `compile-against-system-web-adapters`, also `move-behind-an-interface`), `wif-usage`
+  (`SYSTEM_IDENTITYMODEL_SERVICES_*`, `WIF_API_USAGE`; default `move-to-aspnetcore-authentication`) and
+  `windows-workflow-usage` (`SYSTEM_ACTIVITIES_*`, `WORKFLOW_XAML_FILE`; default `rewrite-as-plain-code`, also
+  `workflow-third-party-port`). The rewrites have `confirm_design`, so they are design questions. Each offers "Remain
+  Windows-hosted", never as its default (the engagement policy: a library that does not support the target framework is
+  rewritten, not kept on .NET Framework). An item's located signals in one file are one occurrence, on whichever lines
+  (`evaluation.project_occurrences`).
+- **Ordering: the phases swap** (`render.PHASES`, `seed/data/phases.yaml`): 1 project format, 2 replace framework-only
+  dependencies, 3 libraries, 4 retarget and host applications, 5 platform and deployment, 6 decisions a person still has
+  to make. On one project, a work item that removes a framework-only API (the four above, directory services,
+  Windows-only assemblies, the Event Log and the like) runs before that project's bridge or retarget, which cannot build
+  while the API is still used. Swapped phases rather than a per-project rule: a work item covers every project of its
+  item, and the phase is the plan's first order, so a rule across phases would contradict the order the plan states;
+  every framework-only removal belongs before any project changes framework anyway, and is made while the project still
+  builds for its current framework. Not "Conversion ordering" paragraphs, which hold only within a phase. A side effect,
+  wanted: a package replacement now comes before the safe bump of the same package. The bridge's and the retarget's
+  guidance say the removals came first and that anything left is a compile error to report, never to stub.
+- **Bridge compatibility.** On a library on the bridge, every replacement stays buildable for both its current framework
+  and `netstandard2.0` (each rewrite's guidance says so). `rewrite-to-ef-core` cannot (current EF Core does not run on
+  .NET Framework): its guidance requires the direct retarget with all the library's consumers, in the same task
+  (`render.TOGETHER`: one task and commit with `net10-class-library`, in phase 3), and leaves the code unchanged on a
+  library on the bridge. Chosen with the bridge, preparation warns (`render.plan_warnings`: the decision sheet's
+  Warnings, and `incomplete` in `last-prepare.json`, kind `conflict`).
+- **Bridge or retarget** (`collect.class_library_recommendations`): each library of the class-library item gets a
+  recommended resolution from the dependency graph, with the reason: the direct retarget when every consumer is in
+  scope and moving to the target framework; the bridge when one stays on .NET Framework (left out of the scope or not
+  converted by this track; a chosen approach in `collect.STAYS_ON_FRAMEWORK`, such as "Remain Windows-hosted" or the
+  incremental adapters, which keep the existing application; or a library itself on the bridge). With no recorded
+  decision, the item's approach is the recommended one (`collect.adopt_recommendation`): the direct retarget when every
+  library's consumers move, otherwise the bridge, which every consumer builds against. A recorded decision is never
+  overridden. The decision sheet's "Class libraries: bridge or direct retarget" lists each library, its recommendation,
+  why, and what is applied.
+- **Gap 2.** `fx-aspnet-mvc` needs an application: an `atLeast` group of its own Global.asax, web.config or a
+  self-hosting `Main` (`patterns.yaml`). A library using System.Web is `system-web-in-library`'s; without an in-scope
+  application there is no incremental-adapters work item.
+- **Gap 3.** `directory-services-usage` also locates the signed-in user's identity and group checks
+  (`CURRENT_USER_IDENTITY_CHECK`: `WindowsIdentity.GetCurrent`, `WindowsPrincipal`, `UserPrincipal.Current`,
+  `Thread.CurrentPrincipal`, `IsInRole`), never as a reason it applies on their own. For `identity-provider-claims` they
+  are the places to change; the item's other lines (directory queries for other users or groups) are left unchanged,
+  with why, in "Leave unchanged" and the decision sheet's Unresolved (`render.LINE_ROLES`). For any other resolution
+  those lines are not places. A place is listed once, however many signals or values located it.
+- **Gap 4.** A package version whose only assets are .NET Framework ones does not support the target framework: it
+  loads only through NuGet's .NET Framework fallback (NU1701) (`frameworks.Support.fallback_only`). A dependency list
+  without framework groups (recorded as `any`) says nothing of a package's assemblies, so lib/ref decide, in
+  dependency-assessment 1.11.0 and in `frameworks.supports` alike. An undeclared one referenced by path gets the
+  addendum verdict "fallback-only" and is a place of `package-replacement-required` on its project file; that item's
+  places name the known replacement (`compatibility/framework_only_packages.yaml`: Enterprise Library blocks, Unity
+  before 5) where the publisher names none (`collect.framework_only_packages`).
+- **Gap 5.** `missing-dockerfile` and `missing-ocp4-manifests` also match a .NET Framework application (its `.svc`,
+  `.asmx`, `.aspx` or Global.asax as well as the entry points). The conversion keeps them on such an application only
+  when an application item on its project chose a container-ready approach and none keeps it on Windows
+  (`collect.containers_needed`); their phase, 5, puts them after its conversion. `multistage-dockerfile` has guidance
+  now (off the allow-list), so the image is a work item: it follows the repository's own Dockerfile conventions where it
+  has any.
+- **Gap 6.** `UNQUALIFIED_HOSTNAME_URL` (registry 1.17.0) skips a C# literal that is an identifier URI: a `claims` path
+  segment, an argument of `new Claim`, `FindFirst`, `HasClaim` and the like or `XNamespace.Get`, a value named like a
+  claim type or a namespace (containing ClaimType or Xmlns, or ending in Namespace), one in a type whose name contains
+  ClaimType or ends in Claims, or a `Namespace` attribute argument.
+
+Rule 20, for each engine:
+
+- **GitHub Copilot**: applied. Its work items carry the new items' guidance, the swapped phases and what each follows,
+  the bridge's and retarget's prerequisite, EF Core's "together with" the retarget, the identity-claims places and
+  "Leave unchanged", the image and manifest work items; its addendum carries the fallback-only verdict; its decision
+  sheet the class libraries' recommendation, the warning and the plan; its instructions the design questions for the
+  rewrites.
+- **Claude Code**: applied. The same work items, addendum, decision sheet and design questions through the mechanics
+  table; its plan, the one engine mechanic that differs, lists the steps in the new phase order, EF Core in the
+  retarget's step. The parity test passes.
+- Proved on a made-up repository (`tests/test_framework_only_apis.py`, fixture `framework_only_repository.py`): each
+  item detected; each removal's work item in both engines before the same library's retarget, Prerequisites naming it;
+  EF Core in the retarget's task; the rewrites under the design questions, nothing incomplete for them; the direct
+  retarget recommended when every consumer moves, the bridge with a consumer left out of the scope, a decision never
+  overridden, EF Core with the bridge warning; no MVC item on a library; the identity-claims places each once, other
+  users' lookups left unchanged; a `lib/net45`-only package fallback-only and replaced; a .NET Framework service and a
+  console tool moving to containers getting the image and manifest work items after their conversions, and a service
+  staying on Windows not; a claim-type URI not a hostname. The scanner's own tests prove each signal and the hostname
+  exclusion (`ExtractorBatch2Tests`, registry 1.17.0), and dependency-assessment's the flat dependency list
+  (`FlatDependencyListTests`).

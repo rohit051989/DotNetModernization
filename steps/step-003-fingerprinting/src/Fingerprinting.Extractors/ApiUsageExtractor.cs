@@ -65,7 +65,31 @@ public sealed class ApiUsageExtractor : IFingerprintExtractor
         // Registry 1.16.0: the Windows Event Log, which throws PlatformNotSupportedException on Linux.
         .. EventLogMembers.Select(m => new MemberRule("EVENT_LOG_USAGE", SignalCategories.SourceConstruct,
             ["EventLog", "System.Diagnostics.EventLog"], m, $"System.Diagnostics.EventLog.{m}")),
+        // Registry 1.17.0: the signed-in Windows user's identity, which a token's claims can replace.
+        new(CurrentUserIdentityCheck, SignalCategories.SourceConstruct,
+            ["WindowsIdentity", "System.Security.Principal.WindowsIdentity"], "GetCurrent", "System.Security.Principal.WindowsIdentity.GetCurrent"),
+        new(CurrentUserIdentityCheck, SignalCategories.SourceConstruct,
+            ["UserPrincipal", "System.DirectoryServices.AccountManagement.UserPrincipal"], "Current", "System.DirectoryServices.AccountManagement.UserPrincipal.Current"),
+        new(CurrentUserIdentityCheck, SignalCategories.SourceConstruct,
+            ["Thread", "System.Threading.Thread"], "CurrentPrincipal", "System.Threading.Thread.CurrentPrincipal"),
     ];
+
+    /// <summary>Registry 1.17.0: the signed-in Windows user's identity or group checks (WindowsIdentity.GetCurrent,
+    /// a WindowsPrincipal, UserPrincipal.Current, Thread.CurrentPrincipal, any IsInRole call): what a token's claims
+    /// can replace, unlike a directory query for another user or group.</summary>
+    public const string CurrentUserIdentityCheck = "CURRENT_USER_IDENTITY_CHECK";
+
+    /// <summary>Registry 1.17.0: Windows Identity Foundation (System.IdentityModel.Services), which has no implementation
+    /// on the target framework: FederatedAuthentication, its HTTP modules and configuration, and the claims managers.</summary>
+    public const string WifApiUsage = "WIF_API_USAGE";
+
+    private const string WifNamespace = "System.IdentityModel.Services";
+
+    private static readonly HashSet<string> WifTypes = new(StringComparer.Ordinal)
+        { "SessionAuthenticationModule", "WSFederationAuthenticationModule", "FederationConfiguration" };
+
+    private static readonly HashSet<string> ClaimsManagerTypes = new(StringComparer.Ordinal)
+        { "ClaimsAuthenticationManager", "ClaimsAuthorizationManager" };
 
     // Registry 1.16.0: what loads and runs an SSIS package through the SSIS runtime, in a file that imports it.
     private static readonly HashSet<string> SsisLoadMethods = new(StringComparer.Ordinal)
@@ -200,6 +224,7 @@ public sealed class ApiUsageExtractor : IFingerprintExtractor
             var importsSharprompt = usings.Any(u => u == "Sharprompt");
             var importsDts = usings.Any(u => u == "Microsoft.SqlServer.Dts.Runtime");
             var importsDiagnostics = usings.Any(u => u == "System.Diagnostics");
+            var importsWif = usings.Any(u => u == WifNamespace);
             var serilogFile = !file.IsGenerated && IsSerilogFile(usings, root);
 
             foreach (var node in root.DescendantNodes())
@@ -263,6 +288,19 @@ public sealed class ApiUsageExtractor : IFingerprintExtractor
                         Add(accumulator, "WCF_SERVICE_BINDING_USAGE", SignalCategories.EndpointIndicator,
                             serviceBindingValue, file.RelativePath, node, NameOnly);
                         break;
+                    case ObjectCreationExpressionSyntax { Type: var principalType }
+                        when principalType.ToString() is "WindowsPrincipal" or "System.Security.Principal.WindowsPrincipal":
+                        // Registry 1.17.0: a WindowsPrincipal built for a group check of the signed-in user.
+                        Add(accumulator, CurrentUserIdentityCheck, SignalCategories.SourceConstruct,
+                            "System.Security.Principal.WindowsPrincipal", file.RelativePath, node, QualifiedMember);
+                        break;
+                    case BaseTypeSyntax { Type: var managerBase }
+                        when RoslynNameHelpers.RightmostIdentifier(managerBase) is { } managerName && ClaimsManagerTypes.Contains(managerName):
+                        // Registry 1.17.0: a WIF claims authentication or authorization manager.
+                        Add(accumulator, WifApiUsage, SignalCategories.SourceConstruct, $"System.Security.Claims.{managerName}",
+                            file.RelativePath, node,
+                            managerBase.ToString().StartsWith("System.Security.Claims.", StringComparison.Ordinal) ? QualifiedMember : NameOnly);
+                        break;
                     case ObjectCreationExpressionSyntax { Type: var created }
                         when RoslynNameHelpers.RightmostIdentifier(created) == "ProcessStartInfo":
                         Add(accumulator, "PROCESS_START_USAGE", SignalCategories.ExecutionIndicator,
@@ -270,6 +308,7 @@ public sealed class ApiUsageExtractor : IFingerprintExtractor
                         break;
                     case IdentifierNameSyntax identifier:
                         MatchTypeReference(identifier, importsDrawing, importsDirectory, file.RelativePath, accumulator);
+                        MatchWifType(identifier, importsWif, file.RelativePath, accumulator);
                         break;
                 }
             }
@@ -302,6 +341,13 @@ public sealed class ApiUsageExtractor : IFingerprintExtractor
             }
         }
 
+        if (receiver is "FederatedAuthentication" or WifNamespace + ".FederatedAuthentication")
+        {
+            // Registry 1.17.0: WIF's static entry point (FederatedAuthentication.SessionAuthenticationModule, ...).
+            Add(accumulator, WifApiUsage, SignalCategories.SourceConstruct,
+                $"{WifNamespace}.FederatedAuthentication.{member}", path, access, QualifiedMember);
+        }
+
         if ((receiver is "Registry" or "Microsoft.Win32.Registry") && RegistryMembers.Contains(member))
         {
             Add(accumulator, "REGISTRY_ACCESS_USAGE", SignalCategories.HostingIndicator,
@@ -322,6 +368,42 @@ public sealed class ApiUsageExtractor : IFingerprintExtractor
             {
                 Add(accumulator, rule.Signal, rule.Category, rule.Method, path, invocation, NameOnly);
             }
+        }
+
+        // Registry 1.17.0: a role check of the signed-in user, on any principal (User.IsInRole, principal.IsInRole).
+        if (RoslynNameHelpers.IsMethodCallNamed(invocation, "IsInRole"))
+        {
+            Add(accumulator, CurrentUserIdentityCheck, SignalCategories.SourceConstruct,
+                "System.Security.Principal.IPrincipal.IsInRole", path, invocation, NameOnly);
+        }
+    }
+
+    /// <summary>Registry 1.17.0: a WIF module or configuration type used as a type (created, declared, the receiver
+    /// of a static call), in a file importing System.IdentityModel.Services, or written fully qualified.</summary>
+    private static void MatchWifType(IdentifierNameSyntax identifier, bool importsWif, string path, SignalAccumulator accumulator)
+    {
+        var name = identifier.Identifier.Text;
+        if (!WifTypes.Contains(name))
+        {
+            return;
+        }
+
+        // `FederatedAuthentication.SessionAuthenticationModule` is a member of that name, not the type.
+        if (identifier.Parent is MemberAccessExpressionSyntax parentAccess && parentAccess.Name == identifier)
+        {
+            return;
+        }
+
+        var qualifiedParent = identifier.Parent is QualifiedNameSyntax q && q.Right == identifier ? q.Left.ToString() : null;
+        var isTypePosition = identifier.Parent is ObjectCreationExpressionSyntax or VariableDeclarationSyntax
+            or ParameterSyntax or TypeArgumentListSyntax or ArrayTypeSyntax or NullableTypeSyntax
+            or PropertyDeclarationSyntax or MethodDeclarationSyntax or CastExpressionSyntax or QualifiedNameSyntax
+            || identifier.Parent is MemberAccessExpressionSyntax { Expression: var expression } && expression == identifier;
+        var qualified = qualifiedParent == WifNamespace;
+        if (isTypePosition && (qualified || (qualifiedParent is null && importsWif)))
+        {
+            Add(accumulator, WifApiUsage, SignalCategories.SourceConstruct, $"{WifNamespace}.{name}", path, identifier,
+                qualified ? QualifiedMember : NameOnly);
         }
     }
 

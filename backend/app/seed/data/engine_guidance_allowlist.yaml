@@ -26,8 +26,7 @@ items:
     interactive-tool-ops-container: {reason: "Not met in a conversion yet; depends on how operations run tools in the cluster."}
     interactive-tool-retire: {reason: "A retirement is a person's change, not the engine's: removing the tool is decided and done by a person."}
   missing-dockerfile:
-    multistage-dockerfile: {reason: "The Dockerfile is written from the repository's existing container conventions and base-image policy, which differ by client; the current conversions add it through their container instructions."}
-    sdk-container-publish: {reason: "As for the multi-stage Dockerfile: depends on the client's base-image policy."}
+    sdk-container-publish: {reason: "Depends on the client's base-image policy and the SDK's container support in their pipeline; the multi-stage Dockerfile is written (2026-11-26) and follows the repository's own conventions."}
   modern-worker-service:
     ocp4-cronjob: {reason: "Not met in a conversion yet; the schedule and its manifest conventions are the client's (the console batch job's CronJob text is the model to follow)."}
     ocp4-deployment: {reason: "Not met in a conversion yet; to be written with the deployment manifest conventions."}

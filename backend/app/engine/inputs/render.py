@@ -99,13 +99,48 @@ def _config_key(line: dict | None) -> str | None:
     return line["member"]
 
 
+# Gap 3 (2026-11-26): lines located by one signal that only some resolutions change. {item: (signal, {resolutions that
+# change those lines, leaving every other line of the item unchanged with `why`})}. For any other resolution those lines
+# are not places at all. The signed-in user's identity and group checks are what the identity provider's claims replace;
+# a directory query for other users or groups is not, since a token cannot carry it.
+LINE_ROLES = {
+    "directory-services-usage": ("CURRENT_USER_IDENTITY_CHECK", {"identity-provider-claims"},
+                                 "a directory query for other users or groups: a token cannot carry it, so it stays as "
+                                 "it is until a person decides its source"),
+}
+
+
+def _split_lines(item: dict) -> tuple[list[dict], list[dict]]:
+    """(places to apply, places to leave unchanged with `why`) for an item with LINE_ROLES; else every occurrence to
+    apply. A line located by both counts as the role's line."""
+    role = LINE_ROLES.get(item["id"])
+    res = item["resolution"]
+    if role is None or res is None:
+        return list(item["occurrences"]), []
+    signal, changing, why = role
+    apply, keep = [], []
+    for occ in item["occurrences"]:
+        lines = occ["lines"] or []
+        mine = [ln for ln in lines if ln.get("signal") == signal]
+        rest = [ln for ln in lines if ln.get("signal") != signal and not any(m["line"] == ln["line"] for m in mine)]
+        if res["id"] in changing:
+            if mine:
+                apply.append({**occ, "lines": mine})
+            if rest or not lines:
+                keep.append({**occ, "lines": rest, "why": why})
+        elif rest or not lines:
+            apply.append({**occ, "lines": rest})
+    return apply, keep
+
+
 def plan_item(item: dict) -> dict:
     """How the chosen approach applies: the places it applies to, the places it cannot (left unchanged, with why),
     and the deployment parameters it needs — never a decision the engine has to stop for."""
     res = item["resolution"]
     needs = RESOLUTION_NEEDS.get(res["id"], {}) if res else {}
-    apply, unresolved = [], []
-    for occ in item["occurrences"]:
+    candidates, unresolved = _split_lines(item)
+    apply = []
+    for occ in candidates:
         value = _occurrence_value(occ)
         why = None
         if res is None:
@@ -168,6 +203,12 @@ def without_guidance(model: dict) -> list[dict]:
         if option.get("missing"):
             out.append({"item": None, "resolution": None, "missing": "default", "change": option["question"],
                         "approach": option["answer"], "decided": False, "why": option["source"]})
+    # 1b (2026-11-26): choices that cannot work together (EF Core in a library on the bridge).
+    linq = next((i for i in model["items"] if i["id"] == "linq-to-sql-usage"), None)
+    for warning in plan_warnings(model):
+        out.append({"item": "linq-to-sql-usage", "resolution": EF_CORE, "missing": "conflict",
+                    "change": linq["name"] if linq else None, "approach": (linq or {}).get("resolution", {}).get("name"),
+                    "decided": bool((linq or {}).get("decided")), "why": warning})
     return out
 
 
@@ -177,7 +218,7 @@ def incomplete(model_or_missing) -> dict | None:
     what cannot work on the target. None when nothing is missing. Takes the model, or without_guidance's list."""
     missing = model_or_missing if isinstance(model_or_missing, list) else without_guidance(model_or_missing)
     deciding = {m["item"] for m in missing if m["missing"] == "decision"}
-    gaps = [m for m in missing if m["missing"] in ("default", "decision", "phase")
+    gaps = [m for m in missing if m["missing"] in ("default", "decision", "phase", "conflict")
             or (m["missing"] == "resolution" and m["item"] not in deciding)]     # one line per change
     if not gaps:
         return None
@@ -186,6 +227,8 @@ def incomplete(model_or_missing) -> dict | None:
     for m in gaps:
         if m["missing"] == "default":
             details.append(f"{m['change']}: no instruction yet ({m['why']})")
+        elif m["missing"] == "conflict":
+            details.append(m["why"])
         elif m["missing"] == "phase":
             details.append(f"{m['change']}: {m['approach']} has no phase set in the catalog; its work item is placed with "
                            f"phase {DEFAULT_PHASE} ({PHASES[DEFAULT_PHASE].lower()}) until an admin sets it in the "
@@ -231,11 +274,16 @@ def unresolved(model: dict) -> list[dict]:
     """Every place the chosen approach cannot apply: {item, change, resolution, place, value, why}. Left unchanged."""
     out = []
     for item in model["items"]:
+        seen: set[str] = set()
         for occ in plan_item(item)["unresolved"]:
-            out.append({"item": item["id"], "change": item["name"],
-                        "resolution": item["resolution"]["id"] if item["resolution"] else None,
-                        "place": _site(occ, (occ["lines"] or [None])[0]).strip("`"), "value": occ.get("value"),
-                        "why": occ["why"]})
+            for line in occ["lines"] or [None]:
+                place = _site(occ, line).strip("`")
+                if place in seen:
+                    continue
+                seen.add(place)
+                out.append({"item": item["id"], "change": item["name"],
+                            "resolution": item["resolution"]["id"] if item["resolution"] else None,
+                            "place": place, "value": occ.get("value"), "why": occ["why"]})
     return out
 
 
@@ -336,6 +384,11 @@ def _prerequisites(item: dict, present: set[str], by_id: dict, entry: dict | Non
         lines.append(f"- Phase {phase} of {len(PHASES)}, {PHASES[phase].lower()}: apply it after every work item of the "
                      "phases before it." if phase > 1 else f"- Phase 1 of {len(PHASES)}, {PHASES[1].lower()}: apply it "
                      "before the work items of every later phase.")
+    if entry is not None and entry.get("together_with"):
+        lead = by_id.get(next((i for i, x in by_id.items()
+                               if x.get("resolution") and skill_name(x["resolution"]["id"]) == entry["together_with"]), ""))
+        lines.append(f"- Apply **together with** `{entry['together_with']}`"
+                     + (f" ({lead['name']})" if lead else "") + ", in the same task and commit: it comes first in that task.")
     rules = [(rule["relation"], rule["item"]) for rule in item["ordering"] if rule["relation"] != "first"]
     reverse = {"before": "after", "after": "before", "together": "together"}
     for other in by_id.values():
@@ -530,10 +583,14 @@ def _instruction(model: dict, item: dict, present: set[str], by_id: dict, entry:
     plan = plan_item(item)
     out += ["", "## Places", "", "Apply what to do above at these places, and only there:", ""]
     count = 0
+    listed: set[str] = set()
     for occ in plan["apply"]:
         for line in occ["lines"] or [None]:
             if count >= MAX_LIST:
                 break
+            if _site(occ, line) in listed:
+                continue                    # one place, located by two signals or two values (gap 3, 2026-11-26)
+            listed.add(_site(occ, line))
             count += 1
             what = []
             if line and line.get("value"):
@@ -546,7 +603,7 @@ def _instruction(model: dict, item: dict, present: set[str], by_id: dict, entry:
             ambiguous = (line or {}).get("certainty") == "ambiguous" or occ["certainty"] == "possible"
             out.append(f"- {_site(occ, line)} ({occ['project']}){found}"
                        f"{' (this call site is ambiguous: confirm before changing)' if ambiguous else ''}")
-    total = sum(max(1, len(o["lines"])) for o in plan["apply"])
+    total = len({_site(o, ln) for o in plan["apply"] for ln in o["lines"] or [None]})
     if total > count:
         out.append(f"- ... and {total - count} more of the same kind: find them by the same pattern.")
     out += ["",
@@ -566,8 +623,14 @@ def _instruction(model: dict, item: dict, present: set[str], by_id: dict, entry:
         out += ["", "## Leave unchanged", "",
                 "This approach cannot apply at these places. Do not change them, and do not choose another approach: "
                 "record each as left unchanged in the task's notes.", ""]
+        left: set[str] = set()
         for occ in plan["unresolved"]:
-            out.append(f"- {_site(occ, (occ['lines'] or [None])[0])} `{_md(occ.get('value'))}`: {occ['why']}")
+            for line in occ["lines"] or [None]:
+                if _site(occ, line) in left:
+                    continue
+                left.add(_site(occ, line))
+                what = (line or {}).get("value") or occ.get("value")
+                out.append(f"- {_site(occ, line)}{f' `{_md(what)}`' if what else ''}: {occ['why']}")
 
     if res["id"] == "keep-existing-vault-delivery" and model.get("vault_delivery"):
         out += ["", "## The existing vault delivery", "",
@@ -785,6 +848,10 @@ ASSEMBLY_VERDICT = {
     "windows-only": "needs a replacement on Linux: a person decides it before the conversion; do not replace it yourself",
     "replaced": "replaced by",
     "unknown": "unknown: check it builds and loads on Linux",
+    # Gap 4 (2026-11-26): every asset is a .NET Framework one (frameworks.FALLBACK_ONLY).
+    "fallback-only": "a NuGet package built only for .NET Framework referenced by path: it loads on the target framework "
+                     "only through .NET Framework fallback (NU1701) and needs .NET Framework at run time, so it is "
+                     "replaced, not declared as it is",
 }
 
 
@@ -821,7 +888,12 @@ def assembly_section(model: dict) -> list[str]:
                         "check its support before declaring it")
         if a["verdict"] == "replaced":
             verdict += f" `{a['replaced_by']}`: that work item removes the reference and the code that uses it"
-        if a.get("why") and a["verdict"] not in ("package", "replaced"):
+        if a["verdict"] == "fallback-only":
+            verdict += (f" (`{a['package']['id']}` {a['package']['version']}): replace it with {a['replacement']}, as the "
+                        "package replacement instruction says" if a.get("replacement") else
+                        f" (`{a['package']['id']}` {a['package']['version']}): no replacement is known; the package "
+                        "replacement instruction lists it to leave unchanged until a person chooses one")
+        if a.get("why") and a["verdict"] not in ("package", "replaced", "fallback-only"):
             verdict += f" ({a['why']})"
         exists = "-" if a.get("exists") is None else "yes" if a["exists"] else "no"
         out.append(f"| `{_md(a['project'])}` | {_md(a['name'])} | {_md(a.get('version') or '-')} | {_md(where)} | "
@@ -847,6 +919,12 @@ def decision_sheet(model: dict) -> str:
         res = item["resolution"]
         out.append(f"| {_md(item['name'])} | {_md(res['name'] if res else 'none defined')} | {_status(item['decided'])} | "
                    f"{_md(', '.join(a['name'] for a in item['alternatives']))} |")
+    out += library_section(model)
+    warnings = plan_warnings(model)
+    if warnings:
+        out += ["", "## Warnings", "", "Choices that cannot work together. The conversion follows each instruction as "
+                "written; a person resolves these before it is run.", ""]
+        out += [f"- {_md(w)}" for w in warnings]
     out += ["", "## Ordering", "",
             "The work items in the order to apply them: by phase, and within a phase each project's referenced projects "
             "first. Items in one step are one task and one commit.", ""]
@@ -887,6 +965,58 @@ def decision_sheet(model: dict) -> str:
         out.append("None.")
     out.append("")
     return "\n".join(out)
+
+
+LIBRARY_ITEM = "fx47-class-library"
+BRIDGE = "netstandard20-bridge"
+EF_CORE = "rewrite-to-ef-core"
+
+
+def library_section(model: dict) -> list[str]:
+    """1c (2026-11-26): each .NET Framework class library's recommended approach, from its consumers, and why
+    (collect.class_library_recommendations). Without a recorded decision the conversion follows it; a recorded
+    decision is never overridden, and the recommendation is shown beside it."""
+    libraries = model.get("class_libraries") or []
+    item = next((i for i in model["items"] if i["id"] == LIBRARY_ITEM), None)
+    if not libraries or item is None or item["resolution"] is None:
+        return []
+    names = {item["resolution"]["id"]: item["resolution"]["name"]}
+    names.update({a["id"]: a["name"] for a in item["alternatives"]})
+    chosen = item["resolution"]["id"]
+    if item["decided"]:
+        said = f"Decided: {item['resolution']['name']}. The recommendation does not override a recorded decision."
+    elif item.get("recommended"):
+        said = (f"No decision recorded: the conversion follows the recommendation, {item['resolution']['name']}, for "
+                "every library (the bridge when any library needs it: every consumer builds against it).")
+    else:
+        said = f"No decision recorded: {item['resolution']['name']}, the default, which the recommendation agrees with."
+    out = ["", "## Class libraries: bridge or direct retarget", "", said, "",
+           "| Library | Recommended | Why | Applied |", "|---|---|---|---|"]
+    for lib in libraries[:MAX_LIST]:
+        applied = names.get(chosen, chosen) + ("" if lib["recommended"] == chosen else " (differs from the recommendation)")
+        out.append(f"| `{_md(lib['project'])}` | {_md(names.get(lib['recommended'], lib['recommended']))} | "
+                   f"{_md(lib['reason'])} | {_md(applied)} |")
+    return out
+
+
+def plan_warnings(model: dict) -> list[str]:
+    """1b (2026-11-26): choices that cannot work together, for the decision sheet and preparation's warnings. LINQ to SQL
+    rewritten to EF Core in a library on the bridge: current EF Core does not build for .NET Framework or .NET Standard
+    2.0, so the rewrite needs the library retargeted to the target framework with all its consumers."""
+    by_id = {i["id"]: i for i in model["items"]}
+    library, linq = by_id.get(LIBRARY_ITEM), by_id.get("linq-to-sql-usage")
+    if not library or not linq or (library["resolution"] or {}).get("id") != BRIDGE \
+            or (linq["resolution"] or {}).get("id") != EF_CORE:
+        return []
+    bridged = {o["project"] for o in library["occurrences"]}
+    both = sorted(bridged & {o["project"] for o in linq["occurrences"]})
+    if not both:
+        return []
+    return [f"{linq['name']}: {linq['resolution']['name']} is chosen for {len(both)} class librar"
+            f"{'y' if len(both) == 1 else 'ies'} on the bridge ({', '.join(both[:5])}{', ...' if len(both) > 5 else ''}). "
+            "Current EF Core does not build for .NET Framework or .NET Standard 2.0: retarget each such library to the "
+            "target framework with all its consumers (the direct retarget), or choose the ADO.NET or Dapper rewrite, "
+            "which builds for both. Until then its instruction leaves the LINQ to SQL code unchanged."]
 
 
 def _built(model: dict) -> str:
@@ -1049,15 +1179,21 @@ def _applies(item: dict) -> bool:
 
 # The phases of a conversion's plan (36-COPILOT-ENHANCED-CONVERSION "Phases"): every catalog resolution has one
 # (item_resolutions.phase, seeded from seed/data/phases.yaml). A resolution with none counts as platform and deployment.
+# Replacing framework-only dependencies comes before the libraries (2026-11-26): on one project, the work item that removes
+# a framework-only API runs before that project's bridge or retarget, which cannot build while the API is still used.
 PHASES = {
     1: "Project format",
-    2: "Libraries",
-    3: "Replace framework-only dependencies",
+    2: "Replace framework-only dependencies",
+    3: "Libraries",
     4: "Retarget and host applications",
     5: "Platform and deployment",
     6: "Decisions a person still has to make",
 }
 DEFAULT_PHASE = 5
+
+# Resolutions that are one task and one commit when both are chosen on the same project (2026-11-26): current EF Core
+# runs only on the target framework, so LINQ to SQL is rewritten to it in the library's direct retarget.
+TOGETHER = (("net10-class-library", "rewrite-to-ef-core"),)
 
 
 def phase_of(item: dict) -> int:
@@ -1100,13 +1236,20 @@ def work_items(model: dict) -> list[dict]:
         while group[i] != i:
             i = group[i]
         return i
+    def join(a, b):
+        a, b = lead(a), lead(b)
+        if a != b:
+            first, second = sorted((a, b), key=ids.index)
+            group[second] = first
     for i in items:
         for rule in i["ordering"]:
             if rule["relation"] == "together" and rule["item"] in group and rule["item"] != i["id"]:
-                a, b = lead(i["id"]), lead(rule["item"])
-                if a != b:
-                    first, second = sorted((a, b), key=ids.index)
-                    group[second] = first
+                join(i["id"], rule["item"])
+    for first, second in TOGETHER:
+        a = next((i for i in items if i["resolution"]["id"] == first), None)
+        b = next((i for i in items if i["resolution"]["id"] == second), None)
+        if a and b and {o["project"] for o in a["occurrences"]} & {o["project"] for o in b["occurrences"]}:
+            join(a["id"], b["id"])
     groups = [g for g in ids if lead(g) == g]
     members = {g: [i for i in ids if lead(i) == g] for g in groups}
     phase = {g: min(phase_of(by_id[i]) for i in members[g]) for g in groups}

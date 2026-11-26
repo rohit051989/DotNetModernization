@@ -1,0 +1,20 @@
+# Known replacements for packages built only for .NET Framework (gap 4, 2026-11-26): a version whose only assets are
+# .NET Framework ones loads on the target framework only through NuGet's .NET Framework fallback (NU1701) and still
+# needs .NET Framework at run time, so it is replaced. Where the publisher names no replacement (a deprecation with a
+# successor), the conversion's package replacement work item names the one listed here (app.compatibility.assemblies.
+# known_replacement; app.engine.inputs.collect.framework_only_packages).
+#
+# Read from the repository, never from the database; edit it here and commit. `match: exact` compares the whole package
+# id, `match: prefix` the start of it (both case-insensitive). `below`: only versions lower than this one (a later major
+# version of the same package supports the target framework). `replacement` is shown to the engine and the person; it
+# names products only, never a client.
+packages:
+  - {id: EnterpriseLibrary.Data, match: exact, replacement: "Microsoft.Data.SqlClient (plain ADO.NET)"}
+  - {id: EnterpriseLibrary.TransientFaultHandling, match: prefix, replacement: "Polly"}
+  - {id: EnterpriseLibrary.Logging, match: prefix, replacement: "Microsoft.Extensions.Logging"}
+  - {id: EnterpriseLibrary.Caching, match: prefix, replacement: "Microsoft.Extensions.Caching.Memory"}
+  - {id: EnterpriseLibrary.Validation, match: prefix, replacement: "System.ComponentModel.DataAnnotations validation"}
+  - {id: EnterpriseLibrary.ExceptionHandling, match: prefix, replacement: "plain try/catch with Microsoft.Extensions.Logging"}
+  - {id: EnterpriseLibrary.PolicyInjection, match: prefix, replacement: "Microsoft.Extensions.DependencyInjection decorators"}
+  - {id: Unity, match: exact, below: "5.0.0", replacement: "Unity 5 (Unity.Container) or Microsoft.Extensions.DependencyInjection"}
+  - {id: Unity.Interception, match: exact, below: "5.0.0", replacement: "Microsoft.Extensions.DependencyInjection decorators"}

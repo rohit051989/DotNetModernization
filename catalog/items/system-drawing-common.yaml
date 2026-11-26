@@ -33,7 +33,7 @@ resolutions:
   linux_compatible: true
   name: Replace with ImageSharp
   notes: Check the Six Labors split licence for commercial use before adopting.
-  phase: 3
+  phase: 2
   status: active
   target_description: SixLabors.ImageSharp (cross-platform, managed)
 - consumer_impact: none
@@ -48,7 +48,7 @@ resolutions:
   linux_compatible: false
   name: Remain Windows-hosted (out of scope)
   notes: null
-  phase: 3
+  phase: 2
   status: active
   target_description: .NET Framework on Windows Server with MSMQ
 - consumer_impact: low
@@ -62,7 +62,7 @@ resolutions:
   linux_compatible: true
   name: Replace with SkiaSharp
   notes: null
-  phase: 3
+  phase: 2
   status: active
   target_description: SkiaSharp with native Linux assets in the image
 - consumer_impact: none
@@ -77,7 +77,7 @@ resolutions:
   linux_compatible: false
   name: Remain Windows-hosted
   notes: null
-  phase: 3
+  phase: 2
   status: active
   target_description: .NET on Windows Server
 scope: occurrence

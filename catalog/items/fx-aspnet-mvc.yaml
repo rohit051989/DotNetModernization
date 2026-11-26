@@ -23,7 +23,19 @@ detection:
     - id: exposes-http-api
       signal:
         name: EXPOSES_HTTP_API
-    atLeast: []
+    atLeast:
+    - count: 1
+      id: an-application
+      of:
+      - id: app-global-asax
+        signal:
+          name: GLOBAL_ASAX_FILE
+      - id: app-web-config
+        signal:
+          name: WEB_CONFIG_FILE
+      - id: app-main-entry
+        signal:
+          name: MAIN_METHOD_ENTRY_POINT
     metadata:
     - equals: net-framework
       field: frameworkFamily

@@ -748,8 +748,10 @@ public sealed class ExtractorBatch2Tests
         // + 1.13.0 WCF_SERVICE_BINDING_CONFIG and WCF_SERVICE_BINDING_USAGE
         // + 1.14.0 SERILOG_FILE_SINK_USAGE, SERILOG_CONSOLE_SINK_USAGE and SERILOG_CONSOLE_SINK_CONFIG.
         // + 1.16.0 EVENT_LOG_USAGE, SSIS_PACKAGE_EXECUTION and BACKSLASH_PATH_BUILDING.
-        Assert.Equal("1.16.0", registry.RegistryVersion);
-        Assert.Equal(157, registry.Entries.Count);
+        // + 1.17.0 the LINQ to SQL, WIF and Windows Workflow namespaces and assemblies, DATACONTEXT_BASE_CLASS, DBML_FILE,
+        //   WIF_API_USAGE, WORKFLOW_XAML_FILE and CURRENT_USER_IDENTITY_CHECK.
+        Assert.Equal("1.17.0", registry.RegistryVersion);
+        Assert.Equal(168, registry.Entries.Count);
         Assert.Contains(registry.Entries, e => e.Name == ApiUsageExtractor.SerilogFileSinkUsage && e.Extractor == ApiUsageExtractor.ExtractorName);
         Assert.Contains(registry.Entries, e => e.Name == ApiUsageExtractor.SerilogConsoleSinkUsage && e.Extractor == ApiUsageExtractor.ExtractorName);
         Assert.Contains(registry.Entries, e => e.Name == "SERILOG_CONSOLE_SINK_CONFIG" && e.Extractor == ConfigurationExtractor.ExtractorName);
@@ -760,7 +762,14 @@ public sealed class ExtractorBatch2Tests
         Assert.Equal(8, registry.Entries.Count(e => e.Extractor == "EntryPointInventory"));
         Assert.Equal(7, registry.Entries.Count(e => e.Extractor == "DependencyAssessment" && e.Category == SignalCategories.PackageDependency));
         Assert.Contains(registry.Entries, e => e.Name == "WCF_CLIENT_BINDING_CONFIG" && e.Extractor == ConfigurationExtractor.ExtractorName);
-        Assert.Equal(18, registry.Entries.Count(e => e.Extractor == ApiUsageExtractor.ExtractorName));
+        Assert.Equal(20, registry.Entries.Count(e => e.Extractor == ApiUsageExtractor.ExtractorName));
+        Assert.Contains(registry.Entries, e => e.Name == ApiUsageExtractor.WifApiUsage && e.Extractor == ApiUsageExtractor.ExtractorName);
+        Assert.Contains(registry.Entries, e => e.Name == ApiUsageExtractor.CurrentUserIdentityCheck && e.Extractor == ApiUsageExtractor.ExtractorName);
+        Assert.Contains(registry.Entries, e => e.Name == FileIndicatorExtractor.WorkflowXamlFile && e.Extractor == FileIndicatorExtractor.ExtractorName);
+        Assert.Contains(registry.Entries, e => e.Name == "DBML_FILE" && e.Extractor == FileIndicatorExtractor.ExtractorName);
+        Assert.Contains(registry.Entries, e => e.Name == "DATACONTEXT_BASE_CLASS" && e.Extractor == InheritanceExtractor.ExtractorName);
+        Assert.Equal(6, registry.Entries.Count(e => e.Extractor == FrameworkReferenceExtractor.ExtractorName
+            && (e.Name.StartsWith("SYSTEM_DATA_LINQ_") || e.Name.StartsWith("SYSTEM_IDENTITYMODEL_SERVICES_") || e.Name.StartsWith("SYSTEM_ACTIVITIES_"))));
         Assert.Equal(3, registry.Entries.Count(e => e.Name.StartsWith("CONTAINER_") && e.Extractor == FileIndicatorExtractor.ExtractorName));
         Assert.Contains(registry.Entries, e => e.Name == IisHostingExtractor.HostingModel && e.Extractor == IisHostingExtractor.ExtractorName);
         Assert.Equal(4, registry.Entries.Count(e => e.Extractor == PathLiteralExtractor.ExtractorName));
@@ -855,6 +864,187 @@ public sealed class ExtractorBatch2Tests
         var single = Assert.Single(signals, s => s.Name == "BACKSLASH_PATH_BUILDING" && s.Value == "\\");
         Assert.Equal([4, 5], single.Evidence.Select(e => e.LineStart!.Value).Order().ToArray());
         Assert.Contains(signals, s => s.Name == PathLiteralExtractor.WindowsPathLiteral);
+    }
+
+    // ---- registry 1.17.0 ----
+
+    [Fact]
+    public async Task FrameworkReference_finds_linq_to_sql_wif_and_workflow_namespaces_and_assemblies()
+    {
+        using var repo = new TempRepo();
+        repo.Write("Test.csproj", """
+            <Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+              <ItemGroup>
+                <Reference Include="System.Data.Linq" />
+                <Reference Include="System.IdentityModel.Services" />
+                <Reference Include="System.Activities, Version=4.0.0.0" />
+                <Reference Include="System.Data" />
+              </ItemGroup>
+            </Project>
+            """);
+        repo.Write("Orders.cs", "using System.Data.Linq; using System.Data.Linq.Mapping; class Orders { }");
+        repo.Write("Sign.cs", "using System.IdentityModel.Services; class Sign { }");
+        repo.Write("Flow.cs", "using System.Activities; using System.Data; class Flow { }");
+
+        var signals = await Extract(new FrameworkReferenceExtractor(), repo);
+
+        Assert.Equal(["System.Data.Linq", "System.Data.Linq.Mapping"], Values(signals, "SYSTEM_DATA_LINQ_NAMESPACE"));
+        Assert.Equal(["System.IdentityModel.Services"], Values(signals, "SYSTEM_IDENTITYMODEL_SERVICES_NAMESPACE"));
+        Assert.Equal(["System.Activities"], Values(signals, "SYSTEM_ACTIVITIES_NAMESPACE"));
+        Assert.Equal(["System.Data.Linq"], Values(signals, "SYSTEM_DATA_LINQ_ASSEMBLY"));
+        Assert.Equal(["System.IdentityModel.Services"], Values(signals, "SYSTEM_IDENTITYMODEL_SERVICES_ASSEMBLY"));
+        Assert.Equal(["System.Activities"], Values(signals, "SYSTEM_ACTIVITIES_ASSEMBLY"));
+        Assert.Equal("Orders.cs", Assert.Single(signals, s => s.Name == "SYSTEM_DATA_LINQ_NAMESPACE" && s.Value == "System.Data.Linq").SourcePath);
+    }
+
+    [Fact]
+    public async Task Inheritance_finds_a_linq_to_sql_data_context_but_not_a_data_context_property()
+    {
+        using var repo = new TempRepo();
+        repo.Write("LedgerContext.cs", "public partial class LedgerDataContext : System.Data.Linq.DataContext { }");
+        repo.Write("Window.cs", "class Window { public object DataContext { get; set; } }");
+
+        var signals = await Extract(new InheritanceExtractor(), repo);
+
+        var found = Assert.Single(signals, s => s.Name == "DATACONTEXT_BASE_CLASS");
+        Assert.Equal("LedgerContext.cs", found.SourcePath);
+    }
+
+    [Fact]
+    public async Task FileIndicator_finds_dbml_files_and_workflows_but_not_a_wpf_window()
+    {
+        using var repo = new TempRepo();
+        repo.Write("Ledger.dbml", "<Database Name=\"Ledger\" xmlns=\"http://schemas.microsoft.com/linqtosql/dbml/2007\" />");
+        repo.Write("Approve.xaml", """
+            <Activity x:Class="Flows.Approve" xmlns="http://schemas.microsoft.com/netfx/2009/xaml/activities"
+                      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"><Sequence /></Activity>
+            """);
+        repo.Write("Service.xamlx", "<WorkflowService />");
+        repo.Write("MainWindow.xaml", """
+            <Window x:Class="Desk.MainWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" />
+            """);
+
+        var signals = await Extract(new FileIndicatorExtractor(), repo);
+
+        Assert.Equal(["Ledger.dbml"], signals.Where(s => s.Name == "DBML_FILE").Select(s => s.SourcePath).ToList());
+        Assert.Equal(["Approve.xaml", "Service.xamlx"],
+            signals.Where(s => s.Name == FileIndicatorExtractor.WorkflowXamlFile).Select(s => s.SourcePath).Order().ToList());
+        Assert.Equal(["Approve.xaml", "MainWindow.xaml"],
+            signals.Where(s => s.Name == "XAML_FILE").Select(s => s.SourcePath).Order().ToList());
+    }
+
+    [Fact]
+    public async Task ApiUsage_finds_wif_entry_points_modules_and_claims_managers_but_not_a_lookalike()
+    {
+        using var repo = new TempRepo();
+        repo.Write("SignIn.cs", """
+            using System.IdentityModel.Services;
+            class SignIn
+            {
+                void Out()
+                {
+                    var module = FederatedAuthentication.SessionAuthenticationModule;
+                    module.SignOut();
+                    SessionAuthenticationModule other = null;
+                }
+            }
+            """);
+        repo.Write("Mapper.cs", "class Mapper : System.Security.Claims.ClaimsAuthenticationManager { }");
+        repo.Write("NoImport.cs", "class Other { SessionAuthenticationModule M; }");
+
+        var signals = await Extract(new ApiUsageExtractor(), repo);
+
+        Assert.Equal(
+            ["System.IdentityModel.Services.FederatedAuthentication.SessionAuthenticationModule",
+             "System.IdentityModel.Services.SessionAuthenticationModule",
+             "System.Security.Claims.ClaimsAuthenticationManager"],
+            Values(signals, ApiUsageExtractor.WifApiUsage));
+        Assert.DoesNotContain(signals, s => s.Name == ApiUsageExtractor.WifApiUsage && s.SourcePath == "NoImport.cs");
+        var entry = Assert.Single(signals, s => s.Name == ApiUsageExtractor.WifApiUsage && s.Value!.EndsWith(".FederatedAuthentication.SessionAuthenticationModule"));
+        Assert.Equal(("SignIn", "Out", 6), (entry.Evidence[0].DeclaringType, entry.Evidence[0].Member, entry.Evidence[0].LineStart));
+    }
+
+    [Fact]
+    public async Task ApiUsage_finds_the_signed_in_users_identity_checks_apart_from_directory_queries()
+    {
+        using var repo = new TempRepo();
+        repo.Write("Access.cs", """
+            using System.DirectoryServices.AccountManagement;
+            using System.Security.Principal;
+            using System.Threading;
+            class Access
+            {
+                bool IsAdmin()
+                {
+                    var me = WindowsIdentity.GetCurrent();
+                    var principal = new WindowsPrincipal(me);
+                    var current = UserPrincipal.Current;
+                    var thread = Thread.CurrentPrincipal;
+                    return principal.IsInRole("APPS\\Admins");
+                }
+
+                string Manager(string login)
+                {
+                    using var ctx = new PrincipalContext(ContextType.Domain);
+                    return UserPrincipal.FindByIdentity(ctx, login)?.DisplayName;
+                }
+            }
+            """);
+
+        var signals = await Extract(new ApiUsageExtractor(), repo);
+
+        Assert.Equal(
+            ["System.DirectoryServices.AccountManagement.UserPrincipal.Current",
+             "System.Security.Principal.IPrincipal.IsInRole",
+             "System.Security.Principal.WindowsIdentity.GetCurrent",
+             "System.Security.Principal.WindowsPrincipal",
+             "System.Threading.Thread.CurrentPrincipal"],
+            Values(signals, ApiUsageExtractor.CurrentUserIdentityCheck));
+        Assert.All(signals.Where(s => s.Name == ApiUsageExtractor.CurrentUserIdentityCheck).SelectMany(s => s.Evidence),
+            e => Assert.Equal(("Access", "IsAdmin"), (e.DeclaringType, e.Member)));
+        // The directory query for another user is unchanged: still DIRECTORY_SERVICES_USAGE.
+        Assert.Contains(signals, s => s.Name == "DIRECTORY_SERVICES_USAGE"
+                                      && s.Value == "System.DirectoryServices.AccountManagement.PrincipalContext");
+    }
+
+    [Fact]
+    public async Task PathLiteral_reads_no_hostname_in_a_claim_type_or_an_xml_namespace()
+    {
+        using var repo = new TempRepo();
+        repo.Write("Claims.cs", """
+            using System.Security.Claims;
+            using System.Xml.Linq;
+            using System.Runtime.Serialization;
+            public static class AppClaimTypes
+            {
+                public const string Role = "http://appsrv/claims/role";
+                public const string Region = "http://appsrv/identity/region";
+            }
+            [DataContract(Namespace = "http://ordersvc/contracts")]
+            class Order { }
+            class Checks
+            {
+                const string TenantClaimType = "http://tenantsvc/tenant";
+                static readonly XNamespace Ns = "http://schemasvc/orders";
+                Claim Make(string v) => new Claim("http://appsrv/x", v);
+                string Find(ClaimsPrincipal p) => p.FindFirst("http://idsvc/name")?.Value;
+                string Call()
+                {
+                    var url = "http://appsrv/api/orders";
+                    return url;
+                }
+                // An endpoint whose name merely contains "claims" is still an endpoint.
+                string claimsServiceUrl = "http://claimsvc/api/claims-lookup";
+            }
+            """);
+
+        var signals = await Extract(new PathLiteralExtractor(), repo);
+
+        var found = signals.Where(s => s.Name == PathLiteralExtractor.UnqualifiedHostnameUrl).OrderBy(s => s.Value).ToList();
+        Assert.Equal(["appsrv", "claimsvc"], found.Select(s => s.Value).ToArray());
+        Assert.Equal([19], found[0].Evidence.Select(e => e.LineStart!.Value).ToArray());
+        Assert.Equal([23], found[1].Evidence.Select(e => e.LineStart!.Value).ToArray());
     }
 
     // ---- helpers ----

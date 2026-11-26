@@ -180,14 +180,21 @@ public sealed partial class PackageLookup(ILookupCache cache, string packageCach
 
     /// <summary>
     /// The frameworks one version supports: its dependency groups when it
-    /// declares any; otherwise its lib/ and ref/ folders, read from the package
-    /// (downloaded to the cache once and remembered in the cache entry).
+    /// declares any for a framework; otherwise its lib/ and ref/ folders, read
+    /// from the package (downloaded to the cache once and remembered in the
+    /// cache entry). 1.11.0: a nuspec that lists its dependencies without
+    /// framework groups (a flat list, recorded as one "any" group) says nothing
+    /// about the assets, so its lib/ref folders decide: a package built only for
+    /// .NET Framework (lib/net45: Enterprise Library 6, Unity before 5) does not
+    /// support a .NET (5+) target, which reaches it only through
+    /// AssetTargetFallback (NU1701).
     /// </summary>
     public async Task<IReadOnlyList<NuGetFramework>?> FrameworksAsync(Feed feed, CacheEntry entry, CachedVersion version, CancellationToken ct)
     {
-        if (version.DependencyFrameworks.Count > 0)
+        var groups = version.DependencyFrameworks.Select(NuGetFramework.Parse).ToList();
+        if (groups.Any(g => !g.IsAny && !g.IsAgnostic))
         {
-            return version.DependencyFrameworks.Select(NuGetFramework.Parse).ToList();
+            return groups;
         }
 
         return await AssetFrameworksAsync(feed, entry, version, ct);

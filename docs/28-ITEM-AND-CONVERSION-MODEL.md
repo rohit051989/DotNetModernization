@@ -458,8 +458,9 @@ SDK-style form on .NET Framework; it becomes SDK-style in its move to ASP.NET Co
 ASMX and MVC items' guidance carries.
 
 `phase` SMALLINT 1-6 (2026-11-25): where a resolution's work item stands in a conversion's plan (1 project format, 2
-libraries, 3 replace framework-only dependencies, 4 retarget and host applications, 5 platform and deployment, 6
-decisions a person still has to make). The plan goes by phase, then by the project dependency graph; the ordering rules
+replace framework-only dependencies, 3 libraries, 4 retarget and host applications, 5 platform and deployment, 6
+decisions a person still has to make; 2 and 3 swapped on 2026-11-26, so a library's framework-only APIs are removed
+before its bridge or retarget). The plan goes by phase, then by the project dependency graph; the ordering rules
 above hold within a phase. Factory values in `backend/app/seed/data/phases.yaml`, seeded through `baseline.py`; every
 active resolution has one (`tests/test_resolution_phases.py`).
 
@@ -469,6 +470,13 @@ resolution (`engagement_resolution_notes`), carried after the master guidance in
 
 `event-log-usage` and `backslash-path-building` (2026-11-25, occurrence scope) come from registry 1.16.0's
 `EVENT_LOG_USAGE` and `BACKSLASH_PATH_BUILDING`.
+
+`linq-to-sql-usage`, `system-web-in-library`, `wif-usage` and `windows-workflow-usage` (2026-11-26, occurrence scope)
+come from registry 1.17.0: APIs only .NET Framework has, in class libraries. Each default is a rewrite, flagged
+`confirm_design`; "Remain Windows-hosted" is never the default. An item's located signals in one file make one
+occurrence, on whichever lines (`occurrence_source.also` joins a file's existing occurrence with the same value).
+`directory-services-usage` also locates the signed-in user's identity checks (`CURRENT_USER_IDENTITY_CHECK`), through an
+`atLeast` group its first condition always meets: a signal can locate places without being a reason the item applies.
 
 Every active resolution has `engine_guidance` or is on the reviewed allow-list,
 `backend/app/seed/data/engine_guidance_allowlist.yaml`, with a reason; a test keeps it so. Guidance

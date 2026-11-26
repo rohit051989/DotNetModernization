@@ -306,10 +306,13 @@ class DescopedRepository(unittest.TestCase):
         self.assertEqual((by_name["Sybase.AdoNet4.AseClient"]["kind"], by_name["Sybase.AdoNet4.AseClient"]["verdict"]),
                          ("GAC", "windows-only"))
         self.assertEqual((by_name["Acme.Vendor"]["verdict"]), "unknown")
-        # A HintPath into packages/<id>.<version>/ is that package, undeclared, looked up as one.
-        self.assertEqual((entlib["kind"], entlib["verdict"]), ("packages folder", "package"))
+        # A HintPath into packages/<id>.<version>/ is that package, undeclared, looked up as one. Its only assets are
+        # .NET Framework ones (lib/net45): it loads on the target framework only through fallback, so it is replaced
+        # (gap 4, 2026-11-26).
+        self.assertEqual((entlib["kind"], entlib["verdict"]), ("packages folder", "fallback-only"))
         self.assertEqual(entlib["package"], {"id": "EnterpriseLibrary.Common", "version": "6.0.1304.0"})
-        self.assertEqual(entlib["lookup"], {"known": True, "current_supported": False, "newest_supporting": None})
+        self.assertEqual(entlib["lookup"], {"known": True, "current_supported": False, "newest_supporting": None,
+                                            "fallback_only": True})
         self.assertEqual([(p["path"], p["format"], p["packages_config"]) for p in model["projects"]],
                          [(JOBS, "old-style", False)])
         for engine, files in self.both(model).items():
@@ -318,8 +321,9 @@ class DescopedRepository(unittest.TestCase):
             self.assertIn("| `Jobs/Jobs.csproj` | old-style | no |", text_, engine)
             self.assertIn("| `Jobs/Jobs.csproj` | Microsoft.SqlServer.ManagedDTS | 13.0.0.0 | repository: "
                           "`Dependencies/Microsoft.SqlServer.ManagedDTS.dll` | yes | needs a replacement on Linux", text_, engine)
-            self.assertIn("a NuGet package referenced by path: declare it as a package reference `EnterpriseLibrary.Common`; "
-                          "no version known to support net10.0 yet", text_, engine)
+            self.assertIn("a NuGet package built only for .NET Framework referenced by path: it loads on the target "
+                          "framework only through .NET Framework fallback (NU1701)", text_, engine)
+            self.assertIn("(`EnterpriseLibrary.Common` 6.0.1304.0): no replacement is known", text_, engine)
             self.assertIn("| `Jobs/Jobs.csproj` | Acme.Vendor | - | repository: `Dependencies/Acme.Vendor.dll` | yes | "
                           "unknown: check it builds and loads on Linux |", text_, engine)
             self.assertNotIn("Archive.Vendor", text_, engine)

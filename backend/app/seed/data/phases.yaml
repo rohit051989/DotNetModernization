@@ -3,35 +3,46 @@
 # its phase, and the phase is exported with the catalog (catalog/items/) and edited in the catalog's resolution form.
 #
 #   1  project format                          the project file, so the projects can target the new framework
-#   2  libraries                               class libraries and package versions the applications build on
-#   3  replace framework-only dependencies     what only .NET Framework or Windows provides, before a project moves
+#   2  replace framework-only dependencies     what only .NET Framework or Windows provides, removed while each project
+#                                              still builds for its current framework
+#   3  libraries                               class libraries (the bridge or the direct retarget) and package versions
 #   4  retarget and host applications          the applications, on the target framework, in their new host
 #   5  platform and deployment                 what changes on Linux and OpenShift: time, paths, secrets, images, pipeline
 #   6  decisions a person still has to make    left unchanged until a person decides
 #
 # The plan orders work items by phase, and within a phase by the project dependency graph (a project's referenced
 # projects first). `items` gives each item's resolutions a phase; `resolutions` overrides one resolution's.
+#
+# Replacing framework-only dependencies comes before the libraries (2026-11-26): on one project, the work item that removes
+# a framework-only API (LINQ to SQL, System.Web, WIF, Windows Workflow, directory services, Windows-only assemblies, the
+# Event Log and the like) runs before that project's bridge or retarget, which cannot build while the API is still used.
+# A phase covers every project of its work items, so this is the phases' own order, not a per-project rule. A package
+# replacement also comes before the safe bump of the same package.
 
 items:
   legacy-project-format: 1
   packages-config: 1
 
-  fx47-class-library: 2
-  package-upgrade-safe: 2
-  package-upgrade-breaking: 2
-  package-vulnerable: 2
-  package-not-approved: 2
+  ssis-package: 2
+  package-replacement-required: 2
+  package-provided-by-framework: 2
+  directory-services-usage: 2
+  registry-access: 2
+  system-drawing-common: 2
+  msmq-usage: 2
+  event-log-usage: 2
+  wcf-nettcp-client: 2
+  windows-only-assembly-reference: 2
+  linq-to-sql-usage: 2
+  system-web-in-library: 2
+  wif-usage: 2
+  windows-workflow-usage: 2
 
-  ssis-package: 3
-  package-replacement-required: 3
-  package-provided-by-framework: 3
-  directory-services-usage: 3
-  registry-access: 3
-  system-drawing-common: 3
-  msmq-usage: 3
-  event-log-usage: 3
-  wcf-nettcp-client: 3
-  windows-only-assembly-reference: 3
+  fx47-class-library: 3
+  package-upgrade-safe: 3
+  package-upgrade-breaking: 3
+  package-vulnerable: 3
+  package-not-approved: 3
 
   target-framework-retarget: 4
   console-batch-job: 4
@@ -70,6 +81,9 @@ items:
   windows-build-pipeline: 5
 
 resolutions:
+  # Current EF Core runs only on the target framework: the rewrite is one task with the library's direct retarget
+  # (render.TOGETHER), in the libraries phase.
+  rewrite-to-ef-core: 3
   # No replacement chosen yet: the references stay as they are until a person decides.
   decide-windows-only-replacement: 6
   # A request to the client's approval process: a person's action.

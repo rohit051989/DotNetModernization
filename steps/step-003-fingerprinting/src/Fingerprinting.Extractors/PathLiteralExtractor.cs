@@ -45,6 +45,10 @@ public sealed class PathLiteralExtractor : IFingerprintExtractor
 
     // A path fragment that a backslash starts or ends: "\", "\logs\", "logs\". No drive letter, no colon, no
     // character a Windows path cannot hold, no space-only text.
+    // Registry 1.17.0: a URL whose path has a "claims" segment (http://host/claims/role): a claim type, not an endpoint.
+    private static readonly Regex ClaimsPathSegment = new(@"://[^/\s""'<>]+/(?:[^?#\s""'<>]*/)?claims(?:/|$|[?#\s""'<>])",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
+
     private static readonly Regex BackslashFragment = new(@"^(\\[^\\""<>|*?:\r\n]*)+\\?$|^[^\\""<>|*?:\r\n]+\\$",
         RegexOptions.CultureInvariant);
 
@@ -172,7 +176,7 @@ public sealed class PathLiteralExtractor : IFingerprintExtractor
                 token.ValueText, relativePath, EvidenceSourceTypes.SourceCode, line,
                 token.Parent.FirstAncestorOrSelf<BaseTypeDeclarationSyntax>()?.Identifier.Text,
                 ApiUsageExtractor.EnclosingMemberName(token.Parent),
-                accumulator);
+                accumulator, hostnames: !IsIdentifierUri(token));
             if (JoinsPathWithBackslash(token))
             {
                 Add(BackslashPathBuilding, Clean(token.ValueText), relativePath, EvidenceSourceTypes.SourceCode, line,
@@ -181,6 +185,76 @@ public sealed class PathLiteralExtractor : IFingerprintExtractor
             }
         }
     }
+
+    /// <summary>Registry 1.17.0: a literal that is an identifier written as a URI (a claim type, an XML namespace), not an
+    /// endpoint, so its host is no hostname to resolve: a URL with a <c>claims</c> path segment; an argument of
+    /// <c>new Claim(...)</c>, <c>FindFirst</c>, <c>FindAll</c>, <c>FindFirstValue</c>, <c>HasClaim</c>,
+    /// <c>new ClaimsIdentity(...)</c> or <c>XNamespace.Get</c>, or a value given to something typed <c>XNamespace</c>; the
+    /// value of a constant, field, property or variable named like a claim type or a namespace (a name containing
+    /// ClaimType or Xmlns, or ending in Namespace), or one declared in a type whose name contains ClaimType or ends in
+    /// Claims; never a name that merely contains Claim (claimsServiceUrl is an endpoint); an attribute argument named
+    /// <c>Namespace</c>, or an <c>XmlnsDefinition</c> attribute's argument.</summary>
+    private static bool IsIdentifierUri(SyntaxToken token)
+    {
+        if (ClaimsPathSegment.IsMatch(token.ValueText))
+        {
+            return true;
+        }
+
+        foreach (var ancestor in token.Parent!.Ancestors())
+        {
+            switch (ancestor)
+            {
+                case AttributeArgumentSyntax argument:
+                    if (argument.NameEquals?.Name.Identifier.Text == "Namespace" || argument.NameColon?.Name.Identifier.Text == "Namespace")
+                    {
+                        return true;
+                    }
+
+                    return argument.Parent?.Parent is AttributeSyntax attribute
+                           && RoslynNameHelpers.AttributeSimpleName(attribute.Name) == "XmlnsDefinition";
+                case ArgumentSyntax { Parent: ArgumentListSyntax { Parent: var call } }:
+                    switch (call)
+                    {
+                        case ObjectCreationExpressionSyntax { Type: var created }
+                            when RoslynNameHelpers.RightmostIdentifier(created) is "Claim" or "ClaimsIdentity":
+                            return true;
+                        case InvocationExpressionSyntax invocation
+                            when ClaimLookups.Any(m => RoslynNameHelpers.IsMethodCallNamed(invocation, m))
+                                 || invocation.Expression.ToString() is "XNamespace.Get" or "System.Xml.Linq.XNamespace.Get":
+                            return true;
+                    }
+
+                    continue;
+                case VariableDeclarationSyntax { Type: var declared } when declared.ToString().EndsWith("XNamespace", StringComparison.Ordinal):
+                    return true;
+                case VariableDeclaratorSyntax declarator when NamedLikeIdentifierUri(declarator.Identifier.Text):
+                    return true;
+                case PropertyDeclarationSyntax property:
+                    return NamedLikeIdentifierUri(property.Identifier.Text) || property.Type.ToString().EndsWith("XNamespace", StringComparison.Ordinal)
+                           || InClaimTypes(property);
+                case AssignmentExpressionSyntax { Left: var left }:
+                    return NamedLikeIdentifierUri(left.ToString());
+                case FieldDeclarationSyntax field:
+                    return InClaimTypes(field);
+                case StatementSyntax or MemberDeclarationSyntax:
+                    return false;
+            }
+        }
+
+        return false;
+    }
+
+    private static readonly string[] ClaimLookups = ["FindFirst", "FindAll", "FindFirstValue", "HasClaim"];
+
+    private static bool NamedLikeIdentifierUri(string name) =>
+        name.Contains("ClaimType", StringComparison.OrdinalIgnoreCase)
+        || name.Contains("Xmlns", StringComparison.OrdinalIgnoreCase)
+        || name.EndsWith("Namespace", StringComparison.OrdinalIgnoreCase);
+
+    private static bool InClaimTypes(SyntaxNode member) =>
+        member.FirstAncestorOrSelf<BaseTypeDeclarationSyntax>()?.Identifier.Text is { } type
+        && (type.Contains("ClaimType", StringComparison.OrdinalIgnoreCase) || type.EndsWith("Claims", StringComparison.OrdinalIgnoreCase));
 
     /// <summary>Registry 1.16.0: the literal is a backslash path fragment that joins parts of a path: an operand of
     /// <c>+</c>, an argument of <c>string.Concat</c>, or interpolated-string text beside an interpolation. A drive or
@@ -303,7 +377,7 @@ public sealed class PathLiteralExtractor : IFingerprintExtractor
 
     private static void AddMatches(
         string text, string relativePath, string sourceType, int? line,
-        string? declaringType, string? member, SignalAccumulator accumulator)
+        string? declaringType, string? member, SignalAccumulator accumulator, bool hostnames = true)
     {
         if (text.Length < 3 || Secrets.LooksLikeConnectionString(text))
         {
@@ -320,7 +394,7 @@ public sealed class PathLiteralExtractor : IFingerprintExtractor
             Add(WindowsPathLiteral, Clean(match.Value), relativePath, sourceType, line, declaringType, member, accumulator);
         }
 
-        foreach (var host in Fingerprinting.Analysis.Hostnames.UnqualifiedInUrls(text))
+        foreach (var host in hostnames ? Fingerprinting.Analysis.Hostnames.UnqualifiedInUrls(text) : [])
         {
             Add(UnqualifiedHostnameUrl, host, relativePath, sourceType, line, declaringType, member, accumulator, SignalCategories.EndpointIndicator);
         }

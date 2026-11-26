@@ -30,7 +30,7 @@ resolutions:
   linux_compatible: true
   name: Move to configuration
   notes: null
-  phase: 3
+  phase: 2
   status: active
   target_description: IConfiguration / IOptions
 - consumer_impact: none
@@ -45,7 +45,7 @@ resolutions:
   linux_compatible: false
   name: Remain Windows-hosted (out of scope)
   notes: null
-  phase: 3
+  phase: 2
   status: active
   target_description: .NET on Windows Server
 scope: occurrence

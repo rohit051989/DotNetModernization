@@ -38,8 +38,11 @@ public sealed class FingerprintPipeline(SignalRegistry registry, IReadOnlyList<I
     // Console sink in appsettings (SERILOG_CONSOLE_SINK_CONFIG).
     // 1.10.0 (registry 1.15.0): DATETIME_NOW_USAGE also matches TimeZoneInfo.Local, DateTimeKind.Local and ToLocalTime().
     // 1.11.0 (registry 1.16.0): EVENT_LOG_USAGE, SSIS_PACKAGE_EXECUTION and BACKSLASH_PATH_BUILDING.
+    // 1.12.0 (registry 1.17.0): LINQ to SQL, WIF and Windows Workflow signals (namespaces, assemblies, DATACONTEXT_BASE_CLASS,
+    // DBML_FILE, WIF_API_USAGE, WORKFLOW_XAML_FILE), CURRENT_USER_IDENTITY_CHECK, and no UNQUALIFIED_HOSTNAME_URL for an
+    // identifier URI (a claim type, an XML namespace) in C#.
     // Matches the application-fingerprinting step registration version.
-    public const string ScannerVersion = "1.11.0";
+    public const string ScannerVersion = "1.12.0";
 
     // The registry is the single source of truth for evidence_kind per
     // signal name (25-STANDARDS-AND-VIEWPOINTS.md Part A3 addendum) —

@@ -1,0 +1,192 @@
+category: framework
+deleted: false
+description: |-
+  A class library on .NET Framework whose code uses System.Web:
+  HttpContext, HttpRequest, IHttpModule, System.Web.Configuration,
+  JavaScriptSerializer, System.Web.UI, session state or System.Web.Security.
+  System.Web exists only on .NET Framework. A web application's own use of
+  System.Web is its web framework's item (classic MVC, Web Forms, WCF),
+  not this one. One occurrence per file.
+detection:
+  match:
+    all: []
+    any:
+    - id: system-web-namespace
+      signal:
+        name: SYSTEM_WEB_NAMESPACE
+    - id: system-web-ui-namespace
+      signal:
+        name: SYSTEM_WEB_UI_NAMESPACE
+    - id: system-web-http-namespace
+      signal:
+        name: SYSTEM_WEB_HTTP_NAMESPACE
+    - id: system-web-mvc-namespace
+      signal:
+        name: SYSTEM_WEB_MVC_NAMESPACE
+    - id: http-module
+      signal:
+        name: IHTTP_MODULE_BASE_CLASS
+    - id: http-handler
+      signal:
+        name: IHTTP_HANDLER_BASE_CLASS
+    - id: system-web-assembly
+      signal:
+        name: SYSTEM_WEB_ASSEMBLY
+    atLeast: []
+    metadata:
+    - equals: net-framework
+      field: frameworkFamily
+      id: legacy-framework
+    - field: outputType
+      id: not-an-executable
+      notIn:
+      - WinExe
+      - Exe
+    - equals: ''
+      field: classicWebProject
+      id: not-a-classic-web-project
+    none:
+    - id: no-aspx
+      signal:
+        name: ASPX_FILE
+    - id: no-svc
+      signal:
+        name: SVC_FILE
+    - id: no-asmx
+      signal:
+        name: ASMX_FILE
+    - id: no-global-asax
+      signal:
+        name: GLOBAL_ASAX_FILE
+    - id: no-service-base
+      signal:
+        name: SERVICE_BASE_BASE_CLASS
+    - id: no-main-entry
+      signal:
+        name: MAIN_METHOD_ENTRY_POINT
+    - id: no-toplevel-entry
+      signal:
+        name: TOP_LEVEL_STATEMENTS_ENTRY_POINT
+    - id: no-startup-class
+      signal:
+        name: STARTUP_CLASS_ENTRY_POINT
+    - id: no-webhost-builder
+      signal:
+        name: WEBHOST_CREATE_DEFAULT_BUILDER_ENTRY_POINT
+    - id: no-host-builder
+      signal:
+        name: HOST_CREATE_DEFAULT_BUILDER_ENTRY_POINT
+    - id: no-web-builder
+      signal:
+        name: WEB_APPLICATION_CREATE_BUILDER_ENTRY_POINT
+  occurrence_source:
+    also:
+    - SYSTEM_WEB_UI_NAMESPACE
+    - SYSTEM_WEB_HTTP_NAMESPACE
+    - SYSTEM_WEB_MVC_NAMESPACE
+    - IHTTP_MODULE_BASE_CLASS
+    - IHTTP_HANDLER_BASE_CLASS
+    - SYSTEM_WEB_ASSEMBLY
+    group_by: source_path
+    signal: SYSTEM_WEB_NAMESPACE
+engine_guidance: |-
+  This class library uses System.Web: `HttpContext`, `HttpRequest`, `HttpResponse`, `HttpRuntime.Cache`,
+  session state, an `IHttpModule`, `System.Web.Configuration`, `JavaScriptSerializer`, `System.Web.UI` or
+  `System.Web.Security`. System.Web exists only on .NET Framework, inside IIS: there is no implementation for
+  the target framework or for .NET Standard 2.0. The library builds neither for the target framework nor for
+  `netstandard2.0` until each use is replaced. On the target framework its host is an ASP.NET Core
+  application.
+excluded_roles:
+- TEST
+id: system-web-in-library
+name: System.Web in a class library
+owner_team: null
+resolutions:
+- consumer_impact: low
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: HttpContext, HttpRequest, HttpResponse, HttpRuntime.Cache and session compile against Microsoft.AspNetCore.SystemWebAdapters (it has a .NET Standard 2.0 build); the consuming ASP.NET Core host registers the adapters.
+  effort: medium
+  engine_guidance: |-
+    Compile the library's request, response, cache and session code against the System.Web adapters, which
+    provide those System.Web types for ASP.NET Core and have a `netstandard2.0` build.
+    1. Add a package reference to `Microsoft.AspNetCore.SystemWebAdapters`, at a version that supports the
+       target framework and has a `netstandard2.0` build, for every framework the library builds for except
+       its current .NET Framework one, which keeps its `System.Web` reference (a `Condition` on
+       `$(TargetFramework)`).
+    2. At each listed place, check that every System.Web type it uses is one the package provides
+       (`HttpContext`, `HttpRequest`, `HttpResponse`, `HttpRuntime.Cache`, session state). Keep that code as
+       it is.
+    3. A type the package does not provide (`IHttpModule`, `System.Web.Configuration`,
+       `JavaScriptSerializer`, `System.Web.UI`, `System.Web.Security`): do not stub it. Leave that place
+       unchanged and record it in the task's notes as needing to move behind an interface the host
+       implements.
+    4. Record in the task's notes that each ASP.NET Core application referencing the library must register
+       the adapters (`AddSystemWebAdapters()` and `UseSystemWebAdapters()`); change no application here.
+    5. Build the library for every framework it targets, and every project that references it, and run
+       their tests.
+  id: compile-against-system-web-adapters
+  is_default: true
+  linux_compatible: true
+  name: Compile against the System.Web adapters
+  notes: Covers the request, response, cache and session; a type the package does not provide goes behind an interface (the next resolution) at that place.
+  phase: 2
+  status: active
+  target_description: Microsoft.AspNetCore.SystemWebAdapters
+- confirm_design: true
+  consumer_impact: medium
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: IHttpModule to the host's middleware, System.Web.Configuration to ConfigurationManager, JavaScriptSerializer to the library's own serializer, System.Web.Security to the identity provider; System.Web.UI code is a design question.
+  effort: high
+  engine_guidance: |-
+    Move each System.Web dependency out of the library, behind something its host on the target framework
+    provides.
+    1. An `IHttpModule`: move its logic into a class with no System.Web dependency, and record in the task's
+       notes that the host registers it as ASP.NET Core middleware at the same point of the pipeline (before
+       or after authentication, as the module's events were). Keep the module for the .NET Framework
+       applications that still load it, calling the new class.
+    2. `System.Web.Configuration` (`WebConfigurationManager`): read the same settings, by the same names,
+       with `System.Configuration.ConfigurationManager`.
+    3. `JavaScriptSerializer`: use the serializer the library already uses elsewhere (or `System.Text.Json`),
+       and add tests that pin what callers see: date format, property name casing, null handling and enums,
+       exactly as before.
+    4. `System.Web.Security` (membership, forms authentication, roles): define an interface for what the
+       library asks (the current user's name, a role check), and record in the task's notes that the host
+       implements it from the identity provider's claims. Never keep a password or a user store in the
+       library.
+    5. `System.Web.UI` code (controls, pages, view state) in a library: do not convert it. Ask how before
+       changing it, as the design questions say; until then leave it unchanged and record it.
+    6. If this project builds for its current framework and `netstandard2.0` (the bridge), keep every
+       replacement compatible with both: only APIs and package versions available to both.
+    7. Remove the `System.Web` reference for every framework but the library's current .NET Framework one,
+       once nothing uses it there.
+    8. Add a test per moved behaviour with made-up input; build the library and every project that
+       references it, and run their tests.
+  id: move-behind-an-interface
+  is_default: false
+  linux_compatible: true
+  name: Move behind an interface
+  notes: null
+  phase: 2
+  status: active
+  target_description: Interfaces the host implements; ASP.NET Core middleware
+- consumer_impact: none
+  container_ready: false
+  deleted: false
+  derivations: []
+  description: 'The library and its applications stay on .NET Framework on Windows, outside the move: System.Web stays.'
+  effort: low
+  engine_guidance: 'Leave this exactly as it is: the library and its applications stay on .NET Framework on Windows, outside the move. Change nothing this instruction is about: not its code, its project file, its references or its configuration. Record it in the task''s notes as left unchanged, with that reason.'
+  id: system-web-in-library-remain-windows-hosted
+  is_default: false
+  linux_compatible: false
+  name: Remain Windows-hosted
+  notes: null
+  phase: 2
+  status: active
+  target_description: .NET Framework on Windows Server
+scope: occurrence
+status: active

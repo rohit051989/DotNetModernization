@@ -50,6 +50,7 @@ FILES = {
     "Batch/Batch.csproj": _project("Batch", "Exe", [
         '<Reference Include="System" />',
         '<Reference Include="System.DirectoryServices" />',
+        '<Reference Include="System.DirectoryServices.AccountManagement" />',
         '<Reference Include="Microsoft.SqlServer.ManagedDTS, Version=13.0.0.0"><HintPath>..\\lib\\Microsoft.SqlServer.ManagedDTS.dll</HintPath></Reference>',
         '<Reference Include="Newtonsoft.Json, Version=13.0.0.0"><HintPath>..\\packages\\Newtonsoft.Json.13.0.1\\lib\\net45\\Newtonsoft.Json.dll</HintPath></Reference>',
         '<Reference Include="System.Memory, Version=4.0.1.1"><HintPath>..\\packages\\System.Memory.4.5.4\\lib\\net461\\System.Memory.dll</HintPath></Reference>',
@@ -90,11 +91,14 @@ namespace Batch
 }
 """,
     "Batch/Directory.cs": """using System.DirectoryServices;
+using System.DirectoryServices.AccountManagement;
 
 namespace Batch
 {
     public static class Directory
     {
+        public static string RunBy() => UserPrincipal.Current.SamAccountName;
+
         public static string Mail(string account)
         {
             using (var searcher = new DirectorySearcher("(sAMAccountName=" + account + ")"))

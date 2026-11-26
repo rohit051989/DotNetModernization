@@ -1,0 +1,93 @@
+category: security
+deleted: false
+description: |-
+  Code using Windows Identity Foundation: System.IdentityModel.Services
+  (FederatedAuthentication, SessionAuthenticationModule,
+  WSFederationAuthenticationModule) or a ClaimsAuthenticationManager or
+  ClaimsAuthorizationManager subclass. WIF exists only on .NET Framework,
+  wired into System.Web's pipeline. One occurrence per file.
+detection:
+  match:
+    all: []
+    any:
+    - id: wif-namespace
+      signal:
+        name: SYSTEM_IDENTITYMODEL_SERVICES_NAMESPACE
+    - id: wif-assembly
+      signal:
+        name: SYSTEM_IDENTITYMODEL_SERVICES_ASSEMBLY
+    - id: wif-api
+      signal:
+        name: WIF_API_USAGE
+    atLeast: []
+    metadata: []
+    none: []
+  occurrence_source:
+    also:
+    - WIF_API_USAGE
+    - SYSTEM_IDENTITYMODEL_SERVICES_ASSEMBLY
+    group_by: source_path
+    signal: SYSTEM_IDENTITYMODEL_SERVICES_NAMESPACE
+engine_guidance: |-
+  This code uses Windows Identity Foundation (`System.IdentityModel.Services`: `FederatedAuthentication`,
+  `SessionAuthenticationModule`, `WSFederationAuthenticationModule`, or a `ClaimsAuthenticationManager` or
+  `ClaimsAuthorizationManager` subclass). It exists only on .NET Framework, as modules in IIS's System.Web
+  pipeline: there is no implementation for the target framework or for .NET Standard 2.0. Sign-in, the
+  session cookie and claims transformation move to ASP.NET Core authentication in the host.
+excluded_roles:
+- TEST
+id: wif-usage
+name: Windows Identity Foundation (System.IdentityModel.Services)
+owner_team: null
+resolutions:
+- confirm_design: true
+  consumer_impact: medium
+  container_ready: true
+  deleted: false
+  derivations: []
+  description: Validate tokens with Microsoft.IdentityModel and ASP.NET Core authentication (JWT bearer or OpenID Connect) in the host, with claims mapped by configured names.
+  effort: high
+  engine_guidance: |-
+    Move authentication from Windows Identity Foundation to ASP.NET Core authentication with the identity
+    provider, keeping who may do what.
+    1. In the ASP.NET Core application that hosts this code, configure authentication with the identity
+       provider: `AddJwtBearer()` for an API, `AddOpenIdConnect()` with a cookie for an interactive web
+       application. The authority, client id and audience are configuration names, never values in code.
+       Validate the issuer, audience, lifetime and signing key of every token (`Microsoft.IdentityModel`).
+    2. Replace each `FederatedAuthentication` and session module use: the signed-in user is the request's
+       `ClaimsPrincipal`, and signing out is `SignOutAsync`.
+    3. A `ClaimsAuthenticationManager` subclass becomes an `IClaimsTransformation` that adds or changes the
+       same claims; a `ClaimsAuthorizationManager` becomes authorization policies with the same rules.
+    4. Read each claim by a name in configuration, so it follows the identity provider's claim names; never
+       hard-code a claim type or a group's name in code. Where this repository's instruction for directory
+       lookups also moves checks to claims, use the same claim names.
+    5. In a library, depend only on `ClaimsPrincipal` (or an interface the host implements), never on the
+       authentication middleware. If the library builds for its current framework and `netstandard2.0` (the
+       bridge), keep every replacement compatible with both.
+    6. Remove the `System.IdentityModel.Services` reference once nothing uses it.
+    7. Add a test per rule with a made-up `ClaimsPrincipal`: with the claim and without it.
+  id: move-to-aspnetcore-authentication
+  is_default: true
+  linux_compatible: true
+  name: Move to ASP.NET Core authentication
+  notes: null
+  phase: 2
+  status: active
+  target_description: ASP.NET Core authentication with the platform identity provider
+- consumer_impact: none
+  container_ready: false
+  deleted: false
+  derivations: []
+  description: 'The code and its applications stay on .NET Framework on Windows, outside the move: WIF stays.'
+  effort: low
+  engine_guidance: 'Leave this exactly as it is: the code and its applications stay on .NET Framework on Windows, outside the move. Change nothing this instruction is about: not its code, its project file, its references or its configuration. Record it in the task''s notes as left unchanged, with that reason.'
+  id: wif-remain-windows-hosted
+  is_default: false
+  linux_compatible: false
+  name: Remain Windows-hosted
+  notes: null
+  phase: 2
+  status: active
+  target_description: .NET Framework on Windows Server
+scope: occurrence
+status: active

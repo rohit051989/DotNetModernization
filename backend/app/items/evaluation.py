@@ -189,7 +189,10 @@ def project_occurrences(detection: dict, signals_by_name: dict[str, list[dict]])
     version, or deprecated). Their rows are projected the same way, except
     that a group sharing a path and a line with an occurrence already
     projected joins it: one PackageReference line flagged by both signals is
-    one occurrence, not two.
+    one occurrence, not two. So does a group with the same path and value
+    (2026-11-26): a file is one occurrence however many of the item's
+    signals locate it, on whichever lines (a LINQ to SQL file's `using` and
+    its DataContext subclass), never two rows the database refuses.
 
     Returns [{file_path, value, evidence, certainty}], sorted, evidence in
     line order; certainty is 'possible' when every entry is ambiguous."""
@@ -202,7 +205,8 @@ def project_occurrences(detection: dict, signals_by_name: dict[str, list[dict]])
             lines = {e["line_start"] for e in occurrence["evidence"] if e["line_start"] is not None}
             same = index > 0 and next(
                 (o for o in occurrences
-                 if o["file_path"] == occurrence["file_path"] and lines & {e["line_start"] for e in o["evidence"]}),
+                 if o["file_path"] == occurrence["file_path"]
+                 and (o["value"] == occurrence["value"] or lines & {e["line_start"] for e in o["evidence"]})),
                 None,
             )
             if same:

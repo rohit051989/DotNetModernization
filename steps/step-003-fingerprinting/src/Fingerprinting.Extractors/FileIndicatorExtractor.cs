@@ -29,6 +29,10 @@ public sealed class FileIndicatorExtractor : IFingerprintExtractor
     public const string WebConfigFile = "WEB_CONFIG_FILE";
     public const string Ocp4ManifestFile = "OCP4_MANIFEST_FILE";
     public const string HelmChartFile = "HELM_CHART_FILE";
+    // Registry 1.17.0: a Windows Workflow Foundation workflow (.xaml in the activities XAML namespace, or .xamlx).
+    public const string WorkflowXamlFile = "WORKFLOW_XAML_FILE";
+    private const string ActivitiesXamlNamespace = "http://schemas.microsoft.com/netfx/2009/xaml/activities";
+    private const int XamlSniffBytes = 64 * 1024;
 
     private static readonly IReadOnlyDictionary<string, string> ExtensionSignals =
         new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
@@ -40,6 +44,8 @@ public sealed class FileIndicatorExtractor : IFingerprintExtractor
             [".cshtml"] = "CSHTML_FILE",
             [".razor"] = "RAZOR_FILE",
             [".xaml"] = "XAML_FILE",
+            // Registry 1.17.0: a LINQ to SQL mapping file.
+            [".dbml"] = "DBML_FILE",
         };
 
     private static readonly IReadOnlyDictionary<string, string> FileNameSignals =
@@ -106,6 +112,11 @@ public sealed class FileIndicatorExtractor : IFingerprintExtractor
             if (signalName is not null)
             {
                 signals.Add(BuildSignal(signalName, relativePath, SignalCategories.FileIndicator));
+            }
+
+            if (IsWorkflowXaml(filePath, extension))
+            {
+                signals.Add(BuildSignal(WorkflowXamlFile, relativePath, SignalCategories.FileIndicator));
             }
 
             if (DeploymentSignal(filePath) is { } deployment)
@@ -224,6 +235,34 @@ public sealed class FileIndicatorExtractor : IFingerprintExtractor
         }
 
         return false;
+    }
+
+    /// <summary>Registry 1.17.0: a .xamlx workflow service, or a .xaml file whose head holds the activities XAML
+    /// namespace (a workflow, not a WPF window).</summary>
+    private static bool IsWorkflowXaml(string filePath, string extension)
+    {
+        if (extension.Equals(".xamlx", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        if (!extension.Equals(".xaml", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        try
+        {
+            using var stream = File.OpenRead(filePath);
+            var buffer = new byte[Math.Min(XamlSniffBytes, stream.Length)];
+            var read = stream.Read(buffer, 0, buffer.Length);
+            return System.Text.Encoding.UTF8.GetString(buffer, 0, read)
+                .Contains(ActivitiesXamlNamespace, StringComparison.OrdinalIgnoreCase);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
     }
 
     private static bool LooksLikeManifest(string filePath)

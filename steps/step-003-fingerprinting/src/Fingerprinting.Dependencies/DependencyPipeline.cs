@@ -54,8 +54,10 @@ public sealed class DependencyPipeline(PackageLookup lookup, DependencyOptions o
     /// unless none fits; a package whose versions are all unlisted and do not include the referenced one is
     /// <c>only_unlisted</c>; <c>summary.feedListing</c> counts, per feed, the packages it holds only unlisted; the
     /// <c>not_on_feed</c> reason suggests the Artifactory tab only when the engagement lists no artifactory or a
-    /// consulted feed failed.</summary>
-    public const string ScannerVersion = "1.10.0";
+    /// consulted feed failed. 1.11.0: a version whose dependencies have no framework groups is judged by its lib/ref
+    /// folders (<see cref="PackageLookup.FrameworksAsync"/>): one built only for .NET Framework has no compatible
+    /// version for a .NET (5+) target. Artifact unchanged.</summary>
+    public const string ScannerVersion = "1.11.0";
 
     /// <summary>1.10.0: a feed that reports at least this share of the versions it answered as unlisted, over at least
     /// <see cref="MostlyUnlistedMinimum"/> versions, is said to report nearly everything unlisted (summary.feedListing).
