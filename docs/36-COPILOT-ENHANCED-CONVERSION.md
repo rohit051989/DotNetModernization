@@ -1427,3 +1427,27 @@ Rule 20, for each engine:
   staying on Windows not; a claim-type URI not a hostname. The scanner's own tests prove each signal and the hostname
   exclusion (`ExtractorBatch2Tests`, registry 1.17.0), and dependency-assessment's the flat dependency list
   (`FlatDependencyListTests`).
+
+## Part Q addendum — The health endpoint on .NET Framework web applications, and catalog coverage (2026-11-26)
+
+- **The health endpoint**, like the Dockerfile and the manifests since the previous addendum: `missing-health-endpoint`
+  also matches a classic web application on .NET Framework (its `.svc`, `.asmx`, `.aspx` or Global.asax), and
+  preparation keeps it only when an application item on its project chose a container-ready approach and none keeps it
+  on Windows (`collect.CONTAINER_ITEMS`); its phase, 5, puts it after the application's conversion. Its guidance adds
+  the endpoints in the application's new ASP.NET Core host. The manifest and Helm guidance point the liveness and
+  readiness probes at the paths it creates, `/health/live` and `/health/ready` on port 8080, and give a worker or job
+  `tcpSocket` or `exec` probes.
+- **Catalog coverage** (`tests/test_catalog_coverage.py`, fixture `tests/fixtures/coverage_repository.py`, which
+  generates a repository of old-style and SDK-style libraries, console jobs, web projects and services, made-up code
+  only): every active item is detected at its expected places by a real scan; every resolution with guidance, chosen in
+  turn, has its work item in both engines' inputs with its guidance, in phase order and, within a phase, after the work
+  items on the projects it references, with no gap; a coverage table is printed and written (`catalog-coverage.md` in
+  the temporary folder). A catalog item with no occurrence in the fixture fails the fast test in every tier, naming it.
+  The scan runs in the full tier.
+
+Rule 20, for each engine:
+
+- **GitHub Copilot**: applied. Its work items carry the health endpoint on a .NET Framework web application moving to a
+  container and the manifests' probes on its paths.
+- **Claude Code**: applied. The same through the mechanics table. The parity test passes, and the coverage test checks
+  every guided resolution in both engines.

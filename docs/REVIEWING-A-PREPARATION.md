@@ -150,7 +150,11 @@ listed twice, or a lookup of other users among the places to change, is a gap.
 **An application on .NET Framework moving to a container.** When a .NET Framework application's chosen approach lands
 it in a container on the target framework (a WCF or ASMX service rewritten or moved to CoreWCF, a Windows Service or a
 batch job to a container), it gets the Dockerfile and OpenShift manifest work items, in phase 5, after its own
-conversion. One that stays on Windows gets neither. A converted service with no way to be deployed is a gap.
+conversion; a web application (`.svc`, `.asmx`, `.aspx`, Global.asax) also gets the health endpoint work item. One
+that stays on Windows gets none of them. The manifests' liveness and readiness probes call the paths the health
+endpoint work item creates (`/health/live`, `/health/ready`, port 8080); a worker or job with no HTTP endpoint gets
+`tcpSocket` or `exec` probes, a CronJob none. A converted service with no way to be deployed, or probes on paths the
+application does not serve, is a gap.
 
 **Claim types are not hostnames.** A URI used as a claim type or an XML namespace (`http://<name>/claims/role`, a
 `new Claim(...)` argument, a `DataContract` namespace) is an identifier, not an endpoint: the fully qualified hostname

@@ -71,11 +71,13 @@ WORDING_CORRECTIONS = ("serilog-file-sink", "wcf-nettcp-client")
 # event-log-usage and backslash-path-building (2026-11-25): new items, from registry 1.16.0's signals.
 # linq-to-sql-usage, system-web-in-library, wif-usage and windows-workflow-usage (2026-11-26): new items, from registry
 # 1.17.0's signals; and detection changes: directory-services-usage locates the signed-in user's checks, fx-aspnet-mvc
-# needs an application, missing-dockerfile and missing-ocp4-manifests also match a .NET Framework application.
+# needs an application, missing-dockerfile and missing-ocp4-manifests also match a .NET Framework application; and
+# missing-health-endpoint a .NET Framework web application, with the manifests' probes on its paths.
 CATALOG_ADDITIONS = ("datetime-now-usage", "windows-only-assembly-reference", "legacy-project-format", "packages-config",
                      "event-log-usage", "backslash-path-building",
                      "linq-to-sql-usage", "system-web-in-library", "wif-usage", "windows-workflow-usage",
-                     "directory-services-usage", "fx-aspnet-mvc", "missing-dockerfile", "missing-ocp4-manifests")
+                     "directory-services-usage", "fx-aspnet-mvc", "missing-dockerfile", "missing-ocp4-manifests",
+                     "missing-health-endpoint")
 
 
 def guidance_items(files: dict[str, str]) -> tuple[str, ...]:

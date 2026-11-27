@@ -73,8 +73,11 @@ resolutions:
   effort: medium
   engine_guidance: |-
     Add a Helm chart for the application: a Deployment (numeric non-root user, port 8080, probes),
-    a Service, a Route and a ConfigMap, with one values file per environment. The namespace, image
-    registry and route host are values supplied at deployment; never write them.
+    a Service, a Route and a ConfigMap, with one values file per environment. The probes call the
+    application's health endpoints, `/health/live` (liveness) and `/health/ready` (readiness) on
+    port 8080, as the health endpoint instruction creates them; an application with no HTTP
+    endpoint gets `tcpSocket` or `exec` probes instead. The namespace, image registry and route host
+    are values supplied at deployment; never write them.
   id: helm-chart
   is_default: false
   linux_compatible: true
@@ -93,8 +96,12 @@ resolutions:
     For each deployable application, add OpenShift manifests kept in the repository beside the
     code: a Deployment (numeric non-root user, port 8080, liveness and readiness probes, resource
     requests and limits), a Service, a Route, and a ConfigMap for settings that are not secret.
-    Take the namespace, image registry and route host names from the deployment parameters named
-    below; never write values for them. Refer to Secrets by name only.
+    The probes call the application's health endpoints: the liveness probe `/health/live` and the
+    readiness probe `/health/ready`, on port 8080, as the health endpoint instruction creates
+    them; an application with no HTTP endpoint (a worker, a job) gets `tcpSocket` or `exec`
+    probes instead, and a CronJob none. Take the namespace, image registry and route host names
+    from the deployment parameters named below; never write values for them. Refer to Secrets by
+    name only.
   id: plain-manifests
   is_default: true
   linux_compatible: true

@@ -1809,6 +1809,13 @@ hand. Everything else an update brings, bootstrap applies by itself. Apply every
 had (`previousCommit` in `PLATFORM_SOURCE.json` after the update; in our own installs, the commit before step 5 of
 the appendix), oldest of them first. Entries up to 2026-10-23 were the notes of releases 2 to 7, which are named so.
 
+#### 2026-11-26, (commit of "The health endpoint on .NET Framework web applications, and a catalog coverage test"): rescan; a conversion not yet run is refreshed
+
+Update, bootstrap and restart the backend. Bootstrap updates "No health endpoint" (it also matches a .NET Framework web
+application) and the health and manifest guidance, where nobody edited them. Then **Rescan** each repository with a
+.NET Framework web application: a conversion prepared but not yet run is refreshed by that rescan, with the health
+endpoint work item where the application moves to a container; **start the next conversion** for one already run.
+
 #### 2026-11-26, (commit of "Framework-only APIs in class libraries, the class libraries' approach, containers for .NET Framework applications"): rescan; a conversion not yet run is refreshed
 
 Update, bootstrap and restart the backend. Bootstrap adds the items "LINQ to SQL", "System.Web in a class library",

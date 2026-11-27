@@ -1,6 +1,6 @@
 category: hosting
 deleted: false
-description: An ASP.NET Core application that exposes no health check endpoint, so OCP4 liveness and readiness probes have nothing meaningful to call. Keyed on ASP.NET Core host builders; a worker with no HTTP surface needs a different probe and is not this item.
+description: An ASP.NET Core application that exposes no health check endpoint, so OCP4 liveness and readiness probes have nothing meaningful to call. Keyed on ASP.NET Core host builders, and on a classic web application on .NET Framework (a conversion acts on it only when its chosen approach moves it to the target framework in a container); a worker with no HTTP surface needs a different probe and is not this item.
 detection:
   match:
     all: []
@@ -14,13 +14,26 @@ detection:
     - id: startup-class
       signal:
         name: STARTUP_CLASS_ENTRY_POINT
+    - id: svc-host
+      signal:
+        name: SVC_FILE
+    - id: asmx-host
+      signal:
+        name: ASMX_FILE
+    - id: aspx-host
+      signal:
+        name: ASPX_FILE
+    - id: global-asax-host
+      signal:
+        name: GLOBAL_ASAX_FILE
     atLeast: []
     metadata:
     - field: frameworkFamily
-      id: modern-dotnet
+      id: dotnet-application
       in:
       - net
       - net-core
+      - net-framework
     - field: outputType
       id: not-desktop
       notEquals: WinExe
@@ -50,6 +63,8 @@ resolutions:
   description: AddHealthChecks() plus separate liveness and readiness endpoints (MapHealthChecks), readiness checking the application's dependencies.
   effort: low
   engine_guidance: |-
+    For an application this conversion moves to ASP.NET Core, add them in its ASP.NET Core host, in
+    the same work as the rest of its platform changes.
     1. Register health checks with `builder.Services.AddHealthChecks()`, with a check for each
        dependency the application cannot serve without (its database, required downstream
        services).

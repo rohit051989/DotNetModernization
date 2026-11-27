@@ -291,7 +291,7 @@ def framework_only_packages(occurrences: dict[str, list[dict]], references: list
 
 # Gap 5 (2026-11-26): the image and manifest items, and the application items whose chosen approach decides whether a
 # .NET Framework application lands in a container on the target framework.
-CONTAINER_ITEMS = ("missing-dockerfile", "missing-ocp4-manifests")
+CONTAINER_ITEMS = ("missing-dockerfile", "missing-ocp4-manifests", "missing-health-endpoint")
 HOSTING_ITEMS = ("asmx-service", "aspnet-webforms", "fx-aspnet-mvc", "wcf-service", "wcf-service-host",
                  "console-batch-job", "windows-service", "ssis-package")
 

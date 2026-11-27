@@ -288,15 +288,24 @@ class FrameworkOnlyApisOnAScannedRepository(unittest.TestCase):
             self.assertGreater(by_item[item]["phase"], by_item["wcf-service"]["phase"])
             self.assertLess(order.index("wcf-service"), order.index(item))
             self.assertLess(order.index("console-batch-job"), order.index(item))
+        # The health endpoint: the web service only (the console tool has no HTTP endpoint), after its conversion; the
+        # manifests' probes call the paths it creates.
+        health = by_item["missing-health-endpoint"]
+        self.assertEqual({o["project"] for o in health["item"]["occurrences"]}, {"Web/Web.csproj"})
+        self.assertLess(order.index("wcf-service"), order.index("missing-health-endpoint"))
         for engine, text_ in self.both(model).items():
             self.assertIn("Web/Web.csproj", self.skill(text_, engine, "applying-multistage-dockerfile"), engine)
-            self.assertIn("Web/Web.csproj", self.skill(text_, engine, "applying-plain-manifests"), engine)
+            manifests = _flat(self.skill(text_, engine, "applying-plain-manifests"))
+            self.assertIn("Web/Web.csproj", manifests, engine)
+            self.assertIn("the liveness probe `/health/live` and the readiness probe `/health/ready`, on port 8080", manifests)
+            self.assertIn("`/health/live`", self.skill(text_, engine, "applying-aspnetcore-health-checks"), engine)
         # The service stays on Windows: no image, no manifests for it; the tool still moves.
         self.decide({"wcf-service": "wcf-service-remain-windows-hosted", "wcf-service-host": "wcf-host-remain-windows-hosted"})
         model = collect.collect(self.db, self.repo)
         for item in model["items"]:
             if item["id"] in ("missing-dockerfile", "missing-ocp4-manifests"):
                 self.assertEqual({o["project"] for o in item["occurrences"]}, {"Tool/Tool.csproj"}, item["id"])
+        self.assertNotIn("missing-health-endpoint", {i["id"] for i in model["items"]})
 
     def test_7_the_identity_claims_work_item_changes_the_signed_in_users_checks_only_each_once(self):
         self.decide({"directory-services-usage": "identity-provider-claims"})

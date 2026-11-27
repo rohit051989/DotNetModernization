@@ -214,6 +214,8 @@ items:
       nothing meaningful to call; a hung or not-yet-ready instance keeps receiving traffic.
     resolutions:
       aspnetcore-health-checks: |-
+        For an application this conversion moves to ASP.NET Core, add them in its ASP.NET Core host, in
+        the same work as the rest of its platform changes.
         1. Register health checks with `builder.Services.AddHealthChecks()`, with a check for each
            dependency the application cannot serve without (its database, required downstream
            services).
@@ -235,12 +237,19 @@ items:
         For each deployable application, add OpenShift manifests kept in the repository beside the
         code: a Deployment (numeric non-root user, port 8080, liveness and readiness probes, resource
         requests and limits), a Service, a Route, and a ConfigMap for settings that are not secret.
-        Take the namespace, image registry and route host names from the deployment parameters named
-        below; never write values for them. Refer to Secrets by name only.
+        The probes call the application's health endpoints: the liveness probe `/health/live` and the
+        readiness probe `/health/ready`, on port 8080, as the health endpoint instruction creates
+        them; an application with no HTTP endpoint (a worker, a job) gets `tcpSocket` or `exec`
+        probes instead, and a CronJob none. Take the namespace, image registry and route host names
+        from the deployment parameters named below; never write values for them. Refer to Secrets by
+        name only.
       helm-chart: |-
         Add a Helm chart for the application: a Deployment (numeric non-root user, port 8080, probes),
-        a Service, a Route and a ConfigMap, with one values file per environment. The namespace, image
-        registry and route host are values supplied at deployment; never write them.
+        a Service, a Route and a ConfigMap, with one values file per environment. The probes call the
+        application's health endpoints, `/health/live` (liveness) and `/health/ready` (readiness) on
+        port 8080, as the health endpoint instruction creates them; an application with no HTTP
+        endpoint gets `tcpSocket` or `exec` probes instead. The namespace, image registry and route host
+        are values supplied at deployment; never write them.
 
   package-provided-by-framework:
     guidance: |-

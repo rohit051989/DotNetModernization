@@ -575,8 +575,10 @@ items:
     description: >-
       An ASP.NET Core application that exposes no health check endpoint, so
       OCP4 liveness and readiness probes have nothing meaningful to call.
-      Keyed on ASP.NET Core host builders; a worker with no HTTP surface
-      needs a different probe and is not this item.
+      Keyed on ASP.NET Core host builders, and on a classic web application
+      on .NET Framework (a conversion acts on it only when its chosen
+      approach moves it to the target framework in a container); a worker
+      with no HTTP surface needs a different probe and is not this item.
     excluded_roles: [TEST, LIBRARY, DATABASE, DEPLOYMENT]
     detection:
       match:
@@ -590,14 +592,22 @@ items:
           - id: startup-class
             signal:
               name: STARTUP_CLASS_ENTRY_POINT
+          # A classic web application on .NET Framework (2026-11-26): its .svc, .asmx, .aspx or Global.asax.
+          - {id: svc-host, signal: {name: SVC_FILE}}
+          - {id: asmx-host, signal: {name: ASMX_FILE}}
+          - {id: aspx-host, signal: {name: ASPX_FILE}}
+          - {id: global-asax-host, signal: {name: GLOBAL_ASAX_FILE}}
         none:
           - id: has-health-endpoint
             signal:
               name: MAP_HEALTH_CHECKS_INVOCATION
         metadata:
-          - id: modern-dotnet
+          # .NET Framework too (2026-11-26), as for the Dockerfile and manifests: kept by preparation only when the
+          # application's chosen approach moves it to the target framework in a container
+          # (app.engine.inputs.collect.containers_needed).
+          - id: dotnet-application
             field: frameworkFamily
-            in: [net, net-core]
+            in: [net, net-core, net-framework]
           # A desktop application needs no Dockerfile, health endpoint or
           # OCP4 manifest: it does not run on the platform.
           - id: not-desktop
